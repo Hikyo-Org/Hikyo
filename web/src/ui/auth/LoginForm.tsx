@@ -44,6 +44,7 @@ export type SignupDoor = {
 type Stage =
   | { at: 'choose' }
   | { at: 'password' }
+  | { at: 'provider'; provider: ProviderIdentity }
   | { at: 'sign-up' }
   | { at: 'email' }
   | { at: 'confirm'; provider: ProviderIdentity };
@@ -104,6 +105,7 @@ export function LoginForm({
   onProvider,
   links,
   initialIntent = 'sign-in',
+  preselectedProvider,
 }: {
   providers: readonly LoginProvider[];
   /** Whether the platform can perform a WebAuthn assertion at all. */
@@ -123,9 +125,13 @@ export function LoginForm({
   links?: ReactNode;
   /** The door the card opens on: `/signup` opens on "Create an account" while it is open. */
   initialIntent?: SignInIntent;
+  /** A validated CLI hint selects the method without starting authentication. */
+  preselectedProvider?: ProviderIdentity;
 }) {
-  const [chosen, setStage] = useState<Stage>({ at: initialIntent === 'sign-up' ? 'sign-up' : 'choose' });
-  const stage = shownStage(chosen, signup);
+  const [chosen, setStage] = useState<Stage | null>(null);
+  const stage = shownStage(chosen ?? (preselectedProvider === undefined
+    ? { at: initialIntent === 'sign-up' ? 'sign-up' : 'choose' }
+    : { at: 'provider', provider: preselectedProvider }), signup);
   // A step change unmounts the control that was pressed, which would drop
   // focus to the document: the new step's heading takes it instead, so a
   // keyboard or screen-reader user lands on what changed. Not on mount, where
@@ -177,6 +183,21 @@ export function LoginForm({
   };
 
   switch (stage.at) {
+    case 'provider': {
+      const provider = providers.find((row) => row.kind === stage.provider.kind && row.slug === stage.provider.slug);
+      if (provider === undefined) return null;
+      return (
+        <div className="login__card">
+          {back('Other ways to sign in', { at: 'choose' })}
+          {title(`Sign in with ${provider.display_name}`)}
+          <p className="login__lede">Continue to your identity provider to sign in.</p>
+          {alert}
+          <ProviderButton provider={provider} intent="sign-in" busy={providerBusy(provider)} disabled={anyBusy}
+            onClick={() => onProvider({ kind: provider.kind, slug: provider.slug }, 'sign-in')} />
+        </div>
+      );
+    }
+
     case 'password':
       return (
         <form className="login__card" onSubmit={onSubmit} noValidate>

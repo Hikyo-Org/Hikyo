@@ -2558,3 +2558,19 @@ func TestInitializeValueRefusalIsUniform(t *testing.T) {
 		}
 	}
 }
+
+func (stubAuth) StartCLILogin(context.Context, string, string, string, string) (service.CLILoginStart, error) {
+	return service.CLILoginStart{}, domain.ErrUnauthenticated
+}
+func (stubAuth) CLILoginTransaction(context.Context, service.Actor, string) (service.CLILoginTransaction, error) {
+	return service.CLILoginTransaction{}, domain.ErrUnauthenticated
+}
+func (stubAuth) ApproveCLILogin(context.Context, service.Actor, string) (service.CLIReauthApproval, error) {
+	return service.CLIReauthApproval{}, domain.ErrUnauthenticated
+}
+func (stubAuth) RedeemCLILogin(context.Context, string, string, string) (service.LoginResult, error) {
+	return service.LoginResult{}, domain.ErrUnauthenticated
+}
+func (stubAuth) PollCLIDevice(context.Context, string) (service.CLIDeviceAttempt, error) {
+	return service.CLIDeviceAttempt{}, domain.ErrUnauthenticated
+}

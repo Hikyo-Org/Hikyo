@@ -1770,8 +1770,8 @@ INSERT INTO sessions
     (id, principal_id, verifier, artifact, session_generation, credential_epoch,
      auth_method, factors, authenticated_at, ceremony_id, created_at,
      last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent,
-     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required, cli_handoff_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 `
 
 type InsertSessionParams struct {
@@ -1796,6 +1796,7 @@ type InsertSessionParams struct {
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
 	EnrolmentRequired bool
+	CliHandoffID      pgtype.Text
 }
 
 // hikyo:authn-resolution
@@ -1828,6 +1829,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.RequestingOrigin,
 		arg.HandoffID,
 		arg.EnrolmentRequired,
+		arg.CliHandoffID,
 	)
 	return err
 }
@@ -2256,7 +2258,7 @@ func (q *Queries) ListRecoveryCodesForReencrypt(ctx context.Context, arg ListRec
 const listSessionsForPrincipal = `-- name: ListSessionsForPrincipal :many
 SELECT id, artifact, auth_method, factors, authenticated_at, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, source_ip,
-       user_agent, requesting_origin, handoff_id
+       user_agent, requesting_origin, handoff_id, cli_handoff_id
 FROM sessions WHERE principal_id = $1 ORDER BY created_at, id
 `
 
@@ -2274,6 +2276,7 @@ type ListSessionsForPrincipalRow struct {
 	UserAgent         string
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
+	CliHandoffID      pgtype.Text
 }
 
 // The active-session listing (#71 criterion 5). A workspace session appears
@@ -2304,6 +2307,7 @@ func (q *Queries) ListSessionsForPrincipal(ctx context.Context, principalID stri
 			&i.UserAgent,
 			&i.RequestingOrigin,
 			&i.HandoffID,
+			&i.CliHandoffID,
 		); err != nil {
 			return nil, err
 		}

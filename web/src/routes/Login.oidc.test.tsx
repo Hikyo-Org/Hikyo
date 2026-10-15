@@ -10,11 +10,11 @@ import { Login } from './Login.tsx';
 
 async function mount(
   container: HTMLElement,
-  page: { intent?: 'sign-in' | 'sign-up'; url?: string; returnTo?: string } = {},
+  page: { intent?: 'sign-in' | 'sign-up'; url?: string; returnTo?: string; signInOnly?: boolean; providerHint?: string } = {},
 ) {
   const node = () => (
     <MemoryRouter initialEntries={[page.url ?? '/login']}>
-      <Login intent={page.intent} returnTo={page.returnTo} />
+      <Login intent={page.intent} returnTo={page.returnTo} signInOnly={page.signInOnly} providerHint={page.providerHint} />
     </MemoryRouter>
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -53,6 +53,7 @@ type Mocks = {
     };
     isError: boolean;
     isPending: boolean;
+    isSuccess: boolean;
     refetch: Mock;
   };
   passkeysAvailable: boolean;
@@ -77,6 +78,7 @@ const mocks = vi.hoisted((): Mocks => ({
     },
     isError: false,
     isPending: false,
+    isSuccess: true,
     refetch: vi.fn(),
   },
   passkeysAvailable: false,
@@ -763,4 +765,31 @@ it('opens a local-only sign-up door and falls back when the email entry closes',
     expect(container.querySelector('h1')?.textContent).toBe('Create an account');
     expect(buttonNamed(container, 'Email')).toBeUndefined();
   } finally { await view.unmount(); }
+});
+
+it.each(['oidc', 'oauth2'])('CLI %s preselect keeps sign-in intent, hides signup and preserves the return route', async (kind) => {
+  mocks.methods.data.providers = [{ kind, slug: 'strict', display_name: 'Corporate IdP' }];
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = ['local', { kind: 'oidc', slug: 'strict' }];
+  const container = document.createElement('div');
+  const returnTo = `/login/cli?state=opaque&provider=${kind}%3Astrict`;
+  const { unmount } = await mount(container, { signInOnly: true, intent: 'sign-up', providerHint: `${kind}:strict`, returnTo });
+  try {
+    expect(container.textContent).toContain('Sign in with Corporate IdP');
+    expect(container.textContent).not.toContain('Create an account');
+    expect(container.textContent).not.toContain('Have a setup authority');
+    expect(mocks.oidc.mutate).not.toHaveBeenCalled();
+    const button = [...container.querySelectorAll('button')].find((node) => node.textContent === 'Continue with Corporate IdP');
+    await act(async () => button?.click());
+    expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', kind, intent: 'sign-in', signupOrg: undefined, returnTo });
+  } finally { await unmount(); }
+});
+it.each(['missing', 'strict'])('refuses unknown or ambiguous CLI provider hint %s', async (hint) => {
+  if (hint === 'strict') mocks.methods.data.providers.push({ kind: 'oauth2', slug: 'strict', display_name: 'Other strict' });
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { signInOnly: true, providerHint: hint });
+  try {
+    expect(container.textContent).toContain('Sign-in provider unavailable');
+    expect(mocks.oidc.mutate).not.toHaveBeenCalled();
+  } finally { await unmount(); }
 });

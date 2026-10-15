@@ -839,6 +839,123 @@ func (e AuthMethodsSignupLanding) Valid() bool {
 	}
 }
 
+// Defines values for CLIDeviceErrorError.
+const (
+	AccessDenied         CLIDeviceErrorError = "access_denied"
+	AuthorizationPending CLIDeviceErrorError = "authorization_pending"
+	ExpiredToken         CLIDeviceErrorError = "expired_token"
+	SlowDown             CLIDeviceErrorError = "slow_down"
+)
+
+// Valid indicates whether the value is a known member of the CLIDeviceErrorError enum.
+func (e CLIDeviceErrorError) Valid() bool {
+	switch e {
+	case AccessDenied:
+		return true
+	case AuthorizationPending:
+		return true
+	case ExpiredToken:
+		return true
+	case SlowDown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLIDeviceStartRequestClientId.
+const (
+	CLIDeviceStartRequestClientIdHikyoCli CLIDeviceStartRequestClientId = "hikyo-cli"
+)
+
+// Valid indicates whether the value is a known member of the CLIDeviceStartRequestClientId enum.
+func (e CLIDeviceStartRequestClientId) Valid() bool {
+	switch e {
+	case CLIDeviceStartRequestClientIdHikyoCli:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLIDeviceTokenTokenType.
+const (
+	Bearer CLIDeviceTokenTokenType = "Bearer"
+)
+
+// Valid indicates whether the value is a known member of the CLIDeviceTokenTokenType enum.
+func (e CLIDeviceTokenTokenType) Valid() bool {
+	switch e {
+	case Bearer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLIDeviceTokenRequestClientId.
+const (
+	CLIDeviceTokenRequestClientIdHikyoCli CLIDeviceTokenRequestClientId = "hikyo-cli"
+)
+
+// Valid indicates whether the value is a known member of the CLIDeviceTokenRequestClientId enum.
+func (e CLIDeviceTokenRequestClientId) Valid() bool {
+	switch e {
+	case CLIDeviceTokenRequestClientIdHikyoCli:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLIDeviceTokenRequestGrantType.
+const (
+	UrnIetfParamsOauthGrantTypeDeviceCode CLIDeviceTokenRequestGrantType = "urn:ietf:params:oauth:grant-type:device_code"
+)
+
+// Valid indicates whether the value is a known member of the CLIDeviceTokenRequestGrantType enum.
+func (e CLIDeviceTokenRequestGrantType) Valid() bool {
+	switch e {
+	case UrnIetfParamsOauthGrantTypeDeviceCode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLILoginStartRequestTransport.
+const (
+	CLILoginStartRequestTransportLoopback CLILoginStartRequestTransport = "loopback"
+)
+
+// Valid indicates whether the value is a known member of the CLILoginStartRequestTransport enum.
+func (e CLILoginStartRequestTransport) Valid() bool {
+	switch e {
+	case CLILoginStartRequestTransportLoopback:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CLILoginTransactionTransport.
+const (
+	CLILoginTransactionTransportDevice   CLILoginTransactionTransport = "device"
+	CLILoginTransactionTransportLoopback CLILoginTransactionTransport = "loopback"
+)
+
+// Valid indicates whether the value is a known member of the CLILoginTransactionTransport enum.
+func (e CLILoginTransactionTransport) Valid() bool {
+	switch e {
+	case CLILoginTransactionTransportDevice:
+		return true
+	case CLILoginTransactionTransportLoopback:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CLIReauthStartRequestOperation.
 const (
 	CLIReauthStartRequestOperationAdapterAdopt            CLIReauthStartRequestOperation = "adapter.adopt"
@@ -5312,6 +5429,118 @@ type BackupHealth struct {
 	// Scheduled True when an export policy (recipients + destination) is configured and the in-process schedule runs.
 	Scheduled bool `json:"scheduled"`
 }
+
+// CLIDeviceError defines model for CLIDeviceError.
+type CLIDeviceError struct {
+	Error    CLIDeviceErrorError `json:"error"`
+	Interval int                 `json:"interval"`
+}
+
+// CLIDeviceErrorError defines model for CLIDeviceError.Error.
+type CLIDeviceErrorError string
+
+// CLIDeviceErrorResponse RFC 8628 protocol errors or the shared malformed-request refusal.
+type CLIDeviceErrorResponse struct {
+	union json.RawMessage
+}
+
+// CLIDeviceStart defines model for CLIDeviceStart.
+type CLIDeviceStart struct {
+	DeviceCode      string    `json:"device_code"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	ExpiresIn       int       `json:"expires_in"`
+	Interval        int       `json:"interval"`
+	UserCode        string    `json:"user_code"`
+	VerificationUri string    `json:"verification_uri"`
+}
+
+// CLIDeviceStartRequest defines model for CLIDeviceStartRequest.
+type CLIDeviceStartRequest struct {
+	ClientId CLIDeviceStartRequestClientId `json:"client_id"`
+}
+
+// CLIDeviceStartRequestClientId defines model for CLIDeviceStartRequest.ClientId.
+type CLIDeviceStartRequestClientId string
+
+// CLIDeviceToken defines model for CLIDeviceToken.
+type CLIDeviceToken struct {
+	AccessToken string                  `json:"access_token"`
+	ExpiresIn   int                     `json:"expires_in"`
+	Principal   Principal               `json:"principal"`
+	Session     Session                 `json:"session"`
+	TokenType   CLIDeviceTokenTokenType `json:"token_type"`
+}
+
+// CLIDeviceTokenTokenType defines model for CLIDeviceToken.TokenType.
+type CLIDeviceTokenTokenType string
+
+// CLIDeviceTokenRequest defines model for CLIDeviceTokenRequest.
+type CLIDeviceTokenRequest struct {
+	ClientId   CLIDeviceTokenRequestClientId  `json:"client_id"`
+	DeviceCode string                         `json:"device_code"`
+	GrantType  CLIDeviceTokenRequestGrantType `json:"grant_type"`
+}
+
+// CLIDeviceTokenRequestClientId defines model for CLIDeviceTokenRequest.ClientId.
+type CLIDeviceTokenRequestClientId string
+
+// CLIDeviceTokenRequestGrantType defines model for CLIDeviceTokenRequest.GrantType.
+type CLIDeviceTokenRequestGrantType string
+
+// CLILoginApproveRequest defines model for CLILoginApproveRequest.
+type CLILoginApproveRequest struct {
+	Reference string `json:"reference"`
+}
+
+// CLILoginApproved defines model for CLILoginApproved.
+type CLILoginApproved struct {
+	// Code Single-use code for loopback; empty for approved device login.
+	Code string `json:"code"`
+
+	// RedirectUri Exact bound loopback redirect; empty for device login.
+	RedirectUri string `json:"redirect_uri"`
+	State       string `json:"state"`
+}
+
+// CLILoginRedeemRequest defines model for CLILoginRedeemRequest.
+type CLILoginRedeemRequest struct {
+	Code         string `json:"code"`
+	PkceVerifier string `json:"pkce_verifier"`
+	RedirectUri  string `json:"redirect_uri"`
+}
+
+// CLILoginStart defines model for CLILoginStart.
+type CLILoginStart struct {
+	DeviceCode      string    `json:"device_code"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	Interval        int       `json:"interval"`
+	State           string    `json:"state"`
+	UserCode        string    `json:"user_code"`
+	VerificationUri string    `json:"verification_uri"`
+}
+
+// CLILoginStartRequest defines model for CLILoginStartRequest.
+type CLILoginStartRequest struct {
+	PkceChallenge string                        `json:"pkce_challenge"`
+	RedirectUri   string                        `json:"redirect_uri"`
+	State         string                        `json:"state"`
+	Transport     CLILoginStartRequestTransport `json:"transport"`
+}
+
+// CLILoginStartRequestTransport defines model for CLILoginStartRequest.Transport.
+type CLILoginStartRequestTransport string
+
+// CLILoginTransaction defines model for CLILoginTransaction.
+type CLILoginTransaction struct {
+	ExpiresAt   time.Time                    `json:"expires_at"`
+	Instance    string                       `json:"instance"`
+	RedirectUri string                       `json:"redirect_uri"`
+	Reference   string                       `json:"reference"`
+	Transport   CLILoginTransactionTransport `json:"transport"`
+}
+
+// CLILoginTransactionTransport defines model for CLILoginTransaction.Transport.
+type CLILoginTransactionTransport string
 
 // CLIReauthApproveRequest defines model for CLIReauthApproveRequest.
 type CLIReauthApproveRequest struct {
@@ -12510,6 +12739,21 @@ type ScimListUsersParams struct {
 	SortOrder *ScimSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty"`
 }
 
+// ApproveCLILoginJSONRequestBody defines body for ApproveCLILogin for application/json ContentType.
+type ApproveCLILoginJSONRequestBody = CLILoginApproveRequest
+
+// StartCLIDeviceFormdataRequestBody defines body for StartCLIDevice for application/x-www-form-urlencoded ContentType.
+type StartCLIDeviceFormdataRequestBody = CLIDeviceStartRequest
+
+// PollCLIDeviceFormdataRequestBody defines body for PollCLIDevice for application/x-www-form-urlencoded ContentType.
+type PollCLIDeviceFormdataRequestBody = CLIDeviceTokenRequest
+
+// RedeemCLILoginJSONRequestBody defines body for RedeemCLILogin for application/json ContentType.
+type RedeemCLILoginJSONRequestBody = CLILoginRedeemRequest
+
+// StartCLILoginJSONRequestBody defines body for StartCLILogin for application/json ContentType.
+type StartCLILoginJSONRequestBody = CLILoginStartRequest
+
 // ApproveCLIReauthJSONRequestBody defines body for ApproveCLIReauth for application/json ContentType.
 type ApproveCLIReauthJSONRequestBody = CLIReauthApproveRequest
 
@@ -13046,6 +13290,68 @@ type ScimReplaceUserJSONRequestBody = ScimResource
 
 // ScimReplaceUserApplicationScimPlusJSONRequestBody defines body for ScimReplaceUser for application/scim+json ContentType.
 type ScimReplaceUserApplicationScimPlusJSONRequestBody = ScimResource
+
+// AsCLIDeviceError returns the union data inside the CLIDeviceErrorResponse as a CLIDeviceError
+func (t CLIDeviceErrorResponse) AsCLIDeviceError() (CLIDeviceError, error) {
+	var body CLIDeviceError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCLIDeviceError overwrites any union data inside the CLIDeviceErrorResponse as the provided CLIDeviceError
+func (t *CLIDeviceErrorResponse) FromCLIDeviceError(v CLIDeviceError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCLIDeviceError performs a merge with any union data inside the CLIDeviceErrorResponse, using the provided CLIDeviceError
+func (t *CLIDeviceErrorResponse) MergeCLIDeviceError(v CLIDeviceError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsError returns the union data inside the CLIDeviceErrorResponse as a Error
+func (t CLIDeviceErrorResponse) AsError() (Error, error) {
+	var body Error
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromError overwrites any union data inside the CLIDeviceErrorResponse as the provided Error
+func (t *CLIDeviceErrorResponse) FromError(v Error) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeError performs a merge with any union data inside the CLIDeviceErrorResponse, using the provided Error
+func (t *CLIDeviceErrorResponse) MergeError(v Error) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CLIDeviceErrorResponse) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *CLIDeviceErrorResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsCLIReauthStartRequest0 returns the union data inside the CLIReauthStartRequest as a CLIReauthStartRequest0
 func (t CLIReauthStartRequest) AsCLIReauthStartRequest0() (CLIReauthStartRequest0, error) {
@@ -13972,6 +14278,24 @@ type ServerInterface interface {
 	// ResetCredential Issue a credential-establishment authority for another account.
 	// (POST /api/v1/accounts/{principal}/credential-reset)
 	ResetCredential(w http.ResponseWriter, r *http.Request, principal ResetTargetPrincipal)
+	// ApproveCLILogin First-party CLI login approveCLILogin.
+	// (POST /api/v1/auth/cli-login/approve)
+	ApproveCLILogin(w http.ResponseWriter, r *http.Request)
+	// StartCLIDevice RFC 8628 device authorization for the first-party CLI.
+	// (POST /api/v1/auth/cli-login/device/start)
+	StartCLIDevice(w http.ResponseWriter, r *http.Request)
+	// PollCLIDevice First-party CLI login pollCLIDevice.
+	// (POST /api/v1/auth/cli-login/device/token)
+	PollCLIDevice(w http.ResponseWriter, r *http.Request)
+	// RedeemCLILogin First-party CLI login redeemCLILogin.
+	// (POST /api/v1/auth/cli-login/redeem)
+	RedeemCLILogin(w http.ResponseWriter, r *http.Request)
+	// StartCLILogin First-party CLI login startCLILogin.
+	// (POST /api/v1/auth/cli-login/start)
+	StartCLILogin(w http.ResponseWriter, r *http.Request)
+	// ShowCLILoginTransaction First-party CLI login showCLILoginTransaction.
+	// (GET /api/v1/auth/cli-login/transactions/{reference})
+	ShowCLILoginTransaction(w http.ResponseWriter, r *http.Request, reference string)
 	// ApproveCLIReauth Approve a CLI adapter ceremony with the browser session's exact bound windows.
 	// (POST /api/v1/auth/cli-reauth/approve)
 	ApproveCLIReauth(w http.ResponseWriter, r *http.Request)
@@ -15142,6 +15466,42 @@ type Unimplemented struct{}
 // ResetCredential Issue a credential-establishment authority for another account.
 // (POST /api/v1/accounts/{principal}/credential-reset)
 func (_ Unimplemented) ResetCredential(w http.ResponseWriter, r *http.Request, principal ResetTargetPrincipal) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ApproveCLILogin First-party CLI login approveCLILogin.
+// (POST /api/v1/auth/cli-login/approve)
+func (_ Unimplemented) ApproveCLILogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartCLIDevice RFC 8628 device authorization for the first-party CLI.
+// (POST /api/v1/auth/cli-login/device/start)
+func (_ Unimplemented) StartCLIDevice(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PollCLIDevice First-party CLI login pollCLIDevice.
+// (POST /api/v1/auth/cli-login/device/token)
+func (_ Unimplemented) PollCLIDevice(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RedeemCLILogin First-party CLI login redeemCLILogin.
+// (POST /api/v1/auth/cli-login/redeem)
+func (_ Unimplemented) RedeemCLILogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartCLILogin First-party CLI login startCLILogin.
+// (POST /api/v1/auth/cli-login/start)
+func (_ Unimplemented) StartCLILogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowCLILoginTransaction First-party CLI login showCLILoginTransaction.
+// (GET /api/v1/auth/cli-login/transactions/{reference})
+func (_ Unimplemented) ShowCLILoginTransaction(w http.ResponseWriter, r *http.Request, reference string) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17493,6 +17853,102 @@ func (siw *ServerInterfaceWrapper) ResetCredential(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResetCredential(w, r, principal)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveCLILogin operation middleware
+func (siw *ServerInterfaceWrapper) ApproveCLILogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveCLILogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartCLIDevice operation middleware
+func (siw *ServerInterfaceWrapper) StartCLIDevice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartCLIDevice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PollCLIDevice operation middleware
+func (siw *ServerInterfaceWrapper) PollCLIDevice(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PollCLIDevice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RedeemCLILogin operation middleware
+func (siw *ServerInterfaceWrapper) RedeemCLILogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RedeemCLILogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartCLILogin operation middleware
+func (siw *ServerInterfaceWrapper) StartCLILogin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartCLILogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowCLILoginTransaction operation middleware
+func (siw *ServerInterfaceWrapper) ShowCLILoginTransaction(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "reference" -------------
+	var reference string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "reference", chi.URLParam(r, "reference"), &reference, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reference", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowCLILoginTransaction(w, r, reference)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32162,6 +32618,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/auth/reauth/totp", wrapper.ReauthTotp)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/start", wrapper.StartCLILogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/device/start", wrapper.StartCLIDevice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/auth/cli-login/transactions/{reference}", wrapper.ShowCLILoginTransaction)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/approve", wrapper.ApproveCLILogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/redeem", wrapper.RedeemCLILogin)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/cli-login/device/token", wrapper.PollCLIDevice)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/cli-reauth/start", wrapper.StartCLIReauth)
 	})
 	r.Group(func(r chi.Router) {
@@ -33415,6 +33889,704 @@ func (response ResetCredential500JSONResponse) VisitResetCredentialResponse(w ht
 type ResetCredential503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ResetCredential503JSONResponse) VisitResetCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILoginRequestObject struct {
+	Body *ApproveCLILoginJSONRequestBody
+}
+
+type ApproveCLILoginResponseObject interface {
+	VisitApproveCLILoginResponse(w http.ResponseWriter) error
+}
+
+type ApproveCLILogin200JSONResponse CLILoginApproved
+
+func (response ApproveCLILogin200JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ApproveCLILogin400JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ApproveCLILogin401JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ApproveCLILogin403JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ApproveCLILogin404JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ApproveCLILogin429JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin500JSONResponse struct{ InternalJSONResponse }
+
+func (response ApproveCLILogin500JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveCLILogin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApproveCLILogin503JSONResponse) VisitApproveCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLIDeviceRequestObject struct {
+	Body *StartCLIDeviceFormdataRequestBody
+}
+
+type StartCLIDeviceResponseObject interface {
+	VisitStartCLIDeviceResponse(w http.ResponseWriter) error
+}
+
+type StartCLIDevice200JSONResponse CLIDeviceStart
+
+func (response StartCLIDevice200JSONResponse) VisitStartCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLIDevice400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response StartCLIDevice400JSONResponse) VisitStartCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLIDevice429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response StartCLIDevice429JSONResponse) VisitStartCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLIDevice500JSONResponse struct{ InternalJSONResponse }
+
+func (response StartCLIDevice500JSONResponse) VisitStartCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLIDevice503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartCLIDevice503JSONResponse) VisitStartCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDeviceRequestObject struct {
+	Body *PollCLIDeviceFormdataRequestBody
+}
+
+type PollCLIDeviceResponseObject interface {
+	VisitPollCLIDeviceResponse(w http.ResponseWriter) error
+}
+
+type PollCLIDevice200JSONResponse CLIDeviceToken
+
+func (response PollCLIDevice200JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice400JSONResponse CLIDeviceErrorResponse
+
+func (t PollCLIDevice400JSONResponse) MarshalJSON() ([]byte, error) {
+	return CLIDeviceErrorResponse(t).MarshalJSON()
+}
+
+func (t *PollCLIDevice400JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*CLIDeviceErrorResponse)(t).UnmarshalJSON(b)
+}
+
+func (response PollCLIDevice400JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PollCLIDevice401JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PollCLIDevice403JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PollCLIDevice404JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PollCLIDevice429JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice500JSONResponse struct{ InternalJSONResponse }
+
+func (response PollCLIDevice500JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PollCLIDevice503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PollCLIDevice503JSONResponse) VisitPollCLIDeviceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILoginRequestObject struct {
+	Body *RedeemCLILoginJSONRequestBody
+}
+
+type RedeemCLILoginResponseObject interface {
+	VisitRedeemCLILoginResponse(w http.ResponseWriter) error
+}
+
+type RedeemCLILogin200JSONResponse LoginResult
+
+func (response RedeemCLILogin200JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RedeemCLILogin400JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RedeemCLILogin401JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RedeemCLILogin403JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RedeemCLILogin404JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RedeemCLILogin429JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin500JSONResponse struct{ InternalJSONResponse }
+
+func (response RedeemCLILogin500JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RedeemCLILogin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RedeemCLILogin503JSONResponse) VisitRedeemCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILoginRequestObject struct {
+	Body *StartCLILoginJSONRequestBody
+}
+
+type StartCLILoginResponseObject interface {
+	VisitStartCLILoginResponse(w http.ResponseWriter) error
+}
+
+type StartCLILogin201JSONResponse CLILoginStart
+
+func (response StartCLILogin201JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response StartCLILogin400JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response StartCLILogin401JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response StartCLILogin403JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response StartCLILogin404JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response StartCLILogin429JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin500JSONResponse struct{ InternalJSONResponse }
+
+func (response StartCLILogin500JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartCLILogin503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartCLILogin503JSONResponse) VisitStartCLILoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransactionRequestObject struct {
+	Reference string `json:"reference"`
+}
+
+type ShowCLILoginTransactionResponseObject interface {
+	VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error
+}
+
+type ShowCLILoginTransaction200JSONResponse CLILoginTransaction
+
+func (response ShowCLILoginTransaction200JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ShowCLILoginTransaction400JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowCLILoginTransaction401JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ShowCLILoginTransaction403JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowCLILoginTransaction404JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ShowCLILoginTransaction429JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowCLILoginTransaction500JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCLILoginTransaction503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowCLILoginTransaction503JSONResponse) VisitShowCLILoginTransactionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -76974,6 +78146,24 @@ type StrictServerInterface interface {
 	// ResetCredential Issue a credential-establishment authority for another account.
 	// (POST /api/v1/accounts/{principal}/credential-reset)
 	ResetCredential(ctx context.Context, request ResetCredentialRequestObject) (ResetCredentialResponseObject, error)
+	// ApproveCLILogin First-party CLI login approveCLILogin.
+	// (POST /api/v1/auth/cli-login/approve)
+	ApproveCLILogin(ctx context.Context, request ApproveCLILoginRequestObject) (ApproveCLILoginResponseObject, error)
+	// StartCLIDevice RFC 8628 device authorization for the first-party CLI.
+	// (POST /api/v1/auth/cli-login/device/start)
+	StartCLIDevice(ctx context.Context, request StartCLIDeviceRequestObject) (StartCLIDeviceResponseObject, error)
+	// PollCLIDevice First-party CLI login pollCLIDevice.
+	// (POST /api/v1/auth/cli-login/device/token)
+	PollCLIDevice(ctx context.Context, request PollCLIDeviceRequestObject) (PollCLIDeviceResponseObject, error)
+	// RedeemCLILogin First-party CLI login redeemCLILogin.
+	// (POST /api/v1/auth/cli-login/redeem)
+	RedeemCLILogin(ctx context.Context, request RedeemCLILoginRequestObject) (RedeemCLILoginResponseObject, error)
+	// StartCLILogin First-party CLI login startCLILogin.
+	// (POST /api/v1/auth/cli-login/start)
+	StartCLILogin(ctx context.Context, request StartCLILoginRequestObject) (StartCLILoginResponseObject, error)
+	// ShowCLILoginTransaction First-party CLI login showCLILoginTransaction.
+	// (GET /api/v1/auth/cli-login/transactions/{reference})
+	ShowCLILoginTransaction(ctx context.Context, request ShowCLILoginTransactionRequestObject) (ShowCLILoginTransactionResponseObject, error)
 	// ApproveCLIReauth Approve a CLI adapter ceremony with the browser session's exact bound windows.
 	// (POST /api/v1/auth/cli-reauth/approve)
 	ApproveCLIReauth(ctx context.Context, request ApproveCLIReauthRequestObject) (ApproveCLIReauthResponseObject, error)
@@ -78195,6 +79385,195 @@ func (sh *strictHandler) ResetCredential(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ResetCredentialResponseObject); ok {
 		if err := validResponse.VisitResetCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveCLILogin operation middleware
+func (sh *strictHandler) ApproveCLILogin(w http.ResponseWriter, r *http.Request) {
+	var request ApproveCLILoginRequestObject
+
+	var body ApproveCLILoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveCLILogin(ctx, request.(ApproveCLILoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveCLILogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveCLILoginResponseObject); ok {
+		if err := validResponse.VisitApproveCLILoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartCLIDevice operation middleware
+func (sh *strictHandler) StartCLIDevice(w http.ResponseWriter, r *http.Request) {
+	var request StartCLIDeviceRequestObject
+
+	if err := r.ParseForm(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode formdata: %w", err))
+		return
+	}
+	var body StartCLIDeviceFormdataRequestBody
+	if err := runtime.BindForm(&body, r.Form, nil, nil); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't bind formdata: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartCLIDevice(ctx, request.(StartCLIDeviceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartCLIDevice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartCLIDeviceResponseObject); ok {
+		if err := validResponse.VisitStartCLIDeviceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PollCLIDevice operation middleware
+func (sh *strictHandler) PollCLIDevice(w http.ResponseWriter, r *http.Request) {
+	var request PollCLIDeviceRequestObject
+
+	if err := r.ParseForm(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode formdata: %w", err))
+		return
+	}
+	var body PollCLIDeviceFormdataRequestBody
+	if err := runtime.BindForm(&body, r.Form, nil, nil); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't bind formdata: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PollCLIDevice(ctx, request.(PollCLIDeviceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PollCLIDevice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PollCLIDeviceResponseObject); ok {
+		if err := validResponse.VisitPollCLIDeviceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RedeemCLILogin operation middleware
+func (sh *strictHandler) RedeemCLILogin(w http.ResponseWriter, r *http.Request) {
+	var request RedeemCLILoginRequestObject
+
+	var body RedeemCLILoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RedeemCLILogin(ctx, request.(RedeemCLILoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RedeemCLILogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RedeemCLILoginResponseObject); ok {
+		if err := validResponse.VisitRedeemCLILoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartCLILogin operation middleware
+func (sh *strictHandler) StartCLILogin(w http.ResponseWriter, r *http.Request) {
+	var request StartCLILoginRequestObject
+
+	var body StartCLILoginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartCLILogin(ctx, request.(StartCLILoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartCLILogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartCLILoginResponseObject); ok {
+		if err := validResponse.VisitStartCLILoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowCLILoginTransaction operation middleware
+func (sh *strictHandler) ShowCLILoginTransaction(w http.ResponseWriter, r *http.Request, reference string) {
+	var request ShowCLILoginTransactionRequestObject
+
+	request.Reference = reference
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowCLILoginTransaction(ctx, request.(ShowCLILoginTransactionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowCLILoginTransaction")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowCLILoginTransactionResponseObject); ok {
+		if err := validResponse.VisitShowCLILoginTransactionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -21,6 +21,17 @@ func managedNodeTestValues() map[string]string {
 	return map[string]string{"HIKYO_LISTEN": "127.0.0.1:8080", "HIKYO_OPERATIONAL_LISTEN": "127.0.0.1:8081", "HIKYO_ADMISSION_BUDGET_MIB": "272"}
 }
 
+func TestMaintenanceOperationalListenRetainsBootstrapDefault(t *testing.T) {
+	cfg, _, err := LoadBootstrap("server", []string{"--dev"}, func(string) string { return "" }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	address, err := cfg.MaintenanceOperationalListen()
+	if err != nil || address != cfg.OperationalListen || address != "127.0.0.1:8081" {
+		t.Fatalf("maintenance default %q: %v", address, err)
+	}
+}
+
 func managedNodeTestTLS(t *testing.T) (string, string) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -1182,6 +1182,89 @@ export type Meta = {
     protocol_capabilities: Array<ProtocolCapability>;
 };
 
+export type CliLoginStartRequest = {
+    transport: 'loopback';
+    state: string;
+    pkce_challenge: string;
+    redirect_uri: string;
+};
+
+export type CliLoginStart = {
+    state: string;
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_at: string;
+    interval: number;
+};
+
+export type CliLoginTransaction = {
+    reference: string;
+    transport: 'loopback' | 'device';
+    redirect_uri: string;
+    instance: string;
+    expires_at: string;
+};
+
+export type CliLoginApproved = {
+    /**
+     * Single-use code for loopback; empty for approved device login.
+     */
+    code: string;
+    state: string;
+    /**
+     * Exact bound loopback redirect; empty for device login.
+     */
+    redirect_uri: string;
+};
+
+export type CliLoginApproveRequest = {
+    reference: string;
+};
+
+export type CliLoginRedeemRequest = {
+    code: string;
+    pkce_verifier: string;
+    redirect_uri: string;
+};
+
+export type CliDeviceStartRequest = {
+    client_id: 'hikyo-cli';
+};
+
+export type CliDeviceStart = {
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+    expires_at: string;
+    interval: number;
+};
+
+export type CliDeviceToken = {
+    access_token: string;
+    token_type: 'Bearer';
+    expires_in: number;
+    session: Session;
+    principal: Principal;
+};
+
+export type CliDeviceTokenRequest = {
+    device_code: string;
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code';
+    client_id: 'hikyo-cli';
+};
+
+/**
+ * RFC 8628 protocol errors or the shared malformed-request refusal.
+ */
+export type CliDeviceErrorResponse = CliDeviceError | Error;
+
+export type CliDeviceError = {
+    error: 'authorization_pending' | 'slow_down' | 'expired_token' | 'access_denied';
+    interval: number;
+};
+
 /**
  * OPEN enum: an instance may advertise a flow this client has never
  * heard of, and every generated consumer must preserve and tolerate the
@@ -6710,7 +6793,7 @@ export type EstablishCredentialData = {
 export type EstablishCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -6759,7 +6842,7 @@ export type LocalLoginData = {
 export type LocalLoginErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -6825,7 +6908,7 @@ export type LoginChallengeTotpData = {
 export type LoginChallengeTotpErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -6839,7 +6922,7 @@ export type LoginChallengeTotpErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -6894,7 +6977,7 @@ export type LoginChallengeWebauthnStartData = {
 export type LoginChallengeWebauthnStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -6908,7 +6991,7 @@ export type LoginChallengeWebauthnStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -6954,7 +7037,7 @@ export type LoginChallengeWebauthnFinishData = {
 export type LoginChallengeWebauthnFinishErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -6968,7 +7051,7 @@ export type LoginChallengeWebauthnFinishErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7016,7 +7099,7 @@ export type LogoutErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7064,7 +7147,7 @@ export type WhoamiErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7105,7 +7188,7 @@ export type EnrolTotpStartData = {
 export type EnrolTotpStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7119,7 +7202,7 @@ export type EnrolTotpStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7160,7 +7243,7 @@ export type EnrolTotpConfirmData = {
 export type EnrolTotpConfirmErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7174,7 +7257,7 @@ export type EnrolTotpConfirmErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7224,7 +7307,7 @@ export type StepUpTotpData = {
 export type StepUpTotpErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7238,7 +7321,7 @@ export type StepUpTotpErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7288,7 +7371,7 @@ export type ReauthTotpData = {
 export type ReauthTotpErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7302,7 +7385,7 @@ export type ReauthTotpErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7342,6 +7425,407 @@ export type ReauthTotpResponses = {
 
 export type ReauthTotpResponse = ReauthTotpResponses[keyof ReauthTotpResponses];
 
+export type StartCliLoginData = {
+    body: CliLoginStartRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/start';
+};
+
+export type StartCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type StartCliLoginError = StartCliLoginErrors[keyof StartCliLoginErrors];
+
+export type StartCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    201: CliLoginStart;
+};
+
+export type StartCliLoginResponse = StartCliLoginResponses[keyof StartCliLoginResponses];
+
+export type StartCliDeviceData = {
+    body: CliDeviceStartRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/device/start';
+};
+
+export type StartCliDeviceErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type StartCliDeviceError = StartCliDeviceErrors[keyof StartCliDeviceErrors];
+
+export type StartCliDeviceResponses = {
+    /**
+     * RFC 8628 device authorization response.
+     */
+    200: CliDeviceStart;
+};
+
+export type StartCliDeviceResponse = StartCliDeviceResponses[keyof StartCliDeviceResponses];
+
+export type ShowCliLoginTransactionData = {
+    body?: never;
+    path: {
+        reference: string;
+    };
+    query?: never;
+    url: '/api/v1/auth/cli-login/transactions/{reference}';
+};
+
+export type ShowCliLoginTransactionErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowCliLoginTransactionError = ShowCliLoginTransactionErrors[keyof ShowCliLoginTransactionErrors];
+
+export type ShowCliLoginTransactionResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliLoginTransaction;
+};
+
+export type ShowCliLoginTransactionResponse = ShowCliLoginTransactionResponses[keyof ShowCliLoginTransactionResponses];
+
+export type ApproveCliLoginData = {
+    body: CliLoginApproveRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/approve';
+};
+
+export type ApproveCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ApproveCliLoginError = ApproveCliLoginErrors[keyof ApproveCliLoginErrors];
+
+export type ApproveCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliLoginApproved;
+};
+
+export type ApproveCliLoginResponse = ApproveCliLoginResponses[keyof ApproveCliLoginResponses];
+
+export type RedeemCliLoginData = {
+    body: CliLoginRedeemRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/redeem';
+};
+
+export type RedeemCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RedeemCliLoginError = RedeemCliLoginErrors[keyof RedeemCliLoginErrors];
+
+export type RedeemCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: LoginResult;
+};
+
+export type RedeemCliLoginResponse = RedeemCliLoginResponses[keyof RedeemCliLoginResponses];
+
+export type PollCliDeviceData = {
+    body: CliDeviceTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/device/token';
+};
+
+export type PollCliDeviceErrors = {
+    /**
+     * RFC 8628 polling response.
+     */
+    400: CliDeviceErrorResponse;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PollCliDeviceError = PollCliDeviceErrors[keyof PollCliDeviceErrors];
+
+export type PollCliDeviceResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliDeviceToken;
+};
+
+export type PollCliDeviceResponse = PollCliDeviceResponses[keyof PollCliDeviceResponses];
+
 export type StartCliReauthData = {
     body: CliReauthStartRequest;
     path?: never;
@@ -7352,7 +7836,7 @@ export type StartCliReauthData = {
 export type StartCliReauthErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7366,7 +7850,7 @@ export type StartCliReauthErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7416,7 +7900,7 @@ export type ShowCliReauthTransactionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7460,7 +7944,7 @@ export type ApproveCliReauthData = {
 export type ApproveCliReauthErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7474,7 +7958,7 @@ export type ApproveCliReauthErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7518,7 +8002,7 @@ export type RedeemCliReauthData = {
 export type RedeemCliReauthErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7570,7 +8054,7 @@ export type RemoveTotpData = {
 export type RemoveTotpErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7584,7 +8068,7 @@ export type RemoveTotpErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7632,7 +8116,7 @@ export type GetTotpStatusErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7673,7 +8157,7 @@ export type RegenerateRecoveryCodesData = {
 export type RegenerateRecoveryCodesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7687,7 +8171,7 @@ export type RegenerateRecoveryCodesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7737,7 +8221,7 @@ export type BeginRecoveryData = {
 export type BeginRecoveryErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7793,7 +8277,7 @@ export type ListOrgsData = {
 export type ListOrgsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7807,16 +8291,16 @@ export type ListOrgsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -7824,7 +8308,7 @@ export type ListOrgsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7865,7 +8349,7 @@ export type CreateOrgData = {
 export type CreateOrgErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -7879,16 +8363,16 @@ export type CreateOrgErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -7896,7 +8380,7 @@ export type CreateOrgErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -7958,16 +8442,16 @@ export type DeleteOrgErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -7975,7 +8459,7 @@ export type DeleteOrgErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8037,7 +8521,7 @@ export type GetOrgErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8083,7 +8567,7 @@ export type RenameOrgData = {
 export type RenameOrgErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8097,16 +8581,16 @@ export type RenameOrgErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -8114,7 +8598,7 @@ export type RenameOrgErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8176,7 +8660,7 @@ export type ListProjectsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8222,7 +8706,7 @@ export type CreateProjectData = {
 export type CreateProjectErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8236,7 +8720,7 @@ export type CreateProjectErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8298,7 +8782,7 @@ export type GetOrgRetentionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8344,7 +8828,7 @@ export type SetOrgRetentionData = {
 export type SetOrgRetentionErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8358,7 +8842,7 @@ export type SetOrgRetentionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8415,7 +8899,7 @@ export type DeleteProjectErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8481,7 +8965,7 @@ export type GetProjectErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8531,7 +9015,7 @@ export type RenameProjectData = {
 export type RenameProjectErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8545,7 +9029,7 @@ export type RenameProjectErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8611,7 +9095,7 @@ export type ListEnvironmentsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8661,7 +9145,7 @@ export type CreateEnvironmentData = {
 export type CreateEnvironmentErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8675,7 +9159,7 @@ export type CreateEnvironmentErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8734,7 +9218,7 @@ export type CloneEnvironmentData = {
 export type CloneEnvironmentErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8748,7 +9232,7 @@ export type CloneEnvironmentErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8807,7 +9291,7 @@ export type ReorderEnvironmentsData = {
 export type ReorderEnvironmentsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -8821,7 +9305,7 @@ export type ReorderEnvironmentsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8882,7 +9366,7 @@ export type DeleteEnvironmentErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -8952,7 +9436,7 @@ export type GetEnvironmentErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9006,7 +9490,7 @@ export type RenameEnvironmentData = {
 export type RenameEnvironmentErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9020,7 +9504,7 @@ export type RenameEnvironmentErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9086,7 +9570,7 @@ export type GetProjectRetentionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9136,7 +9620,7 @@ export type SetProjectRetentionData = {
 export type SetProjectRetentionErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9150,7 +9634,7 @@ export type SetProjectRetentionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9207,7 +9691,7 @@ export type ListFoldersErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9257,7 +9741,7 @@ export type CreateFolderData = {
 export type CreateFolderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9271,7 +9755,7 @@ export type CreateFolderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9341,7 +9825,7 @@ export type DeleteFolderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9402,7 +9886,7 @@ export type GetFolderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9456,7 +9940,7 @@ export type RenameFolderData = {
 export type RenameFolderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9470,7 +9954,7 @@ export type RenameFolderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9529,7 +10013,7 @@ export type RevokeInstanceGrantData = {
 export type RevokeInstanceGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9543,16 +10027,16 @@ export type RevokeInstanceGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9560,7 +10044,7 @@ export type RevokeInstanceGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9617,16 +10101,16 @@ export type ListInstanceGrantsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9634,7 +10118,7 @@ export type ListInstanceGrantsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9675,7 +10159,7 @@ export type CreateInstanceGrantData = {
 export type CreateInstanceGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9689,16 +10173,16 @@ export type CreateInstanceGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9706,7 +10190,7 @@ export type CreateInstanceGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9747,7 +10231,7 @@ export type ApplyInstanceTemplateData = {
 export type ApplyInstanceTemplateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9761,16 +10245,16 @@ export type ApplyInstanceTemplateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9778,7 +10262,7 @@ export type ApplyInstanceTemplateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9819,7 +10303,7 @@ export type InviteInstanceMemberData = {
 export type InviteInstanceMemberErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9833,16 +10317,16 @@ export type InviteInstanceMemberErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9850,7 +10334,7 @@ export type InviteInstanceMemberErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9900,7 +10384,7 @@ export type DeleteInstanceRegistrationPolicyData = {
 export type DeleteInstanceRegistrationPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -9914,16 +10398,16 @@ export type DeleteInstanceRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -9931,7 +10415,7 @@ export type DeleteInstanceRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -9988,16 +10472,16 @@ export type GetInstanceRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10005,7 +10489,7 @@ export type GetInstanceRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10046,7 +10530,7 @@ export type PutInstanceRegistrationPolicyData = {
 export type PutInstanceRegistrationPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10060,16 +10544,16 @@ export type PutInstanceRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10077,7 +10561,7 @@ export type PutInstanceRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10141,7 +10625,7 @@ export type RevokeOrgGrantData = {
 export type RevokeOrgGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10155,16 +10639,16 @@ export type RevokeOrgGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10172,7 +10656,7 @@ export type RevokeOrgGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10234,16 +10718,16 @@ export type ListOrgGrantsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10251,7 +10735,7 @@ export type ListOrgGrantsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10297,7 +10781,7 @@ export type CreateOrgGrantData = {
 export type CreateOrgGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10311,16 +10795,16 @@ export type CreateOrgGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10328,7 +10812,7 @@ export type CreateOrgGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10381,16 +10865,16 @@ export type ListOrgRulesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10398,7 +10882,7 @@ export type ListOrgRulesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10444,7 +10928,7 @@ export type CreateRuleData = {
 export type CreateRuleErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10458,16 +10942,16 @@ export type CreateRuleErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10475,7 +10959,7 @@ export type CreateRuleErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10530,7 +11014,7 @@ export type ReplaceRulesData = {
 export type ReplaceRulesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10544,16 +11028,16 @@ export type ReplaceRulesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10561,7 +11045,7 @@ export type ReplaceRulesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10620,7 +11104,7 @@ export type RevokeRuleData = {
 export type RevokeRuleErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10634,16 +11118,16 @@ export type RevokeRuleErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10651,7 +11135,7 @@ export type RevokeRuleErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10697,7 +11181,7 @@ export type ApplyOrgTemplateData = {
 export type ApplyOrgTemplateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10711,16 +11195,16 @@ export type ApplyOrgTemplateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10728,7 +11212,7 @@ export type ApplyOrgTemplateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10774,7 +11258,7 @@ export type InviteOrgMemberData = {
 export type InviteOrgMemberErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10788,16 +11272,16 @@ export type InviteOrgMemberErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10805,7 +11289,7 @@ export type InviteOrgMemberErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10860,7 +11344,7 @@ export type DeleteOrgRegistrationPolicyData = {
 export type DeleteOrgRegistrationPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -10874,16 +11358,16 @@ export type DeleteOrgRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10891,7 +11375,7 @@ export type DeleteOrgRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -10953,16 +11437,16 @@ export type GetOrgRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -10970,7 +11454,7 @@ export type GetOrgRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11016,7 +11500,7 @@ export type PutOrgRegistrationPolicyData = {
 export type PutOrgRegistrationPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11030,16 +11514,16 @@ export type PutOrgRegistrationPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11047,7 +11531,7 @@ export type PutOrgRegistrationPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11115,7 +11599,7 @@ export type RevokeProjectGrantData = {
 export type RevokeProjectGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11129,16 +11613,16 @@ export type RevokeProjectGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11146,7 +11630,7 @@ export type RevokeProjectGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11212,16 +11696,16 @@ export type ListProjectGrantsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11229,7 +11713,7 @@ export type ListProjectGrantsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11279,7 +11763,7 @@ export type CreateProjectGrantData = {
 export type CreateProjectGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11293,16 +11777,16 @@ export type CreateProjectGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11310,7 +11794,7 @@ export type CreateProjectGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11367,16 +11851,16 @@ export type ListProjectRulesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11384,7 +11868,7 @@ export type ListProjectRulesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11434,7 +11918,7 @@ export type ApplyProjectTemplateData = {
 export type ApplyProjectTemplateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11448,16 +11932,16 @@ export type ApplyProjectTemplateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11465,7 +11949,7 @@ export type ApplyProjectTemplateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11528,7 +12012,7 @@ export type RevokeEnvGrantData = {
 export type RevokeEnvGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11542,16 +12026,16 @@ export type RevokeEnvGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11559,7 +12043,7 @@ export type RevokeEnvGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11622,7 +12106,7 @@ export type CreateEnvGrantData = {
 export type CreateEnvGrantErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11636,16 +12120,16 @@ export type CreateEnvGrantErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11653,7 +12137,7 @@ export type CreateEnvGrantErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11707,7 +12191,7 @@ export type ApplyEnvTemplateData = {
 export type ApplyEnvTemplateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11721,16 +12205,16 @@ export type ApplyEnvTemplateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -11738,7 +12222,7 @@ export type ApplyEnvTemplateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11799,7 +12283,7 @@ export type GetEnvironmentSettingsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11853,7 +12337,7 @@ export type SetEnvironmentSettingsData = {
 export type SetEnvironmentSettingsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11867,7 +12351,7 @@ export type SetEnvironmentSettingsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11926,7 +12410,7 @@ export type ExportDefinitionsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -11976,7 +12460,7 @@ export type CheckDefinitionsData = {
 export type CheckDefinitionsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -11990,7 +12474,7 @@ export type CheckDefinitionsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12052,7 +12536,7 @@ export type CreateDefinitionsPlanData = {
 export type CreateDefinitionsPlanErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12066,7 +12550,7 @@ export type CreateDefinitionsPlanErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12136,7 +12620,7 @@ export type GetDefinitionsPlanErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12190,7 +12674,7 @@ export type ApplyDefinitionsPlanData = {
 export type ApplyDefinitionsPlanErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12204,7 +12688,7 @@ export type ApplyDefinitionsPlanErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12270,7 +12754,7 @@ export type GetDefinitionsSettingsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12320,7 +12804,7 @@ export type SetDefinitionsSettingsData = {
 export type SetDefinitionsSettingsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12334,7 +12818,7 @@ export type SetDefinitionsSettingsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12391,7 +12875,7 @@ export type GetMachineRevealErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12441,7 +12925,7 @@ export type SetMachineRevealData = {
 export type SetMachineRevealErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12455,16 +12939,16 @@ export type SetMachineRevealErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -12472,7 +12956,7 @@ export type SetMachineRevealErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12529,7 +13013,7 @@ export type ListKeysErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12579,7 +13063,7 @@ export type CreateKeyData = {
 export type CreateKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12593,7 +13077,7 @@ export type CreateKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12663,7 +13147,7 @@ export type DeleteKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12733,7 +13217,7 @@ export type GetKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12787,7 +13271,7 @@ export type UpdateKeyMetadataData = {
 export type UpdateKeyMetadataErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12801,7 +13285,7 @@ export type UpdateKeyMetadataErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12864,7 +13348,7 @@ export type RenameKeyData = {
 export type RenameKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12878,7 +13362,7 @@ export type RenameKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -12941,7 +13425,7 @@ export type UpdateKeyDeclarationData = {
 export type UpdateKeyDeclarationErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -12955,7 +13439,7 @@ export type UpdateKeyDeclarationErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13018,7 +13502,7 @@ export type ReclassifyKeyData = {
 export type ReclassifyKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13032,7 +13516,7 @@ export type ReclassifyKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13095,7 +13579,7 @@ export type SetKeyGroupData = {
 export type SetKeyGroupErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13109,7 +13593,7 @@ export type SetKeyGroupErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13175,7 +13659,7 @@ export type ListKeyGroupsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13225,7 +13709,7 @@ export type CreateKeyGroupData = {
 export type CreateKeyGroupErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13239,7 +13723,7 @@ export type CreateKeyGroupErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13309,7 +13793,7 @@ export type DeleteKeyGroupErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13379,7 +13863,7 @@ export type GetKeyGroupErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13433,7 +13917,7 @@ export type RenameKeyGroupData = {
 export type RenameKeyGroupErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13447,7 +13931,7 @@ export type RenameKeyGroupErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13517,7 +14001,7 @@ export type ListValuesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13578,7 +14062,7 @@ export type ClearValueData = {
 export type ClearValueErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13592,7 +14076,7 @@ export type ClearValueErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13660,7 +14144,7 @@ export type GetValueErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13721,7 +14205,7 @@ export type SetValueData = {
 export type SetValueErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13735,7 +14219,7 @@ export type SetValueErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13794,7 +14278,7 @@ export type DeclareValuesData = {
 export type DeclareValuesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13808,7 +14292,7 @@ export type DeclareValuesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13878,7 +14362,7 @@ export type InitializeValueData = {
 export type InitializeValueErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13892,7 +14376,7 @@ export type InitializeValueErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -13951,7 +14435,7 @@ export type CopyValuesData = {
 export type CopyValuesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -13965,16 +14449,16 @@ export type CopyValuesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -13982,7 +14466,7 @@ export type CopyValuesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14050,7 +14534,7 @@ export type DiffValuesData = {
 export type DiffValuesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14064,7 +14548,7 @@ export type DiffValuesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14125,7 +14609,7 @@ export type GetRevealWindowErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14179,7 +14663,7 @@ export type ListValueOccurrencesData = {
 export type ListValueOccurrencesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14193,7 +14677,7 @@ export type ListValueOccurrencesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14247,7 +14731,7 @@ export type ImportValuesData = {
 export type ImportValuesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14261,7 +14745,7 @@ export type ImportValuesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14331,16 +14815,16 @@ export type RevealValuesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14348,7 +14832,7 @@ export type RevealValuesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14416,16 +14900,16 @@ export type RevealValueErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14433,7 +14917,7 @@ export type RevealValueErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14483,7 +14967,7 @@ export type RevealValueDiffData = {
 export type RevealValueDiffErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14497,16 +14981,16 @@ export type RevealValueDiffErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14514,7 +14998,7 @@ export type RevealValueDiffErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14555,7 +15039,7 @@ export type SignupRequestData = {
 export type SignupRequestErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14611,7 +15095,7 @@ export type SignupVerifyData = {
 export type SignupVerifyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14625,16 +15109,16 @@ export type SignupVerifyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14642,7 +15126,7 @@ export type SignupVerifyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14692,7 +15176,7 @@ export type TestInstanceMailData = {
 export type TestInstanceMailErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14706,16 +15190,16 @@ export type TestInstanceMailErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14723,7 +15207,7 @@ export type TestInstanceMailErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14780,16 +15264,16 @@ export type GetInstanceMailErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -14797,7 +15281,7 @@ export type GetInstanceMailErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14887,7 +15371,7 @@ export type OidcStartData = {
 export type OidcStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14901,7 +15385,7 @@ export type OidcStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -14961,7 +15445,7 @@ export type OidcCallbackData = {
 export type OidcCallbackErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -14975,7 +15459,7 @@ export type OidcCallbackErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15021,7 +15505,7 @@ export type Oauth2StartData = {
 export type Oauth2StartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15035,7 +15519,7 @@ export type Oauth2StartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15095,7 +15579,7 @@ export type Oauth2CallbackData = {
 export type Oauth2CallbackErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15109,7 +15593,7 @@ export type Oauth2CallbackErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15162,7 +15646,7 @@ export type SamlStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15208,7 +15692,7 @@ export type SamlAcsData = {
 export type SamlAcsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15222,7 +15706,7 @@ export type SamlAcsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15268,7 +15752,7 @@ export type SamlMetadataData = {
 export type SamlMetadataErrors = {
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15316,7 +15800,7 @@ export type GetMyProfileErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15357,7 +15841,7 @@ export type UpdateMyProfileData = {
 export type UpdateMyProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15371,16 +15855,16 @@ export type UpdateMyProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -15388,7 +15872,7 @@ export type UpdateMyProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15445,7 +15929,7 @@ export type ListMyOrgsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15493,7 +15977,7 @@ export type ListIdentitiesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15534,7 +16018,7 @@ export type LinkIdentityData = {
 export type LinkIdentityErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15548,7 +16032,7 @@ export type LinkIdentityErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15594,7 +16078,7 @@ export type UnlinkIdentityData = {
 export type UnlinkIdentityErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15608,7 +16092,7 @@ export type UnlinkIdentityErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15661,7 +16145,7 @@ export type ResetCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15702,7 +16186,7 @@ export type EnrolPasskeyStartData = {
 export type EnrolPasskeyStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15716,7 +16200,7 @@ export type EnrolPasskeyStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15757,7 +16241,7 @@ export type EnrolPasskeyFinishData = {
 export type EnrolPasskeyFinishErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15771,7 +16255,7 @@ export type EnrolPasskeyFinishErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15812,7 +16296,7 @@ export type PasskeyLoginStartData = {
 export type PasskeyLoginStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15826,7 +16310,7 @@ export type PasskeyLoginStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15867,7 +16351,7 @@ export type PasskeyLoginFinishData = {
 export type PasskeyLoginFinishErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15881,7 +16365,7 @@ export type PasskeyLoginFinishErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15922,7 +16406,7 @@ export type StepUpPasskeyStartData = {
 export type StepUpPasskeyStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15936,7 +16420,7 @@ export type StepUpPasskeyStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -15977,7 +16461,7 @@ export type StepUpPasskeyFinishData = {
 export type StepUpPasskeyFinishErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -15991,7 +16475,7 @@ export type StepUpPasskeyFinishErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16032,7 +16516,7 @@ export type ReauthPasskeyStartData = {
 export type ReauthPasskeyStartErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16046,7 +16530,7 @@ export type ReauthPasskeyStartErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16087,7 +16571,7 @@ export type ReauthPasskeyFinishData = {
 export type ReauthPasskeyFinishErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16101,7 +16585,7 @@ export type ReauthPasskeyFinishErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16149,7 +16633,7 @@ export type ListPasskeysErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16195,7 +16679,7 @@ export type RemovePasskeyData = {
 export type RemovePasskeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16209,7 +16693,7 @@ export type RemovePasskeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16257,16 +16741,16 @@ export type ListOidcProvidersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16274,7 +16758,7 @@ export type ListOidcProvidersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16327,16 +16811,16 @@ export type DeleteOidcProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16344,7 +16828,7 @@ export type DeleteOidcProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16397,16 +16881,16 @@ export type GetOidcProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16414,7 +16898,7 @@ export type GetOidcProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16460,7 +16944,7 @@ export type PutOidcProviderData = {
 export type PutOidcProviderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16474,16 +16958,16 @@ export type PutOidcProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16491,7 +16975,7 @@ export type PutOidcProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16548,16 +17032,16 @@ export type ListOauth2ProvidersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16565,7 +17049,7 @@ export type ListOauth2ProvidersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16618,16 +17102,16 @@ export type DeleteOauth2ProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16635,7 +17119,7 @@ export type DeleteOauth2ProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16688,16 +17172,16 @@ export type GetOauth2ProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16705,7 +17189,7 @@ export type GetOauth2ProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16751,7 +17235,7 @@ export type PutOauth2ProviderData = {
 export type PutOauth2ProviderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16765,16 +17249,16 @@ export type PutOauth2ProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16782,7 +17266,7 @@ export type PutOauth2ProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16839,16 +17323,16 @@ export type GetRetentionHealthErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16856,7 +17340,7 @@ export type GetRetentionHealthErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16904,16 +17388,16 @@ export type GetUpdateStatusErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16921,7 +17405,7 @@ export type GetUpdateStatusErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -16962,7 +17446,7 @@ export type RequestInstanceUpdateData = {
 export type RequestInstanceUpdateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -16976,16 +17460,16 @@ export type RequestInstanceUpdateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -16993,7 +17477,7 @@ export type RequestInstanceUpdateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17049,16 +17533,16 @@ export type GetInstanceUpdateJobErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17066,7 +17550,7 @@ export type GetInstanceUpdateJobErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17108,16 +17592,16 @@ export type ListSamlProvidersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17125,7 +17609,7 @@ export type ListSamlProvidersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17178,16 +17662,16 @@ export type DeleteSamlProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17195,7 +17679,7 @@ export type DeleteSamlProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17248,16 +17732,16 @@ export type GetSamlProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17265,7 +17749,7 @@ export type GetSamlProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17311,7 +17795,7 @@ export type PatchSamlProviderData = {
 export type PatchSamlProviderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -17325,16 +17809,16 @@ export type PatchSamlProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17342,7 +17826,7 @@ export type PatchSamlProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17397,7 +17881,7 @@ export type PutSamlProviderData = {
 export type PutSamlProviderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -17411,16 +17895,16 @@ export type PutSamlProviderErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17428,7 +17912,7 @@ export type PutSamlProviderErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17483,7 +17967,7 @@ export type RefreshSamlProviderMetadataData = {
 export type RefreshSamlProviderMetadataErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -17497,16 +17981,16 @@ export type RefreshSamlProviderMetadataErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17514,7 +17998,7 @@ export type RefreshSamlProviderMetadataErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17571,16 +18055,16 @@ export type ListSamlSpKeysErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17588,7 +18072,7 @@ export type ListSamlSpKeysErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17636,16 +18120,16 @@ export type RotateSamlSpKeyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17653,7 +18137,7 @@ export type RotateSamlSpKeyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17715,16 +18199,16 @@ export type RetireSamlSpKeyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17732,7 +18216,7 @@ export type RetireSamlSpKeyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17794,16 +18278,16 @@ export type CompromiseRetireSamlSpKeyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -17811,7 +18295,7 @@ export type CompromiseRetireSamlSpKeyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17877,7 +18361,7 @@ export type ListServiceAccountsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -17927,7 +18411,7 @@ export type CreateServiceAccountData = {
 export type CreateServiceAccountErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -17941,7 +18425,7 @@ export type CreateServiceAccountErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18011,7 +18495,7 @@ export type DeleteServiceAccountErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18072,7 +18556,7 @@ export type ListMachineCredentialsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18126,7 +18610,7 @@ export type MintMachineCredentialData = {
 export type MintMachineCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18140,7 +18624,7 @@ export type MintMachineCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18216,7 +18700,7 @@ export type RevokeMachineCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18257,7 +18741,7 @@ export type GetInstanceConfigData = {
 export type GetInstanceConfigErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18271,16 +18755,16 @@ export type GetInstanceConfigErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18288,7 +18772,7 @@ export type GetInstanceConfigErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18338,7 +18822,7 @@ export type PreviewInstanceConfigAdoptionData = {
 export type PreviewInstanceConfigAdoptionErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18352,16 +18836,16 @@ export type PreviewInstanceConfigAdoptionErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18369,7 +18853,7 @@ export type PreviewInstanceConfigAdoptionErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18419,7 +18903,7 @@ export type AdoptInstanceConfigData = {
 export type AdoptInstanceConfigErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18433,16 +18917,16 @@ export type AdoptInstanceConfigErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18450,7 +18934,7 @@ export type AdoptInstanceConfigErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18500,7 +18984,7 @@ export type ApplyInstanceConfigData = {
 export type ApplyInstanceConfigErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18514,16 +18998,16 @@ export type ApplyInstanceConfigErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18531,7 +19015,7 @@ export type ApplyInstanceConfigErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18581,7 +19065,7 @@ export type TestInstanceConfigMailData = {
 export type TestInstanceConfigMailErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18595,16 +19079,16 @@ export type TestInstanceConfigMailErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18612,7 +19096,7 @@ export type TestInstanceConfigMailErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18669,16 +19153,16 @@ export type GetCredentialPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18686,7 +19170,7 @@ export type GetCredentialPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18727,7 +19211,7 @@ export type SetCredentialPolicyData = {
 export type SetCredentialPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18741,16 +19225,16 @@ export type SetCredentialPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18758,7 +19242,7 @@ export type SetCredentialPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18806,16 +19290,16 @@ export type ListFederationIssuersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18823,7 +19307,7 @@ export type ListFederationIssuersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18864,7 +19348,7 @@ export type CreateFederationIssuerData = {
 export type CreateFederationIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -18878,16 +19362,16 @@ export type CreateFederationIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18895,7 +19379,7 @@ export type CreateFederationIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -18961,16 +19445,16 @@ export type DeleteFederationIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -18978,7 +19462,7 @@ export type DeleteFederationIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19037,7 +19521,7 @@ export type UpdateFederationIssuerData = {
 export type UpdateFederationIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19051,16 +19535,16 @@ export type UpdateFederationIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -19068,7 +19552,7 @@ export type UpdateFederationIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19122,7 +19606,7 @@ export type CreateFederatedBindingData = {
 export type CreateFederatedBindingErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19136,7 +19620,7 @@ export type CreateFederatedBindingErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19206,7 +19690,7 @@ export type ListEnvironmentParametersErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19264,7 +19748,7 @@ export type ChangeEnvironmentParameterData = {
 export type ChangeEnvironmentParameterErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19278,7 +19762,7 @@ export type ChangeEnvironmentParameterErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19384,7 +19868,7 @@ export type FetchDeliveryData = {
 export type FetchDeliveryErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19398,7 +19882,7 @@ export type FetchDeliveryErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19461,7 +19945,7 @@ export type ReconcileOfflineRecordsData = {
 export type ReconcileOfflineRecordsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19475,7 +19959,7 @@ export type ReconcileOfflineRecordsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19545,7 +20029,7 @@ export type ListDeliveryTargetsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19599,7 +20083,7 @@ export type ReportDeliveryTargetData = {
 export type ReportDeliveryTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19613,7 +20097,7 @@ export type ReportDeliveryTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19690,7 +20174,7 @@ export type TombstoneDeliveryTargetData = {
 export type TombstoneDeliveryTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19704,7 +20188,7 @@ export type TombstoneDeliveryTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19757,16 +20241,16 @@ export type ListScimBindingsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -19774,7 +20258,7 @@ export type ListScimBindingsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19820,7 +20304,7 @@ export type CreateScimBindingData = {
 export type CreateScimBindingErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -19834,16 +20318,16 @@ export type CreateScimBindingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -19851,7 +20335,7 @@ export type CreateScimBindingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19917,16 +20401,16 @@ export type DeleteScimBindingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -19934,7 +20418,7 @@ export type DeleteScimBindingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -19991,16 +20475,16 @@ export type GetScimBindingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20008,7 +20492,7 @@ export type GetScimBindingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20071,7 +20555,7 @@ export type DeleteScimMappingData = {
 export type DeleteScimMappingErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -20085,16 +20569,16 @@ export type DeleteScimMappingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20102,7 +20586,7 @@ export type DeleteScimMappingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20168,16 +20652,16 @@ export type ListScimMappingsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20185,7 +20669,7 @@ export type ListScimMappingsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20235,7 +20719,7 @@ export type CreateScimMappingData = {
 export type CreateScimMappingErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -20249,16 +20733,16 @@ export type CreateScimMappingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20266,7 +20750,7 @@ export type CreateScimMappingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20325,7 +20809,7 @@ export type UpdateScimMappingData = {
 export type UpdateScimMappingErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -20339,16 +20823,16 @@ export type UpdateScimMappingErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20356,7 +20840,7 @@ export type UpdateScimMappingErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20422,16 +20906,16 @@ export type ListScimCredentialsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20439,7 +20923,7 @@ export type ListScimCredentialsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20489,7 +20973,7 @@ export type MintScimCredentialData = {
 export type MintScimCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -20503,16 +20987,16 @@ export type MintScimCredentialErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20520,7 +21004,7 @@ export type MintScimCredentialErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20592,16 +21076,16 @@ export type RevokeScimCredentialErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20609,7 +21093,7 @@ export type RevokeScimCredentialErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20672,16 +21156,16 @@ export type GetScimCredentialErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20689,7 +21173,7 @@ export type GetScimCredentialErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20746,16 +21230,16 @@ export type ListScimDirectoryUsersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20763,7 +21247,7 @@ export type ListScimDirectoryUsersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -20820,16 +21304,16 @@ export type ListScimDirectoryGroupsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -20837,7 +21321,7 @@ export type ListScimDirectoryGroupsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22208,16 +22692,16 @@ export type ServeDirectoryErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22225,7 +22709,7 @@ export type ServeDirectoryErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22273,16 +22757,16 @@ export type ListRemotesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22290,7 +22774,7 @@ export type ListRemotesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22331,7 +22815,7 @@ export type AddRemoteData = {
 export type AddRemoteErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -22345,16 +22829,16 @@ export type AddRemoteErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22362,7 +22846,7 @@ export type AddRemoteErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22428,16 +22912,16 @@ export type RemoveRemoteErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22445,7 +22929,7 @@ export type RemoveRemoteErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22502,16 +22986,16 @@ export type ShowRemoteErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22519,7 +23003,7 @@ export type ShowRemoteErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22569,7 +23053,7 @@ export type RenameRemoteData = {
 export type RenameRemoteErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -22583,16 +23067,16 @@ export type RenameRemoteErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22600,7 +23084,7 @@ export type RenameRemoteErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22657,16 +23141,16 @@ export type ListInstanceConnectionsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22674,7 +23158,7 @@ export type ListInstanceConnectionsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22715,7 +23199,7 @@ export type MintInstanceConnectionData = {
 export type MintInstanceConnectionErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -22729,16 +23213,16 @@ export type MintInstanceConnectionErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22746,7 +23230,7 @@ export type MintInstanceConnectionErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22799,16 +23283,16 @@ export type RevokeInstanceConnectionErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22816,7 +23300,7 @@ export type RevokeInstanceConnectionErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22878,16 +23362,16 @@ export type ShowInstanceConnectionErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22895,7 +23379,7 @@ export type ShowInstanceConnectionErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -22936,7 +23420,7 @@ export type RemoveWorkspaceOriginData = {
 export type RemoveWorkspaceOriginErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -22950,16 +23434,16 @@ export type RemoveWorkspaceOriginErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -22967,7 +23451,7 @@ export type RemoveWorkspaceOriginErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23015,16 +23499,16 @@ export type ListWorkspaceOriginsErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23032,7 +23516,7 @@ export type ListWorkspaceOriginsErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23073,7 +23557,7 @@ export type AddWorkspaceOriginData = {
 export type AddWorkspaceOriginErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23087,16 +23571,16 @@ export type AddWorkspaceOriginErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23104,7 +23588,7 @@ export type AddWorkspaceOriginErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23154,23 +23638,23 @@ export type StartWorkspaceHandoffData = {
 export type StartWorkspaceHandoffErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
     400: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23213,7 +23697,7 @@ export type ApproveWorkspaceHandoffData = {
 export type ApproveWorkspaceHandoffErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23227,16 +23711,16 @@ export type ApproveWorkspaceHandoffErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23244,7 +23728,7 @@ export type ApproveWorkspaceHandoffErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23285,23 +23769,23 @@ export type RedeemWorkspaceHandoffData = {
 export type RedeemWorkspaceHandoffErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
     400: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23353,7 +23837,7 @@ export type ShowWorkspaceHandoffErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23395,7 +23879,7 @@ export type ListMySessionsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23448,7 +23932,7 @@ export type RevokeMySessionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23502,7 +23986,7 @@ export type PublishPendingChangesData = {
 export type PublishPendingChangesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23516,16 +24000,16 @@ export type PublishPendingChangesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23533,7 +24017,7 @@ export type PublishPendingChangesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23606,7 +24090,7 @@ export type ListApprovalPoliciesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23656,7 +24140,7 @@ export type CreateApprovalPolicyData = {
 export type CreateApprovalPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23670,7 +24154,7 @@ export type CreateApprovalPolicyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23737,7 +24221,7 @@ export type DeleteApprovalPolicyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23788,7 +24272,7 @@ export type UpdateApprovalPolicyData = {
 export type UpdateApprovalPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23802,7 +24286,7 @@ export type UpdateApprovalPolicyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23872,7 +24356,7 @@ export type ListApprovalRequestsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -23927,7 +24411,7 @@ export type VoteApprovalRequestData = {
 export type VoteApprovalRequestErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -23941,16 +24425,16 @@ export type VoteApprovalRequestErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -23958,7 +24442,7 @@ export type VoteApprovalRequestErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24029,16 +24513,16 @@ export type GetApprovalCeremonyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24046,7 +24530,7 @@ export type GetApprovalCeremonyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24103,16 +24587,16 @@ export type ListAccessPoliciesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24120,7 +24604,7 @@ export type ListAccessPoliciesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24170,7 +24654,7 @@ export type CreateAccessPolicyData = {
 export type CreateAccessPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24184,16 +24668,16 @@ export type CreateAccessPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24201,7 +24685,7 @@ export type CreateAccessPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24268,16 +24752,16 @@ export type DeleteAccessPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24285,7 +24769,7 @@ export type DeleteAccessPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24336,7 +24820,7 @@ export type UpdateAccessPolicyData = {
 export type UpdateAccessPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24350,16 +24834,16 @@ export type UpdateAccessPolicyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24367,7 +24851,7 @@ export type UpdateAccessPolicyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24437,7 +24921,7 @@ export type ListAccessRequestsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24491,7 +24975,7 @@ export type CreateAccessRequestData = {
 export type CreateAccessRequestErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24505,16 +24989,16 @@ export type CreateAccessRequestErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24522,7 +25006,7 @@ export type CreateAccessRequestErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24585,7 +25069,7 @@ export type EmergencyAccessData = {
 export type EmergencyAccessErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24599,16 +25083,16 @@ export type EmergencyAccessErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24616,7 +25100,7 @@ export type EmergencyAccessErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24680,7 +25164,7 @@ export type VoteAccessRequestData = {
 export type VoteAccessRequestErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24694,16 +25178,16 @@ export type VoteAccessRequestErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24711,7 +25195,7 @@ export type VoteAccessRequestErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24782,16 +25266,16 @@ export type CancelAccessRequestErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24799,7 +25283,7 @@ export type CancelAccessRequestErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24870,16 +25354,16 @@ export type RevokeAccessRequestErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -24887,7 +25371,7 @@ export type RevokeAccessRequestErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -24950,7 +25434,7 @@ export type DiffRevisionsData = {
 export type DiffRevisionsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -24964,7 +25448,7 @@ export type DiffRevisionsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25027,7 +25511,7 @@ export type RevealRevisionDiffData = {
 export type RevealRevisionDiffErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -25041,16 +25525,16 @@ export type RevealRevisionDiffErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -25058,7 +25542,7 @@ export type RevealRevisionDiffErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25128,7 +25612,7 @@ export type GetEnvironmentSignalsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25189,7 +25673,7 @@ export type ListPendingDraftsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25244,7 +25728,7 @@ export type RollbackRevisionData = {
 export type RollbackRevisionErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -25258,7 +25742,7 @@ export type RollbackRevisionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25328,7 +25812,7 @@ export type ListRevisionPinsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25382,7 +25866,7 @@ export type CreateRevisionPinData = {
 export type CreateRevisionPinErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -25396,7 +25880,7 @@ export type CreateRevisionPinErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25467,7 +25951,7 @@ export type ReleaseRevisionPinErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25540,7 +26024,7 @@ export type ListRevisionsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25605,7 +26089,7 @@ export type GetRevisionErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25668,7 +26152,7 @@ export type ExportValuesData = {
 export type ExportValuesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -25682,16 +26166,16 @@ export type ExportValuesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -25699,7 +26183,7 @@ export type ExportValuesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25765,7 +26249,7 @@ export type WatchProjectEventsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -25890,7 +26374,7 @@ export type QueryOrgAuditData = {
 export type QueryOrgAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -25904,16 +26388,16 @@ export type QueryOrgAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -25921,7 +26405,7 @@ export type QueryOrgAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26026,7 +26510,7 @@ export type ExportOrgAuditData = {
 export type ExportOrgAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26040,16 +26524,16 @@ export type ExportOrgAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -26057,7 +26541,7 @@ export type ExportOrgAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26186,7 +26670,7 @@ export type QueryProjectAuditData = {
 export type QueryProjectAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26200,16 +26684,16 @@ export type QueryProjectAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -26217,7 +26701,7 @@ export type QueryProjectAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26326,7 +26810,7 @@ export type ExportProjectAuditData = {
 export type ExportProjectAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26340,16 +26824,16 @@ export type ExportProjectAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -26357,7 +26841,7 @@ export type ExportProjectAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26490,7 +26974,7 @@ export type QueryEnvAuditData = {
 export type QueryEnvAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26504,16 +26988,16 @@ export type QueryEnvAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -26521,7 +27005,7 @@ export type QueryEnvAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26634,7 +27118,7 @@ export type ExportEnvAuditData = {
 export type ExportEnvAuditErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26648,16 +27132,16 @@ export type ExportEnvAuditErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -26665,7 +27149,7 @@ export type ExportEnvAuditErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26713,7 +27197,7 @@ export type RotateTokenKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26754,7 +27238,7 @@ export type RotateDekData = {
 export type RotateDekErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26768,7 +27252,7 @@ export type RotateDekErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26825,7 +27309,7 @@ export type ReencryptInstanceErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26882,7 +27366,7 @@ export type RotateMasterKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -26932,7 +27416,7 @@ export type RotateRootKeyData = {
 export type RotateRootKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -26946,7 +27430,7 @@ export type RotateRootKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27012,7 +27496,7 @@ export type ReencryptProjectErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27063,7 +27547,7 @@ export type RotateScanningKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27120,7 +27604,7 @@ export type ListAdaptersErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27164,7 +27648,7 @@ export type CreateAdapterData = {
 export type CreateAdapterErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -27178,16 +27662,16 @@ export type CreateAdapterErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27195,7 +27679,7 @@ export type CreateAdapterErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27258,7 +27742,7 @@ export type DeleteAdapterErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27319,7 +27803,7 @@ export type ShowAdapterErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27364,7 +27848,7 @@ export type UpdateAdapterOriginData = {
 export type UpdateAdapterOriginErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -27378,16 +27862,16 @@ export type UpdateAdapterOriginErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27395,7 +27879,7 @@ export type UpdateAdapterOriginErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27456,16 +27940,16 @@ export type CancelAdapterMoveErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27473,7 +27957,7 @@ export type CancelAdapterMoveErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27534,7 +28018,7 @@ export type ShowAdapterMoveErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27579,7 +28063,7 @@ export type ResumeAdapterMoveData = {
 export type ResumeAdapterMoveErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -27593,16 +28077,16 @@ export type ResumeAdapterMoveErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27610,7 +28094,7 @@ export type ResumeAdapterMoveErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27671,7 +28155,7 @@ export type RevokeAdapterCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27716,7 +28200,7 @@ export type SetAdapterCredentialData = {
 export type SetAdapterCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -27730,16 +28214,16 @@ export type SetAdapterCredentialErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27747,7 +28231,7 @@ export type SetAdapterCredentialErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27808,7 +28292,7 @@ export type ListAdapterTargetsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27853,7 +28337,7 @@ export type AddAdapterTargetData = {
 export type AddAdapterTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -27867,16 +28351,16 @@ export type AddAdapterTargetErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -27884,7 +28368,7 @@ export type AddAdapterTargetErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -27947,7 +28431,7 @@ export type RemoveAdapterTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28010,7 +28494,7 @@ export type ShowAdapterTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28055,7 +28539,7 @@ export type UpdateAdapterTargetData = {
 export type UpdateAdapterTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -28069,16 +28553,16 @@ export type UpdateAdapterTargetErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -28086,7 +28570,7 @@ export type UpdateAdapterTargetErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28151,7 +28635,7 @@ export type PlanAdapterTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28212,16 +28696,16 @@ export type SyncAdapterTargetErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -28229,7 +28713,7 @@ export type SyncAdapterTargetErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28290,16 +28774,16 @@ export type PauseAdapterTargetErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -28307,7 +28791,7 @@ export type PauseAdapterTargetErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28368,16 +28852,16 @@ export type ResumeAdapterTargetErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -28385,7 +28869,7 @@ export type ResumeAdapterTargetErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28446,7 +28930,7 @@ export type TestAdapterTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28491,7 +28975,7 @@ export type AdoptAdapterTargetNamesData = {
 export type AdoptAdapterTargetNamesErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -28505,16 +28989,16 @@ export type AdoptAdapterTargetNamesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -28522,7 +29006,7 @@ export type AdoptAdapterTargetNamesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28582,7 +29066,7 @@ export type ListFileTargetsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28626,7 +29110,7 @@ export type CreateFileTargetData = {
 export type CreateFileTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -28640,7 +29124,7 @@ export type CreateFileTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28701,7 +29185,7 @@ export type DeleteFileTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28762,7 +29246,7 @@ export type GetFileTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28807,7 +29291,7 @@ export type UpdateFileTargetData = {
 export type UpdateFileTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -28821,7 +29305,7 @@ export type UpdateFileTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28879,7 +29363,7 @@ export type ReportFileTargetData = {
 export type ReportFileTargetErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -28893,7 +29377,7 @@ export type ReportFileTargetErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -28959,7 +29443,7 @@ export type ListDynamicProvidersErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29003,7 +29487,7 @@ export type CreateDynamicProviderData = {
 export type CreateDynamicProviderErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29017,7 +29501,7 @@ export type CreateDynamicProviderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29083,7 +29567,7 @@ export type DeleteDynamicProviderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29144,7 +29628,7 @@ export type ShowDynamicProviderErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29196,7 +29680,7 @@ export type RevokeDynamicProviderCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29241,7 +29725,7 @@ export type SetDynamicProviderCredentialData = {
 export type SetDynamicProviderCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29255,7 +29739,7 @@ export type SetDynamicProviderCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29319,7 +29803,7 @@ export type ListLeasesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29367,7 +29851,7 @@ export type MintLeaseData = {
 export type MintLeaseErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29381,16 +29865,16 @@ export type MintLeaseErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -29398,7 +29882,7 @@ export type MintLeaseErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29463,7 +29947,7 @@ export type ShowLeaseErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29512,7 +29996,7 @@ export type RenewLeaseData = {
 export type RenewLeaseErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29526,7 +30010,7 @@ export type RenewLeaseErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29591,7 +30075,7 @@ export type RevokeLeaseErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29647,7 +30131,7 @@ export type SettleLeaseErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29711,7 +30195,7 @@ export type ListSshCasErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29759,7 +30243,7 @@ export type CreateSshCaData = {
 export type CreateSshCaErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29773,7 +30257,7 @@ export type CreateSshCaErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29838,7 +30322,7 @@ export type DeleteSshCaErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29903,7 +30387,7 @@ export type ShowSshCaErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -29952,7 +30436,7 @@ export type RotateSshCaData = {
 export type RotateSshCaErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -29966,7 +30450,7 @@ export type RotateSshCaErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30032,7 +30516,7 @@ export type RetireSshCaKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30097,7 +30581,7 @@ export type GetSshTrustedKeysErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30153,7 +30637,7 @@ export type GetSshKrlErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30217,7 +30701,7 @@ export type ListSshProfilesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30265,7 +30749,7 @@ export type CreateSshProfileData = {
 export type CreateSshProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -30279,7 +30763,7 @@ export type CreateSshProfileErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30349,7 +30833,7 @@ export type DeleteSshProfileErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30405,7 +30889,7 @@ export type ShowSshProfileErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30454,7 +30938,7 @@ export type UpdateSshProfileData = {
 export type UpdateSshProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -30468,7 +30952,7 @@ export type UpdateSshProfileErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30532,7 +31016,7 @@ export type ListSshCertificatesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30580,7 +31064,7 @@ export type IssueSshCertificateData = {
 export type IssueSshCertificateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -30594,16 +31078,16 @@ export type IssueSshCertificateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -30611,7 +31095,7 @@ export type IssueSshCertificateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30676,7 +31160,7 @@ export type ShowSshCertificateErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30732,7 +31216,7 @@ export type RevokeSshCertificateErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30774,16 +31258,16 @@ export type ListPkiIssuersErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -30791,7 +31275,7 @@ export type ListPkiIssuersErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30832,7 +31316,7 @@ export type CreatePkiIssuerData = {
 export type CreatePkiIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -30846,16 +31330,16 @@ export type CreatePkiIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -30863,7 +31347,7 @@ export type CreatePkiIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30922,16 +31406,16 @@ export type ShowPkiIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -30939,7 +31423,7 @@ export type ShowPkiIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -30982,7 +31466,7 @@ export type RotatePkiIssuerData = {
 export type RotatePkiIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -30996,16 +31480,16 @@ export type RotatePkiIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31013,7 +31497,7 @@ export type RotatePkiIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31065,7 +31549,7 @@ export type InstallPkiIssuerCertificateData = {
 export type InstallPkiIssuerCertificateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31079,16 +31563,16 @@ export type InstallPkiIssuerCertificateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31096,7 +31580,7 @@ export type InstallPkiIssuerCertificateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31148,7 +31632,7 @@ export type ReleasePkiIssuerHoldData = {
 export type ReleasePkiIssuerHoldErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31162,16 +31646,16 @@ export type ReleasePkiIssuerHoldErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31179,7 +31663,7 @@ export type ReleasePkiIssuerHoldErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31232,7 +31716,7 @@ export type RetirePkiIssuerData = {
 export type RetirePkiIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31246,16 +31730,16 @@ export type RetirePkiIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31263,7 +31747,7 @@ export type RetirePkiIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31316,7 +31800,7 @@ export type RevokePkiIssuerData = {
 export type RevokePkiIssuerErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31330,16 +31814,16 @@ export type RevokePkiIssuerErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31347,7 +31831,7 @@ export type RevokePkiIssuerErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31407,16 +31891,16 @@ export type GetPkiIssuerCrlErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31424,7 +31908,7 @@ export type GetPkiIssuerCrlErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31468,7 +31952,7 @@ export type PublishPkiIssuerCrlData = {
 export type PublishPkiIssuerCrlErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31482,16 +31966,16 @@ export type PublishPkiIssuerCrlErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31499,7 +31983,7 @@ export type PublishPkiIssuerCrlErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31556,16 +32040,16 @@ export type ListPkiProfilesErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31573,7 +32057,7 @@ export type ListPkiProfilesErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31614,7 +32098,7 @@ export type CreatePkiProfileData = {
 export type CreatePkiProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31628,16 +32112,16 @@ export type CreatePkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31645,7 +32129,7 @@ export type CreatePkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31697,7 +32181,7 @@ export type DeletePkiProfileData = {
 export type DeletePkiProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31711,16 +32195,16 @@ export type DeletePkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31728,7 +32212,7 @@ export type DeletePkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31787,16 +32271,16 @@ export type ShowPkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31804,7 +32288,7 @@ export type ShowPkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31847,7 +32331,7 @@ export type UpdatePkiProfileData = {
 export type UpdatePkiProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31861,16 +32345,16 @@ export type UpdatePkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31878,7 +32362,7 @@ export type UpdatePkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -31930,7 +32414,7 @@ export type BindPkiProfileData = {
 export type BindPkiProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -31944,16 +32428,16 @@ export type BindPkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -31961,7 +32445,7 @@ export type BindPkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32014,7 +32498,7 @@ export type UnbindPkiProfileData = {
 export type UnbindPkiProfileErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32028,16 +32512,16 @@ export type UnbindPkiProfileErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -32045,7 +32529,7 @@ export type UnbindPkiProfileErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32115,7 +32599,7 @@ export type ListCertificateProfilesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32170,7 +32654,7 @@ export type ListCertificatesErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32218,7 +32702,7 @@ export type IssueCertificateData = {
 export type IssueCertificateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32232,16 +32716,16 @@ export type IssueCertificateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -32249,7 +32733,7 @@ export type IssueCertificateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32320,7 +32804,7 @@ export type ShowCertificateErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32369,7 +32853,7 @@ export type RenewCertificateData = {
 export type RenewCertificateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32383,16 +32867,16 @@ export type RenewCertificateErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -32400,7 +32884,7 @@ export type RenewCertificateErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32464,7 +32948,7 @@ export type RevokeCertificateData = {
 export type RevokeCertificateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32478,7 +32962,7 @@ export type RevokeCertificateErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32543,7 +33027,7 @@ export type GetCertificateCrlErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32598,7 +33082,7 @@ export type ListTransitKeysErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32646,7 +33130,7 @@ export type CreateTransitKeyData = {
 export type CreateTransitKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32660,7 +33144,7 @@ export type CreateTransitKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32728,7 +33212,7 @@ export type ShowTransitKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32780,7 +33264,7 @@ export type ConfigureTransitKeyData = {
 export type ConfigureTransitKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32794,7 +33278,7 @@ export type ConfigureTransitKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32855,7 +33339,7 @@ export type RotateTransitKeyData = {
 export type RotateTransitKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32869,7 +33353,7 @@ export type RotateTransitKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -32930,7 +33414,7 @@ export type ChangeTransitKeyStateData = {
 export type ChangeTransitKeyStateErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -32944,7 +33428,7 @@ export type ChangeTransitKeyStateErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33005,7 +33489,7 @@ export type TrimTransitKeyData = {
 export type TrimTransitKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33019,7 +33503,7 @@ export type TrimTransitKeyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33080,7 +33564,7 @@ export type TransitEncryptData = {
 export type TransitEncryptErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33094,16 +33578,16 @@ export type TransitEncryptErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33111,7 +33595,7 @@ export type TransitEncryptErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33178,7 +33662,7 @@ export type TransitDecryptData = {
 export type TransitDecryptErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33192,16 +33676,16 @@ export type TransitDecryptErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33209,7 +33693,7 @@ export type TransitDecryptErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33276,7 +33760,7 @@ export type TransitRewrapData = {
 export type TransitRewrapErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33290,16 +33774,16 @@ export type TransitRewrapErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33307,7 +33791,7 @@ export type TransitRewrapErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33374,7 +33858,7 @@ export type TransitDataKeyData = {
 export type TransitDataKeyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33388,16 +33872,16 @@ export type TransitDataKeyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33405,7 +33889,7 @@ export type TransitDataKeyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33472,7 +33956,7 @@ export type TransitSignData = {
 export type TransitSignErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33486,16 +33970,16 @@ export type TransitSignErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33503,7 +33987,7 @@ export type TransitSignErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33570,7 +34054,7 @@ export type TransitVerifyData = {
 export type TransitVerifyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33584,16 +34068,16 @@ export type TransitVerifyErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33601,7 +34085,7 @@ export type TransitVerifyErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33668,7 +34152,7 @@ export type TransitHmacData = {
 export type TransitHmacErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33682,16 +34166,16 @@ export type TransitHmacErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33699,7 +34183,7 @@ export type TransitHmacErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33766,7 +34250,7 @@ export type TransitVerifyHmacData = {
 export type TransitVerifyHmacErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33780,16 +34264,16 @@ export type TransitVerifyHmacErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33797,7 +34281,7 @@ export type TransitVerifyHmacErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33860,7 +34344,7 @@ export type MintDeveloperCredentialData = {
 export type MintDeveloperCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33874,16 +34358,16 @@ export type MintDeveloperCredentialErrors = {
     401: Error;
     /**
      * Either the principal does not hold the operation's formula at instance
-     * scope — instance-class operations have no tenant object whose
+     * scope (instance-class operations have no tenant object whose
      * nonexistence could be mimicked, so the probe contract there is grant
-     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * refusal, not tenancy) or the principal DOES hold it and the acting
      * session's assurance is inadequate for an MFA-mandatory operation.
      *
      * The second case is why two tenant-scoped operations (`renameOrg`,
      * `deleteOrg`) declare this status: their formula atom `instance-config`
      * is MFA-mandatory, and the refusal fires only AFTER the grant check
      * succeeded. A caller who reaches it can already reach the object, so
-     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * naming the step-up discloses nothing the uniform 404 was protecting,
      * and hiding it would tell a capability holder the object is missing.
      * Grant refusal on a tenant-scoped operation is always the 404.
      *
@@ -33891,7 +34375,7 @@ export type MintDeveloperCredentialErrors = {
     403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -33941,7 +34425,7 @@ export type RevokeAllMyDeveloperCredentialsData = {
 export type RevokeAllMyDeveloperCredentialsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -33955,7 +34439,7 @@ export type RevokeAllMyDeveloperCredentialsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34005,7 +34489,7 @@ export type ListMyDeveloperCredentialsData = {
 export type ListMyDeveloperCredentialsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34019,7 +34503,7 @@ export type ListMyDeveloperCredentialsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34074,7 +34558,7 @@ export type RevokeMyDeveloperCredentialData = {
 export type RevokeMyDeveloperCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34088,7 +34572,7 @@ export type RevokeMyDeveloperCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34147,7 +34631,7 @@ export type ListProjectDeveloperCredentialsData = {
 export type ListProjectDeveloperCredentialsErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34161,7 +34645,7 @@ export type ListProjectDeveloperCredentialsErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34224,7 +34708,7 @@ export type RevokeProjectDeveloperCredentialData = {
 export type RevokeProjectDeveloperCredentialErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34238,7 +34722,7 @@ export type RevokeProjectDeveloperCredentialErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34288,7 +34772,7 @@ export type GetDeveloperCredentialPolicyData = {
 export type GetDeveloperCredentialPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34302,7 +34786,7 @@ export type GetDeveloperCredentialPolicyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;
@@ -34352,7 +34836,7 @@ export type SetDeveloperCredentialPolicyData = {
 export type SetDeveloperCredentialPolicyErrors = {
     /**
      * The request does not satisfy this document. Decided before any tenant
-     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
      * error response permitted to carry one.
      *
      */
@@ -34366,7 +34850,7 @@ export type SetDeveloperCredentialPolicyErrors = {
     401: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
-     * it — indistinguishable by design, byte-identical in status and body.
+     * it: indistinguishable by design, byte-identical in status and body.
      *
      */
     404: Error;

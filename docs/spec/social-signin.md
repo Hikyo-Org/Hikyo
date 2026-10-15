@@ -656,7 +656,7 @@ The admission gate before the charge is a synthesis reorder of [#604](https://gi
 
 **Operator test send** (`POST /instance/mail/test`): `instance-config@instance` ∧ reauth → its bound (section 8) → `registration.mail_intent {kind: test, recipient}` → send → `registration.mail_outcome`. The only reachability probe.
 
-**CLI**: `hikyo login <url> [--provider <kind>:<slug>]` opens the login page under the (to-be-built) RFC 8252 login handoff with the hint; the page hides the sign-up door and sends `sign-in`; approval binds the browser session; redeem mints an `ArtifactCLISession` snapshotting `auth_method`, `factors`, provider id, and records the issuing handoff id. `account password set|change`, `account factor enrol-totp` refuse by name on a social-only account and print the Settings › Security URL. Step-up on a session whose method is `oauth2:` or a policy-less `oidc:` with no local factor refuses before opening the browser, naming the remedy; the browser reauth page (`CLIReauth.tsx`) gains the same branch in place of `offersOIDC`. Link, establish, claim and sign-up have no CLI verb: they are identity-protocol ceremonies in the api-cli-surface exception class (banner 2026-09-03), a documented exemption, not a parity gap.
+**CLI**: `hikyo login <url> [--provider <kind>:<slug>]` opens the login page under the RFC 8252 login handoff ([#612 implementation](../handoff/612-cli-login-transports.md)) with the hint; the page hides the sign-up door and sends `sign-in`; approval binds the browser session; redeem mints an `ArtifactCLISession` snapshotting `auth_method`, `factors`, provider id, and records the issuing handoff id. `account password set|change`, `account factor enrol-totp` refuse by name on a social-only account and print the Settings › Security URL. Step-up on a session whose method is `oauth2:` or a policy-less `oidc:` with no local factor refuses before opening the browser, naming the remedy; the browser reauth page (`CLIReauth.tsx`) gains the same branch in place of `offersOIDC`. Link, establish, claim and sign-up have no CLI verb: they are identity-protocol ceremonies in the api-cli-surface exception class (banner 2026-09-03), a documented exemption, not a parity gap.
 
 ## 5. Audit registry deltas
 
@@ -713,7 +713,7 @@ Catalogued in [ops-catalogue.md](./ops-catalogue.md): `signup` 20/h instance-wid
 
 ## 12. Implementation preconditions
 
-1. **Login handoff and device flow** (api-cli-surface, locked, unbuilt): CLI social sign-in waits on them; `hikyo login --local` stays the floor. T8 below; a dependency of the A7 closure (T9), since A7 names CLI social sign-in.
+1. **Login handoff and device flow** (api-cli-surface, implemented by [#612](../handoff/612-cli-login-transports.md)): browser handoff and device authorization now carry CLI social sign-in; `hikyo login --local` remains the local floor. T8 below; a dependency of the A7 closure (T9), since A7 names CLI social sign-in.
 2. **Member invitation (#568)**: merged; `claim` builds on its authority.
 3. **Prototype PR #603** merged (this spec is stacked on it).
 

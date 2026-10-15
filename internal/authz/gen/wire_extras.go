@@ -8,6 +8,9 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
+		"http:POST /api/v1/auth/cli-login/redeem":       {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+		"http:POST /api/v1/auth/cli-login/device/token": {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+
 		// Self-owned developer lifecycle resolves a human session without a tenant
 		// formula and records these events through RecordAuthEvent.
 		"http:GET /api/v1/auth/developer-credentials":                 {Events: []string{"EventDeveloperCredentialsListed"}},

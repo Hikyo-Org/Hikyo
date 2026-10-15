@@ -259,7 +259,7 @@ func (r *Resolver) SessionsForPrincipal(ctx context.Context, p domain.PrincipalI
 			CreatedAt: row.CreatedAt.Time, LastSeenAt: row.LastSeenAt.Time,
 			IdleExpiresAt: row.IdleExpiresAt.Time, AbsoluteExpiresAt: row.AbsoluteExpiresAt.Time,
 			SourceIP: row.SourceIp, UserAgent: row.UserAgent,
-			RequestingOrigin: row.RequestingOrigin.String, HandoffID: row.HandoffID.String,
+			RequestingOrigin: row.RequestingOrigin.String, HandoffID: cliOrWorkspaceHandoff(row.HandoffID.String, row.CliHandoffID.String),
 		})
 	}
 	return out, nil
@@ -291,7 +291,7 @@ func summaryFromSQLite(row sqlitegen.ListSessionsForPrincipalRow) (SessionSummar
 		Factors: row.Factors, AuthenticatedAt: authenticated, CreatedAt: created,
 		LastSeenAt: seen, IdleExpiresAt: idle, AbsoluteExpiresAt: absolute,
 		SourceIP: row.SourceIp, UserAgent: row.UserAgent,
-		RequestingOrigin: row.RequestingOrigin.String, HandoffID: row.HandoffID.String,
+		RequestingOrigin: row.RequestingOrigin.String, HandoffID: cliOrWorkspaceHandoff(row.HandoffID.String, row.CliHandoffID.String),
 	}, nil
 }
 
@@ -490,4 +490,11 @@ func handoffFromPG(row pggen.WorkspaceHandoff) (WorkspaceHandoff, error) {
 		CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
 		ConsumedAt: row.ConsumedAt.Time,
 	}, nil
+}
+
+func cliOrWorkspaceHandoff(workspace, cli string) string {
+	if cli != "" {
+		return cli
+	}
+	return workspace
 }

@@ -660,6 +660,122 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/auth/cli-login/start:
+    post:
+      operationId: startCLILogin
+      tags: [auth]
+      summary: First-party CLI login startCLILogin.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginStartRequest"}}}}
+      responses:
+        "201": {description: Login protocol result., content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginStart"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
+  /api/v1/auth/cli-login/device/start:
+    post:
+      operationId: startCLIDevice
+      tags: [auth]
+      summary: RFC 8628 device authorization for the first-party CLI.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      security: []
+      requestBody: {required: true, content: {application/x-www-form-urlencoded: {schema: {$ref: "#/components/schemas/CLIDeviceStartRequest"}}}}
+      responses:
+        "200": {description: RFC 8628 device authorization response., content: {application/json: {schema: {$ref: "#/components/schemas/CLIDeviceStart"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
+  /api/v1/auth/cli-login/transactions/{reference}:
+    parameters:
+      - {name: reference, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+    get:
+      operationId: showCLILoginTransaction
+      tags: [auth]
+      summary: First-party CLI login showCLILoginTransaction.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200": {description: Login protocol result., content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginTransaction"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
+  /api/v1/auth/cli-login/approve:
+    post:
+      operationId: approveCLILogin
+      tags: [auth]
+      summary: First-party CLI login approveCLILogin.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginApproveRequest"}}}}
+      responses:
+        "200": {description: Login protocol result., content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginApproved"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
+  /api/v1/auth/cli-login/redeem:
+    post:
+      operationId: redeemCLILogin
+      tags: [auth]
+      summary: First-party CLI login redeemCLILogin.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      security: []
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CLILoginRedeemRequest"}}}}
+      responses:
+        "200": {description: Login protocol result., content: {application/json: {schema: {$ref: "#/components/schemas/LoginResult"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
+  /api/v1/auth/cli-login/device/token:
+    post:
+      operationId: pollCLIDevice
+      tags: [auth]
+      summary: First-party CLI login pollCLIDevice.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 1
+      security: []
+      requestBody: {required: true, content: {application/x-www-form-urlencoded: {schema: {$ref: "#/components/schemas/CLIDeviceTokenRequest"}}}}
+      responses:
+        "200": {description: Login protocol result., content: {application/json: {schema: {$ref: "#/components/schemas/CLIDeviceToken"}}}}
+        "400": {description: RFC 8628 polling response., content: {application/json: {schema: {$ref: "#/components/schemas/CLIDeviceErrorResponse"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
   /api/v1/auth/cli-reauth/start:
     post:
       operationId: startCLIReauth
@@ -15091,7 +15207,7 @@ components:
     BadRequest:
       description: |
         The request does not satisfy this document. Decided before any tenant
-        resolution, so `detail` leaks nothing about tenancy — it is the only
+        resolution, so `detail` leaks nothing about tenancy; it is the only
         error response permitted to carry one.
       content:
         application/json:
@@ -15109,16 +15225,16 @@ components:
     Forbidden:
       description: |
         Either the principal does not hold the operation's formula at instance
-        scope — instance-class operations have no tenant object whose
+        scope (instance-class operations have no tenant object whose
         nonexistence could be mimicked, so the probe contract there is grant
-        refusal, not tenancy — or the principal DOES hold it and the acting
+        refusal, not tenancy) or the principal DOES hold it and the acting
         session's assurance is inadequate for an MFA-mandatory operation.
 
         The second case is why two tenant-scoped operations (`renameOrg`,
         `deleteOrg`) declare this status: their formula atom `instance-config`
         is MFA-mandatory, and the refusal fires only AFTER the grant check
         succeeded. A caller who reaches it can already reach the object, so
-        naming the step-up discloses nothing the uniform 404 was protecting —
+        naming the step-up discloses nothing the uniform 404 was protecting,
         and hiding it would tell a capability holder the object is missing.
         Grant refusal on a tenant-scoped operation is always the 404.
       content:
@@ -15128,7 +15244,7 @@ components:
     NotFound:
       description: |
         The addressed object does not exist **or** the principal may not reach
-        it — indistinguishable by design, byte-identical in status and body.
+        it: indistinguishable by design, byte-identical in status and body.
       content:
         application/json:
           schema:
@@ -16736,6 +16852,106 @@ components:
             report vocabulary this server accepts.
           items:
             $ref: "#/components/schemas/ProtocolCapability"
+
+    CLILoginStartRequest:
+      type: object
+      additionalProperties: false
+      required: [transport, state, pkce_challenge, redirect_uri]
+      properties:
+        transport: {type: string, enum: [loopback]}
+        state: {type: string, maxLength: 128}
+        pkce_challenge: {type: string, maxLength: 128}
+        redirect_uri: {type: string, maxLength: 512}
+    CLILoginStart:
+      type: object
+      additionalProperties: false
+      required: [state, device_code, user_code, verification_uri, expires_at, interval]
+      properties:
+        state: {type: string}
+        device_code: {type: string}
+        user_code: {type: string}
+        verification_uri: {type: string}
+        expires_at: {type: string, format: date-time}
+        interval: {type: integer, minimum: 5}
+    CLILoginTransaction:
+      type: object
+      additionalProperties: false
+      required: [reference, transport, redirect_uri, instance, expires_at]
+      properties:
+        reference: {type: string}
+        transport: {type: string, enum: [loopback, device]}
+        redirect_uri: {type: string}
+        instance: {type: string}
+        expires_at: {type: string, format: date-time}
+    CLILoginApproved:
+      type: object
+      additionalProperties: false
+      required: [code, state, redirect_uri]
+      properties:
+        code: {type: string, description: Single-use code for loopback; empty for approved device login.}
+        state: {type: string, minLength: 8}
+        redirect_uri: {type: string, description: Exact bound loopback redirect; empty for device login.}
+    CLILoginApproveRequest:
+      type: object
+      additionalProperties: false
+      required: [reference]
+      properties:
+        reference: {type: string, minLength: 8, maxLength: 128}
+    CLILoginRedeemRequest:
+      type: object
+      additionalProperties: false
+      required: [code, pkce_verifier, redirect_uri]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 512}
+        pkce_verifier: {type: string, minLength: 43, maxLength: 128}
+        redirect_uri: {type: string, minLength: 1, maxLength: 512}
+    CLIDeviceStartRequest:
+      type: object
+      additionalProperties: false
+      required: [client_id]
+      properties:
+        client_id: {type: string, enum: [hikyo-cli]}
+    CLIDeviceStart:
+      type: object
+      additionalProperties: false
+      required: [device_code, user_code, verification_uri, expires_in, expires_at, interval]
+      properties:
+        device_code: {type: string, minLength: 1}
+        user_code: {type: string, pattern: '^[0-9A-HJKMNP-TV-Z]{8}$'}
+        verification_uri: {type: string, format: uri}
+        expires_in: {type: integer, minimum: 1}
+        expires_at: {type: string, format: date-time}
+        interval: {type: integer, minimum: 5}
+    CLIDeviceToken:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in, session, principal]
+      properties:
+        access_token: {type: string, minLength: 1}
+        token_type: {type: string, enum: [Bearer]}
+        expires_in: {type: integer, minimum: 1}
+        session: {$ref: '#/components/schemas/Session'}
+        principal: {$ref: '#/components/schemas/Principal'}
+    CLIDeviceTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [device_code, grant_type, client_id]
+      properties:
+        device_code: {type: string, minLength: 1, maxLength: 512}
+        grant_type: {type: string, enum: ['urn:ietf:params:oauth:grant-type:device_code']}
+        client_id: {type: string, enum: [hikyo-cli]}
+    CLIDeviceErrorResponse:
+      description: RFC 8628 protocol errors or the shared malformed-request refusal.
+      oneOf:
+        - {$ref: '#/components/schemas/CLIDeviceError'}
+        - {$ref: '#/components/schemas/Error'}
+    CLIDeviceError:
+      type: object
+      additionalProperties: false
+      required: [error, interval]
+      properties:
+        error: {type: string, enum: [authorization_pending, slow_down, expired_token, access_denied]}
+        interval: {type: integer, minimum: 0}
 
     ProtocolCapability:
       type: string
