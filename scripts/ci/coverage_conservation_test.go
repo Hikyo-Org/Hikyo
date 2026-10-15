@@ -107,6 +107,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeSecurityAdditions(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizeImpactAdditions(workflow.Jobs); err != nil {
+		return err
+	}
 	// The feedback fixtures execute the real documentation checker. Pin its
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
@@ -257,6 +260,28 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 		},
 		"fail open complete planning": func(j map[string]map[string]any) { mutateShardPlanningStep(j, "continue-on-error", true) },
 		"skip complete planning":      func(j map[string]map[string]any) { mutateShardPlanningStep(j, "if", "false") },
+		"queue gate loses PR metadata permission": func(j map[string]map[string]any) {
+			delete(j["ci-required"]["permissions"].(map[string]any), "pull-requests")
+		},
+		"queue gate gains PR writes": func(j map[string]map[string]any) {
+			j["ci-required"]["permissions"].(map[string]any)["pull-requests"] = "write"
+		},
+		"skip impact fixtures": func(j map[string]map[string]any) {
+			for _, step := range j["supply-chain-checks"]["steps"].([]any) {
+				s := step.(map[string]any)
+				if s["name"] == "Staged impact CI fixtures" {
+					s["if"] = "false"
+				}
+			}
+		},
+		"narrow impact fixtures": func(j map[string]map[string]any) {
+			for _, step := range j["supply-chain-checks"]["steps"].([]any) {
+				s := step.(map[string]any)
+				if s["name"] == "Staged impact CI fixtures" {
+					s["run"] = "true"
+				}
+			}
+		},
 		"remove source artifact job": func(j map[string]map[string]any) {
 			delete(j, "source-artifact-security")
 		},

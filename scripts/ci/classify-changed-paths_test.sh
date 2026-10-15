@@ -99,6 +99,13 @@ EOF
 done
 
 for dependency_or_config in \
+	'docs/site/scripts/test-csp.mjs' \
+	'docs/site/scripts/new-build-helper.mjs' \
+	'docs/adr/mvp-boundary.md' \
+	'docs/adr/saml-sp.md' \
+	'docs/adr/scim-provisioning.md' \
+	'docs/adr/secret-scanning.md' \
+	'docs/release/acceptance-1.0.md' \
 	'go.sum' \
 	'web/pnpm-lock.yaml' \
 	'web/pnpm-workspace.yaml' \

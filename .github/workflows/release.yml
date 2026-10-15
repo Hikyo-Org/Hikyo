@@ -24,6 +24,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pull-requests: read
 
   floor-bench:
     uses: ./.github/workflows/floor-bench.yml

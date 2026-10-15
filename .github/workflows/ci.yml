@@ -1,6 +1,8 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
-# every validation domain affected by PR paths. Manual main validation, nightly
-# publication and the merge queue run the complete suite. Merging a green PR
+# every validation domain affected by PR paths. The queue narrows verified
+# docs/site-only changes; backend changes, dependencies, explicit candidates,
+# manual main validation and nightly publication retain the complete suite.
+# Merging a green PR
 # does not automatically run the same full suite again.
 # Merge groups, like PRs, load every planning/checking script from the base
 # (merge_group.base_sha), never from the candidate being validated.
@@ -39,6 +41,9 @@ jobs:
   # Unknown paths and changes to this classifier fail closed to the full plan.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
       base_sha: ${{ steps.classify.outputs.base_sha }}
@@ -161,9 +166,18 @@ jobs:
               test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
               plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
             elif [ "$EVENT_NAME" = merge_group ]; then
-              # The queue candidate gets the full plan from the base's trusted
-              # classifier: a candidate must not choose its own plan (#813).
-              plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
+              # Activate only once the policy exists on the immutable base.
+              # This policy change itself still passes the old full gate.
+              if git cat-file -e "$BASE_SHA:scripts/ci/plan-merge-group.sh" 2>/dev/null; then
+                git show "$BASE_SHA:scripts/ci/plan-merge-group.sh" >"$RUNNER_TEMP/plan-merge-group.sh"
+                decision=$(CI_JOB_REGISTRY="$trusted_registry" bash "$RUNNER_TEMP/plan-merge-group.sh")
+                plan=$(jq -ce '.plan' <<<"$decision")
+                if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+                  jq -r '"### Queue validation plan\n\nMode: " + .mode + "\n\n" + .reason + "\n\nRequired domains: " + ([.plan | to_entries[] | select(.value) | .key] | join(", "))' <<<"$decision" >>"$GITHUB_STEP_SUMMARY"
+                fi
+              else
+                plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
+              fi
             else
               plan=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" |
                 CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --files)
@@ -366,6 +380,10 @@ jobs:
         run: |
           go test -count=1 ./scripts/ci/pr-gate
           go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
+      - name: Staged impact CI fixtures
+        run: |
+          go test -count=1 ./scripts/ci/queue-report ./scripts/ci/impact-shadow
+          go test -count=1 ./scripts/ci -run '^(TestDocsQueue|TestBackendImpactShadow)'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
           ./scripts/ci/configure-docker-mirror_test.sh
@@ -2011,6 +2029,10 @@ jobs:
   # The permanent required context. Every validation job is named here so a
   # future job split cannot accidentally weaken branch protection.
   ci-required:
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     # Keep failure aggregation, but do not queue an obsolete aggregate job for
     # a workflow GitHub already cancelled in favor of a newer PR head.
     if: always() && !cancelled()
@@ -2080,7 +2102,10 @@ jobs:
           NEEDS_JSON: ${{ toJSON(needs) }}
           PLAN_JSON: ${{ needs.changes.outputs.plan }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
+          SOURCE_REVISION: ${{ inputs.revision }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"
           checker_event="$GITHUB_EVENT_NAME"
@@ -2098,6 +2123,19 @@ jobs:
             git show "$BASE_SHA:scripts/ci/ci-job-registry.json" >"$trusted_registry"
           fi
           chmod +x "$trusted_checker"
+
+          if [ "$GITHUB_EVENT_NAME" = merge_group ] &&
+            ! jq -e 'type == "object" and all(.[]; . == true)' <<<"$PLAN_JSON" >/dev/null &&
+            git cat-file -e "$BASE_SHA:scripts/ci/plan-merge-group.sh" 2>/dev/null; then
+            # Only skipped checks need independent metadata authorization.
+            # A completed full run remains valid if metadata now permits less.
+            # The trusted checker below still validates every plan key/result.
+            git show "$BASE_SHA:scripts/ci/plan-merge-group.sh" >"$RUNNER_TEMP/plan-merge-group.sh"
+            git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$RUNNER_TEMP/classify-changed-paths.sh"
+            decision=$(CI_JOB_REGISTRY="$trusted_registry" bash "$RUNNER_TEMP/plan-merge-group.sh")
+            jq -e --argjson actual "$PLAN_JSON" '.mode == "docs" and .plan == $actual' <<<"$decision" >/dev/null
+            checker_event=merge_group_docs
+          fi
 
           if ! CI_JOB_REGISTRY="$trusted_registry" "$trusted_checker" --supports-plan-v2; then
             echo "trusted required-job checker does not support CI plan v2" >&2

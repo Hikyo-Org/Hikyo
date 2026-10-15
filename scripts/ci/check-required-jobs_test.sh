@@ -141,6 +141,13 @@ expect_reject 'non-web app pull request ran browser matrix' pull_request \
 expect_reject 'main push used a selective plan' push "$docs_success" "$docs_plan"
 expect_accept 'merge queue group' merge_group "$all_success" "$all_plan"
 expect_reject 'merge queue group used a selective plan' merge_group "$docs_success" "$docs_plan"
+expect_accept 'independently authenticated docs queue' merge_group_docs "$docs_success" "$docs_plan"
+expect_reject 'docs queue attempted to narrow backend' merge_group_docs "$app_success" "$app_plan"
+expect_reject 'docs queue claimed full validation' merge_group_docs "$all_success" "$all_plan"
+expect_reject 'docs queue skipped site checks' merge_group_docs \
+	"$(printf '%s' "$docs_success" | jq '.docs.result = "skipped"')" "$docs_plan"
+expect_reject 'docs queue failed site checks' merge_group_docs \
+	"$(printf '%s' "$docs_success" | jq '.docs.result = "failure"')" "$docs_plan"
 expect_reject 'merge queue group with a failed client' merge_group \
 	"$(printf '%s' "$all_success" | jq '.client.result = "failure"')" "$all_plan"
 expect_reject 'classifier failed' pull_request \

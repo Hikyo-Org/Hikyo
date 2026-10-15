@@ -204,7 +204,7 @@ func testCoreValidationTrustedBaseMigration(t *testing.T) {
 				}
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", gate)
 				cmd.Dir = work
-				cmd.Env = append(os.Environ(),
+				cmd.Env = append(os.Environ(), "FULL_CANDIDATE=false",
 					"RUNNER_TEMP="+t.TempDir(), "GITHUB_EVENT_NAME=pull_request",
 					"BASE_SHA=refs/fixtures/trusted-base", "NEEDS_JSON="+string(encode(results)),
 					"PLAN_JSON="+string(encode(plan)))
