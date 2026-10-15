@@ -66,7 +66,8 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 				t.Error("redeem did not preserve the initiating PKCE and exact redirect")
 			}
 			callback, _ := url.Parse(start.RedirectUri)
-			conn, err := net.DialTimeout("tcp", callback.Host, time.Second)
+			dialer := net.Dialer{Timeout: time.Second}
+			conn, err := dialer.DialContext(t.Context(), "tcp", callback.Host)
 			if err == nil {
 				conn.Close()
 				t.Error("callback listener was still reachable during redemption")
@@ -93,7 +94,7 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 			{http.MethodGet, "/callback", "code=x&state=" + start.State + "&bad;query=1", ""},
 		} {
 			callback, _ := url.Parse(start.RedirectUri)
-			request, err := http.NewRequest(negative.method, "http://"+callback.Host+negative.path+"?"+negative.query, nil)
+			request, err := http.NewRequestWithContext(t.Context(), negative.method, "http://"+callback.Host+negative.path+"?"+negative.query, nil)
 			if err != nil {
 				return err
 			}
@@ -109,7 +110,11 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 				t.Errorf("callback %v was accepted with status %d", negative, response.StatusCode)
 			}
 		}
-		response, err := http.Get(start.RedirectUri + "?code=hik_1_hc_approved&state=" + start.State)
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, start.RedirectUri+"?code=hik_1_hc_approved&state="+start.State, nil)
+		if err != nil {
+			return err
+		}
+		response, err := http.DefaultClient.Do(request)
 		if err != nil {
 			return err
 		}
@@ -159,7 +164,8 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 				t.Fatalf("refusal err=%v opens=%d", err, opens)
 			}
 			callback, _ := url.Parse(start.RedirectUri)
-			conn, err := net.DialTimeout("tcp", callback.Host, time.Second)
+			dialer := net.Dialer{Timeout: time.Second}
+			conn, err := dialer.DialContext(t.Context(), "tcp", callback.Host)
 			if err == nil {
 				conn.Close()
 				t.Fatal("refused handoff left listener reachable")
@@ -240,7 +246,11 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 				}
 				return ""
 			}}, ReadPassword: func(string) (string, error) { passwordRead = true; return "local-secret", nil }, OpenURL: func(string) error {
-				response, err := http.Get(start.RedirectUri + "?code=hik_1_hc_login&state=" + start.State)
+				request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, start.RedirectUri+"?code=hik_1_hc_login&state="+start.State, nil)
+				if err != nil {
+					return err
+				}
+				response, err := http.DefaultClient.Do(request)
 				if response != nil {
 					response.Body.Close()
 				}

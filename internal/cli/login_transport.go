@@ -316,7 +316,6 @@ func pollCLIDevice(ctx context.Context, stderr io.Writer, client *Client, device
 			}
 			return apigen.LoginResult{}, deviceTransportError(ctx, err)
 		}
-		wait = interval
 		if status == http.StatusTooManyRequests {
 			retrySeconds, parseErr := strconv.ParseUint(strings.TrimSpace(header.Get("Retry-After")), 10, 64)
 			if parseErr != nil || retrySeconds == 0 || retrySeconds > uint64(math.MaxInt64/int64(time.Second)) {
