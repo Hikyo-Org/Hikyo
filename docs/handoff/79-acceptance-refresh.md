@@ -1,6 +1,8 @@
 # Final merged candidate acceptance record
 
-Docs worktree `/tmp/hikyo-final-acceptance` is based on merged 549726d96c2c5938636f31d9b85232a761bb75a2 after the parent preserved/restored its owned edits. No conflict, implementation change, commit or push by this documentation worker.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+The documentation checkout was based on merged 549726d96c2c5938636f31d9b85232a761bb75a2 after the parent preserved/restored its owned edits. No conflict, implementation change, commit or push by this documentation worker.
 
 ## Current result
 

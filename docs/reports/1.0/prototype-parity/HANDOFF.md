@@ -1,6 +1,8 @@
 # Locked prototype validation and machine readiness corrections
 
-Worktree: `/tmp/hikyo-web-parity`; source baseline `1b5c04cf1241343c556a2c662e988aeca846a20e`.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Worktree: the original local checkout; source baseline `1b5c04cf1241343c556a2c662e988aeca846a20e`.
 Parent owns signed commit, push, PR644 and final combined-head replay. No worker commit or push.
 
 ## Reviewable result

@@ -1,5 +1,7 @@
 # PostgreSQL UTC read normalization
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 ## Scope and cause
 
 The frozen generated-client harness rejected PostgreSQL `whoami` session timestamps with offsets. The store already promises UTC. Pinned pgx v5.10.0 binary timestamptz scanning defaults to Go `time.Local`; text scanning follows the server session offset. Changing server TimeZone alone does not address the binary protocol.
@@ -20,4 +22,4 @@ The regression failed before the production change and passed after it. Uses the
 
 ## Delivery
 
-Worktree `/tmp/hikyo-postgres-utc`, branch `codex/1.0-postgres-utc`, base `944d23e5`. Parent received `/tmp/hikyo-postgres-utc-code.patch` for immediate frozen-client integration testing. No commit or push by this agent. Report: `docs/reports/1.0/postgres-utc.html`.
+Branch `codex/1.0-postgres-utc`, base `944d23e5`. Parent received `hikyo-postgres-utc-code.patch` for immediate frozen-client integration testing. No commit or push by this agent. Report: `docs/reports/1.0/postgres-utc.html`.

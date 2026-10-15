@@ -1,5 +1,7 @@
 # PR #906 CI follow-up
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 This fix is stacked on `ui-review-pr` at `0df9a17950d6e859f81ced93704792e2ceb840c5`. Keep it separate and unmerged for review. The parent is [PR #906](https://github.com/Hikyo-Org/Hikyo/pull/906).
 
 ## Failure and repair
@@ -35,6 +37,6 @@ pnpm exec playwright test --project=mobile e2e/flows/matrix.spec.ts e2e/flows/sh
 pnpm exec playwright test --project=mobile e2e/flows/members.spec.ts e2e/flows/account.spec.ts e2e/flows/history.spec.ts
 ```
 
-The local evidence is retained under `/tmp/hikyo-906-investigation/` and `/tmp/hikyo-906-*.log` on the originating machine. These temporary artifacts are not portable PR evidence; the run link and commands above are the durable entry points.
+The local evidence is retained under `hikyo-906-investigation/` and `hikyo-906-*.log` on the originating machine. These temporary artifacts are not portable PR evidence; the run link and commands above are the durable entry points.
 
 The full-candidate workflow requires a default-branch base. This stacked PR intentionally targets `ui-review-pr`, so normal feedback and local verification must be distinguished from full merge-candidate validation. Keep the existing gate policy and obtain fresh candidate proof when the stack is integrated. No merge or deployment is authorized by this handoff.

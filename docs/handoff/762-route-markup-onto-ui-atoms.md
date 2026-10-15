@@ -214,14 +214,15 @@ those gates is #760's work, not this branch's.
 
 ## How to run the checks
 
+With `fnm` and Node 26 installed, from the repository root:
+
 ```sh
-export PATH="$HOME/.local/share/fnm:$PATH"; eval "$(fnm env)"; fnm use 26
 cd web
-pnpm run design:check      # tokens, app.css adherence budget, markup-check
-node --run typecheck
-node --run test            # unit
-node --run test-storybook  # story tests, a11y addon on error
-pnpm run e2e               # build + playwright desktop and mobile
+fnm exec --using=26 pnpm run design:check      # tokens, app.css adherence budget, markup-check
+fnm exec --using=26 node --run typecheck
+fnm exec --using=26 node --run test            # unit
+fnm exec --using=26 node --run test-storybook  # story tests, a11y addon on error
+fnm exec --using=26 pnpm run e2e               # build + playwright desktop and mobile
 ```
 
 `design:check` is also the first leg of `design:export`, so Storybook builds

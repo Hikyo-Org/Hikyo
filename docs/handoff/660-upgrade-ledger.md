@@ -1,6 +1,8 @@
 # Issue 660: atomic upgrade ledger foundation
 
-Base: `373910cca63eb8a2e2e6b5a079cc285b64a2ae95` (merged governance #645). Worktree: `/tmp/hikyo-upgrade-ledger`, branch `feat/660-upgrade-ledger`. No commit or publication by the implementation worker.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Base: `373910cca63eb8a2e2e6b5a079cc285b64a2ae95` (merged governance #645). Worktree: the original local checkout, branch `feat/660-upgrade-ledger`. No commit or publication by the implementation worker.
 
 ## Delivered boundary
 
@@ -36,7 +38,7 @@ Fresh bootstrap's instance ID predates migration 20's generated singleton. `Sess
 
 Real SQLite and local PostgreSQL 18.6 integration cover fresh/legacy genesis, schema/migration/control drift, stale identities, every phase path, route maintenance, nonce/floor refusal, lock contention/cancellation, process restart and abrupt child exits before/after bootstrap commit, real archive restoration twice and failure before SQLite publication. Migration seam tests also exercise committed nontransactional SQL cancellation and PostgreSQL backend termination without reconnect or phase advancement. Candidate wrapper tests cover confined read-only lifecycle.
 
-Evidence is recorded in `docs/reports/1.0/upgrade-ledger/index.html` and `/tmp/hikyo-ledger-evidence/`. This does not claim runtime F3 fencing, F5 application integration, production rollout, external physical-floor acceptance, or a released 1.0 tag.
+Evidence is recorded in `docs/reports/1.0/upgrade-ledger/index.html` and `hikyo-ledger-evidence/`. This does not claim runtime F3 fencing, F5 application integration, production rollout, external physical-floor acceptance, or a released 1.0 tag.
 
 Control DDL lives outside ordinary goose migrations because its own atomic genesis gate must precede goose. The exact upgrade package is added to the driver/generator boundary trusted set for that storage boundary and the closed candidate wrapper reader. No authn writer exemption or wildcard import exception is added.
 

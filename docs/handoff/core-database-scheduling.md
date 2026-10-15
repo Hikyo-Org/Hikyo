@@ -1,6 +1,8 @@
 # Core database scheduling repair
 
-Base: `407456a54dbb275cf322bbf274faaf78b8845260`. Branch: `fix/core-database-scheduling`. Worktree: `/tmp/hikyo-core-scheduling`. Parent owns review, signed commit, PR and merge on green.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Base: `407456a54dbb275cf322bbf274faaf78b8845260`. Branch: `fix/core-database-scheduling`. Parent owns review, signed commit, PR and merge on green.
 
 The app expired-owner test completed its authority assertions, then its five-second PostgreSQL database-drop cleanup deadline expired during a 6.444-second shared checkpoint (6.180 seconds syncing files). Concurrent package migrations are the inferred source of checkpoint pressure; the scheduling change removes that overlap, with hosted confirmation still required. Exact failure: PR673 f31, run33969008887, job101314181251. See [decision and evidence report](../reports/1.0/core-database-scheduling.html).
 

@@ -136,8 +136,7 @@ changing the test.
 
 Still open: the server on nightly 23 cannot upgrade until a nightly containing
 this feature is published; then the bootstrap command in the Upgrades docs
-applies. The stale worktree `~/.t3/worktrees/wenv/t3code-4827c9b7` and its
-local `feat/automatic-systemd-upgrade` branch can be removed after merge.
+applies. The stale local `feat/automatic-systemd-upgrade` worktree and branch were candidates for cleanup after merge; this historical note does not establish their current state.
 
 ## 2026-09-07 evening: live bootstrap findings
 

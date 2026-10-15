@@ -1,5 +1,7 @@
 # #651 MCP production proof
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 5 September 2026. Codex-authored. No commit or push by the implementation agent.
 
 ## Result and boundary
@@ -26,15 +28,11 @@ Independent R1 caught duplicate JSON members being collapsed before validation. 
 
 Client documentation and HTML/JSON report explicitly distinguish observed local passes, tested handshake incompatibility and unverified profiles.
 
-## Safe parent replay
+## Historical parent replay
 
-The independently owned runtime is temporarily retained at `/tmp/hikyo-mcp-651-runtime` (directory0700, custody files0600). Never print settings/credentials/env/key files or full Docker inspect output. Run:
+The original replay used an independently owned local runtime (directory mode 0700, custody files mode 0600) and an untracked `replay.py`. Neither the runner nor its private runtime files is included in this checkout, so this handoff cannot provide a runnable replay command. Never print settings, credentials, environment or key files, or full Docker inspect output.
 
-```sh
-rtk proxy python3 /tmp/hikyo-mcp-651-runtime/replay.py
-```
-
-This runner refreshes only the synthetic rotating credential via the real opt-in service helper, repeats all five actual calls and cursor/refusal checks, and then commits revocation and checks both replicas. It reads credentials internally; no token arguments or result bodies are printed. The underlying scripts and local logs are diagnostic runtime artifacts, not a portable CI bootstrap harness. The replay uses `/tmp/hikyo-mcp-651` source and never changes the user's global client config. `local-proof.json` and `revocation-proof.json` are redacted; `credentials.json`, settings/env files and client private logs are not publication inputs.
+That runner refreshed only the synthetic rotating credential via the real opt-in service helper, repeated all five actual calls and cursor/refusal checks, and then committed revocation and checked both replicas. It read credentials internally; no token arguments or result bodies were printed. The underlying scripts and local logs were diagnostic runtime artifacts, not a portable CI bootstrap harness. The replay used the recorded source revision and did not change the user's global client config. `local-proof.json` and `revocation-proof.json` were redacted; `credentials.json`, settings/env files and client private logs were not publication inputs.
 
 To invoke the official Go probe, load `HIKYO_MCP_URL`, `HIKYO_MCP_TOKEN` and `SSL_CERT_FILE` inside an owned launcher from those private fixture files, then run `GOMAXPROCS=2 go run -p 1 ./scripts/mcp-production-client`. Do not expand the token into a shell command string or process arguments.
 

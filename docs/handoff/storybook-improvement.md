@@ -18,9 +18,9 @@ Review preview: http://192.168.0.30:6025/storybook/?path=/docs/ui-button--docs .
 | build-storybook | 32.47 | 22.48 | 0 | `node --run build-storybook -- --output-dir .artifacts/storybook-improvement/after-theme-surface/storybook-static` |
 | docs | not recorded separately | 0.32 | 0 | `node --run check:storybook-docs -- .artifacts/storybook-improvement/after-theme-surface/storybook-static` |
 | storybook-dark | 31.96 | 54.72 | 0 | `node --run test-storybook` |
-| storybook-light-full-reference | not recorded separately | 42.07 | 0 | `STORYBOOK_INTERACTION_PASS=full node --run test-storybook:light` |
+| storybook-light-full-reference | not recorded separately | 42.07 | 0 | `STORYBOOK_INTERACTION_PASS=full fnm exec --using=26.7.0 node --run test-storybook:light` |
 | storybook-light | 31.16 | 46.24 | 0 | `node --run test-storybook:light` |
-| storybook-theme | not recorded separately | 15.71 | 0 | `STORYBOOK_STATIC_DIR=.artifacts/storybook-improvement/after-theme-surface/storybook-static node --run test-storybook:theme` |
+| storybook-theme | not recorded separately | 15.71 | 0 | `STORYBOOK_STATIC_DIR=.artifacts/storybook-improvement/after-theme-surface/storybook-static fnm exec --using=26.7.0 node --run test-storybook:theme` |
 
 Final unit result: 183 passed (183); 1600 passed (1600). Both Storybook palettes exercise all 131 modules / 642 stories, with the existing accessibility error gate enabled. Required web typechecking, lint, design checks, application build, full Storybook build and full-index Docs guard passed. Graphify AST refresh completed with exit 0; its 17 pre-existing Astro parser warnings remain navigational evidence limits, separate from the Babel source inventory and required web checks.
 
@@ -117,34 +117,27 @@ Local source review and targeted independent review findings were resolved. Curr
 
 ## Reproduce and inspect
 
-Installed Node is 26.7.0, matching .nvmrc. Client/web frozen installs were repaired without lockfile changes. From the repository root:
+Installed Node is 26.7.0, matching .nvmrc. Client/web frozen installs were repaired without lockfile changes. With `fnm` and Node 26.7.0 installed, from the repository root:
 
 ```sh
-export PATH=/Users/developwent/.local/share/fnm/node-versions/v26.7.0/installation/bin:$PATH
 cd web
-node --run typecheck
-node --run lint
-node --run design:check
-node --run test
-node --run build
-node --run build-storybook -- --output-dir .artifacts/storybook-improvement/after-theme-surface/storybook-static
-node --run check:storybook-docs -- .artifacts/storybook-improvement/after-theme-surface/storybook-static
-node --run test-storybook
-STORYBOOK_INTERACTION_PASS=full node --run test-storybook:light
-node --run test-storybook:light
-STORYBOOK_STATIC_DIR=.artifacts/storybook-improvement/after-theme-surface/storybook-static node --run test-storybook:theme
-node scripts/storybook/measure.mjs .artifacts/storybook-improvement/after-theme-surface/app-dist .artifacts/storybook-improvement/after-theme-surface/storybook-static
+fnm exec --using=26.7.0 node --run typecheck
+fnm exec --using=26.7.0 node --run lint
+fnm exec --using=26.7.0 node --run design:check
+fnm exec --using=26.7.0 node --run test
+fnm exec --using=26.7.0 node --run build
+fnm exec --using=26.7.0 node --run build-storybook -- --output-dir .artifacts/storybook-improvement/after-theme-surface/storybook-static
+fnm exec --using=26.7.0 node --run check:storybook-docs -- .artifacts/storybook-improvement/after-theme-surface/storybook-static
+fnm exec --using=26.7.0 node --run test-storybook
+STORYBOOK_INTERACTION_PASS=full fnm exec --using=26.7.0 node --run test-storybook:light
+fnm exec --using=26.7.0 node --run test-storybook:light
+STORYBOOK_STATIC_DIR=.artifacts/storybook-improvement/after-theme-surface/storybook-static fnm exec --using=26.7.0 node --run test-storybook:theme
+fnm exec --using=26.7.0 node scripts/storybook/measure.mjs ../internal/webui/dist .artifacts/storybook-improvement/after-theme-surface/storybook-static
 ```
 
-Run expensive suites sequentially. The final review server serves an immutable directory, so rebuilding another output cannot change its assets mid-check. To start a second review server on a free port, from web/:
+Run expensive suites sequentially. The original review server served an immutable build using a local, untracked `serve.mjs` helper. That helper and the original build/log directories are not included in this checkout, so this report does not provide a runnable server command. The observed server bound to 0.0.0.0:6021, returned 200 for /storybook/, redirected /storybook with 308, and reported 642 stories and 131 Docs; these are historical observations, not a currently running preview. The tracked build and check commands above create fresh outputs. The historical artifact inventory below describes the original run only.
 
-```sh
-node .artifacts/storybook-improvement/serve.mjs .artifacts/storybook-improvement/after-theme-surface/storybook-static 6021
-```
-
-Expected: serving on 0.0.0.0:6021, LAN /storybook/ responds 200, /storybook redirects 308, /storybook/index.json has 642 stories and 131 Docs. Use the current LAN IP if it changes. Stop only the process you started when the review window ends.
-
-| Artifact owner | Path under web/.artifacts/storybook-improvement/ |
+| Artifact owner | Original run grouping (not included in this checkout) |
 | --- | --- |
 | Immutable baseline | before/storybook-static/; before/app-dist/; before/*logs; before/measurements-final.json |
 | Final immutable build/checks/metrics | after-theme-surface/storybook-static/; after-theme-surface/app-dist/; after-theme-surface/checks.json; after-theme-surface/measurements.json; all eleven logs |
@@ -164,33 +157,33 @@ This evidence predates commit and PR delivery. Artifact builds/logs/screenshots 
 
 These matching captures preserve the original before and the after-complete3 catalogue-cleanup comparison. They are not relabeled as new theme-policy captures. Current follow-up Menu and real-route journey screenshots appear alongside them below; the new gate also verifies actual palette surface paint.
 
-![Before: button canvas, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/before-canvas-button-390.png)
+[Before: button canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![After catalogue cleanup: button canvas, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/after-catalogue-cleanup-canvas-button-390.png)
+[After catalogue cleanup: button canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Before: button docs, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/before-docs-button-390.png)
+[Before: button docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![After catalogue cleanup: button docs, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/after-catalogue-cleanup-docs-button-390.png)
+[After catalogue cleanup: button docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Before: projects canvas, 1280px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/before-canvas-projects-1280.png)
+[Before: projects canvas, 1280px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![After catalogue cleanup: projects canvas, 1280px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/after-catalogue-cleanup-canvas-projects-1280.png)
+[After catalogue cleanup: projects canvas, 1280px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Before: dialog canvas, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/before-canvas-dialog-390.png)
+[Before: dialog canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![After catalogue cleanup: dialog canvas, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/after-catalogue-cleanup-canvas-dialog-390.png)
+[After catalogue cleanup: dialog canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Before: dialog docs, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/before-docs-dialog-390.png)
+[Before: dialog docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![After catalogue cleanup: dialog docs, 390px](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/after-catalogue-cleanup-docs-dialog-390.png)
+[After catalogue cleanup: dialog docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
 
 ## Current theme follow-up screenshots
 
-![Current Menu Docs keyboard exploration, desktop](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/theme-current-menuDesktop.png)
+[Current Menu Docs keyboard exploration, desktop (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Current Menu Docs keyboard exploration, phone Light](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/theme-current-menuPhone.png)
+[Current Menu Docs keyboard exploration, phone Light (embedded capture)](storybook-improvement.html#matched-screenshots)
 
-![Current full manual Light real-route journey, phone](/Users/developwent/.t3/worktrees/wenv/t3-d7021d3b/web/.artifacts/storybook-improvement/screenshots/theme-current-overviewPhone.png)
+[Current full manual Light real-route journey, phone (embedded capture)](storybook-improvement.html#matched-screenshots)
 
 ## Full theme interaction disposition
 
@@ -2820,7 +2813,7 @@ Shared/WorkspaceSettingsLink
 
 # Storybook source inventory and usefulness audit
 
-Baseline source: 44f77a2eb8610b83b6405229f7c0759ec5f995cb. Baseline generated index: web/.artifacts/storybook-improvement/before/storybook-static/index.json. Generated Docs are matched by source import path, not title. The baseline build is preserved separately from browser-server files.
+Baseline source: 44f77a2eb8610b83b6405229f7c0759ec5f995cb. The baseline generated Storybook index was a local artifact, not included in this checkout. Generated Docs are matched by source import path, not title. The baseline build is preserved separately from browser-server files.
 
 The Babel AST inventory enumerates every top-level JSX-rendering function/wrapper in application TypeScript sources, including private composites. Prop variants remain stories of one component. Native semantic elements are not invented component families. Direct coverage means a CSF primary component or explicitly rendered JSX; composition means a source render relationship and does not establish that every conditional branch executes. Source line numbers refer to the baseline revision.
 
@@ -3521,7 +3514,7 @@ The 25 proposed static assertion opt-ins were rejected after source review: toBe
 - PR 720 usefulness cleanup consolidated compatible variants, moved behavior-only cases into equivalent tests, preserved meaningful final states, and retained 136 Docs modules. The recorded 1,021 to 876 cleanup was followed by a real-route journey bringing that historical catalogue to 877. The journey used named steps and Docs autoplay false.
 - The inspected Rewrite Storybook configurations did not configure custom storySort. Any explicit order in Hikyo is a new local policy and requires its own evidence.
 
-Evidence files: /Users/developwent/.t3/worktrees/rewrite/t3code-7743d2bf/docs/handoffs/pr-685.md, pr-687.md, pr-720.md and storybook-usefulness-cleanup.md; related ADR 0099. These files are historical evidence. No remote write or infrastructure action is authorized.
+Evidence files: the separate DBugIT Rewrite repository's historical `docs/handoffs/pr-685.md`, `pr-687.md`, `pr-720.md` and `storybook-usefulness-cleanup.md` (not included in this checkout); related ADR 0099. These files are historical evidence. No remote write or infrastructure action is authorized.
 
 ## Baseline gaps and bounded disposition
 
@@ -4727,15 +4720,6 @@ Exact extracted descriptions, property descriptions, union/type/default data and
 
 ## Artifact entry points and reproducibility
 
-Run from the repository root:
-
-```sh
-node web/.artifacts/storybook-improvement/inventory/generate.cjs before web/.artifacts/storybook-improvement/before/storybook-static/index.json
-node web/.artifacts/storybook-improvement/inventory/docgen.cjs before
-node web/.artifacts/storybook-improvement/inventory/generate.cjs after web/.artifacts/storybook-improvement/after-theme-surface/storybook-static/index.json
-node web/.artifacts/storybook-improvement/inventory/docgen.cjs after
-node web/.artifacts/storybook-improvement/inventory/write-durable.cjs
-node web/.artifacts/storybook-improvement/inventory/write-report.cjs
-```
+The original inventory was generated with local, untracked `generate.cjs`, `docgen.cjs`, `write-durable.cjs` and `write-report.cjs` helpers. These helpers and their intermediate outputs are not included in this checkout; their original commands are not a reproducible workflow from the tracked repository. The committed inventory JSON and this offline report preserve the extracted results.
 
 Outputs: before.json / after.json contain component, route, story and Docs mappings; before-sidebar.txt / after-sidebar.txt contain complete trees and IDs; before-docgen.json / after-docgen.json contain type/default/control extraction; proposed-source-coverage.json records baseline owner coverage and exclusions. Final logs, screenshot comparisons, catalogue delta and measured costs belong to the parent handoff.

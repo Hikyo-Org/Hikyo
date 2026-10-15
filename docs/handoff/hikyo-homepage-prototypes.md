@@ -1,5 +1,7 @@
 # Hikyo homepage prototypes handoff
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 Completed 2026-09-11 from base `5cb857b4`, committed 2026-09-12 on branch
 `t3code/create-hikyo-marketing-prototypes`. Linked from the static
 `hikyo.app/prototypes/` index; the Astro routes stay under `/prototype/hikyo/`
@@ -68,7 +70,7 @@ a small bundled script, so it does not cover the matrix).
 - `pnpm run verify` (Node 26.7.0), re-run after round three: astro check 0
   errors, build, CSP gate (59 governed pages), OSS policy gate, PostHog test,
   PWA offline test all passed; `dist/sw.js` has zero `prototype/hikyo` entries.
-- Playwright (`/tmp/hikyo-audit.mjs`, not in repo) at 375 and 1280 for every
+- Playwright (`hikyo-audit.mjs`, not in repo) at 375 and 1280 for every
   page: zero console errors, `scrollWidth - clientWidth = 0` on all twenty-two
   page/width pairs.
 - CI builds with PostHog enabled (`POSTHOG_REQUIRED=true` plus host and token

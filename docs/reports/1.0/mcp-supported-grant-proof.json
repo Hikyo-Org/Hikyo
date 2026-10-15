@@ -217,7 +217,7 @@
     "repository_tracked_changes": "fixture/tests, MCP docs and additive historical qualifications only; production code unchanged",
     "git_diff_check": "passed"
   },
-  "protected_replay_directory": "/tmp/hikyo-mcp-651-runtime/rehearsal-987e0a4f-valid-grants",
+  "protected_replay_artifact": "private local runtime directory, not included in this checkout",
   "secrets_or_tenant_bodies_in_report": false,
   "external_provider_or_public_tunnel_calls": 0,
   "fixture_patch_hash_scope": {

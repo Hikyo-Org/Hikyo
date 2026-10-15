@@ -1,5 +1,7 @@
 # Pre-1.0 docs dependency security handoff
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 Base: `f4175a5d`. Branch: `fix/one-zero-dependency-security`. No commit or push; parent owns review, signed delivery and merge on green.
 
 ## Change
@@ -15,8 +17,8 @@ The package manager generated the update with `pnpm update fast-uri --depth 100 
 - Pinned Node 26.7.0, pnpm 11.24.0.
 - Frozen install passes and peer check reports no issues.
 - `pnpm why fast-uri` finds exactly one version, 3.1.7; routes are Workbox build and Astro checker development dependencies through Ajv.
-- `pnpm audit --json` reports zero vulnerabilities across 955 total dependencies at all severities. JSON: `/tmp/hikyo-dependency-audit.json`.
-- Canonical `scripts/ci/verify-docs.sh` passed with `POSTHOG_REQUIRED=true` and repository public analytics variables; 39-page static build, 98-file precache, required analytics, browser offline navigation and all policy/fallback fixtures passed; details in the [HTML report](../reports/1.0/dependency-security.html). Log: `/tmp/hikyo-dependency-docs.log`.
+- `pnpm audit --json` reports zero vulnerabilities across 955 total dependencies at all severities. JSON: `hikyo-dependency-audit.json`.
+- Canonical `scripts/ci/verify-docs.sh` passed with `POSTHOG_REQUIRED=true` and repository public analytics variables; 39-page static build, 98-file precache, required analytics, browser offline navigation and all policy/fallback fixtures passed; details in the [HTML report](../reports/1.0/dependency-security.html). Log: `hikyo-dependency-docs.log`.
 
 This fixes a known vulnerable build dependency. The dependency graph is not proof of an exploitable Go-server request path. GitHub alert closure remains a post-merge check.
 

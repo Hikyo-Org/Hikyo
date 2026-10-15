@@ -1,5 +1,7 @@
 # #79 release-floor recovery lane
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 Worktree `one-zero-floor-hardware`, base `f4175a5dbffc63a5d1e34bf450a7a52956a54668`; uncommitted Codex-authored scope. Parent owns review, signed DCO commit, PR, exact-head CI and merge. No production infrastructure changed.
 
 ## Decision and result
@@ -12,7 +14,7 @@ Files: `.github/workflows/floor-acceptance.yml`, `scripts/ci/floor-acceptance.sh
 
 ## Validation
 
-Native Linux arm64 Docker cgroup v2 run passed: `/tmp/hikyo-floor-evidence-local2`, log `/tmp/hikyo-floor-local2.log`. Effective quota `400000 100000`, RAM `4294967296`, swap `0`, peak RAM `237510656` bytes, no OOM, total runtime 1696 ms. The CLI drill reported success/readable values/minted-revoked credential/RTO met at schema 43. Container exit zero. Image `sha256:1bbec755de07b4267a58eaa0f87d2343330aa7e026e9e40726c5f92a5d3a36c2`. Source-dirty marker true is deliberate: this is local harness validation on an Apple-hosted Linux ARM VM, not physical Pi evidence or final candidate acceptance.
+Native Linux arm64 Docker cgroup v2 run passed: `hikyo-floor-evidence-local2`, log `hikyo-floor-local2.log`. Effective quota `400000 100000`, RAM `4294967296`, swap `0`, peak RAM `237510656` bytes, no OOM, total runtime 1696 ms. The CLI drill reported success/readable values/minted-revoked credential/RTO met at schema 43. Container exit zero. Image `sha256:1bbec755de07b4267a58eaa0f87d2343330aa7e026e9e40726c5f92a5d3a36c2`. Source-dirty marker true is deliberate: this is local harness validation on an Apple-hosted Linux ARM VM, not physical Pi evidence or final candidate acceptance.
 
 Negative checks: each missing custody input refuses before creating evidence; executing the same image with a 1-CPU quota fails the effective-limit assertion before credential reads. Shellcheck, actionlint and `git diff --check` passed. Initial runtime caught root-owned binary permissions inherited from umask077; the image build now sets its two non-secret executables0555, while custody remains0600. Retest passed.
 

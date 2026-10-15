@@ -1,6 +1,8 @@
 # #79 release acceptance inventory handoff
 
-Worktree `/tmp/hikyo-release-acceptance`, branch `codex/1.0-release-acceptance`, base `944d23e5ffb3e7cae3accb8d9175c96d8681458c`. Parent owns final review, signed DCO commit, PR, exact-candidate CI, merge and release. No tag or release keys created.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Branch `codex/1.0-release-acceptance`, base `944d23e5ffb3e7cae3accb8d9175c96d8681458c`. Parent owns final review, signed DCO commit, PR, exact-candidate CI, merge and release. No tag or release keys created.
 
 ## Delivered
 
@@ -21,6 +23,6 @@ API revision baseline is 2, not 1: definitions export/check/plan/getPlan/apply/g
 
 ## Checks
 
-Targeted ledger/freeze/operation-contract tests passed; CLI frozen-help and remote-add minimum-refusal tests passed. Removing the C1 ledger row and substituting a nonexistent Go test name each failed closure as intended; files restored afterward. Full API package passed in 1.243 seconds; whitespace checks passed. Logs `/tmp/hikyo-79-ledger-check.log`, `/tmp/hikyo-79-spellings-check.log`, `/tmp/hikyo-79-missing-criterion.log`, `/tmp/hikyo-79-deleted-test.log`, `/tmp/hikyo-79-api-final.log`.
+Targeted ledger/freeze/operation-contract tests passed; CLI frozen-help and remote-add minimum-refusal tests passed. Removing the C1 ledger row and substituting a nonexistent Go test name each failed closure as intended; files restored afterward. Full API package passed in 1.243 seconds; whitespace checks passed. Logs `hikyo-79-ledger-check.log`, `hikyo-79-spellings-check.log`, `hikyo-79-missing-criterion.log`, `hikyo-79-deleted-test.log`, `hikyo-79-api-final.log`.
 
 The ledger must be filled from the final reviewed candidate, never from these inventory-only checks. Inspect both engine legs, browser viewport coverage, external-suite skips, floor/operator artifacts, published docs/fallback and signing ceremony before any 1.0 claim.

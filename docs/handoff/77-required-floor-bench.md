@@ -1,6 +1,8 @@
 # #77 required floor measurement gate
 
-Implementation worktree: `/tmp/hikyo-floor-bench`, branch
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Implementation branch
 `feat/required-floor-bench`, stacked base `aca25f2b692332821aa94e93f71f25ae2569de9a`
 (PR #671, `fix/operator-memory-floor`).
 No worker commits or pushes. Parent owns review, signed delivery and green merge.
@@ -84,6 +86,6 @@ Exact source 3ab42de4d3dcfd71e1868b9e3e4bfc31967710d4, native run33965289417 fai
 
 Profiled production correction: SQLiteTransaction owns exactly two lazy prepared statements, matched against exact generated SQLC constants by sqlitegen.SnapshotInsertSlot. Surrounding whitespace is trimmed only for these statements, to enable the driver's single-statement reuse. Per-row proof verification, all tenant bind parameters, transaction fencing, and commit/rollback ownership remain unchanged. No service timing, data volume, CPU factor or bound changes. No tenant result cache or cross-transaction native handles. PostgreSQL unchanged.
 
-Local native paired diagnostic: 6152.373ms ->4985.196ms (100000 values independently read back both times), sampled CPU5.63s ->4.20s. Profile showed InsertEntry32.86% + InsertChange28.95%, parser24.87%. Profiles and exact instrumentation/production patch retained at /Users/developwent/.codex/artifacts/hikyo-1.0-20260905/floor-publish-profile. Temporary profiler code removed. Local data is diagnostic, not hosted or physical Pi release evidence.
+Local native paired diagnostic: 6152.373ms ->4985.196ms (100000 values independently read back both times), sampled CPU5.63s ->4.20s. Profile showed InsertEntry32.86% + InsertChange28.95%, parser24.87%. Profiles and exact instrumentation/production patch were local diagnostic artifacts, not included in this checkout; their hashes remain in the committed profile comparison JSON. Temporary profiler code removed. Local data is diagnostic, not hosted or physical Pi release evidence.
 
 Focused regression: real SQLite/PostgreSQL proof refusals after statement reuse, complete scope rebinding, populated rollback and expired-proof refusal; transaction-owned statement constraint/cancellation/commit/rollback checks. Both-engine race passed six cases, zero skips. Parent R1 strengthened closure assertions to reject only settled-resource errors with original arity. Proof/fence/SQL lint, cache invariant, floor verifier and diff check passed. Isolation shard0's separate declaration-name false positive fixed by renaming the cgroup file-charge test, with test body and cache invariant untouched.

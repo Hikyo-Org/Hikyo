@@ -25,7 +25,7 @@ writes cannot leak between copies.
 The same three token tests took 47.67 seconds before and 18.98 seconds after locally,
 including the first template build. Later copies took 0.83 and 1.54 seconds. These
 are local measurements under race instrumentation, not a promised CI duration.
-The profile artifacts and audit entry point are `.xreview/merge-queue-ci-audit.md`.
+The original profiles and `merge-queue-ci-audit.md` audit entry were local review artifacts, not included in this checkout.
 Claude review is skipped at the owner's request because the subscription ended;
 this delta does not inherit a CLEAN verdict from earlier revisions. PR #843 merged during validation; this follow-up is based on its landed tree.
 No automatic merge is authorized for the follow-up.

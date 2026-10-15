@@ -97,7 +97,7 @@ dump, so it cannot produce or extend a `.pen`.
 - **Never leave an `openpencil-mcp-http` running after a test.** Kill dev
   servers by PID only, never by port sweep or name match.
 - **The middleware cannot open a repo under a dot-directory.** The app's Tauri fs
-  scope uses `**`, which skips dot-directories, so a checkout under a hidden
-  path (T3 worktrees live under `~/.t3/`) cannot be opened by the middleware
-  until the user has opened that file once through the app's own dialog in the
-  same session. Normal checkouts under `~/code` are unaffected.
+  scope uses `**`, which skips dot-directories. When a checkout has a hidden
+  ancestor directory, open the file once through the app's own dialog in the
+  same session before using the middleware. Checkouts without hidden ancestor
+  directories are unaffected.
