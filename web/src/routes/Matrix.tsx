@@ -158,7 +158,7 @@ export function Matrix({
     isDemo || gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
 
   const environmentRows = matrix.environmentRows;
-  const environments = environmentRows.map((row) => row.environment);
+  const environments = useMemo(() => environmentRows.map((row) => row.environment), [environmentRows]);
   // Per-environment degradation (#451): a column whose reads failed or were
   // denied. The catalogue loaded, so the grid renders; these columns show a
   // header banner and non-interactive cells instead of blanking the whole grid.

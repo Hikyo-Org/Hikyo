@@ -1,3 +1,4 @@
+import type { Response } from 'undici';
 import { chromium, expect, type CDPSession, type Page } from '@playwright/test';
 import { z } from 'zod';
 

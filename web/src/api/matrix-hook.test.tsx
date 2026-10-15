@@ -4,6 +4,7 @@ import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { ValueList } from '@hikyo/client';
 import { useDeleteKey, useInitializeMatrixValue, useKey, useMatrixProject, useStageMatrixValue } from './matrix.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { pendingDraftsKey, signalsKey, valuesKey } from './keys.ts';
@@ -78,6 +79,82 @@ describe('matrix first-value draft routing', () => {
 });
 
 describe('useMatrixProject query ownership', () => {
+  it('keeps unchanged rows stable while propagating payload, denial, stale and recovery changes', async () => {
+    const valuePath = `/api/v1/orgs/${ref.org}/projects/${ref.project}/environments/${devId}/values`;
+    let responseStatus = 200;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const path = new URL(url, 'http://localhost').pathname;
+      const status = path === valuePath ? responseStatus : 200;
+      return Promise.resolve(new Response(JSON.stringify(status === 200 ? matrixResponse(path) : { error: 'refused' }), {
+        status, headers: { 'Content-Type': 'application/json' },
+      }));
+    }));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const snapshots: ReturnType<typeof useMatrixProject>['environmentRows'][] = [];
+    function Snapshot({ iteration }: { iteration: number }) {
+      const matrix = useMatrixProject(ref);
+      useEffect(() => { snapshots.push(matrix.environmentRows); }, [matrix.environmentRows, iteration]);
+      return <span>{iteration}</span>;
+    }
+    const latest = () => {
+      const rows = snapshots.at(-1);
+      if (rows === undefined) throw new Error('Matrix did not render');
+      return rows;
+    };
+    const render = async (iteration: number) => {
+      await act(async () => root.render(<QueryClientProvider client={client}><Snapshot iteration={iteration} /></QueryClientProvider>));
+      await settleTasks();
+    };
+    const refetch = async () => {
+      await act(async () => client.refetchQueries({ queryKey: valuesKey({ ...ref, environment: devId }), exact: true }));
+      await settleTasks();
+    };
+    try {
+      await render(0);
+      const ready = latest();
+      expect(ready.map((row) => row.readiness)).toEqual(['ready', 'ready']);
+      await render(1);
+      expect(latest()).toBe(ready);
+
+      await act(async () => {
+        client.setQueryData<ValueList>(valuesKey({ ...ref, environment: devId }), (current) => current === undefined ? undefined : {
+          ...current, items: current.items.map((item) => ({ ...item, value: 'changed' })),
+        });
+      });
+      await settleTasks();
+      const changed = latest();
+      expect(changed).not.toBe(ready);
+      expect(changed[0]?.values.data?.items[0]?.value).toBe('changed');
+      await render(2);
+      expect(latest()).toBe(changed);
+
+      // The cached payload still exists on a failed refetch. A 403 must blank
+      // it immediately; another failure retains it only as explicitly stale.
+      responseStatus = 403;
+      await refetch();
+      expect(client.getQueryData(valuesKey({ ...ref, environment: devId }))).toBeDefined();
+      expect(latest()[0]?.readiness).toBe('forbidden');
+      expect(latest()[0]?.values.data).toBeUndefined();
+      responseStatus = 500;
+      await refetch();
+      expect(latest()[0]?.readiness).toBe('stale');
+      expect(latest()[0]?.values.data?.items[0]?.value).toBe('changed');
+      responseStatus = 200;
+      await refetch();
+      expect(latest()[0]?.readiness).toBe('ready');
+      expect(latest()[0]?.values.data?.items[0]?.value).toBe('debug');
+    } finally {
+      await act(async () => root.unmount());
+      client.clear();
+    }
+  });
+
   it('renders keyed reorder/removal with one observer per unchanged query', async () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : String(input);
