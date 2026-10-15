@@ -15,7 +15,9 @@ discarding the compatibility work again.
   during login; real unsolicited outputs remain refused.
 - WebAuthn now refuses IP-address RP IDs. Infer localhost only for the ordinary
   loopback/wildcard listeners, derive managed defaults from the effective node,
-  and reject explicit server IP origins with migration guidance. Offline
+  and reject explicit server IP origins with migration guidance. Legacy snapshots
+  storing the exact old derived default are normalized before contextual server
+  validation, without making the default explicit. Offline
   administration remains available. Hostname configuration, browser fixtures,
   Compose and Kubernetes callers retain separate transport and public origins.
 - MCP SDK 1.8.0 conflicted with the exact 1.7.0 test pin. Review the 1.8.0
@@ -29,7 +31,9 @@ discarding the compatibility work again.
   successful 200 and revoked 401 checks.
 - Chart and unattended Kubernetes fixtures still configured an IP public origin.
   The same signed image refuses that origin; changing it to localhost reaches
-  a ready server. Update hostname, TLS SAN and callers together. Preserve
+  a ready server. Update hostname, TLS SAN, chartdoctor admission and callers
+  together. Real TLS transport tests verify accepted localhost and refused
+  wrong pins and unowned origins. Preserve
   failed-deployment diagnostics without reading bootstrap credential Job logs.
 
 ## CI boundaries
@@ -39,8 +43,9 @@ intact. Dependency changes still verify module integrity, and changed Go owners
 still compile even when go.mod also changes.
 
 The new read-only `dependency-compatibility` workflow gives automatic advisory
-evidence for PR go.mod/go.sum changes. It compiles every production and test
-archive and runs vet without executing init or tests. Its separate 20-minute
+evidence for PR go.mod/go.sum changes. It compiles production and test archives selected by the Linux host target
+and default build tags, and runs vet without executing init or tests. Other
+platforms and release build tags remain separate protected validation jobs. Its separate 20-minute
 budget matches the existing full app-build budget. It has immutable checkouts,
 no persisted checkout credentials, no secrets and no cache publication. Real
 dependency API-removal regressions cover unchanged production, internal-test
@@ -49,8 +54,9 @@ and external-test consumers, along with vet failures and no-execution behavior.
 This split is deliberate: #914's attempt to place the complete export graph in
 the rapid lane exceeded its hosted deadline. The measured local export graph
 contains roughly 3.05 GiB of archives, exceeding the 1.5 GiB feedback seed bound.
-The replacement helper passes on a warm local cache, but that does not establish
-cold hosted timing or a faster merge guarantee.
+The first hosted compatibility run at dce9ffdc passed in 3m58s, including
+3m39s for compilation and vet with setup-go caching disabled. This measured
+run does not establish a universal cold timing or a faster merge guarantee.
 
 The new trusted-main `queue-report` workflow publishes advisory
 `merge-queue-validation` status on the source PR head. It attributes runs through
@@ -63,7 +69,7 @@ merges. Protected admission and exact-current-base full merge proof are unchange
 ## Operator compatibility
 
 Before upgrading an installation whose public origin is an IP address, configure
-a hostname using the existing binary and verify DNS/TLS. Managed origins must
+a hostname using the existing binary and verify DNS/TLS. Explicit managed IP origins must
 also change; environment overrides do not replace adopted managed values.
 Changing RP hostname affects existing passkeys. The configuration documentation
 describes the compatibility boundary and recovery with the previous binary.
@@ -76,10 +82,11 @@ There is no datastore schema migration in this change.
   passed. WebAuthn integration passed on SQLite and the CI-pinned PostgreSQL 18
   image in an isolated database.
 - Full MCP server tests and production client checks passed.
-- Web typecheck, lint, 198 unit-test files / 1,690 tests, and production build
+- Web typecheck, lint, 198 unit-test files / 1,691 tests, and production build
   passed. All 17 desktop and 17 mobile workspace flows passed with explicit
-  anonymous request state. Final transport-regression and focused desktop/mobile
-  checks cover the subsequent Linux portability correction separately.
+  anonymous request state. Final transport regressions and focused desktop/mobile
+  credential flows also passed with Node 26.7 explicitly pinned and without
+  injected Node hooks.
 - Full CI tooling/controller tests, feedback fixtures, reporter race checks,
   dependency-consumer regressions, pinned actionlint and ShellCheck passed.
 - Documentation verification passed, including build, policy, CSP and offline
@@ -92,6 +99,11 @@ There is no datastore schema migration in this change.
   stage. Direct same-image origin refusal/ready evidence is established, while
   complete kind and hosted exact-head results remain separate gates.
 
-Independent review, final mobile/kind results, hosted compatibility timing and
-full merge-group proof must be recorded before declaring this change delivered.
+Independent review was CLEAN at dce9ffdc, with hosted Go/frontend feedback,
+CodeQL and compatibility checks passing. Subsequent review identified chartdoctor
+hostname validation and literal legacy managed-origin migration gaps; their
+repairs passed independent incremental review, config/runtime tests and races,
+owner activation tests, real chartdoctor TLS transport tests and compatibility
+scope regressions. New exact-head hosted CI remains required. Full kind and merge-group proof remain
+required before declaring this change delivered.
 Merge authorization does not authorize release or production deployment.

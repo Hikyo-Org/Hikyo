@@ -367,6 +367,19 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 }
 
 func load(subcommand string, args []string, getenv func(string) string, environ []string, deferOwner bool) (*Config, []string, error) {
+	return loadWithOptions(subcommand, args, getenv, environ, loadOptions{deferOwner: deferOwner})
+}
+
+type loadOptions struct {
+	deferOwner bool
+	// Parser-only managed policy validation has no node context to recognize a
+	// legacy derived IP origin. Actual startup and node application still
+	// require a hostname after contextual legacy normalization.
+	allowIPOrigin bool
+}
+
+func loadWithOptions(subcommand string, args []string, getenv func(string) string, environ []string, options loadOptions) (*Config, []string, error) {
+	deferOwner := options.deferOwner
 	fs := flag.NewFlagSet(subcommand, flag.ContinueOnError)
 	dev := fs.Bool("dev", false, "development mode: zero-config sqlite, text logs")
 	listen, operationalListen, cliSocket, tlsCertFile, tlsKeyFile, autoMigrate, rootKeyFile := new(string), new(string), new(string), new(string), new(string), new(bool), new(string)
@@ -639,7 +652,7 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.ExternalOrigin != origin.Scheme+"://"+origin.Host {
 		return nil, nil, fmt.Errorf("HIKYO_EXTERNAL_ORIGIN must be an exact canonical HTTP(S) origin without credentials, path, query, or fragment")
 	}
-	if subcommand == "server" {
+	if subcommand == "server" && !options.allowIPOrigin {
 		host := strings.TrimRight(origin.Hostname(), ".")
 		_, browserIP := browserIPv4(strings.ToLower(host))
 		if net.ParseIP(host) != nil || browserIP || strings.Contains(host, ":") {

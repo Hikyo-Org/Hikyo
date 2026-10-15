@@ -135,6 +135,21 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	if base.TLSCertPEM != "" && base.TLSKeyPEM != "" {
 		inputs["HIKYO_TLS_CERT_FILE"], inputs["HIKYO_TLS_KEY_FILE"] = "managed-content", "managed-content"
 	}
+	if validateNode && !base.ExternalOriginExplicit {
+		legacyScheme := "http://"
+		if inputs["HIKYO_TLS_CERT_FILE"] != "" {
+			legacyScheme = "https://"
+		}
+		origin := inputs["HIKYO_EXTERNAL_ORIGIN"]
+		if origin != "" && (origin == base.ExternalOrigin || origin == legacyScheme+base.Listen) {
+			// Before #606, snapshots persisted the listen-derived origin. Match
+			// both the original scheme+listen spelling and the current default
+			// before hostname validation, then derive from this candidate node.
+			// Equality alone is not an operator statement: an operator who means
+			// this exact origin must also state it in bootstrap configuration.
+			delete(inputs, "HIKYO_EXTERNAL_ORIGIN")
+		}
+	}
 	inputs["HIKYO_BACKUP_DIR"] = base.BackupDir
 	if base.AdmissionBudgetMiB != 0 {
 		inputs["HIKYO_ADMISSION_BUDGET_MIB"] = strconv.Itoa(base.AdmissionBudgetMiB)
@@ -154,7 +169,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 			inputs["HIKYO_REAUTH_WINDOW_SECONDS"] = "0"
 		}
 	}
-	parsed, _, err := Load("server", args, func(key string) string { return inputs[key] }, nil)
+	parsed, _, err := loadWithOptions("server", args, func(key string) string { return inputs[key] }, nil, loadOptions{allowIPOrigin: !validateNode})
 	if err != nil {
 		return nil, managedOwnerRefusal(err, keys)
 	}
@@ -171,14 +186,6 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	// inferred origin follows them instead of retaining a bootstrap default.
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
 	result.ExternalOriginExplicit = parsed.ExternalOriginExplicit
-	if parsed.ExternalOriginExplicit && !base.ExternalOriginExplicit && parsed.ExternalOrigin == base.ExternalOrigin {
-		// Managed snapshots saved before #606 persisted this node's
-		// listen-derived origin as a value. A managed origin equal to the
-		// derivation is therefore not evidence of an operator statement, and
-		// must not satisfy `no-public-origin`; an operator who means that
-		// exact origin states it in HIKYO_EXTERNAL_ORIGIN on the process.
-		result.ExternalOriginExplicit = false
-	}
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.SecondFactor = parsed.SecondFactor

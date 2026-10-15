@@ -161,7 +161,7 @@ func TestManagedLegacyDerivedOriginIsNotExplicit(t *testing.T) {
 		t.Fatal("a listen-derived origin loaded as explicit")
 	}
 	legacy := base.ManagedOwnerValues()
-	legacy["HIKYO_EXTERNAL_ORIGIN"] = base.ExternalOrigin
+	legacy["HIKYO_EXTERNAL_ORIGIN"] = "http://127.0.0.1:8080"
 	result, err := ApplyManagedOwnerValues(base, legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -177,5 +177,103 @@ func TestManagedLegacyDerivedOriginIsNotExplicit(t *testing.T) {
 	}
 	if !result.ExternalOriginExplicit || result.ExternalOrigin != "https://hikyo.example.com" {
 		t.Fatalf("stated managed origin = %q explicit=%t, want explicit", result.ExternalOrigin, result.ExternalOriginExplicit)
+	}
+}
+
+func TestManagedLegacyOriginMatchesOriginalNodeDerivation(t *testing.T) {
+	for _, tc := range []struct {
+		name, listen, legacy, want string
+		tls                        bool
+	}{
+		{"loopback", "127.0.0.1:8080", "http://127.0.0.1:8080", "http://localhost:8080", false},
+		{"wildcard", "0.0.0.0:9443", "http://0.0.0.0:9443", "http://localhost:9443", false},
+		{"IPv6", "[::1]:8080", "http://[::1]:8080", "http://localhost:8080", false},
+		{"native TLS", "127.0.0.1:9443", "https://127.0.0.1:9443", "https://localhost:9443", true},
+		{"hostname", "hikyo.localhost:8080", "http://hikyo.localhost:8080", "http://hikyo.localhost:8080", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pairs := []string{"HIKYO_TRUSTED_PROXY_CIDRS", "192.0.2.0/24"}
+			if tc.tls {
+				pairs = append(pairs, "HIKYO_TLS_CERT_FILE", "unreadable.crt", "HIKYO_TLS_KEY_FILE", "unreadable.key")
+			}
+			base, _, err := Load("server", []string{"--dev", "--listen", tc.listen}, env(pairs...), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Managed nodes retain certificate content instead of startup paths.
+			if tc.tls {
+				base.TLSCertFile, base.TLSKeyFile = "", ""
+				delete(base.ManagedNodeInputs, "HIKYO_TLS_CERT_FILE")
+				delete(base.ManagedNodeInputs, "HIKYO_TLS_KEY_FILE")
+				base.TLSCertPEM, base.TLSKeyPEM = managedNodeTestTLS(t)
+			}
+			values := base.ManagedOwnerValues()
+			values["HIKYO_EXTERNAL_ORIGIN"] = tc.legacy
+			before := maps.Clone(values)
+			result, err := ApplyManagedOwnerValues(base, values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.ExternalOrigin != tc.want || result.ExternalOriginExplicit {
+				t.Fatalf("origin=%q explicit=%t, want derived %q", result.ExternalOrigin, result.ExternalOriginExplicit, tc.want)
+			}
+			if _, present := result.ManagedOwnerValues()["HIKYO_EXTERNAL_ORIGIN"]; present {
+				t.Fatal("legacy derivation was exported as an operator statement")
+			}
+			if !maps.Equal(values, before) {
+				t.Fatal("legacy normalization mutated the stored snapshot")
+			}
+			// Once imported, an origin remains a derivation when a subsequent
+			// managed node activation changes both the listener and TLS scheme.
+			node, err := result.SeedNodeValues()
+			if err != nil {
+				t.Fatal(err)
+			}
+			node["HIKYO_LISTEN"] = "[::]:9444"
+			delete(node, "HIKYO_TLS_CERT_PEM")
+			delete(node, "HIKYO_TLS_KEY_PEM")
+			result, err = ApplyManagedNodeValues(result, node)
+			if err != nil || result.ExternalOrigin != "http://localhost:9444" || result.ExternalOriginExplicit {
+				t.Fatalf("updated node result=%+v error=%v", result, err)
+			}
+		})
+	}
+}
+
+func TestManagedLegacyMigrationPreservesExplicitOriginBoundary(t *testing.T) {
+	for _, origin := range []string{"http://127.0.0.1:8081", "https://127.0.0.1:8080", "http://192.0.2.1:8080"} {
+		t.Run(origin, func(t *testing.T) {
+			base, _, err := Load("server", []string{"--dev"}, env(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values := map[string]string{"HIKYO_EXTERNAL_ORIGIN": origin}
+			if err := ValidateManagedOwnerValues(values); err != nil {
+				t.Fatalf("node-independent validation must defer legacy attribution: %v", err)
+			}
+			if _, err := ApplyManagedOwnerValues(base, values); err == nil || !strings.Contains(err.Error(), "hostname") {
+				t.Fatalf("a nonmatching IP origin must remain explicit and refuse, got %v", err)
+			}
+		})
+	}
+	for _, origin := range []string{"http://localhost:8080", "https://public.example.com:9443"} {
+		t.Run(origin, func(t *testing.T) {
+			base, _, err := Load("server", []string{"--dev"}, env("HIKYO_EXTERNAL_ORIGIN", origin), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := ApplyManagedOwnerValues(base, base.ManagedOwnerValues())
+			if err != nil || result.ExternalOrigin != origin || !result.ExternalOriginExplicit {
+				t.Fatalf("explicit origin changed: result=%+v error=%v", result, err)
+			}
+			if _, err := ApplyManagedOwnerValues(base, map[string]string{"HIKYO_EXTERNAL_ORIGIN": "http://127.0.0.1:8080"}); err == nil {
+				t.Fatal("explicit bootstrap origin must not classify a managed IP origin as derived")
+			}
+		})
+	}
+	for _, origin := range []string{"http://127.0.0.1:8080/", "http://127.0.0.1:8080?", "http://user:pass@127.0.0.1:8080"} {
+		if err := ValidateManagedOwnerValues(map[string]string{"HIKYO_EXTERNAL_ORIGIN": origin}); err == nil {
+			t.Fatalf("node-independent validation accepted malformed exact origin %q", origin)
+		}
 	}
 }

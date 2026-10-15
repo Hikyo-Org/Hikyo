@@ -22,11 +22,14 @@ func TestDependencyCompatibilityWorkflowScopeAndAuthority(t *testing.T) {
 		} `yaml:"on"`
 		Permissions map[string]string `yaml:"permissions"`
 		Jobs        map[string]struct {
+			Name     string            `yaml:"name"`
 			If       string            `yaml:"if"`
+			Runner   string            `yaml:"runs-on"`
 			Timeout  int               `yaml:"timeout-minutes"`
 			Continue bool              `yaml:"continue-on-error"`
 			Env      map[string]string `yaml:"env"`
 			Steps    []struct {
+				Name      string            `yaml:"name"`
 				Uses      string            `yaml:"uses"`
 				Run       string            `yaml:"run"`
 				With      map[string]string `yaml:"with"`
@@ -53,6 +56,9 @@ func TestDependencyCompatibilityWorkflowScopeAndAuthority(t *testing.T) {
 	}
 	if len(job.Steps) != 5 {
 		t.Fatal("unexpected dependency compatibility steps")
+	}
+	if job.Runner != "ubuntu-latest" || !strings.Contains(job.Name, "dependency compatibility (Linux host)") || job.Steps[4].Name != "Compile default-tag consumers on Linux, then vet" {
+		t.Fatal("advisory compatibility must state its Linux host and default-tag scope")
 	}
 	for index, ref := range []string{"${{ github.sha }}", "${{ github.event.pull_request.head.sha }}"} {
 		step := job.Steps[index]

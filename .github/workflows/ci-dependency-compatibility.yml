@@ -1,5 +1,7 @@
 # Advisory early compatibility evidence, separate from the 220-second feedback
 # lane and the enforced full merge-candidate validation.
+# Default-tag Linux host compilation only; the protected full suite owns the
+# macOS/Windows test legs and release-tag cross-builds.
 name: dependency-compatibility
 
 on:
@@ -17,11 +19,12 @@ concurrency:
 
 jobs:
   compatibility:
-    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'dependency compatibility' }}
+    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'dependency compatibility (Linux host)' }}
     if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
     runs-on: ubuntu-latest
     # The existing full app-build job has a 20-minute budget. This graph also
-    # builds all test archives and runs vet; it makes no fast-feedback SLA claim.
+    # builds the host's default-tag test archives and runs vet; it makes no
+    # fast-feedback SLA claim.
     timeout-minutes: 20
     env:
       GOCACHE: ${{ github.workspace }}/.dependency-compatibility
@@ -49,6 +52,6 @@ jobs:
         with:
           go-version-file: source/go.mod
           cache: false
-      - name: Compile all production and test consumers, then vet
+      - name: Compile default-tag consumers on Linux, then vet
         working-directory: source
         run: bash ../compatibility-tools/scripts/ci/dependency-compatibility.sh

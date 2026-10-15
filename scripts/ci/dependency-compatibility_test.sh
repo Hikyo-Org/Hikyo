@@ -23,7 +23,7 @@ refuse() {
 		exit 1
 	fi
 	grep -F "$1" "$work/output" >/dev/null || { cat "$work/output" >&2; exit 1; }
-	if grep -F 'all production and test consumers passed' "$work/output"; then exit 1; fi
+	if grep -F 'default-tag production and test consumers passed' "$work/output"; then exit 1; fi
 }
 for consumer in production.go internal_test.go external_test.go; do
 	package=fixture
@@ -37,6 +37,22 @@ for consumer in production.go internal_test.go external_test.go; do
 	rm "$consumer"
 done
 select_dependency before
+# Platform-suffixed files are selected by Go's target rules, not by ./... alone.
+# A broken active consumer fails; the same source for another OS is excluded,
+# and a successful result must state exactly which target was checked.
+target_os=$(go env GOOS)
+target_arch=$(go env GOARCH)
+other_os=windows
+[ "$target_os" != windows ] || other_os=linux
+printf 'package fixture\n\nvar PlatformConsumer = missingPlatformAPI\n' >"platform_$target_os.go"
+refuse 'undefined: missingPlatformAPI'
+mv "platform_$target_os.go" "platform_$other_os.go"
+printf '//go:build compatibility_nondefault\n\npackage fixture\n\nvar TaggedConsumer = missingTaggedAPI\n' >tagged.go
+GOFLAGS='-mod=readonly -tags compatibility_nondefault' run_compatibility
+grep -F "scope target=$target_os/$target_arch CGO_ENABLED=" "$work/output" >/dev/null
+grep -F "default-tag production and test consumers passed for $target_os/$target_arch" "$work/output" >/dev/null
+if grep -F 'all production and test consumers passed' "$work/output"; then exit 1; fi
+rm "platform_$other_os.go" tagged.go
 cat >no_execute_test.go <<'EOF'
 package fixture
 
@@ -55,4 +71,4 @@ import "fmt"
 func vetConsumer() { fmt.Printf("%d", "not an integer") }
 EOF
 refuse 'fmt.Printf format %d has arg "not an integer" of wrong type string'
-printf 'dependency compatibility fixtures: unchanged production/internal/external test consumers, no execution and vet passed\n'
+printf 'dependency compatibility fixtures: unchanged production/internal/external test consumers, explicit target scope, no execution and vet passed\n'

@@ -51,6 +51,9 @@ aliases and nonlocal IP binds need an explicit hostname origin that resolves to
 the correct address. A hostname bind retains its hostname. Proxy mode must set
 the public HTTPS origin explicitly because the private listener cannot infer it.
 A derived origin does not count as an explicit public origin for registration.
+Legacy managed snapshots that saved the exact listen-derived default are
+recognized when bootstrap has no explicit origin; they derive the current
+hostname default during adoption. A different stored IP origin is still refused.
 
 Before upgrading an installation with an IP origin, use its existing binary to
 change the effective [managed configuration](/docs/managed-configuration/) to a
