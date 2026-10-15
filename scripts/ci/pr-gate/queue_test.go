@@ -439,6 +439,54 @@ func TestQueueFinalRefAndForeignIdentityRacesStayBlocked(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueDeletedGroupRefRemainsPendingWithoutOperationalFailure(t *testing.T) {
+	for _, readNumber := range []int{1, 2} {
+		t.Run(fmt.Sprintf("ref read %d", readNumber), func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.api.readHook = func(path string, n int) {
+				if strings.Contains(path, "git/ref/heads/gh-readonly") && n == readNumber {
+					f.api.responses[path] = &githubReadError{path: path, status: 404}
+				}
+			}
+			if err := f.group(); err != nil {
+				t.Fatalf("deleted group should be stale pending: %v", err)
+			}
+			f.assertNoSuccess(t)
+			if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+				t.Fatal("deleted ref did not leave an authenticated blocking barrier")
+			}
+		})
+	}
+}
+
+func TestQueueMalformedEntryDiagnosticIdentifiesMissingFieldWithoutAuthority(t *testing.T) {
+	f := newQueueFixture(t)
+	f.entry.Head.OID = ""
+	f.groupRefresh()
+	live, err := f.q.liveQueue(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.q.snapshotQueue(live, f.groupRun.HeadSHA)
+	if err == nil || !strings.Contains(err.Error(), "invalid ordered merge queue entry") || !strings.Contains(err.Error(), "group_head_valid=false") || !strings.Contains(err.Error(), "PR=7") {
+		t.Fatalf("missing actionable field diagnostic: %v", err)
+	}
+	f.assertNoSuccess(t)
+}
+
+func TestQueueGroupRefOperationalFailuresStillFail(t *testing.T) {
+	for _, failure := range []error{&githubReadError{status: 403}, &githubReadError{status: 429}, &githubReadError{status: 500}, errors.New("network unavailable"), errors.New("invalid GitHub JSON")} {
+		t.Run(failure.Error(), func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.api.responses[f.c.endpoint("git/ref/heads/gh-readonly-queue%2Fmain%2Fpr-7-abc")] = failure
+			if err := f.group(); err == nil {
+				t.Fatal("operational error was hidden")
+			}
+			f.assertNoSuccess(t)
+		})
+	}
+}
 func TestQueueIgnoresActualSkippedMatrixMetadataRun(t *testing.T) {
 	for _, name := range []string{
 		skippedFeedbackName,
@@ -507,6 +555,32 @@ func TestQueueGitHubNormalizedSkippedMetadataJob(t *testing.T) {
 				t.Fatalf("metadata skip did not reuse the successful useful run: %+v, %v", last, err)
 			}
 		})
+	}
+}
+
+func TestQueueCompletedMetadataRunWaitsForSkippedJobToMaterialize(t *testing.T) {
+	// Run 38723673990 completed at 10:55:22Z, but its sole skipped job
+	// 116384219098 was created at 10:55:32Z, after admission read it at
+	// 10:55:31Z. An empty consistent list cannot yet prove a metadata skip.
+	f := newQueueFixture(t)
+	metadata := f.feedbackRun
+	metadata.ID, metadata.Conclusion = 103, "skipped"
+	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
+	path := f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")
+	f.api.responses[path] = map[string]any{"total_count": 0, "jobs": []job{}}
+	if err := f.admit(); err != nil {
+		t.Fatalf("pending skipped job became an operational failure: %v", err)
+	}
+	f.assertNoSuccess(t)
+	if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+		t.Fatal("unmaterialized metadata run reused older successful feedback")
+	}
+	f.api.responses[path] = map[string]any{"total_count": 1, "jobs": []job{{ID: 301, RunID: metadata.ID, Attempt: 1, HeadSHA: metadata.HeadSHA, Name: normalizedFeedbackNameExpression, Status: "completed", Conclusion: "skipped"}}}
+	if err := f.admit(); err != nil {
+		t.Fatal(err)
+	}
+	if newestQueueCheck(f.api.checks).Conclusion != "success" {
+		t.Fatal("canonical materialized metadata skip hid useful completed feedback")
 	}
 }
 
@@ -968,6 +1042,37 @@ func TestGraphQLNonzeroCLIResponsePreservesRefusalAndDiagnostics(t *testing.T) {
 				if strings.Contains(err.Error(), secret) {
 					t.Fatal("CLI diagnostic leaked unknown fields")
 				}
+			}
+		})
+	}
+}
+
+func TestRESTNonzeroCLIResponsePreservesOnlyValidatedHTTPStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name, stdout string
+		status       int
+	}{
+		{"absent ref", `{"message":"Not Found","status":"404"}`, 404},
+		{"forbidden", `{"message":"DO_NOT_LOG_BODY","status":"403"}`, 403},
+		{"server failure", `{"status":"503"}`, 503},
+		{"malformed", `{"status":`, 0},
+		{"wrong status type", `{"status":404}`, 0},
+		{"non error status", `{"status":"200"}`, 0},
+		{"extra JSON", `{"status":"404"}{}`, 0},
+		{"transport error", ``, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tools := t.TempDir()
+			body := "#!/bin/sh\nprintf '%s\\n' '" + tc.stdout + "'\nexit 1\n"
+			if err := os.WriteFile(filepath.Join(tools, "gh"), []byte(body), 0755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+			var out map[string]any
+			err := (ghAPI{}).read(context.Background(), "repos/Hikyo-Org/Hikyo/git/ref/heads/group", &out)
+			var failure *githubReadError
+			if !errors.As(err, &failure) || failure.status != tc.status || out != nil || strings.Contains(err.Error(), "DO_NOT_LOG_BODY") {
+				t.Fatalf("invalid REST diagnostic or leaked partial data: %v", err)
 			}
 		})
 	}

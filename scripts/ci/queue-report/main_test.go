@@ -110,6 +110,46 @@ func (f *fixture) existing(status string) {
 	f.checks = []check{c}
 }
 
+func TestGitHubCanonicalCheckURLUpdatesExactExistingReport(t *testing.T) {
+	for _, status := range []string{"queued", "in_progress", "completed"} {
+		t.Run(status, func(t *testing.T) {
+			f := newFixture(t)
+			f.existing(status)
+			// Actions rewrites details_url to the check's own run URL.
+			f.checks[0].DetailsURL = "https://github.com/owner/repo/runs/777"
+			if err := f.c.publish(context.Background(), f.e); err != nil {
+				t.Fatal(err)
+			}
+			if status == "completed" {
+				if len(f.writes) != 0 {
+					t.Fatal("terminal report was rewritten")
+				}
+			} else if len(f.writes) != 1 || f.writeMethods[0] != "PATCH" || f.writePaths[0] != "check-runs/777" {
+				t.Fatalf("existing report not updated: %+v", f.writes)
+			}
+		})
+	}
+}
+
+func TestCanonicalCheckURLCannotRedirectReportOwnership(t *testing.T) {
+	for _, link := range []string{
+		"https://github.com/owner/repo/runs/778",
+		"https://github.com/other/repo/runs/777",
+		"https://evil.test/owner/repo/runs/777",
+		"https://github.com/owner/repo/runs/777?redirect=other",
+		"http://github.com/owner/repo/runs/777",
+	} {
+		t.Run(link, func(t *testing.T) {
+			f := newFixture(t)
+			f.existing("in_progress")
+			f.checks[0].DetailsURL = link
+			if err := f.c.publish(context.Background(), f.e); err == nil || len(f.writes) != 0 {
+				t.Fatalf("accepted unauthenticated check URL %q", link)
+			}
+		})
+	}
+}
+
 func TestFailureReportSurvivesDequeueWithoutPullRequestsArray(t *testing.T) {
 	f := newFixture(t)
 	if err := f.c.publish(context.Background(), f.e); err != nil {

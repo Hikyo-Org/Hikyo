@@ -601,6 +601,12 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			if err != nil {
 				return nil, err
 			}
+			// GitHub can complete a skipped workflow before creating its matrix
+			// placeholder job. Until that job proves this was an ignored metadata
+			// event, keep admission pending and do not reuse an older success.
+			if r.Status == "completed" && r.Conclusion == "skipped" && len(jobs) == 0 {
+				return nil, nil
+			}
 			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
 				continue
 			}
@@ -876,7 +882,7 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 			return queueSnapshot{}, errors.New("invalid authenticated queue entry state")
 		}
 		if entry.ID == "" || seen[entry.ID] || seenPR[entry.PR.Number] || entry.Position != i+1 || entry.PR.Number <= 0 || entry.PR.Base != q.repo.DefaultBranch || !shaPattern.MatchString(entry.PR.Head) || !shaPattern.MatchString(entry.Head.OID) || !shaPattern.MatchString(entry.Base.OID) {
-			return queueSnapshot{}, errors.New("invalid ordered merge queue entry")
+			return queueSnapshot{}, fmt.Errorf("invalid ordered merge queue entry: position=%d expected=%d PR=%d state=%q id_present=%t duplicate_id=%t duplicate_pr=%t base_ref_matches=%t pr_head_valid=%t group_head_valid=%t base_commit_valid=%t", entry.Position, i+1, entry.PR.Number, entry.State, entry.ID != "", seen[entry.ID], seenPR[entry.PR.Number], entry.PR.Base == q.repo.DefaultBranch, shaPattern.MatchString(entry.PR.Head), shaPattern.MatchString(entry.Head.OID), shaPattern.MatchString(entry.Base.OID))
 		}
 		seen[entry.ID] = true
 		seenPR[entry.PR.Number] = true
@@ -993,6 +999,10 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		} `json:"object"`
 	}
 	if err := q.api.read(ctx, q.endpoint("git/ref/heads/"+url.PathEscape(r.HeadBranch)), &ref); err != nil {
+		var failure *githubReadError
+		if errors.As(err, &failure) && failure.status == 404 {
+			return &staleQueueGroup{reason: "tested merge group ref was deleted"}
+		}
 		return err
 	}
 	if ref.Ref != "refs/heads/"+r.HeadBranch || ref.Object.Type != "commit" || ref.Object.SHA != r.HeadSHA {
@@ -1053,6 +1063,10 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	if err := q.api.read(ctx, q.endpoint("git/ref/heads/"+url.PathEscape(r.HeadBranch)), &ref); err != nil {
+		var failure *githubReadError
+		if errors.As(err, &failure) && failure.status == 404 {
+			return &staleQueueGroup{reason: "tested merge group ref was deleted before publication"}
+		}
 		return err
 	}
 	if ref.Ref != "refs/heads/"+r.HeadBranch || ref.Object.Type != "commit" || ref.Object.SHA != r.HeadSHA {

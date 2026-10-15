@@ -242,9 +242,9 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error 
 	return nil
 }
 func queueBootstrapContract(run string, targeted bool) error {
-	want := "75f5129b80b9b521cfa3c538118d1972b6dcc76702ed6f83494a824993c0057e"
+	want := "db7cc5320ced53fbf2c9cd60d4d5fdf6d2761a7e7adbfd12e501781eb54adca7"
 	if targeted {
-		want = "f7b205f43d6fd0d468b1456d42e19bc994bb8453dc31213c492a51e30ba3835e"
+		want = "418869b91a1ab42c69be3fbd4e3fc563cb1ec3221d47d36112d1e9c3fbd30506"
 	}
 	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != want {
 		return fmt.Errorf("current-attempt exacthead clock bootstrap changed")
