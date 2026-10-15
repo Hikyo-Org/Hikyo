@@ -1,0 +1,842 @@
+{
+  "planner": {
+    "mode": "planner",
+    "head": "3ae586d3fb99eea1f5ff09c784811fe3708a8632",
+    "base": "5aac8053815433b2ed39e8b6a7ffddf9253803a4",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "go": "go version go1.27.2 linux/amd64",
+    "run_id": "38558588752",
+    "attempt": "1",
+    "runner_image": "20261004.327.1",
+    "records": [
+      {
+        "name": "prime-old",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 40.566428105,
+        "exit_code": 0
+      },
+      {
+        "name": "prime-new",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 1.4810706830000129,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-0-old",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 19.370612811,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-0-new",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 1.5004283490000034,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-1-new",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 1.5024542140000108,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-1-old",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 19.135854878999993,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-2-old",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 19.08079235400001,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-2-new",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 1.4982957979999867,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-3-new",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 1.5168370859999811,
+        "exit_code": 0
+      },
+      {
+        "name": "repeat-3-old",
+        "command": [
+          "bash",
+          "-e",
+          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 19.086771596999995,
+        "exit_code": 0
+      }
+    ],
+    "planner_sha256": {
+      "base": "1349c193de1ca689aa322bb71affdea4e287a972af38d0d5530a6978e22b2d3c",
+      "candidate": "851f04dd6c00fd85904316a362170b3be60203f195f3a888061f144d5de0b6db"
+    },
+    "comparison": "Actual planner workflow steps over the same candidate inventory. New step uses candidate as future trusted base; this does not change production trust or publish merge proof.",
+    "first_invocations_not_cold_pair": {
+      "old": 40.566428105,
+      "new": 1.4810706830000129
+    },
+    "trials": [
+      {
+        "repeat": 0,
+        "variant": "old",
+        "seconds": 19.370612811
+      },
+      {
+        "repeat": 0,
+        "variant": "new",
+        "seconds": 1.5004283490000034
+      },
+      {
+        "repeat": 1,
+        "variant": "new",
+        "seconds": 1.5024542140000108
+      },
+      {
+        "repeat": 1,
+        "variant": "old",
+        "seconds": 19.135854878999993
+      },
+      {
+        "repeat": 2,
+        "variant": "old",
+        "seconds": 19.08079235400001
+      },
+      {
+        "repeat": 2,
+        "variant": "new",
+        "seconds": 1.4982957979999867
+      },
+      {
+        "repeat": 3,
+        "variant": "new",
+        "seconds": 1.5168370859999811
+      },
+      {
+        "repeat": 3,
+        "variant": "old",
+        "seconds": 19.086771596999995
+      }
+    ],
+    "median_seconds": {
+      "old": 19.111313237999994,
+      "new": 1.501441281500007
+    },
+    "inventory": {
+      "race_plan": 178,
+      "fuzz_plan": 26,
+      "isolation_plan": 580
+    },
+    "conclusion": "success"
+  },
+  "cache": {
+    "mode": "cache",
+    "head": "3ae586d3fb99eea1f5ff09c784811fe3708a8632",
+    "base": "5aac8053815433b2ed39e8b6a7ffddf9253803a4",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "go": "go version go1.27.2 linux/amd64",
+    "run_id": "38558588752",
+    "attempt": "1",
+    "runner_image": "20261012.334.1",
+    "records": [
+      {
+        "name": "modules",
+        "command": [
+          "go",
+          "mod",
+          "download"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "seconds": 29.041939731000006,
+        "exit_code": 0
+      },
+      {
+        "name": "restored-first",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-o",
+          "/dev/null",
+          "./internal/cli",
+          "./scripts/ci"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "seconds": 14.819545899000005,
+        "exit_code": 0
+      },
+      {
+        "name": "cold-first",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-o",
+          "/dev/null",
+          "./internal/cli",
+          "./scripts/ci"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "seconds": 78.647367683,
+        "exit_code": 0
+      },
+      {
+        "name": "cold-now-warm",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-o",
+          "/dev/null",
+          "./internal/cli",
+          "./scripts/ci"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "seconds": 2.706365931999983,
+        "exit_code": 0
+      },
+      {
+        "name": "restored-now-warm",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-o",
+          "/dev/null",
+          "./internal/cli",
+          "./scripts/ci"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "seconds": 2.82385351100001,
+        "exit_code": 0
+      }
+    ],
+    "cache_primary_key": "go-feedback-v1-Linux-X64-ubuntu24-8ffb3f8ff15fc2dd66cafae0ea1e7273c83db741c1cc01a86253e523bab48d0a-5aac8053815433b2ed39e8b6a7ffddf9253803a4",
+    "cache_matched_key": "go-feedback-v1-Linux-X64-ubuntu24-8ffb3f8ff15fc2dd66cafae0ea1e7273c83db741c1cc01a86253e523bab48d0a-5a9e7aad9fea22343838061a2150124ae9e08c53",
+    "cache_hit": "false",
+    "restored_files": 8584,
+    "restored_bytes": 1165391689,
+    "comparison_available": true,
+    "limitation": "One cold/restored pair; shared module cache; restore step and job costs are reported separately; compile-only, not test execution.",
+    "conclusion": "success"
+  },
+  "race": {
+    "mode": "race",
+    "head": "3ae586d3fb99eea1f5ff09c784811fe3708a8632",
+    "base": "5aac8053815433b2ed39e8b6a7ffddf9253803a4",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "go": "go version go1.27.2 linux/amd64",
+    "run_id": "38558588752",
+    "attempt": "1",
+    "runner_image": "20261004.327.1",
+    "records": [
+      {
+        "name": "prime",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 112.20872180799998,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-0",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.7508964149999997,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-1",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.7022330900000497,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-2",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.636908051999967,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-3",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.616420775999984,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-4",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.5840733950000185,
+        "exit_code": 0
+      },
+      {
+        "name": "0-go-test-5",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.733441174999996,
+        "exit_code": 0
+      },
+      {
+        "name": "compile-0",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-race",
+          "-vet=off",
+          "-o",
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.2919561070000327,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-0",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0838518269999895,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-1",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1056601880000017,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-2",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0806063440000457,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-3",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0808352789999844,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-4",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0803699379999898,
+        "exit_code": 0
+      },
+      {
+        "name": "0-binary-5",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.193647416000033,
+        "exit_code": 0
+      },
+      {
+        "name": "compile-1",
+        "command": [
+          "go",
+          "test",
+          "-c",
+          "-race",
+          "-vet=off",
+          "-o",
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 0.23964703100000406,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-0",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.12074555800001,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-1",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1917822089999959,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-2",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1637765190000096,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-3",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0799487669999621,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-4",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0820412599999827,
+        "exit_code": 0
+      },
+      {
+        "name": "1-binary-5",
+        "command": [
+          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0843030170000247,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-0",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.663597514999992,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-1",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.594041383999979,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-2",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.6536609469999917,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-3",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.627610297999979,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-4",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.634372996999957,
+        "exit_code": 0
+      },
+      {
+        "name": "1-go-test-5",
+        "command": [
+          "go",
+          "test",
+          "-json",
+          "-race",
+          "-vet=off",
+          "-count=1",
+          "-timeout=20m",
+          "-run",
+          "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
+          "./internal/upgradegate"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 3.688011658999983,
+        "exit_code": 0
+      },
+      {
+        "name": "binary-metadata",
+        "command": [
+          "go",
+          "version",
+          "-m",
+          "/home/runner/work/_temp/race/upgradegate-race.test"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "seconds": 0.0028653140000187705,
+        "exit_code": 0
+      }
+    ],
+    "trials": [
+      {
+        "repeat": 0,
+        "variant": "go-test",
+        "seconds": 22.084078599999998
+      },
+      {
+        "repeat": 0,
+        "variant": "binary",
+        "seconds": 9.94658399299999
+      },
+      {
+        "repeat": 1,
+        "variant": "binary",
+        "seconds": 6.966880345999982
+      },
+      {
+        "repeat": 1,
+        "variant": "go-test",
+        "seconds": 21.865678328
+      }
+    ],
+    "binary_bytes": 135359284,
+    "binary_sha256": "5a1dd399122574add08971f5b9d0741b5f32b4201b6621c4a119e737626a4fcc",
+    "target": "TestOperatorCustodyRejectsSymlinksAndUnsafeMode",
+    "limitation": "Warm shared build cache; one selected test; not full-suite equivalence.",
+    "conclusion": "success"
+  },
+  "consume": {
+    "mode": "consume",
+    "head": "3ae586d3fb99eea1f5ff09c784811fe3708a8632",
+    "base": "5aac8053815433b2ed39e8b6a7ffddf9253803a4",
+    "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+    "go": null,
+    "run_id": "38558588752",
+    "attempt": "1",
+    "runner_image": "20261004.327.1",
+    "records": [
+      {
+        "name": "transferred-0",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.103628619999995,
+        "exit_code": 0
+      },
+      {
+        "name": "transferred-1",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1014353460000024,
+        "exit_code": 0
+      },
+      {
+        "name": "transferred-2",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1033236029999998,
+        "exit_code": 0
+      },
+      {
+        "name": "transferred-3",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0989903799999965,
+        "exit_code": 0
+      },
+      {
+        "name": "transferred-4",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.1021719800000014,
+        "exit_code": 0
+      },
+      {
+        "name": "transferred-5",
+        "command": [
+          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "-test.v",
+          "-test.count=1",
+          "-test.timeout=20m",
+          "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
+        ],
+        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "seconds": 1.0997187129999944,
+        "exit_code": 0
+      }
+    ],
+    "producer_go": "go version go1.27.2 linux/amd64",
+    "limitation": "Read-only test job only; producer is experimental PR code, not a trusted merge attestation.",
+    "conclusion": "success"
+  }
+}
