@@ -1,3 +1,4 @@
+export { CLILogin } from '../../routes/CLILogin.tsx';
 export { CLIReauth } from '../../routes/CLIReauth.tsx';
 export { EnrolmentGate } from '../../routes/EnrolmentGate.tsx';
 export { EstablishCredential } from '../../routes/EstablishCredential.tsx';

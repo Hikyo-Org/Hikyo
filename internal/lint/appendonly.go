@@ -132,6 +132,8 @@ func checkNoSyncCommitDowngrade(repoRoot string) []string {
 // build failure behind it. See docs/handoff/47-first-slice.md, which routes
 // the wording to human disposition.
 var ResolutionSurfaceWriters = map[string]bool{
+	"CreateCLILogin": true, "ApproveCLILogin": true, "PollCLILogin": true, "ConsumeCLILogin": true, "PruneCLILogins": true,
+
 	// Audit (#45, audit-model ADR amendment part 4). writeProofFreeEvent is
 	// the shared body WriteDenial and WriteAuthEvent both delegate to, so the
 	// two cannot drift; it is the actual call site the analyzer sees.

@@ -1182,6 +1182,89 @@ export type Meta = {
     protocol_capabilities: Array<ProtocolCapability>;
 };
 
+export type CliLoginStartRequest = {
+    transport: 'loopback';
+    state: string;
+    pkce_challenge: string;
+    redirect_uri: string;
+};
+
+export type CliLoginStart = {
+    state: string;
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_at: string;
+    interval: number;
+};
+
+export type CliLoginTransaction = {
+    reference: string;
+    transport: 'loopback' | 'device';
+    redirect_uri: string;
+    instance: string;
+    expires_at: string;
+};
+
+export type CliLoginApproved = {
+    /**
+     * Single-use code for loopback; empty for approved device login.
+     */
+    code: string;
+    state: string;
+    /**
+     * Exact bound loopback redirect; empty for device login.
+     */
+    redirect_uri: string;
+};
+
+export type CliLoginApproveRequest = {
+    reference: string;
+};
+
+export type CliLoginRedeemRequest = {
+    code: string;
+    pkce_verifier: string;
+    redirect_uri: string;
+};
+
+export type CliDeviceStartRequest = {
+    client_id: 'hikyo-cli';
+};
+
+export type CliDeviceStart = {
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+    expires_at: string;
+    interval: number;
+};
+
+export type CliDeviceToken = {
+    access_token: string;
+    token_type: 'Bearer';
+    expires_in: number;
+    session: Session;
+    principal: Principal;
+};
+
+export type CliDeviceTokenRequest = {
+    device_code: string;
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code';
+    client_id: 'hikyo-cli';
+};
+
+/**
+ * RFC 8628 protocol errors or the shared malformed-request refusal.
+ */
+export type CliDeviceErrorResponse = CliDeviceError | Error;
+
+export type CliDeviceError = {
+    error: 'authorization_pending' | 'slow_down' | 'expired_token' | 'access_denied';
+    interval: number;
+};
+
 /**
  * OPEN enum: an instance may advertise a flow this client has never
  * heard of, and every generated consumer must preserve and tolerate the
@@ -7341,6 +7424,407 @@ export type ReauthTotpResponses = {
 };
 
 export type ReauthTotpResponse = ReauthTotpResponses[keyof ReauthTotpResponses];
+
+export type StartCliLoginData = {
+    body: CliLoginStartRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/start';
+};
+
+export type StartCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type StartCliLoginError = StartCliLoginErrors[keyof StartCliLoginErrors];
+
+export type StartCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    201: CliLoginStart;
+};
+
+export type StartCliLoginResponse = StartCliLoginResponses[keyof StartCliLoginResponses];
+
+export type StartCliDeviceData = {
+    body: CliDeviceStartRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/device/start';
+};
+
+export type StartCliDeviceErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type StartCliDeviceError = StartCliDeviceErrors[keyof StartCliDeviceErrors];
+
+export type StartCliDeviceResponses = {
+    /**
+     * RFC 8628 device authorization response.
+     */
+    200: CliDeviceStart;
+};
+
+export type StartCliDeviceResponse = StartCliDeviceResponses[keyof StartCliDeviceResponses];
+
+export type ShowCliLoginTransactionData = {
+    body?: never;
+    path: {
+        reference: string;
+    };
+    query?: never;
+    url: '/api/v1/auth/cli-login/transactions/{reference}';
+};
+
+export type ShowCliLoginTransactionErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowCliLoginTransactionError = ShowCliLoginTransactionErrors[keyof ShowCliLoginTransactionErrors];
+
+export type ShowCliLoginTransactionResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliLoginTransaction;
+};
+
+export type ShowCliLoginTransactionResponse = ShowCliLoginTransactionResponses[keyof ShowCliLoginTransactionResponses];
+
+export type ApproveCliLoginData = {
+    body: CliLoginApproveRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/approve';
+};
+
+export type ApproveCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ApproveCliLoginError = ApproveCliLoginErrors[keyof ApproveCliLoginErrors];
+
+export type ApproveCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliLoginApproved;
+};
+
+export type ApproveCliLoginResponse = ApproveCliLoginResponses[keyof ApproveCliLoginResponses];
+
+export type RedeemCliLoginData = {
+    body: CliLoginRedeemRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/redeem';
+};
+
+export type RedeemCliLoginErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RedeemCliLoginError = RedeemCliLoginErrors[keyof RedeemCliLoginErrors];
+
+export type RedeemCliLoginResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: LoginResult;
+};
+
+export type RedeemCliLoginResponse = RedeemCliLoginResponses[keyof RedeemCliLoginResponses];
+
+export type PollCliDeviceData = {
+    body: CliDeviceTokenRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/cli-login/device/token';
+};
+
+export type PollCliDeviceErrors = {
+    /**
+     * RFC 8628 polling response.
+     */
+    400: CliDeviceErrorResponse;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PollCliDeviceError = PollCliDeviceErrors[keyof PollCliDeviceErrors];
+
+export type PollCliDeviceResponses = {
+    /**
+     * Login protocol result.
+     */
+    200: CliDeviceToken;
+};
+
+export type PollCliDeviceResponse = PollCliDeviceResponses[keyof PollCliDeviceResponses];
 
 export type StartCliReauthData = {
     body: CliReauthStartRequest;

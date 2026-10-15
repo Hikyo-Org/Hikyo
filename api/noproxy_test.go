@@ -208,6 +208,14 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 // THIS instance's own data — its configuration, its metadata, a snapshot it
 // stored — and never fetches, relays or forwards on behalf of the caller.
 var pinnedContractSurface = map[string]bool{
+	// First-party CLI authentication transactions and sessions; no outbound forwarding.
+	"POST /api/v1/auth/cli-login/start":                   true,
+	"GET /api/v1/auth/cli-login/transactions/{reference}": true,
+	"POST /api/v1/auth/cli-login/approve":                 true,
+	"POST /api/v1/auth/cli-login/redeem":                  true,
+	"POST /api/v1/auth/cli-login/device/start":            true,
+	"POST /api/v1/auth/cli-login/device/token":            true,
+
 	// Local developer delegation metadata, mint/revocation and durable policy; no forwarding.
 	"GET /api/v1/auth/developer-credentials":                                                      true,
 	"DELETE /api/v1/auth/developer-credentials":                                                   true,
@@ -414,6 +422,7 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/retention":                  true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments":               true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}": true,
+
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/settings":            true,
 	"GET /api/v1/orgs/{org}/projects/{project}/folders":                                        true,
 	"GET /api/v1/orgs/{org}/projects/{project}/folders/{folder}":                               true,

@@ -171,6 +171,7 @@ type NewSession struct {
 	// RequestingOrigin is what makes origin removal an atomic kill switch.
 	RequestingOrigin string
 	HandoffID        string
+	CLIHandoffID     string
 	// EnrolmentRequired stamps the enrolment gate on a password-assured session
 	// minted for an unenrolled account under a `required` second_factor policy
 	// (#760). Only localLogin's password branch sets it true.
@@ -661,6 +662,7 @@ func (r *Resolver) CreateSession(ctx context.Context, s NewSession) error {
 			CsrfVerifier:      s.CSRFVerifier,
 			RequestingOrigin:  nullString(s.RequestingOrigin),
 			HandoffID:         nullString(s.HandoffID),
+			CliHandoffID:      nullString(s.CLIHandoffID),
 			EnrolmentRequired: boolInt(s.EnrolmentRequired),
 		})
 	}
@@ -675,6 +677,7 @@ func (r *Resolver) CreateSession(ctx context.Context, s NewSession) error {
 		CsrfVerifier:      s.CSRFVerifier,
 		RequestingOrigin:  pgText(s.RequestingOrigin),
 		HandoffID:         pgText(s.HandoffID),
+		CliHandoffID:      pgText(s.CLIHandoffID),
 		EnrolmentRequired: s.EnrolmentRequired,
 	})
 }

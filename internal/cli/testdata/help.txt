@@ -1,9 +1,9 @@
 hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> --local [--as USER] [--name REF] [--socket PATH] [--trust-file PATH]
+  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--trust-file PATH]
+  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--trust-file PATH]
                                                  terminal-native local login
-  hikyo login <instance-url> --device              refused by name until the browser login lands
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 

@@ -366,6 +366,15 @@ export const SURFACES = defineSurfaceRegistry([
   // opaque transaction state stays in the query string so login can render on
   // this same route without losing it.
   {
+    id: 'cli-login',
+    path: '/login/cli',
+    label: 'Authorize CLI sign-in',
+    section: null,
+    mode: 'ceremony',
+    chrome: 'none',
+    session: 'establish-or-reuse',
+  },
+  {
     id: 'cli-reauth',
     path: '/reauth/cli',
     label: 'Authorize CLI',

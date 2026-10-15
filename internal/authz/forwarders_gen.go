@@ -85,6 +85,10 @@ func (a *TxAuthorizer) AllowWorkspaceOrigin(ctx context.Context, o authn.Workspa
 	return a.r.AllowWorkspaceOrigin(ctx, o)
 }
 
+func (a *TxAuthorizer) ApproveCLILogin(ctx context.Context, id, session, snapshot string, code []byte) (bool, error) {
+	return a.r.ApproveCLILogin(ctx, id, session, snapshot, code)
+}
+
 func (a *TxAuthorizer) ApproveCLIReauthHandoff(ctx context.Context, id string, codeVerifier, windows []byte) (bool, error) {
 	return a.r.ApproveCLIReauthHandoff(ctx, id, codeVerifier, windows)
 }
@@ -122,6 +126,18 @@ func (a *TxAuthorizer) BindSessionToSAMLProvider(ctx context.Context, sessionID,
 // clothes.
 func (a *TxAuthorizer) BindingsForIssuer(ctx context.Context, id string) (int64, error) {
 	return a.r.BindingsForIssuer(ctx, id)
+}
+
+func (a *TxAuthorizer) CLILoginByCode(ctx context.Context, verifier []byte) (CLILogin, error) {
+	return a.r.CLILoginByCode(ctx, verifier)
+}
+
+func (a *TxAuthorizer) CLILoginByState(ctx context.Context, verifier []byte) (CLILogin, error) {
+	return a.r.CLILoginByState(ctx, verifier)
+}
+
+func (a *TxAuthorizer) CLILoginByUserCode(ctx context.Context, verifier []byte) (CLILogin, error) {
+	return a.r.CLILoginByUserCode(ctx, verifier)
 }
 
 func (a *TxAuthorizer) CLIReauthHandoffByCode(ctx context.Context, verifier []byte) (CLIReauthHandoff, error) {
@@ -169,6 +185,10 @@ func (a *TxAuthorizer) ConfirmedTOTP(ctx context.Context, accountID string) (TOT
 // consumed and the caller must fail closed.
 func (a *TxAuthorizer) ConsumeAuthority(ctx context.Context, id string, at time.Time) (bool, error) {
 	return a.r.ConsumeCredentialAuthority(ctx, id, at)
+}
+
+func (a *TxAuthorizer) ConsumeCLILogin(ctx context.Context, id string, at time.Time) (bool, error) {
+	return a.r.ConsumeCLILogin(ctx, id, at)
 }
 
 func (a *TxAuthorizer) ConsumeCLIReauthHandoff(ctx context.Context, id string, at time.Time) (bool, error) {
@@ -250,6 +270,10 @@ func (a *TxAuthorizer) CreateAccessGrant(ctx context.Context, id string, p domai
 
 func (a *TxAuthorizer) CreateAccount(ctx context.Context, acc Account) error {
 	return a.r.CreateAccount(ctx, acc)
+}
+
+func (a *TxAuthorizer) CreateCLILogin(ctx context.Context, h CLILogin) error {
+	return a.r.CreateCLILogin(ctx, h)
 }
 
 func (a *TxAuthorizer) CreateCLIReauthHandoff(ctx context.Context, h NewCLIReauthHandoff) error {
@@ -798,6 +822,10 @@ func (a *TxAuthorizer) PinGeneration(ctx context.Context, p domain.PrincipalID, 
 	return a.r.PinGeneration(ctx, p, env)
 }
 
+func (a *TxAuthorizer) PollCLILogin(ctx context.Context, id string, at time.Time, interval int64) error {
+	return a.r.PollCLILogin(ctx, id, at, interval)
+}
+
 // PrincipalClass resolves a principal's class for the normative machine
 // allowlists.
 func (a *TxAuthorizer) PrincipalClass(ctx context.Context, p domain.PrincipalID) (domain.PrincipalClass, error) {
@@ -837,6 +865,10 @@ func (a *TxAuthorizer) ProviderBySlug(ctx context.Context, slug string) (OIDCPro
 // ProviderForCallback resolves the provider a transaction pinned, by id.
 func (a *TxAuthorizer) ProviderForCallback(ctx context.Context, id string) (OIDCProvider, error) {
 	return a.r.ProviderForCallback(ctx, id)
+}
+
+func (a *TxAuthorizer) PruneCLILogins(ctx context.Context, at time.Time) error {
+	return a.r.PruneCLILogins(ctx, at)
 }
 
 func (a *TxAuthorizer) PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error) {

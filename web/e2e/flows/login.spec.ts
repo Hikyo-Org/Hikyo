@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { createServer } from 'node:http';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 import {
@@ -1124,3 +1126,183 @@ test.describe('local sign-up UI contract', () => {
     expect((await page.context().cookies()).some((cookie) => cookie.name === '__Host-hikyo')).toBe(false);
   });
 });
+
+/** #612 rides the existing login CI shard, including both viewport projects. */
+test.describe('CLI login handoff', () => {
+  test.beforeEach(async ({ context }) => { await context.clearCookies(); });
+
+  test('device code entry preserves provider preselect and always starts sign-in', async ({ page }) => {
+    await page.goto(`/login/cli?device=1&provider=oidc:${OIDC_PROVIDER.slug}`);
+    await page.getByLabel('Device code').fill('abcd-efgh');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page).toHaveURL(/user_code=ABCDEFGH.*provider=oidc%3Ae2e-oidc/);
+    await expect(page.getByRole('heading', { name: `Sign in with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
+    const start = page.waitForRequest((request) => request.url().endsWith(`/auth/oidc/${OIDC_PROVIDER.slug}/start`));
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    const request = await start;
+    expect(z.object({ intent: z.literal('sign-in'), browser: z.literal(true) }).parse(request.postDataJSON()).intent).toBe('sign-in');
+    // The deliberately unknown user code is only resolved after the ordinary
+    // browser ceremony; the return URL must still carry it and the provider.
+    await expect(page).toHaveURL(/\/login\/cli\?user_code=ABCDEFGH.*provider=oidc%3Ae2e-oidc/);
+    await expect(page.getByRole('heading', { name: 'CLI sign-in could not be completed' })).toBeVisible();
+  });
+
+  test('OAuth2 UI contract hides signup, starts sign-in and retains the CLI return after refusal', async ({ page }) => {
+    const state = 'A'.repeat(43);
+    const returnTo = `/login/cli?state=${state}&provider=oauth2%3Agithub`;
+    await page.route('**/api/v1/auth/methods*', (route) => route.fulfill({ json: {
+      local_login_enabled: true,
+      providers: [{ kind: 'oauth2', slug: 'github', display_name: 'GitHub', profile: 'github', brand: 'github' }],
+      signup_open: true, signup_paused: false, signup_methods: ['local', { kind: 'oauth2', slug: 'github' }],
+    } }));
+    await page.route('**/api/v1/auth/oauth2/github/start', async (route) => {
+      expect(z.object({ purpose: z.literal('login'), intent: z.literal('sign-in'), browser: z.literal(true) }).parse(route.request().postDataJSON()).intent).toBe('sign-in');
+      await route.fulfill({ json: { authorization_url: `${BASE_URL}/auth/oidc/done?purpose=login&state=oauth2-ui&error=unknown-identity` } });
+    });
+    await page.goto(returnTo);
+    await expect(page.getByRole('heading', { name: 'Sign in with GitHub' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Have a setup authority? Establish your credential' })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Continue with GitHub' }).click();
+    const back = page.getByRole('link', { name: 'Return to sign in' });
+    await expect(back).toHaveAttribute('href', returnTo);
+    await back.click();
+    await expect(page).toHaveURL(`${BASE_URL}${returnTo}`);
+    await expect(page.getByRole('heading', { name: 'Sign in with GitHub' })).toBeVisible();
+  });
+
+  const schemes: Array<'dark' | 'light'> = ['dark', 'light'];
+  for (const scheme of schemes) {
+    test(`device consent requires explicit approval and meets the pinned set (${scheme})`, async ({ browser }, testInfo) => {
+      const context = await browser.newContext({ storageState: STORAGE_STATE });
+      const page = await context.newPage();
+      try {
+        const started = await startDeviceLogin();
+        let interval = started.interval;
+        let nextPollAt = Date.now() + interval * 1000;
+        const poll = () => fetch(`${BASE_URL}/api/v1/auth/cli-login/device/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ device_code: started.device_code, client_id: 'hikyo-cli', grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
+        });
+        if (scheme === 'dark') {
+          // Deliberately early real protocol polls exercise RFC 8628's cumulative
+          // slow_down. The next token request waits the server-directed interval.
+          for (const expectedInterval of [10, 15]) {
+            const early = await poll();
+            expect(early.status).toBe(400);
+            interval = z.object({ error: z.literal('slow_down'), interval: z.literal(expectedInterval) }).parse(await early.json()).interval;
+            nextPollAt = Date.now() + interval * 1000;
+          }
+        }
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(`/login/cli?user_code=${started.user_code}`);
+        const heading = page.getByRole('heading', { name: 'Authorize CLI sign-in' });
+        const card = page.locator('.login__card');
+        const approve = page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true });
+        await expect(heading).toBeVisible();
+        await expect(card).toContainText(started.user_code);
+        await expect(card).toContainText('Hikyo CLI');
+        await expect(card).toContainText(BASE_URL);
+        await expect(card).toContainText('Separate CLI session');
+        await expectPinnedAssertionSet(page, {
+          flow: 'cli-login', surface: 'cli-login', theme: scheme,
+          text: [heading], radii: [[card, 'container'], [approve, 'control']],
+          fonts: [[heading, 'ui']],
+          colours: [[heading, 'color', '--tx'], [card, 'backgroundColor', '--bg-raise'], [approve, 'backgroundColor', '--accent']],
+          hairlines: [card], density: [[approve, '--control']],
+        });
+        await page.screenshot({ path: `/tmp/hikyo-612-cli-${testInfo.project.name}-${scheme}.png` });
+        await approve.click();
+        await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, nextPollAt - Date.now())));
+        const completed = await poll();
+        const completedBody = await completed.json();
+        expect(completed.status).toBe(200);
+        expect(z.object({ access_token: z.string().min(1), token_type: z.literal('Bearer') }).parse(completedBody).access_token).toBeTruthy();
+        const whoami = await context.request.get(`${BASE_URL}/api/v1/auth/whoami`);
+        expect(whoami.status()).toBe(200);
+        expect(await page.evaluate(() => JSON.stringify({ local: Object.entries(localStorage), session: Object.entries(sessionStorage) }))).not.toContain(started.device_code);
+      } finally { await context.close(); }
+    });
+  }
+
+  test('cancel works in a normal tab and a new device request requires new approval', async ({ browser }) => {
+    const context = await browser.newContext({ storageState: STORAGE_STATE });
+    try {
+      const page = await context.newPage();
+      const first = await startDeviceLogin();
+      await page.goto(`/login/cli?user_code=${first.user_code}`);
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'CLI sign-in cancelled' })).toBeVisible();
+      const second = await startDeviceLogin();
+      await page.goto(`/login/cli?user_code=${second.user_code}`);
+      await expect(page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+    } finally { await context.close(); }
+  });
+
+  for (const method of ['password', 'passkey', 'oidc']) {
+    test(`loopback ${method} sign-in preserves the browser session and redeems a separate CLI session`, async ({ page, browser }) => {
+      const flow = await startLoopbackLogin();
+      try {
+        const run = async (loginPage: Page) => {
+          await loginPage.goto(`/login/cli?state=${flow.state}`);
+          await expect(loginPage.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
+          if (method === 'password') {
+            const account = await enrolledAccount(browser, 'cli-login-password', 'org');
+            await loginPage.getByRole('button', { name: /^Password\b/ }).click();
+            await loginPage.getByLabel('Username').fill(account.username);
+            await loginPage.getByLabel('Password', { exact: true }).fill(account.password);
+            await loginPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+            await expect(loginPage.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+            await loginPage.getByLabel('Authenticator code').fill(await account.ledger.next());
+            await loginPage.getByRole('button', { name: 'Present code' }).click();
+          } else if (method === 'passkey') {
+            await loginPage.getByRole('button', { name: 'Passkey', exact: true }).click();
+          } else {
+            await loginPage.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+          }
+          await expect(loginPage.getByRole('heading', { name: 'Authorize CLI sign-in' })).toBeVisible();
+          await expect(loginPage).toHaveURL(new RegExp(`/login/cli\\?state=${flow.state}`));
+          await loginPage.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
+          await expect(loginPage).toHaveURL(new RegExp(`^${flow.redirect.replaceAll('.', '\\.')}`));
+          const callback = new URL(loginPage.url());
+          expect(callback.searchParams.get('state')).toBe(flow.state);
+          const redeemed = await publicPost('/api/v1/auth/cli-login/redeem', {
+            code: callback.searchParams.get('code'), pkce_verifier: flow.verifier, redirect_uri: flow.redirect,
+          }, z.object({ session_token: z.string().min(1) }));
+          expect(redeemed.session_token).toBeTruthy();
+          expect((await loginPage.context().request.get(`${BASE_URL}/api/v1/auth/whoami`)).status()).toBe(200);
+        };
+        if (method === 'passkey') await withPasskeyPage(page, 'shared', run);
+        else await run(page);
+      } finally { await flow.close(); }
+    });
+  }
+});
+
+async function startDeviceLogin() {
+  const response = await fetch(`${BASE_URL}/api/v1/auth/cli-login/device/start`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: 'hikyo-cli' }),
+  });
+  if (!response.ok) throw new Error(`device start answered ${response.status}: ${await response.text()}`);
+  return z.object({ device_code: z.string(), user_code: z.string(), interval: z.number() }).parse(await response.json());
+}
+async function startLoopbackLogin() {
+  const server = createServer((_request, response) => { response.end('CLI sign-in complete. Return to your terminal.'); });
+  await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('loopback listener has no TCP address');
+  const redirect = `http://127.0.0.1:${address.port}/callback`;
+  const state = randomBytes(32).toString('base64url');
+  const verifier = randomBytes(32).toString('base64url');
+  try {
+    await publicPost('/api/v1/auth/cli-login/start', {
+      transport: 'loopback', state, pkce_challenge: createHash('sha256').update(verifier).digest('base64url'), redirect_uri: redirect,
+    }, z.object({ state: z.string() }));
+  } catch (error) { server.close(); throw error; }
+  return { state, verifier, redirect, close: () => new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))) };
+}

@@ -110,11 +110,12 @@ func writeCommittedCLIReauth(ctx context.Context, db *store.DB, fn func(context.
 // CreateSession describes a newly authenticated session. Factor verification,
 // audit events and any provider-specific binding stay with the caller.
 type CreateSession struct {
-	account    authz.Account
-	artifact   Artifact
-	assurance  Assurance
-	csrf       sessionCSRF
-	providerID string
+	account      authz.Account
+	artifact     Artifact
+	assurance    Assurance
+	csrf         sessionCSRF
+	providerID   string
+	cliHandoffID string
 }
 
 func (CreateSession) sessionCompletion() {}
@@ -218,6 +219,7 @@ func (s *Auth) createCompletedSession(ctx context.Context, az *authz.TxAuthorize
 		AbsoluteExpiresAt: now.Add(completion.artifact.absolute()),
 		SourceIP:          wire.SourceIP, UserAgent: wire.UserAgent,
 		ProviderID: completion.providerID, CSRFVerifier: csrfVerifier,
+		CLIHandoffID:      completion.cliHandoffID,
 		EnrolmentRequired: enrolmentRequired,
 	}
 	if err := az.MintSession(ctx, session); err != nil {

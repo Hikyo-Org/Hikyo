@@ -32,6 +32,7 @@ export const DEMO_SURFACE_POLICIES = {
   adapters: { mode: 'read-only' },
   'project-audit': { mode: 'read-only', audit: true },
   'project-settings': { mode: 'read-only' },
+  'cli-login': { mode: 'excluded', reason: 'Authenticating a CLI requires a full Hikyo installation.' },
   'cli-reauth': { mode: 'excluded', reason: 'Authenticating a CLI requires a full Hikyo installation.' },
   'workspace-approve': { mode: 'excluded', reason: 'Connecting remote instances requires a full Hikyo installation.' },
   'workspace-callback': { mode: 'excluded', reason: 'Connecting remote instances requires a full Hikyo installation.' },

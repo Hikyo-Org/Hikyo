@@ -23,6 +23,7 @@ import {
   type SignInIntent,
   type SignupDoor,
 } from '../ui/auth/LoginForm.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
@@ -103,15 +104,15 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * discovery, which is about the page rather than the credential, stays outside
  * the card.
  */
-export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent; returnTo?: string } = {}) {
+export function Login({ intent = 'sign-in', returnTo, signInOnly = false, providerHint }: { intent?: SignInIntent; returnTo?: string; signInOnly?: boolean; providerHint?: string } = {}) {
   const [search] = useSearchParams();
-  const signupOrg = intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
+  const signupOrg = !signInOnly && intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
   const passkey = usePasskeyLogin();
   const oidc = useOIDCLogin();
   const saml = useSAMLLogin();
   const methods = useAuthMethods(signupOrg);
-  const door = signupDoor(methods.data);
+  const door = signInOnly ? null : signupDoor(methods.data);
   // A password login on an account with an enrolled factor answers a challenge,
   // not a session (#760): the route then presents the second factor. The
   // sensitive-mutation surface retains no result, so the challenge is captured
@@ -141,6 +142,10 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
   const providers = (methods.data?.providers ?? []).filter(
     (provider) => (provider.kind === 'oidc' || provider.kind === 'oauth2') || provider.kind === 'saml',
   );
+  const hintedProviders = providerHint === undefined ? [] : providers.filter((provider) =>
+    providerHint.includes(':') ? `${provider.kind}:${provider.slug}` === providerHint : provider.slug === providerHint);
+  const selectedProvider = hintedProviders.length === 1 ? hintedProviders[0] : undefined;
+  const invalidHint = providerHint !== undefined && methods.isSuccess && selectedProvider === undefined;
   const providerPending = oidc.isPending || saml.isPending;
   // A provider ceremony ends in a redirect or a session change, so every
   // control is barred while one is in flight, even before the row is known;
@@ -205,6 +210,19 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
     );
   }
 
+  if (providerHint !== undefined && methods.isPending) return <p className="login" role="status">Loading sign-in methods…</p>;
+  if (providerHint !== undefined && methods.isError) return <main className="login"><div className="login__card">
+    <h1 className="login__title">Sign-in provider unavailable</h1>
+    <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
+  </div></main>;
+
+  if (invalidHint) return (
+    <main className="login"><div className="login__card">
+      <h1 className="login__title">Sign-in provider unavailable</h1>
+      <Alert>The requested provider is unknown or ambiguous. Start again from the CLI with a configured provider.</Alert>
+    </div></main>
+  );
+
   return (
     <main className="login">
       <LoginForm
@@ -214,8 +232,9 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
            public fact about an inactive policy, said and never explained
            (#587 d3); the cause renders on the Members panel. */
         signup={door === null ? null : { ...door, org: signupOrg }}
-        initialIntent={intent}
-        paused={methods.data?.signup_paused === true}
+        initialIntent={signInOnly ? 'sign-in' : intent}
+        preselectedProvider={selectedProvider}
+        paused={!signInOnly && methods.data?.signup_paused === true}
         lastUsed={lastUsed}
         busy={busy}
         error={error}
@@ -254,14 +273,14 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
           else if (provider.kind === 'oidc' || provider.kind === 'oauth2') oidc.mutate({
             provider: provider.slug,
             kind: provider.kind,
-            intent: startIntent,
+            intent: signInOnly ? 'sign-in' : startIntent,
             signupOrg,
             ...(returnTo === undefined ? {} : { returnTo }),
           });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */
-        links={
+        links={signInOnly ? undefined : (
           <>
             <Link to={surfaceById('establish-credential').path}>
               Have a setup authority? Establish your credential
@@ -270,7 +289,7 @@ export function Login({ intent = 'sign-in', returnTo }: { intent?: SignInIntent;
               Lost your second factor? Recover with a code
             </Link>
           </>
-        }
+        )}
       />
       {methods.isPending ? <p role="status">Loading sign-in methods…</p> : null}
       {methods.isError ? <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} /> : null}
