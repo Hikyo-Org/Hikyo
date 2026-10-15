@@ -59,6 +59,11 @@ else
 		.github/workflows/*)
 			all_jobs
 			;;
+		# These documents are executable Go-test inputs owned by
+		# api/acceptance_ledger_test.go, not only site content.
+		docs/adr/mvp-boundary.md | docs/adr/saml-sp.md | docs/adr/scim-provisioning.md | docs/adr/secret-scanning.md | docs/release/acceptance-1.0.md)
+			all_jobs
+			;;
 		# Dependency manifests and build/tool configuration can affect more than
 		# their owning directory, so keep them on the full integration backstop.
 		go.mod | go.sum | sqlc.yaml | .goreleaser.yaml | \

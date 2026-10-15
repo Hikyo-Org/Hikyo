@@ -45,7 +45,7 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 		t.Fatal("independent merge groups must not cancel each other's validation")
 	}
 	validation := workflow.Jobs["validation"]
-	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "" || validation.Needs != "" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(validation.Permissions, readOnly) {
+	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "" || validation.Needs != "" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("merge-queue validation must unconditionally bind the full CI graph to its event SHA")
 	}
 	gate, exists := workflow.Jobs["merge-group-proof"]

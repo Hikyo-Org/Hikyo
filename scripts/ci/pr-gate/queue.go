@@ -432,7 +432,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					result = refused("Canonical DCO sign-off is missing from this PR range.")
 					break
 				}
-				result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for protected merge queue", Summary: "Admission only. The mandatory queue must run the complete current-base suite before merging."}
+				result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for protected merge queue", Summary: "Admission only. The mandatory queue must validate its current-base candidate against the trusted change plan before merging."}
 			default:
 				return errors.New("invalid queue policy verifier outcome")
 			}
@@ -1016,11 +1016,11 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if counts["validation / ci-required"] != 1 || counts["merge-group-proof"] != 1 {
 		return errors.New("missing or duplicated full merge-group proof")
 	}
-	result := refused("Complete merge-group validation failed; queue merge remains blocked.")
+	result := refused("Required merge-group validation failed; queue merge remains blocked.")
 	if ok && r.Conclusion == "success" && authorityPending {
 		result = pending("Trusted exact-head group member policy is pending; full validation alone cannot authorize merging.")
 	} else if ok && r.Conclusion == "success" {
-		result = outcome{Status: "completed", Conclusion: "success", Title: "Complete merge group validated", Summary: fmt.Sprintf("All full-suite domains passed on %s; authenticated queue membership, current base, source run %d attempt %d and authority verified.", r.HeadSHA, r.ID, r.Attempt)}
+		result = outcome{Status: "completed", Conclusion: "success", Title: "Merge group validated", Summary: fmt.Sprintf("All domains required by the trusted plan passed on %s; authenticated queue membership, current base, source run %d attempt %d and authority verified.", r.HeadSHA, r.ID, r.Attempt)}
 	}
 	finalPolicy, err := q.policy(ctx)
 	if err != nil {
@@ -1259,7 +1259,7 @@ func (q *queueController) compatibleDefinition(ctx context.Context, original, cu
 	}
 	// The reusable workflow executes the group version, compared with current
 	// main by groupSource. Planning/aggregate tools come from the original base.
-	for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
+	for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/plan-merge-group.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
 		a, err := q.contents(ctx, path, original)
 		if err != nil {
 			return err

@@ -76,7 +76,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		t.Fatal("manual wrapper must accept no source inputs")
 	}
 	manualValidation := manual.Jobs["validation"]
-	if len(manual.Jobs) != 1 || manualValidation.Uses != "./.github/workflows/ci.yml" || manualValidation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(manualValidation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(manualValidation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+	if len(manual.Jobs) != 1 || manualValidation.Uses != "./.github/workflows/ci.yml" || manualValidation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(manualValidation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(manualValidation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("manual main wrapper must select only the exact main event SHA")
 	}
 	for _, caller := range []struct {
@@ -93,7 +93,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	}
 	validation := nightly.Jobs["validation"]
 	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) ||
-		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("nightly validation must use the unchanged read-only CI graph on main")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
