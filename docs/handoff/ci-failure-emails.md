@@ -34,4 +34,3 @@ The independent Sol review reported no actionable verified findings in the code 
 ## After merge
 
 Observe a normal merge-group lifecycle: the informational report should reach the source run’s terminal state on the same owned check, deleted queue refs should leave blocking pending outcomes without workflow failure, and early metadata completion should remain pending until its job exists. Inspect any new worker or ordered-entry failure using the added field diagnostics. Retain the original failed runs and exact run attempts as evidence.
-
