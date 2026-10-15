@@ -34,3 +34,9 @@ The independent Sol review reported no actionable verified findings in the code 
 ## After merge
 
 Observe a normal merge-group lifecycle: the informational report should reach the source run’s terminal state on the same owned check, deleted queue refs should leave blocking pending outcomes without workflow failure, and early metadata completion should remain pending until its job exists. Inspect any new worker or ordered-entry failure using the added field diagnostics. Retain the original failed runs and exact run attempts as evidence.
+
+## Follow-up: repair PR feedback failure
+
+Run 38737427016 on initial repair commit 8bdab60e9 failed both feedback lanes at git diff --check: each new handoff file had an extra blank line at EOF. The local unstaged diff check had omitted those then-untracked files. Commit c666a38cf removes exactly those two blank lines; the full base-to-head whitespace check passes. This was an introduced report-formatting error, separate from the earlier CI defects. Future verification for this PR checks the complete base-to-head diff, including added files.
+
+The external pending-state review identified a diagnostic gap: the generic pending message omitted the blocking skipped run. Reconciliation already retries through callbacks and scheduled discovery, with bounded individual invocations. The follow-up logs the exact PR, head, run and attempt on each empty-job observation and retains the blocking result until the canonical job materializes. No source-age cutoff or timeout increase is added.

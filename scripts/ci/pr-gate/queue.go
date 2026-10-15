@@ -605,7 +605,8 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			// placeholder job. Until that job proves this was an ignored metadata
 			// event, keep admission pending and do not reuse an older success.
 			if r.Status == "completed" && r.Conclusion == "skipped" && len(jobs) == 0 {
-				return nil, nil
+				_, err := fmt.Fprintf(q.output, "PR #%d head=%s feedback_run=%d attempt=%d: waiting for GitHub skipped jobs to materialize; admission remains pending.\n", p.Number, r.HeadSHA, r.ID, r.Attempt)
+				return nil, err
 			}
 			if len(jobs) == 1 && (jobs[0].Name == skippedFeedbackName || jobs[0].Name == feedbackNameExpression || jobs[0].Name == normalizedFeedbackNameExpression) && jobs[0].Status == "completed" && jobs[0].Conclusion == "skipped" {
 				continue

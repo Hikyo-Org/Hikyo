@@ -568,12 +568,21 @@ func TestQueueCompletedMetadataRunWaitsForSkippedJobToMaterialize(t *testing.T) 
 	f.api.responses[f.c.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=1", f.pr.Head.SHA))] = map[string]any{"total_count": 2, "workflow_runs": []run{metadata, f.feedbackRun}}
 	path := f.c.endpoint("actions/runs/103/attempts/1/jobs?per_page=100&page=1")
 	f.api.responses[path] = map[string]any{"total_count": 0, "jobs": []job{}}
-	if err := f.admit(); err != nil {
-		t.Fatalf("pending skipped job became an operational failure: %v", err)
-	}
-	f.assertNoSuccess(t)
-	if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
-		t.Fatal("unmaterialized metadata run reused older successful feedback")
+	var output bytes.Buffer
+	f.q.output = &output
+	want := fmt.Sprintf("PR #%d head=%s feedback_run=%d attempt=%d: waiting for GitHub skipped jobs to materialize; admission remains pending.", f.pr.Number, metadata.HeadSHA, metadata.ID, metadata.Attempt)
+	for invocation := 0; invocation < 3; invocation++ {
+		output.Reset()
+		if err := f.admit(); err != nil {
+			t.Fatalf("pending skipped job became an operational failure: %v", err)
+		}
+		if strings.Count(output.String(), want) != 1 {
+			t.Fatalf("invocation %d did not identify the blocking metadata run exactly once: %s", invocation, output.String())
+		}
+		f.assertNoSuccess(t)
+		if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+			t.Fatal("unmaterialized metadata run reused older successful feedback")
+		}
 	}
 	f.api.responses[path] = map[string]any{"total_count": 1, "jobs": []job{{ID: 301, RunID: metadata.ID, Attempt: 1, HeadSHA: metadata.HeadSHA, Name: normalizedFeedbackNameExpression, Status: "completed", Conclusion: "skipped"}}}
 	if err := f.admit(); err != nil {
@@ -581,6 +590,25 @@ func TestQueueCompletedMetadataRunWaitsForSkippedJobToMaterialize(t *testing.T) 
 	}
 	if newestQueueCheck(f.api.checks).Conclusion != "success" {
 		t.Fatal("canonical materialized metadata skip hid useful completed feedback")
+	}
+	if f.api.reads[path] < 4 {
+		t.Fatal("metadata jobs were not reread on each invocation and recovery")
+	}
+}
+
+func TestQueueCompletedMetadataRunDiagnosticFailureRemainsBlocked(t *testing.T) {
+	f := newQueueFixture(t)
+	f.feedbackRun.Conclusion = "skipped"
+	f.feedbackRefresh()
+	path := f.c.endpoint("actions/runs/101/attempts/1/jobs?per_page=100&page=1")
+	f.api.responses[path] = map[string]any{"total_count": 0, "jobs": []job{}}
+	f.q.output = queueDiagnosticWriter{}
+	if err := f.admit(); err == nil || !strings.Contains(err.Error(), "queue diagnostic unavailable") {
+		t.Fatalf("diagnostic writer failure was hidden: %v", err)
+	}
+	f.assertNoSuccess(t)
+	if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+		t.Fatal("diagnostic writer failure did not retain a blocking barrier")
 	}
 }
 
