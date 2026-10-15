@@ -1233,6 +1233,8 @@ jobs:
     # Setup, build, campaign, cleanup and evidence have independent bounds.
     # Keep the campaign's own 10m deadline and the original web-go budget.
     timeout-minutes: 35
+    env:
+      GOCACHE: ${{ github.workspace }}/.ci-cache/go-feedback
     steps:
       - *validate-revision
       - name: Check out the validated immutable revision
@@ -1262,14 +1264,15 @@ jobs:
         timeout-minutes: 1
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
-      - name: Restore source artifact Go cache
+      # Reuse the trusted size-bounded compiler seed, never the multi-GB
+      # full-test archive. A miss still compiles every source fixture below.
+      - name: Restore bounded source artifact Go cache
         timeout-minutes: 2
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/go-build
-          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
-          restore-keys: |
-            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          path: .ci-cache/go-feedback
+          key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}-${{ inputs.revision }}
+          restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Start disposable adversarial PostgreSQL
         timeout-minutes: 2
         id: security-postgres

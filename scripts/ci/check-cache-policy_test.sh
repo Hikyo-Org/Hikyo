@@ -176,7 +176,9 @@ grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache rea
 for file in "$@"; do
 	feedback_cache=false
 	[ "$(basename "$file")" != ci-feedback.yml ] || feedback_cache=true
-	awk -v feedback_cache="$feedback_cache" '
+	main_validation=false
+	[ "$(basename "$file")" != ci.yml ] || main_validation=true
+	awk -v feedback_cache="$feedback_cache" -v main_validation="$main_validation" '
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
@@ -205,6 +207,12 @@ for file in "$@"; do
                 mode = "lookup-only: true"
                 if (feedback_cache == "true") {
                     build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047)"
+                    mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+                }
+                if (main_validation == "true") {
+                    # The source-artifact consumer uses the same bounded seed
+                    # from its immutable root checkout, with no publishing.
+                    build_hash = "hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047)"
                     mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 }
                 if (index(block, "key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
