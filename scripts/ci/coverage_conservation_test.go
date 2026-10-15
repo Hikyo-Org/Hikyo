@@ -245,12 +245,15 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 
 func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	baseline, original := readCoverageBaseline(t)
+	if err := requireBaselineCoverage(original, baseline); err != nil {
+		t.Fatalf("unmutated workflow must conserve baseline coverage: %v", err)
+	}
 	for name, mutation := range map[string]func(map[string]map[string]any){
 		"narrow complete shard counts": func(j map[string]map[string]any) {
-			mutateShardPlanningStep(j, "run", strings.ReplaceAll(completeShardPlanningRun, "race_count=12", "race_count=6"))
+			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("race_count=12", "race_count=6"))
 		},
 		"use candidate planner": func(j map[string]map[string]any) {
-			mutateShardPlanningStep(j, "run", strings.ReplaceAll(completeShardPlanningRun, "git show \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\"", "git show \"HEAD:scripts/ci/analysis-shards-go/main.go\""))
+			mutateShardPlanningStep(j, "run", replaceShardPlanningRunText("git show \"$BASE_SHA:scripts/ci/analysis-shards-go/main.go\"", "git show \"HEAD:scripts/ci/analysis-shards-go/main.go\""))
 		},
 		"fail open complete planning": func(j map[string]map[string]any) { mutateShardPlanningStep(j, "continue-on-error", true) },
 		"skip complete planning":      func(j map[string]map[string]any) { mutateShardPlanningStep(j, "if", "false") },
@@ -395,14 +398,31 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 	}
 }
 
+func replaceShardPlanningRunText(old, replacement string) string {
+	if old == replacement || strings.Count(completeShardPlanningRun, old) != 1 {
+		panic("planner mutation must replace exactly one matching target")
+	}
+	return strings.Replace(completeShardPlanningRun, old, replacement, 1)
+}
+
 func mutateShardPlanningStep(jobs map[string]map[string]any, key string, value any) {
+	var target map[string]any
 	for _, item := range jobs["analysis_shards"]["steps"].([]any) {
 		step := item.(map[string]any)
 		if step["name"] == "Plan complete test, race, and fuzz shards" {
-			step[key] = value
-			return
+			if target != nil {
+				panic("complete shard planning step is duplicated")
+			}
+			target = step
 		}
 	}
+	if target == nil {
+		panic("complete shard planning step not found")
+	}
+	if reflect.DeepEqual(target[key], value) {
+		panic("planner mutation must change its target")
+	}
+	target[key] = value
 }
 
 func mutateDemoStep(jobs map[string]map[string]any, key string, value any) {
@@ -438,5 +458,30 @@ func mutateFeedbackNodeStep(jobs map[string]map[string]any, key string, value an
 			step.(map[string]any)[key] = value
 			return
 		}
+	}
+}
+
+func TestShardPlanningMutationGuards(t *testing.T) {
+	step := func() map[string]any {
+		return map[string]any{"name": "Plan complete test, race, and fuzz shards", "run": completeShardPlanningRun}
+	}
+	jobs := func(steps ...any) map[string]map[string]any {
+		return map[string]map[string]any{"analysis_shards": {"steps": steps}}
+	}
+	for name, mutation := range map[string]func(){
+		"missing step":    func() { mutateShardPlanningStep(jobs(), "if", "false") },
+		"duplicated step": func() { mutateShardPlanningStep(jobs(step(), step()), "if", "false") },
+		"unchanged value": func() { mutateShardPlanningStep(jobs(step()), "run", completeShardPlanningRun) },
+		"missing text":    func() { replaceShardPlanningRunText("missing planner mutation target", "replacement") },
+		"unchanged text":  func() { replaceShardPlanningRunText("race_count=12", "race_count=12") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("ineffective or ambiguous planner mutation must fail")
+				}
+			}()
+			mutation()
+		})
 	}
 }

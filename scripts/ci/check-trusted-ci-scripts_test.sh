@@ -30,8 +30,17 @@ require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/check-required-jobs.s
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" --supports-plan-v2"
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" \"\$checker_event\" \"\$NEEDS_JSON\" \"\$PLAN_JSON\""
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" >\"\$trusted_planner\""
+# The complete planner is compiled once from the immutable base source. Its
+# executable fixture proves that poisoned head code and unknown legacy sources
+# cannot replace that boundary or produce partial downstream plans.
 # shellcheck disable=SC2016
-require_line "$workflow" 'isolation_shard=$(go run "$trusted_planner" isolation --root .'
+require_line "$workflow" 'go build -o "$planner" "$trusted_planner"'
+# shellcheck disable=SC2016
+require_line "$workflow" 'plan=$("$planner" all --root . --race-shards "$race_count" --shards "$shard_count")'
+(
+	cd "$script_dir/../.."
+	go test ./scripts/ci -count=1 -run '^TestCompleteShardWorkflowProvenanceAndMigration$'
+)
 # Core package enumeration moved into the scheduler so app cleanup does not
 # contend with other packages' PostgreSQL checkpoints. Keep workflow wiring
 # pinned here, and execute its coverage/order/failure refusal proof directly.
