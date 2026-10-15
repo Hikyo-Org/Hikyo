@@ -58,13 +58,14 @@ The first hosted compatibility run at dce9ffdc passed in 3m58s, including
 3m39s for compilation and vet with setup-go caching disabled. This measured
 run does not establish a universal cold timing or a faster merge guarantee.
 
-The new trusted-main `queue-report` workflow publishes advisory
-`merge-queue-validation` status on the source PR head. It attributes runs through
-authenticated workflow identity, immutable merge parents, the current PR head,
-run attempts and fresh workflow history. It serializes writers and rejects
-superseded or foreign identities. It reads GitHub metadata only, never executes
-queue code with its status-write token, and becomes active after this change
-merges. Protected admission and exact-current-base full merge proof are unchanged.
+PR #921 subsequently merged the canonical trusted-main `merge-queue-report`
+workflow. This branch now uses that implementation instead of adding a second
+reporter. Each run and attempt has its own informational `Merge queue validation`
+check, authenticated against the workflow identity and immutable merge parents.
+Existing historical checks may finish on their original head; terminal checks
+cannot reopen, and callbacks cannot attach an old run to a new head. The reporter
+reads GitHub metadata only and never executes queue code with its check-write
+token. Protected admission and exact-current-base full merge proof are unchanged.
 
 ## Operator compatibility
 
@@ -143,9 +144,11 @@ native startup checks passed, including CA and hostname verification. Complete
 manual kind and officially signed image-upgrade rehearsals remain separate,
 unverified drills. Existing negative IP/migration tests remain intact.
 
-The new queue reporter was replayed read-only against the authenticated failed
-run and correctly produced a failure for source PR #920. It becomes available
-for future callbacks only after merge; it does not backfill this historical run.
+The original queue reporter was replayed read-only against the authenticated
+failed run and correctly produced a failure for source PR #920. That historical
+experiment applies to the original implementation. PR #921's canonical reporter
+now supersedes it; its own authenticated run/attempt regression coverage remains
+enforced. Historical runs are not automatically backfilled.
 
 At this follow-up commit, final native campaign evidence and fresh hosted
 validation are still pending. The PR body records subsequent exact-head results.
@@ -176,3 +179,15 @@ are now ignored through the repository's canonical ignore policy. The floor
 source-cleanliness gate is unchanged, and regression coverage ensures ordinary
 untracked source remains visible. This fixes generated-file hygiene rather
 than allowing dirty candidates.
+
+## Main-branch reporter reconciliation
+
+After admission passed at `219f7c9`, PR #921 merged as `48e2fd99` and introduced
+an add/add conflict in the queue-report workflow. The trusted controller recorded
+`merge-conflict` and refused admission before running validation. Merging main
+keeps its canonical per-run/attempt reporter and removes this PR's duplicate
+implementation. Five missing identity rejection cases and explicit workflow
+trust guards were transferred to the canonical tests. Independent review and
+reporter, controller, race, vet, actionlint and trusted-CI fixtures passed. The
+dependency files and application repairs are unchanged; fresh hosted validation
+of the reconciled head is still required.

@@ -18,6 +18,7 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 	}
 	var workflow struct {
 		Name        string               `yaml:"name"`
+		RunName     string               `yaml:"run-name"`
 		On          map[string]yaml.Node `yaml:"on"`
 		Permissions map[string]string    `yaml:"permissions"`
 		Concurrency struct {
@@ -41,11 +42,16 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 	if workflow.Name != "trusted-merge-ci" || !isMergeGroup || len(workflow.On) != 1 || !reflect.DeepEqual(workflow.Permissions, readOnly) || len(workflow.Jobs) != 2 {
 		t.Fatal("merge-queue validation must have one isolated read-only event and its required gate")
 	}
+	// GitHub exposes run-name as workflow_run.name and the Actions run name.
+	// Both the trusted queue publisher and PR reporter authenticate that name.
+	if workflow.RunName != "" && workflow.RunName != workflow.Name {
+		t.Fatal("merge-queue run name must preserve the trusted workflow callback identity")
+	}
 	if workflow.Concurrency.Group != "trusted-merge-ci-${{ github.run_id }}" || !workflow.Concurrency.Cancel {
 		t.Fatal("independent merge groups must not cancel each other's validation")
 	}
 	validation := workflow.Jobs["validation"]
-	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "" || validation.Needs != "" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(validation.Permissions, readOnly) {
+	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "" || validation.Needs != "" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) || !reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
 		t.Fatal("merge-queue validation must unconditionally bind the full CI graph to its event SHA")
 	}
 	gate, exists := workflow.Jobs["merge-group-proof"]

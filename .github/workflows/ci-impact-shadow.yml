@@ -1,0 +1,86 @@
+# Observe dependency selection on the same candidate as trusted-merge-ci.
+# No required job consumes this report; backend validation remains complete.
+name: backend-impact-shadow
+run-name: "Backend impact shadow: ${{ github.event.merge_group.head_ref }}"
+
+on:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-impact-shadow-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare immutable base tooling
+        id: tooling
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$HEAD_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"
+          mkdir -p "$RUNNER_TEMP/impact-shadow"
+          git show "$BASE_SHA:go.mod" >"$RUNNER_TEMP/impact-shadow/go.mod"
+          if git cat-file -e "$BASE_SHA:scripts/ci/impact-shadow/main.go" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/ci/impact-shadow/main.go" >"$RUNNER_TEMP/impact-shadow/main.go"
+            echo 'available=true' >>"$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >>"$GITHUB_OUTPUT"
+            echo 'Backend impact shadow is not yet present on the trusted base. Full validation remains required.' >"$RUNNER_TEMP/impact-shadow/report.md"
+            printf '%s\n' '{"mode":"shadow","authoritative":false,"recommendation":"full","fallback_reasons":["Shadow tooling is not yet present on the trusted base."]}' >"$RUNNER_TEMP/impact-shadow/report.json"
+          fi
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.tooling.outputs.available == 'true'
+        with:
+          go-version-file: ${{ runner.temp }}/impact-shadow/go.mod
+          cache: false
+      - name: Observe backend dependency impact without selecting tests
+        if: steps.tooling.outputs.available == 'true'
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          GOWORK: 'off'
+          GOFLAGS: ''
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          # Compile only trusted standalone stdlib tooling outside the source
+          # module. Candidate go.mod/go.work cannot affect the executable.
+          (cd "$RUNNER_TEMP" && GO111MODULE=off go build -o impact-shadow/analyze impact-shadow/main.go)
+          "$RUNNER_TEMP/impact-shadow/analyze" --repo "$GITHUB_WORKSPACE" \
+            --base "$BASE_SHA" --head "$HEAD_SHA" --timeout 3m \
+            --json "$RUNNER_TEMP/impact-shadow/report.json" \
+            --markdown "$RUNNER_TEMP/impact-shadow/report.md"
+      - name: Publish advisory summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/impact-shadow/report.md" ]; then
+            cat "$RUNNER_TEMP/impact-shadow/report.md" >>"$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Shadow analysis failed before producing a report. No test selection was changed.' >>"$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain shadow evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: backend-impact-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/impact-shadow/report.json
+            ${{ runner.temp }}/impact-shadow/report.md
+          if-no-files-found: warn
+          retention-days: 30

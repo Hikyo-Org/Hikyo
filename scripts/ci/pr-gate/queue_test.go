@@ -307,7 +307,7 @@ func TestQueueLegitimatePrefixAdvanceKeepsFullProof(t *testing.T) {
 	f.pr.Base.SHA = strings.Repeat("e", 40)
 	f.refresh()
 	f.groupRefresh()
-	for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
+	for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/plan-merge-group.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
 		for _, sha := range []string{old, f.pr.Base.SHA} {
 			f.api.responses[f.c.endpoint("contents/"+path+"?ref="+sha)] = map[string]string{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("same trusted full validation definition"))}
 		}
@@ -330,7 +330,7 @@ func TestQueueLegitimatePrefixAdvanceKeepsFullProof(t *testing.T) {
 			g.pr.Base.SHA = strings.Repeat("e", 40)
 			g.refresh()
 			g.groupRefresh()
-			for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
+			for _, path := range []string{"scripts/ci/classify-changed-paths.sh", "scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh", "scripts/ci/plan-merge-group.sh", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh"} {
 				for _, sha := range []string{old, g.pr.Base.SHA} {
 					g.api.responses[g.c.endpoint("contents/"+path+"?ref="+sha)] = map[string]string{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("same full definition"))}
 				}

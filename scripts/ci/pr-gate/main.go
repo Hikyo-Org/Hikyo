@@ -1526,17 +1526,12 @@ func main() {
 	lifecycleProbe := flag.Bool("check-lifecycle-probe", false, "verify only the fixed non-required check lifecycle on trusted main")
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
-	queueReport := flag.Bool("queue-report", false, "report full queue workflow progress on its source PR as a non-required status")
 	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
 	repairOnly := flag.Bool("repair-groups-only", false, "repair queue groups only on authenticated manual dispatch")
 	expectedHead := flag.String("expected-head", "", "exact SHA held by the protected per-head publisher concurrency lease")
 	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
-	if *queueReport && (*lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
-		fmt.Fprintln(os.Stderr, "queue reporting cannot mix protected publication roles")
-		os.Exit(1)
-	}
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
 		os.Exit(1)
@@ -1580,9 +1575,7 @@ func main() {
 	}
 	if err == nil {
 		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
-		if *queueReport {
-			err = c.reportQueue(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
-		} else if *lifecycleProbe {
+		if *lifecycleProbe {
 			receipt := lifecycleReceipt{Version: 2, Protocol: lifecycleProtocol}
 			path := os.Getenv("PR_GATE_PROBE_RECEIPT")
 			if path == "" {

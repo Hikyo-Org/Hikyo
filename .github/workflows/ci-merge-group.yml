@@ -3,6 +3,8 @@
 # graph executes the selected code and must never inherit that event's base
 # cache scope or permissions. Pull requests use ci-candidate.yml instead.
 name: trusted-merge-ci
+# Keep the Actions run name stable: trusted workflow_run consumers authenticate
+# it as trusted-merge-ci. PR diagnostics carry the readable run/attempt details.
 
 on:
   merge_group:
@@ -23,6 +25,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pull-requests: read
 
   # This read-only marker is evidence, never the required check producer.
   # Trusted default-branch queue-gate independently verifies the current group.
