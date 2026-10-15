@@ -24,7 +24,7 @@ All six endpoints remain inside the shared pre-authentication admission budget. 
 
 `meta.protocol_capabilities` advertises `loopback-handoff` and `device-code`. OpenAPI, generated Go/TypeScript, operation/parity registries, CLI help/goldens, route inventory, authz forwarding inventory, storage authority reasons and verifier classification were updated at their owners. The ops ADR has a dated owner amendment; its historical capped-doubling table is preserved and explicitly superseded.
 
-## Validation evidence
+## Initial implementation validation evidence
 
 Initial evidence: `go test ./internal/cli -run '^TestExitCodeMatrix$' -count=1` passed against main, confirming the pre-implementation refusals. The first implementation lifecycle suite passed on both engines in 24.476 seconds, using actual password and virtual-authenticator passkey ceremonies, a signing OIDC fixture and the GitHub OAuth2 fixture's real start/callback exchange before approval and redemption.
 
@@ -42,14 +42,28 @@ The first schema-opening tests failed with `embedded migration bytes differ from
 
 The real malformed-form test exposed a repeated `client_id` accepted by the generic form decoder. The runtime validation owner now rejects duplicate scalar fields before decoding. A restore-epoch test initially expected only the unauthenticated sentinel; the actual outer upgrade-maintenance fence returned its stronger stale-operation refusal before issuance. The test accepts that refusal and still requires an empty token. Existing coverage was retained. R1 additionally found the missing failure-audit path and UI state that survived a changed authorization reference; both were repaired and covered before R2. A new audit-count test initially declared an `int` return for the harness's `int64` count; correcting the test type resolved that compile failure. The Go formatting tools disagreed on alignment within a large existing route-pin map; a blank grouping line preserves every entry and makes both formatters agree. No formatting gate was weakened.
 
-## Review and delivery boundaries
+## Initial review and delivery boundaries
 
-The user requested delegation to Sol 6.1 at high effort, overriding the issue's historic model label. Independent adversarial R1 found missing failed-login audit emission and a UI authorization-state remount issue. Both were fixed, with retained regressions. Loopback proof/refusal failures now use the existing durable rollback-audit carrier; committed device denials and expiry record `auth.login` failure. Normal pending and slowdown responses do not create failed-login spam. The final both-engine failure-audit regression checks durable counts and absence of state, code, verifier and browser bearer in audit payloads. Independent R2 concluded CLEAN over the final 73-file implementation manifest `fdc958dfe396834cc32f65273fa1c375c41d40f6de3b6abac12d87e4ed2c6b05`; the local manifest is `/tmp/hikyo-612-r2-final-manifest.json`. Cross-provider review is unavailable under the recorded reviewer policy and is not reported as CLEAN. No remote CI, current-head PR review, merge or production/runtime deployment is claimed. Preview and both-engine evidence remain distinct.
+The user requested delegation to Sol 6.1 at high effort, overriding the issue's historic model label. Independent adversarial R1 found missing failed-login audit emission and a UI authorization-state remount issue. Both were fixed, with retained regressions. Loopback proof/refusal failures now use the existing durable rollback-audit carrier; committed device denials and expiry record `auth.login` failure. Normal pending and slowdown responses do not create failed-login spam. The final both-engine failure-audit regression checks durable counts and absence of state, code, verifier and browser bearer in audit payloads. Independent R2 concluded CLEAN over the final 73-file implementation manifest `fdc958dfe396834cc32f65273fa1c375c41d40f6de3b6abac12d87e4ed2c6b05`; the manifest is retained with the private review artifacts. Cross-provider review is unavailable under the recorded reviewer policy and is not reported as CLEAN. At that checkpoint, no remote CI, current-head PR review, merge or production/runtime deployment was claimed. Preview and both-engine evidence remain distinct.
 
-## Completion addendum
+## Initial completion addendum
 
 Final source review, generated freshness and the complete eighteen-leg both-engine run are complete. Scoped `go vet` passed for service, server, authn store, authz, CLI and API. Desktop and mobile browser acceptance are complete on the same current binary. All fixture listeners on ports 14801 through 14805 were closed after verification. There is no retained preview. The parent owns final review and delivery decisions.
 
+
+## PR #924 review repairs and rebase
+
+The branch was rebased onto `69475a27e85cd4e2ad823a557ebf9a5507bdd5d7` after PR #926 supplied the matrix query-identity optimization and consistent Undici fetch/dispatcher ownership. The upstream runtime files are preserved byte-for-byte; this PR retains its additional matrix identity, updated-value and cached-data permission-refusal regression. The original browser-performance failure is preserved as evidence. Controlled base/head measurements reproduced the inherited render cost; the rebased stock suite passes all four cases with unchanged median and maximum thresholds. Desktop save/live-update medians were 72.9/84.7 ms, mobile 45.6/35.9 ms. Artificial CPU-throttled trials are diagnostic evidence, not hosted acceptance.
+
+The incoming Qodo findings are repaired at their owners. All six CLI login operations remain available during configuration recovery, while ordinary business operations retain their 503 fence. A real-HTTP regression on both SQLite and PostgreSQL covers both transports, authenticated browser approval, CSRF, PKCE and replay refusal. Full server, structural lint and API suites and scoped vet passed. Five punctuation replacements in canonical shared OpenAPI descriptions regenerate the client comments without wire changes; client typecheck, 37 tests and a 19-artifact generation fixed point passed.
+
+Terminal login now uses local monotonic budgets derived from device `expires_in` or the established loopback lifetime, preserving earlier caller deadlines through redemption. Session timestamps are validated against their server-created timestamp and the server expiry is retained unchanged in custody. Actual mock-server regressions cover both transports with plus/minus 48-hour skew; deterministic-clock tests cover polling expiry and shorter caller deadlines. Full CLI tests, focused race checks, vet and Windows cross-compilation passed. Windows runtime remains untested.
+
+The consent page relies on refreshed server transaction state and atomic approval for expiration, retaining timestamp format, immutable metadata, reference, callback, auth revision and cancellation checks. Tests reproduce the old refusal before the fix and cover server expiry refusal and valid skewed metadata. Existing AuthProvider clock behavior is outside this repair; these results do not establish arbitrary-clock support for every browser authentication ceremony. The misplaced route comment is corrected. The committed reproduction instructions below no longer expose workstation paths or depend on someone else's temporary files.
+
+Fresh independent Sol 6.1 high review of the rebased repairs concluded CLEAN. Its 14-file implementation manifest excludes only this mutable handoff; canonical SHA256 is `077800dd45db51d3f45236568c26bc338433b2678cbf6c6d3f8824b49645d5a5`. Post-rebase Node 26.7.0 typecheck, lint, production build and all 1,713 unit tests pass. Cross-provider review remains skipped. Required hosted checks and exact merge-group validation are separate delivery gates.
+
+Post-rebase native browser acceptance passed all nine scenarios on desktop and all nine on mobile, including a browser clock twenty minutes ahead and server-authoritative expiry refusal. Both campaigns used the same embedded-UI binary, SHA256 `289801a9fd9690495064f0824f5bc72d1a06618aff3f6e4f4b88fcf51dcaead6`. Fixture listeners were closed after validation.
 
 ## Jev advisory
 
@@ -58,42 +72,35 @@ The parent ran one advisory against the final local candidate, explicitly withou
 
 ## Browser evidence and reproduction
 
-Prerequisites are the installed repository dependencies and Playwright Chromium, `fnm` with Node 26.7.0 and repository-pinned pnpm 11.24.0, five free fixture ports (14801 through 14805), and a current executable built with the matching production WebUI assets and the `ui` tag. At report correction, `/tmp/hikyo-612-ui-e2e` still existed and its SHA256 was independently rechecked as `02d5088a3c6b75c99bbbabec78aebb4738143bc054fa0bddc0832ab3caf49d24`. That temporary path is not a durable artifact: the browser commands below require it to exist; do not run them against an absent or stale binary.
+Run these commands from the repository root. Prerequisites are the installed repository dependencies and Playwright Chromium, `fnm` with Node 26.7.0 and repository-pinned pnpm 11.24.0, Go from `go.mod`, and five free fixture ports (14801 through 14805).
 
-If the binary or matching assets are absent, rebuild from this checkout in the following order. These are the production WebUI build and the fixture's supported Go build with embedded assets:
-
-```sh
-cd /Users/developwent/.t3/worktrees/wenv/t3-c2352a7d/web
-fnm exec --using=26.7.0 node --run build
-cd /Users/developwent/.t3/worktrees/wenv/t3-c2352a7d
-go build -tags ui -o /tmp/hikyo-612-ui-e2e ./cmd/hikyo
-```
-
-Both build commands must exit successfully. A rebuild after source or toolchain changes is new evidence and is not covered by the recorded binary hash. Before using the retained binary, check it explicitly; the first command must succeed and the second must print the SHA256 above:
+Build the production WebUI before the Go binary with embedded assets. The temporary directory is created for this run; retain `HIKYO_E2E_BINARY` in the same shell for both browser commands:
 
 ```sh
-test -x /tmp/hikyo-612-ui-e2e
-shasum -a 256 /tmp/hikyo-612-ui-e2e
+hikyo_cli_evidence_dir="$(mktemp -d)"
+export HIKYO_E2E_BINARY="$hikyo_cli_evidence_dir/hikyo"
+(cd web && fnm exec --using=26.7.0 node --run build) &&
+  go build -tags ui -o "$HIKYO_E2E_BINARY" ./cmd/hikyo
+test -x "$HIKYO_E2E_BINARY"
+shasum -a 256 "$HIKYO_E2E_BINARY"
 ```
 
-The final validated browser commands were run sequentially from `web/`. Desktop:
+Both builds and the executable check must succeed before testing. The hash identifies this new build; source or toolchain changes need not reproduce the historical hash recorded above.
+
+Run desktop first, then mobile in the same shell. The fixture owns their server lifecycle and the projects share its temporary authentication files:
 
 ```sh
-cd /Users/developwent/.t3/worktrees/wenv/t3-c2352a7d/web
-HIKYO_E2E_BINARY=/tmp/hikyo-612-ui-e2e HIKYO_E2E_PORT=14801 HIKYO_E2E_PORT_B=14802 HIKYO_E2E_PORT_TLS=14803 HIKYO_E2E_PORT_OPERATIONAL=14804 HIKYO_E2E_PORT_OPERATIONAL_B=14805 fnm exec --using=26.7.0 pnpm exec playwright test --project=desktop login.spec.ts --grep 'CLI login handoff'
+(cd web && HIKYO_E2E_PORT=14801 HIKYO_E2E_PORT_B=14802 HIKYO_E2E_PORT_TLS=14803 HIKYO_E2E_PORT_OPERATIONAL=14804 HIKYO_E2E_PORT_OPERATIONAL_B=14805 fnm exec --using=26.7.0 pnpm exec playwright test --project=desktop login.spec.ts --grep 'CLI login handoff')
 ```
-
-Mobile, after desktop finishes:
 
 ```sh
-cd /Users/developwent/.t3/worktrees/wenv/t3-c2352a7d/web
-HIKYO_E2E_BINARY=/tmp/hikyo-612-ui-e2e HIKYO_E2E_PORT=14801 HIKYO_E2E_PORT_B=14802 HIKYO_E2E_PORT_TLS=14803 HIKYO_E2E_PORT_OPERATIONAL=14804 HIKYO_E2E_PORT_OPERATIONAL_B=14805 fnm exec --using=26.7.0 pnpm exec playwright test --project=mobile login.spec.ts --grep 'CLI login handoff'
+(cd web && HIKYO_E2E_PORT=14801 HIKYO_E2E_PORT_B=14802 HIKYO_E2E_PORT_TLS=14803 HIKYO_E2E_PORT_OPERATIONAL=14804 HIKYO_E2E_PORT_OPERATIONAL_B=14805 fnm exec --using=26.7.0 pnpm exec playwright test --project=mobile login.spec.ts --grep 'CLI login handoff')
 ```
 
-The expected result is eight passing scenarios per project. The repository fixture owns both server instances and their security-sensitive cookie/CSP behavior; these were disposable local fixtures, not a production deployment.
+The repository fixture owns both server instances and their security-sensitive cookie/CSP behavior. These are disposable local fixtures, not a production deployment. The initial runs each reported eight passing tests. Local logs and temporary binaries are non-durable evidence; repeat the commands for the current revision.
 
 The real browser paths cover local password plus TOTP, virtual-authenticator passkey, signed-fixture OIDC loopback and redemption, and device approval with cumulative ten/fifteen-second slowdown and redemption. The browser OAuth2 case mocks only discovery/start to assert forced `sign-in`, hidden sign-up and preserved return after refusal. Real GitHub-profile start/callback, approval, redemption and provider invalidation run on both actual datastores in the service suite. These are separate evidence boundaries. No real external provider account or physical authenticator was used.
 
-UI logs are `/tmp/hikyo-612-web-unit-node26-final.log`, `/tmp/hikyo-612-storybook-node26-final.log`, `/tmp/hikyo-612-web-build-node26-final.log`, `/tmp/hikyo-612-desktop-node26-final.log` and `/tmp/hikyo-612-mobile-node26-final.log`. Desktop/mobile screenshots in both themes are `/tmp/hikyo-612-cli-{desktop,mobile}-{dark,light}.png`; the offline HTML report embeds them. A browser fixture initially mixed builtin fetch with an Undici 8 agent; using one module's fetch, agent and Response type fixed its actual network regressions. Parallel per-instance compilation initially starved the startup health deadline; the final run used the fixture's existing supported prebuilt-binary path, not a relaxed timeout.
+The private paired Markdown/HTML report retains the original unit, Storybook, production-build and desktop/mobile logs, plus all four desktop/mobile theme screenshots. These local artifacts are not repository dependencies or portable build inputs. The HTML embeds the screenshots for offline reading. A browser fixture initially mixed builtin fetch with an Undici 8 agent; using one module's fetch, agent and Response type fixed its actual network regressions. Parallel per-instance compilation initially starved the startup health deadline; the final run used the fixture's existing supported prebuilt-binary path, not a relaxed timeout.
 
-The final paired chat artifact is `/Users/developwent/.codex/artifacts/hikyo-612-20261015/implementation.md` and `implementation.html`. The source manifest is retained alongside as `review-r2-manifest.json`. The earlier assessment is explicitly marked superseded. No production state was changed.
+The private report also retains the exact source manifest and marks the earlier assessment superseded. This committed handoff contains the reproducible commands and evidence boundaries without private workstation paths. No production state was changed.

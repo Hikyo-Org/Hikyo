@@ -362,9 +362,7 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
-  // Browser half of the CLI's purpose-bound reauthentication handoff. The
-  // opaque transaction state stays in the query string so login can render on
-  // this same route without losing it.
+  // Browser sign-in and explicit consent for a separate CLI login session.
   {
     id: 'cli-login',
     path: '/login/cli',
@@ -374,6 +372,9 @@ export const SURFACES = defineSurfaceRegistry([
     chrome: 'none',
     session: 'establish-or-reuse',
   },
+  // Browser half of the CLI's purpose-bound reauthentication handoff. The
+  // opaque transaction state stays in the query string so login can render on
+  // this same route without losing it.
   {
     id: 'cli-reauth',
     path: '/reauth/cli',

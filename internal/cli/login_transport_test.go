@@ -125,7 +125,7 @@ func TestLoginLoopbackRejectsWrongCallbacksAndClosesBeforeRedeem(t *testing.T) {
 }
 
 func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
-	for _, scenario := range []string{"opener", "state", "expired", "cancelled"} {
+	for _, scenario := range []string{"opener", "state", "missing-expiry", "cancelled"} {
 		t.Run(scenario, func(t *testing.T) {
 			var start apigen.CLILoginStartRequest
 			client := loginTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -139,8 +139,8 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 				if scenario == "state" {
 					response.State = "wrong"
 				}
-				if scenario == "expired" {
-					response.ExpiresAt = time.Now().Add(-time.Second)
+				if scenario == "missing-expiry" {
+					response.ExpiresAt = time.Time{}
 				}
 				_ = json.NewEncoder(w).Encode(response)
 			}))
@@ -155,7 +155,7 @@ func TestLoginLoopbackRefusalsCloseListener(t *testing.T) {
 				}
 				return errors.New("browser missing")
 			})
-			if err == nil || ((scenario == "state" || scenario == "expired") && opens != 0) {
+			if err == nil || ((scenario == "state" || scenario == "missing-expiry") && opens != 0) {
 				t.Fatalf("refusal err=%v opens=%d", err, opens)
 			}
 			callback, _ := url.Parse(start.RedirectUri)

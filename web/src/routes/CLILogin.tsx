@@ -1,6 +1,6 @@
 import { approveCliLoginOp, showCliLoginTransactionOp } from '@hikyo/operations';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 
 import { parsed } from '../api/client.ts';
@@ -52,22 +52,12 @@ function CLILoginRequest() {
     outcome?.reference === reference &&
     outcome.sessionEpoch === sessionEpoch &&
     outcome.status === 'cancelled';
-  const [clock, setClock] = useState(Date.now);
   const transaction = useQuery({
     queryKey: ['cli-login', reference],
     queryFn: ({ signal }) => parsed(showCliLoginTransactionOp, { path: { reference }, signal }),
     enabled: valid && auth.state.status === 'authenticated' && !approved && !cancelled,
   });
-  const deadline = Date.parse(transaction.data?.expires_at ?? '');
-  const expired = !Number.isFinite(deadline) || clock >= deadline;
-  useEffect(() => {
-    if (expired) return;
-    const timer = globalThis.setTimeout(
-      () => setClock(Date.now()),
-      Math.min(2_147_483_647, Math.max(0, deadline - Date.now())),
-    );
-    return () => globalThis.clearTimeout(timer);
-  }, [deadline, expired]);
+  const validExpiry = Number.isFinite(Date.parse(transaction.data?.expires_at ?? ''));
   const tasks = useCeremonyTask([
     reference,
     auth.state.status,
@@ -81,8 +71,10 @@ function CLILoginRequest() {
       };
       requireCurrent();
       const displayed = transaction.data;
-      if (displayed === undefined || expired || displayed.reference !== reference)
+      if (displayed === undefined || !validExpiry || displayed.reference !== reference)
         throw new Error('The sign-in request expired.');
+      // The server checks expiry on this refresh and again in the atomic
+      // approval. Browser wall-clock skew must not reject a live request.
       const current = await parsed(showCliLoginTransactionOp, {
         path: { reference },
         signal: task.signal,
@@ -93,8 +85,7 @@ function CLILoginRequest() {
         current.transport !== displayed.transport ||
         current.redirect_uri !== displayed.redirect_uri ||
         current.instance !== displayed.instance ||
-        current.expires_at !== displayed.expires_at ||
-        Date.parse(current.expires_at) <= Date.now()
+        current.expires_at !== displayed.expires_at
       ) {
         throw new Error('The sign-in request changed or expired.');
       }
@@ -209,7 +200,7 @@ function CLILoginRequest() {
   if (
     transaction.isError ||
     approve.isError ||
-    (transaction.data !== undefined && (expired || transaction.data.reference !== reference))
+    (transaction.data !== undefined && (!validExpiry || transaction.data.reference !== reference))
   )
     return (
       <main className="login">

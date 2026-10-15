@@ -67,7 +67,7 @@ func TestDeviceLoginUsesRFCFormsAndStoresOnlyCLISession(t *testing.T) {
 }
 
 func TestDeviceLoginRefusesInvalidAuthorizationBeforePrintingOrPolling(t *testing.T) {
-	for _, scenario := range []string{"foreign-url", "secret-in-url", "invalid-code", "expired", "interval", "lifetime", "missing-device-code"} {
+	for _, scenario := range []string{"foreign-url", "secret-in-url", "invalid-code", "missing-expiry", "expired", "interval", "lifetime", "missing-device-code"} {
 		t.Run(scenario, func(t *testing.T) {
 			var client *Client
 			polled := false
@@ -86,7 +86,9 @@ func TestDeviceLoginRefusesInvalidAuthorizationBeforePrintingOrPolling(t *testin
 				case "invalid-code":
 					start.UserCode = "ABCD\n123"
 				case "expired":
-					start.ExpiresAt = time.Now().Add(-time.Second)
+					start.ExpiresIn = 0
+				case "missing-expiry":
+					start.ExpiresAt = time.Time{}
 				case "interval":
 					start.Interval = 0
 				case "lifetime":

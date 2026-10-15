@@ -171,15 +171,56 @@ it('requires a separate approval after the route changes to another device reque
   expect(approve(container).disabled).toBe(false);
 });
 
-it.each(['expired', 'wrong-reference'])('refuses %s transaction metadata without consent', async (failure) => {
-  const metadata = transaction();
-  fetcher.mockResolvedValue(response(failure === 'expired'
-    ? { ...metadata, expires_at: new Date(Date.now() - 1_000).toISOString() }
-    : { ...metadata, reference: 'B'.repeat(43) }));
+it('refuses mismatched transaction metadata without consent', async () => {
+  fetcher.mockResolvedValue(response({ ...transaction(), reference: 'B'.repeat(43) }));
   const { container } = await mount(`state=${state}`);
   expect(container.textContent).toContain('CLI sign-in could not be completed');
-  expect([...container.querySelectorAll('button')].some((node) => node.textContent === 'Authorize CLI sign-in')).toBe(false);
+  expect(
+    [...container.querySelectorAll('button')].some(
+      (node) => node.textContent === 'Authorize CLI sign-in',
+    ),
+  ).toBe(false);
 });
+
+it('refuses malformed expiry metadata without consent', async () => {
+  fetcher.mockResolvedValue(response({ ...transaction(), expires_at: 'invalid' }));
+  const { container } = await mount(`state=${state}`);
+  expect(container.textContent).toContain('CLI sign-in could not be completed');
+  expect(
+    [...container.querySelectorAll('button')].some(
+      (node) => node.textContent === 'Authorize CLI sign-in',
+    ),
+  ).toBe(false);
+});
+
+it('refuses a transaction the server reports expired before showing consent', async () => {
+  fetcher.mockResolvedValue(response({ error: 'forbidden' }, 403));
+  const { container } = await mount(`state=${state}`);
+  expect(container.textContent).toContain('CLI sign-in could not be completed');
+  expect(
+    [...container.querySelectorAll('button')].some(
+      (node) => node.textContent === 'Authorize CLI sign-in',
+    ),
+  ).toBe(false);
+});
+
+it.each(['refresh', 'approval'])(
+  'keeps the server expiry refusal at %s authoritative',
+  async (leg) => {
+    const displayed = transaction('ABCDEFGH');
+    fetcher.mockResolvedValueOnce(response(displayed));
+    if (leg === 'approval') fetcher.mockResolvedValueOnce(response(displayed));
+    fetcher.mockResolvedValueOnce(response({ error: 'forbidden' }, 403));
+    const { container } = await mount('user_code=ABCDEFGH');
+    await act(async () => approve(container).click());
+    await settleTask();
+    expect(container.textContent).toContain('CLI sign-in could not be completed');
+    expect(container.textContent).not.toContain('CLI sign-in approved');
+    expect(
+      fetcher.mock.calls.map(([input]) => (input instanceof Request ? input.method : 'invalid')),
+    ).toEqual(leg === 'approval' ? ['GET', 'GET', 'POST'] : ['GET', 'GET']);
+  },
+);
 
 it('does not carry a failed approval into the next request', async () => {
   const displayed = transaction();
@@ -217,4 +258,21 @@ it('retires an in-flight approval when the route changes to a new request', asyn
   expect(container.textContent).not.toContain('could not be completed');
   expect(approve(container).disabled).toBe(false);
   expect(fetcher.mock.calls.every(([input]) => input instanceof Request && input.method === 'GET')).toBe(true);
+});
+
+it('approves a server-live request even when the browser clock is a day ahead', async () => {
+  const displayed = transaction('ABCDEFGH');
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 24 * 60 * 60 * 1000);
+  try {
+    fetcher
+      .mockResolvedValueOnce(response(displayed))
+      .mockResolvedValueOnce(response(displayed))
+      .mockResolvedValueOnce(response({ code: '', state: 'ABCDEFGH', redirect_uri: '' }));
+    const { container } = await mount('user_code=ABCDEFGH');
+    await act(async () => approve(container).click());
+    await settleTask();
+    expect(container.textContent).toContain('CLI sign-in approved');
+  } finally {
+    clock.mockRestore();
+  }
 });

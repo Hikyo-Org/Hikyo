@@ -50,7 +50,9 @@ func runInteractiveLogin(ctx context.Context, ios IO, state *State, client *Clie
 	if err != nil {
 		return err
 	}
-	if result.Session.Id == "" || result.Principal.Id == "" || result.Principal.Kind != "human" || result.Session.Artifact != "cli" || !result.Session.AbsoluteExpiresAt.After(time.Now()) {
+	// Session timestamps share the server's clock. Validate their ordering and
+	// retain the server expiry verbatim; the server enforces credential expiry.
+	if result.Session.Id == "" || result.Principal.Id == "" || result.Principal.Kind != "human" || result.Session.Artifact != "cli" || result.Session.CreatedAt.IsZero() || !result.Session.AbsoluteExpiresAt.After(result.Session.CreatedAt) || !result.Session.IdleExpiresAt.After(result.Session.CreatedAt) {
 		return failf(ExitInternal, "server returned an invalid CLI session")
 	}
 	if err := state.PutSession(SessionArtifact{
@@ -121,9 +123,13 @@ func loginWithLoopback(ctx context.Context, client *Client, provider string, ope
 	}, &started); err != nil {
 		return apigen.LoginResult{}, err
 	}
-	if started.State != state || !started.ExpiresAt.After(time.Now()) {
+	if started.State != state || started.ExpiresAt.IsZero() {
 		return apigen.LoginResult{}, failf(ExitInternal, "server returned an invalid CLI login transaction")
 	}
+	// The server owns absolute expiry. Bound the local wait with a monotonic
+	// timer using the loopback protocol's ten-minute lifetime, even with skew.
+	waitCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
 	target, err := url.Parse(client.Entry.Origin)
 	if err != nil {
 		return apigen.LoginResult{}, err
@@ -168,9 +174,6 @@ func loginWithLoopback(ctx context.Context, client *Client, provider string, ope
 	if err := openURL(target.String()); err != nil {
 		return apigen.LoginResult{}, failf(ExitUnavailable, "opening the browser for CLI login failed; use --device on a headless terminal")
 	}
-	deadline := minTime(started.ExpiresAt, time.Now().Add(10*time.Minute))
-	waitCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
 	var authorizationCode string
 	for authorizationCode == "" {
 		select {
@@ -186,12 +189,15 @@ func loginWithLoopback(ctx context.Context, client *Client, provider string, ope
 			return apigen.LoginResult{}, failf(ExitAuth, "CLI login expired or was cancelled; start login again")
 		}
 	}
+	if waitCtx.Err() != nil {
+		return apigen.LoginResult{}, failf(ExitAuth, "CLI login expired or was cancelled; start login again")
+	}
 	// Wait for the accepted handler to finish its plain-text response while the
 	// socket is already closed, then tear down its connections before redemption.
 	_ = server.Shutdown(waitCtx)
 	_ = server.Close()
 	var result apigen.LoginResult
-	err = client.Do(ctx, http.MethodPost, api.PathPrefix+"/auth/cli-login/redeem", apigen.CLILoginRedeemRequest{Code: authorizationCode, PkceVerifier: verifier, RedirectUri: redirectURI}, &result)
+	err = client.Do(waitCtx, http.MethodPost, api.PathPrefix+"/auth/cli-login/redeem", apigen.CLILoginRedeemRequest{Code: authorizationCode, PkceVerifier: verifier, RedirectUri: redirectURI}, &result)
 	return result, err
 }
 
@@ -226,13 +232,6 @@ func deviceSeconds(seconds int) (time.Duration, bool) {
 		return 0, false
 	}
 	return time.Duration(seconds) * time.Second, true
-}
-
-func minTime(a, b time.Time) time.Time {
-	if a.Before(b) {
-		return a
-	}
-	return b
 }
 
 func validDeviceUserCode(code string) bool {
@@ -277,18 +276,19 @@ func loginWithDevice(ctx context.Context, ios IO, client *Client, provider strin
 		return apigen.LoginResult{}, failf(ExitInternal, "server returned an invalid device authorization response")
 	}
 	verificationQuery, queryErr := url.ParseQuery(verification.RawQuery)
-	if verification.Scheme+"://"+verification.Host != client.Entry.Origin || verification.User != nil || verification.Path != "/login/cli" || verification.RawPath != "" || verification.Fragment != "" || queryErr != nil || len(verificationQuery) != 1 || len(verificationQuery["device"]) != 1 || verificationQuery.Get("device") != "1" || started.DeviceCode == "" || len(started.DeviceCode) > 512 || !validInterval || interval < 5*time.Second || !validLifetime || lifetime > 15*time.Minute || !validDeviceUserCode(started.UserCode) || !started.ExpiresAt.After(time.Now()) {
+	if verification.Scheme+"://"+verification.Host != client.Entry.Origin || verification.User != nil || verification.Path != "/login/cli" || verification.RawPath != "" || verification.Fragment != "" || queryErr != nil || len(verificationQuery) != 1 || len(verificationQuery["device"]) != 1 || verificationQuery.Get("device") != "1" || started.DeviceCode == "" || len(started.DeviceCode) > 512 || !validInterval || interval < 5*time.Second || !validLifetime || lifetime > 15*time.Minute || !validDeviceUserCode(started.UserCode) || started.ExpiresAt.IsZero() {
 		return apigen.LoginResult{}, failf(ExitInternal, "server returned an invalid device authorization response")
 	}
+	// RFC 8628 expires_in supplies the local monotonic budget. The server's
+	// expires_at uses a different clock and cannot shorten or extend it.
+	pollCtx, cancel := context.WithTimeout(ctx, lifetime)
+	defer cancel()
 	if provider != "" {
 		query := verification.Query()
 		query.Set("provider", provider)
 		verification.RawQuery = query.Encode()
 	}
 	fmt.Fprintf(ios.Stderr, "On another device, visit %s\nEnter code: %s\nApprove a CLI login for %s.\n", verification.String(), started.UserCode, client.Entry.Origin)
-	deadline := minTime(started.ExpiresAt, time.Now().Add(lifetime))
-	pollCtx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
 	return pollCLIDevice(pollCtx, ios.Stderr, client, started.DeviceCode, interval)
 }
 

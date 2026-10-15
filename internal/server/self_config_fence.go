@@ -68,6 +68,7 @@ func runtimeRecoveryOperation(id string) bool {
 		"passkeyLoginStart", "passkeyLoginFinish", "enrolPasskeyStart", "enrolPasskeyFinish",
 		"stepUpPasskeyStart", "stepUpPasskeyFinish", "reauthPasskeyStart", "reauthPasskeyFinish", "listPasskeys",
 		"startCLIReauth", "showCLIReauthTransaction", "approveCLIReauth", "redeemCLIReauth",
+		"startCLILogin", "showCLILoginTransaction", "approveCLILogin", "redeemCLILogin", "startCLIDevice", "pollCLIDevice",
 		"beginRecovery", "regenerateRecoveryCodes", "getMyProfile", "listMyOrgs", "listOrgs", "listMySessions", "revokeMySession",
 		"getInstanceConfig", "previewInstanceConfigAdoption", "adoptInstanceConfig", "applyInstanceConfig", "testInstanceConfigMail",
 		"listRemotes", "showRemote", "startWorkspaceHandoff", "approveWorkspaceHandoff", "redeemWorkspaceHandoff", "showWorkspaceHandoff":

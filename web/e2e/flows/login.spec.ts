@@ -1227,6 +1227,32 @@ test.describe('CLI login handoff', () => {
     });
   }
 
+  test('server authority accepts a live request with a fast browser clock and refuses its reuse', async ({ browser }) => {
+    const context = await browser.newContext({ storageState: STORAGE_STATE });
+    try {
+      await context.addInitScript(() => {
+        const now = Date.now.bind(Date);
+        Date.now = () => now() + 20 * 60 * 1000;
+      });
+      const page = await context.newPage();
+      const started = await startDeviceLogin();
+      const path = `/login/cli?user_code=${started.user_code}`;
+      await page.goto(path);
+      await page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'CLI sign-in approved' })).toBeVisible();
+      // A document reload drops cached consent and asks the real server again.
+      const refusal = page.waitForResponse((response) =>
+        response.url().endsWith(`/auth/cli-login/transactions/${started.user_code}`),
+      );
+      await page.reload();
+      expect((await refusal).status()).toBe(403);
+      await expect(page.getByRole('heading', { name: 'CLI sign-in could not be completed' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true })).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+
   test('cancel works in a normal tab and a new device request requires new approval', async ({ browser }) => {
     const context = await browser.newContext({ storageState: STORAGE_STATE });
     try {
