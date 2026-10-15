@@ -3,11 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/russross/blackfriday/v2"
 )
 
 type fixture struct {
@@ -373,6 +378,101 @@ func TestPendingAndAllTerminalStates(t *testing.T) {
 			}
 			if f.writes[0]["conclusion"] != conclusion {
 				t.Fatal("conclusion lost")
+			}
+		})
+	}
+}
+
+func TestMatchedCheckFollowedByUnmatchedEntriesKeepsExactPatchTarget(t *testing.T) {
+	f := newFixture(t)
+	f.existing("in_progress")
+	for _, id := range []int64{888, 999} {
+		unmatched := f.checks[0]
+		unmatched.ID = id
+		unmatched.ExternalID = fmt.Sprintf("different-binding-%d", id)
+		unmatched.Status = "completed"
+		f.checks = append(f.checks, unmatched)
+	}
+	if err := f.c.publish(context.Background(), f.e); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.writes) != 1 || f.writeMethods[0] != http.MethodPatch || f.writePaths[0] != "check-runs/777" {
+		t.Fatalf("matching check was replaced by a later loop entry: methods=%v paths=%v", f.writeMethods, f.writePaths)
+	}
+}
+
+type rejectNetworkTransport struct {
+	requests int
+}
+
+func (transport *rejectNetworkTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	transport.requests++
+	return nil, errors.New("test forbids network access")
+}
+
+func TestExecuteRejectsInvalidRepositoryBeforeAnyHTTPRequest(t *testing.T) {
+	f := newFixture(t)
+	data, err := json.Marshal(f.e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GITHUB_EVENT_NAME", "workflow_run")
+	t.Setenv("GITHUB_EVENT_PATH", path)
+	t.Setenv("GH_TOKEN", "test-token")
+	transport := &rejectNetworkTransport{}
+	previousTransport := http.DefaultTransport
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = previousTransport })
+	for _, repo := range []string{"", "owner", "/repo", "owner/", "owner/repo/extra", "owner/repo?query=1", "owner/repo#fragment", "https://github.com/owner/repo", "owner/repo\n", "owner name/repo"} {
+		t.Run(repo, func(t *testing.T) {
+			t.Setenv("GH_REPO", repo)
+			if err := execute(); err == nil || err.Error() != "invalid repository or source run identity" {
+				t.Fatalf("invalid GH_REPO %q did not fail at input validation: %v", repo, err)
+			}
+			if transport.requests != 0 || len(f.requests) != 0 || len(f.writes) != 0 {
+				t.Fatal("invalid repository reached an HTTP request or write")
+			}
+		})
+	}
+}
+
+func TestMaliciousLabelsCannotInjectReportLinksHTMLOrLines(t *testing.T) {
+	f := newFixture(t)
+	runURL := "https://github.com/owner/repo/actions/runs/50/attempts/1"
+	baseline := render(f.r, 7, f.parents[0]["sha"], f.prHead, runURL, f.jobs, false)
+	for _, malicious := range []string{
+		"](https://attacker.example) [forged](https://attacker.example)",
+		`\](https://attacker.example) ![image](https://attacker.example/image)`,
+		"<script>alert(1)</script><img src=x onerror=alert(1)>",
+		"`code` **bold** _emphasis_\r\n- [injected](https://attacker.example)",
+		"&#91;forged&#93;(https://attacker.example) &lt;script&gt;alert(1)&lt;/script&gt;",
+	} {
+		t.Run(malicious, func(t *testing.T) {
+			f.jobs[0].Name = malicious
+			f.jobs[0].Steps[0].Name = malicious
+			summary := render(f.r, 7, f.parents[0]["sha"], f.prHead, runURL, f.jobs, false)
+			if strings.Count(summary, "\n") != strings.Count(baseline, "\n") || strings.Contains(summary, "\r") {
+				t.Fatal("label injected new report lines")
+			}
+			// Parse the report as Markdown: source escaping alone would not prove
+			// that a malicious label cannot become a live link or HTML element.
+			html := string(blackfriday.Run([]byte(summary)))
+			for _, forbidden := range []string{`href="https://attacker.example`, "<script", "<img", "<strong>", "<em>", "<code>code</code>"} {
+				if strings.Contains(html, forbidden) {
+					t.Errorf("label introduced active markup %q: %s", forbidden, html)
+				}
+			}
+			if strings.Count(html, "<a ") != 4 {
+				t.Fatalf("expected only run, artifact, job and step links: %s", html)
+			}
+			for _, trusted := range []string{runURL, "https://github.com/owner/repo/actions/runs/50#artifacts", "https://github.com/owner/repo/actions/runs/50/job/99", "https://github.com/owner/repo/actions/runs/50/job/99#step:4:1"} {
+				if !strings.Contains(html, `href="`+trusted+`"`) {
+					t.Errorf("trusted report link lost: %s", trusted)
+				}
 			}
 		})
 	}
