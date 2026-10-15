@@ -295,3 +295,56 @@ passed on Node 26.7.0. The 1,730-test suite, build, real-HTTP and earlier runtim
 results above apply to that identical code content; they were not rerun merely
 for rewritten commit identities. The complete four-commit rewritten range
 passed DCO and local cryptographic signature verification before delivery.
+
+## Integration after CLI login merged
+
+PR 924 subsequently merged issue 612 into main. Fresh `origin/main` and
+`hikyo-upstream/main` both resolved to
+`ad4c7b124addae47d79bc715f70d51ba326cf271`. The four commits were rebased again,
+with the pre-rebase head retained as `backup/issue-611-pre-rebase-960b1fb`.
+The rewritten mapping is:
+
+- `1896d66891e7` to `55a7e479a1ad`.
+- `b84f9eace0db` to `921c919798e0`.
+- `6fc8ccb0674b` to `0910a2d31b39`.
+- `960b1fb9ac0b` to `c9992ba202d5`.
+
+The conflicts were additive API route pins, two generated TypeScript exports,
+authz aliases and sensitivity inventory. Both CLI login and password route
+admission entries remain; both authz aliases and both sensitivity review notes
+remain. Canonical OpenAPI, SQL, authz and TypeScript generation resolves the
+generated overlap. A subsequent generation fixed point left all 135 generated
+artifacts unchanged. API revision 11 still identifies the password/inventory
+extension; CLI login retains its existing capability gate. Migration 75 and
+the CLI session-completion implementation are unchanged from the new main.
+
+The new `TestCLILoginDoesNotDelegateCredentialEstablishment` exercises real
+approval and redemption for both loopback and device transports, using signed
+fixture OIDC or profile-fixture OAuth2 callbacks on both databases. The copied
+CLI session cannot set a password with empty proof or start an unsatisfiable
+step-up. Its browser retains the establishment stamp and can use it to set the
+first password; that mutation revokes the CLI session and cascades pending
+approved login handoffs. Neither those approvals nor the retired browser can
+be reused. The initial test used a noncanonical PKCE literal and reached the
+parameter refusal instead; the final test derives canonical values with the
+existing helper. This was a fixture error, not a demonstrated production leak.
+
+The first annotated-query check exposed exactly six expected pin changes:
+the establishment read for each engine and four provider-revocation hashes.
+Independent Sol 6.1 high review recomputed each hash and checked the
+session/principal/purpose/expiry/epoch bindings and provider kind/id filters.
+The reviewed update adds two entries, updates four hashes and removes none;
+all CLI login pins remain. Audit completeness and registry closure pass.
+
+Final local validation on the combined source passes all 47 selected isolation
+families in 142.678 seconds, including both databases and both features, all
+isolation invariants and the new eight-leg integration regression, without
+skips. Full API, service, server, authz/generator, CLI, authn-store, conformance,
+audit and structural-lint package checks and scoped vet pass. The parallel web
+worker reports all 1,751 tests across 200 files, typecheck, lint and production
+build passing on Node 26.7.0, plus client typecheck and all 37 client tests.
+The AST graph refresh passes with 56,016 nodes and the same 17 Astro extraction
+warnings. All four rewritten commits pass DCO and local signature checks.
+This integration adds regression and inventory coverage without changing the
+accepted password-first policy. Fresh hosted checks and protected merge-group
+validation remain separate from these local results.
