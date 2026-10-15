@@ -104,6 +104,48 @@ CodeQL and compatibility checks passing. Subsequent review identified chartdocto
 hostname validation and literal legacy managed-origin migration gaps; their
 repairs passed independent incremental review, config/runtime tests and races,
 owner activation tests, real chartdoctor TLS transport tests and compatibility
-scope regressions. New exact-head hosted CI remains required. Full kind and merge-group proof remain
-required before declaring this change delivered.
+scope regressions. New exact-head hosted CI remains required. Fresh full merge-group proof remains required before declaring this change
+delivered.
 Merge authorization does not authorize release or production deployment.
+
+
+## First full queue run and native campaign repair
+
+The first merge candidate, d00575b5 (head 5cb7da22 plus main 031bf17b), ran in
+[38696437549](https://github.com/Hikyo-Org/Hikyo/actions/runs/38696437549).
+Forty-five jobs passed, including all browser shards, Kubernetes, Compose,
+Go/race/isolation suites, cross-platform checks and release snapshots. The
+native source-artifact security campaign failed at WebAuthn enrollment with
+401 instead of 200; three aggregate gates also failed because of that result.
+
+A local same-binary reproduction proved the server advertised RP ID localhost
+while the harness signed for 127.0.0.1. Updating only the public origin and TLS
+certificate passed enrollment but failed step-up with 401. The assertion helper
+also replayed registration-only credProps output, which WebAuthn 0.18 rejects.
+The harness now uses a localhost public origin and verified certificate, keeps
+its transport listeners on loopback, and omits registration outputs during
+assertions. No server validation, assertion, timeout or rate limit was relaxed.
+
+Fresh bootstrap origin statements are now distinguished from historical managed
+defaults. Fresh explicit IP origins refuse before serving; explicit localhost
+remains explicit. Historical derived-IP snapshots still migrate, and stale
+bootstrap values cannot replace adopted configuration. A process statement
+matching the exact current hostname derivation still counts as explicit, as
+required by the existing public-origin policy; no new persisted provenance was
+introduced to distinguish equal fresh and historical hostname statements. Regression coverage
+executes LoadBootstrap, seed preparation and actual application Boot, including
+native TLS and stale seed cases.
+
+Two positive runtime drills also retained IP public origins: configuration
+rollout on kind and managed-configuration upgrade rehearsal. Their public origins
+and CLI trust now use localhost. Twenty-one Python tests and real HTTP/HTTPS
+native startup checks passed, including CA and hostname verification. Complete
+manual kind and officially signed image-upgrade rehearsals remain separate,
+unverified drills. Existing negative IP/migration tests remain intact.
+
+The new queue reporter was replayed read-only against the authenticated failed
+run and correctly produced a failure for source PR #920. It becomes available
+for future callbacks only after merge; it does not backfill this historical run.
+
+At this follow-up commit, final native campaign evidence and fresh hosted
+validation are still pending. The PR body records subsequent exact-head results.

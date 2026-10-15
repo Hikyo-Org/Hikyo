@@ -56,7 +56,7 @@ class Fixture:
         parsed = urllib.parse.urlsplit(self.origin)
         if (
             parsed.scheme != "https"
-            or parsed.hostname != "127.0.0.1"
+            or parsed.hostname != "localhost"
             or not parsed.port
             or parsed.username
             or parsed.path not in ("", "/")
@@ -413,12 +413,13 @@ class Fixture:
                 }
             ),
         )
+        instance_origin = "https://localhost:8080"
         self.write(
             "trust.json",
             json.dumps(
                 {
                     "name": "rehearsal",
-                    "origin": "https://127.0.0.1:8080",
+                    "origin": instance_origin,
                     "spki_pin": string_value(
                         os.environ.get("HIKYO_REHEARSAL_TLS_SPKI_PIN")
                     ),
@@ -430,7 +431,7 @@ class Fixture:
             "create",
             "rehearsal",
             "--instance",
-            "https://127.0.0.1:8080",
+            instance_origin,
             "--trust-file",
             "/fixture/trust.json",
             machine=False,

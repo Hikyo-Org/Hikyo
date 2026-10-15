@@ -106,6 +106,12 @@ func (c *Config) ManagedSeedForNode(nodeValues map[string]string) (map[string]st
 		}
 		delete(values, key)
 	}
+	// This path is used only when adopting a fresh seed. A supplied origin is
+	// an operator statement even if it equals an old listen-derived spelling;
+	// legacy snapshot migration must not normalize it before validation.
+	if _, stated := ownerValues["HIKYO_EXTERNAL_ORIGIN"]; stated {
+		base.ExternalOriginExplicit = true
+	}
 	effective, err := ApplyManagedOwnerAndNodeValues(base, ownerValues, nodeValues)
 	if err != nil {
 		return nil, err

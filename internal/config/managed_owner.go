@@ -135,12 +135,17 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	if base.TLSCertPEM != "" && base.TLSKeyPEM != "" {
 		inputs["HIKYO_TLS_CERT_FILE"], inputs["HIKYO_TLS_KEY_FILE"] = "managed-content", "managed-content"
 	}
-	if validateNode && !base.ExternalOriginExplicit {
+	origin := inputs["HIKYO_EXTERNAL_ORIGIN"]
+	// LoadBootstrap defers owner settings into ManagedInputs. A matching
+	// statement for the current hostname derivation remains explicit when the
+	// adopted seed is applied later. Stale or old IP seed values cannot replace
+	// the managed snapshot or change its historical derived-origin authority.
+	bootstrapOriginStated := origin != "" && origin == base.ExternalOrigin && origin == base.ManagedInputs["HIKYO_EXTERNAL_ORIGIN"]
+	if validateNode && !base.ExternalOriginExplicit && !bootstrapOriginStated {
 		legacyScheme := "http://"
 		if inputs["HIKYO_TLS_CERT_FILE"] != "" {
 			legacyScheme = "https://"
 		}
-		origin := inputs["HIKYO_EXTERNAL_ORIGIN"]
 		if origin != "" && (origin == base.ExternalOrigin || origin == legacyScheme+base.Listen) {
 			// Before #606, snapshots persisted the listen-derived origin. Match
 			// both the original scheme+listen spelling and the current default

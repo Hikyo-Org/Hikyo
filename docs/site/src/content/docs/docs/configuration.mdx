@@ -54,6 +54,10 @@ A derived origin does not count as an explicit public origin for registration.
 Legacy managed snapshots that saved the exact listen-derived default are
 recognized when bootstrap has no explicit origin; they derive the current
 hostname default during adoption. A different stored IP origin is still refused.
+A process origin statement matching the exact current hostname default counts
+as explicit; unrelated or invalid stale seed values do not replace adopted
+managed configuration. Fresh bootstrap IP statements are refused, including
+ones that happen to match the listener.
 
 Before upgrading an installation with an IP origin, use its existing binary to
 change the effective [managed configuration](/docs/managed-configuration/) to a

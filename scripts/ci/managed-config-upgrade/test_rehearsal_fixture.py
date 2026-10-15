@@ -25,7 +25,7 @@ class FixtureChecks(unittest.TestCase):
         ):
             with self.subTest(tools=tools):
                 fixture = fixture_module.Fixture.__new__(fixture_module.Fixture)
-                fixture.origin = "https://127.0.0.1:1234"
+                fixture.origin = "https://localhost:1234"
                 with patch.object(
                     fixture_module.urllib.request.OpenerDirector,
                     "open",
@@ -39,7 +39,7 @@ class FixtureChecks(unittest.TestCase):
 
     def test_mcp_verification_records_read_only_catalog(self):
         fixture = fixture_module.Fixture.__new__(fixture_module.Fixture)
-        fixture.origin = "https://127.0.0.1:1234"
+        fixture.origin = "https://localhost:1234"
         response = {"result": {"tools": [{"name": "hikyo_list_definitions"}]}}
         with (
             patch.object(
@@ -56,18 +56,43 @@ class FixtureChecks(unittest.TestCase):
         self.assertTrue(json.loads(write.call_args.args[1])["write_tools_absent"])
 
     def test_remote_origin_refused_before_credentials_or_commands(self):
-        with (
-            patch.dict(
-                "os.environ",
-                {
-                    "HIKYO_REHEARSAL_CONTAINER": "anything",
-                    "HIKYO_REHEARSAL_URL": "https://hikyo.dbugit.io",
-                },
-                clear=True,
-            ),
-            self.assertRaisesRegex(fixture_module.Failure, "loopback"),
+        for origin in (
+            "https://hikyo.dbugit.io", "https://127.0.0.1:1234",
+            "https://localhost.example:1234", "https://user@localhost:1234",
         ):
-            fixture_module.Fixture()
+            with (
+                self.subTest(origin=origin),
+                patch.dict(
+                    "os.environ",
+                    {
+                        "HIKYO_REHEARSAL_CONTAINER": "anything",
+                        "HIKYO_REHEARSAL_URL": origin,
+                    },
+                    clear=True,
+                ),
+                self.assertRaisesRegex(fixture_module.Failure, "loopback"),
+            ):
+                fixture_module.Fixture()
+
+    def test_localhost_origin_uses_the_generated_tls_trust(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "HIKYO_REHEARSAL_CONTAINER": "fixture",
+                        "HIKYO_REHEARSAL_URL": "https://localhost:1234",
+                        "HIKYO_REHEARSAL_OUTPUT_DIR": directory,
+                        "DOCKER_HOST": "unix:///tmp/fixture.sock",
+                    },
+                    clear=True,
+                ),
+                patch.object(fixture_module.ssl, "create_default_context") as context,
+                patch.object(fixture_module.urllib.request, "build_opener"),
+            ):
+                fixture = fixture_module.Fixture()
+            self.assertEqual(fixture.origin, "https://localhost:1234")
+            context.assert_called_once_with(cafile=str(Path(directory).resolve() / "tls/server.crt"))
 
     def test_verify_rejects_unowned_container_before_read_or_mutation(self):
         fixture = fixture_module.Fixture.__new__(fixture_module.Fixture)
