@@ -43,7 +43,7 @@ func main() {
 
 func run(ctx context.Context, origin, spkiPin, privateDir, binary string) error {
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "https" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || spkiPin == "" {
+	if err != nil || u.Scheme != "https" || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") || u.Port() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || spkiPin == "" {
 		return errors.New("chartdoctor requires the owned pinned-TLS loopback port-forward origin")
 	}
 	info, err := os.Lstat(privateDir)

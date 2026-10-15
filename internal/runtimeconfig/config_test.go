@@ -91,6 +91,26 @@ func TestPrepareForConfigEnforcesNodeContextAfterIndependentPreparation(t *testi
 	}
 }
 
+func TestPrepareLegacyDerivedIPOriginBeforeContextualApplication(t *testing.T) {
+	base, _, err := config.Load("server", []string{"--dev"}, func(string) string { return "" }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{"HIKYO_EXTERNAL_ORIGIN": "http://127.0.0.1:8080"}
+	bundle, err := runtimeconfig.PrepareForConfig(values, base)
+	if err != nil {
+		t.Fatalf("legacy snapshot must reach contextual origin migration: %v", err)
+	}
+	effective, err := config.ApplyManagedOwnerValues(base, bundle.OwnerValues())
+	if err != nil || effective.ExternalOrigin != "http://localhost:8080" || effective.ExternalOriginExplicit {
+		t.Fatalf("legacy effective config=%+v error=%v", effective, err)
+	}
+	values["HIKYO_EXTERNAL_ORIGIN"] = "http://127.0.0.1:8081"
+	if _, err := runtimeconfig.PrepareForConfig(values, base); err == nil {
+		t.Fatal("nonmatching explicit IP origin must refuse contextual preparation")
+	}
+}
+
 func TestCatalogueCoversEveryOwnerApplicationSetting(t *testing.T) {
 	catalogue := make(map[string]runtimeconfig.Key)
 	for _, key := range runtimeconfig.Catalogue() {

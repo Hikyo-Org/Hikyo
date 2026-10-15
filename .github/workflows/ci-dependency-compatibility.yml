@@ -1,0 +1,57 @@
+# Advisory early compatibility evidence, separate from the 220-second feedback
+# lane and the enforced full merge-candidate validation.
+# Default-tag Linux host compilation only; the protected full suite owns the
+# macOS/Windows test legs and release-tag cross-builds.
+name: dependency-compatibility
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths: [go.mod, go.sum]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A metadata edit cannot cancel a useful commit/base verdict.
+  group: dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: ${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && 'metadata (ignored)' || 'dependency compatibility (Linux host)' }}
+    if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
+    runs-on: ubuntu-latest
+    # The existing full app-build job has a 20-minute budget. This graph also
+    # builds the host's default-tag test archives and runs vet; it makes no
+    # fast-feedback SLA claim.
+    timeout-minutes: 20
+    env:
+      GOCACHE: ${{ github.workspace }}/.dependency-compatibility
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      GOFLAGS: -mod=readonly
+    steps:
+      - name: Check out immutable integration tooling without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: compatibility-tools
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Check out the exact source commit without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify the source and immutable tooling relationship
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git -C compatibility-tools rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: source/go.mod
+          cache: false
+      - name: Compile default-tag consumers on Linux, then vet
+        working-directory: source
+        run: bash ../compatibility-tools/scripts/ci/dependency-compatibility.sh

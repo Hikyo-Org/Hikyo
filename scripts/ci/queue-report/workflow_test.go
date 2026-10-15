@@ -68,4 +68,9 @@ func TestReporterWorkflowExecutesOnlyTrustedTooling(t *testing.T) {
 	if publish.Run != "go run ./scripts/ci/queue-report" || publish.Uses != "" || publish.Env["GH_TOKEN"] != "${{ github.token }}" || publish.Env["GH_REPO"] != "${{ github.repository }}" {
 		t.Fatal("reporter must run only the trusted Go publisher")
 	}
+	for _, forbidden := range []string{"download-artifact", "secrets.", "statuses: write", "go run ./scripts/ci/pr-gate --queue-report"} {
+		if strings.Contains(string(raw), forbidden) {
+			t.Fatalf("reporter must retain one trusted check publisher without external inputs: %s", forbidden)
+		}
+	}
 }

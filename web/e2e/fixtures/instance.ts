@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 import { seedTenant, totpCode } from './seed.ts';
 import { SECURITY_SEEDED, seedSecurityTenant } from '../security/seed.ts';
+import { instanceFetch as fetch, SERVING_HOST } from './instance-fetch.ts';
 
 /**
  * TWO real Hikyo instances for the flow suite.
@@ -34,18 +35,14 @@ import { SECURITY_SEEDED, seedSecurityTenant } from '../security/seed.ts';
  * ## Why two hosts and not two ports
  *
  * A(viewing) is `http://localhost:PORT_A` and B(serving) is
- * `http://127.0.0.1:PORT_B`, and the differing HOSTNAME is load-bearing:
+ * `http://serving.localhost:PORT_B`, and the differing HOSTNAME is load-bearing:
  * cookies are not partitioned by port, so two instances on one hostname would
  * share `__Host-hikyo` and B's login would silently destroy A's session. Two
  * loopback names are two cookie jars, two origins, and a real cross-origin arc.
  *
- * WHICH name goes where is not free, and it is a WebAuthn constraint rather
- * than a preference: the relying-party id must be a registrable domain and an
- * IP literal is not one, so a passkey ceremony against a loopback ADDRESS is
- * refused by the browser before the server sees it. A is where the shared
- * passkey session lives and where the reveal flow's ceremonies run, so A takes
- * `localhost`. B authenticates with a password and a real TOTP factor only, so
- * the address literal is fine there.
+ * Both names are valid WebAuthn relying-party IDs. Chromium resolves .localhost
+ * locally; instanceFetch maps the serving name to loopback for Node requests.
+ * This keeps the cookie jars separate without external DNS or an IP origin.
  *
  * ## Why the browser leg is http (decision, #71)
  *
@@ -85,7 +82,7 @@ const PORT = Number(process.env['HIKYO_E2E_PORT'] ?? 28789);
 export const BASE_URL = `http://${HOST}:${PORT}`;
 
 /** The serving instance: a different loopback NAME, hence a different origin. */
-export const HOST_B = '127.0.0.1';
+export const HOST_B = SERVING_HOST;
 const PORT_B = Number(process.env['HIKYO_E2E_PORT_B'] ?? 28790);
 export const BASE_URL_B = `http://${HOST_B}:${PORT_B}`;
 
@@ -725,7 +722,7 @@ async function startInstanceAt(
   // A raw TCP connect rather than a fetch: `fetch` to a closed port rejects
   // with an opaque `TypeError: fetch failed` that is easy to swallow in the
   // wrong place, and "is the port taken" is a question about the socket.
-  if (await portTaken(host, port)) {
+  if (await portTaken('127.0.0.1', port)) {
     throw new Error(
       `something is already listening on ${host}:${port}. A previous flow run was killed ` +
         `without teardown; stop it before running the suite again.`,
@@ -760,7 +757,7 @@ async function startInstanceAt(
       'server',
       '--dev',
       '--listen',
-      `${host}:${port}`,
+      `127.0.0.1:${port}`,
       '--operational-listen',
       `127.0.0.1:${String(operationalPort)}`,
     ],
@@ -1051,7 +1048,7 @@ function startTLSFront(dir: string): string {
     (incoming, outgoing) => {
       const proxied = httpRequest(
         {
-          host: HOST_B,
+          host: '127.0.0.1',
           port: PORT_B,
           path: incoming.url ?? '/',
           method: incoming.method ?? 'GET',

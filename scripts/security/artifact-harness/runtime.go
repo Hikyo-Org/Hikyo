@@ -171,6 +171,11 @@ func newTarget(ctx context.Context, o options, engine string) (t *target, cleanu
 	if err != nil {
 		return nil, cleanup, err
 	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, cleanup, err
+	}
+	publicOrigin := "https://" + net.JoinHostPort("localhost", port)
 	operational, err := unusedAddress()
 	if err != nil {
 		return nil, cleanup, err
@@ -197,7 +202,7 @@ func newTarget(ctx context.Context, o options, engine string) (t *target, cleanu
 	if err = os.WriteFile(filepath.Join(dir, "operator.pub"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: operatorDER}), 0600); err != nil {
 		return nil, cleanup, err
 	}
-	t = &target{ctx: ctx, binary: o.binary, dir: dir, base: "https://" + address, operational: "http://" + operational, env: []string{"HIKYO_DB=" + db, "HIKYO_ROOT_KEY_FILE=" + filepath.Join(dir, "root"), "HIKYO_LISTEN=" + address, "HIKYO_OPERATIONAL_LISTEN=" + operational, "HIKYO_EXTERNAL_ORIGIN=https://" + address, "HIKYO_TLS_CERT_FILE=" + filepath.Join(dir, "cert.pem"), "HIKYO_TLS_KEY_FILE=" + filepath.Join(dir, "key.pem"), "HIKYO_MCP_ENABLED=true"}, client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	t = &target{ctx: ctx, binary: o.binary, dir: dir, base: publicOrigin, operational: "http://" + operational, env: []string{"HIKYO_DB=" + db, "HIKYO_ROOT_KEY_FILE=" + filepath.Join(dir, "root"), "HIKYO_LISTEN=" + address, "HIKYO_OPERATIONAL_LISTEN=" + operational, "HIKYO_EXTERNAL_ORIGIN=" + publicOrigin, "HIKYO_TLS_CERT_FILE=" + filepath.Join(dir, "cert.pem"), "HIKYO_TLS_KEY_FILE=" + filepath.Join(dir, "key.pem"), "HIKYO_MCP_ENABLED=true"}, client: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	if o.bundle != "" {
 		t.env = append(t.env, "HIKYO_UPGRADE_BUNDLE="+o.bundle, "HIKYO_UPGRADE_STATE_DIR="+dir, "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY="+filepath.Join(dir, "operator.pub"))
 	}
@@ -258,7 +263,7 @@ func certificate(dir string) (*x509.CertPool, error) {
 	if err != nil {
 		return nil, err
 	}
-	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "synthetic-artifact-target"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true}
+	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: "synthetic-artifact-target"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), DNSNames: []string{"localhost"}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		return nil, err

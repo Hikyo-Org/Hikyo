@@ -141,14 +141,20 @@ func TestSourceAndRoutingFailClosed(t *testing.T) {
 		alter func(*fixture)
 	}{
 		{"wrong event repository", func(f *fixture) { f.e.Repository.ID++ }},
+		{"unsupported callback action", func(f *fixture) { f.e.Action = "pull_request_target" }},
 		{"wrong source repository", func(f *fixture) { f.r.Repository.ID++ }},
 		{"foreign head repository", func(f *fixture) { f.r.HeadRepository.ID++ }},
 		{"spoofed workflow", func(f *fixture) { f.r.WorkflowID++ }},
 		{"wrong path", func(f *fixture) { f.r.Path = ".github/workflows/evil.yml" }},
 		{"wrong event", func(f *fixture) { f.r.Event = "pull_request" }},
+		{"malformed branch", func(f *fixture) {
+			f.r.HeadBranch = "gh-readonly-queue/main/pr-7-unknown"
+			f.e.Run.HeadBranch = f.r.HeadBranch
+		}},
 		{"wrong SHA callback", func(f *fixture) { f.e.Run.HeadSHA = strings.Repeat("a", 40) }},
 		{"wrong branch callback", func(f *fixture) { f.e.Run.HeadBranch = "other" }},
 		{"wrong base parent", func(f *fixture) { f.parents[0]["sha"] = strings.Repeat("a", 40) }},
+		{"not a two-parent merge", func(f *fixture) { f.parents = f.parents[:1] }},
 		{"unsupported topology", func(f *fixture) { f.parents = append(f.parents, map[string]string{"sha": strings.Repeat("e", 40)}) }},
 		{"head not captured", func(f *fixture) { f.prHead = strings.Repeat("e", 40) }},
 		{"job from different attempt", func(f *fixture) { f.jobs[0].Attempt++ }},
@@ -159,6 +165,22 @@ func TestSourceAndRoutingFailClosed(t *testing.T) {
 		{"duplicate check binding", func(f *fixture) { f.existing("in_progress"); f.checks = append(f.checks, f.checks[0]) }},
 		{"wrong check target", func(f *fixture) { f.existing("in_progress"); f.checks[0].HeadSHA = strings.Repeat("a", 40) }},
 		{"wrong check link", func(f *fixture) { f.existing("in_progress"); f.checks[0].DetailsURL = "https://evil.test" }},
+		{"wrong merge identity", func(f *fixture) {
+			f.mutate = func(path string, result any) any {
+				if strings.HasPrefix(path, "git/commits/") {
+					result.(map[string]any)["sha"] = strings.Repeat("a", 40)
+				}
+				return result
+			}
+		}},
+		{"retargeted PR", func(f *fixture) {
+			f.mutate = func(path string, result any) any {
+				if path == "pulls/7" {
+					result.(map[string]any)["base"].(map[string]any)["ref"] = "other"
+				}
+				return result
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

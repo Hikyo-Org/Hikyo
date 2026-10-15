@@ -189,6 +189,8 @@ func TestCSPConnectSrcAdmitsOnlyExactHTTPSOrigins(t *testing.T) {
 		"'unsafe-eval'",
 		"http://peer.example",                // plaintext is not a remote origin
 		"http://127.0.0.1.evil.example:8080", // loopback-looking, not loopback
+		"http://serving.localhost.evil.example:8080",
+		"http://notlocalhost:8080",
 		"https://peer.example/api",
 		"https://peer.example?x=1",
 		"https://user:pw@peer.example",
@@ -203,6 +205,9 @@ func TestCSPConnectSrcAdmitsOnlyExactHTTPSOrigins(t *testing.T) {
 	// http is admitted on LOOPBACK only, for the two-instance browser harness.
 	if got := policyWithRemotes([]string{"http://localhost:45790"}); !strings.Contains(got, "http://localhost:45790") {
 		t.Errorf("a loopback http origin was dropped: %s", got)
+	}
+	if got := policyWithRemotes([]string{"http://serving.localhost:45790"}); !strings.Contains(got, "connect-src 'self' http://serving.localhost:45790;") {
+		t.Errorf("an exact localhost subdomain origin was dropped: %s", got)
 	}
 	got := policyWithRemotes([]string{"https://peer.example", "https://peer.example:8443/", "https://peer.example"})
 	want := "connect-src 'self' https://peer.example https://peer.example:8443;"

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -94,9 +95,13 @@ func TestOwnerRuntimeInstallsHTTPAuthAndRetentionGraph(t *testing.T) {
 	if got := ownerHTTPStatus(t, srv, http.MethodPost, "/mcp"); got != http.StatusNotFound {
 		t.Fatalf("disabled MCP = %d", got)
 	}
+	_, port, err := net.SplitHostPort(srv.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	candidate := ownerCandidate(t, srv, func(values map[string]string) {
 		values["HIKYO_MCP_ENABLED"] = "true"
-		values["HIKYO_EXTERNAL_ORIGIN"] = "http://" + srv.Addr
+		values["HIKYO_EXTERNAL_ORIGIN"] = "http://" + net.JoinHostPort("localhost", port)
 		values["HIKYO_ARGON2_TIME"] = "4"
 		values["HIKYO_AUDIT_ACCESS_RETAIN_DAYS"] = "30"
 	})

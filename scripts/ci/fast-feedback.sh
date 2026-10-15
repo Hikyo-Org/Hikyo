@@ -192,8 +192,8 @@ fi
 if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 	need go
 	if [ "$all_go" = true ]; then
-		# Dependency integrity is quick feedback, not compatibility evidence.
-		# The full candidate still compiles and tests every package.
+		# Full unchanged-consumer compilation belongs to the separately timed
+		# dependency-compatibility workflow, rather than this 220-second lane.
 		run go mod verify
 	fi
 	if [ "${#go_packages[@]}" -gt 0 ]; then

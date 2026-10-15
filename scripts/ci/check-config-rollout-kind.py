@@ -239,7 +239,7 @@ class Fixture:
         if not re.fullmatch(r"hikyo-rollout-[a-f0-9]{8}", self.ns):
             raise RuntimeError("fixture namespace is not an owned unique name")
         self.registry = self.ns + "-registry"
-        self.origin = "http://127.0.0.1:" + str(args.port)
+        self.origin = "http://localhost:" + str(args.port)
         self.forward = None
         self.database_forward = None
         self.token = ""

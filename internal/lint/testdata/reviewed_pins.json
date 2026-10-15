@@ -2590,7 +2590,7 @@
       "hash": "3c8fcf231ea04ce7624edec1b734ed4a80281d38afa9b79f0f8b4a1f60ccf08b",
       "reason": "Owned disposable PostgreSQL database creation uses only the canonical generated lowercase-hex name and pgx identifier sanitization. The pinned newTarget caller owns nonce generation and successful-creation state; no application table SQL is admitted.",
       "callers": {
-        "scripts/security/artifact-harness/runtime.go:newTarget": "bcb7544a447d4e8ca804b42172f568088799a934bd609a8fc3054edcdf9b0f84"
+        "scripts/security/artifact-harness/runtime.go:newTarget": "c21b8a29d4faf0cdab5ee62855f3a8e0a97b9ad370349c92c58deac32a51411a"
       },
       "dependencies": [
         "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier"
@@ -2600,7 +2600,7 @@
       "hash": "d16031df9b3778afbe03cbcb6b5eda83ddedb841815ec186b393cf42c29bc49d",
       "reason": "Owned disposable PostgreSQL database cleanup drops only the canonical generated lowercase-hex name through pgx identifier sanitization. The pinned newTarget caller gates DROP on its own successful creation, preserving pre-existing databases and parent data.",
       "callers": {
-        "scripts/security/artifact-harness/runtime.go:newTarget": "bcb7544a447d4e8ca804b42172f568088799a934bd609a8fc3054edcdf9b0f84"
+        "scripts/security/artifact-harness/runtime.go:newTarget": "c21b8a29d4faf0cdab5ee62855f3a8e0a97b9ad370349c92c58deac32a51411a"
       },
       "dependencies": [
         "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier"

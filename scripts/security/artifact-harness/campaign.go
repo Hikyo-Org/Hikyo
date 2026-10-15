@@ -84,7 +84,11 @@ func (f *fixture) assert(t *target, path string, body any, out any) error {
 		return errors.New("native assertion options invalid")
 	}
 	f.device.credential.Counter++
-	authenticator := vw.NewAuthenticatorWithOptions(f.device.opts)
+	// credProps belongs to registration. Assertions must not replay that
+	// output when their options did not request an extension result.
+	assertionOptions := f.device.opts
+	assertionOptions.ClientExtensionResults = nil
+	authenticator := vw.NewAuthenticatorWithOptions(assertionOptions)
 	authenticator.AddCredential(f.device.credential)
 	assertion := vw.CreateAssertionResponse(f.device.rp, authenticator, f.device.credential, *parsed)
 	return t.expect("POST", path+"/finish", f.admin, json.RawMessage(assertion), 200, out)

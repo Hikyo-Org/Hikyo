@@ -423,7 +423,7 @@ class Rehearsal:
                 + ["inspect", "--format", "{{json .NetworkSettings.Ports}}", self.pg]
             )
         )
-        self.url = "https://127.0.0.1:" + bindings["8080/tcp"][0]["HostPort"]
+        self.url = "https://localhost:" + bindings["8080/tcp"][0]["HostPort"]
         self.ready_url = (
             "http://127.0.0.1:" + bindings["8081/tcp"][0]["HostPort"] + "/readyz"
         )

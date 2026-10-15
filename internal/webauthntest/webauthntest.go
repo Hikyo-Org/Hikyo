@@ -114,6 +114,9 @@ func (d *Device) Assert(optionsJSON []byte) ([]byte, error) {
 		return nil, err
 	}
 	// Refresh the authenticator so a counter set since enrolment is reflected.
+	// credProps is registration-only; a browser must not replay that output in
+	// an assertion whose options never requested it.
+	d.opts.ClientExtensionResults = nil
 	d.auth = vw.NewAuthenticatorWithOptions(d.opts)
 	d.auth.AddCredential(d.cred)
 	return []byte(vw.CreateAssertionResponse(d.rp, d.auth, d.cred, *as)), nil

@@ -157,7 +157,7 @@ export HIKYO_STATE_DIR="$state_dir"
 export DOCKER_CONFIG="$docker_config_dir"
 
 read -r port ops_port < <(python3 -c 'import socket; a=socket.socket(); b=socket.socket(); a.bind(("127.0.0.1", 0)); b.bind(("127.0.0.1", 0)); print(a.getsockname()[1], b.getsockname()[1]); a.close(); b.close()')
-origin="http://127.0.0.1:$port"
+origin="http://localhost:$port"
 ops_origin="http://127.0.0.1:$ops_port"
 cli_socket="$work_dir/cli.sock"
 (

@@ -15,6 +15,7 @@ import {
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { surfacesForFlow } from '../registry.ts';
+import { fetchPeerDirectory } from '../fixtures/instance-fetch.ts';
 
 /**
  * Flow: the multi-instance surfaces (registry surfaces `remotes`,
@@ -36,12 +37,10 @@ import { surfacesForFlow } from '../registry.ts';
  *   5. Revoking the session in the remote's own active-session list kills it
  *      the same way, criterion 5, seen from the browser.
  *
- * The two instances differ by HOSTNAME (A is `localhost`, B is `127.0.0.1`)
+ * The two instances differ by HOSTNAME (A is `localhost`, B is `serving.localhost`)
  * and not only by port, because cookies are not partitioned by port: one
- * hostname would mean one cookie jar and B's session would destroy A's. A
- * takes the NAME because a WebAuthn relying-party id must be a registrable
- * domain and an IP literal is not one, so the passkey ceremonies have to run
- * there.
+ * hostname would mean one cookie jar and B's session would destroy A's.
+ * Both origins use valid RP hostnames; A holds the shared resident passkey.
  */
 
 const VIEWING_ORIGIN = BASE_URL;
@@ -215,16 +214,14 @@ test.describe('multi-instance', () => {
    */
   test('mints a connection credential in the UI, a peer connects with it, and revocation refuses the next fetch', async ({
     page,
-    playwright,
   }) => {
     await onB(page, '/remotes');
     const section = page.locator('#connection-credentials');
     await expect(section).toBeVisible();
 
     const label = `e2e connection ${Date.now()}`;
-    // A context with no storage state carries no cookies, the only credential
-    // it can present is the bearer set per request.
-    const peer = await playwright.request.newContext();
+    // The fixture transport resolves .localhost on Linux and has no browser
+    // cookie jar: only the explicitly supplied bearer can authenticate a peer.
     const directory = `${BASE_URL_B}/api/v1/instance/directory`;
     try {
       await section.getByRole('button', { name: 'Mint a credential' }).click();
@@ -238,15 +235,13 @@ test.describe('multi-instance', () => {
 
       // Control: without the credential the same request is refused, proving the
       // 200 below is the bearer's doing and not an ambient cookie.
-      const anonymous = await peer.get(directory);
-      expect(anonymous.status(), 'the directory fetch is not open without a credential').toBe(401);
+      const anonymous = await fetchPeerDirectory(directory);
+      expect(anonymous.status, 'the directory fetch is not open without a credential').toBe(401);
 
       // A peer presents the minted value at the directory fetch, the one
       // operation an instance-connection credential may reach, and connects.
-      const connected = await peer.get(directory, {
-        headers: { Authorization: `Bearer ${value}` },
-      });
-      expect(connected.status()).toBe(200);
+      const connected = await fetchPeerDirectory(directory, value);
+      expect(connected.status).toBe(200);
 
       // The value is display-once: confirm storage, dismiss, and it is gone from
       // the surface, the inventory shows metadata only.
@@ -275,15 +270,12 @@ test.describe('multi-instance', () => {
       await expect(row.getByText('revoked', { exact: true })).toBeVisible();
 
       // The same presentation is now refused, revocation bit at the next fetch.
-      const refused = await peer.get(directory, {
-        headers: { Authorization: `Bearer ${value}` },
-      });
-      expect(refused.status()).toBe(401);
+      const refused = await fetchPeerDirectory(directory, value);
+      expect(refused.status).toBe(401);
     } finally {
       // Revoke by label from within B's own origin (cookies + CSRF available),
       // whatever state the assertions left the credential in.
       await revokeConnectionByLabel(page, label);
-      await peer.dispose();
     }
   });
 
@@ -557,13 +549,9 @@ test.describe('multi-instance', () => {
     // password login this test performs in the popup is single-factor, and
     // every instance-scope surface on B is MFA-mandatory, so it cannot reach
     // B's own remotes page afterwards.
-    // Captured by DOMAIN, not by URL. `context.cookies(url)` applies the
-    // browser's own delivery rules, and a `Secure` cookie is not delivered to
-    // an `http://` URL whose host is an IP LITERAL, Chrome's plaintext
-    // carve-out for secure cookies is `localhost` by name. B is the address
-    // literal (A holds `localhost`, which WebAuthn requires of the instance
-    // that runs passkey ceremonies), so the URL form silently returns nothing
-    // here and the restore below would put back an empty jar.
+    // Capture by domain so restoration retains B's complete cookie jar,
+    // independently of URL delivery filtering. A's localhost cookies remain
+    // separate from B's serving.localhost cookies.
     const bSession = (await context.cookies()).filter((c) => c.domain === HOST_B);
     await context.clearCookies({ domain: HOST_B });
 

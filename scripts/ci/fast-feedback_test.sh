@@ -96,6 +96,20 @@ FAST_FEEDBACK_BASE="$rename_base" refuse 'undefined: Value'
 rm -r old new
 commit_fixture
 
+# Module integrity stays in the bounded lane. Full unchanged-consumer checks
+# have their own dependency compatibility workflow and regression fixtures.
+printf '\n// Updated dependency selection.\n' >>go.mod
+commit_fixture
+run_feedback --lane=go
+grep -F 'running go mod verify' "$work/output" >/dev/null
+
+# Changing source and dependencies together must still compile the changed owner.
+printf 'package fixture\n\nvar brokenOwner = missingDependencyOwner\n' >dependency_owner.go
+commit_fixture
+refuse 'undefined: missingDependencyOwner' --lane=go
+rm dependency_owner.go
+commit_fixture
+
 mkdir web
 printf 'export const value = 1;\n' >web/fixture.ts
 commit_fixture
@@ -222,3 +236,4 @@ printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency
 
 bash "$script_dir/fast-feedback-lanes_test.sh"
 bash "$script_dir/fast-feedback-deadline_test.sh"
+bash "$script_dir/dependency-compatibility_test.sh"

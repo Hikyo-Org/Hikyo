@@ -252,8 +252,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeRPCError(w, http.StatusBadRequest, envelope.ID, -32020, "protocol mirror headers do not match request", nil)
 			return
 		}
-		// The pinned SDK v1.7.0 validator compares Mcp-Name without decoding
-		// (fixed upstream in go-sdk #1242, unreleased as of v1.8.0-pre.2), so
+		// The pinned SDK v1.8.0 validator compares Mcp-Name without decoding
+		// (mcp/streamable_headers.go, validateMcpHeaders), so
 		// it must see the decoded value this check accepted. The write-back
 		// stays correct once the SDK decodes too: a decoded tool name never
 		// carries the sentinel prefix.

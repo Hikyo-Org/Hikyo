@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -22,11 +23,32 @@ cleanup_spec = importlib.util.spec_from_file_location(
 )
 cleanup = importlib.util.module_from_spec(cleanup_spec)
 cleanup_spec.loader.exec_module(cleanup)
+rollout_spec = importlib.util.spec_from_file_location(
+    "rollout", Path(__file__).parents[1] / "check-config-rollout-kind.py"
+)
+rollout = importlib.util.module_from_spec(rollout_spec)
+rollout_spec.loader.exec_module(rollout)
 SOURCE = "ghcr.io/hikyo-org/hikyo@sha256:" + "a" * 64
 CANDIDATE = "ghcr.io/hikyo-org/hikyo@sha256:" + "b" * 64
 
 
 class GateTests(unittest.TestCase):
+    def test_kind_rollout_advertises_hostname_public_origin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "candidate"
+            binary.write_bytes(b"fixture")
+            args = SimpleNamespace(
+                context="kind-fixture", resume=directory,
+                namespace="hikyo-rollout-1234abcd", port=18080,
+                binary=binary, expanded=False, source_manifest=None,
+            )
+            with patch.object(rollout.Fixture, "validate_cluster"):
+                fixture = rollout.Fixture(args)
+            try:
+                self.assertEqual(fixture.origin, "http://localhost:18080")
+            finally:
+                fixture.log.close()
+
     def test_exited_server_fails_before_http_or_sleep(self):
         with tempfile.TemporaryDirectory() as directory:
             run = rehearsal.Rehearsal(
@@ -129,6 +151,24 @@ class GateTests(unittest.TestCase):
             )
             self.assertEqual(
                 [call.args for call in fixture.call_args_list], [("seed",), ("verify",)]
+            )
+            self.assertEqual(run.url, "https://localhost:40000")
+            self.assertEqual(run.ready_url, "http://127.0.0.1:40001/readyz")
+            environment = (run.output / "server.env").read_text()
+            self.assertIn("HIKYO_EXTERNAL_ORIGIN=https://localhost:40000\n", environment)
+
+    def test_generated_tls_certificate_authenticates_localhost(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = rehearsal.Rehearsal(
+                rehearsal.arguments(
+                    ["--source", SOURCE, "--bootstrap-only", "--output", directory + "/new"]
+                )
+            )
+            run.prepare_tls()
+            cert = str(run.output / "tls" / "server.crt")
+            subprocess.run(
+                ["openssl", "verify", "-CAfile", cert, "-verify_hostname", "localhost", cert],
+                check=True, capture_output=True,
             )
 
     def test_rejects_missing_fixture_same_image_and_mutable_reference(self):
