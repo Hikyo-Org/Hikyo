@@ -121,10 +121,13 @@ func New(rpID string, origins []string) (*RP, error) {
 // the RP ID is the origin's host (no scheme, no port) and the single expected
 // origin is the origin verbatim. This is the immutable instance config the ADR
 // requires — derived from configuration, never from a request Host or forwarded
-// header. An origin that does not parse, or carries no host, refuses.
+// header. Only an exact canonical HTTP(S) origin is accepted. The library
+// validates that the derived RP ID is a domain, including refusing IP literals.
 func FromExternalOrigin(externalOrigin string) (*RP, error) {
 	u, err := url.Parse(externalOrigin)
-	if err != nil || u.Hostname() == "" {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
+		u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" ||
+		externalOrigin != u.Scheme+"://"+u.Host {
 		return nil, ErrConfig
 	}
 	return New(u.Hostname(), []string{externalOrigin})
@@ -165,7 +168,7 @@ func (rp *RP) BeginEnrol(u User) (options, session []byte, challenge string, err
 	// the RP asks, and an unreported residency is recorded non-discoverable
 	// (B13), which the passkey sign-in then refuses.
 	creation, sess, err := rp.wa.BeginRegistration(waUser{u},
-		webauthn.WithExtensions(protocol.AuthenticationExtensions{"credProps": true}))
+		webauthn.WithExtensions(webauthn.WithExtensionCredProps()))
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %v", ErrCeremony, err)
 	}
@@ -332,16 +335,8 @@ func transportStrings(ts []protocol.AuthenticatorTransport) []string {
 }
 
 func credProps(ext protocol.AuthenticationExtensionsClientOutputs) map[string]any {
-	if ext == nil {
+	if ext.CredProps == nil || ext.CredProps.RK == nil {
 		return nil
 	}
-	raw, ok := ext["credProps"]
-	if !ok {
-		return nil
-	}
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return nil
-	}
-	return m
+	return map[string]any{"rk": *ext.CredProps.RK}
 }

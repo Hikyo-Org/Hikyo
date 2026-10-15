@@ -154,7 +154,7 @@ func cspOrigin(raw string) (string, bool) {
 	// service.CanonicalOrigin already codifies for allowlist entries.
 	switch {
 	case u.Scheme == "https":
-	case u.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1"):
+	case u.Scheme == "http" && (host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "127.0.0.1" || host == "::1"):
 	default:
 		return "", false
 	}

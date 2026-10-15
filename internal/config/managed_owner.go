@@ -167,13 +167,10 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.Argon2MemoryKiB, result.Argon2Time, result.Argon2Parallelism = parsed.Argon2MemoryKiB, parsed.Argon2Time, parsed.Argon2Parallelism
 	result.ReauthWindow = parsed.ReauthWindow
 	result.TrustedProxyCIDRs = slices.Clone(parsed.TrustedProxyCIDRs)
+	// Load received this candidate's listener and TLS settings above, so an
+	// inferred origin follows them instead of retaining a bootstrap default.
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
 	result.ExternalOriginExplicit = parsed.ExternalOriginExplicit
-	if !parsed.ExternalOriginExplicit && !base.ExternalOriginExplicit {
-		// Neither side states an origin: keep this node's own derivation
-		// rather than the parser's --dev stand-in.
-		result.ExternalOrigin = base.ExternalOrigin
-	}
 	if parsed.ExternalOriginExplicit && !base.ExternalOriginExplicit && parsed.ExternalOrigin == base.ExternalOrigin {
 		// Managed snapshots saved before #606 persisted this node's
 		// listen-derived origin as a value. A managed origin equal to the

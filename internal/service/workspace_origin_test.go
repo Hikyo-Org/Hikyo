@@ -6,10 +6,12 @@ func TestCanonicalOriginRequiresHTTPSOutsideLoopback(t *testing.T) {
 	t.Parallel()
 
 	accepted := map[string]string{
-		"https://remote.example": "https://remote.example",
-		"http://localhost:8080":  "http://localhost:8080",
-		"http://127.0.0.42":      "http://127.0.0.42",
-		"http://[::1]:8080":      "http://[::1]:8080",
+		"https://remote.example":        "https://remote.example",
+		"http://localhost:8080":         "http://localhost:8080",
+		"http://serving.localhost:8080": "http://serving.localhost:8080",
+		"http://SERVING.LOCALHOST:8080": "http://serving.localhost:8080",
+		"http://127.0.0.42":             "http://127.0.0.42",
+		"http://[::1]:8080":             "http://[::1]:8080",
 	}
 	for raw, want := range accepted {
 		if got, err := CanonicalOrigin(raw); err != nil || got != want {
@@ -19,6 +21,8 @@ func TestCanonicalOriginRequiresHTTPSOutsideLoopback(t *testing.T) {
 
 	for _, raw := range []string{
 		"http://remote.example",
+		"http://serving.localhost.evil.example",
+		"http://notlocalhost",
 		"http://192.168.1.10:8080",
 		"http://[2001:db8::1]",
 	} {

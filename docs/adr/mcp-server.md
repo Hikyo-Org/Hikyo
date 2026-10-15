@@ -39,10 +39,16 @@ origin to be HTTPS. Plain HTTP is accepted only when the external host is a
 loopback literal or `localhost` and development mode is explicitly enabled.
 The route is disabled unless MCP is explicitly enabled.
 
-The server uses `github.com/modelcontextprotocol/go-sdk` at exactly `v1.7.0`.
+The server uses `github.com/modelcontextprotocol/go-sdk` at exactly `v1.8.0`.
 Dependency upgrades require a reviewed changelog and the same protocol,
 security, and interoperability tests as the initial pin. A floating version or
 an SDK default is not policy.
+
+The [v1.8.0 changelog](https://github.com/modelcontextprotocol/go-sdk/releases/tag/v1.8.0)
+keeps the supported protocol set unchanged and hardens decoding and transport
+lifecycle handling. The protocol, security, and official-client adapter tests
+remain required. Its header validator still compares `Mcp-Name` without
+decoding, so Hikyo retains its validated sentinel-decoding adapter.
 
 The normative and only accepted protocol is `2026-07-28`. The migration policy
 is explicit refusal, not accidental partial compatibility: `2025-11-25` and

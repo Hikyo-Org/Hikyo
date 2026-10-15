@@ -44,7 +44,9 @@ install -d -m 0700 "$PWD/.hikyo-runtime"
 
 Development mode binds to `127.0.0.1:8080`, creates `hikyo-dev.db`, and writes a
 mode-`0600` root key beside it. Keep the database and key together: losing the
-key makes the encrypted data unrecoverable.
+key makes the encrypted data unrecoverable. Open the browser through
+`http://localhost:8080`: WebAuthn requires a hostname even when the listener
+binds to an IP address.
 
 On Linux and macOS, the owner-only socket directory lets the CLI authenticate
 the local server by operating-system identity before sending credentials over
@@ -81,7 +83,7 @@ command:
 ```bash
 cat ./hikyo-admin-authority
 ./bin/hikyo account establish-credential \
-  --instance http://127.0.0.1:8080 \
+  --instance http://localhost:8080 \
   --as admin \
   --socket "$PWD/.hikyo-runtime/hikyo.sock"
 ```
@@ -91,7 +93,7 @@ controlling-terminal prompt, and choose a password of at least 12 characters
 that is not in the
 bundled common-password list. Neither value crosses argv, environment variables,
 or a pipe. Delete `hikyo-admin-authority` after the command succeeds, then open
-[the local sign-in page](http://127.0.0.1:8080/login).
+[the local sign-in page](http://localhost:8080/login).
 
 <Callout type="warn" title="Evaluation only">
   `--dev` is deliberately convenient, not a production configuration. It uses

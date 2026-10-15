@@ -215,7 +215,7 @@ func TestOfficialSDKIsPinnedExactly(t *testing.T) {
 	}
 	for _, dependency := range info.Deps {
 		if dependency.Path == "github.com/modelcontextprotocol/go-sdk" {
-			if dependency.Version != "v1.7.0" || dependency.Replace != nil {
+			if dependency.Version != "v1.8.0" || dependency.Replace != nil {
 				t.Fatalf("SDK dependency = %s replacement %#v", dependency.Version, dependency.Replace)
 			}
 			return

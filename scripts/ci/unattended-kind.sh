@@ -236,7 +236,7 @@ chart_values=(
  --set upgrade.stateExistingClaim=hikyo-upgrade-state
  --set upgrade.unattended.enabled=true
  --set upgrade.unattended.scratchDatabaseExistingSecret=hikyo-scratch
- --set externalOrigin=http://127.0.0.1:18080
+ --set externalOrigin=http://localhost:18080
  --set network.allowPlaintextOrigin=true
  --set 'network.trustedProxyCIDRs={10.0.0.0/8}'
 )

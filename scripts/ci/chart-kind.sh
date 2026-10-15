@@ -7,14 +7,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-CLUSTER=hikyo-chart-e2e
-NAMESPACE=hikyo-chart-e2e
+CLUSTER=${HIKYO_CHART_KIND_CLUSTER:-hikyo-chart-e2e}
+NAMESPACE=${HIKYO_CHART_KIND_NAMESPACE:-hikyo-chart-e2e}
 RELEASE=hikyo
 NODE_IMAGE="kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5"
 POSTGRES_IMAGE="postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941"
 REGISTRY_IMAGE="registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
-REGISTRY_NAME=hikyo-chart-registry
-REGISTRY_PORT=5001
+REGISTRY_NAME=${HIKYO_CHART_KIND_REGISTRY:-hikyo-chart-registry}
+REGISTRY_PORT=${HIKYO_CHART_KIND_REGISTRY_PORT:-5001}
 IMAGE_REPOSITORY="localhost:$REGISTRY_PORT/hikyo-chart-e2e"
 IMAGE_TAG="$IMAGE_REPOSITORY:local"
 BINARY=${HIKYO_CHART_KIND_BINARY:-}
@@ -60,7 +60,28 @@ kind_config="$work/kind.yaml"
 port_forward_pid=
 created=false
 registry_created=false
+diagnostics() {
+	echo "chart-kind: collecting failed deployment diagnostics" >&2
+	kubectl --namespace "$NAMESPACE" get deployments,pods --output=wide >&2 || true
+	kubectl --namespace "$NAMESPACE" get pods --output=json |
+		jq '[.items[] | {name:.metadata.name,phase:.status.phase,conditions:.status.conditions,init:.status.initContainerStatuses,containers:.status.containerStatuses}]' >&2 || true
+	kubectl --namespace "$NAMESPACE" get events --sort-by=.lastTimestamp >&2 || true
+	local pod container
+	while IFS= read -r pod; do
+		for container in tls-stage server tls-stage-watch; do
+			kubectl --namespace "$NAMESPACE" logs "$pod" --container "$container" --tail=80 >&2 || true
+			kubectl --namespace "$NAMESPACE" logs "$pod" --container "$container" --previous --tail=80 >&2 || true
+		done
+	done < <(kubectl --namespace "$NAMESPACE" get pods --selector app.kubernetes.io/name=hikyo --output=name 2>/dev/null)
+	# Bootstrap Jobs print private credentials; diagnostics only reads the
+	# server Deployment and PostgreSQL logs, never those Job pods.
+	kubectl --namespace "$NAMESPACE" logs deployment/postgres --tail=80 >&2 || true
+}
 cleanup() {
+	local status=$?
+	if [[ "$status" != 0 && "$created" == true ]]; then
+		diagnostics
+	fi
 	if [[ -n "$port_forward_pid" ]]; then
 		kill "$port_forward_pid" >/dev/null 2>&1 || true
 		wait "$port_forward_pid" >/dev/null 2>&1 || true
@@ -72,6 +93,7 @@ cleanup() {
 		docker rm --force "$REGISTRY_NAME" >/dev/null 2>&1 || true
 	fi
 	rm -rf "$work"
+	return "$status"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -161,9 +183,9 @@ openssl x509 -req -days 1 -sha256 \
 	-extfile "$work/tls/server.ext" -out "$work/tls/tls.crt" >/dev/null 2>&1
 openssl req -newkey rsa:2048 -nodes \
 	-keyout "$work/tls/hikyo.key" -out "$work/tls/hikyo.csr" \
-	-subj '/CN=127.0.0.1' >/dev/null 2>&1
+	-subj '/CN=localhost' >/dev/null 2>&1
 cat >"$work/tls/hikyo.ext" <<'EOF'
-subjectAltName=IP:127.0.0.1
+subjectAltName=DNS:localhost
 extendedKeyUsage=serverAuth
 EOF
 openssl x509 -req -days 1 -sha256 \
@@ -329,7 +351,7 @@ chart_values=(
 	--set tls.existingSecret=hikyo-tls \
 	--set upgrade.existingClaim=hikyo-upgrade-public \
 	--set upgrade.stateExistingClaim=hikyo-upgrade-state \
-	--set externalOrigin=https://127.0.0.1:18080
+	--set externalOrigin=https://localhost:18080
 )
 
 # Retained broken-shape fixture: removing the root-key file argument recreates
@@ -462,7 +484,7 @@ umask 077
 docker exec "$doctor_node" cat /var/lib/hikyo-chart-state/operator-custody/chart-doctor-authority \
 	>"$doctor_private/authority"
 go build -trimpath -o "$work/hikyo-cli" ./cmd/hikyo
-go run ./scripts/ci/chartdoctor --origin https://127.0.0.1:18080 --spki-pin "$chart_spki_pin" \
+go run ./scripts/ci/chartdoctor --origin https://localhost:18080 --spki-pin "$chart_spki_pin" \
 	--private-dir "$doctor_private" --binary "$work/hikyo-cli"
 if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/assert-doctor-findings.jq "$doctor_private/doctor.json" >/dev/null; then
 	echo 'chart-kind: instance doctor did not report the complete measured finding set' >&2
@@ -471,7 +493,7 @@ if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/ass
 fi
 echo 'chart-kind: authenticated instance doctor reported all 12 operational finding families'
 
-document_status=$(forwarded_get https://127.0.0.1:18080/ "$work/document.html" \
+document_status=$(forwarded_get https://localhost:18080/ "$work/document.html" \
 	--cacert "$work/tls/ca.crt" --header 'Accept: text/html') || exit 1
 if [[ "$document_status" != 200 ]]; then
 	echo "chart-kind: UI document request returned $document_status" >&2

@@ -297,7 +297,7 @@ func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
 	return &config.Config{
 		Upgrade: config.UpgradeConfiguration{StateDirectory: isolationCustodyDirectory(t)},
 		Dev:     true, Listen: "127.0.0.1:0", OperationalListen: "localhost:0", AutoMigrate: true, Store: storeCfg,
-		ExternalOrigin: "http://127.0.0.1", RootKeyFile: rootPath, CLISocket: localCLISocketPath(t),
+		ExternalOrigin: "http://localhost", RootKeyFile: rootPath, CLISocket: localCLISocketPath(t),
 		Argon2MemoryKiB: crypto.PasswordFloor.MemoryKiB,
 		Argon2Time:      crypto.PasswordFloor.Time, Argon2Parallelism: crypto.PasswordFloor.Parallelism,
 		AdmissionBudgetMiB: 272, DevAdmissionPerIPPerMinute: 100,

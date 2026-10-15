@@ -138,11 +138,12 @@ type Config struct {
 
 	// ExternalOrigin is the instance's public origin (scheme + host), used to
 	// build per-provider OIDC redirect URIs (A1). Never derived from a request
-	// header. Defaults to http://<Listen> when unset.
+	// header. When unset, uses the listen scheme and port with localhost for a
+	// 127.0.0.1, ::1 or wildcard bind. Other listen hosts are retained.
 	ExternalOrigin string
 	// ExternalOriginExplicit records whether the operator supplied
 	// ExternalOrigin (flag, HIKYO_EXTERNAL_ORIGIN or a managed value) rather
-	// than it falling back to the listen address. A registration policy
+	// than it falling back to the listen-derived local origin. A registration policy
 	// refuses to open on a derived origin (#579 d6, `no-public-origin`): a
 	// sign-up mail or redirect naming 127.0.0.1 or a container hostname is
 	// useless to a stranger.
@@ -621,14 +622,29 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		if cfg.TLSCertFile != "" {
 			scheme = "https://"
 		}
-		cfg.ExternalOrigin = scheme + cfg.Listen
+		host := cfg.Listen
+		if listenHost, port, err := net.SplitHostPort(cfg.Listen); err == nil {
+			ip := net.ParseIP(listenHost)
+			// localhost does not resolve to arbitrary aliases in 127.0.0.0/8.
+			if listenHost == "" || (ip != nil && (ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback) || ip.IsUnspecified())) {
+				host = net.JoinHostPort("localhost", port)
+			}
+		}
+		cfg.ExternalOrigin = scheme + host
 	}
 	origin, err := url.Parse(cfg.ExternalOrigin)
 	if err != nil || (origin.Scheme != "http" && origin.Scheme != "https") ||
-		origin.Host == "" || origin.User != nil || origin.Path != "" ||
+		origin.Hostname() == "" || origin.User != nil || origin.Path != "" ||
 		origin.RawQuery != "" || origin.Fragment != "" ||
 		cfg.ExternalOrigin != origin.Scheme+"://"+origin.Host {
 		return nil, nil, fmt.Errorf("HIKYO_EXTERNAL_ORIGIN must be an exact canonical HTTP(S) origin without credentials, path, query, or fragment")
+	}
+	if subcommand == "server" {
+		host := strings.TrimRight(origin.Hostname(), ".")
+		_, browserIP := browserIPv4(strings.ToLower(host))
+		if net.ParseIP(host) != nil || browserIP || strings.Contains(host, ":") {
+			return nil, nil, errors.New("HIKYO_EXTERNAL_ORIGIN must use a hostname for WebAuthn, not an IP address; use http://localhost:PORT for local development or configure an HTTPS hostname for this server")
+		}
 	}
 	if subcommand == "server" {
 		rawEnabled := strings.TrimSpace(getenv("HIKYO_MCP_ENABLED"))

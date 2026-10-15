@@ -648,7 +648,9 @@ func CanonicalOrigin(raw string) (string, error) {
 }
 
 func workspaceLoopbackHost(host string) bool {
-	if strings.EqualFold(host, "localhost") {
+	host = strings.ToLower(host)
+	// RFC 6761 reserves localhost and every subdomain for loopback use.
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)

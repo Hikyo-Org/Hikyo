@@ -11,12 +11,11 @@ import (
 )
 
 func TestManagedOwnerRoundTripPreservesDefaultsAndNodeConfiguration(t *testing.T) {
-	cfg, _, err := Load("server", []string{"--dev"}, func(string) string { return "" }, nil)
+	cfg, _, err := Load("server", []string{"--dev"}, env("HIKYO_TLS_CERT_FILE", "/unreadable/cert", "HIKYO_TLS_KEY_FILE", "/unreadable/key"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.RootKeyFile = "/unreadable/root"
-	cfg.TLSCertFile, cfg.TLSKeyFile = "/unreadable/cert", "/unreadable/key"
 	cfg.NodeID, cfg.HA = "node-a", true
 	cfg.Store = Datastore{Engine: EnginePostgres, DSN: "do-not-open", PostgresPoolMax: 7, PostgresStorage: PostgresStorage{KubeletURL: "https://tokyo:10250", Namespace: "database", PVC: "data", Node: "tokyo"}}
 	cfg.Upgrade.StateDirectory = "/unreadable/state"

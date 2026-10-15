@@ -88,6 +88,7 @@ func testServerOperationalProbes(t *testing.T, restCfg *rest.Config, sch *runtim
 						Args:            []string{"server", "--dev", "--listen=0.0.0.0:8080", "--operational-listen=0.0.0.0:8081"},
 						Env: []corev1.EnvVar{
 							{Name: "HIKYO_DB", Value: "sqlite:/data/hikyo.db"},
+							{Name: "HIKYO_EXTERNAL_ORIGIN", Value: "http://localhost:8080"},
 							{Name: "HIKYO_TRUSTED_PROXY_CIDRS", Value: "10.0.0.0/8"},
 						},
 						Ports: []corev1.ContainerPort{
@@ -113,8 +114,11 @@ func testServerOperationalProbes(t *testing.T, restCfg *rest.Config, sch *runtim
 	}))
 	var pods corev1.PodList
 	must(t, kube.List(t.Context(), &pods, client.InNamespace(namespace.Name), client.MatchingLabels(labels)))
-	if len(pods.Items) != 1 || len(pods.Items[0].Status.ContainerStatuses) != 1 {
-		t.Fatalf("server probe pods/statuses = %d/%d", len(pods.Items), len(pods.Items[0].Status.ContainerStatuses))
+	if len(pods.Items) != 1 {
+		t.Fatalf("server probe pods = %d, want 1", len(pods.Items))
+	}
+	if len(pods.Items[0].Status.ContainerStatuses) != 1 {
+		t.Fatalf("server probe container statuses = %d, want 1", len(pods.Items[0].Status.ContainerStatuses))
 	}
 	status := pods.Items[0].Status.ContainerStatuses[0]
 	if !status.Ready || status.RestartCount != 0 {

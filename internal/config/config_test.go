@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -304,7 +305,7 @@ func TestNativeTLSConfigIsFailClosedAndSetsHTTPSOrigin(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("warnings = %v", warnings)
 	}
-	if cfg.ExternalOrigin != "https://0.0.0.0:8443" {
+	if cfg.ExternalOrigin != "https://localhost:8443" {
 		t.Fatalf("ExternalOrigin = %q, want https scheme", cfg.ExternalOrigin)
 	}
 	if cfg.OperationalListen != "127.0.0.1:8081" {
@@ -330,6 +331,8 @@ func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) 
 		"https://hikyo.example.com/path",
 		"https://hikyo.example.com?token=secret",
 		"https://hikyo.example.com#fragment",
+		"https://hikyo.example.com?",
+		"https://:443",
 		"ftp://hikyo.example.com",
 	} {
 		t.Run(origin, func(t *testing.T) {
@@ -344,6 +347,106 @@ func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) 
 	}
 }
 
+func TestListenDerivedOriginUsesLocalHostnameWithoutChangingBinding(t *testing.T) {
+	for _, listen := range []string{"127.0.0.1:8090", "0.0.0.0:8090", "[::1]:8090", "[::]:8090", "[::ffff:127.0.0.1]:8090", ":8090"} {
+		for _, tls := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/tls=%t", listen, tls), func(t *testing.T) {
+				pairs := []string{"HIKYO_TRUSTED_PROXY_CIDRS", "10.42.0.0/16"}
+				scheme := "http"
+				if tls {
+					pairs = append(pairs, "HIKYO_TLS_CERT_FILE", "tls.crt", "HIKYO_TLS_KEY_FILE", "tls.key")
+					scheme = "https"
+				}
+				cfg, _, err := Load("server", []string{"--dev", "--listen", listen}, env(pairs...), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cfg.Listen != listen || cfg.ExternalOrigin != scheme+"://localhost:8090" || cfg.ExternalOriginExplicit {
+					t.Fatalf("Listen=%q ExternalOrigin=%q explicit=%t", cfg.Listen, cfg.ExternalOrigin, cfg.ExternalOriginExplicit)
+				}
+			})
+		}
+	}
+}
+
+func TestLoopbackAliasRequiresAnExplicitHostnameOrigin(t *testing.T) {
+	for _, listen := range []string{"127.0.0.2:8090", "[::ffff:127.0.0.2]:8090"} {
+		t.Run(listen, func(t *testing.T) {
+			_, _, err := Load("server", []string{"--dev", "--listen", listen}, env(), nil)
+			if err == nil || !strings.Contains(err.Error(), "HIKYO_EXTERNAL_ORIGIN") || !strings.Contains(err.Error(), "hostname") {
+				t.Fatalf("a loopback alias cannot infer localhost, got %v", err)
+			}
+			const origin = "http://hikyo-loopback.example.test:8090"
+			cfg, _, err := Load("server", []string{"--dev", "--listen", listen}, env("HIKYO_EXTERNAL_ORIGIN", origin), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Listen != listen || cfg.ExternalOrigin != origin || !cfg.ExternalOriginExplicit {
+				t.Fatalf("Listen=%q ExternalOrigin=%q explicit=%t", cfg.Listen, cfg.ExternalOrigin, cfg.ExternalOriginExplicit)
+			}
+		})
+	}
+}
+
+func TestExternalHostnameOriginIsPreserved(t *testing.T) {
+	for _, origin := range []string{"http://localhost:4310", "https://hikyo.example.com", "https://hikyo.example.com:9443"} {
+		t.Run(origin, func(t *testing.T) {
+			cfg, _, err := Load("server", []string{"--dev"}, env("HIKYO_EXTERNAL_ORIGIN", origin), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.ExternalOrigin != origin || !cfg.ExternalOriginExplicit || cfg.Listen != "127.0.0.1:8080" {
+				t.Fatalf("Listen=%q ExternalOrigin=%q explicit=%t", cfg.Listen, cfg.ExternalOrigin, cfg.ExternalOriginExplicit)
+			}
+		})
+	}
+}
+
+func TestNonlocalListenRequiresAHostnameOrigin(t *testing.T) {
+	pairs := []string{"HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_TRUSTED_PROXY_CIDRS", "192.0.2.0/24"}
+	if _, _, err := Load("server", []string{"--listen", "192.0.2.5:8090"}, env(pairs...), nil); err == nil || !strings.Contains(err.Error(), "hostname") {
+		t.Fatalf("an inferred nonlocal IP origin must require operator configuration, got %v", err)
+	}
+	for _, explicit := range []bool{false, true} {
+		originPairs := append([]string{}, pairs...)
+		if explicit {
+			originPairs = append(originPairs, "HIKYO_EXTERNAL_ORIGIN", "https://public.example.com:9443")
+		}
+		cfg, _, err := Load("server", []string{"--listen", "hikyo.example.com:8090"}, env(originPairs...), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "http://hikyo.example.com:8090"
+		if explicit {
+			want = "https://public.example.com:9443"
+		}
+		if cfg.Listen != "hikyo.example.com:8090" || cfg.ExternalOrigin != want || cfg.ExternalOriginExplicit != explicit {
+			t.Fatalf("Listen=%q ExternalOrigin=%q explicit=%t", cfg.Listen, cfg.ExternalOrigin, cfg.ExternalOriginExplicit)
+		}
+	}
+}
+
+func TestServerIPOriginsRefuseWithHostnameMigrationGuidance(t *testing.T) {
+	for _, origin := range []string{"http://127.0.0.1:8080", "https://192.0.2.1", "https://0.0.0.0:8443", "http://[::1]:8080", "https://[::]", "https://[::ffff:127.0.0.1]", "http://127.1:8080", "http://2130706433:8080", "http://0x7f000001:8080", "http://127.0.0.1.:8080"} {
+		t.Run(origin, func(t *testing.T) {
+			for _, args := range [][]string{nil, {"--dev"}} {
+				_, _, err := Load("server", args, env("HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_EXTERNAL_ORIGIN", origin), nil)
+				if err == nil || !strings.Contains(err.Error(), "HIKYO_EXTERNAL_ORIGIN") || !strings.Contains(err.Error(), "hostname") || !strings.Contains(err.Error(), "http://localhost:PORT") {
+					t.Fatalf("origin %q args=%v: expected actionable hostname refusal, got %v", origin, args, err)
+				}
+			}
+		})
+	}
+	// Offline commands do not construct a WebAuthn relying party. An old
+	// server origin must not prevent an operator from maintaining its datastore.
+	for _, command := range []string{"admin", "migrate", "backup"} {
+		cfg, _, err := Load(command, nil, env("HIKYO_DB", "sqlite:/data/hikyo.db", "HIKYO_EXTERNAL_ORIGIN", "http://127.0.0.1:8080"), nil)
+		if err != nil || cfg.ExternalOrigin != "http://127.0.0.1:8080" {
+			t.Fatalf("%s: cfg=%+v error=%v", command, cfg, err)
+		}
+	}
+}
+
 // A listen-derived origin is not an explicit public origin (#606,
 // `no-public-origin`): only an operator-supplied value counts.
 func TestExternalOriginExplicitness(t *testing.T) {
@@ -351,8 +454,11 @@ func TestExternalOriginExplicitness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if derived.ExternalOrigin == "" || derived.ExternalOriginExplicit {
-		t.Fatalf("derived origin %q explicit=%t, want a listen default that is not explicit", derived.ExternalOrigin, derived.ExternalOriginExplicit)
+	if derived.ExternalOrigin != "http://localhost:8080" || derived.ExternalOriginExplicit {
+		t.Fatalf("derived origin %q explicit=%t, want a local hostname default that is not explicit", derived.ExternalOrigin, derived.ExternalOriginExplicit)
+	}
+	if _, ok := derived.ManagedOwnerValues()["HIKYO_EXTERNAL_ORIGIN"]; ok {
+		t.Fatal("an inferred local hostname must not become an explicit managed public origin")
 	}
 	explicit, _, err := Load("server", nil, env(
 		"HIKYO_DB", "sqlite:/data/hikyo.db",
@@ -750,7 +856,7 @@ func TestHSTSFollowsTheExternalOriginSchemeNotTheCertificate(t *testing.T) {
 		{
 			name:   "native TLS on a public listener",
 			listen: "0.0.0.0:8443",
-			pairs:  certPairs,
+			pairs:  append(append([]string{}, certPairs...), "HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com:8443"),
 			want:   true,
 		},
 		{
