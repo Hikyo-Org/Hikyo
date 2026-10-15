@@ -186,6 +186,14 @@ it('preserves unknown provider kinds without starting an unsupported link flow',
  * the password otherwise, and sends that class and nothing else.
  */
 describe('passkey proof selection', () => {
+  it.each([false, true])('does not submit an empty local proof as establish (confirmed authenticator=%s)', async (confirmed) => {
+    factor.confirmed = confirmed;
+    const { input } = await submitProof('Add a passkey', '');
+    expect(input.value).toBe('');
+    expect(button(document.body, 'Confirm').disabled).toBe(true);
+    expect(passkeyMutations.enrol).not.toHaveBeenCalled();
+  });
+
   it('sends the proof class displayed after inventory updates while the dialog stays open', async () => {
     const view = await renderForm(<MemoryRouter><AccountSecurity /></MemoryRouter>);
     unmount = view.unmount;
@@ -390,6 +398,41 @@ describe('social-only account security', () => {
     expect(view.container.textContent).not.toContain('Verified via GitHub');
     await act(async () => button(view.container, 'Set password').click());
     expect(button(view.container, 'Verify with GitHub')).toBeDefined();
+  });
+
+  it.each(['add', 'Set password', 'enrol', 'Replace recovery codes'])('rechecks expiry before continuing %s when the expiry timer is delayed', async (action) => {
+    socialOnly();
+    const started = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(started);
+    try {
+      factor.establish = { kind: 'oauth2', slug: 'shared', display_name: 'GitHub', expires_at: new Date(started + 300_000).toISOString() };
+      const view = await securityView();
+      await act(async () => button(view.container, action).click());
+      const continueButton = button(view.container, 'Continue');
+      // Background tabs can deliver the expiry timer after the user's click.
+      clock.mockReturnValue(started + 300_001);
+      await act(async () => continueButton.click());
+      expect(passkeyMutations.enrol).not.toHaveBeenCalled();
+      expect(security.password).not.toHaveBeenCalled();
+      expect(security.refetch).toHaveBeenCalledOnce();
+      expect(view.container.querySelector('dialog')?.textContent).not.toContain('Verified via');
+      expect(button(view.container, 'Verify with GitHub')).toBeDefined();
+    } finally { clock.mockRestore(); }
+  });
+
+  it.each(['password', 'authenticator', 'passkey', 'unavailable inventory'])('withdraws establish continuation when %s changes its eligibility', async (change) => {
+    socialOnly();
+    factor.establish = { kind: 'oauth2', slug: 'shared', display_name: 'GitHub', expires_at: new Date(Date.now() + 300_000).toISOString() };
+    const view = await securityView();
+    await act(async () => button(view.container, 'add').click());
+    expect(button(view.container, 'Continue')).toBeDefined();
+    if (change === 'password') factor.has_password = true;
+    else if (change === 'authenticator') factor.confirmed = true;
+    else if (change === 'passkey') factor.has_passkey = true;
+    else factor.failed = true;
+    await view.rerender(<MemoryRouter><AccountSecurity /></MemoryRouter>);
+    expect([...view.container.querySelectorAll('dialog button')].some((candidate) => candidate.textContent === 'Continue')).toBe(false);
+    expect(passkeyMutations.enrol).not.toHaveBeenCalled();
   });
 
   it('retires the visible verification when its server expiry passes while the dialog is open', async () => {

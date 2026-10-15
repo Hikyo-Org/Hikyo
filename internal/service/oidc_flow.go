@@ -1168,6 +1168,21 @@ func (s *Auth) ListIdentities(ctx context.Context, presented string) ([]External
 				if err != nil && !errors.Is(err, domain.ErrNotFound) {
 					return err
 				}
+				if errors.Is(err, domain.ErrNotFound) {
+					// SAML login resolves retained identities by entityID after a
+					// provider is recreated. Resolve presentation the same way,
+					// without rebinding the identity or filtering disabled inventory.
+					providers, err := az.ListSAMLProviders(ctx)
+					if err != nil {
+						return err
+					}
+					for _, candidate := range providers {
+						if candidate.EntityID == r.Issuer {
+							p = candidate
+							break
+						}
+					}
+				}
 				slug, displayName = p.Slug, p.DisplayName
 			}
 			out = append(out, ExternalIdentityView{Profile: profile, Slug: slug, DisplayName: displayName,

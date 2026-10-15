@@ -191,11 +191,11 @@ func TestCredentialEstablishTOTPAndExpiry(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if changed.Assurance.Factors[0] != "totp" {
+				if len(changed.Assurance.Factors) != 1 || changed.Assurance.Factors[0] != "totp" {
 					t.Fatalf("wrong TOTP proof assurance: %+v", changed.Assurance)
 				}
-				if _, err := h.auth.Identity(t.Context(), changed.SessionToken); errors.Is(err, domain.ErrUnauthenticated) {
-					t.Fatal("reissue dead")
+				if _, err := h.auth.Identity(t.Context(), changed.SessionToken); err != nil {
+					t.Fatalf("reissued session identity: %v", err)
 				}
 				// The password-first policy accepts a confirmed TOTP for the first
 				// password, but requires the current password for replacement.
@@ -406,7 +406,7 @@ func TestCredentialEstablishTOTPIdentityAndPasskeyFloor(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if linked.Login.Assurance.Factors[0] != "totp" {
+				if len(linked.Login.Assurance.Factors) != 1 || linked.Login.Assurance.Factors[0] != "totp" {
 					t.Fatalf("link lost proof: %+v", linked.Login.Assurance)
 				}
 				ids, err = h.auth.ListIdentities(t.Context(), linked.Login.SessionToken)

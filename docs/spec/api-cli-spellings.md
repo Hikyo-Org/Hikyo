@@ -350,6 +350,12 @@ hikyo login <url> [--provider <kind>:<slug>] # preselects the browser's method s
 
 `PUT /api/v1/auth/password {password, proof?}`: set-or-change; every session of the principal deleted, the acting session reissued. `POST /api/v1/auth/identities/link` stays the OIDC alias; `oauth2` links through its own start with purpose `link`.
 
+`account password set` and `account password change` are aliases: either sets
+the first password or replaces an existing password. The account's current
+credential inventory selects the proof: the current password when one exists,
+otherwise a confirmed TOTP code. Both refuse a social-only account before
+prompting and print the Settings > Security URL.
+
 ### Org
 
 `hikyo org rename <org> --name <new>` (`manage-members(org)`); `PATCH /api/v1/orgs/{org} {name}`. `Org` gains required `origin: manual | registration` and nullable `registration_policy_id`; `hikyo org list [--origin manual|registration]`.

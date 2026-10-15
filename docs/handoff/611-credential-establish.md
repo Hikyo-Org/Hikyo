@@ -195,3 +195,43 @@ above. Go import formatting, the final AST graph refresh and diff checks passed;
 the graph refresh retains its existing partial-extraction warnings for 17 Astro
 documentation files. These are local results; the repaired head still requires
 fresh hosted feedback and immutable merge-group validation.
+
+## CodeRabbit review follow-through
+
+The full included CodeRabbit review of `c46430b164f7` completed with five
+comments. Sol 6.1 high workers checked each against source, accepted decisions
+and regression evidence; the parent reviewed the resulting changes.
+
+- Password and identity-unlink wire declarations now include their conditional
+  developer-credential revocation event. The generator owner was corrected,
+  output regenerated, and the declaration regression failed before the fix.
+  Actual emission follows the existing `revokeDeveloperScope` call paths.
+- CLI `set` and `change` remain aliases, as the operative api-cli-surface
+  amendment's single set-or-change verb and api-cli-spellings section 8 specify.
+  Help and canonical spelling documentation now say this explicitly. Both
+  spellings are tested with both first-password TOTP and existing-password
+  proof, including replacement-session persistence and secret redaction.
+- Session liveness assertions now reject every error, and assurance assertions
+  check the factor count before indexing. The affected lifecycle families pass
+  on both engines.
+- SAML identity inventory resolves a missing historical provider row to the
+  configured provider with the same entityID. Both-engine recreation tests
+  reproduced the empty presentation fields, then passed after repair. Disabled
+  providers retain their display metadata, consistent with the inventory's
+  existing behavior. Listing never changes historical identity provenance;
+  login eligibility and callback rebinding remain separate checks.
+- The reported empty local-proof submission is already prevented by
+  ProofDialog's disabled button and guarded submit handler; explicit password
+  and TOTP regressions confirm that. A nearby delayed-timer case did reproduce:
+  a rendered establishment Continue action could outlive its stamp. All four
+  creation continuations now recheck current eligibility and wall-clock expiry
+  before proceeding. Expiry keeps the dialog open and refreshes provider
+  verification. Tests advance the clock without delivering the expiry timer,
+  and also cover credential-inventory changes and valid establishment.
+
+This pass passed all 1,728 web tests, typecheck, lint and production build;
+complete CLI/authz/generator/API packages; and the affected SQLite/PostgreSQL
+lifecycle families in 18.088 seconds. The complete service package passed in
+77.963 seconds. It changes no visual layout. The earlier
+desktop/mobile runtime evidence remains separate from these new delayed-timer
+and inventory regressions.

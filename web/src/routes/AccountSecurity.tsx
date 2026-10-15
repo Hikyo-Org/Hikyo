@@ -142,6 +142,14 @@ export function AccountSecurity() {
     if (request === null) {
       return;
     }
+    // A background tab can deliver the expiry timer after this click. Empty
+    // proof is reserved for a currently eligible, live provider verification.
+    const verifiedEstablish = totpStatus.isSuccess && noLocalProof && stamp !== undefined && Date.parse(stamp.expires_at) > Date.now();
+    if (value === '' && !verifiedEstablish) {
+      setNow(Date.now());
+      void refreshInventory();
+      return;
+    }
     setProof(null);
     switch (request.kind) {
       case 'password':
@@ -150,7 +158,7 @@ export function AccountSecurity() {
         return;
       case 'add-passkey':
         enrolPasskey.mutate(
-          { proof: value === '' ? { kind: 'establish' } : accountSecurityProof(passkeyProof, value) },
+          { proof: verifiedEstablish && value === '' ? { kind: 'establish' } : accountSecurityProof(passkeyProof, value) },
           {
             onSuccess: () => ok('Passkey enrolled. Every other session you held has ended.'),
             onError: report,

@@ -41,8 +41,17 @@ func TestAccountPasswordAndFactorSocialOnlyRefuseBeforePrompt(t *testing.T) {
 }
 
 func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T) {
-	for _, verb := range []string{"set", "change"} {
-		t.Run(verb, func(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		verb        string
+		hasPassword bool
+	}{
+		{"set first password", "set", false},
+		{"change first password", "change", false},
+		{"set existing password", "set", true},
+		{"change existing password", "change", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			var received struct {
 				Password string `json:"password"`
 				Proof    string `json:"proof"`
@@ -51,7 +60,7 @@ func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/v1/auth/totp":
-					_, _ = w.Write([]byte(`{"confirmed":true,"pending":false,"has_password":true,"has_passkey":false,"can_reauth_oidc":false}`))
+					_ = json.NewEncoder(w).Encode(map[string]bool{"confirmed": true, "pending": false, "has_password": tc.hasPassword, "has_passkey": false, "can_reauth_oidc": false})
 				case "/api/v1/auth/password":
 					mutations++
 					if r.Method != http.MethodPut || r.Header.Get("Authorization") != "Bearer old-session-secret" {
@@ -68,8 +77,16 @@ func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T
 			defer server.Close()
 			state, ios, stdout, stderr := passwordTestIO(t, server.URL, pinnedTestEntry("local", server))
 			inputs := []string{"old-password-proof", "new-password-secret", "new-password-secret"}
+			proofPrompt := "Current password (to authorize the password change): "
+			if !tc.hasPassword {
+				inputs[0] = "123456"
+				proofPrompt = "TOTP code (to authorize setting a password): "
+			}
 			prompts := 0
 			ios.ReadPassword = func(prompt string) (string, error) {
+				if prompts == 0 && prompt != proofPrompt {
+					t.Errorf("proof prompt=%q, want %q", prompt, proofPrompt)
+				}
 				if prompts >= len(inputs) {
 					t.Fatalf("unexpected prompt %q", prompt)
 				}
@@ -77,7 +94,7 @@ func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T
 				prompts++
 				return value, nil
 			}
-			if code := Run(t.Context(), ios, []string{"account", "password", verb, "--instance", "local"}); code != ExitOK {
+			if code := Run(t.Context(), ios, []string{"account", "password", tc.verb, "--instance", "local"}); code != ExitOK {
 				t.Fatalf("exit=%d stderr=%s", code, stderr)
 			}
 			if mutations != 1 || prompts != 3 || received.Password != inputs[1] || received.Proof != inputs[0] {
@@ -94,6 +111,20 @@ func TestAccountPasswordPersistsReplacementWithoutDisclosingSecrets(t *testing.T
 				if strings.Contains(stdout.String(), secret) || strings.Contains(stderr.String(), secret) {
 					t.Fatal("secret reached command output")
 				}
+			}
+		})
+	}
+}
+
+func TestAccountPasswordAliasHelpExplainsSetOrChange(t *testing.T) {
+	for _, verb := range []string{"set", "change"} {
+		t.Run(verb, func(t *testing.T) {
+			var out bytes.Buffer
+			if !Help(&out, []string{"account", "password", verb}) {
+				t.Fatal("password command has no help")
+			}
+			if !strings.Contains(out.String(), "aliases: set the first password or replace an existing one") {
+				t.Fatalf("alias semantics absent from help: %s", &out)
 			}
 		})
 	}

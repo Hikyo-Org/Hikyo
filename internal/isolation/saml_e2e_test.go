@@ -343,6 +343,33 @@ func runSAMLProviderRecreation(t *testing.T, db *store.DB) {
 	if newProviderID == oldProviderID {
 		t.Fatalf("provider recreation reused row id %q", newProviderID)
 	}
+	local, err = auth.LocalLogin(ctx, "oidc-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Inventory resolves the replacement's presentation before a SAML login
+	// rebinds provenance. Disabled providers still have configured names.
+	for _, enabled := range []bool{false, true} {
+		displayName := fmt.Sprintf("Recreated SAML IdP (enabled=%t)", enabled)
+		if _, err := providers.Patch(ctx, service.LocalPrincipal(admin), "saml-idp", service.SAMLProviderPatch{
+			DisplayName: &displayName, Enabled: &enabled,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		identities, err := auth.ListIdentities(ctx, local.SessionToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(identities) != 1 || identities[0].Kind != "saml" || identities[0].Slug != "saml-idp" || identities[0].DisplayName != displayName {
+			t.Fatalf("recreated provider inventory (enabled=%t) = %+v", enabled, identities)
+		}
+		if identities[0].ProviderID != oldProviderID {
+			t.Fatalf("inventory changed historical provider id = %q, want %q", identities[0].ProviderID, oldProviderID)
+		}
+		if got := queryString(t, db, "SELECT provider_id FROM external_identities WHERE kind = 'saml' AND issuer = 'https://samltest.example/metadata'"); got != oldProviderID {
+			t.Fatalf("inventory rebound stored provenance = %q, want %q", got, oldProviderID)
+		}
+	}
 
 	start, err := auth.SAMLStart(ctx, "saml-idp", "login", "", "", "")
 	if err != nil {
