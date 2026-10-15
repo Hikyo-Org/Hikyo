@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { lookup, type LookupAddress, type LookupOptions } from 'node:dns';
 
 import { describe, expect, it, vi } from 'vitest';
+import { Response as UndiciResponse } from 'undici';
 
 import { fetchPeerDirectory, instanceFetch, SERVING_HOST } from './instance-fetch.ts';
 
@@ -20,6 +21,32 @@ vi.mock('node:dns', async (importOriginal) => {
 });
 
 describe('fixture loopback transport', () => {
+  it('uses installed Undici for ordinary hosts and leaves peer requests without a cookie jar', async () => {
+    const server = createServer((request, response) => {
+      response.setHeader('Set-Cookie', 'fixture=received; Path=/');
+      response.end(`${request.headers.host}\n${request.headers.origin}\n${request.headers.cookie}\n${request.headers.authorization}`);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('missing TCP listener');
+      const host = `127.0.0.1:${String(address.port)}`;
+      const base = `http://${host}`;
+      const response = await instanceFetch(base, {
+        headers: { Origin: base, Cookie: 'fixture=explicit' },
+      });
+      expect(response).toBeInstanceOf(UndiciResponse);
+      expect(response.headers.getSetCookie()).toEqual(['fixture=received; Path=/']);
+      expect(await response.text()).toBe(`${host}\n${base}\nfixture=explicit\nundefined`);
+
+      const peerResponse = await fetchPeerDirectory(base, 'fixture-credential');
+      expect(peerResponse).toBeInstanceOf(UndiciResponse);
+      expect(await peerResponse.text()).toBe(`${host}\nundefined\nundefined\nBearer fixture-credential`);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
   it('keeps the peer anonymous and bearer-only when the OS cannot resolve its hostname', async () => {
     await expect(new Promise<void>((resolve, reject) => {
       lookup(SERVING_HOST, {}, (error) => error === null ? resolve() : reject(error));

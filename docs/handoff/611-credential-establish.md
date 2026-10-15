@@ -235,3 +235,63 @@ lifecycle families in 18.088 seconds. The complete service package passed in
 77.963 seconds. It changes no visual layout. The earlier
 desktop/mobile runtime evidence remains separate from these new delayed-timer
 and inventory regressions.
+
+## Integration with current main
+
+After PR 926 merged, a fresh fetch found main at
+`69475a27e85cd4e2ad823a557ebf9a5507bdd5d7`, while this PR remained at
+`b6958b831ae5d9d17bd45d2feb0d3c69bfe3e3c1`. GitHub still displayed the older
+base SHA, but its conflict status was accurate: `git merge-tree` reproduced one
+content conflict in `web/e2e/fixtures/instance-fetch.ts`. The common ancestor
+was `c12e7d39c9f227b0cb884ba69e4f1bd77c895f76`.
+
+Both changes repaired the same installed Undici dispatcher versus Node bundled
+fetch mismatch. The integration uses PR 926's single installed Undici transport
+for ordinary and serving hosts, with request and response types inferred from
+that fetch. Fixture cookie handling now uses the matching Undici Response type;
+the former mixed-response union is unnecessary. The real-HTTP regression covers
+ordinary-host response identity, explicit origin/cookie headers, Set-Cookie
+visibility and a subsequent bearer peer request without cookie carryover.
+Existing serving-host anonymous, bearer, revocation and origin/header tests stay
+intact. The automatically merged Matrix implementation and regression match
+current main exactly; both Matrix and account-security sensitivity pins remain.
+
+Local integration checks on pinned Node 26.7.0 passed: 38 focused tests,
+all 1,730 web tests across 199 files, typecheck, lint and the production build.
+Full test output retains happy-dom teardown AbortError and unmocked HTTP 404
+diagnostics; Vitest exited successfully without an unhandled-error summary.
+No backend or browser suite was rerun for this fixture integration. The earlier
+database and desktop/mobile browser evidence remains separate. The merge was
+prepared without rewriting the three reviewed feature commits; signing, range
+checks, push and fresh hosted validation remained delivery steps at that
+integration checkpoint. The subsequent explicit rebase is recorded below.
+The AST graph refresh passed with 55,550 nodes and retains the 17 Astro
+partial-extraction warnings noted above. Staged and unstaged diff checks passed.
+
+## Explicit rebase onto main
+
+The user subsequently requested a rebase. Fresh fetches of `origin/main` and
+`hikyo-upstream/main` both resolved to
+`69475a27e85cd4e2ad823a557ebf9a5507bdd5d7`. Since the integration merge already
+contained main, the three feature commits were explicitly replayed to produce
+linear history rather than accept an up-to-date no-op. The sole conflict was
+again the fixture transport; the reviewed installed Undici resolution and its
+matching Response annotations were preserved.
+
+Commit mapping:
+
+- `b308a44530af` to `1896d66891e7`.
+- `c46430b164f7` to `b84f9eace0db`.
+- `b6958b831ae5` to `6fc8ccb0674b`.
+
+The retained local backup `backup/issue-611-pre-rebase-7113bb5` points to
+`7113bb580a2738d160c9dd621af0f916ed5998c9`. The regression and handoff changes
+introduced only by that merge were restored as a separate preservation commit.
+Before this rebase note was added, the complete staged tree exactly matched the
+backup tree, `b040400f35304d55ad951eae509c0543fc2d3880`. Final application and test
+content therefore remains identical to the previously validated integration;
+only this handoff's topology explanation differs. Fresh typecheck and lint
+passed on Node 26.7.0. The 1,730-test suite, build, real-HTTP and earlier runtime
+results above apply to that identical code content; they were not rerun merely
+for rewritten commit identities. The complete four-commit rewritten range
+passed DCO and local cryptographic signature verification before delivery.
