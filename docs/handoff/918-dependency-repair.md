@@ -149,3 +149,30 @@ for future callbacks only after merge; it does not backfill this historical run.
 
 At this follow-up commit, final native campaign evidence and fresh hosted
 validation are still pending. The PR body records subsequent exact-head results.
+
+
+## Second queue run and validation metadata repair
+
+The next full candidate, b8a01d13 (head 3bad1af0 plus main ef3d9005), ran in
+[38714270787](https://github.com/Hikyo-Org/Hikyo/actions/runs/38714270787).
+The native security campaign passed on hosted Linux, and the full application
+package passed. The run had 43 successful jobs, two underlying validation
+failures, three failed aggregate gates and one cancelled isolation shard.
+Fresh complete candidate validation therefore remains required.
+
+The raw-SQL protocol guard correctly rejected the changed newTarget function
+body because its reviewed caller fingerprint had not been refreshed after the
+public-hostname edit. Review confirmed the same cryptographic owned database
+name, identifier sanitization, successful-CREATE guard and guarded cleanup.
+Only the two existing caller hashes are refreshed; protocol bodies, helper
+fingerprints and the caller allowlist remain unchanged. Positive inventory
+checks and typed adversarial mutation coverage remain enforced.
+
+The new Python test imported a parent-directory fixture and created an untracked
+scripts/ci/__pycache__ directory. A clean isolated checkout reproduced the exact
+sequence: 21 Python tests passed, then required-CI floor preflight refused the
+dirty source before reaching its intended refusal cases. Python bytecode caches
+are now ignored through the repository's canonical ignore policy. The floor
+source-cleanliness gate is unchanged, and regression coverage ensures ordinary
+untracked source remains visible. This fixes generated-file hygiene rather
+than allowing dirty candidates.

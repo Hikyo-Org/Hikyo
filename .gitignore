@@ -17,6 +17,9 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# Python tooling imports can write bytecode beside modules in any directory.
+__pycache__/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
