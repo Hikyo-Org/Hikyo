@@ -53,6 +53,13 @@ describe('advisory event boundary', () => {
     });
   });
 
+  it('parses project topology without environment or secret material', () => {
+    expect(parseAdvisoryEvent({ type: 'environments.changed', project_id: ref.project, value: 'must strip' }))
+      .toEqual({ type: 'environments.changed', projectId: ref.project });
+    expect(() => parseAdvisoryEvent({ type: 'environments.changed' })).toThrow();
+    expect(parseAdvisoryEvent({ type: 'future.project.event' })).toBeNull();
+  });
+
   it('keeps an unknown event type from killing the stream', () => {
     expect(parseAdvisoryEvent({ type: 'environment.created', environment_id: envDev })).toBeNull();
   });
@@ -80,6 +87,13 @@ describe('advisory event boundary', () => {
 });
 
 describe('advisory invalidation mapping', () => {
+  it('refreshes topology and the catalogue whose presence rules may have cascaded', () => {
+    expect(advisoryInvalidations(ref, { type: 'environments.changed', projectId: ref.project })).toEqual([
+      ['environments', ref.org, ref.project],
+      ['matrix-keys', ref.org, ref.project],
+      ['matrix-groups', ref.org, ref.project],
+    ]);
+  });
   it('publishes refresh the moved environment, its signals, and its pending drafts', () => {
     expect(
       advisoryInvalidations(ref, {
@@ -124,6 +138,7 @@ describe('advisory invalidation mapping', () => {
 describe('recovery catch-up', () => {
   it('refetches the whole matrix working set by project-wide prefix', () => {
     expect(advisoryRecoveryInvalidations(ref)).toEqual([
+      ['environments', ref.org, ref.project],
       ['matrix-keys', ref.org, ref.project],
       ['matrix-groups', ref.org, ref.project],
       ['values', ref.org, ref.project],

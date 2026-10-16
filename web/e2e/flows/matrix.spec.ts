@@ -2038,3 +2038,97 @@ test.describe('temporary access', () => {
     }
   }
 });
+
+/** Independent cookie jars and authenticated principals prove sibling topology delivery. */
+test.describe('matrix topology synchronization', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  for (const delivery of ['healthy', 'recovery']) {
+    test(`refreshes sibling environment lifecycle via ${delivery}`, async ({ page, browser }, testInfo) => {
+      test.setTimeout(90_000);
+      const account = await enrolledAccount(browser, `topology-${delivery}`, 'org-admin', false);
+      const writerContext = await browser.newContext({ viewport: page.viewportSize() });
+      const writer = await writerContext.newPage();
+      const created = `topology-${delivery}`;
+      const renamed = `${created}-renamed`;
+      const clone = `${created}-clone`;
+      const eventsPattern = '**/api/v1/orgs/*/projects/*/events';
+      const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      const streams: string[] = [];
+      page.on('request', (request) => {
+        if (new URL(request.url()).pathname === eventsPath) streams.push(request.headers()['accept'] ?? '');
+      });
+      try {
+        await signInAs(writer, account);
+        await writer.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=environments`);
+        const panel = writer.locator('#project-environments');
+        await expect(panel.getByLabel('New environment name')).toBeVisible();
+        if (delivery === 'recovery') await page.route(eventsPattern, (route) => route.abort());
+        await page.goto(MATRIX_PATH);
+        await expect(page.getByRole('button', { name: /^LOG_LEVEL in development:/ })).toBeVisible();
+        if (delivery === 'healthy') {
+          await expect.poll(() => streams.length).toBeGreaterThan(0);
+        }
+        await panel.getByLabel('New environment name').fill(created);
+        await panel.getByRole('button', { name: 'Create', exact: true }).click();
+        await expect(writer.locator('.notice')).toContainText(`Environment ${created} created.`);
+        if (delivery === 'recovery') {
+          // The failed stream cannot deliver the create. Reopening it must
+          // refresh topology, before the 30-second cross-node fallback.
+          await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${created}:`) })).toHaveCount(0);
+          await page.unroute(eventsPattern);
+        }
+        await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${created}:`) })).toBeVisible({ timeout: 15_000 });
+        expect(streams.every((accept) => accept === 'text/event-stream; hikyo-topology=1')).toBe(true);
+        const row = (name: string) => panel.locator('details.environment-lifecycle')
+          .filter({ has: writer.getByText(`Manage ${name}`, { exact: true }) });
+        await panel.locator('summary', { hasText: `Manage ${created}` }).click();
+        await row(created).getByLabel(`New name for ${created}`).fill(renamed);
+        await row(created).getByRole('button', { name: 'Rename environment' }).click();
+        await expect(writer.locator('.notice')).toContainText(`renamed to ${renamed}`);
+        await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${renamed}:`) })).toBeVisible();
+        await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${created}:`) })).toHaveCount(0);
+        await row(renamed).getByRole('button', { name: `Move ${renamed} up` }).click();
+        await expect(writer.locator('.notice')).toContainText(`Environment ${renamed} moved up`);
+        const listing = await browserApi(writer, 'GET', `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments`, zEnvironmentList);
+        await expect.poll(async () => page.locator('.matrix__environment-picker label > span:first-of-type').allTextContents())
+          .toEqual(listing.items.map((environment) => environment.name));
+        await row(renamed).getByLabel(`Clone ${renamed} into`).fill(clone);
+        await row(renamed).getByRole('button', { name: 'Clone environment' }).click();
+        await expect(writer.locator('.notice')).toContainText(`cloned to ${clone}`);
+        await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${clone}:`) })).toBeVisible();
+        const screenshot = testInfo.outputPath(`topology-${delivery}-${testInfo.project.name}.png`);
+        await page.screenshot({ path: screenshot, fullPage: true });
+        await testInfo.attach(`topology-${delivery}-${testInfo.project.name}`, {
+          path: screenshot, contentType: 'image/png',
+        });
+        for (const name of [renamed, clone]) {
+          // Keep the real parent/editor lifetime in the proof: the first
+          // deletion removes a selected copy destination; the second removes
+          // the source. Both must retire the open editor and its ceremony.
+          const source = name === renamed ? 'development' : clone;
+          await page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${source}:`) }).click();
+          await expect(page.getByRole('dialog')).toBeVisible();
+          if (name === renamed) {
+            await page.getByRole('dialog').getByRole('button', { name: 'Copy published development value to…' }).click();
+            await page.getByRole('dialog').getByRole('checkbox', { name: renamed, exact: true }).check();
+            await expect(page.getByRole('dialog').getByRole('button', { name: 'Copy to 1 environment', exact: true })).toBeEnabled();
+          }
+          if (!(await row(name).evaluate((element) => element instanceof HTMLDetailsElement && element.open))) {
+            await panel.locator('summary', { hasText: `Manage ${name}` }).click();
+          }
+          await row(name).getByLabel(`Delete ${name}`).fill(name);
+          await row(name).getByRole('button', { name: 'Delete environment' }).click();
+          await expect(writer.locator('.notice')).toContainText(`Environment ${name} deleted.`);
+          await expect(page.getByRole('button', { name: new RegExp(`^LOG_LEVEL in ${name}:`) })).toHaveCount(0);
+          await expect(page.getByRole('dialog')).toHaveCount(0);
+        }
+        expect(errors).toEqual([]);
+      } finally {
+        await writerContext.close();
+      }
+    });
+  }
+});
