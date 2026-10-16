@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PR 927: portable committed paths</title><style>body{max-width:960px;margin:32px auto;padding:0 20px;font:16px/1.6 system-ui;color:#17212b;background:#fafaf8}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}</style><main><pre># PR #927: portable committed paths
+
+PR: https://github.com/Hikyo-Org/Hikyo/pull/927
+
+## Outcome and scope
+
+Replace machine-specific checkout, home, tool-storage and evidence locations in committed documentation with repository-relative source links, repository identities, or explicit historical artifact-availability descriptions. Preserve intentional product, configuration, installation, runtime and container paths. Preserve measurements, hashes and embedded captures.
+
+The owner authorized signed commits, push, PR review repairs, protected CI and merge through completion. Release and deployment remain outside scope. Published Git history is retained. The global agent rule was installed separately in machine-local configuration and is not part of this repository patch.
+
+## Evidence
+
+The audit began from main `69475a27e85cd4e2ad823a557ebf9a5507bdd5d7`, covering all 4,515 then-tracked files, including hidden content. The reviewed implementation is commit `66fabdbc3c15c4daed6c9e40f274a54c19bd0f84`, with 79 modified files. Its binary diff SHA-256 is `d7b513b8568fc136380d5ffbe60a380d0ca74aeac754c0076ea84555b404c196`. This handoff is additive to that reviewed implementation.
+
+Raw and decoded scans covered personal roots, home-relative workspace/tool locations, encoded variants, file names, symlink targets, binary bytes, PNG text metadata and ignored artifact references. The original broad scan found 221 workspace/provenance root occurrences; the final implementation scan found zero targeted roots. Remaining runtime/configuration defaults and supported generated-output paths were classified intentionally.
+
+Independent Sol 6.1 high review verified all 14 replacement local link targets and the screenshot fragment, all six modified JSON files&#x27; numeric/boolean/null values, recorded document hashes and measurements, and all 18 embedded images. The two prototype captions are exact text-only changes with identical HTML tags and attributes. No blocking findings remained over the implementation commit.
+
+Historical replay helpers, local review notes and evidence files absent from the checkout are explicitly qualified. Untracked helper commands are described historically. Supported build commands create fresh outputs; the measurement command reads the app output configured by Vite. Historical application test results are preserved evidence, not newly executed application acceptance. External links and historical runtimes were not rerun; screenshot pixels were not OCR-scanned.
+
+## Local validation
+
+Run from the repository root with the pinned Node version available:
+
+```sh
+fnm exec --using=26.7.0 sh scripts/ci/verify-docs.sh
+```
+
+The canonical script exited 0 on the implementation commit. Astro checked 45 files with zero errors, warnings or hints. Seven docs tests, the static build, policy checks, PWA checks and offline-browser checks passed. The build retained its Shiki/CSP warning. Analytics was disabled under the supported local configuration. No generated or dependency changes remained in the worktree.
+
+The implementation commit passes the repository&#x27;s cryptographic-signature and DCO checks; GitHub reports its signature verified. The final PR range must retain those properties after follow-up commits.
+
+## Delivery boundary
+
+Current-head hosted CI, review threads, queue admission, merge-group validation and the final merge are tracked on the PR. Local checks do not establish those outcomes. Required checks and review resolution must pass before protected merging; queue admission alone is not merge proof. No release, publication or deployment is claimed here.
+</pre></main></html>

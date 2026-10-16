@@ -3,7 +3,7 @@
 <title>PR 906 CI follow-up</title>
 <style>
 :root{color-scheme:light dark;font:17px/1.6 system-ui,sans-serif}body{max-width:900px;margin:40px auto;padding:0 24px}h1,h2{line-height:1.25}h2{margin-top:2em}p,li{overflow-wrap:anywhere}li{margin:.55em 0}code{font-size:.85em;background:#8882;padding:.12em .3em;border-radius:4px}pre{overflow:auto;padding:18px;background:#8882;border-radius:8px}pre code{padding:0;background:none}a{color:light-dark(#1849a9,#98bfff)}
-</style><main><h1>PR #906 CI follow-up</h1>
+</style><main><h1>PR #906 CI follow-up</h1><p><strong>Path portability:</strong> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.</p>
 <p>This fix is stacked on <code>ui-review-pr</code> at <code>0df9a17950d6e859f81ced93704792e2ceb840c5</code>. Keep it separate and unmerged for review. The parent is <a href="https://github.com/Hikyo-Org/Hikyo/pull/906">PR #906</a>.</p>
 <h2>Failure and repair</h2>
 <p><a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38520702126">Full CI attempt 1</a> tested merge candidate <code>f064dd1baeae20244c81cdc424cd66110c2fcd73</code>. Storybook&#x27;s 779 stories passed in both themes; its later demo step failed eight cases. Mobile groups 1 and 2 failed in matrix navigation and revision history respectively, leaving later serial tests unexecuted.</p>
@@ -18,5 +18,5 @@
 <p>From <code>web/</code>, run <code>node --run typecheck</code>, <code>node --run lint</code>, <code>node --run test</code>, then <code>node --run build:demo</code> and <code>node --run test:demo</code>. After building the production SPA, run the affected live mobile groups separately against fresh fixtures:</p>
 <pre><code>pnpm exec playwright test --project=mobile e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts e2e/flows/scanning.spec.ts
 pnpm exec playwright test --project=mobile e2e/flows/members.spec.ts e2e/flows/account.spec.ts e2e/flows/history.spec.ts</code></pre>
-<p>The local evidence is retained under <code>/tmp/hikyo-906-investigation/</code> and <code>/tmp/hikyo-906-*.log</code> on the originating machine. These temporary artifacts are not portable PR evidence; the run link and commands above are the durable entry points.</p>
+<p>The local evidence is retained under <code>hikyo-906-investigation/</code> and <code>hikyo-906-*.log</code> on the originating machine. These temporary artifacts are not portable PR evidence; the run link and commands above are the durable entry points.</p>
 <p>The full-candidate workflow requires a default-branch base. This stacked PR intentionally targets <code>ui-review-pr</code>, so normal feedback and local verification must be distinguished from full merge-candidate validation. Keep the existing gate policy and obtain fresh candidate proof when the stack is integrated. No merge or deployment is authorized by this handoff.</p></main></html>

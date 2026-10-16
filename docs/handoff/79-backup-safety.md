@@ -1,6 +1,8 @@
 # Backup safety findings during 1.0 acceptance
 
-Base: 9827af64962a36e2e31906b48906fd59c7a36c1c. Worktree /tmp/hikyo-drill-cleanup. Parent owns signed delivery and final-candidate replay.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Base: 9827af64962a36e2e31906b48906fd59c7a36c1c. Worktree the original local checkout. Parent owns signed delivery and final-candidate replay.
 
 `restore drill --cleanup` unconditionally removed SQLite target and sidecars even when decryption, manifest parsing or existing-target preflight failed. A real encrypted-fixture regression reproduced all three destructive paths before the fix. Cleanup now requires no drill error and `DrillReport.OK()`, preserving failed targets including RTO failures. Existing successful CLI drills on both engines passed after the fix; SQLite cleanup remains exercised.
 

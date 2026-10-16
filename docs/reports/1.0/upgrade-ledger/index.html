@@ -4,8 +4,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>F2 atomic upgrade ledger evidence</title>
 <style>body{font:16px/1.55 system-ui;max-width:1100px;margin:36px auto;padding:0 22px;color:#17202a}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%}th,td{padding:10px;border-bottom:1px solid #ccd4dd;text-align:left;vertical-align:top}code{font-size:.88em;overflow-wrap:anywhere}.status{background:#e8f4ed;padding:18px;border-left:4px solid #247548}a{color:#175bb0}</style>
-<h1>F2 atomic upgrade ledger</h1>
-<p>Issue 660, governed by merged ADR at <code>373910cca63eb8a2e2e6b5a079cc285b64a2ae95</code>. Implementation worktree <code>/tmp/hikyo-upgrade-ledger</code>. Local implementation evidence; no commit, pull-request delivery or 1.0 release is claimed here.</p>
+<h1>F2 atomic upgrade ledger</h1><p><strong>Path portability:</strong> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.</p>
+<p>Issue 660, governed by merged ADR at <code>373910cca63eb8a2e2e6b5a079cc285b64a2ae95</code>. Implementation worktree the original local checkout. Local implementation evidence; no commit, pull-request delivery or 1.0 release is claimed here.</p>
 <p class="status"><strong>Implemented:</strong> both-engine atomic bootstrap, exact genesis inspection, applied/pending state machine, full identity CAS, trust floors, one-use nonce consumption, route maintenance, restore incarnation reconciliation and the same-connection migration seam. Local verification passed; independent review and delivery remain pending.</p>
 <h2>Boundary</h2>
 <p>These are storage primitives. They do not authenticate release claims, prove a backup, drain old writers or mint runtime permission. F1 verifies release/route trust, F4 verifies operator evidence, F3 provides transaction fencing and F5 invokes the mandatory startup/migrate/restore gate. Existing pre-gate binaries and direct datastore administrators are not retroactively fenced.</p>
@@ -31,5 +31,5 @@
 <p><a href="provenance.json">Artifact and copied F1 dependency hashes</a>. The shared releaseidentity leaf is F1-owned; shape validation is not signature verification. The canonical catalog APIs are reused by release generation, snapshots and boot rather than duplicating fingerprints.</p>
 <h2>Remaining integration</h2>
 <p>F5 must reconcile fresh bootstrap identity with migration 20's generated singleton, verify actual source/target catalogs and bounded candidate health, map actual verified F1/F4 results, and call restore schema/epoch/incarnation primitives inside the actual import transaction. No unrestricted runtime constructor is introduced here. Runtime F3 fencing, final combined application checks and release delivery remain separate required work.</p>
-<p><a href="../../../handoff/660-upgrade-ledger.md">Implementation handoff</a>. Raw local test evidence remains in <code>/tmp/hikyo-ledger-evidence</code>.</p>
+<p><a href="../../../handoff/660-upgrade-ledger.md">Implementation handoff</a>. Raw local test evidence remains in <code>hikyo-ledger-evidence</code>.</p>
 </html>

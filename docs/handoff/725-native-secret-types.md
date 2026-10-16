@@ -1,5 +1,7 @@
 # #725: native Kubernetes Secret types
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 The operator supports `spec.target.type`, defaulting to `Opaque`, with the
 closed allowlist requested by [#725](https://github.com/Hikyo-Org/Hikyo/issues/725).
 The CRD rejects other types and reports supported values. Required destination
@@ -60,7 +62,7 @@ Live acceptance limitation (2026-09-12): two disposable local kind clusters
 failed during control-plane bootstrap, before the registry fixture or native
 consumer tests ran. The second failure was kubeadm's attempt to create the
 admin ClusterRoleBinding receiving `connect: connection refused` from the new
-API server. Its diagnostic log is `/tmp/hikyo-native-5016-retry.log` on the
+API server. Its diagnostic log is `hikyo-native-5016-retry.log` on the
 implementation workstation. Docker recorded three OOM events on the existing
 `hikyo-rollout-818e-control-plane` during these attempts, supporting shared-host
 memory contention; these events do not prove the new node's failure cause.

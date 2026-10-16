@@ -1,9 +1,10 @@
 # CLI verbosity and upgrade disk cleanup
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 ## Continuation
 
-Requested in T3 thread `52d45fbe-e5ba-4f2e-a1b3-cd4018719013`, continued in
-`/Users/developwent/.t3/worktrees/wenv/t3code-345b2035` on
+Requested in T3 thread `52d45fbe-e5ba-4f2e-a1b3-cd4018719013`, continued on branch
 `t3code/verbose-cli-upgrade-cleanup`. The previous thread left signed commit
 `274f9c1b` on `t3code/show-hikyo-upgrade-progress`; this branch fast-forwarded to
 that exact commit before extending it.
@@ -70,7 +71,7 @@ Completed local checks:
 - Docs `check` reported zero errors/warnings, and docs build produced 45 pages.
 - Independent review of the final parent cleanup changes returned CLEAN.
 
-Local check logs use `/tmp/hikyo-verbose-*.log`. This is source-worktree evidence,
+Local check logs use `hikyo-verbose-*.log`. This is source-worktree evidence,
 not a published nightly or a live host cleanup. No push, merge or deployment has
 been performed by this continuation.
 
@@ -81,7 +82,7 @@ when journal publication fails. The final fix checks the persisted journal befor
 removing a newly staged bundle, distinguishing pre-rename failure from a
 post-rename sync failure and preserving data if the journal cannot be read.
 Four filesystem-state regressions cover that boundary. R3 returned `CLEAN`.
-Review artifacts: `/tmp/hikyo-verbose-inherited-review-r{1,2,3}.md`.
+Review artifacts: `hikyo-verbose-inherited-review-r{1,2,3}.md`.
 
 After the final fix, all automatic-upgrade tests and main verbosity/help tests
 passed again (app 46 s, command 2 s). Candidate-name preservation was also

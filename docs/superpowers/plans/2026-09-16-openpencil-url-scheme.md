@@ -6,7 +6,7 @@
 
 **Architecture:** `tauri-plugin-deep-link` registers the `openpencil` scheme. The Rust side parses the URL into a `PendingOpenFile { path, node }` and reuses the existing `open-associated-files` → `take_pending_open` pipeline. The Vue side resolves a relative `file` against open tabs, else asks with the file picker (the dialog plugin scopes the picked file, so no new fs authority is granted), and after opening selects the node by exact name and zooms to fit. The scheme carries no authority: it can only open a file the user already opened or picks, and select.
 
-**Tech Stack:** Tauri 2, `tauri-plugin-deep-link` 2.4.10, Rust, Vue 3, Bun. Repo: `~/code/homelab/open-pencil` (upstream `open-pencil/open-pencil`, main at `c29654c`, version 0.14.0).
+**Tech Stack:** Tauri 2, `tauri-plugin-deep-link` 2.4.10, Rust, Vue 3, Bun. Upstream repository: `open-pencil/open-pencil` (main at `c29654c`, version 0.14.0).
 
 **Spec:** `docs/superpowers/specs/2026-09-16-openpencil-storybook-design.md` §3 (in the Hikyo repo). This plan lives in Hikyo's docs because the Hikyo Storybook depends on it; the code goes to an upstream PR.
 

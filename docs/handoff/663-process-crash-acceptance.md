@@ -1,5 +1,7 @@
 # Issue 663 subprocess crash acceptance
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 ## Added acceptance
 
 - `internal/store/upgrade/migrate_session_test.go`: a genuine signed fresh-source route with three embedded SQL migrations. Child runs maintained goose on the owned physical connection, wrapped only by a private test driver that waits after an actual successful COMMIT. Parent sends SIGKILL immediately after committed versions 1 and 2. Independent inspection must observe exactly that goose prefix and exactly that many domain marker rows, unchanged schema-write-started control state, and maintenance. Same source resumes to all three rows and the exact signed target catalog.
@@ -23,8 +25,8 @@ The populated route fixture releases deliberately preserve the same domain schem
 
 ## Validation
 
-Runner: `/tmp/hikyo-runtime-fence-evidence/crash_acceptance.py`.
-Sanitized output and summary: `/tmp/hikyo-runtime-fence-evidence/crash-acceptance-race.jsonl` and `crash-acceptance-race-summary.json`.
+Runner: `hikyo-runtime-fence-evidence/crash_acceptance.py`.
+Sanitized output and summary: `hikyo-runtime-fence-evidence/crash-acceptance-race.jsonl` and `crash-acceptance-race-summary.json`.
 Focused actual both-engine race validation passed with zero skips:
 
 - Gate matrix: 18 leaf scenarios (12 existing fresh boundaries plus 6 new populated route crashes), 20 pass events including parent tests. Package completed in 151.921s under concurrent build load. Evidence in `crash-acceptance-race.jsonl`; that combined runner reports failure only because its initial individual-commit PostgreSQL fixture wrapper incorrectly required SQLite's optional `driver.Validator` interface.

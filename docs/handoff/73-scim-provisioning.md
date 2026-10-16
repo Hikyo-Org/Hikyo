@@ -481,8 +481,8 @@ should be checked against this note before the causes are deleted as dead.
 ## Known-remaining test-layer work
 
 **None.** The five items the previous round carried are built and green on both
-engines; `.specs/73-progress.md` carries the per-finding disposition table. What
-landed, and where to look:
+engines. The original per-finding disposition table was a local progress
+artifact, not included in this checkout. What landed, and where to look:
 
 - **Captured provider sequences** — `internal/isolation/scim_provider_sequence_test.go`.
   `runSCIMOktaSequence` and `runSCIMEntraSequence` are ordered raw-HTTP step

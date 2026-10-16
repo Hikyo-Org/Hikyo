@@ -369,7 +369,7 @@
       "managed_key": "HIKYO_BOOTSTRAP_SOURCES.topology.ha",
       "activation": "controlled singleton topology replacement",
       "consumer_paths": [
-        "pending /tmp/hikyo-topology-818e/internal/config/managed_bootstrap.go",
+        "pending internal/config/managed_bootstrap.go",
         "pending internal/configrollout/topology.go:prepareTopologyDelta",
         "pending internal/store/repos_self_config_topology.go:commitTopologyParticipant",
         "pending internal/app/ha.go:configureHA",
@@ -595,7 +595,7 @@
       "managed_key": "HIKYO_BOOTSTRAP_SOURCES.topology.node_id",
       "activation": "controlled singleton topology replacement",
       "consumer_paths": [
-        "pending /tmp/hikyo-topology-818e/internal/config/managed_bootstrap.go",
+        "pending internal/config/managed_bootstrap.go",
         "pending internal/configrollout/topology.go:prepareTopologyDelta",
         "pending internal/store/repos_self_config_topology.go:commitTopologyParticipant",
         "pending internal/app/ha.go:configureHA",

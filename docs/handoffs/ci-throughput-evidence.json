@@ -1,4 +1,5 @@
 {
+  "path_normalization": "Historical command and cwd strings use symbolic GitHub-provided GITHUB_WORKSPACE and RUNNER_TEMP roots; values are recorded evidence, not directly executable shell commands.",
   "planner": {
     "mode": "planner",
     "head": "3ae586d3fb99eea1f5ff09c784811fe3708a8632",
@@ -14,9 +15,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/old-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 40.566428105,
         "exit_code": 0
       },
@@ -25,9 +26,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/new-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 1.4810706830000129,
         "exit_code": 0
       },
@@ -36,9 +37,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/old-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 19.370612811,
         "exit_code": 0
       },
@@ -47,9 +48,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/new-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 1.5004283490000034,
         "exit_code": 0
       },
@@ -58,9 +59,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/new-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 1.5024542140000108,
         "exit_code": 0
       },
@@ -69,9 +70,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/old-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 19.135854878999993,
         "exit_code": 0
       },
@@ -80,9 +81,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/old-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 19.08079235400001,
         "exit_code": 0
       },
@@ -91,9 +92,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/new-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 1.4982957979999867,
         "exit_code": 0
       },
@@ -102,9 +103,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/new-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/new-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 1.5168370859999811,
         "exit_code": 0
       },
@@ -113,9 +114,9 @@
         "command": [
           "bash",
           "-e",
-          "/home/runner/work/_temp/planner/old-workflow-step.sh"
+          "${RUNNER_TEMP}/planner/old-workflow-step.sh"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 19.086771596999995,
         "exit_code": 0
       }
@@ -199,7 +200,7 @@
           "mod",
           "download"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "cwd": "${GITHUB_WORKSPACE}/source",
         "seconds": 29.041939731000006,
         "exit_code": 0
       },
@@ -214,7 +215,7 @@
           "./internal/cli",
           "./scripts/ci"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "cwd": "${GITHUB_WORKSPACE}/source",
         "seconds": 14.819545899000005,
         "exit_code": 0
       },
@@ -229,7 +230,7 @@
           "./internal/cli",
           "./scripts/ci"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "cwd": "${GITHUB_WORKSPACE}/source",
         "seconds": 78.647367683,
         "exit_code": 0
       },
@@ -244,7 +245,7 @@
           "./internal/cli",
           "./scripts/ci"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "cwd": "${GITHUB_WORKSPACE}/source",
         "seconds": 2.706365931999983,
         "exit_code": 0
       },
@@ -259,7 +260,7 @@
           "./internal/cli",
           "./scripts/ci"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/source",
+        "cwd": "${GITHUB_WORKSPACE}/source",
         "seconds": 2.82385351100001,
         "exit_code": 0
       }
@@ -297,7 +298,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 112.20872180799998,
         "exit_code": 0
       },
@@ -315,7 +316,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.7508964149999997,
         "exit_code": 0
       },
@@ -333,7 +334,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.7022330900000497,
         "exit_code": 0
       },
@@ -351,7 +352,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.636908051999967,
         "exit_code": 0
       },
@@ -369,7 +370,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.616420775999984,
         "exit_code": 0
       },
@@ -387,7 +388,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.5840733950000185,
         "exit_code": 0
       },
@@ -405,7 +406,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.733441174999996,
         "exit_code": 0
       },
@@ -418,88 +419,88 @@
           "-race",
           "-vet=off",
           "-o",
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.2919561070000327,
         "exit_code": 0
       },
       {
         "name": "0-binary-0",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0838518269999895,
         "exit_code": 0
       },
       {
         "name": "0-binary-1",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1056601880000017,
         "exit_code": 0
       },
       {
         "name": "0-binary-2",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0806063440000457,
         "exit_code": 0
       },
       {
         "name": "0-binary-3",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0808352789999844,
         "exit_code": 0
       },
       {
         "name": "0-binary-4",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0803699379999898,
         "exit_code": 0
       },
       {
         "name": "0-binary-5",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.193647416000033,
         "exit_code": 0
       },
@@ -512,88 +513,88 @@
           "-race",
           "-vet=off",
           "-o",
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 0.23964703100000406,
         "exit_code": 0
       },
       {
         "name": "1-binary-0",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.12074555800001,
         "exit_code": 0
       },
       {
         "name": "1-binary-1",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1917822089999959,
         "exit_code": 0
       },
       {
         "name": "1-binary-2",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1637765190000096,
         "exit_code": 0
       },
       {
         "name": "1-binary-3",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0799487669999621,
         "exit_code": 0
       },
       {
         "name": "1-binary-4",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0820412599999827,
         "exit_code": 0
       },
       {
         "name": "1-binary-5",
         "command": [
-          "/home/runner/work/_temp/race/upgradegate-race.test",
+          "${RUNNER_TEMP}/race/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0843030170000247,
         "exit_code": 0
       },
@@ -611,7 +612,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.663597514999992,
         "exit_code": 0
       },
@@ -629,7 +630,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.594041383999979,
         "exit_code": 0
       },
@@ -647,7 +648,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.6536609469999917,
         "exit_code": 0
       },
@@ -665,7 +666,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.627610297999979,
         "exit_code": 0
       },
@@ -683,7 +684,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.634372996999957,
         "exit_code": 0
       },
@@ -701,7 +702,7 @@
           "^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$",
           "./internal/upgradegate"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 3.688011658999983,
         "exit_code": 0
       },
@@ -711,9 +712,9 @@
           "go",
           "version",
           "-m",
-          "/home/runner/work/_temp/race/upgradegate-race.test"
+          "${RUNNER_TEMP}/race/upgradegate-race.test"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo",
+        "cwd": "${GITHUB_WORKSPACE}",
         "seconds": 0.0028653140000187705,
         "exit_code": 0
       }
@@ -759,78 +760,78 @@
       {
         "name": "transferred-0",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.103628619999995,
         "exit_code": 0
       },
       {
         "name": "transferred-1",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1014353460000024,
         "exit_code": 0
       },
       {
         "name": "transferred-2",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1033236029999998,
         "exit_code": 0
       },
       {
         "name": "transferred-3",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0989903799999965,
         "exit_code": 0
       },
       {
         "name": "transferred-4",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.1021719800000014,
         "exit_code": 0
       },
       {
         "name": "transferred-5",
         "command": [
-          "/home/runner/work/_temp/transferred/upgradegate-race.test",
+          "${RUNNER_TEMP}/transferred/upgradegate-race.test",
           "-test.v",
           "-test.count=1",
           "-test.timeout=20m",
           "-test.run=^(TestOperatorCustodyRejectsSymlinksAndUnsafeMode)$"
         ],
-        "cwd": "/home/runner/work/Hikyo/Hikyo/internal/upgradegate",
+        "cwd": "${GITHUB_WORKSPACE}/internal/upgradegate",
         "seconds": 1.0997187129999944,
         "exit_code": 0
       }

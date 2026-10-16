@@ -1,5 +1,7 @@
 # Merge policy without a required queue
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 The owner approved replacing the required merge queue with strict up-to-date
 `ci-required` checks on 2026-10-09, after PR #864's queue validation exceeded the
 90-minute queue timeout despite green PR validation.
@@ -32,7 +34,7 @@ as queued, although GraphQL reports `isInMergeQueue: false` and no queue entry.
 Re-enqueue/dequeue, cancellation of the old queue run, and close/reopen did not
 clear the lock. The PR is open, the live queue requirement remains removed, and
 the stale queue branch could not be deleted for the same reason.
-A signed merge of current `main` is prepared at `/tmp/hikyo-864-update`, commit
+A signed merge of current `main` is prepared at `hikyo-864-update`, commit
 `c4e61440da2642e9b9503e5d58b6fb6f85432678`, but has not been pushed.
 Its complete range verifies cryptographically; the original bot commit passes
 the repository's existing Dependabot DCO exemption after API actor verification,

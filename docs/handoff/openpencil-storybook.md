@@ -51,11 +51,10 @@ Skill: .claude/skills/design-loop/SKILL.md
   and transcribing the node back via `get_jsx` / `node_tree`. Never `save_file`
   onto the repo file. A `.pen` writer contributed upstream would restore the
   round trip.
-- The app's Tauri fs scope uses `**`, which skips dot-directories. A repo
-  checked out under a hidden directory (T3 worktrees live under `~/.t3/`)
-  cannot be opened by the middleware until the user has opened the file once
-  through the app's own dialog in that session. Normal checkouts under `~/code`
-  are unaffected.
+- The app's Tauri fs scope uses `**`, which skips dot-directories. When a
+  checkout has a hidden ancestor directory, open the file once through the
+  app's own dialog in the same session before using the middleware. Checkouts
+  without hidden ancestor directories are unaffected.
 - The `.pen` format in OpenPencil 0.14.0 has no page node and no pages array,
   so a `.pen` document is always exactly one page.
   `packages/pen/src/read.ts:497` creates one page named after

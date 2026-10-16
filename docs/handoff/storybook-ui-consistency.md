@@ -289,7 +289,7 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
   the adapter and folder dialogs, the key-create sheet) still on native or
   leaked sizes. The box rules now match `input[type='checkbox']` and
   `input[type='radio']` anywhere; `.chk` keeps the row layout. Sweep after:
-  zero off-size inputs (`web/.xreview/chk-sweep.mjs`, disposable).
+  zero off-size inputs (disposable local `chk-sweep.mjs`, not included in this checkout).
 - ChoiceGroup layout (decided 2026-09-16, 1B): `layout` stack | wrap | nowrap
   (one line, horizontal scroll), `columns` N (grid, one column under 480px of
   container width), `variant="chips"` for dense key sets (supersedes the
@@ -327,7 +327,7 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 ## 4f. Live review pass (Marc in Storybook, 2026-09-16)
 
 Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
-- Sizes everywhere: a 232-story sweep (`.xreview/size-sweep.mjs`, controls,
+- Sizes everywhere: a 232-story sweep (disposable local `size-sweep.mjs`, not included in this checkout; controls,
   type, radii against the tokens) found jump links, summaries, tabs, menu
   rows, toast buttons, sidebar links, the matrix header row and ~60 rules at
   12/11.5/10/15/17/18/19px. All folded onto the tokens in the "Whole-app
@@ -402,7 +402,7 @@ Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
   coarse; headings at 20/16/14 only; badges at 11/500 with no uppercase; the
   overview page's unclassed anchor in body ink and underlined; dialogs carry
   the overlay shadow. Screenshots at 1280 and 390 in both themes were taken
-  from the same run (disposable, `web/.xreview/shots/`).
+  from the same run (disposable local captures, not included in this checkout).
 
 - Route dialogs: the members grant ceremony opened from the route measures
   520 wide, shadow, title 16/700, actions 36 fine / 44 coarse (screenshot
@@ -523,5 +523,5 @@ layout for every package; the Storybook-side fix is local to the one
 consumer that broke.
 
 The route sweep is committed as `web/scripts/audit-styles.mjs`. The
-one-off probe and screenshot scripts stayed disposable under the
-gitignored `web/.xreview/`.
+one-off probe and screenshot scripts were disposable local artifacts,
+not included in this checkout.

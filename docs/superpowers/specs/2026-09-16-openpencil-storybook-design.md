@@ -34,7 +34,7 @@ tokens without CI noticing.
 
 ## Verified facts about OpenPencil 0.14.0
 
-Checked against the source checkout at `~/code/homelab/open-pencil` and the
+Checked against the `open-pencil/open-pencil` source checkout and the
 published `@open-pencil/cli@0.14.0` / `@open-pencil/mcp@0.14.0`.
 
 - No custom URL scheme. `desktop/tauri.conf.json` registers only the updater
@@ -132,7 +132,7 @@ scheme.
      middleware (after removal) answers 404, so the switch-over needs no
      addon change and no build-time flag.
 - **URL scheme (upstream contribution to open-pencil).** Separate PR in
-  `~/code/homelab/open-pencil`, tracked as its own task:
+  the upstream `open-pencil/open-pencil` repository, tracked as its own task:
   - `tauri-plugin-deep-link` registers `openpencil`. `RunEvent::Opened` and
     the single-instance handler already funnel file URLs into
     `queue_open_paths`; the scheme handler parses `open?file=…&node=…` and

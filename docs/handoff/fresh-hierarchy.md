@@ -1,6 +1,8 @@
 # Atomic fresh hierarchy initialization
 
-Owned files in `/tmp/hikyo-upgrade-ledger`:
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Owned source files from the historical upgrade-ledger work:
 
 - `internal/store/upgrade/candidate_initialize.go`
 - `internal/store/upgrade/candidate_initialize_test.go`

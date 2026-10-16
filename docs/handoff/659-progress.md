@@ -1,12 +1,14 @@
 # #659 verified upgrade foundation handoff
 
-Worktree `/tmp/hikyo-f1-659`, branch `codex/659-verified-upgrade-foundation`, base/governance merge `373910cca63eb8a2e2e6b5a079cc285b64a2ae95`. Parent owns independent review, signed commit, push, PR and merge. No commit or push made. Canonical issue #659 and `docs/adr/signed-upgrade-compatibility.md`.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Branch `codex/659-verified-upgrade-foundation`, base/governance merge `373910cca63eb8a2e2e6b5a079cc285b64a2ae95`. Parent owns independent review, signed commit, push, PR and merge. No commit or push made. Canonical issue #659 and `docs/adr/signed-upgrade-compatibility.md`.
 
 ## Ownership and integration
 
 F1 owns the new `releaseidentity`, `releasetrust`, `upgradecompat`, and `buildcompat` packages, selfupdate trust extraction, app/releasecompat build wiring and its test, scripts/release/compatibility, release compatibility source declarations, release workflow/script changes, reports and this handoff. There are 49 owned files at this checkpoint.
 
-`internal/store/upgrade/`, `internal/crypto/initialize_fresh.go` and `internal/boundary/boundary_test.go` are copied F2 dependencies solely for local compilation/verification. EXCLUDE these from the F1 patch. Parent must integrate F2's current canonical copies. The actual-schema build generator imports F2 through app, so either deliver foundations together or stage the leaf/core before the generator. Latest copied F2 includes PinnedLegacySchemaDigest, explicit upgrade/recovery OperationKind and candidate initialization. Exact39 copied file hashes are recorded in `/tmp/hikyo-659-f2-compile-dependencies.txt`; do not substitute earlier copies. Core/build/dev/boundary tests and the CI-mode actual both-engine generator passed against this refreshed copy (generator1.864s).
+`internal/store/upgrade/`, `internal/crypto/initialize_fresh.go` and `internal/boundary/boundary_test.go` are copied F2 dependencies solely for local compilation/verification. EXCLUDE these from the F1 patch. Parent must integrate F2's current canonical copies. The actual-schema build generator imports F2 through app, so either deliver foundations together or stage the leaf/core before the generator. Latest copied F2 includes PinnedLegacySchemaDigest, explicit upgrade/recovery OperationKind and candidate initialization. Exact39 copied file hashes are recorded in `hikyo-659-f2-compile-dependencies.txt`; do not substitute earlier copies. Core/build/dev/boundary tests and the CI-mode actual both-engine generator passed against this refreshed copy (generator1.864s).
 
 ## Implemented contract
 
@@ -34,12 +36,12 @@ F1 owns the new `releaseidentity`, `releasetrust`, `upgradecompat`, and `buildco
 - Boundary25 tests passed using F2's exact updated allowlist, with no F1 exception.
 - Buildcompat/releaseidentity/selfupdate/boundary37 tests passed after bridge fix.
 - Actual both-engine app generator test passed twice, checks exact committed development bytes and nonempty PostgreSQL refusal without catalog mutation. Isolated local scratch generation/check also passed. Every engine has43 SQL files, highest numbered44 with gap. SQLite target catalog6e68554a3faf93566d806781648ddf71d2310246e9644af51ee91c165ba5d2fa; PostgreSQLf9ad9908d1d1d5bb47c129eb0508458cf73a5940b2a02a7e60aa929315e222f0.
-- Real Cosign3.1.3 downloaded official release and checksum verified5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76. Actual Cosign bundle passed in-process verifier and changed bytes refused. No production keys used. Tool `/tmp/hikyo-f1-tools/cosign-darwin-arm64`.
-- Existing full signed release trust/refusal fixture suite passed; final rerun after additional mandatory binding checks passed at `/tmp/hikyo-f1-release-fixtures-final.log`. Manifest fixture passed; binding fixture proves mandatory exact compatibility and tamper/missing refusal; catalog fixture proves exact inventory/no overwrite/dangling-symlink refusal; existing ceremony fixture and release binary reuse fixture passed.
-- 432 API/server/definitions/CI consumer tests passed, `/tmp/hikyo-f1-consumer-tests.log`.
+- Real Cosign3.1.3 downloaded official release and checksum verified5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76. Actual Cosign bundle passed in-process verifier and changed bytes refused. No production keys used. The downloaded tool was a local `cosign-darwin-arm64` executable, not included in this checkout.
+- Existing full signed release trust/refusal fixture suite passed; final rerun after additional mandatory binding checks passed at `hikyo-f1-release-fixtures-final.log`. Manifest fixture passed; binding fixture proves mandatory exact compatibility and tamper/missing refusal; catalog fixture proves exact inventory/no overwrite/dangling-symlink refusal; existing ceremony fixture and release binary reuse fixture passed.
+- 432 API/server/definitions/CI consumer tests passed, `hikyo-f1-consumer-tests.log`.
 - Linux/arm64 and Windows/amd64 core trust/planner/build-binding compilation passed; no external helper runtime dependency.
 - `go vet` scoped packages, ShellCheck all modified shell files, actionlint both workflows and `git diff --check` passed.
-- Source govulncheck on releasetrust/upgradecompat/buildcompat reports0 reachable vulnerabilities. It also reports2 imported-package and3 module vulnerabilities as unreachable; do not describe all dependencies as vulnerability-free. Evidence `/tmp/hikyo-f1-vulnerabilities.log`.
+- Source govulncheck on releasetrust/upgradecompat/buildcompat reports0 reachable vulnerabilities. It also reports2 imported-package and3 module vulnerabilities as unreachable; do not describe all dependencies as vulnerability-free. Evidence `hikyo-f1-vulnerabilities.log`.
 - `go mod tidy` complete. Maintained Sigstore dependencies raise go-openapi/jsonpointer/jsonreference to1.0.0 and related swag/transitive modules; compilation plus432 consumer tests passed. Final parent integration should run its ordinary full gates/generated checks.
 
 ## Independent R1 corrections

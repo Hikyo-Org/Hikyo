@@ -11,7 +11,7 @@ Stop identical Hikyo worktrees from materializing a separate pnpm virtual store 
 - Treat every workspace configuration change as a full CI input.
 - Keep setup documentation aligned with the executable package-manager pins.
 
-pnpm stores dependency graphs under `~/Library/pnpm/store/v11/links` outside CI. Each worktree keeps only its package-root symlinks. pnpm disables the global virtual store automatically in CI.
+pnpm stores dependency graphs in its configured global virtual store outside CI. Each worktree keeps only its package-root symlinks. pnpm disables the global virtual store automatically in CI.
 
 ## Validation
 

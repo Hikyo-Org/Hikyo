@@ -1,6 +1,8 @@
 # F4 preparation adapters in combined F3 worktree
 
-Current source of truth for these files is `/tmp/hikyo-runtime-fence`, not the older `/tmp/hikyo-f4` copies:
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+The integration worker used the combined F3 source for these files rather than earlier F4 copies. These local worktrees are not included in this checkout:
 
 - `internal/app/backup_upgrade.go`
 - `internal/service/backup.go`

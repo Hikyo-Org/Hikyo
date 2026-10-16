@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hikyo landing and documentation audit</title><style>html{color-scheme:light dark}body{font:16px/1.6 system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 24px}h1,h2,h3{line-height:1.2;margin-top:1.8em}a{color:#087c8b}code,pre{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}pre{padding:16px;background:#8881;overflow:auto}table{border-collapse:collapse;display:block;overflow-x:auto;width:100%;font-size:.9em}th,td{padding:10px 12px;border:1px solid #8885;text-align:left;vertical-align:top}th{background:#8881}img{width:100%;height:auto;border:1px solid #8885}p,li{overflow-wrap:anywhere}@media(max-width:600px){body{margin:20px auto;padding:0 16px}}</style></head><body><h1 id="landing-page-and-documentation-audit-9-october-2026">Landing page and documentation audit, 9 October 2026</h1>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hikyo landing and documentation audit</title><style>html{color-scheme:light dark}body{font:16px/1.6 system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 24px}h1,h2,h3{line-height:1.2;margin-top:1.8em}a{color:#087c8b}code,pre{font-family:ui-monospace,monospace;font-size:.9em;overflow-wrap:anywhere}pre{padding:16px;background:#8881;overflow:auto}table{border-collapse:collapse;display:block;overflow-x:auto;width:100%;font-size:.9em}th,td{padding:10px 12px;border:1px solid #8885;text-align:left;vertical-align:top}th{background:#8881}img{width:100%;height:auto;border:1px solid #8885}p,li{overflow-wrap:anywhere}@media(max-width:600px){body{margin:20px auto;padding:0 16px}}</style></head><body><h1 id="landing-page-and-documentation-audit-9-october-2026">Landing page and documentation audit, 9 October 2026</h1><p><strong>Path portability:</strong> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.</p><p>For a new reproduction, set <code>HIKYO_AUDIT_BINARY</code> and <code>HIKYO_AUDIT_UI_BINARY</code> to distinct writable output filenames in an existing scratch directory. These variables replace the original local binary locations in the historical commands below.</p>
 <h2 id="result-and-scope">Result and scope</h2>
 <p>The landing page and all 53 public user guides were audited against the current local implementation, with runtime checks selected for their claims. Supported discrepancies were corrected locally. The audit began at commit <code>36c323c41</code> on <code>dunky13/sync-landing-docs</code>. No commit, PR, merge, release or deployment is claimed. Historical ADRs, specifications, handoffs and frozen prototypes were preserved.</p>
 <p>Evidence has different strengths: actual CLI and HTTP flows, real SQLite/PostgreSQL storage tests, chart rendering, mounted UI tests with network doubles, and direct desktop/mobile browser checks. The appendix records what each proves and its limits. A guide with no correction is not a claim that every possible external integration was exercised.</p>
@@ -133,16 +133,16 @@
 </ul>
 <h3 id="empirical-evidence">Empirical evidence</h3>
 <ol>
-<li><code>go build -o /tmp/hikyo-doc-audit ./cmd/hikyo</code> passed. Binary <code>version</code> prints <code>Hikyo dev</code>.</li>
-<li>Built binary help executed for client, server, service accounts, contexts, Compose, file sync, adapters, file targets, machine-reveal settings, keys and values. Saved <code>/tmp/hikyo-cli-doc-help.txt</code>, <code>*-help.txt</code>. Confirms documented delivery flags; no compose adopt; file-sync doctor local only; credential channels; Forgejo binding refusal; key create vs key declare; values set stages and values publish publishes.</li>
-<li><code>pnpm --dir clients/ts install --frozen-lockfile</code>, <code>pnpm --dir web install --frozen-lockfile</code>, and <code>pnpm --dir web build</code> passed with Node 26.7.0/pnpm 11.24.0. Build output explicitly lists <code>../internal/webui/dist/index.html</code> and assets; precompressed 20 representations. Logs <code>/tmp/hikyo-cli-doc-web-install-client.log</code>, <code>...web-install.log</code>, <code>...web-build.log</code>.</li>
-<li>Targeted CLI tests passed: Help/EveryVerbHasHelp/Context/ThereIsNoPersistentActiveContext/MachineTokenChannels/ServiceAccountGrammar/Run/Compose/FileSync/MachineExport/AutomationVerbs (3.077s). Separate resolution precedence, sparse hierarchy refusal and missing-dimension tests passed (1.710s). Logs <code>/tmp/hikyo-cli-doc-tests.log</code>, <code>...targets.log</code>.</li>
-<li>Full package suites passed: mcpserver (1.027s), compose (13.082s), filesync (9.738s), delivery (0.265s). Tests exercise strict config, dotenv round-trip/refusal, snapshots, offline audit, rendering publication, loader-control refusal, transport/tool schemas, modern/Codex compatibility. <code>/tmp/hikyo-cli-doc-packages.log</code>.</li>
-<li>Actual datastore/keyring isolation tests passed (66.848s): MCP read canary/denial, MCP writes through both modern and Codex transport (stage inert draft, validate no draft, no publication/secret leakage), pending secret draft redaction, file-target lifecycle narrowing and delete refusal, machine-reveal opt-in, federation immutable identifiers (including Forgejo refusal), nested Kubernetes UID, immutable binding replacement. SQLite; PostgreSQL was not configured in this agent’s run. <code>/tmp/hikyo-cli-doc-isolation.log</code>.</li>
-<li>HTTP API contract/auth/health targeted tests passed (1.569s): closed discovery allowlist, unknown request refusal, login contract, separate health stack, browser cookie-only session, CLI cookie-free bearer login, CSRF requirement, uniform/error fail-closed policies. <code>/tmp/hikyo-cli-doc-api.log</code>.</li>
-<li>Pinned metric registry test passed (1.061s), validates all seven tool names in the closed metric label set. <code>/tmp/hikyo-cli-doc-metrics.log</code>.</li>
-<li>Required-clear conformance scenario passed on real SQLite (0.12s scenario, 3.438s package): <code>go test ./internal/conformance -run '^TestConformanceSQLite$/^required_in_absent_vetoes_publish$' -count=1 -v</code>. A required key clear stages successfully, ongoing delivery remains intact, publish refuses naming key/environment, revision stays unchanged, draft remains pending. <code>/tmp/hikyo-cli-doc-required.log</code>.</li>
-<li>Actual server scratch workflow: <code>/tmp/hikyo-doc-audit server --dev --listen 127.0.0.1:58090 --operational-listen 127.0.0.1:58091</code> from <code>/tmp/hikyo-cli-doc-runtime</code>. Startup generated mode-0600 development root key and SQLite DB. Real HTTP GET <code>/api/v1/meta</code> returned API revision 9, instance identity, local-password and delivery-target-report/1. Main healthz 404; operational healthz and readyz 200. Server terminated after checks. Safe logs/files under <code>/tmp/hikyo-cli-doc-runtime</code>.</li>
+<li><code>go build -o "${HIKYO_AUDIT_BINARY:?}" ./cmd/hikyo</code> passed. Binary <code>version</code> prints <code>Hikyo dev</code>.</li>
+<li>Built binary help executed for client, server, service accounts, contexts, Compose, file sync, adapters, file targets, machine-reveal settings, keys and values. Saved <code>hikyo-cli-doc-help.txt</code>, <code>*-help.txt</code>. Confirms documented delivery flags; no compose adopt; file-sync doctor local only; credential channels; Forgejo binding refusal; key create vs key declare; values set stages and values publish publishes.</li>
+<li><code>pnpm --dir clients/ts install --frozen-lockfile</code>, <code>pnpm --dir web install --frozen-lockfile</code>, and <code>pnpm --dir web build</code> passed with Node 26.7.0/pnpm 11.24.0. Build output explicitly lists <code>../internal/webui/dist/index.html</code> and assets; precompressed 20 representations. Logs <code>hikyo-cli-doc-web-install-client.log</code>, <code>...web-install.log</code>, <code>...web-build.log</code>.</li>
+<li>Targeted CLI tests passed: Help/EveryVerbHasHelp/Context/ThereIsNoPersistentActiveContext/MachineTokenChannels/ServiceAccountGrammar/Run/Compose/FileSync/MachineExport/AutomationVerbs (3.077s). Separate resolution precedence, sparse hierarchy refusal and missing-dimension tests passed (1.710s). Logs <code>hikyo-cli-doc-tests.log</code>, <code>...targets.log</code>.</li>
+<li>Full package suites passed: mcpserver (1.027s), compose (13.082s), filesync (9.738s), delivery (0.265s). Tests exercise strict config, dotenv round-trip/refusal, snapshots, offline audit, rendering publication, loader-control refusal, transport/tool schemas, modern/Codex compatibility. <code>hikyo-cli-doc-packages.log</code>.</li>
+<li>Actual datastore/keyring isolation tests passed (66.848s): MCP read canary/denial, MCP writes through both modern and Codex transport (stage inert draft, validate no draft, no publication/secret leakage), pending secret draft redaction, file-target lifecycle narrowing and delete refusal, machine-reveal opt-in, federation immutable identifiers (including Forgejo refusal), nested Kubernetes UID, immutable binding replacement. SQLite; PostgreSQL was not configured in this agent’s run. <code>hikyo-cli-doc-isolation.log</code>.</li>
+<li>HTTP API contract/auth/health targeted tests passed (1.569s): closed discovery allowlist, unknown request refusal, login contract, separate health stack, browser cookie-only session, CLI cookie-free bearer login, CSRF requirement, uniform/error fail-closed policies. <code>hikyo-cli-doc-api.log</code>.</li>
+<li>Pinned metric registry test passed (1.061s), validates all seven tool names in the closed metric label set. <code>hikyo-cli-doc-metrics.log</code>.</li>
+<li>Required-clear conformance scenario passed on real SQLite (0.12s scenario, 3.438s package): <code>go test ./internal/conformance -run '^TestConformanceSQLite$/^required_in_absent_vetoes_publish$' -count=1 -v</code>. A required key clear stages successfully, ongoing delivery remains intact, publish refuses naming key/environment, revision stays unchanged, draft remains pending. <code>hikyo-cli-doc-required.log</code>.</li>
+<li>Actual server scratch workflow: <code>"${HIKYO_AUDIT_BINARY:?}" server --dev --listen 127.0.0.1:58090 --operational-listen 127.0.0.1:58091</code> from an isolated local scratch runtime directory. Startup generated mode-0600 development root key and SQLite DB. Real HTTP GET <code>/api/v1/meta</code> returned API revision 9, instance identity, local-password and delivery-target-report/1. Main healthz 404; operational healthz and readyz 200. Server terminated after checks. Safe logs/files under <code>hikyo-cli-doc-runtime</code>.</li>
 <li><code>git diff --check</code> passed.</li>
 </ol>
 <h3 id="boundaries">Boundaries</h3>
@@ -162,8 +162,8 @@
 <li>Exact tutorial <code>key show LOG_LEVEL</code> failed exit4 with API contract <code>(key)</code> error. Fixed tutorial to retain/use immutable key ID from key create; actual key show key ID passed.</li>
 <li>Actual values get JSON asserted <code>debug</code>; values diff showed development <code>set debug</code>, production <code>absent</code>, proving no fallback/inheritance.</li>
 <li>Extended actual workflow through workload service-account create, environment read grant on <code>mch_...</code>, one-hour credential file mint, and <code>run --config-only --token-file ... -- /usr/bin/printenv LOG_LEVEL</code>. Child output asserted exactly <code>debug</code>.</li>
-<li>Redacted command evidence <code>/tmp/hikyo-cli-doc-tutorial.log</code>, <code>/tmp/hikyo-cli-doc-tutorial-resume.log</code>, <code>/tmp/hikyo-cli-doc-tutorial-inspect.log</code>. Intermediate Python JSON parsing failures arose from PTY stderr merge/list wrapper assumptions; actual CLI operations had succeeded and were resumed using separate stdout/stderr capture. They do not weaken the command-success proof.</li>
-<li>Exact documented <code>go build -trimpath -tags ui -o /tmp/hikyo-doc-audit-ui ./cmd/hikyo</code> passed. UI-tagged binary booted on separate scratch SQLite directory; real HTTP browser-style <code>GET /login</code> with <code>Accept: text/html</code> returned200 with application root and generated asset references (the initial curl without HTML Accept correctly returned404). UI server terminated. This proves embedded UI availability; visual browser fidelity is outside this agent’s scope.</li>
+<li>Redacted command evidence <code>hikyo-cli-doc-tutorial.log</code>, <code>hikyo-cli-doc-tutorial-resume.log</code>, <code>hikyo-cli-doc-tutorial-inspect.log</code>. Intermediate Python JSON parsing failures arose from PTY stderr merge/list wrapper assumptions; actual CLI operations had succeeded and were resumed using separate stdout/stderr capture. They do not weaken the command-success proof.</li>
+<li>Exact documented <code>go build -trimpath -tags ui -o "${HIKYO_AUDIT_UI_BINARY:?}" ./cmd/hikyo</code> passed. UI-tagged binary booted on separate scratch SQLite directory; real HTTP browser-style <code>GET /login</code> with <code>Accept: text/html</code> returned200 with application root and generated asset references (the initial curl without HTML Accept correctly returned404). UI server terminated. This proves embedded UI availability; visual browser fidelity is outside this agent’s scope.</li>
 </ul>
 <p>Final coverage: read/reviewed all ten assigned docs; corrections in six initially assigned pages plus getting-started and first-project after empirical tutorial failures. Contexts, Compose, file-sync, installation retained apart from validated related command contracts and test evidence. Historical MCP interoperability observations remain historical and were not relabeled current passing claims. No external vendor loader experiment, production cloud deployment, release signing/install ceremony, native Codex/model request, or Windows runtime check performed.</p>
 <p>Cleanup: main scratch tutorial API server terminated after scanner checks completed; UI scratch server terminated. Synthetic bearer, CLI session/trust state, SQLite databases, root keys and transient sockets removed. Only sanitized logs, fixture IDs, command scripts and build artifacts retained. No active processes owned by this audit remain.</p>
@@ -291,7 +291,7 @@
 <li>Operational HTTP checks: passed in 4.121s, including readiness timeout/cancel, absent public operational routes and non-loopback metrics refusal.</li>
 <li>Final dedicated-database both-engine isolation: 14 critical tests passed on both SQLite/PostgreSQL in 133.701s; no skips. Covers AuditCore dynamic/provider-double lifecycle, recovery, local signup, member rules, PKI, registration, positive/zero reveal windows, machine no-reauth, SAML replay, SCIM binding/mapping, SSH and transit lifecycle.</li>
 <li>Additional key-narrowed publication/history, group-closure and atomic replacement both-engine checks passed in 9.334s with no skips.</li>
-<li>Real compiled scanner six workflows passed: file clean/finding, strict config rejection, staged JSON/SARIF and differing clean worktree; expected exits 0/1/2, no matched material output. Log: /tmp/hikyo-product-doc-scanner.log.</li>
+<li>Real compiled scanner six workflows passed: file clean/finding, strict config rejection, staged JSON/SARIF and differing clean worktree; expected exits 0/1/2, no matched material output. Log: hikyo-product-doc-scanner.log.</li>
 <li>git diff —check passed.</li>
 </ul>
 <p>No production mutation, release acceptance, external identity provider, cloud provider or real dynamic provider result is claimed.</p>
@@ -322,32 +322,32 @@ current second-factor and MCP write settings, and fixed retention language.</li>
 </ul>
 <h3 id="executed-evidence">Executed evidence</h3>
 <ul>
-<li><code>go build -o /tmp/hikyo-doc-audit ./cmd/hikyo</code>: produced current source executable.</li>
+<li><code>go build -o "${HIKYO_AUDIT_BINARY:?}" ./cmd/hikyo</code>: produced current source executable.</li>
 <li>Source production server with explicit fresh SQLite, private root-key file,
 loopback listeners and canonical loopback origin exited 1:
 <code>boot: refusing to serve: binary has no bounded production trust stamp</code>.
-Log: /tmp/hikyo-doc-production-refusal.log.</li>
+Log: hikyo-doc-production-refusal.log.</li>
 <li><code>helm template</code> using original documented Kubernetes values refused missing
 <code>upgrade.existingClaim</code> and <code>upgrade.stateExistingClaim</code>; corrected values
-rendered successfully. Files: /tmp/hikyo-doc-chart-original.error,
-/tmp/hikyo-doc-chart-fixed.yaml.</li>
+rendered successfully. Files: hikyo-doc-chart-original.error,
+hikyo-doc-chart-fixed.yaml.</li>
 <li>Corrected HA chart render proves replicas=3, HIKYO_HA, pod-name node identity,
 PodDisruptionBudget minAvailable=2, separate upgrade public/state claims.
-File: /tmp/hikyo-doc-chart-ha.yaml.</li>
+File: hikyo-doc-chart-ha.yaml.</li>
 <li><code>bash scripts/ci/check-chart.sh</code>: PASS, complete RBAC, operator allowlists,
 network refusals, HA guards, configuration rollout projections and tuple
-assertions. Log: /tmp/hikyo-doc-chart.log.</li>
+assertions. Log: hikyo-doc-chart.log.</li>
 <li><code>go test ./internal/server -run TestOperationalMetricsRefuseNonLoopbackClients -count=1 -v</code>: PASS, loopback IPv4/IPv6 accepted; remote IPv4/IPv6 refused;
-X-Forwarded-For does not confer scrape authority. Log: /tmp/hikyo-doc-metrics.log.</li>
+X-Forwarded-For does not confer scrape authority. Log: hikyo-doc-metrics.log.</li>
 <li><code>HIKYO_TEST_POSTGRES_DSN=&#x3C;dedicated disposable Hikyo audit PostgreSQL> go test ./internal/app -run TestScheduler -count=1 -v</code>: PASS including
 TestSchedulerHAThreeNodesOnePostgres (7.15s). Three real schedulers use one
 datastore lease; leader shutdown causes another leader and another catch-up.
 Leader-only work, lease-loss/block cancellation, provisional lease release,
-deadline and stale-success tests pass. Log: /tmp/hikyo-doc-scheduler-postgres.log.</li>
-<li><code>go test ./internal/parameters -count=1</code>: PASS. Log: /tmp/hikyo-doc-parameters.log.</li>
+deadline and stale-success tests pass. Log: hikyo-doc-scheduler-postgres.log.</li>
+<li><code>go test ./internal/parameters -count=1</code>: PASS. Log: hikyo-doc-parameters.log.</li>
 <li>Current executable <code>server</code>, <code>backup</code>, <code>restore</code>, <code>instance-config</code>, <code>doctor</code>
 <code>--help</code>: executed and checked against documented flags/verbs. Logs:
-/tmp/hikyo-doc-{backup,restore,managed,doctor}-help.log.</li>
+hikyo-doc-{backup,restore,managed,doctor}-help.log.</li>
 <li>Full <code>internal/config</code> and <code>internal/backupreceipt</code> tests pass as part of the
 focused suite. They cover HA database/node/root requirements and unattended
 separate PostgreSQL scratch/HA refusal, retention limits, malformed config,
@@ -378,12 +378,12 @@ PostgreSQL ordinary archive export/data-only restore, invalid public trust befor
 DB creation, recurring export interval, failed-export durability/no plaintext,
 archive retention pruning, failed-drill cleanup preserving existing targets,
 managed TLS restart after deleting original files, and installed per-node backup
-destination. Command: <code>HIKYO_TEST_POSTGRES_DSN=&#x3C;disposable audit PostgreSQL> go test ./internal/app -run 'Test(BackupExportJob|BackupPruneJob|BackupScheduled|NodeRuntimeManagedRestart|NodeRuntimeScheduledBackup|FailedRestoreDrill|OrdinaryBackupPublicAdmission|InvalidPublicTrust|RestoreDiagnosticsAuthentication)' -count=1 -v</code>. Full log: /tmp/hikyo-doc-backup-runtime.log.</p>
+destination. Command: <code>HIKYO_TEST_POSTGRES_DSN=&#x3C;disposable audit PostgreSQL> go test ./internal/app -run 'Test(BackupExportJob|BackupPruneJob|BackupScheduled|NodeRuntimeManagedRestart|NodeRuntimeScheduledBackup|FailedRestoreDrill|OrdinaryBackupPublicAdmission|InvalidPublicTrust|RestoreDiagnosticsAuthentication)' -count=1 -v</code>. Full log: hikyo-doc-backup-runtime.log.</p>
 <p>Additional security correction: self-hosting/configuration allowed remote
 PostgreSQL <code>sslmode=verify-ca</code>, but current config tests explicitly reject it.
 Executed current CLI with a remote verify-ca DSN; refusal says remote host
 requires <code>sslmode=verify-full (certificate and hostname verification)</code>.
-Corrected both pages. Log: /tmp/hikyo-doc-pg-ca-refusal.log.</p>
+Corrected both pages. Log: hikyo-doc-pg-ca-refusal.log.</p>
 <p>Broad contract check PASS (289.538s): <code>go test ./internal/parameters ./internal/isolation -run 'Test.*(Parameter|Privacy|AuditRetention|Adapter)' -count=1</code>. The filtered parameters package matched no test names, so its separate
 unfiltered 0.280s passing run is the parameters parser evidence. Isolation
 matched environment template/history/render/schema/wire/copy compatibility,
@@ -391,10 +391,10 @@ identity privacy lifecycle/export/restriction/erasure, audited retention expiry,
 rollback-on-receipt-failure, and adapter authorization/runtime/provider contract
 tests. This invocation had no PostgreSQL DSN, so PostgreSQL isolation legs were
 skipped; it establishes SQLite behavior and bounded fake/mock provider behavior,
-not external provider deployments. Full log: /tmp/hikyo-doc-ops-isolation.log.</p>
+not external provider deployments. Full log: hikyo-doc-ops-isolation.log.</p>
 <p>Final focused package suite PASS: <code>go test ./internal/config ./internal/backupreceipt ./internal/upgradegate ./internal/configrollout ./internal/runtimeconfig</code>. Results: config 2.683s, backupreceipt 2.276s,
 upgradegate 466.130s, configrollout 1.808s, runtimeconfig 0.409s.
 This exercises production signed gate/process crash/restart and operator custody,
 backup receipt authentication/durability, exact bootstrap source/profile
 preparation, isolated owner/node projections and invalid catalogue/policy
-rejection. Log: /tmp/hikyo-doc-ops-tests.log. All agent-started checks completed.</p><p>Final review follow-up: separated sealed-webhook adapter syntax from repository/environment destinations. The existing TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly passed (CLI package 0.951s), accepting the receiver namespace and refusing repository, destination-environment and visibility inputs. Clarified that publication can include related pending drafts through key-group closure. TestMemberAccessRulesPublishChecksGroupClosure/sqlite passed (isolation package 2.300s): one selected draft published two grouped drafts after both were authorized; incomplete authorization refused publication. This focused follow-up ran SQLite only; earlier both-engine closure evidence remains recorded above.</p></body></html>
+rejection. Log: hikyo-doc-ops-tests.log. All agent-started checks completed.</p><p>Final review follow-up: separated sealed-webhook adapter syntax from repository/environment destinations. The existing TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly passed (CLI package 0.951s), accepting the receiver namespace and refusing repository, destination-environment and visibility inputs. Clarified that publication can include related pending drafts through key-group closure. TestMemberAccessRulesPublishChecksGroupClosure/sqlite passed (isolation package 2.300s): one selected draft published two grouped drafts after both were authorized; incomplete authorization refused publication. This focused follow-up ran SQLite only; earlier both-engine closure evidence remains recorded above.</p></body></html>

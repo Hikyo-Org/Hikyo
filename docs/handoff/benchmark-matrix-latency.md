@@ -1,5 +1,7 @@
 # Benchmark Matrix latency repair
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 ## Confirmed failure
 
 - PR #924 benchmark run [38784589948, attempt 2](https://github.com/Hikyo-Org/Hikyo/actions/runs/38784589948/attempts/2), head `38803eb90b0aeea211c78e5cb41ccda254f87932`: the browser job failed the unchanged 200 ms median ceiling. Desktop save measured 265.0 ms and live update 224.9 ms. All five desktop save samples exceeded the ceiling; the Go walltime job passed.
@@ -39,4 +41,4 @@ Full validation also reproduced two existing fixture failures: Node's bundled fe
 
 ## Scope and remaining verification
 
-This is a baseline Matrix performance fix, separate from PR #924's CLI-login feature. No changes were made to that PR's branch. No paid benchmark was manually rerun; automatic runs remain subject to the existing budget gate. Local evidence and original logs are retained under `/tmp/hikyo-benchmark-failures-20261015` in the development workspace.
+This is a baseline Matrix performance fix, separate from PR #924's CLI-login feature. No changes were made to that PR's branch. No paid benchmark was manually rerun; automatic runs remain subject to the existing budget gate. Local evidence and original logs are retained under `hikyo-benchmark-failures-20261015` in the development workspace.

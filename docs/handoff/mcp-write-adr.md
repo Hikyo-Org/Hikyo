@@ -87,9 +87,9 @@ native OpenAI CLI (cached `gpt-6-astra`, effort `low`).
 
 A skipped pass is never SOUND. On 2026-09-17 the owner waived this review for
 the amendment ("skip adversarial review"); the ADR status records the waiver.
-If a later reopen wants the review, `.xreview/mcp-write-adr-brief.txt` in the
-old review worktree is stale (pre-lock shape); write a fresh brief from the six
-locked decisions above.
+If a later reopen wants the review, the old local review brief was stale
+(pre-lock shape) and is not included in this checkout; write a fresh brief
+from the six locked decisions above.
 
 ## Owner waiver and implementation (2026-09-17)
 

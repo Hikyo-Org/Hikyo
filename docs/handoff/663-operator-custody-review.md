@@ -1,5 +1,7 @@
 # Upgrade integration operator custody review
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 ## Findings addressed
 
 - R1 P1: recovery and restore committed using a separate PostgreSQL transaction after only checking the migration session's in-memory active flag. Backend termination could drop migration exclusion before commit.
@@ -15,8 +17,8 @@
 
 ## Validation
 
-Sanitized runner: `/tmp/hikyo-runtime-fence-evidence/custody_review.py`.
-Evidence: `/tmp/hikyo-runtime-fence-evidence/custody-review-race.jsonl` and `custody-review-race-summary.json`.
+Sanitized runner: `hikyo-runtime-fence-evidence/custody_review.py`.
+Evidence: `hikyo-runtime-fence-evidence/custody-review-race.jsonl` and `custody-review-race-summary.json`.
 
 Actual isolated PostgreSQL under `GOMAXPROCS=2 go test -p 1 -race`: six passed cases, zero skips/failures. Upgrade package 2.256s; app package 11.436s. Covers next-owner drain after termination, real recovery rollback, real archive-import rollback, and nested goose lock ownership for both engines. Parent owns combined final validation. The final private importer nil-authority refusal and test error-path cleanup were added after this focused run and await parent validation.
 

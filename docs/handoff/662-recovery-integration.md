@@ -1,6 +1,8 @@
 # F4 recovery integration working handoff
 
-Current owned implementation lives in `/tmp/hikyo-runtime-fence`. Use these newer files over the original F4 tree.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+The integration worker used the combined F3 source for the files below rather than the earlier F4 copies. The historical local worktrees are not included in this checkout.
 
 - `internal/app/backup_upgrade_drill.go`: full authenticated archive, exact source restore, active migration exclusion, opaque ScratchAdmission and RecoveryDB. No ordinary runtime Open.
 - `internal/service/recovery.go`: bounded status, one-principal reconciliation, protected-value proof and machine mint/revoke. Private extracted helpers retain actual runtime authorization, policy and audit logic. Ordinary services still take only runtime DB.

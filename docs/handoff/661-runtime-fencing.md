@@ -1,6 +1,8 @@
 # Runtime fencing handoff: issue 661
 
-Worktree: `/tmp/hikyo-runtime-fence`. Base: governance commit373910cca63eb8a2e2e6b5a079cc285b64a2ae95 plus uncommitted F1/F2/F4/F5 dependency slices. No commit or push performed. Parent owns delivery and final integration.
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
+Base: governance commit373910cca63eb8a2e2e6b5a079cc285b64a2ae95 plus uncommitted F1/F2/F4/F5 dependency slices. No commit or push performed. Parent owns delivery and final integration.
 
 ## Implemented boundaries
 
@@ -37,7 +39,7 @@ Worktree: `/tmp/hikyo-runtime-fence`. Base: governance commit373910cca63eb8a2e2e
 - Real separate-process SQLite WAL reader exclusion, hardlink/replaced-inode refusal and transaction-panic release: race passed12.203s.
 - `go vet ./internal/store/...` passed after mandatory Open integration.
 - Historical F2 archive fixtures now use genuine signed development admission and retained public bundle. Historical migration43-to44 archive compatibility uses actual signed legacy preparation, age encryption and receipt authentication.
-- Full store/... race, final lint/boundary and final combined app/isolation checks remain pending. Evidence runner outputs live in `/tmp/hikyo-runtime-fence-evidence`.
+- Full store/... race, final lint/boundary and final combined app/isolation checks remain pending. Evidence runner outputs live in `hikyo-runtime-fence-evidence`.
 
 ## Decisions and discovered fixture defects
 

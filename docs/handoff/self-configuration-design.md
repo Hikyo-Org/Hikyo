@@ -1,5 +1,7 @@
 # PR #686: Hikyo self-configuration handoff
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 Implementation and local verification complete, 2026-09-06. All 53 server inputs have managed consumers. The full fresh Kubernetes proof passed at generation 19. Exact-head CI and review are tracked in draft PR https://github.com/Hikyo-Org/Hikyo/pull/686. User authorized autonomous implementation and controlled bootstrap rollouts. Do not reopen accepted decisions. No merge or production deployment is authorized or performed.
 
 ## Authority and behavior
@@ -34,7 +36,7 @@ The final evidence/docs commit follows these checkpoints. Check Git for its exac
 
 ## Final proof and verification
 
-`docs/reports/self-configuration/validation/controlled-rollout-expanded-kind.json` and `controlled-rollout-expanded-source-manifest.json` record the uninterrupted final run on signed runtime `c40833b9`. Candidate directory: `/tmp/hikyo-rollout-final-candidate-818e`.
+`docs/reports/self-configuration/validation/controlled-rollout-expanded-kind.json` and `controlled-rollout-expanded-source-manifest.json` record the uninterrupted final run on signed runtime `c40833b9`. Candidate directory: `hikyo-rollout-final-candidate-818e`.
 
 - All 795 native/Linux compiled/embed inputs remain byte-identical. Manifest SHA-256: `e64b464a9b375afbae05f6a4ea342c91023a116bdeafc5a6f0b3ae2733f3f766`.
 - Linux candidate and final running ELF: `eafed43e5162715e1e435a27cc5f3dfa1e0ecc92705fb86374eb61810675f281`.
@@ -54,8 +56,8 @@ CI on `6f564fc3` passed all CodeQL, browser, isolation, Kubernetes, core and app
 
 The report must stay available at http://192.168.0.30:8769/. Report sources and final static HTML live in `docs/reports/self-configuration`; public operator docs are linked from the docs navigation. The report is standalone and embeds fonts/styles/scripts. A host-origin LAN HTTP check does not imply a separate-device network test.
 
-Final owned kind context `kind-hikyo-rollout-818e`, namespace `hikyo-rollout-a06347c9`: server/PostgreSQL/executor replicas verified zero after proof, owned registry on port 56509 stopped. All three container restart counts were zero before cleanup. Private custody `/var/folders/vd/czrqg5h95pz6gyrt813t33_w0000gn/T/hikyo-rollout-kind-frn57thm` and log `/tmp/hikyo-rollout-final-expanded-proof.log` are retained. Historical fixtures are stopped; their interrupted/resumed evidence is not the final proof. Do not expose private logs, passwords, TOTP seeds, operator keys or root escrow.
+Final owned kind context `kind-hikyo-rollout-818e`, namespace `hikyo-rollout-a06347c9`: server/PostgreSQL/executor replicas verified zero after proof, owned registry on port 56509 stopped. All three container restart counts were zero before cleanup. The original private kind custody directory and `hikyo-rollout-final-expanded-proof.log` were local artifacts, not included in this checkout. Historical fixtures are stopped; their interrupted/resumed evidence is not the final proof. Do not expose private logs, passwords, TOTP seeds, operator keys or root escrow.
 
-Unrelated local fixtures `hikyo-self-config-818e` on 56488 and `hikyo-self-config-scram-818e` on 56489 were preserved. The SCRAM DSN is in private `/tmp/hikyo-self-config-scram-818e.json`; never print it. Keep report servers running. Always check explicit context and ownership before touching retained resources.
+Unrelated local fixtures `hikyo-self-config-818e` on 56488 and `hikyo-self-config-scram-818e` on 56489 were preserved. The original SCRAM DSN was held in a private local JSON artifact, not included in this checkout; never print private fixture credentials. Keep report servers running. Always check explicit context and ownership before touching retained resources.
 
 Every commit requires DCO and configured crypto signing. Verify the entire PR range before push and GitHub Verified afterward. Keep PR draft. User has not authorized merge or production deployment.

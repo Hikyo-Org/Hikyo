@@ -6,8 +6,8 @@
   "deliveryIntegration": {
     "integratedBaseRevision": "9a5d678a553ef469819530669044da062059e22e",
     "implementationRevision": "d267e8b0b07588be323e1c565b14a158d44ce00d",
-    "approvedLocalSnapshot": "web/.artifacts/storybook-improvement/inventory/approved-local-642/durable-inventory.json",
-    "approvedLocalIndex": "web/.artifacts/storybook-improvement/after-theme-surface/storybook-static/index.json",
+    "approvedLocalSnapshot": "historical local artifact, not included in this checkout: durable-inventory.json",
+    "approvedLocalIndex": "historical local artifact, not included in this checkout: index.json",
     "approvedLocalStories": 642,
     "implementationAddedStoryCount": 74,
     "upstreamAddedStoryCount": 1,
@@ -94,7 +94,7 @@
   "baseline": {
     "sourceRevision": "44f77a2eb8610b83b6405229f7c0759ec5f995cb",
     "phase": "before",
-    "indexPath": "web/.artifacts/storybook-improvement/before/storybook-static/index.json",
+    "indexPath": "historical local artifact, not included in this checkout: index.json",
     "modules": 115,
     "stories": 584,
     "builtStories": 584,
@@ -108,7 +108,7 @@
   "result": {
     "sourceRevision": "d267e8b0b07588be323e1c565b14a158d44ce00d",
     "phase": "after",
-    "indexPath": "web/.artifacts/storybook-improvement/after-main-refresh/storybook-static/index.json",
+    "indexPath": "historical local artifact, not included in this checkout: index.json",
     "modules": 131,
     "stories": 643,
     "builtStories": 643,
@@ -42085,20 +42085,20 @@
     "controlledCompositeContracts": "AWS Docs controls intentionally expose the local Example.mode fixture, default assume-role, rather than serializing the real AwsAccessFields value: AwsAccess and onChange(value: AwsAccess): void callback contract. The original source props declaration is preserved in the component inventory. Mode changes reset fixture fields and real Authentication selection edits the descriptor; secret clearing remains verified by owning unit regressions."
   },
   "artifacts": {
-    "baselineIndex": "web/.artifacts/storybook-improvement/before/storybook-static/index.json",
-    "resultIndex": "web/.artifacts/storybook-improvement/after-main-refresh/storybook-static/index.json",
-    "baselineTree": "web/.artifacts/storybook-improvement/inventory/before-sidebar.txt",
-    "resultTree": "web/.artifacts/storybook-improvement/inventory/after-sidebar.txt",
-    "completeAuditMarkdown": "web/.artifacts/storybook-improvement/inventory/report.md",
-    "offlineAuditHtml": "web/.artifacts/storybook-improvement/inventory/report.html",
-    "beforeExtraction": "web/.artifacts/storybook-improvement/inventory/before-docgen.json",
-    "afterExtraction": "web/.artifacts/storybook-improvement/inventory/after-docgen.json",
+    "baselineIndex": "historical local artifact, not included in this checkout: index.json",
+    "resultIndex": "historical local artifact, not included in this checkout: index.json",
+    "baselineTree": "historical local artifact, not included in this checkout: before-sidebar.txt",
+    "resultTree": "historical local artifact, not included in this checkout: after-sidebar.txt",
+    "completeAuditMarkdown": "historical local artifact, not included in this checkout: report.md",
+    "offlineAuditHtml": "historical local artifact, not included in this checkout: report.html",
+    "beforeExtraction": "historical local artifact, not included in this checkout: before-docgen.json",
+    "afterExtraction": "historical local artifact, not included in this checkout: after-docgen.json",
     "afterExtractionSha256": "149d7ed9c802986a3ff234c3ceaea7ece0bec687d4f1b3ca839554b574049cdb",
     "resultIndexSha256": "2a743e389ef5ee9a0651b6e8de540475378541f42a2c639ee4e13e44698a63cc",
-    "routeJourneyBrowserLog": "web/.artifacts/storybook-improvement/inventory/overview-storybook-light-final.log",
-    "routeFixtureRegressionLog": "web/.artifacts/storybook-improvement/inventory/overview-fixture-unit-final.log",
+    "routeJourneyBrowserLog": "historical local artifact, not included in this checkout: overview-storybook-light-final.log",
+    "routeFixtureRegressionLog": "historical local artifact, not included in this checkout: overview-fixture-unit-final.log",
     "manualDocsWorkflowGuard": "web/.storybook/manualDocsFrame.ts",
     "manualDocsWorkflowRegression": "web/.storybook/manualDocsFrame.test.ts",
-    "manualDocsWorkflowLog": "web/.artifacts/storybook-improvement/inventory/docs-manual-guard.log"
+    "manualDocsWorkflowLog": "historical local artifact, not included in this checkout: docs-manual-guard.log"
   }
 }

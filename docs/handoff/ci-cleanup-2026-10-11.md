@@ -1,5 +1,7 @@
 # CI cleanup, 11 October 2026
 
+> Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
+
 PR #886 integrates the completed #887 fast-feedback/full-candidate split with
 workflow consolidation and benchmark compilation reuse. The prepared final
 source contains 19 workflow files: the original 26, eight retired standalone
@@ -139,7 +141,7 @@ local validation claims forward to the changed patch.
 Deleting workflow YAML does not erase historical Actions entries or provider-
 generated security workflows. This patch does not delete run history, publish
 releases, deploy applications, or change paid benchmark admission. Historical
-research raw data remains under `/tmp/hikyo-ci-audit`; newer scoped audit and
-readiness evidence is under `/tmp/hikyo-ci-five-minute`. GitHub links above are
+research raw data remains under `hikyo-ci-audit`; newer scoped audit and
+readiness evidence is under `hikyo-ci-five-minute`. GitHub links above are
 the durable sources. Graph output is navigational and runtime claims require
 source and executable evidence.
