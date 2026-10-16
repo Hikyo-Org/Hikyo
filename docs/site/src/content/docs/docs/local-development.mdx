@@ -78,6 +78,27 @@ and a live disclosure window. A coding agent or a scripted test run cannot
 satisfy it, by design: a process that is not you must not act with your full
 authority. Use the separate bounded developer credential above for unattended launches.
 
+### Administration and incident response
+
+In **Project settings → Developer credentials**, a project administrator with
+`manage-identities` can inspect every developer credential in that project and
+revoke one after confirmation. The list shows the credential and developer
+principal IDs, human delegator, environment, creation and expiry times, and
+revocation time. It never returns the bearer. Revocation refuses the next fetch;
+it cannot remove values already delivered to a running process.
+
+In **Instance settings → Developer credentials**, an operator with
+`instance-config` and second-factor assurance can read and change the lifetime
+ceiling from 1 to 28,800 whole seconds. Lowering the ceiling permanently shortens
+outstanding credentials to the earlier of their existing expiry and original
+mint time plus the new ceiling. Some may expire immediately. Raising it later
+does not extend or revive them. The form explains these consequences before
+applying the change.
+
+These administration pages do not mint credentials or replace your personal
+CLI lifecycle. Continue to use `hikyo dev session`, `hikyo dev session list`,
+and `hikyo dev session revoke` for your own delegations.
+
 ## What each path protects
 
 State the threat model honestly. No delivery mechanism keeps plaintext from a
