@@ -98,6 +98,7 @@
   "CreateWorkspaceHandoff": "func(ctx context.Context, h authn.NewWorkspaceHandoff) error",
   "CredentialAuthorityByID": "func(ctx context.Context, id string) (CredentialAuthority, error)",
   "CredentialEpoch": "func(ctx context.Context) (int64, error)",
+  "CredentialEstablish": "func(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error)",
   "CredentialPolicy": "func(ctx context.Context) (CredentialPolicy, error)",
   "CredentialsBeyondCeiling": "func(ctx context.Context, ceiling time.Time) ([]AffectedCredential, error)",
   "DeleteAccessGrantsForRequest": "func(ctx context.Context, p domain.PrincipalID, requestID string) (int64, error)",

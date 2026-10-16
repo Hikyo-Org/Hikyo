@@ -919,7 +919,7 @@
     "engine": "postgres",
     "name": "DeleteSessionsForOAuth2Provider",
     "annotation": "authn-resolution",
-    "hash": "837afec3e4067377fd2085be30fb3adca7cf21a8e765cd08c8a8f2334ea3a096",
+    "hash": "f5d15cae1a31e9a07b70d6ff91523829f65188251af7de04ebdb730c603fae30",
     "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
@@ -938,7 +938,7 @@
     "engine": "postgres",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
-    "hash": "35d7b8c347de725e6dd5bab401b88e4090c75f86f466552f917c58a8ab86f00c"
+    "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
   },
   {
     "engine": "postgres",
@@ -1117,6 +1117,13 @@
     "name": "GetCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc4d568512529604881c13b250d2d8922179bb5f49532ca64fb107f87f258810"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "773aee8d5a38be1548268c9537eb78dfcb48790b43c3a52b6b3666102e9453cb",
+    "reason": "Account-security credential creation reads only the acting session's purpose-bound establish stamp; service rechecks its principal, expiry and live no-local-proof precondition inside the write transaction."
   },
   {
     "engine": "postgres",
@@ -4176,7 +4183,7 @@
     "engine": "sqlite",
     "name": "DeleteSessionsForOAuth2Provider",
     "annotation": "authn-resolution",
-    "hash": "a78a7d211bec01871cc5d6db7ef47041620b41a144e41e629b1bfc8cccf0375f",
+    "hash": "f5d15cae1a31e9a07b70d6ff91523829f65188251af7de04ebdb730c603fae30",
     "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
@@ -4195,7 +4202,7 @@
     "engine": "sqlite",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
-    "hash": "a788c304710e8d6ddaf13b14e16612ad276c0a6f235272243172d6e93319d9c6"
+    "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
   },
   {
     "engine": "sqlite",
@@ -4374,6 +4381,13 @@
     "name": "GetCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc4d568512529604881c13b250d2d8922179bb5f49532ca64fb107f87f258810"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "9151322de1f529b166fb8671663a69e4d02fe7707790a6a90425fed37b2033f7",
+    "reason": "Account-security credential creation reads only the acting session's purpose-bound establish stamp; service rechecks its principal, expiry and live no-local-proof precondition inside the write transaction."
   },
   {
     "engine": "sqlite",

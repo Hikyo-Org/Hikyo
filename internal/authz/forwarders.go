@@ -673,6 +673,7 @@ type txForwarded interface {
 	CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error)
 	ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error)
 	StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error
+	CredentialEstablish(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error)
 	RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error)
 	RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error)
 	ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error

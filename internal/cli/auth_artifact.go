@@ -70,6 +70,7 @@ var authRuleRows = []authRuleRow{
 	{Kinds: humanOnly, Operations: authOperations(
 		"logout", "whoami", "dev session", "dev session list", "dev session revoke",
 		"instance-config developer-credential-policy get", "instance-config developer-credential-policy set",
+		"account password set", "account password change",
 		"account reset-credential", "account factor enrol-totp", "account factor confirm-totp",
 		"account factor step-up", "account recovery-codes regenerate",
 		"org list", "org show", "org create", "org rename", "org delete",

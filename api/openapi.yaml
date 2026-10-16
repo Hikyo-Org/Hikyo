@@ -225,6 +225,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -416,6 +418,8 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -477,15 +481,51 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/auth/password:
+    put:
+      operationId: setPassword
+      tags: [auth]
+      summary: Set or change the caller's password; reissues the session.
+      description: |
+        Validates the new password before checking the account-security proof.
+        A live establish ceremony on a social-only account permits empty proof.
+        Deletes the principal's sessions and reissues the acting session, whose
+        replacement token must be persisted by the client. Password removal is
+        not supported. A concurrent credential change is refused with a 409 conflict.
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: session}
+      x-hikyo-min-revision: 11
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPasswordRequest"
+      responses:
+        "200":
+          description: Password saved. The reissued session replaces the old one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+        "503": {$ref: "#/components/responses/ServiceUnavailable"}
+
   /api/v1/auth/totp/enrol/start:
     post:
       operationId: enrolTotpStart
       tags: [auth]
       summary: Begin TOTP enrolment; returns the otpauth URI once.
       description: |
-        An account-security proof up front (the pre-existing password, since no
-        possession factor stands yet — human-auth ADR § Account-security
-        mutations). Stages a sealed seed as a pending, inert enrolment and
+        An account-security proof up front: the pre-existing password, or a
+        live establish stamp while no local proof credential stands. Stages a
+        sealed seed as a pending, inert enrolment and
         returns the `otpauth://` URI exactly once. It confirms nothing and
         mutates no session: `enrol/confirm` completes the enrolment. A confirmed
         factor already standing is refused (`400`).
@@ -866,7 +906,7 @@ paths:
         knowledge of it.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 1
+      x-hikyo-min-revision: 11
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -5352,7 +5392,7 @@ paths:
       summary: List the caller's linked external identities.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 1
+      x-hikyo-min-revision: 11
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -5377,8 +5417,8 @@ paths:
       tags: [auth]
       summary: Begin linking an external identity (OIDC purpose=link).
       description: |
-        An account-security mutation: verifies the pre-existing password up
-        front and starts an OIDC link transaction bound to the acting session.
+        An account-security mutation: verifies the account-security proof up
+        front and starts a link transaction bound to the acting session.
         Returns the IdP authorization URL; the link lands at the callback.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
@@ -5418,8 +5458,10 @@ paths:
       tags: [auth]
       summary: Unlink an external identity.
       description: |
-        An account-security mutation proved by the pre-existing password. Refuses
-        removing the last remaining credential; deletes the identity's sessions;
+        An account-security mutation proved by the selected local credential.
+        Requires a password, another external identity, or a complete usable
+        passkey login set to remain after removal; TOTP alone is insufficient.
+        Deletes the identity's sessions and
         reissues the acting session. The reissued token replaces the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
@@ -5716,6 +5758,8 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -5793,6 +5837,8 @@ paths:
           $ref: "#/components/responses/Unauthenticated"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -17195,6 +17241,21 @@ components:
         finished_at:
           $ref: "#/components/schemas/Timestamp"
 
+    SetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 12
+          maxLength: 1024
+          description: The new password; never logged or echoed.
+        proof:
+          type: string
+          maxLength: 1024
+          description: Account-security proof; may be omitted with a live establish stamp.
+
     TotpEnrolStartRequest:
       type: object
       additionalProperties: false
@@ -17203,9 +17264,9 @@ components:
         password:
           type: string
           description: |
-            The account-security proof: the pre-existing password. Verified
-            before a pending seed is staged; never logged, never echoed.
-          minLength: 1
+            The account-security proof: the pre-existing password, or empty
+            with a live establish stamp while no local proof credential stands.
+            Verified before staging a seed; never logged or echoed.
           maxLength: 1024
 
     TotpEnrolStartResult:
@@ -17445,8 +17506,8 @@ components:
           type: string
           description: |
             The account-security proof: the confirmed TOTP code where one
-            stands, else the password.
-          minLength: 1
+            stands, else the password. Empty proof requires a live establish
+            stamp while no local proof credential stands.
           maxLength: 1024
 
     RecoveryCodesResult:
@@ -22035,8 +22096,14 @@ components:
     ExternalIdentity:
       type: object
       additionalProperties: false
-      required: [id, kind, issuer, subject, provider_id, created_at]
+      required: [id, kind, issuer, subject, provider_id, provider_slug, display_name, created_at]
       properties:
+        provider_slug:
+          type: string
+          description: The provider slug, addressed together with kind.
+        display_name:
+          type: string
+          description: The configured provider display name.
         profile: {type: string, enum: [github]}
         id:
           $ref: "#/components/schemas/ID"
@@ -22542,6 +22609,8 @@ components:
         not know the factor state; the service enforces the selection, and
         the field it did not select is ignored. A TOTP code is spent when the
         ceremony is staged, so the same code cannot open a second ceremony.
+        Empty proof is accepted only with a live establish stamp while no local
+        proof credential stands.
       properties:
         password:
           type: string
@@ -22742,14 +22811,39 @@ components:
     TotpStatus:
       type: object
       additionalProperties: false
-      required: [confirmed, pending]
+      required: [confirmed, pending, has_password, has_passkey, can_reauth_oidc]
       properties:
+        has_password:
+          type: boolean
+          description: True when the account has a local password credential.
+        has_passkey:
+          type: boolean
+          description: True when the account has a usable passkey credential.
+        can_reauth_oidc:
+          type: boolean
+          description: True when the acting OIDC session's enabled provider has an assurance policy.
+        establish:
+          $ref: "#/components/schemas/CredentialEstablishStatus"
         confirmed:
           type: boolean
           description: True when a confirmed authenticator factor stands on the account.
         pending:
           type: boolean
           description: True when an enrolment is staged but its first confirming code is not yet in.
+
+    CredentialEstablishStatus:
+      type: object
+      additionalProperties: false
+      required: [kind, slug, display_name, expires_at]
+      properties:
+        kind:
+          $ref: "#/components/schemas/IdentityProviderKind"
+        slug:
+          type: string
+        display_name:
+          type: string
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
 
     Passkey:
       type: object

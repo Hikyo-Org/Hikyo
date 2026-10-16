@@ -100,6 +100,21 @@ func samlSubject(nameID samlsp.NameID, allowEmail bool) (string, error) {
 	return base64.RawStdEncoding.EncodeToString(encoded), nil
 }
 
+// samlStoredSubjectAllowed applies the same NameID policy to a retained
+// identity that the callback applies to the verified assertion's NameID.
+func samlStoredSubjectAllowed(subject string, allowEmail bool) bool {
+	encoded, err := base64.RawStdEncoding.Strict().DecodeString(subject)
+	if err != nil {
+		return false
+	}
+	nameID, err := samlsp.DecodeNameID(encoded)
+	if err != nil {
+		return false
+	}
+	current, err := samlSubject(nameID, allowEmail)
+	return err == nil && current == subject
+}
+
 func samlMethod(entityID string) string { return "saml:" + entityID }
 
 func samlFactors(mfa bool) []string {
@@ -263,24 +278,12 @@ func (s *Auth) SAMLStart(ctx context.Context, slug, purpose, environmentID, pres
 	if purpose != purposeLogin && s.Admission.AccountDelay(account.ID) > 0 {
 		return SAMLStartResult{}, admission.ErrOverloaded
 	}
+	var linkEvidence ReauthEvidence
 	if purpose == purposeLink {
-		var credential authz.PasswordCredential
-		err = tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-			var readErr error
-			credential, readErr = az.PasswordCredentialFor(ctx, account.ID)
-			if errors.Is(readErr, domain.ErrNotFound) {
-				return ErrNoProofCredential
-			}
-			return readErr
-		})
+		_, linkEvidence, err = s.verifySecurityProof(ctx, presented, proof, proof, true, true)
 		if err != nil {
 			return SAMLStartResult{}, err
 		}
-		if !s.verifyPassword(ctx, account.ID, credential, proof) {
-			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return SAMLStartResult{}, domain.ErrUnauthenticated
-		}
-		s.Admission.RecordSuccess(account.ID)
 	}
 
 	relayState, err := randToken()
@@ -317,9 +320,22 @@ func (s *Auth) SAMLStart(ctx context.Context, slug, purpose, environmentID, pres
 		if err != nil {
 			return SAMLStartResult{}, err
 		}
+		transaction.CeremonyID = linkEvidence.factorClass() + ":" + transaction.CeremonyID
 	}
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
+		if purpose == purposeLink {
+			live, err := az.Authenticate(ctx, presented, now)
+			if err != nil {
+				return err
+			}
+			if live.SessionID != sessionID || live.Principal != account.PrincipalID {
+				return domain.ErrUnauthenticated
+			}
+			if err := s.ConsumeReauthEvidence(ctx, az, linkEvidence, live.Principal); err != nil {
+				return err
+			}
+		}
 		transaction.CreatedAt = now
 		transaction.ExpiresAt = now.Add(samlTransactionLifetime)
 		return az.CreateSAMLTransaction(ctx, transaction)
@@ -607,13 +623,13 @@ func (s *Auth) completeSAMLLink(ctx context.Context, az *authz.TxAuthorizer, cer
 	}); err != nil {
 		return LoginResult{}, err
 	}
-	result, err := s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(initiating.Artifact), now)
+	result, err := s.reissueSession(ctx, az, account, linkProofClass(transaction.CeremonyID), MethodLocalPassword, Artifact(initiating.Artifact), now)
 	if err != nil {
 		return LoginResult{}, err
 	}
 	event, err := newAuditEvent(ctx, audit.EventIdentityLinked, account.PrincipalID,
 		audit.Object{Type: "external_identity", ID: identityID}, audit.OutcomeSuccess, "",
-		audit.Payload{"kind": SAMLKind, "account_id": account.ID, "identity_id": identityID, "provider_id": provider.ID, "authorizing_credential": "password"})
+		audit.Payload{"kind": SAMLKind, "account_id": account.ID, "identity_id": identityID, "provider_id": provider.ID, "authorizing_credential": linkProofClass(transaction.CeremonyID)})
 	if err != nil {
 		return LoginResult{}, err
 	}

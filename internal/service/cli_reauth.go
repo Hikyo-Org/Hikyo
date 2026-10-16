@@ -258,6 +258,9 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 			// redemption. Authorizing it here would apply its MFA floor before
 			// this very ceremony has had a chance to elevate the CLI session.
 		}
+		if err := s.requireCLIReauthCredential(ctx, az, caller, purpose, environmentIDs); err != nil {
+			return err
+		}
 		if err := az.CreateCLIReauthHandoff(ctx, authz.NewCLIReauthHandoff{ID: id, StateVerifier: verifier, SessionID: caller.SessionID, PrincipalID: caller.Principal, Purpose: purpose, Operation: operation, EnvironmentSet: intent.environmentSet, KeySet: keySet, PKCEChallenge: pkceChallenge, RedirectURI: redirectURI, CreatedAt: now, ExpiresAt: expires}); err != nil {
 			return err
 		}
@@ -605,4 +608,77 @@ func (s *Auth) RedeemCLIReauth(ctx context.Context, code, pkceVerifier string) (
 		return CLIReauthRedeemed{}, err
 	}
 	return out, nil
+}
+
+type cliReauthCredentialRequirement uint8
+
+const (
+	cliReauthNeedsFactor cliReauthCredentialRequirement = iota
+	cliReauthNeedsPasskey
+	cliReauthNeedsLocalFactor
+)
+
+type cliReauthUnavailable struct {
+	requirement cliReauthCredentialRequirement
+}
+
+func (e cliReauthUnavailable) Error() string { return "service: " + e.SafeDetail() }
+func (cliReauthUnavailable) Unwrap() error   { return domain.ErrInvalid }
+func (e cliReauthUnavailable) SafeDetail() string {
+	switch e.requirement {
+	case cliReauthNeedsPasskey:
+		return "this sign-in cannot satisfy step-up: this operation requires a passkey; add one under Settings > Security"
+	case cliReauthNeedsLocalFactor:
+		return "this sign-in cannot satisfy step-up: this operation requires a local authenticator or passkey; add one under Settings > Security"
+	default:
+		return "this sign-in cannot satisfy step-up: sign in through a provider that asserts a second factor, or add an authenticator or passkey under Settings > Security"
+	}
+}
+
+func (s *Auth) requireCLIReauthCredential(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, purpose string, environmentIDs []string) error {
+	if !strings.HasPrefix(caller.Assurance.Method, "oauth2:") && !strings.HasPrefix(caller.Assurance.Method, "oidc:") {
+		return nil
+	}
+	account, err := az.AccountByPrincipal(ctx, caller.Principal)
+	if err != nil {
+		return err
+	}
+	inventory, err := localProofInventory(ctx, az, account.ID)
+	if err != nil {
+		return err
+	}
+	if inventory.passkey {
+		return nil
+	}
+	if purpose == string(PurposeSelfConfig) {
+		if inventory.totp {
+			return nil
+		}
+		return cliReauthUnavailable{requirement: cliReauthNeedsLocalFactor}
+	}
+	for _, environmentID := range environmentIDs {
+		effective, err := s.effectiveReauthWindow(ctx, az, environmentID)
+		if err != nil {
+			return err
+		}
+		if effective <= 0 {
+			return cliReauthUnavailable{requirement: cliReauthNeedsPasskey}
+		}
+	}
+	if inventory.totp {
+		return nil
+	}
+	if purpose != string(PurposeAdapter) && purpose != string(PurposeDeveloperCredential) && caller.ProviderID != "" {
+		p, err := az.ProviderForCallback(ctx, caller.ProviderID)
+		if err != nil {
+			return err
+		}
+		if p.Enabled && p.AssurancePolicy != nil {
+			return nil
+		}
+	}
+	if purpose == string(PurposeAdapter) || purpose == string(PurposeDeveloperCredential) {
+		return cliReauthUnavailable{requirement: cliReauthNeedsLocalFactor}
+	}
+	return cliReauthUnavailable{}
 }

@@ -273,7 +273,8 @@ func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequest
 		}
 		out.Identities = append(out.Identities, apigen.ExternalIdentity{Profile: profile,
 			Id: r.ID, Kind: apigen.IdentityProviderKind(r.Kind), Issuer: r.Issuer,
-			Subject: r.Subject, ProviderId: r.ProviderID, CreatedAt: r.CreatedAt,
+			Subject: r.Subject, ProviderId: r.ProviderID, ProviderSlug: r.Slug,
+			DisplayName: r.DisplayName, CreatedAt: r.CreatedAt,
 		})
 	}
 	return apigen.ListIdentities200JSONResponse(out), nil

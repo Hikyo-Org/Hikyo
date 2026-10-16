@@ -12,12 +12,12 @@ import {
   type WorkspaceBearer,
 } from '../api/workspace.ts';
 import { useLogout } from '../api/session.ts';
-import { useRegenerateRecoveryCodes } from '../api/account.ts';
+import { useRegenerateRecoveryCodes, useSetPassword } from '../api/account.ts';
 import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutation.ts';
 import { renderForm, settle, settleTask } from '../testkit/renderForm.tsx';
 import { parsed, parsedPick } from '../api/client.ts';
 import { listMyOrgsOp, localLoginOp, regenerateRecoveryCodesOp, stepUpTotpOp } from '@hikyo/operations';
-import { SessionChangedError } from '../api/sessionEpoch.ts';
+import { captureSessionEpoch, SessionChangedError } from '../api/sessionEpoch.ts';
 import { AuthProvider, useAuth, type WhoAmI } from './AuthProvider.tsx';
 
 
@@ -1107,6 +1107,39 @@ it('keeps the initiating account-security callback through a verified session re
   expect(text(container, 'notice')).toBe('Recovery codes shown once');
   expect(text(container, 'owner')).toBe('Person 10');
   expect(workspaceBearer(workspace.origin)).toBeUndefined();
+});
+
+it.each([false, true])('delivers a saved password through its verified browser session remint (existing password=%s)', async (existingPassword) => {
+  let cookie = '__Host-hikyo-csrf=before-password';
+  vi.spyOn(document, 'cookie', 'get').mockImplementation(() => cookie);
+  const response = deferred<Response>();
+  const verification = deferred<Response>();
+  const replacement = identity('01', '10');
+  const fetchMock = vi.fn().mockResolvedValueOnce(json(identity('00', '10')))
+    .mockReturnValueOnce(response.promise).mockReturnValueOnce(verification.promise)
+    .mockResolvedValue(json(replacement));
+  vi.stubGlobal('fetch', fetchMock);
+  const completed = vi.fn();
+  const failed = vi.fn();
+  function PasswordSurface() {
+    const mutation = useSetPassword();
+    return <><output data-testid="password-status">{mutation.status}</output>
+      <button onClick={() => mutation.mutate({ password: 'a-new-long-password', ...(existingPassword ? { proof: 'current-password' } : {}) }, { onSuccess: completed, onError: failed })}>Save password</button></>;
+  }
+  const { container } = await renderAuth(<AuthProvider><PasswordSurface /></AuthProvider>);
+  await settle();
+  const epoch = captureSessionEpoch();
+  await act(async () => container.querySelector('button')?.click());
+  cookie = '__Host-hikyo-csrf=after-password';
+  await act(async () => response.resolve(json(replacement)));
+  expect(container.querySelector('.session-owner')?.hasAttribute('hidden')).toBe(true);
+  expect(completed).not.toHaveBeenCalled();
+  await act(async () => verification.resolve(json(replacement)));
+  await settleTask();
+  expect(captureSessionEpoch()).toBe(epoch);
+  expect(completed).toHaveBeenCalledTimes(1);
+  expect(failed).not.toHaveBeenCalled();
+  expect(text(container, 'password-status')).toBe('success');
 });
 
 it.each([

@@ -182,6 +182,10 @@ func (s *Auth) recordFactorThrottleCrossing(ctx context.Context, principal domai
 // method/class are threaded in rather than assumed (a browser reissue also mints
 // a fresh CSRF verifier). The assurance is built solely from the proof (B3).
 func (s *Auth) reissueSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, factorClass, method string, artifact Artifact, now time.Time) (LoginResult, error) {
+	return s.reissueSessionWithProvider(ctx, az, account, factorClass, method, artifact, "", now)
+}
+
+func (s *Auth) reissueSessionWithProvider(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, factorClass, method string, artifact Artifact, providerID string, now time.Time) (LoginResult, error) {
 	if err := az.AdvanceGeneration(ctx, account.PrincipalID); err != nil {
 		return LoginResult{}, err
 	}
@@ -193,7 +197,7 @@ func (s *Auth) reissueSession(ctx context.Context, az *authz.TxAuthorizer, accou
 		csrf = sessionWithCSRF
 	}
 	result, err := s.completeSession(ctx, az, CreateSession{
-		account: account, artifact: artifact,
+		account: account, artifact: artifact, providerID: providerID,
 		assurance: Assurance{Method: method, Factors: []string{factorClass}, AuthenticatedAt: now},
 		csrf:      csrf,
 	}, now)
@@ -219,11 +223,22 @@ func (s *Auth) reissueSession(ctx context.Context, az *authz.TxAuthorizer, accou
 	return result, nil
 }
 
-// TOTPStatusResult is the caller's own authenticator state: whether a confirmed
-// factor stands and whether an enrolment is staged but unconfirmed.
+// CredentialEstablishStatus describes the acting session's unused creation
+// window. It is private account inventory, never public provider discovery.
+type CredentialEstablishStatus struct {
+	Kind, Slug, DisplayName string
+	ExpiresAt               time.Time
+}
+
+// TOTPStatusResult is the caller's current local credential inventory, pending
+// TOTP enrollment and any unused session-bound establishment proof.
 type TOTPStatusResult struct {
-	Confirmed bool
-	Pending   bool
+	HasPassword   bool
+	HasPasskey    bool
+	CanReauthOIDC bool
+	Establish     *CredentialEstablishStatus
+	Confirmed     bool
+	Pending       bool
 }
 
 // TOTPStatus reads the caller's OWN authenticator state. It is a pure read that
@@ -241,11 +256,11 @@ func (s *Auth) TOTPStatus(ctx context.Context, presented string) (TOTPStatusResu
 		if err != nil {
 			return err
 		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); err == nil {
-			status.Confirmed = true
-		} else if !errors.Is(err, domain.ErrNotFound) {
+		inventory, err := localProofInventory(ctx, az, account.ID)
+		if err != nil {
 			return err
 		}
+		status.Confirmed, status.HasPassword, status.HasPasskey = inventory.totp, inventory.password, inventory.passkey
 		// A pending row is only "pending" while it is still finishable. Confirm
 		// binds the seed to its start ceremony by the same window (a stale or
 		// future-stamped row is refused there), so reporting an expired one as
@@ -255,6 +270,41 @@ func (s *Auth) TOTPStatus(ctx context.Context, presented string) (TOTPStatusResu
 			status.Pending = age >= 0 && age <= AuthorityLifetime
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
+		}
+		if id.ProviderID != "" {
+			p, err := az.ProviderForCallback(ctx, id.ProviderID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			status.CanReauthOIDC = err == nil && p.Enabled && p.AssurancePolicy != nil
+		}
+		if !status.HasPassword && !status.Confirmed && !status.HasPasskey {
+			stamp, err := az.CredentialEstablish(ctx, id.SessionID, id.Principal, s.now())
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			if err == nil {
+				identity, err := az.ExternalIdentityByID(ctx, stamp.IdentityID)
+				if err != nil {
+					return err
+				}
+				status.Establish = &CredentialEstablishStatus{Kind: identity.Kind, ExpiresAt: stamp.ExpiresAt}
+				if identity.Kind == OIDCKind {
+					p, err := az.ProviderForCallback(ctx, identity.ProviderID)
+					if err != nil {
+						return err
+					}
+					status.Establish.Slug = p.Slug
+					status.Establish.DisplayName = p.DisplayName
+				} else {
+					p, err := az.OAuth2ProviderForCallback(ctx, identity.ProviderID)
+					if err != nil {
+						return err
+					}
+					status.Establish.Slug = p.Slug
+					status.Establish.DisplayName = p.DisplayName
+				}
+			}
 		}
 		return nil
 	})
@@ -271,50 +321,17 @@ func (s *Auth) TOTPStatus(ctx context.Context, presented string) (TOTPStatusResu
 // EnrolTOTPConfirm completes it — so it advances no generation and reissues no
 // session (finding B2).
 func (s *Auth) EnrolTOTPStart(ctx context.Context, presented, password string) (string, error) {
-	// Phase 1 — read.
-	var (
-		account authz.Account
-		cred    authz.PasswordCredential
-	)
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		id, err := az.Authenticate(ctx, presented, s.now())
-		if err != nil {
-			return err
-		}
-		account, err = az.AccountByPrincipal(ctx, id.Principal)
-		if err != nil {
-			return err
-		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); err == nil {
-			return ErrTOTPAlreadyEnrolled
-		} else if !errors.Is(err, domain.ErrNotFound) {
-			return err
-		}
-		cred, err = az.PasswordCredentialFor(ctx, account.ID)
-		if errors.Is(err, domain.ErrNotFound) {
-			return ErrNoProofCredential
-		}
-		return err
-	})
+	status, err := s.TOTPStatus(ctx, presented)
 	if err != nil {
 		return "", err
 	}
-
-	// Admission: a stolen session must not be an unthrottled Argon2 oracle or a
-	// lever to exhaust the expensive-work budget.
-	release, err := s.enterFactorBudget(ctx, account.ID)
+	if status.Confirmed {
+		return "", ErrTOTPAlreadyEnrolled
+	}
+	account, evidence, err := s.verifyLocalCreationProof(ctx, presented, password, password)
 	if err != nil {
 		return "", err
 	}
-	defer release()
-
-	// Phase 2 — verify the password proof, outside any transaction.
-	if !s.verifyPassword(ctx, account.ID, cred, password) {
-		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-		return "", domain.ErrUnauthenticated
-	}
-	s.Admission.RecordSuccess(account.ID)
-
 	// Seal the seed under the row it will own, so the id is minted first.
 	rawSeed, err := crypto.NewTOTPSeed()
 	if err != nil {
@@ -346,22 +363,20 @@ func (s *Auth) EnrolTOTPStart(ctx context.Context, presented, password string) (
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		current, err := az.PasswordCredentialFor(ctx, account.ID)
-		if err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				return domain.ErrUnauthenticated
-			}
+		if err := s.consumeLocalCreationProof(ctx, az, evidence, live, account.ID); err != nil {
 			return err
 		}
 		liveEpoch, err := az.CredentialEpoch(ctx)
 		if err != nil {
 			return err
 		}
-		if current.RowVersion != cred.RowVersion || current.CredentialEpoch != liveEpoch {
-			return domain.ErrUnauthenticated
-		}
-		if _, err := az.ConfirmedTOTP(ctx, account.ID); err == nil {
-			return ErrTOTPAlreadyEnrolled
+		if confirmed, err := az.ConfirmedTOTP(ctx, account.ID); err == nil {
+			if confirmed.CredentialEpoch == liveEpoch {
+				return ErrTOTPAlreadyEnrolled
+			}
+			if err := az.RemoveTOTPForAccount(ctx, account.ID); err != nil {
+				return err
+			}
 		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
@@ -460,6 +475,22 @@ func (s *Auth) EnrolTOTPConfirm(ctx context.Context, presented, code string) (Lo
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
+		proofClass := "password"
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		if pending.CredentialEpoch != epoch {
+			return domain.ErrUnauthenticated
+		}
+		if password, err := az.PasswordCredentialFor(ctx, account.ID); errors.Is(err, domain.ErrNotFound) || (err == nil && password.CredentialEpoch != epoch) {
+			if err := s.consumeLocalCreationProof(ctx, az, ReauthEvidence{Principal: live.Principal, kind: reauthEvidenceEstablish, sessionID: live.SessionID}, live, account.ID); err != nil {
+				return err
+			}
+			proofClass = "establish"
+		} else if err != nil {
+			return err
+		}
 		// Re-check the enrolment's expiry against the write-tx clock (finding
 		// R2 R1-4): the earlier check raced the write-lock wait, so a request
 		// delayed past the window could otherwise still promote. A pending row
@@ -486,13 +517,13 @@ func (s *Auth) EnrolTOTPConfirm(ctx context.Context, presented, code string) (Lo
 			}
 			return domain.ErrUnauthenticated
 		}
-		*result, err = s.reissueSession(ctx, az, account, "password", MethodLocalPassword, Artifact(live.Artifact), now)
+		*result, err = s.reissueAccountSecurity(ctx, az, account, proofClass, live, now)
 		if err != nil {
 			return err
 		}
 		e, err := newAuditEvent(ctx, audit.EventAuthFactorEnrolled, account.PrincipalID,
 			audit.Object{Type: "account", ID: account.ID}, audit.OutcomeSuccess, "",
-			audit.Payload{"factor": "totp", "account_id": account.ID, "authorizing_credential": "password"})
+			audit.Payload{"factor": "totp", "account_id": account.ID, "authorizing_credential": proofClass})
 		if err != nil {
 			return err
 		}
@@ -770,7 +801,7 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 	// Phase 2 — verify through the shared owner. Argon2/TOTP work and admission
 	// accounting happen outside the write transaction; consumption stays with
 	// the recovery-batch write below.
-	evidence, err := s.VerifyReauthProof(ctx, presented, proof)
+	_, evidence, err := s.verifyLocalCreationProof(ctx, presented, proof, proof)
 	if err != nil {
 		if err == ErrReauthProofRequired {
 			return nil, LoginResult{}, domain.ErrUnauthenticated
@@ -812,7 +843,7 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		if liveID.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		if err := s.ConsumeReauthEvidence(ctx, az, evidence, liveID.Principal); err != nil {
+		if err := s.consumeLocalCreationProof(ctx, az, evidence, liveID, account.ID); err != nil {
 			return err
 		}
 		epoch, err := az.CredentialEpoch(ctx)
@@ -843,7 +874,7 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 				return err
 			}
 		}
-		*result, err = s.reissueSession(ctx, az, account, proofClass, MethodLocalPassword, Artifact(liveID.Artifact), now)
+		*result, err = s.reissueAccountSecurity(ctx, az, account, proofClass, liveID, now)
 		if err != nil {
 			return err
 		}

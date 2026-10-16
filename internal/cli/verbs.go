@@ -239,6 +239,8 @@ authentication:
 
 accounts:
   hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
+  hikyo account password set|change
+      aliases: set the first password or replace an existing one
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up
@@ -1105,12 +1107,14 @@ func runWhoami(ctx context.Context, ios IO, args []string) error {
 // confirms or renames it before the freeze.
 func runAccount(ctx context.Context, ios IO, args []string) error {
 	if len(args) == 0 {
-		return failf(ExitUsage, "usage: hikyo account establish-credential|factor|passkey|recovery-codes|recovery|reset-credential ...")
+		return failf(ExitUsage, "usage: hikyo account establish-credential|password|factor|passkey|recovery-codes|recovery|reset-credential ...")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
 	case "establish-credential":
 		return runEstablishCredential(ctx, ios, rest)
+	case "password":
+		return runAccountPassword(ctx, ios, rest)
 	case "factor":
 		return runFactor(ctx, ios, rest)
 	case "passkey":
@@ -1122,7 +1126,7 @@ func runAccount(ctx context.Context, ios IO, args []string) error {
 	case "reset-credential":
 		return runResetCredential(ctx, ios, rest)
 	default:
-		return failf(ExitUsage, "unknown account verb %q: use establish-credential, factor, passkey, recovery-codes, recovery or reset-credential", sub)
+		return failf(ExitUsage, "unknown account verb %q: use establish-credential, password, factor, passkey, recovery-codes, recovery or reset-credential", sub)
 	}
 }
 
@@ -1310,6 +1314,13 @@ func runFactorEnrolTOTP(ctx context.Context, ios IO, args []string) (returnErr e
 	client, _, err := authenticatedClient(st, ios, flags)
 	if err != nil {
 		return err
+	}
+	status, err := requireLocalAccountProof(ctx, client, "account factor enrol-totp")
+	if err != nil {
+		return err
+	}
+	if !status.HasPassword {
+		return failf(ExitRefused, "`account factor enrol-totp` requires a password proof on the terminal; use Settings > Security: %s", accountSecurityURL(client))
 	}
 	password, err := ios.readPassword("Password (to authorize enrolment): ")
 	if err != nil {

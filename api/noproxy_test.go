@@ -216,6 +216,8 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/auth/cli-login/device/start":            true,
 	"POST /api/v1/auth/cli-login/device/token":            true,
 
+	// Password mutation changes only this instance's own credential and session rows.
+	"PUT /api/v1/auth/password": true,
 	// Local developer delegation metadata, mint/revocation and durable policy; no forwarding.
 	"GET /api/v1/auth/developer-credentials":                                                      true,
 	"DELETE /api/v1/auth/developer-credentials":                                                   true,

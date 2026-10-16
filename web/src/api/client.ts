@@ -1,6 +1,6 @@
 import {
   enrolPasskeyFinishOp, enrolTotpConfirmOp, regenerateRecoveryCodesOp,
-  removePasskeyOp, removeTotpOp, unlinkIdentityOp, whoamiOp,
+  removePasskeyOp, removeTotpOp, setPasswordOp, unlinkIdentityOp, whoamiOp,
 } from '@hikyo/operations';
 import { assertSessionEpoch, captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
 
@@ -15,7 +15,7 @@ import type { ExpectedSessionRotation } from './sessionEpoch.ts';
 // These authenticated security changes remint the acting session. Login and
 // logout never establish continuity with a previous logical session owner.
 const ACCOUNT_SESSION_ROTATIONS = new Set<object>([
-  enrolPasskeyFinishOp, enrolTotpConfirmOp, removePasskeyOp, removeTotpOp, unlinkIdentityOp,
+  enrolPasskeyFinishOp, enrolTotpConfirmOp, removePasskeyOp, removeTotpOp, setPasswordOp, unlinkIdentityOp,
 ]);
 
 function expectedAccountRotation<T>(operation: object, data: T): ExpectedSessionRotation | undefined {

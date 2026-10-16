@@ -452,7 +452,10 @@ DELETE FROM external_identities WHERE id = $1;
 -- provider is disabled or deleted. reauth_windows cascade from the session.
 -- hikyo:authn-resolution
 -- name: DeleteSessionsForProvider :execrows
-DELETE FROM sessions WHERE provider_id = $1;
+DELETE FROM sessions WHERE sessions.provider_id = sqlc.narg(provider_id)
+OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+ JOIN external_identities i ON i.id = e.identity_id
+ WHERE i.kind = 'oidc' AND i.provider_id = sqlc.narg(provider_id));
 
 -- A FRESH CEREMONY SUPERSEDES THE PAIR'S PREVIOUS WINDOW (#58).
 --

@@ -376,6 +376,8 @@ func TestEveryReissuingOperationDeliversOnTheActingChannel(t *testing.T) {
 		path   string
 		body   map[string]any
 	}{
+		{"password set", http.MethodPut, "/auth/password", map[string]any{"password": "correct horse battery staple", "proof": "old password proof"}},
+		{"password establish", http.MethodPut, "/auth/password", map[string]any{"password": "correct horse battery staple"}},
 		{"totp enrol confirm", http.MethodPost, "/auth/totp/enrol/confirm", map[string]any{"code": "123456"}},
 		{"totp step-up", http.MethodPost, "/auth/totp/step-up", map[string]any{"code": "123456"}},
 		{"totp remove", http.MethodDelete, "/auth/totp", map[string]any{"password": "correct horse battery staple"}},

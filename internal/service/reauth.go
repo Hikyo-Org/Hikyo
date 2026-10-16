@@ -694,12 +694,14 @@ const (
 	reauthEvidenceExempt
 	reauthEvidenceTOTP
 	reauthEvidencePassword
+	reauthEvidenceEstablish
 )
 
 type ReauthEvidence struct {
 	// Principal is who the proof was verified FOR. The consuming transaction
 	// compares it against the principal IT authenticated, so a proof obtained
 	// on one session cannot be spent by another.
+	sessionID  string
 	Principal  domain.PrincipalID
 	kind       reauthEvidenceKind
 	factorID   string
@@ -785,6 +787,8 @@ func (ev ReauthEvidence) factorClass() string {
 		return "totp"
 	case reauthEvidencePassword:
 		return "password"
+	case reauthEvidenceEstablish:
+		return "establish"
 	default:
 		return ""
 	}
@@ -840,6 +844,15 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 // code cannot open a second ceremony. A bad proof is throttled exactly like
 // every other account-security proof.
 func (s *Auth) verifyAccountSecurityProof(ctx context.Context, presented, password, code string) (authz.Account, ReauthEvidence, error) {
+	return s.verifySecurityProof(ctx, presented, password, code, false, false)
+}
+
+// Identity and password mutations retain their pinned password-first selection.
+func (s *Auth) verifyIdentityProof(ctx context.Context, presented, proof string) (authz.Account, ReauthEvidence, error) {
+	return s.verifySecurityProof(ctx, presented, proof, proof, true, false)
+}
+
+func (s *Auth) verifySecurityProof(ctx context.Context, presented, password, code string, passwordFirst, admitted bool) (authz.Account, ReauthEvidence, error) {
 	var (
 		account   authz.Account
 		cred      authz.PasswordCredential
@@ -859,6 +872,15 @@ func (s *Auth) verifyAccountSecurityProof(ctx context.Context, presented, passwo
 		if err != nil {
 			return err
 		}
+		if passwordFirst {
+			cred, err = az.PasswordCredentialFor(ctx, account.ID)
+			if err == nil && cred.CredentialEpoch == epoch {
+				return nil
+			}
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+		}
 		// A confirmed factor from a superseded epoch (a restored row) is inert
 		// like every other pre-bump credential: it is not a live possession
 		// factor, so it neither proves nor blocks the password from proving.
@@ -869,7 +891,7 @@ func (s *Auth) verifyAccountSecurityProof(ctx context.Context, presented, passwo
 			return nil
 		case err == nil || errors.Is(err, domain.ErrNotFound):
 			cred, err = az.PasswordCredentialFor(ctx, account.ID)
-			if errors.Is(err, domain.ErrNotFound) {
+			if errors.Is(err, domain.ErrNotFound) || (err == nil && cred.CredentialEpoch != epoch) {
 				return ErrNoProofCredential
 			}
 			return err
@@ -889,11 +911,13 @@ func (s *Auth) verifyAccountSecurityProof(ctx context.Context, presented, passwo
 
 	// A bad proof here is a takeover primitive on a stolen session, so it is
 	// throttled exactly like the account-security mutations are.
-	release, err := s.enterFactorBudget(ctx, account.ID)
-	if err != nil {
-		return authz.Account{}, ReauthEvidence{}, err
+	if !admitted {
+		release, err := s.enterFactorBudget(ctx, account.ID)
+		if err != nil {
+			return authz.Account{}, ReauthEvidence{}, err
+		}
+		defer release()
 	}
-	defer release()
 
 	out := ReauthEvidence{Principal: account.PrincipalID}
 	if hasTOTP {

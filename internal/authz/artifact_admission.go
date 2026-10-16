@@ -52,12 +52,12 @@ func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) erro
 
 // enrolmentGateAllows is the closed set of operations a session flagged
 // enrolment_required may still reach: the factor-enrolment ceremonies plus the
-// recovery-code, whoami and logout endpoints the SPA needs to complete or escape
-// the gate. Deny-by-default (#760).
+// credential-inventory, recovery-code, whoami and logout endpoints the clients
+// need to complete or escape the gate. Deny-by-default (#760).
 func enrolmentGateAllows(id string) bool {
 	switch id {
 	case "enrolTotpStart", "enrolTotpConfirm", "enrolPasskeyStart", "enrolPasskeyFinish",
-		"regenerateRecoveryCodes", "whoami", "logout":
+		"getTotpStatus", "regenerateRecoveryCodes", "whoami", "logout":
 		return true
 	default:
 		return false

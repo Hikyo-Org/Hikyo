@@ -396,6 +396,10 @@ func (a *TxAuthorizer) CredentialEpoch(ctx context.Context) (int64, error) {
 	return a.r.CredentialEpoch(ctx)
 }
 
+func (a *TxAuthorizer) CredentialEstablish(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error) {
+	return a.r.CredentialEstablish(ctx, sessionID, principal, at)
+}
+
 func (a *TxAuthorizer) CredentialPolicy(ctx context.Context) (CredentialPolicy, error) {
 	return a.r.CredentialPolicy(ctx)
 }

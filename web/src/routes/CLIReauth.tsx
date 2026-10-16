@@ -140,8 +140,14 @@ export function CLIReauth() {
   const hasTotp = totpStatus.isSuccess && totpStatus.data.confirmed;
   const offersTOTP =
     (selfConfig || ((adapter || disclosure || developerCredential) && slidingEnvironments.length > 0)) && hasTotp;
-  const offersOIDC =
-    disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
+  const oidcEligible = disclosure && slidingEnvironments.length > 0 && totpStatus.data?.can_reauth_oidc === true;
+  const offersOIDC = oidcEligible && oidcProvider !== null;
+  const requiresPasskey = transaction.data?.environments.some((environment) => environment.requires_webauthn) === true;
+  const hasPasskey = totpStatus.isSuccess && totpStatus.data.has_passkey;
+  const canUseFactor = hasPasskey || (offersTOTP && !requiresPasskey);
+  const canUseOIDC = offersOIDC && (!requiresPasskey || hasPasskey);
+  const noProof = totpStatus.isSuccess && !canUseFactor && !canUseOIDC &&
+    (!oidcEligible || (requiresPasskey && !hasPasskey) || methods.isSuccess);
   const methodsFailed =
     disclosure &&
     slidingEnvironments.length > 0 &&
@@ -202,21 +208,22 @@ export function CLIReauth() {
                 </li>
               ))}
             </ul>
-            {auth.identity?.session.assurance.method.startsWith('oauth2:') && !hasTotp ? <Alert>GitHub cannot reauthenticate. Use an enrolled passkey, or enrol TOTP in Settings → Security.</Alert> : null}
+            {noProof ? <Alert>This needs a second factor. Sign in through a provider that asserts one, or add an authenticator or password under <a href="/settings?tab=factors">Settings › Security</a>. {requiresPasskey ? 'This policy requires an enrolled passkey.' : 'Provider sign-in alone cannot authorise this operation.'}</Alert> : null}
+            {totpStatus.isError ? <Alert>Your credential inventory could not be loaded. Reload to try again.</Alert> : null}
             {offersTOTP ? (
               <div className="field">
                 <label htmlFor="cli-reauth-totp">
-                  Authenticator code (optional; leave empty to use a passkey)
+                  {hasPasskey ? 'Authenticator code (optional; leave empty to use a passkey)' : 'Authenticator code'}
                 </label>
-                <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} />
+                <input id="cli-reauth-totp" required={!hasPasskey} inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} />
               </div>
             ) : null}
             {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}
-            <Button variant="primary" type="button" disabled={approve.isPending} onClick={() => approve.mutate('factor')}>
+            <Button variant="primary" type="button" disabled={approve.isPending || !canUseFactor || (!hasPasskey && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
             </Button>
             {offersOIDC ? (
-              <Button type="button" disabled={approve.isPending} onClick={() => approve.mutate('oidc')}>
+              <Button type="button" disabled={approve.isPending || !canUseOIDC} onClick={() => approve.mutate('oidc')}>
                 {approve.isPending ? 'Authorizing…' : `Re-authenticate with ${oidcProvider.display_name}`}
               </Button>
             ) : null}

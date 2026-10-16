@@ -1424,10 +1424,22 @@ export type InstanceUpdateJob = {
     finished_at?: Timestamp;
 };
 
+export type SetPasswordRequest = {
+    /**
+     * The new password; never logged or echoed.
+     */
+    password: string;
+    /**
+     * Account-security proof; may be omitted with a live establish stamp.
+     */
+    proof?: string;
+};
+
 export type TotpEnrolStartRequest = {
     /**
-     * The account-security proof: the pre-existing password. Verified
-     * before a pending seed is staged; never logged, never echoed.
+     * The account-security proof: the pre-existing password, or empty
+     * with a live establish stamp while no local proof credential stands.
+     * Verified before staging a seed; never logged or echoed.
      *
      */
     password: string;
@@ -1609,7 +1621,8 @@ export type TotpProofRequest = {
 export type RecoveryProofRequest = {
     /**
      * The account-security proof: the confirmed TOTP code where one
-     * stands, else the password.
+     * stands, else the password. Empty proof requires a live establish
+     * stamp while no local proof credential stands.
      *
      */
     proof: string;
@@ -4893,6 +4906,14 @@ export type IdentityUnlinkRequest = {
 };
 
 export type ExternalIdentity = {
+    /**
+     * The provider slug, addressed together with kind.
+     */
+    provider_slug: string;
+    /**
+     * The configured provider display name.
+     */
+    display_name: string;
     profile?: 'github';
     id: Id;
     kind: IdentityProviderKind;
@@ -5167,6 +5188,8 @@ export type WebauthnResponse = {
  * not know the factor state; the service enforces the selection, and
  * the field it did not select is ignored. A TOTP code is spent when the
  * ceremony is staged, so the same code cannot open a second ceremony.
+ * Empty proof is accepted only with a live establish stamp while no local
+ * proof credential stands.
  *
  */
 export type WebauthnEnrolStartRequest = {
@@ -5312,6 +5335,19 @@ export type PasskeyList = {
 
 export type TotpStatus = {
     /**
+     * True when the account has a local password credential.
+     */
+    has_password: boolean;
+    /**
+     * True when the account has a usable passkey credential.
+     */
+    has_passkey: boolean;
+    /**
+     * True when the acting OIDC session's enabled provider has an assurance policy.
+     */
+    can_reauth_oidc: boolean;
+    establish?: CredentialEstablishStatus;
+    /**
      * True when a confirmed authenticator factor stands on the account.
      */
     confirmed: boolean;
@@ -5319,6 +5355,13 @@ export type TotpStatus = {
      * True when an enrolment is staged but its first confirming code is not yet in.
      */
     pending: boolean;
+};
+
+export type CredentialEstablishStatus = {
+    kind: IdentityProviderKind;
+    slug: string;
+    display_name: string;
+    expires_at: Timestamp;
 };
 
 export type Passkey = {
@@ -6806,6 +6849,15 @@ export type EstablishCredentialErrors = {
      */
     401: Error;
     /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
      *
@@ -7056,6 +7108,15 @@ export type LoginChallengeWebauthnFinishErrors = {
      */
     404: Error;
     /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
      *
@@ -7177,6 +7238,70 @@ export type WhoamiResponses = {
 };
 
 export type WhoamiResponse = WhoamiResponses[keyof WhoamiResponses];
+
+export type SetPasswordData = {
+    body: SetPasswordRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/password';
+};
+
+export type SetPasswordErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetPasswordError = SetPasswordErrors[keyof SetPasswordErrors];
+
+export type SetPasswordResponses = {
+    /**
+     * Password saved. The reissued session replaces the old one.
+     */
+    200: LoginResult;
+};
+
+export type SetPasswordResponse = SetPasswordResponses[keyof SetPasswordResponses];
 
 export type EnrolTotpStartData = {
     body: TotpEnrolStartRequest;
@@ -16480,6 +16605,15 @@ export type StepUpPasskeyFinishErrors = {
      */
     404: Error;
     /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
      *
@@ -16589,6 +16723,15 @@ export type ReauthPasskeyFinishErrors = {
      *
      */
     404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
     /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
