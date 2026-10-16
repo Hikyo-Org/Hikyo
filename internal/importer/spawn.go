@@ -85,7 +85,8 @@ func encodeSubprocessSpec(spec subprocessSpec) (string, error) {
 // RunInternalSubprocess handles the hidden re-exec mode used by client
 // libraries. The library still owns its authentication protocol; this wrapper
 // owns only process policy: sanitized environment, deadline, output cap, and
-// content-free failures.
+// content-free failures. A failed invocation, including failed output delivery,
+// terminates any remaining descendants owned by its process group or job.
 func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 	if len(args) == 0 || args[0] != internalSubprocessMode {
 		return false, 0
@@ -160,12 +161,17 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 	}
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
+		_ = tree.kill()
 		return true, subprocessExitTimeout
 	}
 	if readErr != nil || waitErr != nil {
+		// Wait reaps the direct helper, not descendants that redirected their
+		// stdio. They still belong to this failed invocation.
+		_ = tree.kill()
 		return true, 1
 	}
-	if _, err := stdout.Write(output); err != nil {
+	if n, err := stdout.Write(output); err != nil || n != len(output) {
+		_ = tree.kill()
 		return true, 1
 	}
 	return true, 0
