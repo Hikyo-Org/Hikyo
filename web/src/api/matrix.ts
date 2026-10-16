@@ -701,7 +701,12 @@ export function useMatrixProject(ref: MatrixRef) {
     [environmentItems, pendingDrafts, settings, signals, values],
   );
 
-  return { environments, keys, groups, environmentRows };
+  // Preserve each family's existing structural sharing for consumers whose
+  // derivations do not depend on the other query families.
+  return {
+    environments, keys, groups, environmentRows, environmentItems,
+    environmentQueries: { values, signals, settings, pendingDrafts },
+  };
 }
 
 export function useStageMatrixValue(ref: MatrixRef) {

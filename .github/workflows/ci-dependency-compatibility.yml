@@ -13,8 +13,9 @@ permissions:
   contents: read
 
 concurrency:
-  # A metadata edit cannot cancel a useful commit/base verdict.
-  group: dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
+  # The latest useful PR revision replaces obsolete work. Metadata edits stay
+  # isolated so a skipped event cannot cancel a useful commit/base verdict.
+  group: dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
   cancel-in-progress: true
 
 jobs:

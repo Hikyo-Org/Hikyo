@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   copyRequiresProtectedConfirmation,
   computeMatrixProblems,
+  computeIndexedMatrixProblems,
   groupProblemCounts,
   indexMatrixProblems,
   keysForMatrixFilter,
@@ -235,4 +236,37 @@ describe('validateMatrixDeclaration', () => {
     expect(describeMatrixRule({ type: 'url', schemes: ['https'] })).toBe('a https URL');
     expect(describeMatrixRule({ type: 'json' })).toBe('JSON');
   });
+});
+
+it('keeps indexed problems identical across published, pending, presence and validation states', () => {
+  const keys: readonly MatrixStateKey[] = [
+    { id: 'required', name: 'REQUIRED', groupId: 'group', requiredIn: { mode: 'all' } },
+    { id: 'optional', name: 'OPTIONAL', groupId: 'group', requiredIn: { mode: 'none' } },
+    { id: 'explicit', name: 'EXPLICIT', groupId: 'group', requiredIn: { mode: 'explicit', environmentIds: ['env_prod'] } },
+  ];
+  const validationErrors = [{ keyId: 'required', environmentId: 'env_prod', message: 'Invalid draft' }];
+  const states: readonly (boolean | undefined)[] = [undefined, false, true];
+  const operations: readonly ('set' | 'unset' | undefined)[] = [undefined, 'set', 'unset'];
+  for (const set of states) {
+    for (const pendingOperation of operations) {
+      const values = new Map<string, { readonly set: boolean }>();
+      const signals = new Map<string, { readonly pending: { readonly operation: 'set' | 'unset' } }>();
+      const cells: MatrixStateValue[] = [];
+      for (const key of keys) {
+        for (const environment of environments) {
+          const id = `${key.id}/${environment.id}`;
+          if (set !== undefined) values.set(id, { set });
+          if (pendingOperation !== undefined) signals.set(id, { pending: { operation: pendingOperation } });
+          if (set !== undefined || pendingOperation !== undefined) cells.push({ keyId: key.id, environmentId: environment.id, set: set === true, ...(pendingOperation === undefined ? {} : { pendingOperation }) });
+        }
+      }
+      const actual = computeIndexedMatrixProblems({ keys, environments, values, signals, validationErrors });
+      expect(actual).toEqual(computeMatrixProblems({ keys, environments, values: cells, validationErrors }));
+      const effectivelySet = pendingOperation === 'set' || (pendingOperation !== 'unset' && set === true);
+      expect(actual.filter((problem) => problem.kind === 'required-absent')).toHaveLength(effectivelySet ? 0 : 3);
+      expect(actual.filter((problem) => problem.kind === 'validation')).toEqual([{
+        keyId: 'required', keyName: 'REQUIRED', groupId: 'group', environmentId: 'env_prod', kind: 'validation', message: 'Invalid draft',
+      }]);
+    }
+  }
 });

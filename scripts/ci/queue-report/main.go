@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,6 +52,7 @@ type run struct {
 }
 type event struct {
 	Action     string     `json:"action"`
+	Ref        string     `json:"ref"`
 	Repository repository `json:"repository"`
 	Run        run        `json:"workflow_run"`
 }
@@ -61,6 +63,7 @@ type check struct {
 	ExternalID string `json:"external_id"`
 	DetailsURL string `json:"details_url"`
 	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
 	App        struct {
 		ID int64 `json:"id"`
 	} `json:"app"`
@@ -126,6 +129,10 @@ func (c client) read(ctx context.Context, path string, result any) error {
 }
 
 func (c client) publish(ctx context.Context, e event) error {
+	return c.publishReport(ctx, e, nil)
+}
+
+func (c client) publishReport(ctx context.Context, e event, repair *reportWork) error {
 	if e.Action != "requested" && e.Action != "in_progress" && e.Action != "completed" {
 		return errors.New("unsupported workflow_run action")
 	}
@@ -186,6 +193,19 @@ func (c client) publish(ctx context.Context, e event) error {
 	if err != nil {
 		return err
 	}
+	if repair != nil {
+		if repair.Run != r.ID || repair.Attempt != r.Attempt || repair.Head != head {
+			return errors.New("report repair routing differs from authenticated source membership")
+		}
+		// Discovery is only a routing hint. Repair never creates missing reports,
+		// never copies another source's verdict and never retires an active run.
+		if existing == nil || existing.Status == "completed" || r.Status != "completed" {
+			return nil
+		}
+		if existing.Conclusion != "" || (existing.Status != "queued" && existing.Status != "in_progress") {
+			return errors.New("report repair record has an unsupported nonterminal state")
+		}
+	}
 	var pr struct {
 		Number int `json:"number"`
 		Head   struct {
@@ -227,8 +247,58 @@ func (c client) publish(ctx context.Context, e event) error {
 		body["conclusion"] = conclusion
 	}
 	if existing != nil {
-		// Only the exact check ID authenticated above may be changed.
-		return c.request(ctx, http.MethodPatch, fmt.Sprintf("check-runs/%d", existing.ID), body, nil)
+		if repair == nil {
+			// Only the exact check ID authenticated above may be changed.
+			return c.request(ctx, http.MethodPatch, fmt.Sprintf("check-runs/%d", existing.ID), body, nil)
+		}
+		// Hold the callback's existing run/attempt lease and renew source and record
+		// immediately before the exact-ID PATCH. Terminal records stay immutable.
+		var fresh run
+		if err := c.read(ctx, runPath, &fresh); err != nil {
+			return err
+		}
+		if fresh != r {
+			return errors.New("report repair source changed before publication")
+		}
+		var current check
+		path := fmt.Sprintf("check-runs/%d", existing.ID)
+		if err := c.read(ctx, path, &current); err != nil {
+			return err
+		}
+		// Completion changes status and conclusion, never the authenticated owner.
+		identity := current
+		identity.Status, identity.Conclusion = existing.Status, existing.Conclusion
+		if identity != *existing {
+			return errors.New("report repair record identity changed before publication")
+		}
+		if current.Status == "completed" {
+			return nil
+		}
+		if current != *existing {
+			return errors.New("report repair record changed before publication")
+		}
+		var written check
+		if err := c.request(ctx, http.MethodPatch, path, body, &written); err != nil {
+			return err
+		}
+		expected := *existing
+		expected.Status, expected.Conclusion = status, conclusion
+		canonical := fmt.Sprintf("https://github.com/%s/runs/%d", c.repo, existing.ID)
+		if written.DetailsURL != expected.DetailsURL && written.DetailsURL != canonical && written.DetailsURL != runURL {
+			return errors.New("report repair response changed source link ownership")
+		}
+		expected.DetailsURL = written.DetailsURL
+		if written != expected {
+			return errors.New("report repair response did not confirm exact completed record")
+		}
+		var observed check
+		if err := c.read(ctx, path, &observed); err != nil {
+			return err
+		}
+		if observed != expected {
+			return errors.New("report repair terminal readback mismatch")
+		}
+		return nil
 	}
 	body["head_sha"] = head
 	return c.request(ctx, http.MethodPost, "check-runs", body, nil)
@@ -370,14 +440,23 @@ func render(r run, pr int, base, head, runURL string, jobs []job, superseded boo
 }
 
 func main() {
-	if err := execute(); err != nil {
+	if err := execute(os.Args[1:]...); err != nil {
 		fmt.Fprintln(os.Stderr, "queue-report:", err)
 		os.Exit(1)
 	}
 }
-func execute() error {
-	if os.Getenv("GITHUB_EVENT_NAME") != "workflow_run" {
-		return errors.New("requires workflow_run event")
+func execute(args ...string) error {
+	flags := flag.NewFlagSet("queue-report", flag.ContinueOnError)
+	repairJSON := flags.String("repair-work", "", "replay one existing report's authenticated completed source under its run/attempt lease")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected reporter arguments")
+	}
+	name := os.Getenv("GITHUB_EVENT_NAME")
+	if (*repairJSON == "" && name != "workflow_run") || (*repairJSON != "" && name != "schedule" && name != "workflow_dispatch") {
+		return errors.New("reporter requires a workflow callback or trusted scheduled/manual repair")
 	}
 	data, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
 	if err != nil {
@@ -394,5 +473,15 @@ func execute() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	c := client{http: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("unexpected GitHub API redirect") }}, base: "https://api.github.com", token: token, repo: repo}
+	if *repairJSON != "" {
+		work, err := decodeReportWork(*repairJSON)
+		if err != nil {
+			return err
+		}
+		if e.Repository.DefaultBranch == "" || os.Getenv("GITHUB_REF") != "refs/heads/"+e.Repository.DefaultBranch || os.Getenv("GITHUB_WORKFLOW_REF") != repo+"/.github/workflows/ci-check-retirement.yml@refs/heads/"+e.Repository.DefaultBranch || (name == "workflow_dispatch" && e.Ref != "refs/heads/"+e.Repository.DefaultBranch) {
+			return errors.New("reporter repair requires trusted default-branch retirement execution")
+		}
+		return c.replay(ctx, e.Repository, work)
+	}
 	return c.publish(ctx, e)
 }

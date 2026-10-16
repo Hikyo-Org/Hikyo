@@ -31,9 +31,12 @@ builds:
       - amd64
       - arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
+    # Retain the symbol table for exact-binary govulncheck analysis. Stripping
+    # it with -s forces module-wide guesses, including unlinked packages.
+    # DWARF debug information is still omitted with -w.
     ldflags:
       - >-
-        -s -w
+        -w
         -X main.version={{ with index .Env "HIKYO_RELEASE_VERSION" }}{{ . }}{{ else }}{{ .Version }}{{ end }}
         -X main.commit={{ with index .Env "HIKYO_RELEASE_COMMIT" }}{{ . }}{{ else }}{{ .Commit }}{{ end }}
         -X main.buildDate={{ .CommitDate }}

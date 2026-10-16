@@ -60,6 +60,8 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
 | Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
+| Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
+| Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
@@ -242,6 +244,9 @@ terminal publication. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
+The initial job lookup tolerates GitHub briefly reporting that same running job
+as queued. Up to five reads retain the original job ID, start timestamp and
+absolute deadline; this does not grant another execution budget.
 
 Queue jobs run only when `QUEUE_HEAD_WORKERS_ENABLED` is enabled. Before a
 new source generation is enabled, drain old unleased compiled publishers and
@@ -303,14 +308,19 @@ completed/success and that the explicit-null candidate is rejected. Those
 canaries were cleaned up to neutral; neither protocol authorized activation.
 The immutable-verdict protocol instead uses creation and nonterminal updates;
 its actual workflow-token acceptance was independently verified before activation.
-The separate legacy full-only lifecycle is unchanged.
+The separate legacy full-only proof policy is unchanged. Its observer can retire
+unfinished records once the exact commit has no live PR or merge-group role.
 
 ## Reading historical check results
 
-PR-head checks, the tested merge group and the landed main commit are different
-identities. A merged PR can retain an old non-required `ci-required-next` queued
-placeholder because closed legacy reconciliation does not retire those rows.
-It is a synthetic verdict record, not an allocated runner or a running test.
+PR-head checks and the tested merge group are different identities; the landed
+main commit can be the exact tested group SHA. Historical pending
+`ci-required-next` and `ci-queue-required` records are synthetic verdicts, not
+allocated runners or running tests. Closed and obsolete callbacks retire only
+authenticated unfinished records after complete live-role checks. Successful
+and failed terminal verdicts remain immutable. Retirement records `cancelled`,
+which can leave a historical commit's aggregate badge red; it does not turn
+unvalidated history green.
 Compare the exact SHA, context, App and source binding with actual job steps and
 runner assignment before diagnosing capacity or test failure.
 
@@ -322,3 +332,36 @@ record diagnostic failures, even after product validation passes. A green main
 summary or a neutral canary does not erase an earlier failed result, and a stale
 merged-head placeholder does not authorize a later merge. Inspect the current
 required proof and resolve actual failures without deleting or bypassing checks.
+
+Useful feedback and dependency checks supersede earlier revisions of the same
+PR. Irrelevant metadata events have separate concurrency groups. Full legacy
+candidates are still explicitly requested with `ci:full`; head/base changes and
+closure invalidate the prior exact pair without starting another full suite.
+An out-of-order callback cannot cancel a request for a different pair. If main
+advanced independently before a head update, its webhook cannot identify an
+older candidate's admission base; that candidate can finish, but exact-parent
+proof rejects its stale result.
+
+Run retirement is asynchronous and never supplies validation. It authenticates
+the trusted merge-group workflow, repository, branch, attempt and complete live
+roles, and requires the original group ref to be missing or moved. It rereads
+that evidence before cancellation and verifies terminal state afterward. The
+sweep has 120-second, 180-API-call and ten-cancellation bounds; incomplete
+inventory or ambiguous state fails closed. Neither retirement workflow removes
+required domains or adds a full suite after merge.
+
+Check retirement has an hourly fallback and input-free manual backlog sweep.
+Discovery reads the newest 1,000 main commits without holding a writer lease,
+then routes effective pending contexts to the existing context-specific leases.
+The logged `history_scope` distinguishes complete ancestry from a limited recent
+window, including its immutable snapshot, scanned count and continuation cursor.
+Older history uses exact-head backfill. API failures, incomplete pages, more
+than 1,000 effective contexts per commit or more than 100 target heads refuse
+all targets. Window completion is not evidence that all history was cleaned.
+Legacy observer heads run in batches of at most ten unique heads concurrently
+under their one global lease and compiled executable. Every child is awaited,
+then failures are reported together. This bounds batch duration by the slowest
+controller rather than ten sequential deadlines without adding runner jobs.
+Targeted manual dispatch accepts one full `head` SHA.
+See the [repair handoff](../handoff/ci-retirement-2026-10.md) for measurements,
+historical limitations and verification commands.

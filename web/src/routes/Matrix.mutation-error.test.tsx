@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
+import { matrixProjectFixture } from '../testkit/matrixProject.ts';
 
 const mocks = vi.hoisted(() => ({
   stage: vi.fn<(input: { value: string }) => Promise<{ readonly findings: readonly never[] }>>(),
@@ -37,7 +38,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/matrix.ts')>();
   return {
     ...actual,
-    useMatrixProject: () => ({
+    useMatrixProject: () => matrixProjectFixture({
       environments: {
         data: {
           items: [{

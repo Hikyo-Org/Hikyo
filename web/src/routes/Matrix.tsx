@@ -59,7 +59,7 @@ import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
 import { useProjectSidebar } from './Shell.tsx';
 import {
-  computeMatrixProblems,
+  computeIndexedMatrixProblems,
   groupProblemCounts,
   indexMatrixProblems,
   keysForMatrixFilter,
@@ -81,6 +81,8 @@ type Environment = EnvironmentList['items'][number];
 function isForbidden(query: { readonly isError: boolean; readonly error: unknown }): boolean {
   return query.isError && query.error instanceof ApiError && query.error.status === 403;
 }
+const NO_DEGRADED_ENVIRONMENTS: ReadonlyMap<string, 'forbidden' | 'error'> = new Map();
+
 type Selection = { readonly keyId: string; readonly environmentId?: string };
 
 type DisplayGroup = {
@@ -158,7 +160,7 @@ export function Matrix({
     isDemo || gitManaged || systemManaged || definitionsSettings.data?.can_edit_definitions !== true;
 
   const environmentRows = matrix.environmentRows;
-  const environments = useMemo(() => environmentRows.map((row) => row.environment), [environmentRows]);
+  const environments = matrix.environmentItems;
   // Per-environment degradation (#451): a column whose reads failed or were
   // denied. The catalogue loaded, so the grid renders; these columns show a
   // header banner and non-interactive cells instead of blanking the whole grid.
@@ -174,7 +176,7 @@ export function Matrix({
         degraded.set(row.environmentId, 'error');
       }
     }
-    return degraded;
+    return degraded.size === 0 ? NO_DEGRADED_ENVIRONMENTS : degraded;
   }, [environmentRows]);
   // The environments whose per-cell state can be trusted. A degraded column's
   // reads failed or were denied, so it must be excluded from every derivation
@@ -325,36 +327,36 @@ export function Matrix({
 
   const valuesByCell = useMemo(() => {
     const cells = new Map<string, ValueCell>();
-    for (const row of environmentRows) {
-      for (const cell of row.values.data?.items ?? []) {
+    for (const row of matrix.environmentQueries.values) {
+      for (const cell of row.query.data?.items ?? []) {
         cells.set(cellID(cell.key_id, row.environmentId), cell);
       }
     }
     return cells;
-  }, [environmentRows]);
+  }, [matrix.environmentQueries.values]);
 
   const signalsByCell = useMemo(() => {
     const cells = new Map<string, MatrixSignalCell>();
-    for (const row of environmentRows) {
-      for (const signal of row.signals.data?.cells ?? []) {
+    for (const row of matrix.environmentQueries.signals) {
+      for (const signal of row.query.data?.cells ?? []) {
         cells.set(cellID(signal.key_id, row.environmentId), signal);
       }
     }
     return cells;
-  }, [environmentRows]);
+  }, [matrix.environmentQueries.signals]);
 
   // The caller's own drafts, keyed by immutable version id. Server truth: the
   // publish sheet and the editors preview from this map, never from anything
   // cached client-side, so a reload or a second browser shows the same review.
   const draftsByVersion = useMemo(() => {
     const drafts = new Map<string, MatrixPendingDraft>();
-    for (const row of environmentRows) {
-      for (const draft of row.pendingDrafts.data?.items ?? []) {
+    for (const row of matrix.environmentQueries.pendingDrafts) {
+      for (const draft of row.query.data?.items ?? []) {
         drafts.set(draft.version_id, draft);
       }
     }
     return drafts;
-  }, [environmentRows]);
+  }, [matrix.environmentQueries.pendingDrafts]);
 
   // The open key's cross-environment lifecycle impact (#494), assembled here
   // from cells the matrix already holds and handed to the detail surface as
@@ -393,20 +395,14 @@ export function Matrix({
   // read, inflating the sidebar counts, group badges and the problems filter.
   const problems = useMemo(
     () =>
-      computeMatrixProblems({
+      computeIndexedMatrixProblems({
         keys: stateKeys,
         environments: readableEnvironments,
-        values: readableEnvironments.flatMap((environment) =>
-          keys.map((key) => ({
-            keyId: key.id,
-            environmentId: environment.id,
-            set: valuesByCell.get(cellID(key.id, environment.id))?.set === true,
-            pendingOperation: signalsByCell.get(cellID(key.id, environment.id))?.pending?.operation,
-          })),
-        ),
+        values: valuesByCell,
+        signals: signalsByCell,
         validationErrors,
       }),
-    [keys, readableEnvironments, signalsByCell, stateKeys, validationErrors, valuesByCell],
+    [readableEnvironments, signalsByCell, stateKeys, validationErrors, valuesByCell],
   );
   const problemCounts = useMemo(() => groupProblemCounts(problems), [problems]);
   const problemsByCell = useMemo(() => indexMatrixProblems(problems), [problems]);

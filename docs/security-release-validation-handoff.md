@@ -111,8 +111,13 @@ point it at production infrastructure.
 The publisher requires complete receipts for the same Linux AMD64 bytes,
 all native and browser cases, exact fixture configuration, scan identity,
 cleanup and run attempt. Old, weakened, skipped or incomplete receipts reject.
-Failures preserve safe Actions logs but publish no custom failing artifact,
-release note or release asset. Passing Actions artifacts expire after 90 days.
+Failures retain a separate `security-failure-diagnostics` Actions artifact for
+seven days. Its explicit allowlist contains only prepared identity, binary scan,
+scan completion time, native campaign and browser receipts when available. It
+excludes release binaries, runtime bundles and credentials, and is never PASS
+evidence. Tag, source commit, run and attempt bind its artifact name. Failures
+do not modify release notes or release assets. Passing Actions artifacts expire
+after 90 days. Successful runs incur no diagnostic upload.
 The existing CI badge stays; no additional fuzz badge is added.
 
 ## Remaining verification

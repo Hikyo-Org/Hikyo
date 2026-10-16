@@ -186,7 +186,7 @@ func (a *rejectCreationAPI) write(ctx context.Context, method, path string, payl
 }
 
 func TestImmutableQueueIncompleteExitsSupersedePriorGreen(t *testing.T) {
-	for _, scenario := range []string{"policy read", "inactive policy", "missing useful run", "running useful run", "closed PR", "PR API", "workflow initialization"} {
+	for _, scenario := range []string{"policy read", "inactive policy", "missing useful run", "running useful run", "closed PR with active same-SHA sibling", "PR API", "workflow initialization"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newQueueFixture(t)
 			if err := f.admit(); err != nil {
@@ -205,9 +205,12 @@ func TestImmutableQueueIncompleteExitsSupersedePriorGreen(t *testing.T) {
 			case "running useful run":
 				f.feedbackRun.Status, f.feedbackRun.Conclusion = "in_progress", ""
 				f.feedbackRefresh()
-			case "closed PR":
+			case "closed PR with active same-SHA sibling":
+				other := f.pr
+				other.Number++
 				f.pr.State = "closed"
 				f.refresh()
+				f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{other}
 			case "PR API":
 				f.api.responses[f.c.endpoint("pulls/7")] = errors.New("PR unavailable")
 			case "workflow initialization":

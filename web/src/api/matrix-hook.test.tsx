@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ValueList } from '@hikyo/client';
-import { useDeleteKey, useInitializeMatrixValue, useKey, useMatrixProject, useStageMatrixValue } from './matrix.ts';
+import { useDeleteKey, useInitializeMatrixValue, useKey, useMatrixProject, useStageMatrixValue, zMatrixPendingDraftList } from './matrix.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { pendingDraftsKey, signalsKey, valuesKey } from './keys.ts';
 import { ApiError } from './client.ts';
@@ -468,5 +468,49 @@ it('keeps matrix row identity across local renders and updates it when query dat
   } finally {
     await view.unmount();
     client.clear();
+  }
+});
+
+it('keeps unrelated matrix projections stable when only a draft receipt changes', async () => {
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    return Promise.resolve(new Response(JSON.stringify(matrixResponse(new URL(url, 'http://localhost').pathname)), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+  }));
+  const observed: ReturnType<typeof useMatrixProject>[] = [];
+  function Snapshot() {
+    const matrix = useMatrixProject(ref);
+    observed.push(matrix);
+    return <span>{matrix.environmentRows.length}</span>;
+  }
+  const view = await renderForm(<Snapshot />);
+  try {
+    await settleTasks();
+    const ready = observed.at(-1);
+    if (ready === undefined || ready.environmentRows.some((row) => row.readiness !== 'ready')) {
+      throw new Error('matrix did not load');
+    }
+    expect(ready.environmentQueries).toBeDefined();
+    const receipt = zMatrixPendingDraftList.parse({ count: 1, items: [{
+      version_id: 'pcv_01989abc-def0-7123-8123-123456789abc',
+      key_id: keyId, name: 'LOG_LEVEL', classification: 'config', operation: 'set',
+      staged_from_revision: 2, created_at: '2026-10-16T08:00:00Z',
+      revealed: true, value: 'draft',
+    }] });
+    await act(async () => view.client.setQueryData(pendingDraftsKey(ref, devId), receipt));
+    await settleTasks();
+    const changed = observed.at(-1);
+    if (changed === undefined) throw new Error('matrix did not update');
+    expect(changed.environmentRows).not.toBe(ready.environmentRows);
+    expect(changed.environmentItems).toBe(ready.environmentItems);
+    expect(changed.environmentQueries.values).toBe(ready.environmentQueries.values);
+    expect(changed.environmentQueries.signals).toBe(ready.environmentQueries.signals);
+    expect(changed.environmentQueries.settings).toBe(ready.environmentQueries.settings);
+    expect(changed.environmentQueries.pendingDrafts).not.toBe(ready.environmentQueries.pendingDrafts);
+    expect(changed.environmentRows[0]?.pendingDrafts.data?.items[0]?.value).toBe('draft');
+  } finally {
+    await view.unmount();
+    view.client.clear();
   }
 });

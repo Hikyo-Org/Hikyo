@@ -408,6 +408,13 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 			return errors.New("invalid check page")
 		}
 		response = map[string]any{"total_count": len(filtered), "check_runs": filtered[start:end]}
+	} else if strings.Contains(path, "/check-runs/") {
+		for _, v := range f.checks {
+			if strings.HasSuffix(path, fmt.Sprintf("/check-runs/%d", v.ID)) {
+				response = v
+				break
+			}
+		}
 	} else {
 		response = f.responses[path]
 	}
@@ -1711,10 +1718,16 @@ func TestPublisherOnlyReusesIncompleteUnboundSameIdentityBarrier(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := "POST"
+			wantWrites := 1
 			if name == "queued" || name == "in progress" {
 				want = "PATCH"
+			} else if name == "run bound" || name == "wrong base ref" {
+				wantWrites = 2
+				if f.api.writes[0]["method"] != "PATCH" || f.api.writes[0]["conclusion"] != "cancelled" || f.api.writes[0]["external_id"] != prior.ExternalID || f.api.checks[0].ExternalID != prior.ExternalID || f.api.checks[0].Conclusion != "cancelled" {
+					t.Fatal("superseded unfinished provenance was not retired before its successor")
+				}
 			}
-			if len(f.api.writes) != 1 || f.api.writes[0]["method"] != want {
+			if len(f.api.writes) != wantWrites || f.api.writes[len(f.api.writes)-1]["method"] != want {
 				t.Fatalf("want %s for %s barrier, got %#v", want, name, f.api.writes)
 			}
 		})

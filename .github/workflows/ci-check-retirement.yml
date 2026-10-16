@@ -1,0 +1,202 @@
+# Retire synthetic records asynchronously without extending admission work.
+# Event/input SHAs select a lease only; the controller proves live inactivity.
+name: check-retirement
+
+on:
+  pull_request_target:
+    types: [synchronize, closed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '13 * * * *'
+  workflow_dispatch:
+    inputs:
+      head:
+        description: Exact historical SHA, or leave empty to inspect the newest 1000 main commits
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.head == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      queue_heads: ${{ steps.targets.outputs.queue_heads }}
+      observation_batches: ${{ steps.targets.outputs.observation_batches }}
+      reporter_targets: ${{ steps.targets.outputs.reporter_targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Discover unfinished owned contexts in the declared recent main window
+        id: targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          go run ./scripts/ci/pr-gate --discover-retirements > "$RUNNER_TEMP/retirement-targets.json"
+          queue_heads=$(jq -cer '.queue_heads' "$RUNNER_TEMP/retirement-targets.json")
+          observation_batches=$(jq -cer '.observation_batches' "$RUNNER_TEMP/retirement-targets.json")
+          reporter_targets=$(jq -cer '.reporter_targets' "$RUNNER_TEMP/retirement-targets.json")
+          jq -c '.history_scope' "$RUNNER_TEMP/retirement-targets.json"
+          {
+            echo "queue_heads=$queue_heads"
+            echo "observation_batches=$observation_batches"
+            echo "reporter_targets=$reporter_targets"
+          } >> "$GITHUB_OUTPUT"
+
+  reporter:
+    needs: discover
+    if: >-
+      !cancelled() && needs.discover.result == 'success' &&
+      needs.discover.outputs.reporter_targets != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.discover.outputs.reporter_targets) }}
+    concurrency:
+      # Share the original reporter's exact run/attempt lease. Discovery is
+      # read-only; the reporter independently authenticates every work item.
+      group: merge-queue-report-${{ matrix.target.run }}-${{ matrix.target.attempt }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Replay the authenticated terminal queue report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORK: ${{ toJSON(matrix.target) }}
+        run: go run ./scripts/ci/queue-report --repair-work "$WORK"
+
+  queue:
+    needs: discover
+    if: >-
+      !cancelled() && vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' &&
+      ((github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.head == '')) ||
+      (needs.discover.result == 'success' && needs.discover.outputs.queue_heads != '[]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        head: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && inputs.head == '') && fromJSON(needs.discover.outputs.queue_heads) || github.event_name == 'push' && fromJSON(format('[{0},{1}]', toJSON(github.sha), toJSON(github.event.before))) || fromJSON(format('[{0}]', toJSON(github.event_name == 'workflow_dispatch' && inputs.head || github.event.action == 'synchronize' && github.event.before || github.event.pull_request.head.sha))) }}
+        exclude:
+          - head: '0000000000000000000000000000000000000000'
+    concurrency:
+      group: queue-check-${{ github.repository_id }}-${{ matrix.head }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Retire inactive queue records under the exact head lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-queue-required
+          HEAD: ${{ matrix.head }}
+          PR_GATE_RETIREMENT_HEAD: ${{ matrix.head }}
+        run: go run ./scripts/ci/pr-gate --retire-checks --expected-head "$HEAD"
+
+  observation:
+    # PR events reuse the existing pr-gate job/setup. Scheduled recovery and
+    # manual backfill must use that same repository-wide writer lease.
+    needs: discover
+    if: >-
+      !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.head != '') ||
+      (needs.discover.result == 'success' && needs.discover.outputs.observation_batches != '[]'))
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && inputs.head == '') && fromJSON(needs.discover.outputs.observation_batches) || fromJSON(format('[[{0}]]', toJSON(inputs.head))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: pr-gate-publisher
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compile the trusted observer once for the bounded batch
+        run: go build -o "$RUNNER_TEMP/check-retirement" ./scripts/ci/pr-gate
+      - name: Retire inactive observation records under their global writer lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-required-next
+          HEADS: ${{ toJSON(matrix.batch) }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$HEADS" | jq -e 'type == "array" and length > 0 and length <= 10 and all(.[]; type == "string" and test("^[0-9a-f]{40}$")) and ((unique | length) == length)' > /dev/null
+          # Distinct heads have disjoint records. Keep the shared writer lease
+          # while each bounded controller runs, so one slow/failed head cannot
+          # starve its siblings or multiply the three-minute controller limit.
+          heads=()
+          pids=()
+          while IFS= read -r head; do
+            heads+=("$head")
+            PR_GATE_RETIREMENT_HEAD="$head" "$RUNNER_TEMP/check-retirement" --retire-checks --expected-head "$head" &
+            pids+=("$!")
+          done < <(printf '%s' "$HEADS" | jq -r '.[]')
+          failed=()
+          for index in "${!pids[@]}"; do
+            if ! wait "${pids[$index]}"; then
+              failed+=("${heads[$index]}")
+            fi
+          done
+          if [ "${#failed[@]}" -ne 0 ]; then
+            printf 'Retirement failed for: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi

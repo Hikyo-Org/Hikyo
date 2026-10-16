@@ -11,11 +11,12 @@ permissions:
   contents: read
 
 concurrency:
+  # The newest useful head/base revision supersedes this PR's older work.
   # A skipped metadata edit must not cancel a running verdict or evict a queued
   # one. Unique per-run groups isolate these events before the job-level guard.
   # Empty-string comparison also preserves legitimate numeric branch names;
   # GitHub's loose equality would consider the previous ref "0" equal to null.
-  group: ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
+  group: ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}
   cancel-in-progress: true
 
 jobs:

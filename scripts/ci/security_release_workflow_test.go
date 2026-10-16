@@ -297,7 +297,7 @@ func TestReleaseEvidenceOnlyUploadsAfterVerificationAndCleanup(t *testing.T) {
 		if s.Env["GH_TOKEN"] != "" && s.Name != "Download and authenticate actual release bytes" {
 			t.Fatal("repository credential reaches runtime step")
 		}
-		if strings.Contains(s.Uses, "upload-artifact") && (s.If != "" || !strings.HasPrefix(s.With["name"], "security-pass-${{ needs.resolve.outputs.tag }}-${{ needs.resolve.outputs.source }}")) {
+		if strings.Contains(s.Uses, "upload-artifact") && s.Name != "Retain version-bound failure diagnostic receipts" && (s.If != "" || !strings.HasPrefix(s.With["name"], "security-pass-${{ needs.resolve.outputs.tag }}-${{ needs.resolve.outputs.source }}")) {
 			t.Fatal("receipt uploads must be success-only and version-bound")
 		}
 		if strings.Contains(s.Run, "gh release upload") || strings.Contains(s.Run, "gh release edit") {
@@ -328,5 +328,40 @@ func TestReleaseEvidenceOnlyUploadsAfterVerificationAndCleanup(t *testing.T) {
 		if step.Name == "Download and authenticate actual release bytes" && !installed {
 			t.Fatal("stable published verifier requires pinned cosign before download verification")
 		}
+	}
+}
+
+// Failure diagnostics must stay a narrow metadata allowlist, isolated from the
+// complete receipt validation required for a PASS artifact.
+func TestReleaseFailureDiagnosticReceiptPolicy(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/security-release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w struct {
+		Jobs map[string]struct {
+			Steps []mainValidationStep `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &w); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, step := range w.Jobs["validate"].Steps {
+		if step.Name != "Retain version-bound failure diagnostic receipts" {
+			continue
+		}
+		count++
+		want := map[string]string{
+			"name":              "security-failure-diagnostics-${{ needs.resolve.outputs.tag }}-${{ needs.resolve.outputs.source }}-${{ github.run_id }}-${{ github.run_attempt }}",
+			"path":              "${{ runner.temp }}/security-release/prepared.json\n${{ runner.temp }}/security-release/binary-scan.json\n${{ runner.temp }}/security-release/scan-completed-at\n${{ runner.temp }}/security-release/attacks.json\n${{ runner.temp }}/security-release/browser.json\n",
+			"if-no-files-found": "ignore", "retention-days": "7",
+		}
+		if step.If != "${{ failure() }}" || step.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" || step.Run != "" || len(step.Env) != 0 || !reflect.DeepEqual(step.With, want) {
+			t.Fatalf("failure diagnostics lost their failure-only metadata boundary: %+v", step)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("want exactly one diagnostic receipt upload, got %d", count)
 	}
 }
