@@ -18,9 +18,7 @@ func DomainCatalogSQLite(ctx context.Context, q SQLSnapshotQueries) (Catalog, er
 }
 
 func DomainCatalogPostgres(ctx context.Context, q PGSnapshotQueries) (Catalog, error) {
-	catalog, err := inspectCatalogWith(ctx, func(ctx context.Context, query string, args ...any) (catalogRows, error) {
-		return q.Query(ctx, query, args...)
-	}, releaseidentity.Postgres)
+	catalog, err := inspectPostgresCatalog(ctx, q, inspectCatalogWith)
 	if err != nil {
 		return Catalog{}, err
 	}
