@@ -231,6 +231,8 @@ func bindingInputFor(cr *hikyov1.HikyoSecret, inst *hikyov1.HikyoInstance, cred 
 		environment:               string(cr.Spec.Scope.Environment),
 		projection:                string(effectiveProjection(cr)),
 		mapping:                   cr.Spec.Mapping,
+		allKeys:                   cr.Spec.AllKeys,
+		acknowledgedLoaderKeys:    acknowledgedKeys(cr),
 		targetName:                cr.Spec.Target.Name,
 		targetType:                string(effectiveSecretType(cr.Spec.Target.Type)),
 		instanceUID:               string(inst.UID),

@@ -128,6 +128,18 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		return r.done(ctx, cr, ctrl.Result{}, fmt.Errorf("operator: invalid resyncInterval: %w", err))
 	}
 
+	if err := validateSelection(cr); err != nil {
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonInvalidSecretData, "%s", err)
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonInvalidSecretData, err.Error())
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+	if cr.Spec.AllKeys {
+		if err := validateAllKeysAcknowledgements(cr); err != nil {
+			return r.refuseAllKeysLoaderControl(ctx, cr, err.Error())
+		}
+	}
+
 	// Refuse native targets before credentials or plaintext are requested.
 	// Disabling this capability retains existing targets for explicit migration.
 	if !r.Config.NativeSecretTypes && effectiveSecretType(cr.Spec.Target.Type) != corev1.SecretTypeOpaque {
@@ -232,7 +244,7 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 	for _, m := range cr.Spec.Mapping {
 		mappedKeys = append(mappedKeys, m.EffectiveSecretKey())
 	}
-	if refused, extra := delivery.Unacknowledged(mappedKeys, acknowledgedKeys(cr)); len(refused) > 0 || len(extra) > 0 {
+	if refused, extra := delivery.Unacknowledged(mappedKeys, acknowledgedKeys(cr)); !cr.Spec.AllKeys && (len(refused) > 0 || len(extra) > 0) {
 		msg := loaderControlMessage(refused, extra)
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonLoaderControlUnacknowledged, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonLoaderControlUnacknowledged, msg)
@@ -350,6 +362,13 @@ func (r *HikyoSecretReconciler) deliver(
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
+	if cr.Spec.AllKeys {
+		if refused := unacknowledgedManifestKeys(cr, resp.Keys); len(refused) > 0 {
+			msg := "loader-control keys require exact acknowledgement in spec.acknowledgedLoaderKeys; unacknowledged manifest keys: " + strings.Join(refused, ", ")
+			return r.refuseAllKeysLoaderControl(ctx, cr, msg)
+		}
+	}
+
 	// Index the manifest by key name.
 	byName := make(map[string]opclient.DeliveredKey, len(resp.Keys))
 	for _, k := range resp.Keys {
@@ -358,8 +377,9 @@ func (r *HikyoSecretReconciler) deliver(
 
 	var missing, presenceOnly, envSkip []string
 	data := map[string][]byte{}
-	pairs := make([]crypto.StampPair, 0, len(cr.Spec.Mapping))
-	for _, m := range cr.Spec.Mapping {
+	mapping := selectedMapping(cr, resp.Keys)
+	pairs := make([]crypto.StampPair, 0, len(mapping))
+	for _, m := range mapping {
 		k, ok := byName[string(m.Key)]
 		if !ok {
 			missing = append(missing, string(m.Key))
@@ -383,7 +403,7 @@ func (r *HikyoSecretReconciler) deliver(
 	// sync — no partial write (§ 0.4 refusal). Retain the existing Secret.
 	if len(presenceOnly) > 0 {
 		slices.Sort(presenceOnly)
-		msg := fmt.Sprintf("undelivered (presence-only) mapped keys: %s. Enable the project's machine-reveal opt-in (hikyo project-settings machine-reveal set --enabled true) and grant the machine principal `reveal` on the environment to deliver their values, or set projection: config-only",
+		msg := fmt.Sprintf("undelivered (presence-only) selected keys: %s. Enable the project's machine-reveal opt-in (hikyo project-settings machine-reveal set --enabled true) and grant the machine principal `reveal` on the environment to deliver their values, or set projection: config-only",
 			strings.Join(presenceOnly, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonUndeliveredSecrets, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonUndeliveredSecrets, msg)
@@ -529,4 +549,13 @@ func effectiveProjection(cr *hikyov1.HikyoSecret) hikyov1.Projection {
 		return hikyov1.ProjectionFull
 	}
 	return cr.Spec.Projection
+}
+
+// A refusal retains the last accepted data and forces a full fetch for recovery.
+// Never let a previous cursor bypass a changed loader-control acknowledgement.
+func (r *HikyoSecretReconciler) refuseAllKeysLoaderControl(ctx context.Context, cr *hikyov1.HikyoSecret, message string) (ctrl.Result, error) {
+	r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonLoaderControlUnacknowledged, "%s", message)
+	r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonLoaderControlUnacknowledged, message)
+	cr.Status.Cursor, cr.Status.CursorBinding = "", ""
+	return r.done(ctx, cr, r.resyncResult(cr), nil)
 }
