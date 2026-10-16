@@ -11529,7 +11529,8 @@ paths:
         Server-sent events, metadata only. An event says that something
         changed - an environment advanced (`revision.published`), a principal
         staged a draft (`pending.staged`), a published cell moved
-        (`cell.changed`) - and never what it changed to. It carries no value
+        (`cell.changed`), or environment topology changed (`environments.changed`)
+        - and never what it changed to. It carries no value
         in any form and NO CHANGE TOKEN.
 
         `cell.changed` claims exactly what the publish knew: that cell
@@ -11537,15 +11538,25 @@ paths:
         draft is stale" from its own draft plus this event; the server never
         asserts staleness it did not check.
 
-        Every event is authorized against the environment it names, at emit
-        time, so a grant revoked mid-session takes effect on the NEXT event
+        Environment events are authorized against the environment they name,
+        at emit time, so a grant revoked mid-session takes effect on the NEXT event
         rather than at the next reconnect. Events referencing objects the
         recipient may not see are dropped, and an event reduced to nothing is
         not sent.
 
+        Clients opting in with `Accept: text/event-stream; hikyo-topology=1`
+        also receive `environments.changed` after environment create, clone,
+        rename, reorder,
+        or deletion. Its data contains only `type` and `project_id`; current
+        project read permission is checked for each event. Legacy clients do
+        not receive this new envelope. New clients must ignore unknown event
+        types before validating their type-specific payload.
+
         ADVISORY ONLY: correctness never depends on delivery. `Last-Event-ID`
         replays nothing; a reconnecting client refetches current state from the
-        signals endpoint, which is the documented polling fallback. A client
+        environment listing and working set. Fan-out is per node; clients must
+        poll topology even with a healthy connection to observe other-node
+        writes. The SPA polls topology every 30 seconds while mounted. A client
         that cannot keep up is disconnected rather than buffered. Connection
         admission is bounded per principal, per organization, and instance-wide;
         a refusal is 429. Accepted streams begin with a jittered `retry:` hint.

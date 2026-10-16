@@ -46,6 +46,7 @@ import { ApiError, ok, parsed } from './client.ts';
 import { callerSafeRefusal } from './history.ts';
 import {
   invalidateAfterCopy,
+  environmentsKey,
   matrixGroupsKey,
   matrixKeyKey,
   matrixKeysKey,
@@ -420,6 +421,11 @@ export function advisoryInvalidations(
   ref: MatrixRef,
   event: AdvisoryEvent,
 ): readonly (readonly string[])[] {
+  if (event.type === 'environments.changed') {
+    return event.projectId === ref.project
+      ? [environmentsKey(ref), matrixKeysKey(ref), matrixGroupsKey(ref)]
+      : [];
+  }
   const environmentId = event.environmentId;
   switch (event.type) {
     case 'revision.published':
@@ -443,12 +449,13 @@ export function advisoryInvalidations(
  * matrix (system-architecture ADR § Real-time): the channel replays nothing,
  * so whatever happened while it was lost is refetched, not reconstructed. The
  * whole working set, by project-wide prefix so no environment list is needed:
- * keys, groups, and every environment's values, signals, pending drafts and
- * settings. The fallback poll already kept signals and drafts fresh in the
- * dark; the rest had no other way back.
+ * environments, keys, groups, and every environment's values, signals, pending
+ * drafts and settings. Catch-up does not wait for the fallback polls, which
+ * can miss updates immediately before reconnection.
  */
 export function advisoryRecoveryInvalidations(ref: MatrixRef): readonly (readonly string[])[] {
   return [
+    environmentsKey(ref),
     matrixKeysKey(ref),
     matrixGroupsKey(ref),
     valuesMatrixKey(ref),
@@ -539,10 +546,19 @@ export function matrixPublishValidation(
   return { keyId: key.id, environmentId, message: error.detail };
 }
 
+// SSE fan-out is per node (ops-spec section 13). A quiet healthy connection
+// cannot report writes served by another node; the small topology list has a
+// bounded fallback even while per-environment signals polling is suspended.
+// The catalogue follows: deletion cascades explicit presence rules, and a
+// definitions apply can change groups/keys together with environment topology.
+export const ENVIRONMENT_TOPOLOGY_POLL_MS = 30_000;
+
 export function useMatrixProject(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
-  const environments = useEnvironments(ref.org, ref.project);
+  const environments = useEnvironments(
+    ref.org, ref.project, isDemo ? false : ENVIRONMENT_TOPOLOGY_POLL_MS,
+  );
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
   // state gates the signals and pending drafts fallback polls below; and
@@ -574,11 +590,13 @@ export function useMatrixProject(ref: MatrixRef) {
   const keys = useQuery({
     queryKey: matrixKeysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref, ...transport }),
+    refetchInterval: isDemo ? false : ENVIRONMENT_TOPOLOGY_POLL_MS,
     enabled: ref.org !== '' && ref.project !== '',
   });
   const groups = useQuery({
     queryKey: matrixGroupsKey(ref),
     queryFn: () => parsed(listKeyGroupsOp, { path: ref, ...transport }),
+    refetchInterval: isDemo ? false : ENVIRONMENT_TOPOLOGY_POLL_MS,
     enabled: ref.org !== '' && ref.project !== '',
   });
   const environmentItems = useMemo(() => environments.data?.items ?? [], [environments.data]);

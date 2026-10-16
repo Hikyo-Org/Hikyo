@@ -686,7 +686,7 @@ type Environments struct {
 	// its source side takes the same enumerated-key ceremony a cell reveal
 	// does. Nil refuses a clone that would open secrets, loudly.
 	Auth *Auth
-	// Advisory announces the new environment's revision 1, after commit.
+	// Advisory announces topology changes and new revision 1, after commit.
 	Advisory *Advisory
 	// Budget applies the § 151 schema-revision rate limit (60/h per project):
 	// creating, renaming or deleting an environment bumps the project's schema
@@ -864,6 +864,7 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 		return Environment{}, CloneResult{}, err
 	}
 	s.Advisory.published(scope, []PublishedEnvironment{published})
+	s.Advisory.environmentsChanged(scope)
 	return Environment{
 		ID: created.ID, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		Name: created.Name, Note: created.Note,
@@ -964,6 +965,7 @@ func (s *Environments) Rename(ctx context.Context, actor Actor, scope domain.Sco
 	if err != nil {
 		return Environment{}, err
 	}
+	s.Advisory.environmentsChanged(scope)
 	return environmentOf(out), nil
 }
 
@@ -1045,6 +1047,7 @@ func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Sc
 	for _, row := range out {
 		list = append(list, environmentOf(row))
 	}
+	s.Advisory.environmentsChanged(scope)
 	return list, nil
 }
 
@@ -1054,7 +1057,7 @@ func (s *Environments) Reorder(ctx context.Context, actor Actor, scope domain.Sc
 // write to rows the operator did not name.
 func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Scope) error {
 	var rateCharged bool
-	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpEnvDelete, scope, time.Now().UTC())
 		if err != nil {
 			return err
@@ -1133,6 +1136,11 @@ func (s *Environments) Delete(ctx context.Context, actor Actor, scope domain.Sco
 		}
 		return r.Audit().InsertTenant(ctx, p, ev)
 	})
+	if err != nil {
+		return err
+	}
+	s.Advisory.environmentsChanged(scope)
+	return nil
 }
 
 // UpdateNote mutates an environment's operator note. It is the edit-authority

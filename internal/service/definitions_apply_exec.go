@@ -55,7 +55,9 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 
 	var result ApplyResult
 	var rateCharged bool
+	var topologyChanged bool
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		topologyChanged = false
 		now := s.now()
 		caller, p, err := authorize(ctx, az, actor, authz.OpDefinitionsApply, scope, now)
 		if err != nil {
@@ -102,6 +104,7 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
+		topologyChanged = len(res.EnvCreates)+len(res.EnvRenames)+len(res.EnvDeletes) > 0
 		if err := validateFinalDefinitions(cur, res); err != nil {
 			return err
 		}
@@ -181,6 +184,9 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 	})
 	if err == nil {
 		publisher.announce(scope)
+		if topologyChanged {
+			s.Advisory.environmentsChanged(scope)
+		}
 	}
 	return result, err
 }

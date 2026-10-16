@@ -13,6 +13,7 @@ test('disposal settles immediately when fetch aborts before the generated retry 
   const pendingFetch = new Promise<void>((resolve) => { started = resolve; });
   const fetch = vi.fn<typeof globalThis.fetch>((input) => {
     if (!(input instanceof Request)) throw new Error('Expected a generated Request');
+    expect(input.headers.get('Accept')).toBe('text/event-stream; hikyo-topology=1');
     started?.();
     return new Promise<Response>((_resolve, reject) => {
       input.signal.addEventListener('abort', () => {
@@ -37,4 +38,29 @@ test('disposal settles immediately when fetch aborts before the generated retry 
   expect(vi.getTimerCount()).toBe(0);
   expect(fetch).toHaveBeenCalledTimes(1);
   await stopped;
+});
+
+test('opts in through the generated remote transport and dispatches project-only frames', async () => {
+  const onEvent = vi.fn();
+  let delivered: (() => void) | undefined;
+  const received = new Promise<void>((resolve) => { delivered = resolve; });
+  const fetch = vi.fn<typeof globalThis.fetch>((input) => {
+    if (!(input instanceof Request)) throw new Error('Expected a generated Request');
+    expect(input.url).toBe('https://remote.test/api/v1/orgs/org_a/projects/project_a/events');
+    expect(input.headers.get('Accept')).toBe('text/event-stream; hikyo-topology=1');
+    return Promise.resolve(new Response(
+      'event: future.project.event\ndata: {"type":"future.project.event"}\n\n' +
+      'event: environments.changed\ndata: {"type":"environments.changed","project_id":"project_a"}\n\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    ));
+  });
+  const client = createClient(createConfig({ baseUrl: 'https://remote.test', fetch }));
+  const handle = watchProjectAdvisoryStream(
+    { org: 'org_a', project: 'project_a' }, { client },
+    { onState: vi.fn(), onEvent: (event) => { onEvent(event); delivered?.(); } },
+  );
+  await received;
+  await handle.stop();
+  expect(onEvent).toHaveBeenCalledExactlyOnceWith({ type: 'environments.changed', projectId: 'project_a' });
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
