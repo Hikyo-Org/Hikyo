@@ -13,6 +13,7 @@ import (
 const artifactHarnessRuntimeFile = "scripts/security/artifact-harness/runtime.go"
 
 var driverFiles = map[string]bool{
+	"internal/store/retention_scaling_test.go":                   true, // admitted isolated retention corpus and independent collection outcome reads
 	artifactHarnessRuntimeFile:                                   true, // blackbox fixture creates/drops its owned disposable PostgreSQL database only
 	"internal/store/self_config_test.go":                         true, // admitted, isolated both-engine protected hierarchy/activation fixtures
 	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only
