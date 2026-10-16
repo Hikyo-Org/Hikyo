@@ -343,6 +343,9 @@ func canonicalStringPrefix(data []byte) bool {
 
 type event struct {
 	Repository repository `json:"repository"`
+	Action     string     `json:"action"`
+	Before     string     `json:"before"`
+	After      string     `json:"after"`
 	Ref        string     `json:"ref"`
 	Number     int        `json:"number"`
 	Pull       pull       `json:"pull_request"`
@@ -350,6 +353,7 @@ type event struct {
 	Inputs     struct {
 		PR   string `json:"pr_number"`
 		Work string `json:"work"`
+		Head string `json:"head"`
 	} `json:"inputs"`
 }
 type api interface {
@@ -1391,12 +1395,21 @@ func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
 func sameSourceEvent(a, b run) bool {
 	return a.ID == b.ID && a.Attempt == b.Attempt && a.WorkflowID == b.WorkflowID && a.Path == b.Path && a.Event == b.Event && a.HeadSHA == b.HeadSHA && a.Repository.ID == b.Repository.ID && a.HeadRepository.ID == b.HeadRepository.ID
 }
-func (c *controller) execute(ctx context.Context, eventName string, e event) error {
+func (c *controller) execute(ctx context.Context, eventName string, e event) (err error) {
 	if err := c.init(ctx); err != nil {
 		return err
 	}
 	if e.Repository.ID != c.repo.ID || !strings.EqualFold(e.Repository.FullName, c.repoName) {
 		return errors.New("event repository identity mismatch")
+	}
+	// Reuse this observer's existing global writer lease and setup. Retirement
+	// follows current-head publication so old-head maintenance cannot delay it.
+	if eventName == "pull_request_target" && c.checkName == "ci-required-next" && (e.Action == "synchronize" || e.Action == "closed") {
+		head, routeErr := retirementHead(eventName, e)
+		if routeErr != nil {
+			return routeErr
+		}
+		defer func() { err = errors.Join(err, c.retireChecks(ctx, head)) }()
 	}
 	switch eventName {
 	case "pull_request_target":
@@ -1546,6 +1559,8 @@ func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 	return nil
 }
 func main() {
+	discoverRetirement := flag.Bool("discover-retirements", false, "discover complete bounded main-history retirement targets without writing checks")
+	retire := flag.Bool("retire-checks", false, "retire only owned unfinished checks on an exact inactive SHA under its existing writer lease")
 	lifecycleProbe := flag.Bool("check-lifecycle-probe", false, "verify only the fixed non-required check lifecycle on trusted main")
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
@@ -1555,6 +1570,14 @@ func main() {
 	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
+	if *discoverRetirement && (*retire || *lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
+		fmt.Fprintln(os.Stderr, "retirement discovery is read-only and cannot hold or mix writer roles")
+		os.Exit(1)
+	}
+	if *retire && (*lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || !shaPattern.MatchString(*expectedHead)) {
+		fmt.Fprintln(os.Stderr, "retirement requires an exact head and cannot mix producer roles")
+		os.Exit(1)
+	}
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
 		os.Exit(1)
@@ -1598,7 +1621,19 @@ func main() {
 	}
 	if err == nil {
 		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
-		if *lifecycleProbe {
+		if *discoverRetirement {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			var targets retirementTargets
+			targets, err = c.discoverRetirements(ctx, os.Getenv("GITHUB_EVENT_NAME"), e)
+			if err == nil {
+				err = json.NewEncoder(c.output).Encode(targets)
+			}
+		} else if *retire {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			err = c.retireEvent(ctx, os.Getenv("GITHUB_EVENT_NAME"), e)
+		} else if *lifecycleProbe {
 			receipt := lifecycleReceipt{Version: 2, Protocol: lifecycleProtocol}
 			path := os.Getenv("PR_GATE_PROBE_RECEIPT")
 			if path == "" {

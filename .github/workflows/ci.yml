@@ -31,9 +31,10 @@ permissions:
   contents: read
 
 concurrency:
-  # PR updates supersede the same PR. Manual and nightly main validation stay
-  # independent so a later request cannot discard a release's exact-SHA proof.
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  # The caller owns exact-pair candidate cancellation. Isolate reusable runs
+  # so an out-of-order older request cannot cancel a newer candidate, merge
+  # group, manual request, or release's exact-SHA proof.
+  group: ci-${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
 
 jobs:

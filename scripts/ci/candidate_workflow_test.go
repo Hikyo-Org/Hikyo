@@ -36,8 +36,8 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 	if err := pr.Decode(&trigger); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(trigger.Types, []string{"labeled"}) {
-		t.Fatal("pushes and unrelated lifecycle events must not restart expensive work")
+	if !reflect.DeepEqual(trigger.Types, []string{"labeled", "synchronize", "edited", "closed"}) {
+		t.Fatal("candidate must observe obsolete-work lifecycle without restarting expensive work")
 	}
 	validation := candidate.Jobs["validation"]
 	if validation.Uses != "./.github/workflows/ci.yml" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}", "candidate": "true"}) {

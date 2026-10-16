@@ -209,5 +209,8 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 		} // No source exists; never invent a group proof.
 		return q.group(ctx, *r)
 	}
+	if !roles.Group && len(roles.Pulls) == 0 {
+		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.retiredHead(ctx))
+	}
 	return &staleHeadWork{expected: q.expectedHead}
 }

@@ -10,11 +10,14 @@ import (
 
 // This state is local to one held-head reconciliation, not an authority cache.
 // Only the existing complete source/authority/final-identity proof can mark a
-// terminal verdict verified. Every other exit independently verifies blocking.
+// terminal verdict verified. A retired disposition requires fresh absence of
+// every live head role and retirement of owned unfinished records. Other exits
+// independently verify blocking.
 type queueReassessment struct {
 	latest           *check
 	uncertainCreate  bool
 	verifiedTerminal bool
+	verifiedRetired  bool
 }
 
 func newestQueueCheck(own []check) *check {
@@ -53,8 +56,8 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 	if q.dryRun {
 		return err
 	}
-	if err == nil && state.verifiedTerminal {
-		return nil
+	if err == nil && state.verifiedTerminal || state.verifiedRetired && (err == nil || onlyStaleHeadWork(err)) {
+		return err
 	}
 	// Cancellation may have interrupted mutable authority or an uncertain write.
 	// A separate short reserve is bounded by the invocation's original deadline.

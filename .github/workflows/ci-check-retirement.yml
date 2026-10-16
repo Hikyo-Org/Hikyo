@@ -1,0 +1,141 @@
+# Retire synthetic records asynchronously without extending admission work.
+# Event/input SHAs select a lease only; the controller proves live inactivity.
+name: check-retirement
+
+on:
+  pull_request_target:
+    types: [synchronize, closed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '13 * * * *'
+  workflow_dispatch:
+    inputs:
+      head:
+        description: Exact historical SHA, or leave empty to discover complete bounded main history
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.head == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+    outputs:
+      queue_heads: ${{ steps.targets.outputs.queue_heads }}
+      observation_batches: ${{ steps.targets.outputs.observation_batches }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Discover unfinished owned contexts across complete bounded main history
+        id: targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          go run ./scripts/ci/pr-gate --discover-retirements > "$RUNNER_TEMP/retirement-targets.json"
+          queue_heads=$(jq -cer '.queue_heads' "$RUNNER_TEMP/retirement-targets.json")
+          observation_batches=$(jq -cer '.observation_batches' "$RUNNER_TEMP/retirement-targets.json")
+          echo "queue_heads=$queue_heads" >> "$GITHUB_OUTPUT"
+          echo "observation_batches=$observation_batches" >> "$GITHUB_OUTPUT"
+
+  queue:
+    needs: discover
+    if: >-
+      !cancelled() && vars.QUEUE_HEAD_WORKERS_ENABLED == 'true' &&
+      ((github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && inputs.head == '')) ||
+      (needs.discover.result == 'success' && needs.discover.outputs.queue_heads != '[]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        head: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && inputs.head == '') && fromJSON(needs.discover.outputs.queue_heads) || github.event_name == 'push' && fromJSON(format('[{0},{1}]', toJSON(github.sha), toJSON(github.event.before))) || fromJSON(format('[{0}]', toJSON(github.event_name == 'workflow_dispatch' && inputs.head || github.event.action == 'synchronize' && github.event.before || github.event.pull_request.head.sha))) }}
+        exclude:
+          - head: '0000000000000000000000000000000000000000'
+    concurrency:
+      group: queue-check-${{ github.repository_id }}-${{ matrix.head }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Retire inactive queue records under the exact head lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-queue-required
+          HEAD: ${{ matrix.head }}
+          PR_GATE_RETIREMENT_HEAD: ${{ matrix.head }}
+        run: go run ./scripts/ci/pr-gate --retire-checks --expected-head "$HEAD"
+
+  observation:
+    # PR events reuse the existing pr-gate job/setup. Scheduled recovery and
+    # manual backfill must use that same repository-wide writer lease.
+    needs: discover
+    if: >-
+      !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.head != '') ||
+      (needs.discover.result == 'success' && needs.discover.outputs.observation_batches != '[]'))
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' && inputs.head == '') && fromJSON(needs.discover.outputs.observation_batches) || fromJSON(format('[[{0}]]', toJSON(inputs.head))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: pr-gate-publisher
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compile the trusted observer once for the bounded batch
+        run: go build -o "$RUNNER_TEMP/check-retirement" ./scripts/ci/pr-gate
+      - name: Retire inactive observation records under their global writer lease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_GATE_CHECK_NAME: ci-required-next
+          HEADS: ${{ toJSON(matrix.batch) }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$HEADS" | jq -e 'type == "array" and length > 0 and length <= 10 and all(.[]; type == "string" and test("^[0-9a-f]{40}$")) and ((unique | length) == length)' > /dev/null
+          printf '%s' "$HEADS" | jq -r '.[]' | while IFS= read -r head; do
+            PR_GATE_RETIREMENT_HEAD="$head" "$RUNNER_TEMP/check-retirement" --retire-checks --expected-head "$head"
+          done

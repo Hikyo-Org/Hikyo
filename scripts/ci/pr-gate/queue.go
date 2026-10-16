@@ -266,6 +266,9 @@ func (q *queueController) executeProof(ctx context.Context, name string, e event
 		return errors.New("unsupported queue publisher event")
 	}
 	var failures []error
+	if name == "workflow_run" && len(numbers) == 0 {
+		return q.retiredHead(ctx)
+	}
 	for _, n := range numbers {
 		if err := q.admit(ctx, n); err != nil {
 			if !onlyStaleHeadWork(err) {
@@ -301,10 +304,10 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return err
 	}
 	if p.State != "open" {
-		return nil
+		return q.retiredHead(ctx)
 	}
 	if p.Head.SHA != q.expectedHead {
-		return &staleHeadWork{expected: q.expectedHead}
+		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.retiredHead(ctx))
 	}
 	if captured != nil {
 		initial, exists := captured.roles.AllPulls[number]
@@ -454,7 +457,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return err
 	}
 	if final.State != "open" {
-		return nil
+		return q.retiredHead(ctx)
 	}
 	finalPolicy, err := q.policy(ctx)
 	if err != nil {
@@ -936,7 +939,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		var stale *staleQueueGroup
 		if errors.As(err, &stale) {
 			_, writeErr := fmt.Fprintln(q.output, "Merge group pending:", stale.reason)
-			err = writeErr
+			err = errors.Join(writeErr, q.retiredGroup(ctx))
 		}
 	}()
 
@@ -957,6 +960,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	}
 	if roles.Group && len(roles.Pulls) > 0 {
 		return q.roleCollision(ctx, roles)
+	}
+	if !roles.Group && len(roles.Pulls) == 0 {
+		return q.retiredHead(ctx)
 	}
 	current, err := q.latestGroup(ctx, hint.HeadSHA)
 	if err != nil {
@@ -1152,7 +1158,7 @@ func (q *queueController) groupMembers(ctx context.Context, s queueSnapshot) ([]
 		if err != nil {
 			return nil, false, err
 		}
-		if p.State != "open" || p.Head.SHA != entry.PR.Head || p.Base.Ref != q.repo.DefaultBranch || (len(members) > 0 && p.Base.SHA != members[0].Base.SHA) {
+		if p.State != "open" || p.Head.SHA != entry.PR.Head || p.Base.Ref != q.repo.DefaultBranch || p.Base.SHA == q.expectedHead || (len(members) > 0 && p.Base.SHA != members[0].Base.SHA) {
 			return nil, false, &staleQueueGroup{reason: "queue member or current base differs from tested group"}
 		}
 		decision, err := q.verify(ctx, p.Number, p.Head.SHA)

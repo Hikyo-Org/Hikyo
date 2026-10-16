@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestFeedbackWorkflowPreservesEveryCommitAndImmutableBootstrap(t *testing.T) {
+func TestFeedbackWorkflowPreservesLatestUsefulCommitAndImmutableBootstrap(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -56,8 +56,8 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if err := yaml.Unmarshal(raw, &got); err != nil {
 		return err
 	}
-	if got.Concurrency.Group != "ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}" || !got.Concurrency.Cancel {
-		return fmt.Errorf("distinct commits and skipped metadata edits must not cancel or evict useful feedback; only duplicate admitted inputs may supersede")
+	if got.Concurrency.Group != "ci-feedback-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}" || !got.Concurrency.Cancel {
+		return fmt.Errorf("new useful PR revisions must supersede older feedback; skipped metadata edits must remain isolated")
 	}
 	if !reflect.DeepEqual(got.Permissions, map[string]string{"contents": "read"}) {
 		return fmt.Errorf("feedback execution must remain read-only")
@@ -325,7 +325,7 @@ func TestFeedbackConcurrencyMetadataCannotCancelOrEvictCommitVerdict(t *testing.
 		if e.action == "edited" && !e.baseChanged {
 			suffix = fmt.Sprint(e.runID)
 		}
-		return fmt.Sprintf("ci-feedback-887-%s-%s-%s", e.head, e.base, suffix)
+		return fmt.Sprintf("ci-feedback-887-%s", suffix)
 	}
 	checkName := func(e event) string {
 		if e.action == "edited" && !e.baseChanged {
@@ -361,8 +361,8 @@ func TestFeedbackConcurrencyMetadataCannotCancelOrEvictCommitVerdict(t *testing.
 		{"missing changes", metadata(`{}`, 8), false},
 		{"null changes", metadata(`{"changes":null}`, 9), false},
 		{"null base ref origin", metadata(`{"changes":{"base":{"ref":{"from":null}}}}`, 10), false},
-		{"later push", event{action: "synchronize", head: "head-b", base: "main-a", runID: 4}, false},
-		{"real base retarget", event{action: "edited", head: "head-a", base: "main-b", baseChanged: true, runID: 5}, false},
+		{"later push", event{action: "synchronize", head: "head-b", base: "main-a", runID: 4}, true},
+		{"real base retarget", event{action: "edited", head: "head-a", base: "main-b", baseChanged: true, runID: 5}, true},
 		{"duplicate useful push", event{action: "synchronize", head: "head-a", base: "main-a", runID: 6}, true},
 		{"useful base edit duplicate", event{action: "edited", head: "head-a", base: "main-a", baseChanged: true, runID: 7}, true},
 		{"opened duplicate", event{action: "opened", head: "head-a", base: "main-a", runID: 11}, true},

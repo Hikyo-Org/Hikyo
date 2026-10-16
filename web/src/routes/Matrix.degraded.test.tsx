@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client.ts';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
+import { matrixProjectFixture } from '../testkit/matrixProject.ts';
 
 vi.mock('../api/definitions.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/definitions.ts')>();
@@ -131,7 +132,7 @@ function alertText(container: HTMLElement): string {
 
 describe('Matrix per-environment degradation (#451)', () => {
   it('marks only an owner-listed invalid draft and keeps secret material masked', async () => {
-    holder.project = {
+    holder.project = matrixProjectFixture({
       ...readyCatalogue,
       keys: { ...readyCatalogue.keys, data: { items: [{ ...key, classification: 'secret' }], count: 1 } },
       environmentRows: [{
@@ -140,7 +141,7 @@ describe('Matrix per-environment degradation (#451)', () => {
         signals: { status: 'ready', data: { environment_id: 'env_a', revision: 1n, cells: [{ key_id: key.id, name: key.name, classification: 'secret', pending_by_others: true, pending: { versionId: 'ver_own', operation: 'set' } }] } },
         pendingDrafts: { status: 'ready', data: { items: [{ version_id: 'ver_own', key_id: key.id, name: key.name, classification: 'secret', operation: 'set', staged_from_revision: 1n, created_at: key.created_at, revealed: false, advisory: { owner_id: 'usr_own', valid: false } }], count: 1 } },
       }, forbiddenRow],
-    };
+    });
     const view = await renderMatrix();
     const cell = view.container.querySelector('.matrix-cell');
     expect(cell?.getAttribute('aria-label')).toContain('your draft is invalid');
@@ -148,14 +149,14 @@ describe('Matrix per-environment degradation (#451)', () => {
     expect(cell?.querySelector('[title="Your draft is invalid"]')).not.toBeNull();
     await view.unmount();
 
-    holder.project = { ...readyCatalogue, environmentRows: [{ ...readyRow, signals: { status: 'ready', data: { environment_id: 'env_a', revision: 1n, cells: [{ key_id: key.id, name: key.name, classification: 'config', pending_by_others: true }] } } }, forbiddenRow] };
+    holder.project = matrixProjectFixture({ ...readyCatalogue, environmentRows: [{ ...readyRow, signals: { status: 'ready', data: { environment_id: 'env_a', revision: 1n, cells: [{ key_id: key.id, name: key.name, classification: 'config', pending_by_others: true }] } } }, forbiddenRow] });
     const other = await renderMatrix();
     expect(other.container.querySelector('[title="Your draft is invalid"]')).toBeNull();
     await other.unmount();
   });
 
   it('renders the grid with one column degraded when a single environment is forbidden', async () => {
-    holder.project = { ...readyCatalogue, environmentRows: [readyRow, forbiddenRow] };
+    holder.project = matrixProjectFixture({ ...readyCatalogue, environmentRows: [readyRow, forbiddenRow] });
     const view = await renderMatrix();
 
     // The grid rendered, the catalogue loaded, so no whole-grid failure.
@@ -201,12 +202,12 @@ describe('Matrix per-environment degradation (#451)', () => {
       },
       settings: { status: 'ready' as const, data: { protected: true } },
     };
-    holder.project = {
+    holder.project = matrixProjectFixture({
       ...readyCatalogue,
       keys: { ...readyCatalogue.keys, data: { items: [{ ...key, group_id: 'grp_db' }], count: 1 } },
       groups: { ...readyCatalogue.groups, data: { items: [{ id: 'grp_db', name: 'Database credentials' }], count: 1 } },
       environmentRows: [readyRow, protectedAbsentRow],
-    };
+    });
     const view = await renderMatrix();
     const { container } = view;
 
@@ -265,7 +266,7 @@ describe('Matrix per-environment degradation (#451)', () => {
         },
       },
     };
-    holder.project = { ...readyCatalogue, environmentRows: [readyRow, mixedForbiddenRow] };
+    holder.project = matrixProjectFixture({ ...readyCatalogue, environmentRows: [readyRow, mixedForbiddenRow] });
     const view = await renderMatrix();
 
     // No publish pill: the only pending draft rides a degraded column, so it is
@@ -277,12 +278,12 @@ describe('Matrix per-environment degradation (#451)', () => {
   });
 
   it('renders a permission page, not a reload prompt, when the whole catalogue is forbidden', async () => {
-    holder.project = {
+    holder.project = matrixProjectFixture({
       environments: forbiddenCatalogueQuery,
       keys: forbiddenCatalogueQuery,
       groups: forbiddenCatalogueQuery,
       environmentRows: [],
-    };
+    });
     const view = await renderMatrix();
 
     expect(alertText(view.container)).toContain('do not have permission');

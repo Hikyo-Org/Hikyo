@@ -55,17 +55,41 @@ export function requiredInEnvironment(rule: MatrixPresence, environmentId: strin
   return rule.environmentIds.includes(environmentId);
 }
 
-export function computeMatrixProblems(input: {
+type MatrixProblemInput = {
   readonly keys: readonly MatrixStateKey[];
   /** Ids drive the cell lookup; names are what a problem message says. */
   readonly environments: readonly { readonly id: string; readonly name: string }[];
-  readonly values: readonly MatrixStateValue[];
   readonly validationErrors: readonly MatrixValidationError[];
+};
+
+export function computeMatrixProblems(input: MatrixProblemInput & {
+  readonly values: readonly MatrixStateValue[];
 }): readonly MatrixProblem[] {
   const cells = new Map<string, MatrixStateValue>();
   for (const value of input.values) {
     cells.set(`${value.keyId}/${value.environmentId}`, value);
   }
+  return matrixProblemsFromPresence(input, (cellID) => {
+    const cell = cells.get(cellID);
+    return effectiveMatrixCellSet(cell?.set, cell?.pendingOperation);
+  });
+}
+
+/** Consume the matrix's existing indexes without allocating every cell again. */
+export function computeIndexedMatrixProblems(input: MatrixProblemInput & {
+  readonly values: ReadonlyMap<string, { readonly set: boolean }>;
+  readonly signals: ReadonlyMap<string, { readonly pending?: { readonly operation: 'set' | 'unset' } }>;
+}): readonly MatrixProblem[] {
+  return matrixProblemsFromPresence(input, (cellID) =>
+    effectiveMatrixCellSet(input.values.get(cellID)?.set, input.signals.get(cellID)?.pending?.operation),
+  );
+}
+
+function effectiveMatrixCellSet(set: boolean | undefined, pendingOperation: 'set' | 'unset' | undefined): boolean {
+  return pendingOperation === 'set' || (pendingOperation !== 'unset' && set === true);
+}
+
+function matrixProblemsFromPresence(input: MatrixProblemInput, isSet: (cellID: string) => boolean): readonly MatrixProblem[] {
   const validationByCell = new Map<string, string>();
   for (const error of input.validationErrors) {
     validationByCell.set(`${error.keyId}/${error.environmentId}`, error.message);
@@ -75,14 +99,7 @@ export function computeMatrixProblems(input: {
   for (const key of input.keys) {
     for (const { id: environmentId, name: environmentName } of input.environments) {
       const cellID = `${key.id}/${environmentId}`;
-      const cell = cells.get(cellID);
-      const effectivelySet =
-        cell?.pendingOperation === 'set'
-          ? true
-          : cell?.pendingOperation === 'unset'
-            ? false
-            : cell?.set === true;
-      if (requiredInEnvironment(key.requiredIn, environmentId) && !effectivelySet) {
+      if (requiredInEnvironment(key.requiredIn, environmentId) && !isSet(cellID)) {
         problems.push({
           keyId: key.id,
           keyName: key.name,

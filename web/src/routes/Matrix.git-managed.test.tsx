@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
+import { matrixProjectFixture } from '../testkit/matrixProject.ts';
 
 const mocks = vi.hoisted<{
   source: 'db' | 'git';
@@ -71,7 +72,7 @@ vi.mock('../api/matrix.ts', async (importActual) => {
   };
   return {
     ...actual,
-    useMatrixProject: () => ({
+    useMatrixProject: () => matrixProjectFixture({
       environments: { data: { items: mocks.emptyEnvironments ? [] : [environment], count: mocks.emptyEnvironments ? 0 : 1 }, isPending: false, isError: false },
       keys: {
         data: {

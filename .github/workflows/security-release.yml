@@ -183,3 +183,18 @@ jobs:
           path: ${{ runner.temp }}/security-pass/
           if-no-files-found: error
           retention-days: 90
+      # Diagnostic receipts are not PASS evidence. Keep only the explicit
+      # metadata allowlist, never release bytes, runtime bundles or credentials.
+      - name: Retain version-bound failure diagnostic receipts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: security-failure-diagnostics-${{ needs.resolve.outputs.tag }}-${{ needs.resolve.outputs.source }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/security-release/prepared.json
+            ${{ runner.temp }}/security-release/binary-scan.json
+            ${{ runner.temp }}/security-release/scan-completed-at
+            ${{ runner.temp }}/security-release/attacks.json
+            ${{ runner.temp }}/security-release/browser.json
+          if-no-files-found: ignore
+          retention-days: 7

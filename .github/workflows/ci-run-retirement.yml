@@ -1,0 +1,44 @@
+# Asynchronous housekeeping only. This workflow never supplies validation or
+# merge authority, and never executes PR or merge-group source.
+name: ci-run-retirement
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Coalesce redundant pending sweeps without interrupting a mutation/readback.
+  group: ci-run-retirement-${{ github.repository_id }}
+  cancel-in-progress: false
+
+jobs:
+  retire:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out the exact trusted default-branch source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Retire only authenticated obsolete merge-group validation
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          GOFLAGS: -mod=readonly
+        run: go run ./scripts/ci/retire-runs

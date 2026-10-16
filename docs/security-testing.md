@@ -48,6 +48,13 @@ those bytes, and successful fixture cleanup. A skipped or incomplete mandatory
 case prevents PASS publication. The JSON includes the producing harness commit
 and the exact run attempt.
 
+Failed campaigns retain a separate
+`security-failure-diagnostics-TAG-SOURCE-RUN_ID-RUN_ATTEMPT` artifact for seven
+days. It contains only available prepared identity, binary scan, scan completion
+time, native campaign and browser JSON receipts. These diagnostics are not PASS
+evidence; binaries, runtime bundles and credentials are excluded. Successful
+campaigns skip this diagnostic upload.
+
 The native campaign has 14 mandatory scenarios per datastore and bounded
 generated grant, revocation and restart sequences. Its `assertions` count
 describes successful oracle groups, not individual comparisons, requests or
@@ -67,6 +74,14 @@ CI scanner policy. Module and package advisory records remain visible with
 their identifiers and classification. They are not silently counted as zero
 vulnerabilities or treated as fully triaged. The runtime receipt explicitly
 does not infer source-fuzz execution counts or current CodeQL/Dependabot status.
+
+Release linker flags retain executable symbols while omitting DWARF debug
+information. The pinned scanner falls back to module-wide vulnerable-symbol
+guesses when the symbol table is stripped; an unused vulnerable package can
+then appear as a blocking wildcard finding. Preserving symbols lets the scan
+inspect the shipped binary without ignoring any finding or changing the
+receipt's rejection policy. Existing stripped releases remain historical
+artifacts and do not inherit the corrected build's result.
 
 ## Coverage and its limits
 

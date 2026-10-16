@@ -408,6 +408,13 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 			return errors.New("invalid check page")
 		}
 		response = map[string]any{"total_count": len(filtered), "check_runs": filtered[start:end]}
+	} else if strings.Contains(path, "/check-runs/") {
+		for _, v := range f.checks {
+			if strings.HasSuffix(path, fmt.Sprintf("/check-runs/%d", v.ID)) {
+				response = v
+				break
+			}
+		}
 	} else {
 		response = f.responses[path]
 	}

@@ -21,7 +21,11 @@ func TestDependencyCompatibilityWorkflowScopeAndAuthority(t *testing.T) {
 			Paths []string `yaml:"paths"`
 		} `yaml:"on"`
 		Permissions map[string]string `yaml:"permissions"`
-		Jobs        map[string]struct {
+		Concurrency struct {
+			Group  string `yaml:"group"`
+			Cancel bool   `yaml:"cancel-in-progress"`
+		} `yaml:"concurrency"`
+		Jobs map[string]struct {
 			Name     string            `yaml:"name"`
 			If       string            `yaml:"if"`
 			Runner   string            `yaml:"runs-on"`
@@ -46,6 +50,9 @@ func TestDependencyCompatibilityWorkflowScopeAndAuthority(t *testing.T) {
 	}
 	if !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) {
 		t.Fatal("dependency consumers must execute with read-only permission")
+	}
+	if workflow.Concurrency.Group != "dependency-compatibility-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && github.event.changes.base.ref.from == '' && github.run_id || 'admitted' }}" || !workflow.Concurrency.Cancel {
+		t.Fatal("latest useful dependency revisions must supersede older compatibility runs while metadata remains isolated")
 	}
 	job := workflow.Jobs["compatibility"]
 	if len(workflow.Jobs) != 1 || job.Timeout != 20 || job.Continue || job.If != "github.event.action != 'edited' || github.event.changes.base.ref.from != ''" {

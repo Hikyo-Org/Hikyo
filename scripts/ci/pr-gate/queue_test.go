@@ -225,7 +225,14 @@ func TestQueueFullGroupProofAndNegativeIdentity(t *testing.T) {
 		t.Fatalf("binding %+v %v", decoded, err)
 	}
 	for name, mutate := range map[string]func(*queueFixture){
-		"PR head is not group":  func(f *queueFixture) { f.entry.Head.OID = f.pr.Head.SHA; f.groupRefresh() },
+		"PR head is not group": func(f *queueFixture) {
+			f.entry.Head.OID = f.pr.Head.SHA
+			f.groupRefresh()
+			other := f.pr
+			other.Number++
+			other.Head.SHA = f.groupRun.HeadSHA
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr, other}
+		},
 		"current main advanced": func(f *queueFixture) { f.pr.Base.SHA = strings.Repeat("e", 40); f.refresh() },
 		"member head changed":   func(f *queueFixture) { f.entry.PR.Head = strings.Repeat("f", 40); f.groupRefresh() },
 		"member removed":        func(f *queueFixture) { f.pr.State = "closed"; f.refresh() },
