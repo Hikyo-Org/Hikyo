@@ -217,6 +217,25 @@ delivery, hosted CI, release, production deployment or public docs publication
 is established by this report's source inspection. Provider and mail fixtures
 prove their stated local protocols and lifecycle behavior only.
 
+## PR review documentation corrections
+
+Two documentation findings on PR 928 at head `0f1078e83` were independently
+confirmed and corrected. The old Google OIDC citation returned HTTP 404. The
+replacement [ID-token verification guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)
+returned HTTP 200 and explicitly describes Google's authority for Gmail,
+verified Workspace addresses with `hd`, and the third-party-address limitation
+without `hd`. The general OIDC article did not establish that specific claim.
+
+The CLI example now records `--name example` at login and selects
+`whoami --instance example`. The current command help accepts `--name REF` for
+login and `--instance REF` for whoami. Source inspection confirmed that
+`originReference` stores the chosen name and `authenticatedResolvedTarget`
+looks up that reference directly in the trust store. The example URL is not a
+stored reference. Documentation checking passed with zero errors, warnings or
+hints, the production documentation build produced 78 pages, and the ledger
+check passed. This correction changed no authentication policy or product code;
+all earlier failed fixture attempts remain recorded above.
+
 ## Delivery gates
 
 The issue requires DCO and cryptographic signing for every commit, both-engine

@@ -275,6 +275,22 @@ Hosted CI and documentation publication remain separate pending gates.</p>
 delivery, hosted CI, release, production deployment or public docs publication
 is established by this report's source inspection. Provider and mail fixtures
 prove their stated local protocols and lifecycle behavior only.</p>
+<h2 id="pr-review-documentation-corrections">PR review documentation corrections</h2>
+<p>Two documentation findings on PR 928 at head <code>0f1078e83</code> were independently
+confirmed and corrected. The old Google OIDC citation returned HTTP 404. The
+replacement <a href="https://developers.google.com/identity/gsi/web/guides/verify-google-id-token">ID-token verification guidance</a>
+returned HTTP 200 and explicitly describes Google's authority for Gmail,
+verified Workspace addresses with <code>hd</code>, and the third-party-address limitation
+without <code>hd</code>. The general OIDC article did not establish that specific claim.</p>
+<p>The CLI example now records <code>--name example</code> at login and selects
+<code>whoami --instance example</code>. The current command help accepts <code>--name REF</code> for
+login and <code>--instance REF</code> for whoami. Source inspection confirmed that
+<code>originReference</code> stores the chosen name and <code>authenticatedResolvedTarget</code>
+looks up that reference directly in the trust store. The example URL is not a
+stored reference. Documentation checking passed with zero errors, warnings or
+hints, the production documentation build produced 78 pages, and the ledger
+check passed. This correction changed no authentication policy or product code;
+all earlier failed fixture attempts remain recorded above.</p>
 <h2 id="delivery-gates">Delivery gates</h2>
 <p>The issue requires DCO and cryptographic signing for every commit, both-engine
 schema and lifecycle coverage, the requested review rounds, a verified preview,

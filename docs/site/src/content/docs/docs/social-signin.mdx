@@ -105,7 +105,7 @@ refused path. Google's documented bare and HTTPS issuer spellings are verified
 by the OIDC library and resolve under the configured HTTPS issuer.
 
 The accepted signup policy uses Google's verified-email assertion. Google's
-[OIDC guidance](https://developers.google.com/identity/openid-connect#obtainuserinfo)
+[ID-token verification guidance](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)
 distinguishes Gmail and Workspace addresses from third-party addresses without
 an `hd` claim. Hikyo does not add an authoritative-domain check to
 `email_verified`; administrators must consider that accepted limitation when
@@ -168,11 +168,13 @@ authority once, creates no session, and returns the user to sign-in.
 With the provider enabled and an account admitted or linked, run:
 
 ```sh
-hikyo login https://hikyo.example.com --provider oidc:work
-hikyo whoami --instance https://hikyo.example.com
+hikyo login https://hikyo.example.com --provider oidc:work --name example
+hikyo whoami --instance example
 ```
 
-For GitHub use `--provider oauth2:github`. To authorize on another device, add
-`--device`, open the displayed verification URL and enter the displayed code.
+The `--name example` option records the local instance reference used by
+`whoami --instance example`. For GitHub use `--provider oauth2:github`. To
+authorize on another device, add `--device`, open the displayed verification URL
+and enter the displayed code.
 The browser authorizes the CLI session; a successful browser sign-in alone does
 not prove that the CLI received its session. Confirm `whoami` before finishing.
