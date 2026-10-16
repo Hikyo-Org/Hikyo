@@ -35,8 +35,8 @@ afterAll(() => {
   else process.env.HIKYO_E2E_OIDC_BINARY = inheritedBinary;
   if (preparedDirectory !== undefined) rmSync(preparedDirectory, { recursive: true, force: true });
 });
-afterEach(() => {
-  stopInstance();
+afterEach(async () => {
+  await stopInstance();
   for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -60,7 +60,7 @@ it('starts the second IdP when the previous fixed default port is occupied', asy
     expect(statSync(issuerFile).mode & 0o777).toBe(0o600);
     const response = await fetch(`${issuer}/.well-known/openid-configuration`);
     expect(response.ok).toBe(true);
-    stopInstance();
+    await stopInstance();
     expect(existsSync(issuerFile)).toBe(false);
   } finally {
     if (blocker.listening) {

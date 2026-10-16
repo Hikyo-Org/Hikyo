@@ -14,6 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
 import { seedTenant, totpCode } from './seed.ts';
+import { startMailSink } from './mail.ts';
 import { SECURITY_SEEDED, seedSecurityTenant } from '../security/seed.ts';
 import { instanceFetch as fetch, SERVING_HOST } from './instance-fetch.ts';
 
@@ -218,6 +219,7 @@ type Cookie = {
 };
 
 let instances: Instance[] = [];
+let mailSink: Awaited<ReturnType<typeof startMailSink>> | null = null;
 let tlsFront: Server | null = null;
 let oidcProcess: ChildProcess | null = null;
 let oidcProcess2: ChildProcess | null = null;
@@ -718,6 +720,7 @@ async function startInstanceAt(
   base: string,
   profile: InstanceProfile = 'flows',
   preparedBinary = process.env.HIKYO_E2E_BINARY,
+  extraEnvironment: NodeJS.ProcessEnv = {},
 ): Promise<Instance> {
   // Fail loud on a squatter. A previous run killed mid-flight (a timeout, a
   // ^C) leaves a server on this port with ANOTHER datastore behind it, and the
@@ -756,7 +759,7 @@ async function startInstanceAt(
   }
 
   const operationalBase = `http://127.0.0.1:${String(operationalPort)}`;
-  const environment = fixtureEnvironment(profile, dir, base);
+  const environment = { ...fixtureEnvironment(profile, dir, base), ...extraEnvironment };
   const proc = spawn(
     binary,
     [
@@ -1156,7 +1159,8 @@ export async function startInstance(): Promise<void> {
 
   // A synchronous sibling build must not consume a running health probe's
   // deadline. Start the first instance, then reuse its exact binary for B.
-  const viewing = await startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL);
+  mailSink = await startMailSink();
+  const viewing = await startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL, 'flows', process.env.HIKYO_E2E_BINARY, mailSink.environment);
   const serving = await startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B, 'flows', viewing.binary);
 
   // Only the VIEWING instance needs `instance-directory`: it is the one that
@@ -2030,25 +2034,41 @@ export async function refreshServingSession(): Promise<void> {
   );
 }
 
-export function stopInstance(): void {
-  tlsFront?.close();
-  tlsFront = null;
-  oidcProcess?.kill('SIGKILL');
-  oidcProcess = null;
-  oidcProcess2?.kill('SIGKILL');
-  oidcProcess2 = null;
-  if (webuiOIDCIssuerFile !== null) {
-    rmSync(webuiOIDCIssuerFile, { force: true });
-    webuiOIDCIssuerFile = null;
+export async function stopInstance(): Promise<void> {
+  const sink = mailSink;
+  mailSink = null;
+  let instanceCleanupError: Error | undefined;
+  try {
+    tlsFront?.close();
+    tlsFront = null;
+    oidcProcess?.kill('SIGKILL');
+    oidcProcess = null;
+    oidcProcess2?.kill('SIGKILL');
+    oidcProcess2 = null;
+    if (webuiOIDCIssuerFile !== null) {
+      rmSync(webuiOIDCIssuerFile, { force: true });
+      webuiOIDCIssuerFile = null;
+    }
+    for (const instance of instances) {
+      // SIGKILL, not SIGTERM: a server still inside boot may not have installed
+      // its signal handler yet, and a survivor holds the port for the NEXT run,
+      // where it answers /healthz from another datastore and turns every
+      // authenticated call into a 401 that looks like a credential bug.
+      instance.expectedExit = true;
+      instance.proc.kill('SIGKILL');
+      rmSync(instance.dir, { recursive: true, force: true });
+    }
+    instances = [];
+  } catch (error) {
+    instanceCleanupError = new Error('instance cleanup failed', { cause: error });
   }
-  for (const instance of instances) {
-    // SIGKILL, not SIGTERM: a server still inside boot may not have installed
-    // its signal handler yet, and a survivor holds the port for the NEXT run,
-    // where it answers /healthz from another datastore and turns every
-    // authenticated call into a 401 that looks like a credential bug.
-    instance.expectedExit = true;
-    instance.proc.kill('SIGKILL');
-    rmSync(instance.dir, { recursive: true, force: true });
+  try {
+    await sink?.stop();
+  } catch (error) {
+    if (instanceCleanupError !== undefined) {
+      throw new AggregateError([instanceCleanupError, error], 'instance and mail sink cleanup failed');
+    }
+    throw error;
   }
-  instances = [];
+  if (instanceCleanupError !== undefined) throw instanceCleanupError;
 }

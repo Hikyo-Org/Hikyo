@@ -306,6 +306,26 @@ describe("OpenRegistrationPanel", () => {
     await unmount();
   });
 
+  it.each([100, 7])("starts fresh-org cap at 100 and saves the operator's chosen cap %i", async (chosen) => {
+    mocks.put.mockResolvedValueOnce(policyOf({ landing: { kind: "fresh-org", cap: chosen }, fresh_org_count: 0 }));
+    const { rendered } = mount({ kind: "instance" });
+    const { container, unmount } = await rendered;
+    await click(buttonNamed(container, "Open registration"));
+    await click(inputLabelled(container, "Corporate IdP"));
+    await click(inputLabelled(container, "A new organisation per sign-up: the signer becomes its first administrator, under your org.create grant"));
+    const cap = inputLabelled(container, "Cap on organisations minted");
+    expect(cap.value).toBe("100");
+    if (chosen !== 100) await act(async () => typeInto(cap, String(chosen)));
+    await click(buttonNamed(container, "Save"));
+    await act(async () => typeInto(inputLabelled(container, "Authenticator code or password"), "123456"));
+    await click(buttonNamed(container, "Confirm"));
+    expect(mocks.put).toHaveBeenCalledWith({ kind: "instance" }, {
+      external: [{ provider: { kind: "oidc", slug: "corp" } }],
+      landing: { kind: "fresh-org", cap: chosen }, proof: "123456",
+    });
+    await unmount();
+  });
+
   it("renders n / cap, the requirement lines and the authority of an instance fresh-org policy", async () => {
     mocks.policy = {
       data: policyOf({

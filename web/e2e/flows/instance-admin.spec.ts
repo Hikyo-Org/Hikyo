@@ -22,6 +22,7 @@ import { join } from 'node:path';
 
 import { expectInteractiveAssertionSet, expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
+import { readMail } from '../fixtures/mail.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -36,7 +37,7 @@ import {
   STORAGE_STATE,
   WEBUI_OIDC,
 } from '../fixtures/instance.ts';
-import { enrolledAccount, signInAs, type EnrolledAccount } from '../fixtures/accounts.ts';
+import { enrolledAccount, signInAs, TOTP_STEP_MS, type EnrolledAccount } from '../fixtures/accounts.ts';
 import { test } from '../fixtures/passkey.ts';
 
 /**
@@ -1345,5 +1346,89 @@ test.describe('open registration at instance scope', () => {
     } finally {
       await closeInstancePolicy(page, operator);
     }
+  });
+});
+
+/** #613 acceptance stays in this existing CI shard and its closed registry. */
+test.describe('social sign-in administration', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('sends operator test mail through the configured TLS sink', async ({ page }, testInfo) => {
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const recipient = `operator-${testInfo.project.name}@hikyo.test`;
+    await page.goto('/instance');
+    await page.getByRole('tab', { name: 'Mailer', exact: true }).click();
+    const panel = page.locator('#instance-mail');
+    await expect(panel).toContainText('Mailer configured');
+    for (const theme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expectPinnedAssertionSet(page, {
+        flow: 'instance-admin', surface: 'instance-admin', theme,
+        text: [panel.getByRole('heading', { name: 'Mailer', exact: true })],
+        radii: [[panel.getByLabel('Test recipient'), 'control'], [panel.getByRole('button', { name: 'Send test…' }), 'control']],
+        fonts: [[panel.getByRole('heading', { name: 'Mailer', exact: true }), 'ui']],
+        colours: [], hairlines: [panel.getByLabel('Test recipient')],
+        density: [[panel.getByRole('button', { name: 'Send test…' }), '--control']],
+      });
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath(`mailer-${theme}.png`), fullPage: true });
+    }
+    await panel.getByLabel('Test recipient').fill(recipient);
+    await panel.getByRole('button', { name: 'Send test…' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Authenticator code or password').fill(await nextTotpCode());
+    await dialog.getByRole('button', { name: /Confirm/ }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Test mail sent' })).toBeVisible();
+    await expect.poll(() => readMail(recipient).length).toBe(1);
+    expect(readMail(recipient)[0]?.data).toContain('Hikyo');
+  });
+
+  test('creates, reconfigures and deletes a GitHub provider through the real API', async ({ page }, testInfo) => {
+    const slug = `browser-github-${testInfo.project.name}`;
+    const name = `Browser GitHub ${testInfo.project.name}`;
+    await page.goto('/instance');
+    await page.getByRole('tab', { name: 'GitHub sign-in', exact: true }).click();
+    const panel = page.locator('#instance-oauth2');
+    await panel.getByRole('button', { name: 'Add GitHub provider' }).click();
+    let editor = page.getByRole('complementary', { name: 'Add GitHub provider', exact: true });
+    await editor.getByLabel('Provider slug').fill(slug);
+    await editor.getByLabel('Display name').fill(name);
+    await editor.getByLabel('Client ID').fill('browser-fixture-client');
+    await editor.getByLabel('Client secret').fill('browser-fixture-secret');
+    for (const theme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await expectPinnedAssertionSet(page, {
+        flow: 'instance-admin', surface: 'instance-admin', theme,
+        text: [editor.getByRole('heading', { name: 'Add GitHub provider' })],
+        radii: [[editor.getByLabel('Provider slug'), 'control'], [editor.getByRole('button', { name: 'Save provider' }), 'control']],
+        fonts: [[editor.getByRole('heading', { name: 'Add GitHub provider' }), 'ui']],
+        colours: [], hairlines: [editor.getByLabel('Provider slug')],
+        density: [[editor.getByRole('button', { name: 'Save provider' }), '--control']],
+      });
+      await expectNoSeriousAxeViolations(page);
+      await page.screenshot({ path: testInfo.outputPath(`github-provider-${theme}.png`), fullPage: true });
+    }
+    await editor.getByRole('button', { name: 'Save provider' }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Provider saved' })).toBeVisible();
+    const advertised = await page.request.get(`${BASE_URL}/api/v1/auth/methods`);
+    expect(zAuthMethods.parse(await advertised.json()).providers.find((provider) => provider.slug === slug)).toMatchObject({
+      kind: 'oauth2', profile: 'github', brand: 'github', display_name: name,
+    });
+    await panel.getByRole('button', { name: `Reconfigure ${name}` }).click();
+    editor = page.getByRole('complementary', { name: `Reconfigure ${name}`, exact: true });
+    await expect(editor.getByLabel('Provider slug')).toBeDisabled();
+    await expect(editor.getByLabel('Client secret')).toHaveValue('');
+    await editor.getByLabel('Client secret').fill('browser-fixture-replacement');
+    await editor.getByLabel('Enable GitHub sign-in').uncheck();
+    await editor.getByRole('button', { name: 'Save provider' }).click();
+    await expect(panel.getByText('disabled', { exact: true })).toBeVisible();
+    const methods = await page.request.get(`${BASE_URL}/api/v1/auth/methods`);
+    expect(zAuthMethods.parse(await methods.json()).providers.some((provider) => provider.slug === slug)).toBe(false);
+    await panel.getByRole('button', { name: `Delete ${name}` }).click();
+    const confirmation = page.getByRole('dialog');
+    await confirmation.getByLabel('Type the provider slug to confirm').fill(slug);
+    await confirmation.getByRole('button', { name: 'Delete provider', exact: true }).click();
+    await expect(panel.getByRole('status').filter({ hasText: 'Provider deleted' })).toBeVisible();
+    await expect(panel.getByRole('button', { name: `Reconfigure ${name}` })).toHaveCount(0);
   });
 });

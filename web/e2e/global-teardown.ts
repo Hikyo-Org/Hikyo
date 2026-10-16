@@ -26,8 +26,8 @@ import { readRunLog, unexecutedClaims } from './registry.ts';
  * lines that say nothing about the real cause. The CI split uses positional
  * specs precisely so the skip is honest; `--shard` is not, so it says so.
  */
-export default function globalTeardown(config: FullConfig): void {
-  stopInstance();
+export default async function globalTeardown(config: FullConfig): Promise<void> {
+  await stopInstance();
 
   if (config.shard !== null) {
     throw new Error(

@@ -8,6 +8,7 @@ repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 workflow="$repo_root/.github/workflows/ci.yml"
 standalone_no_egress="$repo_root/.github/workflows/no-egress.yml"
 fixture="$repo_root/web/e2e/fixtures/instance.ts"
+mail_fixture="$repo_root/web/e2e/fixtures/mail.ts"
 spa_builder="$repo_root/scripts/ci/build-spa.sh"
 
 fail() {
@@ -89,10 +90,14 @@ printf '%s\n' "$app_block" | grep -F 'go build -tags ui -o ci-artifacts/hikyo-ui
 	fail 'app-build does not produce the release-shaped CI binary'
 printf '%s\n' "$app_block" | grep -F 'go build -o ci-artifacts/oidctest-idp ./internal/oidctest/cmd' >/dev/null ||
 	fail 'app-build does not produce the browser IdP helper'
+printf '%s\n' "$app_block" | grep -F 'go build -o ci-artifacts/mail-sink ./internal/mailtest/cmd' >/dev/null ||
+	fail 'app-build does not produce the browser mail helper'
 app_upload=$(printf '%s\n' "$app_block" | app_artifact_step app-build 'Upload app build for downstream validation' "$upload_action")
 app_upload_inputs=$(printf '%s\n' "$app_upload" | artifact_input_lines)
 printf '%s\n' "$app_upload_inputs" | grep -F 'ci-artifacts/oidctest-idp' >/dev/null ||
 	fail 'app-build does not upload the browser IdP helper'
+printf '%s\n' "$app_upload_inputs" | grep -F 'ci-artifacts/mail-sink' >/dev/null ||
+	fail 'app-build does not upload the browser mail helper'
 printf '%s\n' "$app_upload_inputs" | grep -Fx '          overwrite: true' >/dev/null ||
 	fail 'app-build artifact cannot be replaced by a full workflow rerun'
 
@@ -115,10 +120,12 @@ printf '%s\n' "$web_block" | grep -F 'needs: [changes, app-build]' >/dev/null ||
 printf '%s\n' "$web_block" | app_artifact_step web 'Download the exact app build' "$download_action" >/dev/null
 printf '%s\n' "$web_block" | grep -F 'run: chmod +x ci-artifacts/hikyo-ui' >/dev/null ||
 	fail 'web does not restore execute permission after artifact download'
-printf '%s\n' "$web_block" | grep -F 'chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp' >/dev/null ||
-	fail 'web does not restore both artifact executable modes'
+printf '%s\n' "$web_block" | grep -F 'chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp ci-artifacts/mail-sink' >/dev/null ||
+	fail 'web does not restore every artifact executable mode'
 printf '%s\n' "$web_block" | grep -F 'HIKYO_E2E_OIDC_BINARY: ${{ github.workspace }}/ci-artifacts/oidctest-idp' >/dev/null ||
 	fail 'web does not pass the prebuilt IdP helper to the browser harness'
+printf '%s\n' "$web_block" | grep -F 'HIKYO_E2E_MAIL_BINARY: ${{ github.workspace }}/ci-artifacts/mail-sink' >/dev/null ||
+	fail 'web does not pass the prebuilt mail helper to the browser harness'
 if printf '%s\n' "$web_block" | grep -E 'actions/setup-go|go build|\.cache/go-build|~/go/pkg/mod' >/dev/null; then
 	fail 'a browser shard still provisions Go or compiles a helper'
 fi
@@ -169,6 +176,7 @@ upload_line=$(grep -nF 'name: Upload unsigned development snapshot' "$workflow" 
 	fail 'development snapshot is uploaded before non-mutating manifest validation'
 require_line "$fixture" "process.env.HIKYO_E2E_BINARY"
 require_line "$fixture" "process.env.HIKYO_E2E_OIDC_BINARY"
+require_line "$mail_fixture" "process.env['HIKYO_E2E_MAIL_BINARY']"
 
 if grep -Eq 'gh release|action-gh-release' "$workflow"; then
 	fail 'ordinary CI publishes a GitHub Release and bypasses the signing ceremony'

@@ -40,11 +40,15 @@
       "kind": "capability",
       "title": "Human identity and access",
       "status": "implemented",
-      "implemented": "OIDC, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and member invitation at org and instance scope from API, CLI and WebUI with browser credential establishment and recovery-code sign-in",
+      "implemented": "OIDC including Google and tenant-specific Microsoft Entra, GitHub OAuth2, policy-controlled federated and verified local email signup, explicit identity linking and invitation claims, browser and device CLI login, WebAuthn, TOTP, recovery, sessions, grants, role templates, protected environments, and org/instance member invitations",
       "evidence": [
         { "label": "#54 handoff", "path": "docs/handoff/54-human-auth-full.md" },
         { "label": "#55 handoff", "path": "docs/handoff/55-permission-model.md" },
-        { "label": "#568 handoff", "path": "docs/handoff/568-member-invitation.md" }
+        { "label": "#568 handoff", "path": "docs/handoff/568-member-invitation.md" },
+        { "label": "Social sign-in operator runbook", "path": "docs/site/src/content/docs/docs/social-signin.mdx" },
+        { "label": "#608 mailer and local signup", "path": "docs/handoff/608-local-signup.md" },
+        { "label": "#609 GitHub OAuth2", "path": "docs/handoff/609-github-oauth2.md" },
+        { "label": "#613 acceptance evidence and remaining gates", "path": "docs/handoff/613-social-signin-acceptance.md" }
       ]
     },
     {
@@ -147,7 +151,7 @@
       "kind": "capability",
       "title": "Administration UI",
       "status": "implemented",
-      "implemented": "Members at organisation, project and instance scope, organisation/project/instance settings, account security, browser step-up, OIDC/SAML/SCIM provider administration, organisation, project and environment audit query and export, and remote cryptographic maintenance",
+      "implemented": "Members at organisation, project and instance scope, registration policy editing, organisation rename and origin filtering, organisation/project/instance settings, account security and credential establishment, browser step-up, OIDC/OAuth2/SAML/SCIM provider administration, active-mailer status and test send, organisation, project and environment audit query and export, and remote cryptographic maintenance",
       "evidence": [
         { "label": "#60 handoff", "path": "docs/handoff/60-chrome-surfaces.md" },
         { "label": "#567 handoff", "path": "docs/handoff/567-chrome-settings-unification.md" },
@@ -155,7 +159,10 @@
         { "label": "#499 PR", "url": "https://github.com/Hikyo-Org/Hikyo/pull/548" },
         { "label": "#501 PR", "url": "https://github.com/Hikyo-Org/Hikyo/pull/551" },
         { "label": "#502 PR", "url": "https://github.com/Hikyo-Org/Hikyo/pull/561" },
-        { "label": "#503 PR", "url": "https://github.com/Hikyo-Org/Hikyo/pull/555" }
+        { "label": "#503 PR", "url": "https://github.com/Hikyo-Org/Hikyo/pull/555" },
+        { "label": "Social sign-in administration", "path": "docs/site/src/content/docs/docs/social-signin.mdx" },
+        { "label": "Mailer operations", "path": "docs/site/src/content/docs/docs/signup-mail.mdx" },
+        { "label": "#613 acceptance evidence and remaining gates", "path": "docs/handoff/613-social-signin-acceptance.md" }
       ]
     },
     {

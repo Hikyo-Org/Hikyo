@@ -158,7 +158,7 @@ func (s *SelfConfig) TestMail(ctx context.Context, actor Actor, req SelfConfigMa
 	if err != nil {
 		return result, err
 	}
-	if count > 5 {
+	if count > BudgetMailTestPerHour {
 		// A fixed hourly window: the next one starts empty.
 		window := now.Truncate(time.Hour)
 		return result, &admission.RateLimitedError{Cause: ErrSelfConfigMailLimited, Wait: window.Add(time.Hour).Sub(now)}

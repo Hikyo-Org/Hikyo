@@ -526,6 +526,7 @@ func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 
 	// #608 mail intent/outcome through the TLS SMTP sink and local lifecycle.
 	runLocalSignup(t, db)
+	runLocalSignupInterruptedMailOutcome(t, db)
 	auth, _, _ := localSignupHarness(t, db)
 	status := &service.InstanceMail{DB: db, Auth: auth, Capture: func(context.Context) (*runtimeconfig.Bundle, error) {
 		return runtimeconfig.Prepare(map[string]string{})

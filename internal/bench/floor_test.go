@@ -200,7 +200,7 @@ func measureBoot(t *testing.T, e *Evidence) {
 			done <- err
 			t.Fatalf("default dev server exited before readiness: %v; inspect dev-server.log", err)
 		case <-ticker.C:
-			response, err := client.Get("http://127.0.0.1:49762/readyz")
+			response, err := client.Get("http://" + floorOperationalAddress + "/readyz")
 			if err != nil {
 				continue
 			}

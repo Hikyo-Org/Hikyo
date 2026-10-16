@@ -630,3 +630,131 @@ func TestLocalSignupReleasesAdmissionBeforeSlowSMTP(t *testing.T) {
 		}
 	})
 }
+
+// TestLocalSignupInterruptedMailOutcome drives the real mail emitter and
+// interrupts outcome persistence after SMTP. This proves an unmatched intent
+// survives a failed outcome transaction; it does not simulate a process kill.
+func TestLocalSignupInterruptedMailOutcome(t *testing.T) {
+	forEngines(t, runLocalSignupInterruptedMailOutcome)
+}
+
+func runLocalSignupInterruptedMailOutcome(t *testing.T, db *store.DB) {
+	t.Helper()
+	ctx := t.Context()
+	auth, reg, sink := localSignupHarness(t, db)
+	if _, err := reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{
+		Local: &service.RegistrationLocalEntry{}, Landing: service.RegistrationLanding{Kind: service.LandingNone},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if db.Engine() == store.EngineSQLite {
+		execRaw(t, db, `CREATE TRIGGER refuse_registration_mail_outcome BEFORE INSERT ON audit_instance_events WHEN NEW.type='registration.mail_outcome' BEGIN SELECT RAISE(ABORT, 'mail outcome persistence interrupted'); END`)
+	} else {
+		execRaw(t, db, `CREATE FUNCTION refuse_registration_mail_outcome() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN IF NEW.type='registration.mail_outcome' THEN RAISE EXCEPTION 'mail outcome persistence interrupted'; END IF; RETURN NEW; END; $$; CREATE TRIGGER refuse_registration_mail_outcome BEFORE INSERT ON audit_instance_events FOR EACH ROW EXECUTE FUNCTION refuse_registration_mail_outcome()`)
+	}
+	removeFault := func() {
+		if db.Engine() == store.EngineSQLite {
+			execRaw(t, db, `DROP TRIGGER refuse_registration_mail_outcome`)
+		} else {
+			execRaw(t, db, `DROP TRIGGER refuse_registration_mail_outcome ON audit_instance_events; DROP FUNCTION refuse_registration_mail_outcome()`)
+		}
+	}
+	faultActive := true
+	defer func() {
+		if faultActive {
+			removeFault()
+		}
+	}()
+	if err := auth.Signup(ctx, "interrupted@example.test", ""); err == nil {
+		t.Fatal("outcome persistence interruption was not reported")
+	}
+	if len(sink.Messages()) != 1 {
+		t.Fatal("real SMTP delivery did not precede outcome persistence failure")
+	}
+	first := signupMailFragment(t, sink.Messages()[0])
+	intentID := queryString(t, db, "SELECT id FROM audit_instance_events WHERE type='registration.mail_intent' AND payload LIKE '%interrupted@example.test%'")
+	if intentID == "" {
+		t.Fatal("failed outcome rolled back the previously committed intent")
+	}
+	assertOrphan := func() {
+		t.Helper()
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='registration.mail_outcome' AND payload LIKE '%"+intentID+"%'"); n != 0 {
+			t.Fatal("interrupted intent acquired an invented outcome")
+		}
+	}
+	assertOrphan()
+	removeFault()
+	faultActive = false
+	if err := auth.Signup(ctx, "interrupted@example.test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.Messages()) != 2 || signupMailFragment(t, sink.Messages()[1]).Get("token") == first.Get("token") {
+		t.Fatal("resend did not deliver a newly rotated verification token")
+	}
+	assertOrphan()
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='registration.mail_outcome' AND outcome='success' AND object_id IN (SELECT id FROM audit_instance_events WHERE type='registration.mail_intent' AND payload LIKE '%interrupted@example.test%')"); n != 1 {
+		t.Fatal("resend did not persist its own successful outcome")
+	}
+}
+
+func TestLocalSignupFreshOrgCap(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		auth, reg, sink := localSignupHarness(t, db)
+		if _, err := reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{
+			Local: &service.RegistrationLocalEntry{}, Landing: service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 1},
+		}, ""); err != nil {
+			t.Fatal(err)
+		}
+		// Both requests are admitted before either creates an organisation.
+		for _, email := range []string{"first-cap@example.test", "second-cap@example.test"} {
+			if err := auth.Signup(ctx, email, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(sink.Messages()) != 2 {
+			t.Fatal("pre-cap requests did not send verification links")
+		}
+		verification := func(index int) service.SignupVerification {
+			fragment := signupMailFragment(t, sink.Messages()[index])
+			return service.SignupVerification{Token: fragment.Get("token"), DisplayName: "Cap founder", Password: "a long fresh organisation password", Landing: "fresh-org"}
+		}
+		if err := auth.VerifySignup(ctx, verification(0)); err != nil {
+			t.Fatal(err)
+		}
+		org := queryString(t, db, "SELECT id FROM orgs WHERE origin='registration'")
+		accounts := queryInt(t, db, "SELECT COUNT(*) FROM accounts")
+		if err := auth.VerifySignup(ctx, verification(1)); !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("cap at verification: %v", err)
+		}
+		if queryInt(t, db, "SELECT COUNT(*) FROM orgs WHERE origin='registration'") != 1 || queryInt(t, db, "SELECT COUNT(*) FROM accounts") != accounts {
+			t.Fatal("cap refusal created an organisation or account")
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM registration_signups WHERE email='second-cap@example.test'"); n != 1 {
+			t.Fatal("cap refusal spent the pending verification token")
+		}
+		if err := auth.Signup(ctx, "third-cap@example.test", ""); err != nil {
+			t.Fatal(err)
+		}
+		// The locked request ceremony sends one link for every admitted
+		// address. The org cap is charged only by the state-creating verify.
+		if len(sink.Messages()) != 3 {
+			t.Fatal("admitted request at cap did not send exactly one mail")
+		}
+		if err := auth.VerifySignup(ctx, verification(2)); !errors.Is(err, domain.ErrUnauthenticated) {
+			t.Fatalf("new request bypassed the verification cap: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='registration.signup_refused' AND payload LIKE '%\"cause\":\"cap\"%'"); n != 2 {
+			t.Fatalf("verification cap refusal events = %d, want 2", n)
+		}
+		if err := (&service.Orgs{DB: db}).Delete(ctx, service.LocalPrincipal(root), domain.OrgID(org)); err != nil {
+			t.Fatal(err)
+		}
+		if err := auth.VerifySignup(ctx, verification(1)); err != nil {
+			t.Fatalf("freed cap did not admit the unspent token: %v", err)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM orgs WHERE origin='registration'"); n != 1 {
+			t.Fatalf("new organisation count = %d, want 1", n)
+		}
+	})
+}
