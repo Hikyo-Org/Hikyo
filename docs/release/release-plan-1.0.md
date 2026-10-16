@@ -1,166 +1,255 @@
 # Hikyo 1.0 release plan
 
-Written 2026-09-07 during the autonomous release run (decision log:
-[release-run-2026-09-07.html](../reports/1.0/release-run-2026-09-07.html)).
-This is the step-by-step order of operations from the current `main` to a
-published, signed, verifiable `v1.0.0`. Steps are split into what an agent
-can do without keys or external credentials and what only the owner can do.
-**Update 2026-09-08:** 1.0 is paused for design work. The owner selected the
-[online signing ceremony](online-signing.md); its implementation and one-time
-recovery-authorized activation precede the final release candidate. Historical
-acceptance counts below are dated evidence, not a fresh candidate assessment.
+**Preparation snapshot, 2026-10-16, source
+`6769ee55dcd4087eeaf42547e9abde01c4f0818c`. Final candidate acceptance is pending.**
+The [acceptance ledger](acceptance-1.0.md) preserves September's executed
+results; those results are not certification of this source or the eventual
+combined candidate. This plan sequences [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)
+without changing its five done-verification gates or authorizing a release.
 
-The [acceptance ledger](acceptance-1.0.md) stays the authority for every
-criterion's status; this plan only sequences the remaining work.
+Evidence preparation and a documentation merge do not authorize stable-policy
+activation, tag creation, release publication or production deployment. Those
+remain separate owner-authorized ceremonies. Record unexecuted checks as
+pending, never passed or waived.
 
-## Where things stand
+## Source and accepted decisions
 
-- 42 of 49 acceptance criteria are INTERNAL-PASS at the tested candidate.
-  Nothing code-side is red.
-- Still open: S1 freeze (needs the tag), O3 signing ceremony, O4 public
-  disclosure endpoint check, M4/GH-E2E/GH-CONTRACT live GitHub run, and the
-  MCP named-client proof (#651). A7 social sign-in is POST-1.0 by owner
-  decision.
-- The trust root in `release/trust/` is real and recovery-signed, with
-  `pending_release` 1.0.0 at sequence 1. It was generated for nightly
-  activation under the online-custody exception in
-  `release/trust/BOOTSTRAP.md`, not by the offline ceremony in
-  `signing.md`. Step 10 below retains that root and authorizes stable CI.
-- The six GitHub security advisories for the 2026-09-05 fork merge are
-  published (2026-09-08); CVE assignment is pending with GitHub.
-- Since the last acceptance refresh (main `549726d9`), 28 further PRs merged
-  (upgrade lane, self-configuration, privacy controls, UI audit follow-ups).
-  The candidate that gets tagged must be re-accepted at its own commit;
-  ordinary CI covers most of that automatically on every PR.
+- [#936 / PR #937](https://github.com/Hikyo-Org/Hikyo/pull/937) merged as the
+  snapshot above. Its [48-job run](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
+  succeeded at that SHA with event `merge_group`. This is exact merge-group
+  evidence, not the full-main release proof selected by
+  `scripts/release/require-green-main.sh`.
+- The [API/CLI source inventory](../spec/api-cli-spellings.md#revision-and-enum-baseline)
+  records revision 11 and migration source head 75 on both engines. Inventory
+  and artifact identities must be refreshed after outstanding changes land,
+  including #805; these are not the final freeze baseline.
+- Marc's [accepted error-enum and SOPS/KMS size dispositions](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183)
+  stand. Keep KMS support and measure final binary sizes. The
+  [floor amendment](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5354009024)
+  accepts constrained native ARM64 CI; physical Pi calibration is optional.
+- [Online stable signing](../adr/stable-workflow-signing.md) supersedes the
+  old offline-primary/USB recommendation. The existing online-generated root
+  remains. Its `pending_release` bootstrap placeholder is not stable approval;
+  recovery-authorized stable policy activation is still required.
+- Scoped review/disposition approvals for #930, #805, #631, #612, #15 and
+  the approved #589 / PR #945 head apply only to their recorded scope. They do
+  not approve later heads, waive unrelated ADR gates or establish completed
+  review. Claude subscription review is unavailable; no paid substitute or
+  blanket cross-provider waiver is authorized.
 
-## Phase A: land the release-run PR (agent, done or in flight)
+## 1. Assemble one reviewed combined candidate
 
-1. Merge PR #710 (self-config refusal names the key). Auto-merge is armed.
-2. Merge the release-run PR #711: repository hygiene, dead-code and
-   duplication sweep, status-ledger corrections, this plan.
-3. Confirm `main` CI is green after both merges (the `ci-required` aggregate
-   plus the isolation, race and fuzz shards).
+1. Follow the [current roadmap](https://github.com/Hikyo-Org/Hikyo/issues/527)
+   and each owner's acceptance/handoff. Verify mergedAt, merge SHA, tested tree
+   and ancestry in main before treating a dependency as delivered. Queue
+   admission and a green group alone are not merge proof. Use current protected
+   policy and the [CI guide](../development/ci.md), not historical direct-merge
+   instructions.
+2. Reconcile operative capabilities, remaining defects and scoped governance
+   reviews. #589 owns A7's release-scope disposition; #15 owns the capability
+   ledger; #527 owns roadmap sequencing. Implemented capability, review approval,
+   release scope and candidate acceptance are separate facts. No historical
+   post-1.0 list silently excludes functionality now shipped or newly authorized.
+3. Select one clean main SHA after required implementation and trust changes.
+   Record source/tree, API revision, both-engine migration identities and the
+   exact binary/archive hashes, image RepoDigest and chart digest used by each
+   proof. Source equality does not imply byte equality. Later changes invalidate
+   affected proof and require fresh exact-main validation.
+4. Regenerate CLI goldens for the selected candidate, reviewing every
+   diff as a surface/spec change. Audit closed/extensible response enums and
+   operation minima against the final server revision. Preserve oasdiff negative
+   fixtures, generated-client unknown-value handling, operation parity,
+   eligibility and complete browser registry closure.
+5. Before `v1.0.0`, `check-api-freeze.sh` is explicitly dormant and
+   `check-client-skew.sh` executes a pre-freeze rehearsal. After the immutable
+   tag, they compare against its spec and unmodified checked-in generated
+   client. Report the actual mode; rehearsal does not prove frozen-tag execution.
 
-## Phase B: candidate freeze preparation (agent, no keys needed)
+Keep the current correctness and integration work visible: #930's approved
+retention/erasure contract, #934/#935 lease ceiling/TTL fixes, and #941's
+PostgreSQL schema rendering must be represented in final recovery and provider
+proof. Coordinate #941 with #930's non-UTC PostgreSQL restore path; a UTC-only
+fixture is not proof of that repair. #931/#932/#933 and browser administration
+under #807/#819/#820 retain their own acceptance obligations. This snapshot
+records only #936 as newly merged; it does not predict the other owners' results.
 
-4. Regenerate the CLI goldens one last time and review every diff as a spec
-   change. Done 2026-09-07 at `8ecf1b9c`: `go test ./internal/cli -run
-   'Golden|Frozen' -update` produced no diff. Repeat at the final candidate
-   if any CLI change merges after it.
-5. `x-extensible-enum` audit on `api/openapi.yaml`. Done 2026-09-07: twelve
-   enums are declared extensible, including the two the handoff flagged
-   (`AdapterProvider`, `SamlProviderWarning.code`). Everything else closes at
-   the tag and can never grow.
-6. Re-walk `docs/spec/self-hoster-checklist.md` against a fresh
-   `go build -tags ui` binary, the chart and the compose file at the
-   candidate commit. Append the date and commit to
-   `docs/release/self-hoster-candidate.md`.
-7. Refresh the acceptance ledger header to the candidate commit once its full
-   CI run is green, linking that run. Re-run the four dedicated lanes
-   (`floor-acceptance`, `floor-bench`, `operator-floor`, `ops-floor`) on the
-   candidate via `workflow_dispatch` and link them.
-8. Update `docs/site/src/content/docs/docs/roadmap.mdx` and `docs/status/`
-   so nothing still describes 1.0 as future-tense once the tag exists. Keep
-   `CAP-PUBLIC-RELEASE` partial until the release is public.
+Release membership remains independently governed by accepted amendments.
+For example, generic file destinations remain v1.1 under mvp-boundary amendment
+9 and Cloudflare amendment 6 expressly leaves the 1.0 criteria unchanged.
+Their implementation/review work does not silently promote them into 1.0.
+Likewise, preserve #589's scoped A7 decision. Add proof for shipped surfaces
+without rewriting the owning release boundary.
 
-## Phase C: owner-only steps before the tag
+Use the [amended capability inventory](acceptance-1.0.md#amended-capability-inventory-for-the-final-candidate)
+as part of candidate selection: HA #146, dynamic credentials #147, change
+approvals #151, temporary access #152, PKI #154, SSH #155, transit #156 and each
+provider's own scope/review conditions. C-ACC was absent from the historical
+49-row ledger; its new pending row restores the operative requirement. Signed
+upgrade compatibility and Kubernetes condition reporting have designs and
+source implementations; final proof and pending repairs remain separate.
+AWS #158's conditional In amendment remains governed by its merge/review
+conditions. The [audit label correction](https://github.com/Hikyo-Org/Hikyo/issues/158#issuecomment-6220607066)
+marks conditional 1.0 relevance and a required decision; it is not promotion or
+acceptance. Reconcile the unchanged title/milestone with its owner before final
+membership sign-off. Vault KV's proposed governance condition and developer credentials'
+implementation-merge condition likewise remain explicit.
 
-9. **Publish the six draft advisories.** Done 2026-09-08 07:39 UTC on the
-   owner's instruction: GHSA-8h6m-jpwj-v83p, GHSA-2qjg-h73x-x9j4,
-   GHSA-xv87-mmx6-hw25, GHSA-hqjh-jg7p-qr2m, GHSA-wxjf-x869-pfh4 and
-   GHSA-p29g-pjgc-jqmv are published with affected range
-   `<= 0.0.1-nightly.20260905.23.g907e2f41` and patched version
-   `0.0.1-nightly.20260906.24.g90b4ca6a` (the first nightly containing fix
-   commit `3700a0ef`). CVE IDs were requested for all six; GitHub assigns
-   them asynchronously. The 1.0.0 release notes should list them.
-10. **Activate the selected online stable policy after implementation merges.**
-    Keep the existing recovery root. Run `scripts/release/ceremony.sh setup`,
-    inspect the delegation, recovery-sign it with the existing local helper and
-    merge the verified public trust PR. Follow [online setup](online-signing.md).
-    This supersedes the earlier fresh-offline-primary recommendation. The laptop
-    stays online; ordinary releases require no primary/recovery decryption.
-11. **GitHub live provider run** for M4 / GH-E2E / GH-CONTRACT. Needs seven
-    fine-grained PATs and the dedicated fixture repository, organisation and
-    protected environment (see `internal/adapter/githubactions/contract_external_test.go`
-    lines 40 to 60 for the exact token floors). Run with
-    `HIKYO_GITHUB_CONTRACT=1` and the `HIKYO_GITHUB_CONTRACT_*` variables;
-    commit the redacted result under `docs/reports/1.0/evidence/` and flip the
-    three ledger rows.
-12. **MCP named-client proof (#651).** Deploy the candidate image behind
-    public HTTPS with two PostgreSQL replicas, run
-    `scripts/mcp-public-smoke`, then exercise Inspector, the Go client, Codex
-    CLI and Claude Code with a scoped production tool. Commit the redacted
-    artifact; set each profile in the operator support table to supported,
-    unsupported with reason, or not yet verified. Unverified profiles stay
-    honestly marked; they do not block the tag.
-13. **Quarterly PVR notification receipt.** Self-report through the private
-    vulnerability channel and the fallback address, record the acknowledgement
-    time in `release/repository/`, and refresh
-    `fallback-channel-test.json` if it is older than 93 days at tag time.
-14. **Public docs endpoint check** at the candidate:
-    `scripts/ci/check-docs-live.sh https://hikyo.app security@developwent.io`
-    and `scripts/ci/check-oss-policy.sh . docs/site/dist` after building the docs
-    site. `SITE_ROOT` is a local directory, not a URL. The owner reports both
-    checks passed; repeat against the final candidate if relevant content changes.
+## 2. Run the complete acceptance matrix
 
-## Phase D: tag and build, after designs and final acceptance
+Use the current workflow files and inputs from the repository root with
+maintainer GitHub access and the pinned tools in CONTRIBUTING/the CI guide.
+Workflow requests do not establish success: retain actual SHA, event, run,
+attempt, all required job outcomes, artifacts, failed attempts and skips.
 
-15. Pull clean current main and run `scripts/release/ceremony.sh status`.
-    The delegated stable policy must authenticate. No manual per-release
-    recovery-signed candidate metadata is needed.
-16. Run `scripts/release/ceremony.sh build 1.0.0` only when the release is approved.
-    It checks exact-main CI and synchronized trust, prepares the candidate, and
-    asks for the signed immutable tag push.
-17. Wait for `release-build`. It signs the complete draft, OCI image/chart,
-    metadata/catalog and first-party provenance with the delegated GitHub OIDC
-    identity. A signed draft is still not a public release.
-18. The API freeze activates when `v1.0.0` exists. Later API changes are compared
-    against that tag by the existing required freeze guard.
+| Proof | Current entry point | Required boundary |
+| --- | --- | --- |
+| Full main | `ci-main.yml`, manual on `main`, selecting its exact SHA | `require-green-main.sh` accepts the latest qualifying exact-SHA `ci-main.yml` or legacy `ci.yml` run. PR feedback, queue admission and merge-group success do not substitute. |
+| Complete graph | `ci.yml` and `scripts/ci/ci-job-registry.json` | All 16 full domains: client, compose-demo, docs, floor-bench, freeze-guard, fuzz, generated, headline-guarantee, k8s-e2e, lint, race, release-snapshot, supply-chain-checks, test, web, web-go; inspect supporting jobs and all shards. |
+| Full isolation race | `reliability.yml`, `suite=race` | All planned isolation-race shards and both engines. Ordinary race coverage excludes `internal/isolation`. |
+| Backup/restore and operator | `release-acceptance.yml`, `suite=all` | Exact-candidate native ARM64 recovery and operator artifacts. Use the consolidated workflow, not retired standalone workflow names. |
+| Operations floor | `ops-floor.yml`, manual | Native ARM64 and AMD64 diagnostics; authenticated Compose/chart doctor results remain separate evidence. |
+| Resource bounds | Required `floor-bench.yml` lane | Four CPUs, 4 GiB, zero swap; committed CPU factors 4.0 and memory 1.0 unless separately calibrated; exact executable hashes, unchanged workload and thresholds. |
+| Browser/client/self-hoster | Full graph plus the [candidate checklist](self-hoster-candidate.md) | Both engines, claimed viewport/state coverage, actual packaged journeys and honest rehearsal/frozen mode. |
+| Providers | Dedicated GitHub contract, real Forgejo proof, relevant GitLab reliability lane | Actual provider behavior; stubs and skipped opt-in suites are not live-provider proof. |
+| Security and docs | Full graph, applicable `reliability.yml` suites, published docs checks | Artifact/security results, O4-O6, current real disclosure receipts and public-site evidence stay distinct. |
 
-## Phase E: review and publication, laptop online
+Before any full web test run, reserve Go build capacity or supply a compatible,
+source-matched `HIKYO_E2E_OIDC_BINARY`. The
+[`instance-idp` fixture](../../web/e2e/fixtures/instance-idp.test.ts) runs a Go
+build at module load when that setting is absent, including from a Node/Vitest
+invocation. Follow the other documented binary/tool prerequisites too and
+include this compilation in the run's resource and toolchain requirements.
 
-19. Run `scripts/release/ceremony.sh review 1.0.0`. It verifies all downloaded
-    evidence and actual OCI signatures, then prints the exact manifest hash.
-20. Review release notes, the manifest and final-candidate acceptance evidence.
-    Keep the printed SHA-256; signature validity does not prove an honest build.
-21. Run `scripts/release/ceremony.sh publish 1.0.0 REVIEWED_MANIFEST_SHA256`.
-    Confirm the exact hash. The local publication helper repeats verification and
-    refuses changes between review and publication.
-22. Wait for publication and public-download verification to pass. Immutable
-    release settings lock the assets; a failed check is not publication success.
-23. Run `scripts/release/ceremony.sh sync-trust 1.0.0`. Review and merge the
-    signed metadata/catalog PR before any subsequent release build.
-24. Homebrew remains separate: publish the cask proposal only from the verified
-    public release and review its protected tap PR. See the [online guide](online-signing.md).
+The eight [ops-spec section 15](../adr/ops-spec.md#15-ci-enforced-invariants-added-by-this-spec)
+checks remain: Argon2id floor, password-list hash, bounded metrics labels,
+air-gap service, pinned JSON Schema subset, engine durability, keyword allowlist
+and composite ARG_MAX preflight. Keep every acceptance criterion and all three
+CI/E2E/UI classes. The ledger's inventory test checks references and its recognized row IDs,
+not behavior or release acceptance. Named C-criteria, including C-ACC, remain
+constrained to their owning ADR inventory.
 
-## Phase F: after publication (agent can do most of it)
+For the floor recovery lane, independently supply the disposable test secrets
+`FLOOR_BACKUP_CUSTODY` and `FLOOR_ROOT_CUSTODY`. Follow
+[floor acceptance](floor-acceptance.md); do not substitute production custody
+or generate fallback secrets. Preserve backup/destroy/restore/reconcile,
+readable values, credential refusal/re-establishment, effective limits and RTO.
+This approved CI arrangement does not establish independent production escrow.
+Operator process peak RSS and cgroup memory charge are different measurements.
 
-25. Flip `CAP-PUBLIC-RELEASE` to implemented in `docs/status/ledger.json`
-    with the release URL and manifest hash as evidence; regenerate the README
-    block with `scripts/ci/check-doc-status.mjs --write`.
-26. Fill the "Official release" and "Freeze" rows of the acceptance ledger
-    with the tag, manifest SHA-256, image and chart digests
-    (`PENDING_IMAGE_DIGEST` / `PENDING_CHART_DIGEST` placeholders).
-27. Close #79 and #41 with a comment linking the release, the ledger and the
-    decision log. Update #527 so the roadmap's "1.0 critical path" section
-    reads as history and "first after 1.0" (#605 to #613) becomes the active
-    lane.
-28. Nightly bridges: confirm the next nightly's `catalog.json` authorises an
-    upgrade path from the last pre-1.0 nightly into 1.0.0 (`BRIDGES.md`), and
-    that `hikyo upgrade` on a systemd host reaches 1.0.0 from a nightly.
-29. Announce: docs site landing page, README badge, release notes naming the
-    six advisories, the SOPS/KMS binary size decision and the post-1.0 lanes.
+## 3. Complete external and self-hoster evidence
 
-## What is deliberately not in 1.0
+- **GitHub:** `TestGitHubDotComContract` requires a dedicated fixture repository,
+  organization and protected unattended environment, three minimum-permission
+  tokens, three one-permission-less tokens and a distinct harness token.
+  `loadGitHubContractConfig` defines the complete configuration and rejects
+  token reuse. Missing inputs skip loudly. Obtain scoped authorization/custody
+  before this destructive opt-in test; record real API and workflow-consumption
+  evidence for M4/GH-E2E/GH-CONTRACT without values or credential dumps.
+- **MCP (#651):** share one candidate with that owner; do not create duplicate
+  deployments. Bind source, immutable RepoDigest, deployment revision, verified
+  public HTTPS, UTC time and exact client versions. Require supported synthetic
+  provisioning, two actual PostgreSQL-backed server processes, cursor continuity,
+  credential/grant revocation and restoration, cancellation/drain/shared claims,
+  canary exclusion and each advertised named client's actual authenticated tool
+  result. Distinguish direct TLS cancellation from proxy streaming behavior.
+  Record Go/Inspector/Codex and any claimed Claude/Responses profiles separately.
+  Unknown or failed mandatory profiles remain open; any narrower release claim
+  requires explicit scoped release/ADR disposition. #631's no-OAuth choice is
+  not that disposition. No paid fallback or protocol/TLS weakening.
+- **Self-hoster:** reassert every operative capability through released
+  open-source artifacts and documented public interfaces. Exercise native,
+  Compose and chart installation, setup/recovery, import, workload delivery,
+  upgrade and backup/restore using the actual selected artifact identities.
+  An unsigned development snapshot does not establish official availability.
+- **Disclosure/docs:** verify the built site and public endpoints with the
+  current docs workflow, `check-oss-policy.sh` and `check-docs-live.sh` as
+  documented in the CI guide. Obtain actual quarterly PVR/fallback notification
+  receipts through authorized private channels. The recorded fallback receipt
+  is dated 2026-08-13T07:09:54Z; its 93-day freshness limit is
+  2026-11-14T07:09:54Z. A GET/MX check is not a sent/acknowledged report.
+  Do not send external messages as an implicit side effect of this plan.
 
-- Social sign-in and open registration (#605 to #615, #589): post-1.0 by owner
-  decision on 2026-09-03; its breaking pre-freeze slice (#617) is merged.
-- Kubernetes condition reporting to the server (#683): the UI shows the
-  status as unknown, which is the honest posture until the reporting channel
-  is designed.
-- MCP human delegation / OAuth (#631): decision lane, no 1.0 claim.
-- The #619 architecture leftovers (hand-written store SQL, TxAuthorizer
-  pass-throughs, authz derivation, MachineAccess split): locked-decision
-  material for an ADR, not pre-freeze refactoring.
-- New delivery adapters, PKI, SSH certificates, Transit/KMS, repository
-  scanning, temporary access, scheduled rotation (#148 to #164).
+## 4. Prepare the public trust proposal before human authorization
+
+Follow the [online guide](online-signing.md) and use a clean canonical main
+checkout, the pinned Go/Cosign/GitHub CLI/jq toolchain, configured Git signing
+and maintainer GitHub access. Confirm that `origin` names the canonical release
+repository before using ceremony helpers, which compare against `origin/main`.
+Do not access private keys while preparing the public review packet.
+
+The source command
+`go run ./scripts/release/stable policy --trust release/trust --out PROPOSAL`
+creates an unsigned public proposal at a new output file. Replace `PROPOSAL`
+with a new path in a designated external release-state directory. It authenticates
+existing public trust first; it neither recovery-signs policy nor authorizes a
+release. Review repository/owner numeric IDs, workflow `.github/workflows/release.yml`,
+`refs/tags/v*`, runner, issuer, Fulcio/Rekor/SCT/checkpoint constraints, sequence
+floor, primary inventory, nightly policy and bridge bindings. Compare the
+trusted-root hash with the authenticated nightly root. Keep the reviewed bytes
+and source identity for comparison with the later setup output.
+
+The public trust PR is limited to `stable-policy.json`,
+`stable-policy.sigstore.json` and `stable-trusted-root.json` under
+`release/trust/`; preserve existing root, metadata/catalog and historical
+inventory. The unsigned proposal alone cannot produce the signature file.
+Prepare custody-recovery/backup instructions without reading key material.
+Independent encrypted backup and a harmless restore/sign/verify drill remain
+operator evidence. Do not describe online-generated custody as offline or
+hardware isolated.
+
+Only after the packet is reviewable and explicit recovery authorization is
+provided, run `scripts/release/ceremony.sh setup`. It displays the actual policy
+and requires `authorize stable release workflow` before invoking recovery custody
+and opening the verified signed+DCO trust PR. Compare it with the reviewed
+proposal, review/merge that PR through normal gates, then authenticate main with
+`ceremony.sh status`. Any resulting main change precedes selection/revalidation
+of the final candidate. Neither activation nor status is a release.
+
+## 5. Separately authorized tag, signed draft and publication
+
+These are future owner ceremonies, not commands executed or authorized by this
+documentation PR. The first stable tag is the API/CLI freeze act; prerequisites
+must be complete before cutting it, even though publication follows draft review.
+
+1. From clean current canonical main, verify stable policy, synchronized trust,
+   exact-main full CI and the complete candidate evidence packet. Use
+   `scripts/release/ceremony.sh build 1.0.0` only with explicit release approval.
+   It confirms version/commit and pushes a signed immutable tag. A prerelease
+   tag does not freeze the surface.
+2. `release-build` validates, builds and signs the complete draft, including
+   OCI image/chart, manifest, metadata/catalog, SBOM and first-party provenance.
+   Record six-platform archives/verifiers, eight native packages, compatibility
+   declaration, installer, checksum and OCI subjects. Verify closed inventory,
+   exact hashes, identity, revocation/rollback rules and actual OCI signatures.
+   A signed draft is not a public release; provenance is not reproducibility.
+3. `scripts/release/ceremony.sh review 1.0.0` verifies the downloaded draft and
+   prints the manifest SHA-256. Inspect source, notes and final acceptance.
+   Keep that exact reviewed hash; valid signatures do not prove an honest build.
+4. Only with publication approval, run
+   `scripts/release/ceremony.sh publish 1.0.0 REVIEWED_MANIFEST_SHA256`.
+   It confirms version/hash, verifies again, checks immutable-release policy
+   and inventory, publishes and verifies public downloads/OCI subjects.
+   Changed bytes or failed verification are failures, not permission to rebuild
+   under the same version. Never bypass the ceremony's confirmation or trust.
+5. Run `ceremony.sh sync-trust 1.0.0` after verified publication and review/merge
+   its signed metadata/catalog PR before the next build. Homebrew is a separate
+   protected downstream proposal from verified public artifacts.
+
+## 6. Record completion at its actual boundary
+
+The September 7 [decision log](../reports/1.0/release-run-2026-09-07.html) and
+[handoff](../handoff/79-release-run-2026-09-07.md) remain historical evidence,
+including the recorded September 8 advisory publication. Recheck advisory/CVE
+state for final notes rather than copying a historical pending-assignment claim.
+Retain accepted SOPS/KMS support and report measured final artifact sizes.
+
+Only verified public publication permits the capability owner to mark
+`CAP-PUBLIC-RELEASE` implemented and the release owner to fill the ledger's
+official release/freeze identities. Coordinate #527's roadmap and #15's ledger
+rather than overwriting their work. Reassert the authenticated nightly-to-stable
+upgrade bridge using actual packaged bytes where claimed.
+
+**Keep #79 open until its release checkbox is fulfilled.** An implementation
+or documentation PR uses `Refs #79`, not an automatic closing keyword. Do not
+close or modify parent #41 under this task. No unresolved evidence becomes a
+pass because the preparatory PR merged.

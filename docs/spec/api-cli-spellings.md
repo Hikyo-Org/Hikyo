@@ -1,6 +1,6 @@
 # Hikyo — API & CLI spellings deferred to synthesis (2026-08-06)
 
-> **1.0 disposition sweep (2026-09-05, [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)): section 9 is operative for the existing release surface and takes precedence over older shorthand examples in this document. Section 8 describes the post-1.0 registration map; it is not a claim that those endpoints already ship. Retain current parser spellings, output classes and authority checks.**
+> **1.0 disposition sweep (2026-09-05, [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)): section 9 is operative for the existing release surface and takes precedence over older shorthand examples in this document. Section 8 records registration spellings; release scope remains governed by its owning decision, not this spelling inventory. Retain current parser spellings, output classes and authority checks.**
 
 [api-cli-surface.md](../adr/api-cli-surface.md) is the API/CLI spec's skeleton; several later ADRs joined its closed grammar at declared join points and delegated their **exact spellings** to this document. Every spelling here is bound by the locked grammar (noun-verb families, output classes, print triad, exit codes, parity rules) and by the delegating ADR's constraints; a spelling that would violate either is a defect here, not a licence to reinterpret the ADR. Nothing here adds a verb class, an output class, or an endpoint outside the declared join points.
 
@@ -72,7 +72,7 @@ Admin REST resources (ordinary `/api/v1` grammar, proof-carrying):
 - `DELETE /api/v1/instance/saml-sp-keys/{fingerprint}`
 - `POST /api/v1/instance/saml-sp-keys/{fingerprint}/compromise-retire`
 
-Provider list/show responses carry a required `warnings` array. Its closed warning codes are `metadata_expires_soon`, `metadata_expired`, `signing_certificate_not_yet_valid`, and `signing_certificate_expired`; each item carries `severity`, the relevant timestamp, a server-authored message, and a certificate fingerprint where applicable. The 30-day metadata threshold is server-authoritative. Provider table output names warnings, JSON preserves the structured array, and the existing top-level `hikyo doctor [--instance REF] [-o table|json]` reports the same server-authoritative items (no second warning calculation and no additional endpoint). Doctor returns success for no findings or warning-severity findings; metadata-expired is error severity and returns the stable refused exit code after rendering the findings.
+Provider list/show responses carry a required `warnings` array. Its currently known warning codes are `metadata_expires_soon`, `metadata_expired`, `signing_certificate_not_yet_valid`, and `signing_certificate_expired`; each item carries `severity`, the relevant timestamp, a server-authored message, and a certificate fingerprint where applicable. The 30-day metadata threshold is server-authoritative. Provider table output names warnings, JSON preserves the structured array, and the existing top-level `hikyo doctor [--instance REF] [-o table|json]` reports the same server-authoritative items (no second warning calculation and no additional endpoint). Doctor returns success for no findings or warning-severity findings; metadata-expired is error severity and returns the stable refused exit code after rendering the findings.
 
 Identity-protocol endpoints (exception class, per-provider, parity-exempt):
 
@@ -404,11 +404,43 @@ The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek
 
 ### Revision and enum baseline
 
-The old pickup brief assumed every minimum revision was 1. The inspected implementation advertises **API revision 2**. Nine operations require 2: `exportDefinitions`, `checkDefinitions`, `createDefinitionsPlan`, `getDefinitionsPlan`, `applyDefinitionsPlan`, `getDefinitionsSettings`, `setDefinitionsSettings`, `getMachineReveal`, `setMachineReveal`; the other 259 operations require 1 at the inspected baseline. Retain these published minima rather than lowering them for the freeze. `TestEveryOperationCarriesItsContractExtensions` enforces that no operation requires a revision above the server's advertised revision. Runtime client-skew acceptance remains a separate S1 gate.
+**Source inventory, 2026-10-16 at
+`6769ee55dcd4087eeaf42547e9abde01c4f0818c`; final freeze baseline pending.**
+The earlier revision-2 inventory is historical. `api/spec.go` now advertises
+**API revision 11** and `api/openapi.yaml` contains 395 operations:
+
+| Minimum revision | Operation count |
+| --- | ---: |
+| 1 | 301 |
+| 2 | 9 |
+| 3 | 2 |
+| 4 | 1 |
+| 5 | 3 |
+| 6 | 17 |
+| 7 | 45 |
+| 8 | 4 |
+| 9 | 2 |
+| 10 | 8 |
+| 11 | 3 |
+
+These are source counts, not a candidate test result. Refresh them after
+outstanding API changes, including #805, land. Retain published minima rather
+than lowering them for the freeze. `TestEveryOperationCarriesItsContractExtensions`
+enforces that no operation requires a revision above the server's advertised
+revision. Both-engine runtime client skew remains a separate S1 gate: before
+`v1.0.0` it is a rehearsal; afterward it uses the tag's unmodified checked-in
+client against the current server.
 
 Marc already [approved `conflict` and `limit_exceeded` and accepted the SOPS/KMS size tradeoff](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183). Both errors enter the freeze baseline; the negative fixture forbidding later closed-response-enum growth remains. The binary must be remeasured at the final candidate, with all supported KMS sources retained.
 
-Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` and `FactorClass` remain open. #617 additionally opens identity-provider kind, OIDC/SAML purpose and grant origin, with unknown-consumer fixtures. Audit event types and adapter-plan warnings already use strings. Control/state enums are not widened merely to make a test pass. The remaining potentially extensible response fields `AdapterProvider` and `SamlProviderWarning.code` require an explicit pre-freeze disposition and unknown-consumer validation; the [acceptance ledger](../release/acceptance-1.0.md) must not treat the enum audit as complete until that is resolved. `DynamicProviderKind` remains deliberately closed to PostgreSQL under #147.
+Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` and `FactorClass` remain open. #617 additionally opens identity-provider kind, OIDC/SAML purpose and grant origin, with unknown-consumer fixtures. Audit event types and adapter-plan warnings already use strings. Control/state enums are not widened merely to make a test pass. `AdapterProvider` and `SamlProviderWarning.code` already declare
+`x-extensible-enum` in the inspected source. Their unknown-value handling is
+covered by `api/pre_freeze_test.go`, `internal/cli/pre_freeze_test.go`,
+`internal/cli/doctor_internal_test.go` and `clients/ts/src/contract.test.ts`.
+The source has 12 extensible-enum declarations. This resolves the old source
+inventory question, but fixture presence is not a fresh pass: the final
+candidate still needs the complete response-enum audit and consumer execution
+recorded in the [acceptance ledger](../release/acceptance-1.0.md). `DynamicProviderKind` remains deliberately closed to PostgreSQL under #147.
 
 ## 10. Generic file destinations ([#164](https://github.com/Hikyo-Org/Hikyo/issues/164), proposed amendment to [deployment-adapter.md](../adr/deployment-adapter.md))
 
