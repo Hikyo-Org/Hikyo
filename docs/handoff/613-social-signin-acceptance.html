@@ -405,7 +405,9 @@ passing same-source operator evidence. This supersedes the earlier pending
 floor proof for that candidate; the earlier failed artifacts remain recorded.</p>
 <p>The same candidate's <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38871565270/job/116878146694">desktop browser group 3</a>
 finished with 74 passing tests and one failure in GitHub provider creation.
-The trace shows successful real provider PUT and list GET responses. The save
+The same assertion also failed in <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38871565270/job/116878146943">mobile group 3</a>,
+with 74 passing tests and one failure; the same semantic-status correction
+covers both viewports. The trace shows successful real provider PUT and list GET responses. The save
 assertion selected every status in the panel, encountering both the save
 confirmation and the prior empty-list message while the asynchronous list
 refresh completed. The trace's old paragraph was temporarily inert because
@@ -431,6 +433,34 @@ refresh completed successfully. These filtered browser runs explicitly skip
 the registry execution-closure gate. Full hosted validation on the subsequent
 browser-repair head remains required; the floor success above belongs to
 head <code>8d7fd5213</code>, not an untested successor.</p>
+<h2 id="social-account-browser-audit-duplication">Social-account browser audit duplication</h2>
+<p>On head <code>dc8d8cacb</code>, <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38876039080/job/116893306689">desktop group 2</a>
+exceeded the existing 30-second total budget in the social-account security
+flow, near its final provider sign-in checks. The group recorded 58 passes,
+one failure and one intentional desktop skip for the mobile-only history-drawer
+focus contract. Its trace retains the identity chooser, verified status,
+password form and password mismatch in both themes.</p>
+<p>The local social-surface helper called <code>expectPinnedAssertionSet</code>, which already
+runs <code>expectNoSeriousAxeViolations</code>, then repeated that same audit function.
+Both use the same tags and serious/critical refusal rule. The hosted trace
+records 16 completed audits across eight state/theme combinations. The second
+audits account for about 3.466 seconds of recorded browser-call duration;
+this is not complete axe wall time. The repair removes those redundant
+executions and their unused import, retaining every unique state/theme check,
+all focus, contrast, touch and token assertions, all screenshots and the complete
+credential-establishment, stamp-consumption and local-proof security sequence.
+The shared assertion implementation and 30-second deadline remain unchanged.</p>
+<p>The unchanged local desktop diagnostic passed in 16.9 seconds, so it did not
+reproduce the hosted timeout. The corrected desktop flow passed in 13.7 seconds
+(2.6 minutes including setup). Trace comparison confirms 16 to eight completed
+audits and exactly matching eight state/theme screenshots. These paired local
+timings are diagnostic observations, not a hosted latency guarantee.</p>
+<p>The corrected mobile flow passed in 15.7 seconds (2.7 minutes including setup),
+also with eight completed audits and the same eight state/theme screenshots.
+The complete web unit suite passed 201 files and 1,756 tests in 15.48 seconds;
+typecheck, deny-warnings lint and the structural graph refresh passed. These
+filtered browser runs do not establish registry execution closure. Required
+full hosted validation on the subsequent repair head remains pending.</p>
 <h2 id="delivery-gates">Delivery gates</h2>
 <p>The issue requires DCO and cryptographic signing for every commit, both-engine
 schema and lifecycle coverage, the requested review rounds, a verified preview,

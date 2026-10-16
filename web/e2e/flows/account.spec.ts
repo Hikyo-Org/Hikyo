@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { zInvitationResult, zPasskeyList, zTotpStatus, zWhoAmI } from '@hikyo/zod';
 
 import { browserApi } from '../fixtures/api.ts';
-import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -18,13 +18,13 @@ import { test, withPasskeyPage } from '../fixtures/passkey.ts';
 async function expectSocialSecuritySurface(page: Page, scope: Locator, heading: Locator, control: Locator, state: string, text: Locator[] = []) {
   for (const theme of ['dark', 'light'] as const) {
     await page.emulateMedia({ colorScheme: theme });
+    // The pinned set includes this state's complete axe check in each theme.
     await expectPinnedAssertionSet(page, {
       flow: 'account', surface: 'settings', theme,
       text: [heading, ...text], radii: [[scope, 'container'], [control, 'control']],
       fonts: [[heading, 'ui']], colours: [[heading, 'color', '--tx']],
       hairlines: [scope], density: [[control, '--control']],
     });
-    await expectNoSeriousAxeViolations(page);
     await page.screenshot({ path: test.info().outputPath(`social-${state}-${theme}.png`), fullPage: true });
   }
 }
