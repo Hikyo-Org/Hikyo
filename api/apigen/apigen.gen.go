@@ -41481,6 +41481,20 @@ func (response GetDeveloperCredentialPolicy401JSONResponse) VisitGetDeveloperCre
 	return err
 }
 
+type GetDeveloperCredentialPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetDeveloperCredentialPolicy403JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetDeveloperCredentialPolicy404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetDeveloperCredentialPolicy404JSONResponse) VisitGetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
@@ -41599,6 +41613,20 @@ func (response SetDeveloperCredentialPolicy401JSONResponse) VisitSetDeveloperCre
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetDeveloperCredentialPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetDeveloperCredentialPolicy403JSONResponse) VisitSetDeveloperCredentialPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

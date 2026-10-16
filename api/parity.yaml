@@ -541,7 +541,7 @@ operations:
   listMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeAllMyDeveloperCredentials: {exception: bounded-developer-delegation}
   revokeMyDeveloperCredential: {exception: bounded-developer-delegation}
-  listProjectDeveloperCredentials: {issue: 807}
-  revokeProjectDeveloperCredential: {issue: 807}
-  getDeveloperCredentialPolicy: {issue: 807}
-  setDeveloperCredentialPolicy: {issue: 807}
+  listProjectDeveloperCredentials: {webui: project-settings}
+  revokeProjectDeveloperCredential: {webui: project-settings}
+  getDeveloperCredentialPolicy: {webui: instance-admin}
+  setDeveloperCredentialPolicy: {webui: instance-admin}

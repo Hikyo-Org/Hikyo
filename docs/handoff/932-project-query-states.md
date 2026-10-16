@@ -15,13 +15,22 @@ newer successful result. Null means unavailable, never an authoritative empty
 topology. All project-list consumers accept the nullable result. Project
 creation invalidates the query instead of writing over the retirement marker.
 
-The shared helper, environment query options and nullable consumers are copied
-from #948 commit `728e347d84d3ebe7a44fff70c04ff5f3b3a8d9a3`, including its
-MachineAccess aggregate readiness repair. This branch has additional project
-guards in settings. It does not contain the file-target feature. These copies
-must converge with the canonical implementation during dependency integration.
+The original candidate copied the shared helper, environment options and
+nullable consumers from #948 commit
+`728e347d84d3ebe7a44fff70c04ff5f3b3a8d9a3`. Source integration now contains full
+#948 head `3a331d2d69ec726cf20555c94bd4916774bb3b9b`, including #940 head
+`ed908f0013fdbe5139388852072eeae387caf354` and the file-target feature, plus
+#807 head `03ad8f0243fc0b2ee75fb138a507513ada8c9714`. Settings retains both
+project guards and canonical environment retirement. ProjectSettings retains
+nullable environment guards alongside the developer credential panel. #807
+does not change MachineAccess. Dependency presence here does not establish that
+those PRs have merged to main.
 
-## Validation
+## Original candidate validation
+
+These results belong to candidate
+`c90eee1ce8d5607ee7ca5fdb0c77b4bb6003e8f1`, before full dependency integration.
+They are retained as historical acceptance, not proof of the combined source.
 
 - Real-hook and QueryClient regressions: the corrected original-source baseline
   failed 19 of 24 cases; the implementation passes all 24. Coverage includes
@@ -51,13 +60,19 @@ environment variables after source compatibility checks.
 
 ## Integration and delivery gates
 
-These results describe this branch's source, not a final combination of sibling
-PRs. Integrate #940 and canonical #948, preserve #807 MachineAccess credential
-work, and validate the actual combined source before merge. In particular, the
-environment retirement effect must return when `listing.data === null` before
-dereferencing or purging caches. #940 head
-`ed908f0013fdbe5139388852072eeae387caf354` contains that guard; it has not been
-executed in this branch's validation.
+The full dependencies have been integrated locally under a source-only grant.
+Signature/DCO and source-fidelity checks passed. Independent full-file sensitive
+module review precedes pin reconciliation; the merged settings hash is the only
+new source pin. Canonical dependency pins remain unchanged. The environment
+retirement effect returns when `listing.data === null` before dereferencing or
+purging caches. The project directory's cancellation and status guards remain.
+
+No combined Node, Go or browser checks have run yet. Run affected regressions,
+client verification, typecheck/lint, full units and bundle under the allocated
+lane, then compile and exercise the actual combined UI under separate grants.
+Do not push the integration before its allocated combined checks pass. Preserve
+original candidate logs and all new failures. No unfinalized #820 feature or
+shared assertion patch is included in this integration.
 
 Required CI, current-head review, protected merge and verified main ancestry
 remain separate gates. Local logs and offline screenshot reports are external
