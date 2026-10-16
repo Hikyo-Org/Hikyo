@@ -51,6 +51,7 @@ import { isDemo } from '../demo/config.ts';
 import { demoSurfaceAvailable } from '../demo/surfaces.ts';
 
 import { StepUpBanner } from './StepUpBanner.tsx';
+import { ProjectQueryFeedback } from './ProjectQueryFeedback.tsx';
 import { ChromeDiagnostic, OpsDiagnosticBanners } from './OpsDiagnosticBanners.tsx';
 
 const DemoToolbar = import.meta.env.MODE === 'demo'
@@ -222,7 +223,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   // from this instance. Its route id remains the honest label until the remote
   // workspace can publish chrome identity through the same explicit seam.
   const projects = useProjects(remote === '' ? activeOrgId : '');
-  const projectItems = projects.data?.items ?? [];
+  const projectItems = projects.isSuccess && projects.data !== null ? projects.data.items : [];
   const chosenProject = projectItems.find((project) => project.id === chosenProjectId);
   const fallbackProject = chosenProject === undefined ? projectItems[0] : chosenProject;
   const routedProject = projectItems.find(
@@ -387,7 +388,7 @@ export function Shell({ session }: { session: WhoAmI }) {
     remote,
     isInstanceOperator,
     systemScope,
-    projects: projects.isSuccess ? projectItems : null,
+    projects: projects.isSuccess && projects.data !== null ? projectItems : null,
     onOrgPage,
     lastProjectId: lastProjects[activeOrgId] ?? '',
   });
@@ -569,9 +570,12 @@ export function Shell({ session }: { session: WhoAmI }) {
         {model.orgProjectList ? (
           <section className="sidebar__section sidebar__section--projects" aria-labelledby="sidebar-projects-title">
             <h2 id="sidebar-projects-title">Projects</h2>
-            {projectItems.length === 0 ? (
-              <p className="sidebar__empty" role="status">No projects yet. Create one under Projects.</p>
-            ) : (
+            <ProjectQueryFeedback
+              query={projects}
+              className="sidebar__empty"
+              empty="No projects yet. Create one under Projects."
+            />
+            {projectItems.length === 0 ? null : (
               <ul className="sidebar__items">
                 {projectItems.map((project) => (
                   <li key={project.id}>
@@ -596,12 +600,17 @@ export function Shell({ session }: { session: WhoAmI }) {
         {model.organisation === null ? null : (
           <SidebarSection block={model.organisation} onNavigate={onSidebarNavigate} />
         )}
-        {activeOrgId === '' || model.orgProjectList ? null : (
+        {activeOrgId === '' || remote !== '' || model.orgProjectList ? null : (
           <section
             className="sidebar__section sidebar__mobile-only sidebar__mobile-projects"
             aria-labelledby="mobile-projects-title"
           >
             <h2 id="mobile-projects-title">Projects</h2>
+            <ProjectQueryFeedback
+              query={projects}
+              className="sidebar__empty"
+              empty="No projects yet. Create one under Projects."
+            />
             <ul className="sidebar__items">
               {projectItems.map((project) => {
                 const identity = readChromeIdentity('project', project.id, isPrototype);
