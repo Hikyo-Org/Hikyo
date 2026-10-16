@@ -67,12 +67,34 @@ new source pin. Canonical dependency pins remain unchanged. The environment
 retirement effect returns when `listing.data === null` before dereferencing or
 purging caches. The project directory's cancellation and status guards remain.
 
-No combined Node, Go or browser checks have run yet. Run affected regressions,
-client verification, typecheck/lint, full units and bundle under the allocated
-lane, then compile and exercise the actual combined UI under separate grants.
-Do not push the integration before its allocated combined checks pass. Preserve
-original candidate logs and all new failures. No unfinalized #820 feature or
-shared assertion patch is included in this integration.
+Combined validation ran on clean source
+`071598053bf5d1656d172e8d338a767d7c622e30` with Node 26.7.0 and pnpm 11.24.0:
+
+- Affected regressions: 249 tests across 17 files pass with one worker.
+- Canonical client generation produces no diff; client typecheck and 37 tests
+  pass. The verify components run in canonical order, with test concurrency 1.
+- Web typecheck, lint and design checks pass. Full units pass all 1,909 tests
+  across 209 files with one worker and the compatible prebuilt OIDC fixture.
+- Production bundle, demo isolation and precompression pass. Its 53 files are
+  unchanged before and after the single `GOMAXPROCS=2`, `-p 1` embedded UI build.
+  Build metadata records this revision with `vcs.modified=false`.
+- Desktop and mobile each pass 28 browser tests with two viewport-specific
+  skips. Both run sequentially with one worker and explicit source-compatible
+  prebuilt UI, OIDC and mail binaries, avoiding implicit Go compilation.
+- Actual combined flows cover the complete Shell suite, project query states
+  and recovery, developer-policy expiry clamp/restore/revocation and permission
+  denial, and file-target report/conflict/credential-binding/deletion behavior.
+  The filtered run does not claim whole-suite flow-registry execution closure.
+- Desktop/mobile captures were inspected. Project states and focused Retry fit
+  both viewports. The mobile credential table scrolls horizontally; the first
+  capture does not show every column, while the live revoke interaction passes.
+  The mobile file-target completion capture is above the deletion message;
+  live assertions establish deletion. These capture limits are retained.
+
+No source repair was needed during combined validation. Original failures and
+candidate evidence remain preserved. No unfinalized #820 feature or shared
+assertion patch is included. Node, Go and browser lanes were explicitly released
+when their handles completed; owned browser listeners were confirmed closed.
 
 Required CI, current-head review, protected merge and verified main ancestry
 remain separate gates. Local logs and offline screenshot reports are external
