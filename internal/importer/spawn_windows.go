@@ -3,6 +3,7 @@
 package importer
 
 import (
+	"io"
 	"os/exec"
 	"sync"
 	"unsafe"
@@ -79,4 +80,8 @@ func (t *processTree) release() {
 		_ = windows.CloseHandle(t.job)
 		t.job = 0
 	}
+}
+
+func writeSubprocessOutput(stdout io.Writer, output []byte) (int, error) {
+	return stdout.Write(output)
 }
