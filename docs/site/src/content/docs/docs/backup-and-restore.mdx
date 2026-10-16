@@ -55,8 +55,8 @@ it is due.
 ```text
 HIKYO_BACKUP_INTERVAL=24h       # minimum 1h; export runs at most this often
 HIKYO_BACKUP_RPO=26h            # at least the interval; health fails past it
-HIKYO_BACKUP_RETAIN_COUNT=7     # always keep this many newest archives
-HIKYO_BACKUP_RETAIN_DAYS=180    # maximum 180; no unlimited option exists
+HIKYO_BACKUP_RETAIN_COUNT=7     # protect newest archives within 180-day ceiling
+HIKYO_BACKUP_RETAIN_DAYS=180    # earlier age threshold outside retained count
 HIKYO_BACKUP_RTO_TARGET=30m     # the restore drill's pass/fail clock
 ```
 
@@ -67,12 +67,42 @@ is a target gated on monitored success, not a promise: if no successful export
 is younger than `HIKYO_BACKUP_RPO`, health reports the breach and `hikyo doctor`
 returns an error.
 
-The retention prune deletes complete `hikyo-<engine>-<timestamp>.age` archives
-for this engine, never `.partial` staging files and never files it did not
-recognize. It always keeps the newest `HIKYO_BACKUP_RETAIN_COUNT` regardless of
-age, deletes the rest older than `HIKYO_BACKUP_RETAIN_DAYS` oldest-first, and
-never removes the newest successful export recorded in the health row (so a
-wall-clock rollback cannot make it a deletion candidate).
+The retention prune manages complete `hikyo-<engine>-<timestamp>.age` archives
+for this engine, including numeric collision suffixes. It leaves `.partial`
+staging files, other engines and unrecognized files alone. Scheduled, manual and
+pre-migration archives share one policy; there is no separate pre-migration
+count-three limit.
+
+Within an independent 180-day ceiling, the newest
+`HIKYO_BACKUP_RETAIN_COUNT` are protected from the earlier
+`HIKYO_BACKUP_RETAIN_DAYS` threshold. Other archives older than that configured
+threshold are deleted oldest-first. Count is a protection, not a maximum number
+of young archives. **Archives older than 180 days are eligible even when fewer
+than the retained count exist**. Exact equality does not trigger this ceiling,
+but the earlier configured age threshold can still apply outside retained count.
+`HIKYO_BACKUP_RETAIN_DAYS` accepts no value above 180 and has no unlimited option.
+
+**Recovery takes precedence in two visible exceptions.** The last durably
+recorded successful archive remains protected until a replacement is durably
+recorded, even beyond 180 days or after a wall-clock rollback. A newer filename
+or a published but unrecorded file cannot replace that recovery point. If success
+state is missing/unreadable, the recorded artifact is absent or clock/custody is
+uncertain, pruning retains recovery candidates and reports the uncertainty.
+Successful export records bind a SHA-256 digest of the ciphertext. Legacy
+success records without a digest remain uncertain until a fresh export succeeds;
+filename and byte count alone cannot establish recovery custody.
+That can preserve more than one expired archive. Durable export success is not
+a substitute for the recurring readable-restore drill below.
+
+Retained expired archives cause an immediate retention breach. Prune health
+records the attempt, bounded failure reason and retained-expired count separately
+from export health. A breach, failed deletion or uncertainty does not advance
+the successful-prune timestamp. Health also reports unverified or stale pruning;
+an old successful timestamp is not current compliance evidence. Fix export or
+storage failures and establish a new durable recovery point, then confirm a
+successful prune and cleared retention findings. Exceptions can persist
+indefinitely; investigate them instead of treating configured days as proof of
+erasure.
 
 **`HIKYO_BACKUP_DIR` must belong to one instance.** Archive names carry no
 instance identity, so two instances of the same engine sharing a directory
@@ -87,14 +117,29 @@ For personal-data expiry and deletion after restoration, follow
 Hikyo never reaches a remote object store itself: `HIKYO_BACKUP_DIR` is a local
 path. Make it a mount the operator manages (NFS, SMB, an `rclone`/`s3fs`
 FUSE mount) so the archives land in a different failure domain from the
-instance. The 180-day retention bound only governs copies this instance's
-pruner manages; any copy your tooling makes outside `HIKYO_BACKUP_DIR` extends
+instance. The 180-day policy and its recovery exceptions only govern copies this
+instance's pruner manages; any copy your tooling makes outside `HIKYO_BACKUP_DIR` extends
 the erasure window and is your responsibility to age out.
 
 Under multi-node HA the scheduled jobs run only on the lease holder, so
 `HIKYO_BACKUP_DIR` must be a mount every node shares: otherwise a failover
 moves where archives land and the pruner on the new leader manages a different
 directory than the one the health row describes.
+
+Final publication, success recording and pruning hold a directory advisory file lock across their
+filesystem verification/deletion and datastore outcome. **The shared mount must
+support reliable cross-process advisory locking for all publication/record/prune writers,
+including writers on different HA nodes.** A mount that merely supports creating
+and reading archives does not establish that requirement. The retention checks
+read ciphertext and public metadata without loading custody keys.
+
+An absent managed backup schedule alone produces a `not_scheduled` warning,
+not a retention breach or doctor error. This applies both before any managed
+backup exists and after a fresh successful manual export/prune. Recorded prune
+evidence remains visible; a false breach flag does not certify an unchecked
+installation. Observed expired archives, failed/incomplete or uncertain prune
+attempts, and clock uncertainty remain errors even after scheduling is disabled.
+A configured schedule with missing or stale checks also remains unhealthy.
 
 ## Custody separation
 
@@ -110,6 +155,8 @@ The operational `/metrics` endpoint exposes label-free gauges to alert on:
 - `hikyo_last_backup_export_success_timestamp_seconds` (0 when never)
 - `hikyo_backup_rpo_exceeded` (1 when the RPO is breached)
 - `hikyo_last_backup_prune_success_timestamp_seconds`
+- `hikyo_backup_retention_breach` (1 for breached or unverified retention)
+- `hikyo_backup_retained_expired_archives` (last-observed expired archive count)
 - `hikyo_last_restore_drill_timestamp_seconds`
 - `hikyo_restore_drill_ok`
 
@@ -118,6 +165,24 @@ exceeded) and a `restore-drill` finding (warning when the last successful drill
 is over 90 days old or has never run), so a cron-driven `doctor` check fails
 loudly. `/healthz` stays liveness-only on purpose: a stale backup is not a
 reason to restart the process.
+
+Monitor `backup-retention` as well as RPO: a recent export does not prove that
+expired archives were deleted. Doctor reports severity `error` for breached or
+unverified retention. The backup object on `GET /instance/retention-health`
+exposes:
+
+| Field | Meaning |
+| --- | --- |
+| `retention_breach` | True for observed expiry, failed/unverified pruning or missing/stale configured checks; `not_scheduled` alone is a warning |
+| `retention_reason` | Bounded reason for breach or uncertainty |
+| `retained_expired_archives` | Last-observed number of complete managed archives over 180 days |
+| `last_prune_attempt_at` | Nullable timestamp; includes incomplete and failed attempts |
+
+Alert on the breach gauge, pruning errors and absent/stale compliance evidence.
+The expired count is an observation, not a live directory scan; zero alone does
+not prove compliance. The successful-prune gauge above stays unchanged after
+failed checks or a run that preserved an expired recovery exception. Operational
+logs report the same retention outcome.
 
 ## 3. Run a manual export
 

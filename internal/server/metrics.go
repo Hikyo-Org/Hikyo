@@ -98,6 +98,8 @@ const (
 	// every other operator gauge: one series each, no archive name, no path.
 	MetricLastBackupExportSuccess = "hikyo_last_backup_export_success_timestamp_seconds"
 	MetricBackupRPOExceeded       = "hikyo_backup_rpo_exceeded"
+	MetricBackupRetentionBreach   = "hikyo_backup_retention_breach"
+	MetricBackupRetainedExpired   = "hikyo_backup_retained_expired_archives"
 	MetricLastBackupPruneSuccess  = "hikyo_last_backup_prune_success_timestamp_seconds"
 	MetricLastRestoreDrill        = "hikyo_last_restore_drill_timestamp_seconds"
 	MetricRestoreDrillOK          = "hikyo_restore_drill_ok"

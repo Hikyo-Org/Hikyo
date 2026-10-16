@@ -398,7 +398,7 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreBackupStateGet:              true,
 		authz.StoreBackupStateSetExportSuccess: true,
 		authz.StoreBackupStateSetExportFailure: true,
-		authz.StoreBackupStateSetPruneSuccess:  true,
+		authz.StoreBackupStateSetPruneResult:   true,
 		authz.StoreBackupStateSetDrill:         true,
 		authz.StoreValuesSampleSecretEntry:     true,
 		// The /metrics deployment-adapter gauges and `hikyo doctor` read the

@@ -1091,7 +1091,7 @@
     "engine": "postgres",
     "name": "GetBackupState",
     "annotation": "instance-scoped",
-    "hash": "395c7af353cd00c8b9b4a605ead624e230a83c8105ffa89dddb703d5a139300d"
+    "hash": "7db4bdd554e30a70396327579326bd6970dd0e4bf1d60feb988b9cbc4c332d77"
   },
   {
     "engine": "postgres",
@@ -3067,13 +3067,14 @@
     "engine": "postgres",
     "name": "SetBackupExportSuccess",
     "annotation": "instance-scoped",
-    "hash": "a090e091bd2d84d59b0b58f14377383e591b7af394ff22e715ffb3ff20213913"
+    "hash": "27f7f95ba85fae133d72a7c3271c48ca02b9f483bd3dd500420d2f7338c9f413"
   },
   {
     "engine": "postgres",
-    "name": "SetBackupPruneSuccess",
+    "name": "SetBackupPruneResult",
     "annotation": "instance-scoped",
-    "hash": "9cc9d067b04600261e143304c7aa62906be8b13c6e41c1d3e7ab74cc6d7a6c36"
+    "hash": "f18b107480f9d87819498b6d28d9bfceb2c69d441a646fae13b3f6dc89fcf18d",
+    "reason": "scheduler records instance-wide archive compliance in the singleton backup state; no tenant data is addressed"
   },
   {
     "engine": "postgres",
@@ -4355,7 +4356,7 @@
     "engine": "sqlite",
     "name": "GetBackupState",
     "annotation": "instance-scoped",
-    "hash": "395c7af353cd00c8b9b4a605ead624e230a83c8105ffa89dddb703d5a139300d"
+    "hash": "7db4bdd554e30a70396327579326bd6970dd0e4bf1d60feb988b9cbc4c332d77"
   },
   {
     "engine": "sqlite",
@@ -6324,13 +6325,14 @@
     "engine": "sqlite",
     "name": "SetBackupExportSuccess",
     "annotation": "instance-scoped",
-    "hash": "aa31b196a8da33f9185b7fcbdfe6e7c41d65466139edc7c6fef59aa507013bbc"
+    "hash": "27f7f95ba85fae133d72a7c3271c48ca02b9f483bd3dd500420d2f7338c9f413"
   },
   {
     "engine": "sqlite",
-    "name": "SetBackupPruneSuccess",
+    "name": "SetBackupPruneResult",
     "annotation": "instance-scoped",
-    "hash": "a52cf0ba47236577997157be22b2d9dc7197548b797c000795baf64e2956c950"
+    "hash": "f18b107480f9d87819498b6d28d9bfceb2c69d441a646fae13b3f6dc89fcf18d",
+    "reason": "scheduler records instance-wide archive compliance in the singleton backup state; no tenant data is addressed"
   },
   {
     "engine": "sqlite",

@@ -122,11 +122,11 @@ func TestDoctorPreservesAllOperationalDiagnosticCodes(t *testing.T) {
 		diagnostics = append(diagnostics, apigen.OpsDiagnosticFinding{Code: code, Severity: apigen.OpsDiagnosticFindingSeverityUnknown, Message: "server measurement: " + code})
 	}
 	result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Diagnostics: &diagnostics}, time.Now())
-	if len(result.Findings) != 13 || result.Status != "warning" {
+	if len(result.Findings) != 14 || result.Status != "warning" {
 		t.Fatalf("doctor lost existing or new families: %+v", result)
 	}
 	for i, code := range codes {
-		if got := result.Findings[i+6]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
+		if got := result.Findings[i+7]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
 			t.Fatalf("diagnostic was recalculated or discarded: %+v", got)
 		}
 	}

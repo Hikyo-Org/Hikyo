@@ -126,11 +126,19 @@ func TestBackupPruneJobRemovesOnlyAgedArchives(t *testing.T) {
 	now := time.Now().UTC()
 	fresh := "hikyo-sqlite-" + now.Format("20060102T150405Z") + ".age"
 	old := "hikyo-sqlite-" + now.AddDate(0, 0, -400).Format("20060102T150405Z") + ".age"
-	for _, name := range []string{fresh, old} {
+	for _, name := range []string{old} {
 		if err := os.WriteFile(filepath.Join(backupDir, name), []byte("archive"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
+	result, err := svc.Export(t.Context(), backupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RecordExport(t.Context(), service.TriggerManual, result); err != nil {
+		t.Fatal(err)
+	}
+	fresh = filepath.Base(result.Path)
 	cfg.BackupRetainCount = 1
 	cfg.BackupRetainDays = 180
 	prune := backupJobs(cfg, quietLogger(), svc)[1]

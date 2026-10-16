@@ -452,19 +452,24 @@ type AuthInstanceState struct {
 }
 
 type BackupState struct {
-	ID                     int64
-	LastSuccessAt          sql.NullString
-	LastArtifactName       string
-	LastArtifactBytes      int64
-	LastFailureAt          sql.NullString
-	LastFailureReason      string
-	LastPruneAt            sql.NullString
-	LastDrillAt            sql.NullString
-	LastDrillOk            int64
-	LastDrillArchive       string
-	LastDrillElapsedMs     int64
-	LastDrillBinaryVersion string
-	LastDrillSchemaVersion int64
+	ID                      int64
+	LastSuccessAt           sql.NullString
+	LastArtifactName        string
+	LastArtifactBytes       int64
+	LastFailureAt           sql.NullString
+	LastFailureReason       string
+	LastPruneAt             sql.NullString
+	LastDrillAt             sql.NullString
+	LastDrillOk             int64
+	LastDrillArchive        string
+	LastDrillElapsedMs      int64
+	LastDrillBinaryVersion  string
+	LastDrillSchemaVersion  int64
+	LastPruneAttemptAt      sql.NullString
+	PruneFailureReason      string
+	RetainedExpiredArchives int64
+	LastPruneAttemptID      string
+	LastArtifactSha256      string
 }
 
 type CliLoginHandoff struct {
