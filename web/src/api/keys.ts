@@ -38,6 +38,29 @@ export const pendingMatrixKey = (ref: MatrixRef) =>
 export const pendingDraftsKey = (ref: MatrixRef, environment: string) =>
   [...pendingMatrixKey(ref), environment] as const;
 
+/** Environment-owned data retired when the authoritative listing drops its ID. */
+export function environmentOwnedQueryPrefixes(ref: MatrixRef) {
+  return [
+    ['values', ref.org, ref.project],
+    ['reveal-window', ref.org, ref.project],
+    ['revisions', ref.org, ref.project],
+    ['revision-detail', ref.org, ref.project],
+    ['revision-pins', ref.org, ref.project],
+    ['matrix-signals', ref.org, ref.project],
+    ['matrix-pending', ref.org, ref.project],
+    ['environment-settings', ref.org, ref.project],
+    ['approval-requests', ref.org, ref.project],
+    ['access-requests', ref.org, ref.project],
+    ['ssh-cas', ref.org, ref.project],
+    ['ssh-profiles', ref.org, ref.project],
+    ['ssh-certificates', ref.org, ref.project],
+    ['delivery-targets', ref.org, ref.project],
+    ['dynamic-leases', ref.org, ref.project],
+    ['pki-certificates', ref.org, ref.project],
+    ['pki-certificate-profiles', ref.org, ref.project],
+  ];
+}
+
 /** Project-wide cache prefixes affected when its environment topology changes. */
 export function environmentTopologyQueryPrefixes(ref: MatrixRef) {
   return [

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
+	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -463,13 +465,60 @@ func (a *API) WatchProjectEvents(ctx context.Context, req apigen.WatchProjectEve
 		return nil, err
 	}
 	retry := advisoryRetryBase + time.Duration(rand.Int64N(int64(advisoryRetryRange)))
-	return eventStream{ctx: ctx, events: events, retry: retry}, nil
+	return eventStream{ctx: ctx, events: events, retry: retry, includeTopology: acceptsAdvisoryTopology(requestFrom(ctx))}, nil
+}
+
+// The original SPA requires an environment identity on every event. Send the
+// additive project-only shape only to clients that explicitly accept it.
+func acceptsAdvisoryTopology(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	for _, value := range r.Header.Values("Accept") {
+		for _, raw := range advisoryMediaRanges(value) {
+			mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(raw))
+			if err != nil || mediaType != "text/event-stream" || params["hikyo-topology"] != "1" {
+				continue
+			}
+			if rawQuality, ok := params["q"]; ok {
+				quality, err := strconv.ParseFloat(rawQuality, 64)
+				if err != nil || !(quality > 0 && quality <= 1) {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// Commas inside quoted extension values separate neither media ranges nor an
+// opt-in. Let mime.ParseMediaType validate each complete range afterwards.
+func advisoryMediaRanges(value string) []string {
+	var ranges []string
+	start := 0
+	quoted, escaped := false, false
+	for i, c := range value {
+		switch {
+		case escaped:
+			escaped = false
+		case quoted && c == '\\':
+			escaped = true
+		case c == '"':
+			quoted = !quoted
+		case c == ',' && !quoted:
+			ranges = append(ranges, value[start:i])
+			start = i + 1
+		}
+	}
+	return append(ranges, value[start:])
 }
 
 type eventStream struct {
-	ctx    context.Context
-	events <-chan service.AdvisoryEvent
-	retry  time.Duration
+	ctx             context.Context
+	events          <-chan service.AdvisoryEvent
+	retry           time.Duration
+	includeTopology bool
 }
 
 func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) error {
@@ -492,6 +541,7 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 	// no-cache and no proxy buffering: an intermediary that buffers a stream
 	// turns it into a hang, and one that caches it turns it into a lie.
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Add("Vary", "Accept")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Connection", "keep-alive")
 	if err := writeFrame(fmt.Appendf(nil, "retry: %d\n\n", s.retry.Milliseconds())); err != nil {
@@ -518,6 +568,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 				// signals endpoint cannot supply.
 				return nil
 			}
+			if ev.Type == service.AdvisoryEnvironmentsChanged && !s.includeTopology {
+				continue
+			}
 			payload, err := json.Marshal(wireAdvisory(ev))
 			if err != nil {
 				return err
@@ -532,6 +585,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 // wireAdvisory is the event body: metadata only. There is no value field and
 // no change-token field, and there must never be one.
 func wireAdvisory(ev service.AdvisoryEvent) map[string]any {
+	if ev.Type == service.AdvisoryEnvironmentsChanged {
+		return map[string]any{"type": ev.Type, "project_id": ev.ProjectID}
+	}
 	out := map[string]any{
 		"type":           ev.Type,
 		"environment_id": ev.EnvironmentID,
