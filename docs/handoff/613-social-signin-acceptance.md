@@ -7,8 +7,7 @@ owning decisions. Criterion A7 in [the MVP boundary](../adr/mvp-boundary.md)
 governs acceptance. This work closes evidence and integration gaps across
 issues 606 through 612; it does not amend their decisions.
 
-The paired [self-contained HTML handoff](613-social-signin-acceptance.html)
-contains the same report. Implementation evidence below is distinct from final
+Implementation evidence below is distinct from final
 acceptance, hosted CI, publication and deployment. Until the remaining checks
 are recorded, this handoff is not a declaration that A7 has passed.
 

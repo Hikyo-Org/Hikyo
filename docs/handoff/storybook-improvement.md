@@ -155,35 +155,39 @@ This evidence predates commit and PR delivery. Artifact builds/logs/screenshots 
 
 ## Matched screenshots
 
-These matching captures preserve the original before and the after-complete3 catalogue-cleanup comparison. They are not relabeled as new theme-policy captures. Current follow-up Menu and real-route journey screenshots appear alongside them below; the new gate also verifies actual palette surface paint.
+The captures listed below were embedded in the offline HTML companion. That
+companion is retained only as a local review artifact; its screenshot bytes are
+not available in this Markdown document or elsewhere in this checkout.
 
-[Before: button canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+The original matching captures compared the before and after-complete3 catalogue cleanup. The inventory below also identifies the later Menu and real-route journey captures; the new gate verifies actual palette surface paint.
 
-[After catalogue cleanup: button canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+Before: button canvas, 390px (offline capture)
 
-[Before: button docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+After catalogue cleanup: button canvas, 390px (offline capture)
 
-[After catalogue cleanup: button docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+Before: button docs, 390px (offline capture)
 
-[Before: projects canvas, 1280px (embedded capture)](storybook-improvement.html#matched-screenshots)
+After catalogue cleanup: button docs, 390px (offline capture)
 
-[After catalogue cleanup: projects canvas, 1280px (embedded capture)](storybook-improvement.html#matched-screenshots)
+Before: projects canvas, 1280px (offline capture)
 
-[Before: dialog canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+After catalogue cleanup: projects canvas, 1280px (offline capture)
 
-[After catalogue cleanup: dialog canvas, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+Before: dialog canvas, 390px (offline capture)
 
-[Before: dialog docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+After catalogue cleanup: dialog canvas, 390px (offline capture)
 
-[After catalogue cleanup: dialog docs, 390px (embedded capture)](storybook-improvement.html#matched-screenshots)
+Before: dialog docs, 390px (offline capture)
+
+After catalogue cleanup: dialog docs, 390px (offline capture)
 
 ## Current theme follow-up screenshots
 
-[Current Menu Docs keyboard exploration, desktop (embedded capture)](storybook-improvement.html#matched-screenshots)
+Current Menu Docs keyboard exploration, desktop (offline capture)
 
-[Current Menu Docs keyboard exploration, phone Light (embedded capture)](storybook-improvement.html#matched-screenshots)
+Current Menu Docs keyboard exploration, phone Light (offline capture)
 
-[Current full manual Light real-route journey, phone (embedded capture)](storybook-improvement.html#matched-screenshots)
+Current full manual Light real-route journey, phone (offline capture)
 
 ## Full theme interaction disposition
 
