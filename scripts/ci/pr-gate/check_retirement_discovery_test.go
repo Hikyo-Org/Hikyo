@@ -57,7 +57,7 @@ func TestRetirementDiscoveryFindsMissedCallbacksAcrossMainHistory(t *testing.T) 
 	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "")] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, first)}, true, "next")
 	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "next")] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(old, second), {"oid": strings.Repeat("d", 40), "statusCheckRollup": nil}}, false, "")
 	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
-	want := retirementTargets{Queue: []string{head}, Observation: []string{head, old}, ObservationBatches: [][]string{{head, old}}}
+	want := retirementTargets{Queue: []string{head}, Observation: []string{head, old}, ObservationBatches: [][]string{{head, old}}, ReporterTargets: []reporterRetirementTarget{}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("discovery got %+v/%v want %+v", got, err, want)
 	}
@@ -309,6 +309,136 @@ func TestRetirementDiscoverySupportsOnlyEmptyHeadMainDispatch(t *testing.T) {
 			}
 			if len(f.api.writes) != 0 {
 				t.Fatal("manual discovery mutated checks")
+			}
+		})
+	}
+}
+
+func reporterDiscoveryRecord(f *queueFixture, head string, run, attempt int64) map[string]any {
+	name := fmt.Sprintf("Merge queue validation (run %d, attempt %d)", run, attempt)
+	record := retirementHistoryRecord(f, head, name, "IN_PROGRESS")
+	record["externalId"] = fmt.Sprintf("hikyo-queue-report:v1:%d:7:%d:%d:%s:%s", f.c.repo.ID, run, attempt, strings.Repeat("d", 40), strings.Repeat("e", 40))
+	return record
+}
+func TestReporterDiscoveryReusesSameHistoryAndContextReads(t *testing.T) {
+	f, head := retirementDiscoveryFixture(t)
+	checks := []map[string]any{retirementHistoryRecord(f, head, queueCheckName, "QUEUED"), reporterDiscoveryRecord(f, head, 901, 2), reporterDiscoveryRecord(f, head, 900, 1), reporterDiscoveryRecord(f, head, 901, 2)}
+	completed := reporterDiscoveryRecord(f, head, 902, 1)
+	completed["status"] = "COMPLETED"
+	checks = append(checks, completed)
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "")] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, checks)}, false, "")
+	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+	want := []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}, {Head: head, Run: 901, Attempt: 2}}
+	if err != nil || !reflect.DeepEqual(got.ReporterTargets, want) || !reflect.DeepEqual(got.Queue, []string{head}) {
+		t.Fatalf("reporter discovery: %+v/%v", got, err)
+	}
+	requests := 0
+	for _, n := range f.api.reads {
+		requests += n
+	}
+	if requests != 5 || len(f.api.writes) != 0 {
+		t.Fatalf("reporter hints added reads or mutation: reads=%d writes=%d", requests, len(f.api.writes))
+	}
+}
+func TestReporterDiscoveryRejectsMalformedAndForeignHints(t *testing.T) {
+	for _, fault := range []string{"version", "missing fields", "foreign repository", "zero PR", "negative run", "zero attempt", "leading zero", "overflow", "group SHA", "base SHA", "name run mismatch", "unrecognized name", "foreign app", "missing app", "completed malformed"} {
+		t.Run(fault, func(t *testing.T) {
+			f, head := retirementDiscoveryFixture(t)
+			record := reporterDiscoveryRecord(f, head, 900, 1)
+			parts := strings.Split(record["externalId"].(string), ":")
+			switch fault {
+			case "version":
+				parts[1] = "v2"
+			case "missing fields":
+				parts = parts[:7]
+			case "foreign repository":
+				parts[2] = "11"
+			case "zero PR":
+				parts[3] = "0"
+			case "negative run":
+				parts[4] = "-900"
+			case "zero attempt":
+				parts[5] = "0"
+			case "leading zero":
+				parts[4] = "0900"
+			case "overflow":
+				parts[4] = "9223372036854775808"
+			case "group SHA":
+				parts[6] = "bad"
+			case "base SHA":
+				parts[7] = strings.Repeat("E", 40)
+			case "name run mismatch":
+				record["name"] = "Merge queue validation (run 901, attempt 1)"
+			case "unrecognized name":
+				record["name"] = "another context"
+			case "foreign app":
+				record["checkSuite"] = map[string]any{"app": map[string]any{"databaseId": 42, "slug": "other"}}
+			case "missing app":
+				record["checkSuite"] = nil
+			case "completed malformed":
+				record["status"] = "COMPLETED"
+				parts[4] = "bad"
+			}
+			record["externalId"] = strings.Join(parts, ":")
+			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "")] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, []map[string]any{record})}, false, "")
+			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+			ignored := fault == "foreign app" || fault == "missing app" || fault == "completed malformed"
+			if ignored {
+				if err != nil || len(got.ReporterTargets) != 0 {
+					t.Fatalf("unowned/terminal reporter became work: %+v/%v", got, err)
+				}
+			} else if err == nil || len(got.ReporterTargets) != 0 || len(got.Queue) != 0 {
+				t.Fatalf("malformed hint authorized partial output: %+v/%v", got, err)
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("reporter discovery acquired writer authority")
+			}
+		})
+	}
+}
+func TestReporterDiscoveryFindsPendingBeyondFirstContextPage(t *testing.T) {
+	f, head := retirementDiscoveryFixture(t)
+	checks := make([]map[string]any, 100)
+	for i := range checks {
+		checks[i] = map[string]any{"__typename": "StatusContext"}
+	}
+	node := retirementHistoryNode(head, checks)
+	contexts := node["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)
+	contexts["totalCount"] = 101
+	contexts["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "reports"}
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "")] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
+	next := retirementHistoryNode(head, []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)})
+	next["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)["totalCount"] = 101
+	f.api.responses["graphql:"+f.c.retirementContextsQuery(head, "reports")] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": next}}}
+	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+	if err != nil || !reflect.DeepEqual(got.ReporterTargets, []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}}) {
+		t.Fatalf("second-page reporter missed: %+v/%v", got, err)
+	}
+}
+func TestReporterDiscoveryRejectsAmbiguousHeadsAndMatrixOverflow(t *testing.T) {
+	for _, fault := range []string{"ambiguous heads", "too many attempts"} {
+		t.Run(fault, func(t *testing.T) {
+			f, head := retirementDiscoveryFixture(t)
+			nodes := []map[string]any{retirementHistoryNode(head, []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)})}
+			if fault == "ambiguous heads" {
+				other := strings.Repeat("c", 40)
+				nodes = append(nodes, retirementHistoryNode(other, []map[string]any{reporterDiscoveryRecord(f, other, 900, 1)}))
+			} else {
+				first := []map[string]any{}
+				for i := 0; i < 100; i++ {
+					first = append(first, reporterDiscoveryRecord(f, head, int64(900+i), 1))
+				}
+				nodes[0] = retirementHistoryNode(head, first)
+				other := strings.Repeat("c", 40)
+				nodes = append(nodes, retirementHistoryNode(other, []map[string]any{reporterDiscoveryRecord(f, other, 1000, 1)}))
+			}
+			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "")] = retirementHistoryResponse(f, head, nodes, false, "")
+			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+			if err == nil || len(got.ReporterTargets) != 0 {
+				t.Fatalf("reporter matrix bound failed: %+v/%v", got, err)
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("bounded discovery mutated checks")
 			}
 		})
 	}

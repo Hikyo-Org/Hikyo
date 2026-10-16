@@ -1,0 +1,42 @@
+# Manual metadata normalization for one already-successful historical job.
+# This never supplies validation, changes a verdict, or reruns a job.
+name: check-status-repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_id:
+        description: Exact native check ID whose successful completion metadata disagrees
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+    concurrency:
+      group: native-check-status-${{ github.repository_id }}-${{ inputs.check_id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Authenticate existing completion and normalize status only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK_ID: ${{ inputs.check_id }}
+          GOFLAGS: -mod=readonly
+        run: go run ./scripts/ci/repair-check-status --check-id "$CHECK_ID"

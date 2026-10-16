@@ -1269,7 +1269,12 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 		return err
 	}
 	var selected *check
+	currentBinding := final.binding(c.repo.ID)
 	for _, v := range own {
+		prior, decodeErr := decodeBinding(v.ExternalID)
+		if decodeErr == nil && prior.PR == currentBinding.PR && knownNewerLegacySource(prior, currentBinding) {
+			return errors.New("owned observation proves a newer source generation than the final source snapshot")
+		}
 		if selected == nil || v.ID > selected.ID {
 			copy := v
 			selected = &copy
@@ -1303,13 +1308,27 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	if decoded != b {
 		return errors.New("refuse invalid publication binding")
 	}
-	if selected != nil && ((selected.Status == "completed" && result.Status != "completed") || selected.ExternalID != externalID) {
-		old, err := decodeBinding(selected.ExternalID)
+	if selected != nil {
+		old, oldErr := decodeBinding(selected.ExternalID)
+		sameIdentity := oldErr == nil && c.authenticatedQueueCheck(selected, b.Head) && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head
+		if sameIdentity && knownNewerLegacySource(old, b) {
+			return errors.New("legacy publication cannot replace a known newer source generation")
+		}
 		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
-		// stale. Only an incomplete, unbound barrier for this same identity may
-		// acquire the freshly proved live base/run binding in place.
-		placeholder := err == nil && selected.Status != "completed" && old.Run == 0 && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head && old.BaseRef == b.BaseRef
-		if !placeholder {
+		// stale. An unbound barrier can acquire its first proved binding, but
+		// a bound observation retains its original run/attempt provenance.
+		placeholder := sameIdentity && selected.Status != "completed" && blockingQueueCheck(selected) && old.Run == 0 && old.BaseRef == b.BaseRef
+		if selected.Status == "completed" || !sameIdentity {
+			selected = nil
+		} else if !blockingQueueCheck(selected) {
+			return errors.New("legacy publication requires an authenticated nonterminal observation")
+		} else if selected.ExternalID != externalID && !placeholder {
+			// Complete the superseded generation before creating its successor.
+			// Otherwise a later terminal rollup can hide this unfinished record
+			// permanently when a close/synchronize callback is missed.
+			if err := c.supersedeLegacyObservation(ctx, old, *selected); err != nil {
+				return err
+			}
 			selected = nil
 		}
 	}
@@ -1333,6 +1352,49 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 	}
 	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID {
 		return errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted")
+	}
+	return nil
+}
+
+// latest already orders independent validation runs by ID. An existing owned
+// binding can reveal a later run/attempt than lagging source API snapshots.
+// Run0 carries no source authority and may only establish a pending barrier.
+func knownNewerLegacySource(prior, current binding) bool {
+	return prior.RepoID == current.RepoID && prior.Head == current.Head && prior.Run > 0 && current.Run > 0 && (prior.Run > current.Run || prior.Run == current.Run && prior.Attempt > current.Attempt)
+}
+
+func (c *controller) supersedeLegacyObservation(ctx context.Context, b binding, selected check) error {
+	if c.dryRun {
+		return nil
+	}
+	path := c.endpoint(fmt.Sprintf("check-runs/%d", selected.ID))
+	var current check
+	if err := c.api.read(ctx, path, &current); err != nil {
+		return err
+	}
+	if current != selected {
+		return errors.New("superseded observation changed before retirement; no mutation attempted")
+	}
+	result := outcome{Status: "completed", Conclusion: "cancelled", Title: "Superseded observation", Summary: "A new source binding supersedes this unfinished observation. Retiring its original generation without granting validation proof."}
+	payload, err := c.checkPayload(b, result)
+	if err != nil {
+		return err
+	}
+	payload["external_id"] = selected.ExternalID
+	delete(payload, "details_url")
+	var written check
+	if err := c.api.write(ctx, "PATCH", path, payload, &written); err != nil {
+		return err // Never retry an uncertain mutation or create its successor.
+	}
+	if !c.authenticatedQueueCheck(&written, b.Head) || written.ID != selected.ID || written.ExternalID != selected.ExternalID || written.Status != "completed" || written.Conclusion != "cancelled" {
+		return errors.New("superseded observation retirement returned an unexpected identity/result")
+	}
+	var fresh check
+	if err := c.api.read(ctx, path, &fresh); err != nil {
+		return err
+	}
+	if fresh != written {
+		return errors.New("superseded observation retirement readback disagrees")
 	}
 	return nil
 }

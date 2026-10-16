@@ -28,6 +28,7 @@ type fixture struct {
 	writePaths   []string
 	requests     []string
 	mutate       func(string, any) any
+	writeMutate  func(check) check
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -63,6 +64,27 @@ func newFixture(t *testing.T) *fixture {
 			f.writeMethods = append(f.writeMethods, req.Method)
 			f.writePaths = append(f.writePaths, path)
 			w.WriteHeader(http.StatusCreated)
+			for i, current := range f.checks {
+				if req.Method == "PATCH" && path == fmt.Sprintf("check-runs/%d", current.ID) {
+					if value, ok := body["status"].(string); ok {
+						current.Status = value
+					}
+					if value, ok := body["conclusion"].(string); ok {
+						current.Conclusion = value
+					}
+					if value, ok := body["details_url"].(string); ok {
+						current.DetailsURL = value
+					}
+					if f.writeMutate != nil {
+						current = f.writeMutate(current)
+					}
+					f.checks[i] = current
+					if err := json.NewEncoder(w).Encode(current); err != nil {
+						t.Error(err)
+					}
+					return
+				}
+			}
 			return
 		}
 		var result any
@@ -73,6 +95,12 @@ func newFixture(t *testing.T) *fixture {
 			result = map[string]any{"id": 17, "path": sourcePath, "name": "trusted-merge-ci"}
 		case path == fmt.Sprintf("actions/runs/%d/attempts/%d", f.r.ID, f.r.Attempt):
 			result = f.r
+		case path == "check-runs/777":
+			if len(f.checks) == 0 {
+				http.NotFound(w, req)
+				return
+			}
+			result = f.checks[0]
 		case path == "git/commits/"+f.r.HeadSHA:
 			result = map[string]any{"sha": f.r.HeadSHA, "parents": f.parents}
 		case strings.HasPrefix(path, "commits/"):

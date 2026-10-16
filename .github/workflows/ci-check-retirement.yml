@@ -31,6 +31,7 @@ jobs:
     outputs:
       queue_heads: ${{ steps.targets.outputs.queue_heads }}
       observation_batches: ${{ steps.targets.outputs.observation_batches }}
+      reporter_targets: ${{ steps.targets.outputs.reporter_targets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,8 +51,50 @@ jobs:
           go run ./scripts/ci/pr-gate --discover-retirements > "$RUNNER_TEMP/retirement-targets.json"
           queue_heads=$(jq -cer '.queue_heads' "$RUNNER_TEMP/retirement-targets.json")
           observation_batches=$(jq -cer '.observation_batches' "$RUNNER_TEMP/retirement-targets.json")
-          echo "queue_heads=$queue_heads" >> "$GITHUB_OUTPUT"
-          echo "observation_batches=$observation_batches" >> "$GITHUB_OUTPUT"
+          reporter_targets=$(jq -cer '.reporter_targets' "$RUNNER_TEMP/retirement-targets.json")
+          {
+            echo "queue_heads=$queue_heads"
+            echo "observation_batches=$observation_batches"
+            echo "reporter_targets=$reporter_targets"
+          } >> "$GITHUB_OUTPUT"
+
+  reporter:
+    needs: discover
+    if: >-
+      !cancelled() && needs.discover.result == 'success' &&
+      needs.discover.outputs.reporter_targets != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.discover.outputs.reporter_targets) }}
+    concurrency:
+      # Share the original reporter's exact run/attempt lease. Discovery is
+      # read-only; the reporter independently authenticates every work item.
+      group: merge-queue-report-${{ matrix.target.run }}-${{ matrix.target.attempt }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Replay the authenticated terminal queue report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WORK: ${{ toJSON(matrix.target) }}
+        run: go run ./scripts/ci/queue-report --repair-work "$WORK"
 
   queue:
     needs: discover
