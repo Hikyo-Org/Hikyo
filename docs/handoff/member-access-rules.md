@@ -98,7 +98,16 @@ Each is the fail-closed reading; widen only by owner decision.
 | 6 | Widening move confirmation | Final. Except stays rule-local (no global deny) |
 | Storybook review | Editor, Members, Who can...? | Where before permissions; search on Members; Members lists people only, machines' rules move to Machine access (D11); Who can...? form ordered Permission, Project, Environment, Key with descriptions; simulator dropped, key-move confirmation kept as its own component |
 
-## Owed
+## Owed at the first-slice handoff (historical)
+
+For the October 16 disposition, see the
+[review reconciliation](15-member-access-review.md). #15 has been reopened.
+The October 5 delivery supersedes the delegation, key-aware publication,
+definition-mutation and navigation items below. On 2026-10-16 the owner accepted
+completed Astra-high verification plus independent Sol 6.1-high source review as
+the formal review disposition for #15 only. The quota-gated pass remains skipped,
+not retroactively CLEAN; the linked reconciliation records the exact scope and
+limitations. This historical list does not reverse the operative owner direction.
 
 1. **Reopen #15** and record the amendment there, per the
    [oss-mechanics.md](../adr/oss-mechanics.md) locked-decision procedure.

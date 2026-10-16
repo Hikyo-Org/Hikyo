@@ -56,11 +56,13 @@
       "kind": "capability",
       "title": "Member access rules",
       "status": "partial",
-      "implemented": "Rules with project, environment and key or folder scope evaluated at the authorization chokepoint, folder-move widening confirmation, and rule list, create and revoke from API and CLI",
-      "remaining": "Members and Who can...? WebUI surfaces, and the amendment's cross-provider review before it is operative",
+      "implemented": "Operative human access rules with project, environment and key/folder selectors; rule-local exceptions and widening confirmation; selector-bound delegation and atomic replacement; per-key publish/history and definition checks; unified Members cards and client-side Who can...? over disclosed grants and rules",
+      "remaining": "Machine rules, all/future-project rules, environment-name binding and a server-side resolver. For #15 only, the owner accepted Astra-high verification plus independent Sol 6.1-high source review; the reconciliation preserves the skipped quota-gated pass and its limitations.",
       "evidence": [
         { "label": "Member access rules ADR", "path": "docs/adr/member-access-rules.md" },
-        { "label": "Member access rules handoff", "path": "docs/handoff/member-access-rules.md" }
+        { "label": "Member access rules handoff", "path": "docs/handoff/member-access-rules.md" },
+        { "label": "October 5 unified access cards", "path": "docs/handoff/members-unified-access-cards.md" },
+        { "label": "October 16 review reconciliation", "path": "docs/handoff/15-member-access-review.md" }
       ]
     },
     {

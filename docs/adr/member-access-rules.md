@@ -5,11 +5,18 @@
 > 2026-09-28 while iterating the [member-access prototype](../site/public/prototypes/member-access/)
 > (iterations 1 to 6; iteration 6 is the reference, its components now in the WebUI, Storybook *Members/Access rules*),
 > and on the same night directed the full-stack implementation and merge on green ahead of the review.
-> The [oss-mechanics.md](./oss-mechanics.md) amendment procedure still owes the reopening of
-> [#15](https://github.com/Hikyo-Org/Hikyo/issues/15) and the cross-provider adversarial review; both are
-> recorded as open in [the handoff](../handoff/member-access-rules.md). The first slice is deliberately
-> fail-closed (see *First implementation slice*): where it is narrower than the decisions, the decisions
-> are the target and the slice is the floor.
+> [#15](https://github.com/Hikyo-Org/Hikyo/issues/15#issuecomment-6216662798) was reopened on
+> 2026-10-16 for the [oss-mechanics.md](./oss-mechanics.md) amendment procedure.
+> For #15 only, the owner explicitly accepted completed Astra-high verification plus
+> independent Sol 6.1-high source review as the formal review disposition on 2026-10-16.
+> The quota-gated cross-provider pass remains skipped, not retroactively CLEAN; this does
+> not change permission policy or the general review/quota rules. The
+> [disposition and limitations](../handoff/15-member-access-review.md) preserve that boundary.
+> The dated first implementation slice below is historical. The
+> [October 5 delivery handoff](../handoff/members-unified-access-cards.md) records the later
+> implementation, and the [October 16 reconciliation](../handoff/15-member-access-review.md)
+> distinguishes implemented behavior, remaining target slices, and the scoped review disposition.
+> Where implementation is narrower than these decisions, the decisions remain the target.
 
 ## Context
 
@@ -178,7 +185,13 @@ machines, because "who can reach this key?" must include deploy accounts.
 - **MVP boundary:** this moves "key-scoped reveal" from fog to a decided
   design; scheduling is a separate call.
 
-## First implementation slice (2026-09-29)
+## First implementation slice (2026-09-29, historical)
+
+This section records the original delivery floor, not current feature status.
+The October 5 implementation supersedes its statements about See, rule-based
+Manage access, per-key Publish, definition mutations, and navigation. See the
+[delivery handoff](../handoff/members-unified-access-cards.md) and
+[reconciliation](../handoff/15-member-access-review.md).
 
 The implementation is built so that its worst possible bug is a narrowed rule wrongly denied, never access
 widened. Rules are stored in their own tables (`rules`, `rule_items`, migration 00070) and read only inside

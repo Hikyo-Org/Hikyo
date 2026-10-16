@@ -73,7 +73,7 @@ remain immutable evidence.
 
 | Feature | What works now | Needed for complete implementation |
 | --- | --- | --- |
-| [`CAP-MEMBER-ACCESS-RULES`](./docs/status/README.md#cap-member-access-rules) Member access rules | Rules with project, environment and key or folder scope evaluated at the authorization chokepoint, folder-move widening confirmation, and rule list, create and revoke from API and CLI | Members and Who can...? WebUI surfaces, and the amendment's cross-provider review before it is operative |
+| [`CAP-MEMBER-ACCESS-RULES`](./docs/status/README.md#cap-member-access-rules) Member access rules | Operative human access rules with project, environment and key/folder selectors; rule-local exceptions and widening confirmation; selector-bound delegation and atomic replacement; per-key publish/history and definition checks; unified Members cards and client-side Who can...? over disclosed grants and rules | Machine rules, all/future-project rules, environment-name binding and a server-side resolver. For #15 only, the owner accepted Astra-high verification plus independent Sol 6.1-high source review; the reconciliation preserves the skipped quota-gated pass and its limitations. |
 | [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification | Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) |
 
 </details>
