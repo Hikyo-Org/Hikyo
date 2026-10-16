@@ -170,7 +170,7 @@ actual subprocess checks for output drainage, forced termination, repeated
 shutdown and spawn failure; it confirmed that every caller awaits cleanup and
 that errors remain preserved. Its 36-file manifest hash was
 `f1b1d17987523540c74cf616426446b2004010341e220cd20127ea49d52c0740`.
-Subsequent handoff edits record verification evidence only. This is ordinary
+The later hosted CI repair is recorded separately below. This is ordinary
 implementation review, with no cross-provider-review claim.
 
 Graphify updated successfully. Its existing 17 Astro partial-extraction warnings
@@ -235,6 +235,44 @@ stored reference. Documentation checking passed with zero errors, warnings or
 hints, the production documentation build produced 78 pages, and the ledger
 check passed. This correction changed no authentication policy or product code;
 all earlier failed fixture attempts remain recorded above.
+
+## Hosted CI conservation failure and repair
+
+Full candidate run [38865811493](https://github.com/Hikyo-Org/Hikyo/actions/runs/38865811493)
+on head `0f1078e83` failed in race shard 4. The observed failures were
+`TestFullCandidateConservesBaselineCoverage` and
+`TestCoverageInventoryRejectsExecutionReductions`, both rejecting the
+unmutated workflow's execution configuration. No data-race report was present
+in that job's log. The run later completed as cancelled by supersession;
+remaining jobs were unfinished. Its failed job is not a successful hosted
+acceptance result. Cancellation was requested for the subsequent run
+[38867231228](https://github.com/Hikyo-Org/Hikyo/actions/runs/38867231228)
+on documentation-only successor `21366c9ca`, which retained the same workflow
+configuration. A fresh full candidate is required on the repair head.
+
+The same two conservation tests failed locally before the repair. The browser
+mail fixture had added its build command, upload path, executable-mode argument
+and flow environment variable, but the conservation adapter had not accounted
+for those four additions. The earlier focused artifact-wiring tests passed
+without exercising the complete frozen execution inventory. The earlier
+118-package core run also preceded the final workflow additions and did not
+verify this final conservation contract.
+
+The adapter now requires exactly one correctly named owner for each addition
+and its exact approved field value, then restores only that field's historical
+value before checking the existing digests. Existing build commands, artifact
+paths, conditions, error handling and all other execution configuration remain
+covered by the frozen inventory. The historical baseline JSON is unchanged;
+its SHA-256 remains
+`b8dd91b4805a2db537d40ad359d38c48df649bf671abefb190c160dc9f8a5adf`.
+Thirty-two new negative cases reject missing, malformed or duplicated additions,
+missing or duplicated owners, skipped or fail-open owners, and changes to
+original checks. The existing positive and execution-reduction tests remain.
+The focused suite passed in 1.289 seconds. The complete
+`go test -race -count=1 ./scripts/ci` suite then passed in 106.667 seconds,
+and `go vet ./scripts/ci` passed. Parent source review found no actionable
+issue in this narrow guard repair. No workflow check, test or timeout was
+removed or relaxed; a successful hosted run on the repair head remains pending.
 
 ## Delivery gates
 
