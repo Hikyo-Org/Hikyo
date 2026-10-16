@@ -4,6 +4,12 @@ Conventions for automated agents (and humans) working in this repository.
 
 Do NOT use em-dash (—)
 
+## Documentation format
+
+Commit documentation in Markdown only. Do not commit new HTML documentation.
+HTML companions are local, offline-only artifacts for the user to read and
+validate; keep them outside Git and share local links when needed.
+
 ## Commits must be DCO signed-off
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
