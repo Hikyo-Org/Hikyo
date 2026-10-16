@@ -59,8 +59,8 @@ func TestExportDirectorySyncFailurePreservesPublishedArtifact(t *testing.T) {
 			}
 			assertReadableExport(t, published, identity)
 			entries, err := os.ReadDir(dir)
-			if err != nil || len(entries) != 1 || entries[0].Name() != filepath.Base(published) {
-				t.Fatalf("failed publication should retain only final artifact: %v, error %v", entries, err)
+			if err != nil || len(entries) != 2 || entries[0].Name() != ".hikyo-backup-retention.lock" || entries[1].Name() != filepath.Base(published) {
+				t.Fatalf("failed publication should retain only final artifact and coordination lock: %v, error %v", entries, err)
 			}
 			// The directories now exist, but that does not make their entries
 			// durable. A retry must still sync the ancestor that failed.

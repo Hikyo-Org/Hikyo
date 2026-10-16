@@ -100,8 +100,10 @@ Pi-4 fit: one serial pacer per credential at ≥ 1 s spacing bounds adapter CPU 
 Scheduling is enabled exactly when an export policy is configured
 (`HIKYO_BACKUP_RECIPIENTS` + `HIKYO_BACKUP_DIR`). Each knob has a default and a
 range; a value outside the range is a startup error, never a silent clamp. The
-retention ceiling is ops-spec section 2 (180 days, no unlimited option, because
-the key hierarchy travels in every archive). "off-host destination" is a
+retention policy is ops-spec section 2 as amended by #930: an independent
+180-day ceiling overrides retained count, with the recovery exceptions below.
+There is no unlimited setting because the key hierarchy travels in every
+archive. "off-host destination" is a
 mounted directory the operator manages, not a native object-store client
 (ops-spec section 2: Hikyo cannot reach off-box files).
 
@@ -109,14 +111,69 @@ mounted directory the operator manages, not a native object-store client
 |---|---|---|
 | `HIKYO_BACKUP_INTERVAL` (export cadence) | 24h (minimum 1h) | env (startup) |
 | `HIKYO_BACKUP_RPO` (monitored recovery point target) | 26h (at least the interval) | env (startup) |
-| `HIKYO_BACKUP_RETAIN_COUNT` (newest archives always kept) | 7 (minimum 1) | env (startup) |
-| `HIKYO_BACKUP_RETAIN_DAYS` (age bound) | 180 (maximum 180, fixed ceiling) | env (startup) |
+| `HIKYO_BACKUP_RETAIN_COUNT` (newest archives protected within the 180-day ceiling) | 7 (minimum 1) | env (startup) |
+| `HIKYO_BACKUP_RETAIN_DAYS` (earlier age threshold outside retained count) | 180 (maximum 180) | env (startup) |
+| Managed archive age ceiling (overrides retained count) | 180 days; exact equality does not trigger this ceiling, but the earlier soft rule still applies | fixed, subject to recovery exceptions below |
 | `HIKYO_BACKUP_RTO_TARGET` (restore-drill verdict clock) | 30m | env (startup) |
 | Restore-drill staleness warning | 90 days | fixed |
 
+All managed complete archives for the current engine use this policy, including
+scheduled, manual and pre-migration exports. This explicitly supersedes the
+unimplemented historical separate pre-migration `count > 3` rule. Count is a
+protection within the ceiling, not a maximum that deletes young archives.
+
+Preserve the last durably recorded successful archive until a durable replacement
+exists, even when it exceeds 180 days. Filenames and unrecorded publications are
+not success evidence. Success records bind the ciphertext SHA-256 digest; legacy
+records without a digest remain uncertain until a fresh successful export.
+If success state is missing/unreadable, the recorded archive
+is absent or clock/custody is uncertain, retain candidates and report uncertainty;
+more than one expired candidate can remain. An expired protected archive is an
+immediate retention breach. No successful-prune timestamp advances while expired
+archives remain or compliance cannot be established. Persist the last prune
+attempt, bounded failure reason and retained-expired count separately from export
+outcomes; health API, doctor, bounded metrics and logs expose breach, unverified
+and stale state. These exceptions can persist indefinitely, so 180 days is not
+an unconditional erasure deadline. See the [#930 amendment and evidence
+handoff](../handoff/930-backup-retention.md).
+
+The backup object on `GET /instance/retention-health` exposes:
+
+| Field | Meaning |
+| --- | --- |
+| `retention_breach` | Boolean; true when expired archives remain or compliance cannot currently be verified, including stale checks |
+| `retention_reason` | Bounded string describing breach or uncertainty |
+| `retained_expired_archives` | Last-observed count of complete managed archives remaining over 180 days; zero alone does not prove compliance |
+| `last_prune_attempt_at` | Nullable timestamp of the latest attempt, including incomplete or failed attempts |
+
+Doctor reports `backup-retention` with severity `error` for breached or unverified
+retention. Label-free gauges `hikyo_backup_retention_breach` and
+`hikyo_backup_retained_expired_archives` expose the verdict and last-observed
+count. `hikyo_last_backup_prune_success_timestamp_seconds` does not advance after
+failed checks.
+
+Final publication, success recording and pruning use a directory advisory file lock across the
+filesystem verification/deletion and datastore result. Every publication/record/prune writer,
+including writers on other HA nodes, needs reliable cross-process advisory
+locking on the shared backup mount. These checks read ciphertext and public
+metadata, never custody keys.
+
 Pi-4 fit: the two scheduled jobs ride the existing hourly scheduler and its
-10-minute per-job deadline; an export is one age-encrypted snapshot and a prune
-is a directory listing, so neither adds a resource class.
+10-minute per-job deadline. An export writes one age-encrypted snapshot. A prune
+lists the directory and reads/hashes the entire protected ciphertext archive
+before deletion, so storage throughput and archive size affect its duration.
+Hashing checks cancellation between reads outside the bounded datastore
+transaction, while retaining the directory lock until an active read returns.
+A blocked filesystem read can still delay cancellation; use storage with
+reliable advisory locking and bounded operational latency.
+
+An absent managed backup schedule alone produces a `not_scheduled` warning,
+not a retention breach or doctor error. This applies both before any managed
+backup exists and after a fresh successful manual export/prune. Recorded prune
+evidence remains visible; a false breach flag does not certify an unchecked
+installation. Observed expired archives, failed/incomplete or uncertain prune
+attempts, and clock uncertainty remain errors even after scheduling is disabled.
+A configured schedule with missing or stale checks also remains unhealthy.
 
 ## Key-name bound (grammar restated in [domain-model.md](./domain-model.md))
 

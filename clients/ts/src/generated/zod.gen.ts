@@ -2802,6 +2802,10 @@ export const zBackupHealth = z.object({
     last_failure_at: z.iso.datetime().nullable(),
     last_failure_reason: z.string(),
     last_prune_at: z.iso.datetime().nullable(),
+    last_prune_attempt_at: z.iso.datetime().nullable(),
+    retention_breach: z.boolean(),
+    retention_reason: z.string(),
+    retained_expired_archives: z.int().gte(0),
     last_drill_at: z.iso.datetime().nullable(),
     last_drill_ok: z.boolean(),
     drill_stale: z.boolean()

@@ -1118,7 +1118,7 @@ const (
 	StoreBackupStateGet              StoreOp = "backupstate.Get"
 	StoreBackupStateSetExportSuccess StoreOp = "backupstate.SetExportSuccess"
 	StoreBackupStateSetExportFailure StoreOp = "backupstate.SetExportFailure"
-	StoreBackupStateSetPruneSuccess  StoreOp = "backupstate.SetPruneSuccess"
+	StoreBackupStateSetPruneResult   StoreOp = "backupstate.SetPruneResult"
 	StoreBackupStateSetDrill         StoreOp = "backupstate.SetDrill"
 	// The restore drill's decrypt proof reads ONE stored secret cell,
 	// ciphertext only, across the instance (#145). Opening it needs the
@@ -5335,7 +5335,7 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreBackupStateGet:              true,
 		StoreBackupStateSetExportSuccess: true,
 		StoreBackupStateSetExportFailure: true,
-		StoreBackupStateSetPruneSuccess:  true,
+		StoreBackupStateSetPruneResult:   true,
 		StoreBackupStateSetDrill:         true,
 		StoreValuesSampleSecretEntry:     true,
 		// Deployment-adapter health counts (#157) ride the same door: the

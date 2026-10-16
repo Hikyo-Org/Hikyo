@@ -259,6 +259,8 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		snapshot.MustRegister(
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastBackupExportSuccess, Help: "Unix timestamp of the last successful backup export; 0 when never."}, func() float64 { return unix(backup.LastSuccessAt) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricBackupRPOExceeded, Help: "Whether the newest successful backup export is older than the configured RPO."}, func() float64 { return flag(backup.RPOExceeded) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricBackupRetentionBreach, Help: "Whether backup retention exceeds its ceiling or cannot be verified."}, func() float64 { return flag(backup.RetentionBreach) }),
+			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricBackupRetainedExpired, Help: "Complete managed archives last observed remaining over the 180-day ceiling."}, func() float64 { return float64(backup.RetainedExpiredArchives) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastBackupPruneSuccess, Help: "Unix timestamp of the last successful backup retention prune; 0 when never."}, func() float64 { return unix(backup.LastPruneAt) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricLastRestoreDrill, Help: "Unix timestamp of the last recorded restore drill; 0 when never."}, func() float64 { return unix(backup.LastDrillAt) }),
 			prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: MetricRestoreDrillOK, Help: "Whether the last recorded restore drill passed every step within the RTO target."}, func() float64 { return flag(backup.LastDrillOK) }),

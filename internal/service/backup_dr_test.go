@@ -64,16 +64,16 @@ func TestPlanPruneProtectsPersistedNewestAfterClockRollback(t *testing.T) {
 	}
 }
 
-func TestPlanPruneNeverDeletesTheNewestWhateverItsAge(t *testing.T) {
+func TestPlanPruneProtectsRecordedNewestWhateverItsAge(t *testing.T) {
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	ancient := "hikyo-postgres-" + now.AddDate(-2, 0, 0).Format("20060102T150405Z") + ".age"
-	got, kept := planPrune([]string{ancient}, store.EnginePostgres, now, PrunePolicy{RetainCount: 1, RetainDays: 1}, "")
+	got, kept := planPrune([]string{ancient}, store.EnginePostgres, now, PrunePolicy{RetainCount: 1, RetainDays: 1}, ancient)
 	if len(got) != 0 || kept != 1 {
 		t.Fatalf("the only archive was pruned: delete=%v kept=%d", got, kept)
 	}
 	// A retain count of zero cannot be configured, and even if it reached
 	// here the newest survives.
-	got, _ = planPrune([]string{ancient}, store.EnginePostgres, now, PrunePolicy{RetainCount: 0, RetainDays: 1}, "")
+	got, _ = planPrune([]string{ancient}, store.EnginePostgres, now, PrunePolicy{RetainCount: 0, RetainDays: 1}, ancient)
 	if len(got) != 0 {
 		t.Fatalf("retain count 0 deleted the newest archive: %v", got)
 	}
@@ -121,7 +121,7 @@ func TestPruneLoopStopsAfterFirstFailedUnlink(t *testing.T) {
 		return "hikyo-sqlite-" + now.AddDate(0, 0, -days).Format("20060102T150405Z") + ".age"
 	}
 	newest, middle, oldest := name(1), name(300), name(400)
-	for _, n := range []string{newest, middle, oldest} {
+	for _, n := range []string{middle, oldest} {
 		if err := os.WriteFile(filepath.Join(dir, n), []byte("a"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -131,6 +131,7 @@ func TestPruneLoopStopsAfterFirstFailedUnlink(t *testing.T) {
 		attempts = append(attempts, filepath.Base(path))
 		return errors.New("unlink refused")
 	}}
+	newest = filepath.Base(recordPruneArtifact(t, svc, dir, now.Add(-24*time.Hour)).Path)
 	_, err := svc.Prune(t.Context(), dir, PrunePolicy{RetainCount: 1, RetainDays: 180})
 	if err == nil {
 		t.Fatal("a prune whose unlink failed returned no error")

@@ -18,6 +18,8 @@ describe('OpsDiagnosticBanners', () => {
         rpo_seconds: 93600, rpo_exceeded: false, last_failure_at: null,
         last_failure_reason: '', last_prune_at: null, last_drill_at: null,
         last_drill_ok: false, drill_stale: true,
+        last_prune_attempt_at: null, retention_breach: false,
+        retention_reason: 'not_scheduled', retained_expired_archives: 0,
       },
       adapter_targets_failed: 0, adapter_targets_paused: 0,
       adapter_targets_attention: 0, adapter_jobs_queued: 0,

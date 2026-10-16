@@ -220,9 +220,9 @@ func runBackupExport(ctx context.Context, cfg *config.Config, log *slog.Logger, 
 	diagnostics.Printf(ctx, 2, "backup: encrypted_bytes=%d engine=%s schema=%d", result.Bytes, result.Manifest.Engine, result.Manifest.SchemaVersion)
 	diagnostics.Printf(ctx, 1, "backup: recording published archive")
 	if err := svc.RecordExport(ctx, service.TriggerManual, result); err != nil {
-		// The artifact exists and is complete; only its record failed. Say
-		// exactly that rather than implying the backup did not happen.
-		return fmt.Errorf("the archive was published to %s, but its audit record could not be written: %w", result.Path, err)
+		// Publication completed, but verification or recording failed. Do not
+		// claim this path is still a verified recovery copy.
+		return fmt.Errorf("the archive was published to %s, but its recovery verification or audit record failed: %w", result.Path, err)
 	}
 	diagnostics.Printf(ctx, 1, "backup: export complete")
 	log.Info("backup exported", "path", result.Path, "bytes", result.Bytes,

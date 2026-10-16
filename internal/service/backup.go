@@ -86,11 +86,12 @@ func (s *Backup) now() time.Time {
 
 // ExportResult describes a durably published artifact.
 type ExportResult struct {
-	ReceiptPath string
-	Receipt     *backupreceipt.Receipt
-	Path        string
-	Bytes       int64
-	Manifest    store.Manifest
+	ciphertextDigest string
+	ReceiptPath      string
+	Receipt          *backupreceipt.Receipt
+	Path             string
+	Bytes            int64
+	Manifest         store.Manifest
 }
 
 // Export writes one age-encrypted archive into dir and returns where it
@@ -168,6 +169,13 @@ func (s *Backup) export(ctx context.Context, dir string, upgrade bool, write arc
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("backup artifact stat: %w", err)
 	}
+	// Snapshot/encryption finishes before the directory lock: publication must
+	// not introduce an unseen managed name during another process's prune.
+	unlock, err := lockBackupDirectory(ctx, dir)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	defer unlock()
 	final, err := s.publish(dir, partial, result.Manifest.Engine)
 	if err != nil {
 		return ExportResult{}, err
@@ -237,7 +245,7 @@ func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string, upgr
 	if err := w.Close(); err != nil {
 		return ExportResult{}, fmt.Errorf("seal backup container: %w", err)
 	}
-	result := ExportResult{Manifest: manifest}
+	result := ExportResult{Manifest: manifest, ciphertextDigest: hex.EncodeToString(hash.Sum(nil))}
 	if upgrade {
 		if manifest.Upgrade == nil {
 			return ExportResult{}, errors.New("upgrade export omitted snapshot authority")
@@ -264,7 +272,17 @@ func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string, upgr
 func (s *Backup) RecordExport(ctx context.Context, trigger ExportTrigger, r ExportResult) error {
 	mode, count := s.recipientPolicy()
 	now := s.now()
-	return tx.Write(ctx, s.DB, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+	unlock, err := lockBackupDirectory(ctx, filepath.Dir(r.Path))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	// Verify potentially large ciphertext outside the bounded datastore transaction.
+	// The directory lock still excludes prune until the success record commits.
+	if err := verifyBackupArtifact(ctx, r.Path, r.Bytes, r.ciphertextDigest); err != nil {
+		return fmt.Errorf("backup success record: %w", err)
+	}
+	return tx.WriteSerialized(ctx, s.DB, backupArtifactLock, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
 		e, err := domainEvent(ctx, audit.EventBackupExported, "",
 			audit.Object{Type: "backup", ID: filepath.Base(r.Path)}, audit.Payload{
 				"trigger":         string(trigger),
@@ -289,7 +307,7 @@ func (s *Backup) RecordExport(ctx context.Context, trigger ExportTrigger, r Expo
 		if err != nil {
 			return err
 		}
-		return repos.BackupState().SetExportSuccess(ctx, proof, now, filepath.Base(r.Path), r.Bytes)
+		return repos.BackupState().SetExportSuccess(ctx, proof, now, filepath.Base(r.Path), r.Bytes, r.ciphertextDigest)
 	})
 }
 

@@ -102,6 +102,9 @@ func TestRetentionDoctorFixtureKeepsOtherRefusalsBlocking(t *testing.T) {
 		{"unrelated error still fails", func(o *retentionDoctorOutput) {
 			o.Findings = append(o.Findings, retentionDoctorFinding{Code: "root-escrow", Severity: "error"})
 		}, storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 5}, cli.ExitRefused, false},
+		{"backup retention error still fails", func(o *retentionDoctorOutput) {
+			o.Findings = append(o.Findings, retentionDoctorFinding{Code: "backup-retention", Severity: "error"})
+		}, storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 5}, cli.ExitRefused, false},
 		{"wrong prune still fails", func(o *retentionDoctorOutput) { o.Findings[0].Severity = "warn" }, storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 5}, cli.ExitRefused, false},
 		{"success exit cannot hide critical finding", func(*retentionDoctorOutput) {}, storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 5}, cli.ExitOK, false},
 		{"status cannot hide critical finding", func(o *retentionDoctorOutput) { o.Status = "warning" }, storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 5}, cli.ExitRefused, false},

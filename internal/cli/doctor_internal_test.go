@@ -19,30 +19,30 @@ func TestDoctorResultsUseServerWarningsWithoutRecalculation(t *testing.T) {
 		}},
 	}}}, apigen.RetentionHealth{LastPruneSuccess: &lastPrune, Stale: false, StaleAfterSeconds: 86400, Backup: healthyBackup(effectiveAt)}, effectiveAt)
 	// Findings: [0] retention-prune, [1] project-storage, [2] backup-rpo,
-	// [3] restore-drill, [4] adapter-targets, [5] pki (unmeasured),
-	// [6] unavailable diagnostics, [7] the provider error.
-	if result.Status != "error" || len(result.Findings) != 8 {
+	// [3] restore-drill, [4] backup-retention, [5] adapter-targets,
+	// [6] pki (unmeasured), [7] unavailable diagnostics, [8] the provider error.
+	if result.Status != "error" || len(result.Findings) != 9 {
 		t.Fatalf("doctor result = %#v", result)
 	}
-	if got := result.Findings[7]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
+	if got := result.Findings[8]; got.Provider != "corp" || got.Code != "metadata_expired" || got.Message != "server message" {
 		t.Fatalf("doctor finding = %#v", got)
 	}
-	if got := result.Findings[5]; got.Code != "pki" || got.Severity != "unknown" {
+	if got := result.Findings[6]; got.Code != "pki" || got.Severity != "unknown" {
 		t.Fatalf("an unmeasured PKI health must read unknown, never ok: %#v", got)
 	}
-	if len(rows) != 8 || rows[7][4] != "server message" {
+	if len(rows) != 9 || rows[8][4] != "server message" {
 		t.Fatalf("doctor rows = %#v", rows)
 	}
 }
 
-// healthyBackup is a scheduled, fresh, drilled DR state: both backup findings
+// healthyBackup is a scheduled, fresh, drilled DR state: all backup findings
 // come back ok, so the tests above see only what they assert.
 func healthyBackup(now time.Time) apigen.BackupHealth {
 	export := now.Add(-time.Hour)
 	drill := now.Add(-24 * time.Hour)
 	return apigen.BackupHealth{
 		Scheduled: true, LastSuccessAt: &export, ArtifactAgeSeconds: 3600, RpoSeconds: 26 * 3600,
-		LastDrillAt: &drill, LastDrillOk: true,
+		LastDrillAt: &drill, LastDrillOk: true, LastPruneAt: &export, LastPruneAttemptAt: &export,
 	}
 }
 
@@ -79,7 +79,7 @@ func TestDoctorBackupFindings(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := doctorBackupFindings(tc.backup, now)
-			if len(got) != 2 || got[0].Code != "backup-rpo" || got[1].Code != "restore-drill" {
+			if len(got) != 3 || got[0].Code != "backup-rpo" || got[1].Code != "restore-drill" || got[2].Code != "backup-retention" {
 				t.Fatalf("findings = %#v", got)
 			}
 			if got[0].Severity != tc.rpoSeverity || got[0].Message != tc.rpoMessage {
@@ -209,6 +209,59 @@ func TestDoctorPKIFinding(t *testing.T) {
 			got := doctorPKIFinding(apigen.RetentionHealth{PkiCertificatesUnknown: tc.unknown, PkiIssuersOnHold: tc.held})
 			if got.Code != "pki" || got.Severity != tc.severity || !strings.Contains(got.Message, tc.message) {
 				t.Fatalf("finding = %#v", got)
+			}
+		})
+	}
+}
+
+func TestDoctorBackupRetentionBreachRefuses(t *testing.T) {
+	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	b := healthyBackup(now)
+	b.RetentionBreach = true
+	b.RetentionReason = "protected_expired"
+	b.RetainedExpiredArchives = 1
+	b.LastPruneAttemptAt = &now
+	got := doctorBackupFindings(b, now)
+	if got[2].Code != "backup-retention" || got[2].Severity != "error" || !strings.Contains(got[2].Message, "protected_expired") {
+		t.Fatalf("retention finding = %+v", got[2])
+	}
+	result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Stale: false, StaleAfterSeconds: 86400, Backup: b}, now)
+	if result.Status != "error" {
+		t.Fatalf("retention breach did not refuse doctor: %+v", result)
+	}
+}
+
+func TestDoctorBackupRetentionWithoutSchedulePreservesEvidence(t *testing.T) {
+	now := time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)
+	fresh := now.Add(-time.Minute)
+	for _, tc := range []struct {
+		name, reason, severity string
+		breach                 bool
+		attempt                *time.Time
+	}{
+		{"unconfigured never checked", "not_scheduled", "warn", false, nil},
+		{"manual fresh check", "not_scheduled", "warn", false, &fresh},
+		{"expired after disabling", "protected_expired", "error", true, &fresh},
+		{"failed after disabling", "unlink_failed", "error", true, &fresh},
+		{"incomplete after disabling", "in_progress", "error", true, &fresh},
+		{"legacy identity after disabling", "recovery_uncertain", "error", true, &fresh},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := apigen.BackupHealth{Scheduled: false, RetentionBreach: tc.breach, RetentionReason: tc.reason, LastPruneAttemptAt: tc.attempt}
+			if !tc.breach && tc.attempt != nil {
+				b.LastPruneAt = tc.attempt
+				b.LastSuccessAt = tc.attempt
+			}
+			finding := doctorBackupFindings(b, now)[2]
+			if finding.Severity != tc.severity {
+				t.Fatalf("configuration confused with breach: %+v", finding)
+			}
+			if tc.breach && !strings.Contains(finding.Message, tc.reason) {
+				t.Fatalf("disabled schedule hid failure: %+v", finding)
+			}
+			result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Backup: b}, now)
+			if (result.Status == "error") != tc.breach {
+				t.Fatalf("unexpected doctor refusal: %+v", result)
 			}
 		})
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -35,6 +36,13 @@ const TriggerScheduled ExportTrigger = "scheduled"
 // DrillStaleAfter is the ops spec's restore-test cadence (§ 11: quarterly,
 // doctor warns past 90 days).
 const DrillStaleAfter = 90 * 24 * time.Hour
+
+// BackupRetentionCeiling is the managed-archive age ceiling. Recovery safety
+// can prevent deletion; that is a persistent breach, never a successful prune.
+const BackupRetentionCeiling = 180 * 24 * time.Hour
+
+const backupArtifactLock = "backup-artifacts"
+const backupPruneStaleAfter = 24 * time.Hour
 
 // BackupPolicy is the resolved DR schedule the health surface reasons
 // against. Scheduled false means no export policy is configured: nothing
@@ -58,12 +66,16 @@ type BackupHealth struct {
 	RPO           time.Duration
 	// RPOExceeded is true when exports are scheduled and the newest
 	// successful artifact is older than the RPO, or there has never been one.
-	RPOExceeded       bool
-	LastFailureAt     time.Time
-	LastFailureReason string
-	LastPruneAt       time.Time
-	LastDrillAt       time.Time
-	LastDrillOK       bool
+	RPOExceeded             bool
+	LastFailureAt           time.Time
+	LastFailureReason       string
+	LastPruneAt             time.Time
+	LastPruneAttemptAt      time.Time
+	RetainedExpiredArchives int64
+	RetentionBreach         bool
+	RetentionReason         string
+	LastDrillAt             time.Time
+	LastDrillOK             bool
 	// DrillStale is true when no successful drill is younger than
 	// DrillStaleAfter, whether or not exports are scheduled: a restore test
 	// is owed regardless of how the archives are produced.
@@ -75,7 +87,8 @@ func backupHealth(now time.Time, policy BackupPolicy, st store.BackupState) Back
 	h := BackupHealth{
 		Scheduled: policy.Scheduled, RPO: policy.RPO,
 		LastSuccessAt: st.LastSuccessAt, LastFailureAt: st.LastFailureAt, LastFailureReason: st.LastFailureReason,
-		LastPruneAt: st.LastPruneAt, LastDrillAt: st.LastDrillAt, LastDrillOK: st.LastDrillOK,
+		LastPruneAt: st.LastPruneAt, LastPruneAttemptAt: st.LastPruneAttemptAt,
+		RetainedExpiredArchives: st.RetainedExpiredArchives, LastDrillAt: st.LastDrillAt, LastDrillOK: st.LastDrillOK,
 	}
 	if !st.LastSuccessAt.IsZero() {
 		h.ArtifactAge = max(now.Sub(st.LastSuccessAt), 0)
@@ -83,8 +96,48 @@ func backupHealth(now time.Time, policy BackupPolicy, st store.BackupState) Back
 	if policy.Scheduled {
 		h.RPOExceeded = st.LastSuccessAt.IsZero() || h.ArtifactAge > policy.RPO
 	}
+	switch {
+	case backupClockUncertain(now, st):
+		h.RetentionReason = "clock_uncertain"
+	case backupNameExpired(st.LastArtifactName, now):
+		h.RetentionReason = "protected_expired"
+	case st.PruneFailureReason != "":
+		h.RetentionReason = st.PruneFailureReason
+	case st.RetainedExpiredArchives > 0:
+		h.RetentionReason = "protected_expired"
+	case backupRecoveryIdentityUncertain(st):
+		h.RetentionReason = "recovery_uncertain"
+	case !policy.Scheduled:
+		h.RetentionReason = "not_scheduled"
+	case policy.Scheduled && st.LastPruneAttemptAt.IsZero():
+		h.RetentionReason = "not_checked"
+	case policy.Scheduled && now.Sub(st.LastPruneAttemptAt) > backupPruneStaleAfter:
+		h.RetentionReason = "stale"
+	}
+	// An absent schedule is configuration information, not evidence of a
+	// retention breach. Keep it explicit without inventing mandatory backups.
+	// Earlier cases retain actual failures/expired copies even after disablement.
+	h.RetentionBreach = h.RetentionReason != "" && h.RetentionReason != "not_scheduled"
 	h.DrillStale = st.LastDrillAt.IsZero() || !st.LastDrillOK || now.Sub(st.LastDrillAt) > DrillStaleAfter
 	return h
+}
+
+// Empty configuration has no claimed recovery identity. An existing but
+// incomplete success record is different: it cannot justify recovery safety,
+// including a legacy record predating ciphertext-digest verification.
+func backupRecoveryIdentityUncertain(st store.BackupState) bool {
+	known := !st.LastSuccessAt.IsZero() || st.LastArtifactName != "" || st.LastArtifactBytes != 0 || st.LastArtifactSHA256 != ""
+	return known && (st.LastSuccessAt.IsZero() || !archiveName.MatchString(st.LastArtifactName) || st.LastArtifactBytes <= 0 || len(st.LastArtifactSHA256) != 64)
+}
+
+// Any future operational timestamp is evidence of a wall-clock rollback.
+func backupClockUncertain(now time.Time, st store.BackupState) bool {
+	for _, at := range []time.Time{st.LastSuccessAt, st.LastFailureAt, st.LastPruneAt, st.LastPruneAttemptAt, st.LastDrillAt} {
+		if at.After(now) {
+			return true
+		}
+	}
+	return false
 }
 
 // State reads the DR health row under scheduler authority. It is the
@@ -191,10 +244,10 @@ func boundedReason(err error) string {
 
 // PrunePolicy is the retention pruner's two bounds.
 type PrunePolicy struct {
-	// RetainCount archives are always kept, newest first, regardless of age.
+	// RetainCount archives are kept within the hard 180-day ceiling, newest first.
 	RetainCount int
 	// RetainDays is the age past which an archive outside the retained set
-	// is deleted. Bounded by configuration to the ops spec's 180-day ceiling.
+	// is deleted. No count exemption extends the hard 180-day ceiling.
 	RetainDays int
 }
 
@@ -202,6 +255,7 @@ type PrunePolicy struct {
 type PruneResult struct {
 	Deleted []string
 	Kept    int
+	Expired int
 }
 
 // archiveName matches exactly what publish() writes: the engine, a UTC
@@ -216,14 +270,9 @@ type archive struct {
 	suffix int
 }
 
-// planPrune decides which of the named archives to delete. It is pure so the
-// policy can be tested against a directory listing without a filesystem:
-// only complete archives of THIS engine are considered, ordered by the
-// timestamp in the name (never mtime, which a copy resets), the newest
-// RetainCount survive unconditionally, and of the rest only those older than
-// RetainDays are returned, oldest first. Returning them oldest-first is what
-// makes "stop on the first error" preserve the newest: whatever a failing
-// unlink leaves behind is the younger end of the list.
+// planPrune applies the soft count/age policy and hard age ceiling. Only the
+// recorded successful recovery copy is exempt from the ceiling. The caller
+// must establish recovery certainty before applying this plan.
 func planPrune(names []string, engine store.Engine, now time.Time, policy PrunePolicy, protect string) (deleteNames []string, kept int) {
 	var archives []archive
 	for _, name := range names {
@@ -248,75 +297,168 @@ func planPrune(names []string, engine store.Engine, now time.Time, policy PruneP
 		return archives[i].suffix > archives[j].suffix
 	})
 	retain := max(policy.RetainCount, 1)
-	if len(archives) <= retain {
-		return nil, len(archives)
-	}
 	cutoff := now.Add(-time.Duration(policy.RetainDays) * 24 * time.Hour)
-	candidates := archives[retain:]
-	kept = retain
-	for i := len(candidates) - 1; i >= 0; i-- {
-		// The persisted newest-successful archive is never a deletion
-		// candidate, whatever its filename timestamp: a wall-clock rollback can
-		// leave it with an older name than an earlier archive, and the
-		// unconditional guarantee is about the last export that SUCCEEDED, not
-		// the lexically newest name.
-		if candidates[i].name == protect || !candidates[i].at.Before(cutoff) {
+	ceiling := now.Add(-BackupRetentionCeiling)
+	for i := len(archives) - 1; i >= 0; i-- {
+		item := archives[i]
+		expired := item.at.Before(ceiling)
+		if item.name == protect || (!expired && (i < retain || !item.at.Before(cutoff))) {
 			kept++
 			continue
 		}
-		deleteNames = append(deleteNames, candidates[i].name)
+		deleteNames = append(deleteNames, item.name)
 	}
 	return deleteNames, kept
 }
 
-// Prune applies the retention policy to dir and records the run. Deletion
-// is oldest-first and stops at the first error, so a half-failed prune can
-// only ever have removed the oldest archives; the newest successful export
-// is never a candidate at all. A failed run records nothing, which leaves
-// the last-prune timestamp stale for the metric and the health read to
-// report.
+// Prune records a durable attempt before touching files. Publication recording
+// and pruning share cross-process datastore serialization: a success record
+// cannot advance to a file between planning and unlink. Export itself needs no
+// root key and never waits on this lock while taking a datastore snapshot.
 func (s *Backup) Prune(ctx context.Context, dir string, policy PrunePolicy) (PruneResult, error) {
-	if dir == "" {
-		return PruneResult{}, errors.New("backup prune needs a destination directory")
+	if dir == "" || policy.RetainCount < 1 || policy.RetainDays < 1 || policy.RetainDays > 180 {
+		return PruneResult{}, errors.New("backup prune needs a directory and a valid bounded policy")
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return PruneResult{}, fmt.Errorf("backup prune: list %s: %w", dir, err)
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.Type().IsRegular() {
-			names = append(names, e.Name())
-		}
-	}
-	state, err := s.State(ctx)
+	attemptID, err := newID("backup_prune")
 	if err != nil {
 		return PruneResult{}, err
 	}
-	toDelete, kept := planPrune(names, s.DB.Engine(), s.now(), policy, state.LastArtifactName)
-	remove := s.removeFile
-	if remove == nil {
-		remove = os.Remove
+	unlock, err := lockBackupDirectory(ctx, dir)
+	if err != nil {
+		// Even an inaccessible directory must invalidate an earlier healthy result.
+		recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		recordErr := tx.WriteSerialized(recordCtx, s.DB, backupArtifactLock, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			proof, proofErr := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+			if proofErr != nil {
+				return proofErr
+			}
+			return r.BackupState().SetPruneResult(ctx, proof, s.now(), attemptID, "directory_unavailable", 0)
+		})
+		return PruneResult{}, errors.Join(err, recordErr)
 	}
-	result := PruneResult{Kept: kept}
-	for _, name := range toDelete {
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		if err := remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return result, fmt.Errorf("backup prune: remove %s: %w", name, err)
-		}
-		result.Deleted = append(result.Deleted, name)
-	}
-	now := s.now()
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	defer unlock()
+	priorClockUncertain := false
+	// A crash or failed transaction leaves this attempt visibly incomplete,
+	// preserving the previous successful timestamp instead of reporting green.
+	if err := tx.WriteSerialized(ctx, s.DB, backupArtifactLock, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		proof, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
 		if err != nil {
 			return err
 		}
-		return r.BackupState().SetPruneSuccess(ctx, proof, now)
+		prior, err := r.BackupState().Get(ctx, proof)
+		if err != nil {
+			return err
+		}
+		priorClockUncertain = backupClockUncertain(s.now(), prior)
+		return r.BackupState().SetPruneResult(ctx, proof, s.now(), attemptID, "in_progress", 0)
+	}); err != nil {
+		return PruneResult{}, err
+	}
+	// Hash outside the bounded transaction, under the directory lock. A record
+	// from another directory can still advance instance state; compare the exact
+	// identity again in the deletion transaction before trusting this proof.
+	verifiedState, verifyErr := s.State(ctx)
+	if verifyErr == nil {
+		verifyErr = verifyBackupArtifact(ctx, filepath.Join(dir, verifiedState.LastArtifactName), verifiedState.LastArtifactBytes, verifiedState.LastArtifactSHA256)
+	}
+	var result PruneResult
+	var runErr error
+	err = tx.WriteSerialized(ctx, s.DB, backupArtifactLock, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+		result, runErr = PruneResult{}, nil
+		proof, err := authz.SystemAuthority(authz.SiteScheduler, az.Token())
+		if err != nil {
+			return err
+		}
+		finish := func(reason string, cause error) error {
+			runErr = cause
+			return r.BackupState().SetPruneResult(ctx, proof, s.now(), attemptID, reason, int64(result.Expired))
+		}
+		state, err := r.BackupState().Get(ctx, proof)
+		if err != nil {
+			return finish("state_unavailable", err)
+		}
+		// A prune of another directory can supersede our durable attempt. Do not
+		// touch files unless our own committed in-progress marker is still current.
+		if state.LastPruneAttemptID != attemptID || state.PruneFailureReason != "in_progress" {
+			return errors.New("backup prune attempt superseded before deletion")
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return finish("directory_unavailable", fmt.Errorf("backup prune: list directory: %w", err))
+		}
+		now := s.now()
+		names := make([]string, 0, len(entries))
+		protected := false
+		uncertain := priorClockUncertain || backupClockUncertain(now, state) || state.LastSuccessAt.IsZero() || state.LastArtifactBytes <= 0 || state.LastArtifactSHA256 == ""
+		expired := make(map[string]bool)
+		for _, entry := range entries {
+			m := archiveName.FindStringSubmatch(entry.Name())
+			if m == nil || m[1] != string(s.DB.Engine()) {
+				continue
+			}
+			at, err := time.Parse("20060102T150405Z", m[2])
+			if err != nil {
+				continue
+			}
+			// A non-regular managed name may hide a recovery artifact. Never follow it
+			// or use it as evidence that the recorded recovery point still exists.
+			if !entry.Type().IsRegular() {
+				uncertain = true
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return finish("directory_unavailable", err)
+			}
+			names = append(names, entry.Name())
+			if at.After(now) {
+				uncertain = true
+			}
+			if at.Before(now.Add(-BackupRetentionCeiling)) {
+				expired[entry.Name()] = true
+			}
+			if entry.Name() == state.LastArtifactName && info.Size() == state.LastArtifactBytes {
+				protected = verifyErr == nil && state.LastSuccessAt.Equal(verifiedState.LastSuccessAt) && state.LastArtifactName == verifiedState.LastArtifactName && state.LastArtifactBytes == verifiedState.LastArtifactBytes && state.LastArtifactSHA256 == verifiedState.LastArtifactSHA256
+			}
+		}
+		result.Kept, result.Expired = len(names), len(expired)
+		if uncertain || !protected {
+			return finish("recovery_uncertain", errors.New("backup retention unverified: preserve candidates until a durable recovery copy and clock are verified"))
+		}
+		toDelete, _ := planPrune(names, s.DB.Engine(), now, policy, state.LastArtifactName)
+		remove := s.removeFile
+		if remove == nil {
+			remove = os.Remove
+		}
+		for _, name := range toDelete {
+			if err := ctx.Err(); err != nil {
+				return finish("canceled", err)
+			}
+			if err := remove(filepath.Join(dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return finish("unlink_failed", fmt.Errorf("backup prune: remove %s: %w", name, err))
+			}
+			result.Deleted = append(result.Deleted, name)
+			result.Kept--
+			if expired[name] {
+				result.Expired--
+			}
+		}
+		// Even a no-op traversal must confirm directory durability: a previous
+		// unlink may be visible here after its fsync failed or its transaction died.
+		syncDirectory := s.syncDirectory
+		if syncDirectory == nil {
+			syncDirectory = filedurability.SyncDirectory
+		}
+		if err := syncDirectory(dir); err != nil {
+			return finish("directory_sync_failed", err)
+		}
+		if result.Expired > 0 {
+			return finish("protected_expired", errors.New("backup retention ceiling exceeded: the last successful recovery copy remains protected"))
+		}
+		return finish("", nil)
 	})
-	return result, err
+	return result, errors.Join(runErr, err)
 }
 
 // LastPruneSuccess is the scheduler's health probe shape for the pruner.

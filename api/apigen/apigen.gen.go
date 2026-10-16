@@ -5418,7 +5418,19 @@ type BackupHealth struct {
 	// LastFailureReason Bounded operator-facing text of the latest export failure; empty when none.
 	LastFailureReason string     `json:"last_failure_reason"`
 	LastPruneAt       *time.Time `json:"last_prune_at"`
-	LastSuccessAt     *time.Time `json:"last_success_at"`
+
+	// LastPruneAttemptAt Latest observed prune-attempt timestamp, including incomplete and failed attempts. The high-water timestamp is preserved during clock rollback.
+	LastPruneAttemptAt *time.Time `json:"last_prune_attempt_at"`
+	LastSuccessAt      *time.Time `json:"last_success_at"`
+
+	// RetainedExpiredArchives Number of complete managed archives observed remaining over 180 days at the latest attempt; uncertainty is reported separately.
+	RetainedExpiredArchives int `json:"retained_expired_archives"`
+
+	// RetentionBreach True for observed expiry, failed or unverified pruning, or missing/stale checks of a configured schedule. An absent schedule alone is a warning, not a breach; false does not certify unconfigured retention. This never authorizes deleting recovery material.
+	RetentionBreach bool `json:"retention_breach"`
+
+	// RetentionReason Bounded retention status reason. not_scheduled is a configuration warning without a breach; other nonempty reasons identify expiry, failed or unverified pruning, or missing/stale configured checks.
+	RetentionReason string `json:"retention_reason"`
 
 	// RpoExceeded True when exports are scheduled and no successful export is younger than the RPO.
 	RpoExceeded bool `json:"rpo_exceeded"`
