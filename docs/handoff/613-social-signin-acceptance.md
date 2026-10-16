@@ -353,6 +353,47 @@ This verifies that consumer's recovery, not a universal warm-cache latency
 promise. Required floor acceptance remains a separate gate; the optional
 benchmark budget was not bypassed.
 
+## Hosted floor proof and browser status correction
+
+The required floor job [116876709379](https://github.com/Hikyo-Org/Hikyo/actions/runs/38871565270/job/116876709379)
+passed on head `8d7fd5213`, clean merge candidate
+`fc4d37ae1490c8ec62cb7975f54b2d8175251380`. Parent inspection confirmed the
+native ARM64 four-CPU, 4 GiB, zero-swap configuration, zero OOM counters and
+passing same-source operator evidence. This supersedes the earlier pending
+floor proof for that candidate; the earlier failed artifacts remain recorded.
+
+The same candidate's [desktop browser group 3](https://github.com/Hikyo-Org/Hikyo/actions/runs/38871565270/job/116878146694)
+finished with 74 passing tests and one failure in GitHub provider creation.
+The trace shows successful real provider PUT and list GET responses. The save
+assertion selected every status in the panel, encountering both the save
+confirmation and the prior empty-list message while the asynchronous list
+refresh completed. The trace's old paragraph was temporarily inert because
+it was background content behind the closing editor. A controlled local
+reproduction held only the real list GET response, preserved the real provider
+write, and reproduced the strict mode failure with both paragraphs present
+after inert cleanup. No persistent inert defect was established.
+
+The assertion now selects the visible `Provider saved` status, matching the
+existing mail-test and provider-delete assertion pattern. API advertisement,
+reconfiguration, disabling and deletion checks remain intact. There is no
+product change, retry, removed assertion or deadline increase. The temporary
+response hold is diagnostic only and remains outside the final source.
+
+The controlled original assertion failed in 7.2 seconds; the same controlled
+flow passed with the corrected assertion in 6.9 seconds (2.6 minutes including
+setup), retaining both status paragraphs while the real list response was held.
+After removing the diagnostic interception, the complete provider flow passed
+on desktop in 7.5 seconds (2.5 minutes including setup) and mobile in 5.6 seconds
+(2.4 minutes including setup). Both normal runs kept the pinned assertions,
+axe checks, dark/light screenshots and all downstream real API checks.
+
+The complete web unit suite passed: 201 files and 1,756 tests in 13.61 seconds.
+The canonical typecheck and deny-warnings lint passed, and the structural graph
+refresh completed successfully. These filtered browser runs explicitly skip
+the registry execution-closure gate. Full hosted validation on the subsequent
+browser-repair head remains required; the floor success above belongs to
+head `8d7fd5213`, not an untested successor.
+
 ## Delivery gates
 
 The issue requires DCO and cryptographic signing for every commit, both-engine

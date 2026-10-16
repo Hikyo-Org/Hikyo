@@ -1409,7 +1409,7 @@ test.describe('social sign-in administration', () => {
       await page.screenshot({ path: testInfo.outputPath(`github-provider-${theme}.png`), fullPage: true });
     }
     await editor.getByRole('button', { name: 'Save provider' }).click();
-    await expect(panel.getByRole('status')).toContainText('Provider saved');
+    await expect(panel.getByRole('status').filter({ hasText: 'Provider saved' })).toBeVisible();
     const advertised = await page.request.get(`${BASE_URL}/api/v1/auth/methods`);
     expect(zAuthMethods.parse(await advertised.json()).providers.find((provider) => provider.slug === slug)).toMatchObject({
       kind: 'oauth2', profile: 'github', brand: 'github', display_name: name,
