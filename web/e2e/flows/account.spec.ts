@@ -1,8 +1,8 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { zInvitationResult, zPasskeyList, zTotpStatus, zWhoAmI } from '@hikyo/zod';
 
 import { browserApi } from '../fixtures/api.ts';
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -13,6 +13,21 @@ import {
 } from '../fixtures/instance.ts';
 import { enrolledAccount, signInAs } from '../fixtures/accounts.ts';
 import { test, withPasskeyPage } from '../fixtures/passkey.ts';
+
+/** Pin each establish/password state while its real server ceremony is still active. */
+async function expectSocialSecuritySurface(page: Page, scope: Locator, heading: Locator, control: Locator, state: string, text: Locator[] = []) {
+  for (const theme of ['dark', 'light'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expectPinnedAssertionSet(page, {
+      flow: 'account', surface: 'settings', theme,
+      text: [heading, ...text], radii: [[scope, 'container'], [control, 'control']],
+      fonts: [[heading, 'ui']], colours: [[heading, 'color', '--tx']],
+      hairlines: [scope], density: [[control, '--control']],
+    });
+    await expectNoSeriousAxeViolations(page);
+    await page.screenshot({ path: test.info().outputPath(`social-${state}-${theme}.png`), fullPage: true });
+  }
+}
 
 test.describe('social-only account security', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -35,12 +50,14 @@ test.describe('social-only account security', () => {
     await page.screenshot({ path: testInfo.outputPath('social-security-before.png'), fullPage: true });
     await page.getByRole('button', { name: 'Set password', exact: true }).click();
     await expect(page.getByRole('dialog').locator('input')).toHaveCount(0);
+    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }), 'establish-chooser');
     await page.screenshot({ path: testInfo.outputPath('social-establish-chooser.png'), fullPage: true });
     const establishStart = page.waitForRequest((request) => request.method() === 'POST' && request.url().includes(`/auth/oidc/${OIDC_PROVIDER.slug}/start`));
     await page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }).click();
     expect((await establishStart).postDataJSON()).toEqual({ purpose: 'establish', browser: true });
     await expect(page).toHaveURL(/\/settings\?tab=factors$/);
     await expect(page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })).toContainText('complete one change within about 5 minutes');
+    await expectSocialSecuritySurface(page, page.locator('#account-factors'), page.locator('#account-factors').getByRole('heading', { name: 'Sign-in factors' }), page.getByRole('button', { name: 'Set password', exact: true }), 'verified-stamp', [page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })]);
     await page.screenshot({ path: testInfo.outputPath('social-security-verified.png'), fullPage: true });
 
     await page.getByRole('tab', { name: 'Identities' }).click();
@@ -53,6 +70,7 @@ test.describe('social-only account security', () => {
     await page.getByRole('tab', { name: 'Sign-in factors' }).click();
     await page.getByRole('button', { name: 'Set password', exact: true }).click();
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), 'password-form');
     await page.screenshot({ path: testInfo.outputPath('social-password-form.png'), fullPage: true });
     const password = 'first-security-password-611';
     await page.getByLabel('New password', { exact: true }).fill(password);
@@ -63,6 +81,7 @@ test.describe('social-only account security', () => {
       await expect(input).toHaveAttribute('aria-invalid', 'true');
       await expect(input).toHaveAccessibleDescription(/The passwords do not match\. Enter them again\./);
     }
+    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), 'password-mismatch');
     await page.screenshot({ path: testInfo.outputPath('social-password-mismatch.png'), fullPage: true });
     await page.getByLabel('Repeat new password', { exact: true }).fill(password);
     await expect(page.getByLabel('New password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');

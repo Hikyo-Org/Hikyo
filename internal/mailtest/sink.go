@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"log"
 	"math/big"
@@ -37,6 +38,10 @@ type Sink struct {
 	mu        sync.Mutex
 	messages  []Message
 	onMessage func(Message) error
+	listener  net.Listener
+	done      chan struct{}
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // New starts a TLS-only sink. mode selects implicit or mandatory STARTTLS.
@@ -54,9 +59,23 @@ type Options struct {
 
 func NewWithOptions(t testing.TB, options Options) *Sink {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	sink, err := Start(options)
 	if err != nil {
 		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sink.Close() })
+	return sink
+}
+
+// Start starts the same TLS-only fixture outside a Go test, for browser tests.
+// The caller owns Close. Invalid modes are refused before binding a listener.
+func Start(options Options) (*Sink, error) {
+	if options.Mode != "implicit" && options.Mode != "starttls" {
+		return nil, fmt.Errorf("invalid mail sink mode %q", options.Mode)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
 	}
 	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Hikyo mail test"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true,
@@ -69,12 +88,12 @@ func NewWithOptions(t testing.TB, options Options) *Sink {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	sink := &Sink{Addr: listener.Addr().String(), CAPEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))}
 	sink.onMessage = options.OnMessage
@@ -94,13 +113,23 @@ func NewWithOptions(t testing.TB, options Options) *Sink {
 	sink.server.ErrorLog = log.New(io.Discard, "", 0)
 	if options.Mode == "implicit" {
 		listener = tls.NewListener(listener, tlsConfig)
-	} else if options.Mode != "starttls" {
-		t.Fatalf("invalid mail sink mode %q", options.Mode)
 	}
-	done := make(chan struct{})
-	go func() { defer close(done); _ = sink.server.Serve(listener) }()
-	t.Cleanup(func() { _ = sink.server.Close(); _ = listener.Close(); <-done })
-	return sink
+	sink.listener = listener
+	sink.done = make(chan struct{})
+	go func() { defer close(sink.done); _ = sink.server.Serve(listener) }()
+	return sink, nil
+}
+
+// Close stops the listener and active connections, including when called
+// immediately after Start. Multiple callers can safely share cleanup.
+func (s *Sink) Close() error {
+	s.closeOnce.Do(func() {
+		s.closeErr = s.server.Close()
+		// Serve may not yet have registered the listener with the SMTP server.
+		_ = s.listener.Close()
+		<-s.done
+	})
+	return s.closeErr
 }
 
 func (s *Sink) Messages() []Message {

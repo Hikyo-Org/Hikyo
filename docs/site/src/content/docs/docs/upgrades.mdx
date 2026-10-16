@@ -7,6 +7,25 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Hikyo migrations move forward only. A downgrade means restoring a pre-upgrade
 archive with a compatible binary, not running a down migration.
 
+## Social sign-in upgrade notes
+
+When upgrading across migration `00057_social_signin`, existing sessions survive
+the SQLite session-table rebuild and the equivalent PostgreSQL schema change.
+Every open disclosure reauthentication window closes on both engines. Users
+must complete fresh reauthentication before their next protected disclosure.
+In-flight OIDC transactions are cleared by migrations 57 and 58; restart an
+interrupted provider ceremony after the upgrade.
+
+The earlier migration `00044_retire_oidc_provisioning` removed the legacy OIDC
+JIT policy. Existing provisioned accounts and explicit identity links remain.
+Migration `00058_registration_switch` does not fold that retired policy into
+registration, reread its old column or remove its audit history again. An
+operator must explicitly create and enable a
+[registration policy](/docs/social-signin/#open-registration-deliberately) to
+admit unknown identities. Existing linked identities continue through ordinary
+sign-in. Review these changes when your upgrade route crosses those migrations,
+even if a newer binary also contains later schema changes.
+
 For cloud VMs, use the [deployment-specific upgrade guide](/docs/cloud-upgrades/).
 For a fresh Docker nightly and its image replacement commands, use
 [cloud nightlies](/docs/cloud-nightlies/).

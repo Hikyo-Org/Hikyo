@@ -484,6 +484,7 @@ jobs:
           mkdir -p ci-artifacts
           go build -tags ui -o ci-artifacts/hikyo-ui ./cmd/hikyo
           go build -o ci-artifacts/oidctest-idp ./internal/oidctest/cmd
+          go build -o ci-artifacts/mail-sink ./internal/mailtest/cmd
       - name: Upload app build for downstream validation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -495,6 +496,7 @@ jobs:
             internal/webui/dist/
             ci-artifacts/hikyo-ui
             ci-artifacts/oidctest-idp
+            ci-artifacts/mail-sink
           if-no-files-found: error
           overwrite: true
           retention-days: 1
@@ -933,7 +935,7 @@ jobs:
       # Actions artifacts intentionally normalize file modes. Restore execute
       # permission before the browser harness starts the downloaded binary.
       - name: Prepare prebuilt browser binaries
-        run: chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp
+        run: chmod +x ci-artifacts/hikyo-ui ci-artifacts/oidctest-idp ci-artifacts/mail-sink
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version-file: .nvmrc
@@ -997,6 +999,7 @@ jobs:
         env:
           HIKYO_E2E_BINARY: ${{ github.workspace }}/ci-artifacts/hikyo-ui
           HIKYO_E2E_OIDC_BINARY: ${{ github.workspace }}/ci-artifacts/oidctest-idp
+          HIKYO_E2E_MAIL_BINARY: ${{ github.workspace }}/ci-artifacts/mail-sink
         run: pnpm exec playwright test --project=${{ matrix.project }} ${{ matrix.specs }}
 
       # Each leg's pinned-assertion run log, for the aggregator to merge. Named

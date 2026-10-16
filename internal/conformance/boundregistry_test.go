@@ -100,6 +100,14 @@ func goHelper(packagePath, name string) fixtureref.FixtureRef {
 // caught by TestReconciledBoundsMatchOpsSpecValues; completeness against new
 // spec rows is a review responsibility on this single source.
 var Registry = []Bound{
+	bound("signup-budget", "Instance-wide sign-up budget", "ops-spec amendment 2026-09-03 / social-signin §8", "uniform refusal after twenty admitted attempts per hour", "Closed scopes are uncharged; local and federated attempts share the admission budget and transaction retries refund their charge", StatusEnforced,
+		goTest("internal/isolation", "TestFederatedSignup"),
+		goTest("internal/isolation", "TestLocalSignupFailedMailChargesBudget"),
+		goTest("internal/isolation", "TestFederatedSignupRetryRefundsCharge"),
+		goTest("internal/isolation", "TestLocalSignupClosedAndFencedRequestsUncharged")),
+	bound("fresh-org-cap", "Registration policy fresh-org cap", "ops-spec amendment 2026-09-03 / social-signin §8", "registration.signup_refused cause cap with no org created", "The policy requires a positive operator-selected cap; overflow refuses atomically and deleting an org frees its slot", StatusEnforced,
+		goTest("internal/isolation", "TestFederatedSignupLandings"),
+		goTest("internal/isolation", "TestLocalSignupFreshOrgCap")),
 	bound("credential-establish-lifetime", "Credential establishment session window", "social-signin §8 / ops-catalogue §Registration", "service.ErrNoProofCredential after unused expiry or session reissue", "Both kinds and engines refuse expired or already-spent stamps, including staged enrollment completion", StatusEnforced,
 		goTest("internal/isolation", "TestCredentialEstablishTOTPAndExpiry"),
 		goTest("internal/isolation", "TestCredentialEstablishStagedPasskeyExpires")),
@@ -355,6 +363,7 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		{"service.BudgetSchemaRevisionPerHour", service.BudgetSchemaRevisionPerHour, 60},
 		// ops-spec banner 2026-09-03: the instance-wide signup budget (#606).
 		{"service.BudgetSignupPerHour", service.BudgetSignupPerHour, 20},
+		{"service.BudgetMailTestPerHour", service.BudgetMailTestPerHour, 5},
 		{"service.SignupLifetime", int(service.SignupLifetime / time.Second), 86400},
 		{"service.CredentialEstablishLifetime", int(service.CredentialEstablishLifetime / time.Second), 300},
 		// Already-conformant bounds, pinned so they cannot drift unnoticed.

@@ -1,0 +1,78 @@
+---
+title: Signup mail and test delivery
+description: Configure the signup mailer, test the active or selected configuration, and diagnose delivery without exposing verification links.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/signup-mail.mdx
+---
+
+Local email registration needs valid mail settings and an explicitly configured
+public origin. **Configured** means the effective settings pass local
+validation. It does not mean DNS, TLS, authentication or recipient delivery has
+been tested. Startup, health checks and configuration Apply do not probe SMTP.
+
+## Configure the transport
+
+Before managed adoption, supply these bootstrap inputs to the server process.
+After adoption, edit, publish and Apply the corresponding managed values through
+[Hikyo configuration](/docs/managed-configuration/). Changing an old environment
+variable cannot override the applied managed snapshot.
+
+| Input | Requirement |
+| --- | --- |
+| `HIKYO_MAIL_ADDR` | Relay `host:port`; required when mail is enabled. The hostname is used for TLS certificate verification. |
+| `HIKYO_MAIL_TLS` | Required: `implicit` or `starttls`. Cleartext delivery and STARTTLS downgrade are refused. |
+| `HIKYO_MAIL_FROM` | Required: one RFC 5322 sender mailbox. |
+| `HIKYO_MAIL_USER` | Optional authentication username. Requires a password; a password without a username is refused. |
+| `HIKYO_MAIL_PASSWORD_FILE` | Bootstrap secret-file input; import its contents once during managed adoption. |
+| `HIKYO_MAIL_PASSWORD` | Alternative bootstrap password, or the managed secret value. Configure exactly one bootstrap password source when authentication is enabled. Environment plaintext is the weakest bootstrap tier. |
+| `HIKYO_MAIL_CA_FILE` | Optional bootstrap PEM trust file, imported once during adoption. |
+| `HIKYO_MAIL_CA_PEM` | Managed-only custom CA certificate contents, replacing the imported trust file. Private keys are refused. |
+| `HIKYO_MAIL_EHLO` | Optional greeting hostname. |
+| `HIKYO_MAIL_ALLOWED_CIDRS` | Optional comma-separated mail-only network exceptions. Private or otherwise non-global relay addresses require an explicit allowed CIDR. |
+
+An entirely absent mail group disables delivery; a partial or malformed group
+is an error. TLS is mandatory, uses a minimum of TLS 1.2, and checks the relay's
+hostname and certificate chain. A custom CA does not bypass those checks. Scope
+CIDR exceptions to the relay addresses actually needed. DNS resolution and dial
+remain subject to Hikyo's outbound policy.
+
+## Test the active configuration
+
+1. Sign in with the instance configuration capability. Open **Instance
+   settings → Mailer** and check the configured badge.
+2. Enter a recipient you control, select **Send test**, and supply the requested
+   fresh account-security proof.
+3. Wait for the result, then check the recipient's inbox and spam folder.
+   Successful SMTP submission is not a guarantee of final inbox delivery.
+
+The test uses the active runtime settings. Testing a selected published revision
+in **Hikyo configuration** uses that candidate and does not activate it. Both
+paths share the same `mail-test` budget: five admitted tests per hour per
+principal and one concurrent send per instance. A failed admitted attempt still
+uses its budget. Each send has a 15-second absolute deadline; caller cancellation
+can end it earlier. See [managed configuration](/docs/managed-configuration/)
+for the separate candidate-test and Apply commands.
+
+## Verify a local signup
+
+Enable local email in the intended [registration policy](/docs/social-signin/),
+then submit a signup from a signed-out browser. Open the received verification
+link, complete the credential form and sign in normally. The token lasts
+24 hours and is single-use; opening a verification page does not consume it.
+Resending rotates the pending authority. Verification does not sign the user in.
+An address already registered receives a notice without a verification link.
+
+Signup requests share an instance-wide budget of 20 per hour. Mail failure keeps
+the same public accepted response, so use protected audit and operational
+evidence when diagnosing delivery. `registration.mail_intent` is committed before
+the single synchronous send, and `registration.mail_outcome` records its result.
+A process crash between them can leave an intent without an outcome. There is
+no delivery outbox or background retry; the user requests a resend.
+
+Do not copy verification fragments, mail bodies, passwords or client secrets
+into logs, audit annotations or support tickets. A missing received message
+alone does not identify which delivery leg failed. Check the protected outcome,
+relay policy and recipient delivery evidence separately.
+
+After restore, managed mail settings remain fenced until reconciliation and
+explicit acknowledgement or secret re-entry plus Apply. Follow the
+[restore runbook](/docs/backup-and-restore/) before testing outbound delivery.

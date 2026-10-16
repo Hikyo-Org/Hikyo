@@ -45,6 +45,8 @@
     "kubernetes-operator",
     "configuration-rollouts",
     "---Identity providers---",
+    "social-signin",
+    "signup-mail",
     "saml",
     "scim",
     "---Operations---",

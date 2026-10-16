@@ -45,7 +45,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     // A setup failure means Playwright never runs globalTeardown; without this
     // the just-spawned servers outlive the runner and poison the next run's
     // port preflight.
-    stopInstance();
+    try {
+      await stopInstance();
+    } catch (cleanupError) {
+      throw new AggregateError([err, cleanupError], 'browser instance setup failed and cleanup also failed');
+    }
     throw err;
   }
 }

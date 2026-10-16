@@ -1,0 +1,178 @@
+---
+title: Social sign-in and registration
+description: Configure Google, tenant-specific Microsoft Entra and GitHub sign-in, and explicitly admit new accounts.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/social-signin.mdx
+---
+
+Provider setup enables authentication. New accounts additionally require an
+invitation claim or an active registration policy. Registration is closed by
+default. Existing accounts link another identity in **Account & security** with
+fresh proof; Hikyo never matches accounts by an asserted email address.
+
+## Before creating a provider
+
+1. Set the effective `HIKYO_EXTERNAL_ORIGIN` to the instance's stable HTTPS
+   hostname. After managed configuration adoption, change and apply the managed
+   value through [Hikyo configuration](/docs/managed-configuration/).
+2. Open **Instance settings → Identity providers** for OIDC, or the
+   **GitHub sign-in** panel for GitHub. Provider administration requires the
+   instance configuration capability and the requested fresh authentication.
+3. Choose a stable slug. Register the exact callback below in the upstream app,
+   replacing the example origin and slug with your own. Copy the provider's
+   returned redirect URI when checking the completed configuration.
+
+| Kind | Callback example |
+| --- | --- |
+| Google or Microsoft Entra OIDC | `https://hikyo.example.com/api/v1/auth/oidc/work/callback` |
+| GitHub OAuth2 | `https://hikyo.example.com/api/v1/auth/oauth2/github/callback` |
+
+Use separate upstream clients for independent installations. Keep client secrets
+in the write-only provider field. Provider reconfiguration can terminate its
+sessions. An issuer cannot change in place. For an OIDC provider advertising
+only pairwise subjects, changing the client ID is refused while identities
+remain linked: a different client can mean different subjects.
+
+## Microsoft Entra: one row per tenant
+
+Create one multi-tenant web app registration for the admitted work or school
+tenants. Its client ID and secret are shared by those tenant rows. In Hikyo,
+create an OIDC row with issuer
+`https://login.microsoftonline.com/<tenant-guid>/v2.0`, the app's client ID and
+secret, and scopes `openid profile email`. Set a display name identifying the
+tenant, so users can distinguish their Microsoft buttons.
+
+Use the directory's tenant GUID. `common`, `organizations`, tenant domain names
+and the literal `{tenantid}` issuer template are not supported. Discovery must
+return the configured issuer exactly; an issuer mismatch reports the discovered
+value. Configure another Hikyo row and another exact callback for every admitted
+tenant. A shared app must have the appropriate supported account types and all
+those callbacks registered. Its redirect-URI limit bounds this arrangement; do
+not replace the tenant rows with a template to bypass it. See Microsoft's
+[redirect URI rules](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url).
+Preserve the app registration and its client ID: deleting and recreating it can
+change pairwise subjects and strand existing links.
+
+For open registration, configure **App registrations → your application → Token
+configuration → Add optional claim → ID** to request `email` and `xms_edov`.
+Microsoft documents how to [configure optional
+claims](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims)
+and the [meaning of
+`xms_edov`](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference).
+Requesting a claim does not guarantee its presence or a true value for every
+user. Verify the app's actual token behavior using a tenant test account before
+opening registration; do not paste tokens into logs or support messages.
+
+Hikyo admits an unknown OIDC signup identity only with a nonempty string `email`
+and at least one JSON boolean `true` among `email_verified` and `xms_edov`.
+Every recognized verification claim that is present must be boolean `true`.
+A missing assertion, `false` or the string `"true"` refuses signup. This is a
+registration gate, not an email-based account link. Previously linked identities
+can sign in without passing the unknown-account signup gate again.
+
+For an Entra row intended to reauthenticate protected disclosure, also request
+the ID-token optional claims `auth_time` and `amr`. Configure Hikyo's **Assurance
+policy (JSON, optional)** from the tenant's actual signed token claims. A policy
+can name accepted `acr_values` or required `amr_sets`; for example,
+`{"amr_sets":[["hwk","mfa"]]}` is suitable only when the tenant demonstrably
+emits both values for the intended authentication. It is an example, not a
+default assurance policy. Microsoft lists its
+[method-specific AMR values](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims-reference#amr-values-for-microsoft-entra-authentication-methods).
+Hikyo additionally requires a possession value `hwk`, `swk` or `otp` and an
+`auth_time` no more than five minutes old (with at most one minute of future
+clock skew), for the same issuer and subject. `mfa` alone, or a matching `acr`
+alone, does not satisfy possession. If the actual token cannot meet these
+requirements, leave the policy unset and use local authentication or a passkey
+for disclosure. Enabling a policy without testing its token contract does not
+establish reauthentication support.
+
+## Google: a web application client
+
+Create an OAuth client with application type **Web application**, configure its
+consent audience, and add the exact Hikyo OIDC callback as an authorized redirect
+URI. Use issuer `https://accounts.google.com`, that client's ID and secret, and
+scopes `openid profile email` in the Hikyo OIDC row. Google applies
+[redirect URI validation rules](https://developers.google.com/identity/protocols/oauth2/web-server#uri-validation):
+production callbacks need HTTPS and a domain with a public suffix; IP literals
+are refused. Localhost has Google's development exception. Register the exact
+scheme, host, port and path, including any trailing slash. Hikyo's origin
+validation does not replace Google's client-registration rules.
+
+Leave the OIDC assurance policy unset for Google unless an independently
+supported assurance contract has been established. A row without that policy
+cannot perform disclosure reauthentication; use a local authenticator or passkey
+when Hikyo requests it. Hikyo does not send `prompt=login` or `max_age` on that
+refused path. Google's documented bare and HTTPS issuer spellings are verified
+by the OIDC library and resolve under the configured HTTPS issuer.
+
+The accepted signup policy uses Google's verified-email assertion. Google's
+[OIDC guidance](https://developers.google.com/identity/openid-connect#obtainuserinfo)
+distinguishes Gmail and Workspace addresses from third-party addresses without
+an `hd` claim. Hikyo does not add an authoritative-domain check to
+`email_verified`; administrators must consider that accepted limitation when
+choosing registration domains and claim allowlists.
+
+## GitHub: an OAuth App
+
+Create a [GitHub OAuth
+App](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app),
+set its homepage to your instance, and set its authorization callback to the
+exact OAuth2 callback above. Copy its client ID and client secret into Hikyo's
+OAuth2 provider editor with profile `github` and origin `https://github.com`.
+This profile supports GitHub.com only; GitHub Enterprise Server is refused.
+
+For CLI administration, first create a private regular file containing the
+client secret, then run from the directory containing that file with an
+authenticated instance-configuration session:
+
+```sh
+hikyo instance-config oauth2-provider create \
+  --slug github --profile github --origin https://github.com \
+  --display-name GitHub --client-id YOUR_CLIENT_ID \
+  --client-secret-file ./github-client-secret
+hikyo instance-config oauth2-provider show github
+```
+
+The profile fixes endpoints, `user:email` scope and PKCE S256. The decimal GitHub
+user ID identifies the account; usernames are presentation. Signup requires a
+primary verified address from GitHub's email endpoint. Existing-identity sign-in
+does not fetch an address to find an account. Callback tokens are discarded
+after use. GitHub's upstream two-factor state does not establish Hikyo disclosure
+assurance; use a local authenticator or passkey for that operation.
+
+## Open registration deliberately
+
+Open **Members → Open registration** at organisation or instance scope. Admit
+only the required providers or local email signup. Local signup also needs an
+explicit public origin and a [configured mailer](/docs/signup-mail/). A policy
+can be saved but inactive; inspect its cause rather than assuming the public
+signup door is open.
+
+An organisation policy lands new members in that organisation. An instance
+policy chooses its landing and authority; a fresh-organisation policy includes
+an explicit per-policy cap (the editor initially suggests 100). The authority principal's live
+permissions must continue to authorize the landing. A deleted authority or
+revoked grant can make the policy inactive. OIDC entries can restrict email
+domains and exact string claim values. OAuth2 GitHub entries cannot carry claim
+allowlists. Registration does not silently add another provider to an existing
+account.
+
+Copy the organisation's signup link from its policy panel when onboarding into
+that organisation. Test from a signed-out browser: ordinary **Sign in** must
+refuse an unknown identity, while **Sign up** uses the applicable live policy.
+For local email signup, an accepted request shows the same check-your-mail
+response for new and already registered addresses. Verification consumes its
+authority once, creates no session, and returns the user to sign-in.
+
+## Check CLI sign-in
+
+With the provider enabled and an account admitted or linked, run:
+
+```sh
+hikyo login https://hikyo.example.com --provider oidc:work
+hikyo whoami --instance https://hikyo.example.com
+```
+
+For GitHub use `--provider oauth2:github`. To authorize on another device, add
+`--device`, open the displayed verification URL and enter the displayed code.
+The browser authorizes the CLI session; a successful browser sign-in alone does
+not prove that the CLI received its session. Confirm `whoami` before finishing.

@@ -192,6 +192,8 @@ const (
 	// § 10 signup (ops-spec banner 2026-09-03, #579 d7): rate-only and
 	// instance-wide, shared by the `none` and `fresh-org` landings.
 	BudgetSignupPerHour = 20
+	// Operator mail tests share this per-principal hourly bucket across both routes.
+	BudgetMailTestPerHour = 5
 
 	// budgetMaxTrackedSubjects bounds how many rate buckets are remembered.
 	// Rate keys carry attacker-influenced values (a principal id, an org id), so

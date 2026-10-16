@@ -10,7 +10,7 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { zAuthMethods, zOrgList, zRegistrationPolicy, zSignupRequest, zSignupVerifyRequest } from '@hikyo/zod';
+import { zAuthMethods, zOrgList, zRegistrationPolicy } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
@@ -26,6 +26,7 @@ import {
 } from '../fixtures/instance.ts';
 import { enrolledAccount, TOTP_STEP_MS } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
+import { readMail } from '../fixtures/mail.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
 async function publicPost<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
@@ -1035,6 +1036,19 @@ test.describe('sign-up door', () => {
         await orgs.getByLabel('Show').selectOption('registration');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toBeVisible();
         await expect(orgs.getByText('self-serve', { exact: true }).first()).toBeVisible();
+        for (const theme of ['dark', 'light'] as const) {
+          await operatorPage.emulateMedia({ colorScheme: theme });
+          const heading = orgs.getByRole('heading', { name: 'Organisations', exact: true });
+          const filter = orgs.getByLabel('Show');
+          await expectPinnedAssertionSet(operatorPage, {
+            flow: 'instance-admin', surface: 'instance-admin', theme,
+            text: [heading, orgs.getByRole('link', { name: `org-${created ?? ''}` })],
+            radii: [[orgs, 'container'], [filter, 'control']], fonts: [[heading, 'ui']],
+            colours: [[heading, 'color', '--tx']], hairlines: [orgs, filter], density: [[filter, '--control']],
+          });
+          await expectNoSeriousAxeViolations(operatorPage);
+          await operatorPage.screenshot({ path: testInfo.outputPath(`org-origin-${theme}.png`), fullPage: true });
+        }
         await orgs.getByLabel('Show').selectOption('manual');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toHaveCount(0);
       } finally {
@@ -1057,73 +1071,98 @@ test.describe('sign-up door', () => {
   });
 });
 
-/** UI contract exercise. Mail delivery and token authority are covered by Go lifecycle tests. */
-test.describe('local sign-up UI contract', () => {
+/** Real local registration: browser request, trusted TLS SMTP, single-use link and fresh org. */
+test.describe('local sign-up', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
-  test('requests, resends and finishes fresh-org signup without a browser session', async ({ page }) => {
-    const requests: { email: string; org?: string }[] = [];
-    let currentToken = '';
-    let verified = false;
-    await page.route('**/api/v1/auth/methods*', (route) => route.fulfill({ json: {
-      local_login_enabled: true, providers: [], signup_open: true, signup_paused: false,
-      signup_methods: ['local'], signup_landing: 'fresh-org',
-    } }));
-    await page.route('**/api/v1/auth/signup', async (route) => {
-      requests.push(zSignupRequest.parse(route.request().postDataJSON()));
-      currentToken = `su_ui_${String(requests.length)}`;
-      await route.fulfill({ status: 202, body: '' });
-    });
-    await page.route('**/api/v1/auth/signup/verify', async (route) => {
-      const body = zSignupVerifyRequest.parse(route.request().postDataJSON());
-      expect(body.token).toBe(currentToken);
-      expect(body.display_name).toBe('Alex');
-      expect(body.org_name).toBe('My organisation');
-      expect(body.landing).toBe('fresh-org');
-      verified = true;
-      await route.fulfill({ status: 204, body: '' });
-    });
-    await page.goto('/signup');
-    await page.getByRole('button', { name: 'Email', exact: true }).click();
-    await page.getByLabel('Email', { exact: true }).fill('alex@example.com');
-    await page.getByRole('button', { name: 'Send sign-up link' }).click();
-    await expect(page.getByRole('heading', { name: 'Check your mail' })).toBeVisible();
-    await expect(page.locator('.login__card')).toContainText('If this address can sign up');
-    await page.getByRole('button', { name: 'Send it again' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'Requested another link' })).toBeVisible();
-    expect(requests).toEqual([{ email: 'alex@example.com' }, { email: 'alex@example.com' }]);
-
-    for (const theme of ['dark', 'light'] as const) {
-      await page.emulateMedia({ colorScheme: theme });
-      await page.goto(`/signup/verify#token=${currentToken}&email=alex%40example.com&landing=fresh-org`);
-      await expect(page).toHaveURL(/\/signup\/verify$/);
-      const card = page.locator('.login__card');
-      const heading = page.getByRole('heading', { name: 'Finish creating your account' });
-      const email = page.getByLabel('Email', { exact: true });
-      const submit = page.getByRole('button', { name: 'Create account', exact: true });
-      await expect(email).toHaveValue('alex@example.com');
-      await expect(email).toHaveAttribute('readonly', '');
-      await expectPinnedAssertionSet(page, {
-        flow: 'signup', surface: 'signup-verify', theme,
-        text: [heading, page.locator('.login__landing')],
-        radii: [[card, 'container'], [submit, 'control'], [email, 'control']],
-        fonts: [[heading, 'ui']],
-        colours: [[heading, 'color', '--tx'], [card, 'backgroundColor', '--bg-raise']],
-        hairlines: [card, email], density: [[submit, '--control']],
+  test('requests, resends and finishes fresh-org signup without a browser session', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const [operator, closer] = await Promise.all([
+      enrolledAccount(browser, 'local-signup-operator', 'instance'),
+      enrolledAccount(browser, 'local-signup-closer', 'instance'),
+    ]);
+    const emailAddress = `signup-${testInfo.project.name}-${Date.now().toString(36)}@hikyo.test`;
+    const organisation = `Browser signup ${testInfo.project.name}`;
+    const policyPath = '/api/v1/instance/registration-policy';
+    let created: string | undefined;
+    let opened = false;
+    try {
+      await fixtureApiCall(operator.bearer, 'PUT', policyPath, zRegistrationPolicy, {
+        local: {}, external: [], landing: { kind: 'fresh-org', cap: 5 }, proof: await operator.ledger.next(),
       });
-      await expectNoSeriousAxeViolations(page);
+      opened = true;
+      await page.goto('/signup');
+      await page.getByRole('button', { name: 'Email', exact: true }).click();
+      await page.getByLabel('Email', { exact: true }).fill(emailAddress);
+      await page.getByRole('button', { name: 'Send sign-up link' }).click();
+      await expect(page.getByRole('heading', { name: 'Check your mail' })).toBeVisible();
+      await expect(page.locator('.login__card')).toContainText('If this address can sign up');
+      await expect.poll(() => readMail(emailAddress).length).toBe(1);
+      await page.getByRole('button', { name: 'Send it again' }).click();
+      await expect(page.getByRole('status').filter({ hasText: 'Requested another link' })).toBeVisible();
+      await expect.poll(() => readMail(emailAddress).length).toBe(2);
+      const messages = readMail(emailAddress);
+      const links = messages.map((message) => {
+        expect(message.from).toBe('signup@hikyo.test');
+        // go-mail emits quoted-printable text: unwrap soft lines before reading the URL.
+        const body = message.data.replace(/=\r\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+        const link = body.match(/https?:\/\/[^\s]+\/signup\/verify#[^\s]+/)?.[0];
+        if (link === undefined) throw new Error('accepted sign-up mail has no verification link');
+        expect(new URL(link).origin).toBe(BASE_URL);
+        return link;
+      });
+      expect(links[1]).not.toBe(links[0]);
+      const currentLink = links[1];
+      if (currentLink === undefined) throw new Error('resend mail is missing');
+      for (const theme of ['dark', 'light'] as const) {
+        await page.emulateMedia({ colorScheme: theme });
+        await page.goto(currentLink);
+        await expect(page).toHaveURL(/\/signup\/verify$/);
+        const card = page.locator('.login__card');
+        const heading = page.getByRole('heading', { name: 'Finish creating your account' });
+        const email = page.getByLabel('Email', { exact: true });
+        const submit = page.getByRole('button', { name: 'Create account', exact: true });
+        await expect(email).toHaveValue(emailAddress);
+        await expect(email).toHaveAttribute('readonly', '');
+        await expect(page.getByLabel('Password', { exact: true })).toHaveAttribute('autocomplete', 'new-password');
+        await expectPinnedAssertionSet(page, {
+          flow: 'signup', surface: 'signup-verify', theme,
+          text: [heading, page.locator('.login__landing')],
+          radii: [[card, 'container'], [submit, 'control'], [email, 'control']],
+          fonts: [[heading, 'ui']],
+          colours: [[heading, 'color', '--tx'], [card, 'backgroundColor', '--bg-raise']],
+          hairlines: [card, email], density: [[submit, '--control']],
+        });
+        await expectNoSeriousAxeViolations(page);
+        await page.screenshot({ path: testInfo.outputPath(`signup-verify-${theme}.png`), fullPage: true });
+      }
+      await page.getByLabel('Display name').fill('Alex');
+      await page.getByLabel('Organisation name').fill(organisation);
+      await page.getByLabel('Password', { exact: true }).fill('twelvecharacters');
+      await page.getByLabel('Repeat password').fill('differentpassword');
+      await page.getByRole('button', { name: 'Create account', exact: true }).click();
+      await expect(page.locator('.login__card').getByRole('alert')).toContainText('The two passwords differ');
+      await page.getByLabel('Repeat password').fill('twelvecharacters');
+      const verified = page.waitForResponse((response) => response.url().endsWith('/auth/signup/verify'));
+      await page.getByRole('button', { name: 'Create account', exact: true }).click();
+      expect((await verified).status()).toBe(204);
+      await expect(page).toHaveURL(/\/login$/);
+      expect((await page.context().cookies()).some((cookie) => cookie.name === '__Host-hikyo')).toBe(false);
+      const orgs = await fixtureApiCall(operator.bearer, 'GET', '/api/v1/orgs?origin=registration', zOrgList);
+      const minted = orgs.items.find((org) => org.name === organisation);
+      expect(minted?.origin).toBe('registration');
+      created = minted?.id;
+      await page.goto(currentLink);
+      await page.getByLabel('Display name').fill('Alex replay');
+      await page.getByLabel('Organisation name').fill('Replay must not create this');
+      await page.getByLabel('Password', { exact: true }).fill('twelvecharacters');
+      await page.getByLabel('Repeat password').fill('twelvecharacters');
+      await page.getByRole('button', { name: 'Create account', exact: true }).click();
+      await expect(page.getByRole('link', { name: 'Go to sign-up' })).toBeVisible();
+      expect((await page.context().cookies()).some((cookie) => cookie.name === '__Host-hikyo')).toBe(false);
+    } finally {
+      if (opened) await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.object({}), { proof: await closer.ledger.next() });
+      if (created !== undefined) await fixtureApiCall(operator.bearer, 'DELETE', `/api/v1/orgs/${created}`, z.object({}));
     }
-    await page.getByLabel('Display name').fill('Alex');
-    await page.getByLabel('Organisation name').fill('My organisation');
-    await page.getByLabel('Password', { exact: true }).fill('twelvecharacters');
-    await page.getByLabel('Repeat password').fill('differentpassword');
-    await page.getByRole('button', { name: 'Create account', exact: true }).click();
-    await expect(page.locator('.login__card').getByRole('alert')).toContainText('The two passwords differ');
-    expect(verified).toBe(false);
-    await page.getByLabel('Repeat password').fill('twelvecharacters');
-    await page.getByRole('button', { name: 'Create account', exact: true }).click();
-    await expect(page).toHaveURL(/\/login$/);
-    expect(verified).toBe(true);
-    expect((await page.context().cookies()).some((cookie) => cookie.name === '__Host-hikyo')).toBe(false);
   });
 });
 

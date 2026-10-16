@@ -1,3 +1,3 @@
 import { stopInstance } from '../fixtures/instance.ts';
 
-export default function teardown(): void { stopInstance(); }
+export default async function teardown(): Promise<void> { await stopInstance(); }

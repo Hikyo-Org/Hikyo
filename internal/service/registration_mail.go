@@ -99,7 +99,7 @@ func (s *InstanceMail) Test(ctx context.Context, actor Actor, to, proof string) 
 	if err != nil {
 		return err
 	}
-	if count > 5 {
+	if count > BudgetMailTestPerHour {
 		return &admission.RateLimitedError{Cause: ErrSelfConfigMailLimited, Wait: now.Truncate(time.Hour).Add(time.Hour).Sub(now)}
 	}
 	sendCtx, cancel := context.WithDeadline(ctx, started.Add(mail.SendTimeout))
