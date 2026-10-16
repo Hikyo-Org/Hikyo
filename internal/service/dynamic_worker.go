@@ -145,9 +145,15 @@ func (s *Dynamic) settleRenew(ctx context.Context, lease store.ClaimedLease, pro
 		// current validity and expires naturally.
 		return s.Runtime.RecordOutcome(ctx, lease, effectID, "renew", "failure", "active", time.Time{}, time.Time{})
 	}
+	// Persisted leases may predate checked TTL input validation. Refuse an
+	// unrepresentable ceiling without extending the provider credential.
+	ttl, err := dynamic.TTLDuration(lease.MaxTTLSeconds)
+	if err != nil {
+		return s.Runtime.RecordOutcome(ctx, lease, effectID, "renew", "failure", "active", time.Time{}, time.Time{})
+	}
 	opCtx, cancel := context.WithTimeout(ctx, s.leaseDeadline())
 	defer cancel()
-	newExpiry := s.now().Add(time.Duration(lease.MaxTTLSeconds) * time.Second)
+	newExpiry := s.now().Add(ttl)
 	err = provider.ExtendRole(opCtx, lease.ProviderHandle, newExpiry)
 	switch {
 	case err == nil:

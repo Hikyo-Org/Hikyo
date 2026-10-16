@@ -192,7 +192,7 @@ func (q *Queries) DynamicEnqueueRenewing(ctx context.Context, arg DynamicEnqueue
 }
 
 const dynamicEnqueueRenewingWithTTL = `-- name: DynamicEnqueueRenewingWithTTL :execrows
-UPDATE dynamic_leases SET state=$1,max_ttl_seconds=$2,last_transition_at=$3,next_attempt_at=$4,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=$5 AND org_id=$6 AND project_id=$7 AND (CAST($8 AS TEXT)='' OR environment_id=$8) AND state='active'
+UPDATE dynamic_leases SET state=$1,max_ttl_seconds=$2,last_transition_at=$3,next_attempt_at=$4,attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=$5 AND org_id=$6 AND project_id=$7 AND (CAST($8 AS TEXT)='' OR environment_id=$8) AND state='active' AND $2>0 AND $2<=max_ttl_seconds
 `
 
 type DynamicEnqueueRenewingWithTTLParams struct {

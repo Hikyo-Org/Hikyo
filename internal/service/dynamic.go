@@ -679,6 +679,11 @@ func (s *Dynamic) GetLease(ctx context.Context, actor Actor, scope domain.Scope,
 }
 
 func (s *Dynamic) RenewLease(ctx context.Context, actor Actor, scope domain.Scope, leaseID string, maxTTLSeconds int64) (DynamicLeaseView, error) {
+	if maxTTLSeconds != 0 {
+		if _, err := dynamic.TTLDuration(maxTTLSeconds); err != nil {
+			return DynamicLeaseView{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+		}
+	}
 	return s.enqueueLeaseTransition(ctx, actor, scope, leaseID, authz.OpLeaseRenew, "renewing", "renew", maxTTLSeconds)
 }
 

@@ -1689,6 +1689,16 @@ jobs:
           key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: |
             go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      - name: Start TLS PostgreSQL for the dynamic renewal regression shard
+        env:
+          ISOLATION_PLAN: ${{ needs.analysis_shards.outputs.isolation_plan }}
+          ISOLATION_SHARD: ${{ matrix.shard }}
+        run: |
+          owns_test=$(printf '%s\n' "$ISOLATION_PLAN" | jq -r --argjson shard "$ISOLATION_SHARD" \
+            '.[$shard] | if type != "array" then error("invalid isolation shard") else index("TestDynamicRenewalRealPostgresValidity") != null end')
+          if [ "$owns_test" = true ]; then
+            ./scripts/ci/start-dynamic-pg.sh
+          fi
       - name: Test assigned isolation cases on SQLite and PostgreSQL
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
@@ -1716,6 +1726,9 @@ jobs:
           # 10 minutes gave a 5-minute shard only 2x headroom and a loaded runner
           # hit it mid-test without any hang (#694). Race shards already run 20m.
           go test -count=1 -timeout=18m ./internal/isolation/ -run "^(${tests})$"
+      - name: Remove the dynamic renewal PostgreSQL target
+        if: ${{ always() && env.HIKYO_TEST_DYNAMIC_PG_CONTAINER != '' }}
+        run: docker container rm --force "$HIKYO_TEST_DYNAMIC_PG_CONTAINER"
       - name: Remove CI PostgreSQL
         if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
         run: docker container rm --force hikyo-ci-postgres

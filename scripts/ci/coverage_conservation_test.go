@@ -113,6 +113,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeMailFixtureAddition(workflow.Jobs); err != nil {
 		return err
 	}
+	if err := normalizeDynamicRenewalFixture(workflow.Jobs["isolation_shard"]); err != nil {
+		return err
+	}
 	// The feedback fixtures execute the real documentation checker. Pin its
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
