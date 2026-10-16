@@ -325,6 +325,77 @@ The focused suite passed in 1.289 seconds. The complete
 and <code>go vet ./scripts/ci</code> passed. Parent source review found no actionable
 issue in this narrow guard repair. No workflow check, test or timeout was
 removed or relaxed; a successful hosted run on the repair head remains pending.</p>
+<h2 id="hosted-floor-startup-refusal-and-repair">Hosted floor startup refusal and repair</h2>
+<p>The required floor job in <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38868172159/job/116865813823">run 38868172159</a>
+on head <code>8bbf159bd</code>, merge candidate
+<code>2a247566407b486ff4539dd98b64eaf0e6fc05ec</code>, refused during development-server
+boot. Its retained private <code>dev-server.log</code> records a bind failure for
+<code>127.0.0.1:49762</code>: address already in use. The driver exited before readiness
+in 1.15 seconds. Boot, idle, KDF, publish and rewrap fields remained unmeasured;
+the zero fields do not establish measured zero resource usage. The actual
+operator lane passed on the same source and binary, the direct scanner exited
+successfully, and the floor container was not OOM-killed. Those partial results
+do not make the composite pass. This was a startup refusal rather than an
+observed performance-threshold exceedance.</p>
+<p>The harness had fixed public and operational ports <code>49761</code> and <code>49762</code>, and
+polled operational readiness before the server bound that port. A deterministic
+native Linux reproduction restricted the isolated container's ephemeral range
+to <code>49762..49762</code> while using the same Go HTTP transport pattern. The early
+request self-connected, Go retried it, and a loopback <code>TIME_WAIT</code> socket remained
+on <code>49762</code>. The subsequent server-style bind failed with address already in
+use. Explicit client <code>LocalAddr</code> port zero also failed to prevent the collision.
+A fresh control using target <code>19762</code> outside the same ephemeral range received
+ordinary connection refusal and then bound successfully. The hosted artifact
+contains no historical socket table, so the exact socket owner at its failure
+cannot be recovered. The reproduction establishes a concrete reachable harness
+failure mechanism; it does not invent missing historical socket evidence.
+The earlier unobserved startup failure recorded in the #611 handoff retains
+that uncertainty.</p>
+<p>The isolated harness now uses public <code>19761</code> and operational <code>19762</code>, shares the
+operational address with its readiness client, and checks the actual Linux
+ephemeral range before launching the child. Missing, malformed or overlapping
+range configuration refuses immediately. Fourteen deterministic regression
+cases cover the original conflicting ports, the reproduced allocation,
+independent public and operational boundaries, malformed settings and unassigned
+listener ports. No retry hides a failed boot. The server workload, one-minute
+readiness deadline, five-second idle sampling, floor thresholds, CPU factors,
+required coverage and optional 600-minute benchmark policy are unchanged.</p>
+<p>The complete <code>go test -race -count=1 ./internal/bench</code> suite passed in
+1.406 seconds; <code>go vet ./internal/bench</code> and native Linux ARM64 tagged-floor
+compilation passed. An actual-helper startup smoke used the final
+<code>floorBootCommand</code> and a freshly built real <code>/hikyo</code> in a native Linux,
+network-isolated, read-only container with four CPUs, 4 GiB and zero swap.
+With ephemeral allocation restricted to <code>49762..49762</code>, it reached
+<code>/readyz</code> HTTP 200 and shut down gracefully in 0.68 seconds; all ordinary bench
+unit tests passed in the same container. The temporary overlay probe was not
+added to the checkout. An initial all-unit probe omitted the unchanged
+<code>derate.json</code> policy fixture: policy-dependent tests failed to open that file,
+while the real startup smoke passed in 0.85 seconds. Mounting the existing
+policy read-only repaired the probe setup; no test was removed or filtered.
+A separate actual-command test with ephemeral allocation <code>19762..19762</code>
+refused the operational-only overlap before child launch. These are local
+harness and startup checks, not a complete hosted floor acceptance run.
+Parent review found no actionable issue in the repair after strengthening the
+operational-only regression case. Exact-candidate hosted floor proof is pending.</p>
+<h2 id="go-feedback-cache-recovery">Go feedback cache recovery</h2>
+<p>The older head <code>21366c9ca</code> Go feedback job in
+<a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38867206870/job/116862676638">run 38867206870</a>
+missed both its exact bounded compiler cache and compatible prefix, then
+exhausted the existing 220-second deadline during actual six-package compile
+and link work. It reported no compiler diagnostic or test assertion failure.
+The feedback handoffs explicitly document that a cold miss may exceed that
+budget. This failure is separate from both the conservation and floor startup
+failures above.</p>
+<p>Head <code>8bbf159bd</code> initially failed the same cold-cache deadline in
+<a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38868144627/job/116865641371">run 38868144627, attempt 1</a>.
+The documented trusted-main seed <a href="https://github.com/Hikyo-Org/Hikyo/actions/runs/38868529623">run 38868529623</a>
+was dispatched without source,
+timeout, selection or trust-policy changes. Parent inspection subsequently
+observed a successful current-head Go feedback retry: the exact cache hit
+restored in about 5.3 seconds, and selected compilation completed in 101 seconds.
+This verifies that consumer's recovery, not a universal warm-cache latency
+promise. Required floor acceptance remains a separate gate; the optional
+benchmark budget was not bypassed.</p>
 <h2 id="delivery-gates">Delivery gates</h2>
 <p>The issue requires DCO and cryptographic signing for every commit, both-engine
 schema and lifecycle coverage, the requested review rounds, a verified preview,

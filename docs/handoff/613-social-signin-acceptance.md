@@ -274,6 +274,85 @@ and `go vet ./scripts/ci` passed. Parent source review found no actionable
 issue in this narrow guard repair. No workflow check, test or timeout was
 removed or relaxed; a successful hosted run on the repair head remains pending.
 
+## Hosted floor startup refusal and repair
+
+The required floor job in [run 38868172159](https://github.com/Hikyo-Org/Hikyo/actions/runs/38868172159/job/116865813823)
+on head `8bbf159bd`, merge candidate
+`2a247566407b486ff4539dd98b64eaf0e6fc05ec`, refused during development-server
+boot. Its retained private `dev-server.log` records a bind failure for
+`127.0.0.1:49762`: address already in use. The driver exited before readiness
+in 1.15 seconds. Boot, idle, KDF, publish and rewrap fields remained unmeasured;
+the zero fields do not establish measured zero resource usage. The actual
+operator lane passed on the same source and binary, the direct scanner exited
+successfully, and the floor container was not OOM-killed. Those partial results
+do not make the composite pass. This was a startup refusal rather than an
+observed performance-threshold exceedance.
+
+The harness had fixed public and operational ports `49761` and `49762`, and
+polled operational readiness before the server bound that port. A deterministic
+native Linux reproduction restricted the isolated container's ephemeral range
+to `49762..49762` while using the same Go HTTP transport pattern. The early
+request self-connected, Go retried it, and a loopback `TIME_WAIT` socket remained
+on `49762`. The subsequent server-style bind failed with address already in
+use. Explicit client `LocalAddr` port zero also failed to prevent the collision.
+A fresh control using target `19762` outside the same ephemeral range received
+ordinary connection refusal and then bound successfully. The hosted artifact
+contains no historical socket table, so the exact socket owner at its failure
+cannot be recovered. The reproduction establishes a concrete reachable harness
+failure mechanism; it does not invent missing historical socket evidence.
+The earlier unobserved startup failure recorded in the #611 handoff retains
+that uncertainty.
+
+The isolated harness now uses public `19761` and operational `19762`, shares the
+operational address with its readiness client, and checks the actual Linux
+ephemeral range before launching the child. Missing, malformed or overlapping
+range configuration refuses immediately. Fourteen deterministic regression
+cases cover the original conflicting ports, the reproduced allocation,
+independent public and operational boundaries, malformed settings and unassigned
+listener ports. No retry hides a failed boot. The server workload, one-minute
+readiness deadline, five-second idle sampling, floor thresholds, CPU factors,
+required coverage and optional 600-minute benchmark policy are unchanged.
+
+The complete `go test -race -count=1 ./internal/bench` suite passed in
+1.406 seconds; `go vet ./internal/bench` and native Linux ARM64 tagged-floor
+compilation passed. An actual-helper startup smoke used the final
+`floorBootCommand` and a freshly built real `/hikyo` in a native Linux,
+network-isolated, read-only container with four CPUs, 4 GiB and zero swap.
+With ephemeral allocation restricted to `49762..49762`, it reached
+`/readyz` HTTP 200 and shut down gracefully in 0.68 seconds; all ordinary bench
+unit tests passed in the same container. The temporary overlay probe was not
+added to the checkout. An initial all-unit probe omitted the unchanged
+`derate.json` policy fixture: policy-dependent tests failed to open that file,
+while the real startup smoke passed in 0.85 seconds. Mounting the existing
+policy read-only repaired the probe setup; no test was removed or filtered.
+A separate actual-command test with ephemeral allocation `19762..19762`
+refused the operational-only overlap before child launch. These are local
+harness and startup checks, not a complete hosted floor acceptance run.
+Parent review found no actionable issue in the repair after strengthening the
+operational-only regression case. Exact-candidate hosted floor proof is pending.
+
+## Go feedback cache recovery
+
+The older head `21366c9ca` Go feedback job in
+[run 38867206870](https://github.com/Hikyo-Org/Hikyo/actions/runs/38867206870/job/116862676638)
+missed both its exact bounded compiler cache and compatible prefix, then
+exhausted the existing 220-second deadline during actual six-package compile
+and link work. It reported no compiler diagnostic or test assertion failure.
+The feedback handoffs explicitly document that a cold miss may exceed that
+budget. This failure is separate from both the conservation and floor startup
+failures above.
+
+Head `8bbf159bd` initially failed the same cold-cache deadline in
+[run 38868144627, attempt 1](https://github.com/Hikyo-Org/Hikyo/actions/runs/38868144627/job/116865641371).
+The documented trusted-main seed [run 38868529623](https://github.com/Hikyo-Org/Hikyo/actions/runs/38868529623)
+was dispatched without source,
+timeout, selection or trust-policy changes. Parent inspection subsequently
+observed a successful current-head Go feedback retry: the exact cache hit
+restored in about 5.3 seconds, and selected compilation completed in 101 seconds.
+This verifies that consumer's recovery, not a universal warm-cache latency
+promise. Required floor acceptance remains a separate gate; the optional
+benchmark budget was not bypassed.
+
 ## Delivery gates
 
 The issue requires DCO and cryptographic signing for every commit, both-engine
