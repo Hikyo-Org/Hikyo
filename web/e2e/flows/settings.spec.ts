@@ -3,21 +3,29 @@ import { expect, type Page } from '@playwright/test';
 import {
   zDefinitionsSettings,
   zDefinitionsBundle,
+  zDeveloperCredentialList,
+  zDeveloperCredentialPolicy,
   zEnvironment,
   zEnvironmentList,
   zEnvironmentSettings,
   zOrg,
   zProject,
   zProjectRetentionPolicy,
+  zMintDeveloperCredentialResult,
+  zReauthResult,
+  zRevisionDetail,
   zRetentionPolicy,
 } from '@hikyo/zod';
 import { generatePath } from 'react-router';
 import { z } from 'zod';
 
-import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
+import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria, expectTouchTargets } from '../fixtures/assertions.ts';
 import { BrowserApiError, browserApi } from '../fixtures/api.ts';
+import { enrolledAccount, signInAs, TOTP_STEP_MS } from '../fixtures/accounts.ts';
 import {
+  BASE_URL,
   establishSession,
+  nextTotpCode,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
@@ -864,4 +872,123 @@ test.describe('settings flow visual contract', () => {
       });
     }
   }
+});
+
+// #807 admin parity: the fixture mints through the real server with exact
+// delegation consent. The application only lists/revokes metadata and edits
+// the instance ceiling. This runs in both existing viewport projects in CI.
+test.describe('developer credential administration', () => {
+  test.use({ storageState: STORAGE_STATE, sharedSession: true });
+
+  test('refuses administration for a human without project or instance authority', async ({ browser, page }) => {
+    const member = await enrolledAccount(browser, 'developer-admin-denial', 'org');
+    await signInAs(page, member);
+    await page.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=developer-credentials`);
+    const projectPanel = page.locator('#project-developer-credentials');
+    await expect(projectPanel).toContainText('not disclosed to this session');
+    await expect(projectPanel.getByRole('table')).toHaveCount(0);
+    await expect(projectPanel.getByRole('button', { name: /^Revoke / })).toHaveCount(0);
+    await page.goto('/instance?tab=developer-credentials');
+    const policyPanel = page.locator('#instance-developer-credentials');
+    await expect(policyPanel).toContainText('This session lacks the required permission or second-factor assurance.');
+    await expect(policyPanel.getByRole('button', { name: 'Edit developer credential policy', exact: true })).toHaveCount(0);
+  });
+
+  test('clamps durable expiry through policy, then revokes from project settings', async ({ passkeyPage: page }, testInfo) => {
+    // The shared fixture ledger may need one new TOTP step for fresh consent.
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const base = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+    const policyPath = '/api/v1/instance/developer-credential-policy';
+    await page.goto('/');
+    const original = await browserApi(page, 'GET', policyPath, zDeveloperCredentialPolicy);
+    const lifetime = Number(original.max_lifetime_seconds);
+    expect(lifetime).toBeGreaterThan(1);
+    const lowered = Math.max(1, Math.floor(lifetime / 2));
+    const revision = await browserApi(page, 'GET', `${base}/environments/${seed.dev}/revisions/latest`, zRevisionDetail);
+    const keyIds = revision.keys.map((key) => key.key_id);
+    await browserApi(page, 'POST', '/api/v1/auth/reauth/totp', zReauthResult, {
+      purpose: 'developer-credential', environment_id: seed.dev, key_ids: keyIds,
+      developer_credential: { lifetime_seconds: lifetime, consent_current_and_future: true },
+      code: await nextTotpCode(),
+    });
+    const minted = await browserApi(page, 'POST', `${base}/environments/${seed.dev}/developer-credentials`, zMintDeveloperCredentialResult, {
+      key_ids: keyIds, lifetime_seconds: lifetime, consent_current_and_future: true,
+    });
+    const id = minted.credential.id;
+    try {
+      const delivery = await fetch(`${BASE_URL}${base}/environments/${seed.dev}/delivery`, {
+        headers: { Authorization: `Bearer ${minted.value}` },
+      });
+      expect(delivery.status).toBe(200);
+      await delivery.body?.cancel();
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=developer-credentials`);
+      const panel = page.locator('#project-developer-credentials');
+      const row = panel.getByRole('row').filter({ has: page.getByRole('button', { name: `Revoke ${id}`, exact: true }) });
+      await expect(row).toContainText(minted.credential.authority_principal_id);
+      await expect(row).toContainText(seed.dev);
+      expect((await page.locator('body').innerText()).includes(minted.value)).toBe(false);
+      await expectNoSeriousAxeViolations(page);
+      await expectTouchTargets(page, [panel.getByRole('button', { name: `Revoke ${id}`, exact: true })]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      await row.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath('developer-credentials-project.png'), fullPage: true });
+
+      await page.goto('/instance?tab=developer-credentials');
+      await page.getByRole('button', { name: 'Edit developer credential policy', exact: true }).click();
+      const input = page.getByLabel('Maximum developer credential lifetime (seconds)', { exact: true });
+      await expect(input).toHaveValue(String(lifetime));
+      await input.fill('28801');
+      await page.getByRole('button', { name: 'Review developer credential policy', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Change developer credential ceiling?' })).toBeHidden();
+      await input.fill(String(lowered));
+      await page.getByRole('button', { name: 'Review developer credential policy', exact: true }).click();
+      const confirmation = page.getByRole('dialog', { name: 'Change developer credential ceiling?' });
+      await expect(confirmation).toContainText('may expire immediately');
+      await expectNoSeriousAxeViolations(page);
+      await expectTouchTargets(page, [confirmation.getByRole('button', { name: 'Apply developer credential policy', exact: true }), confirmation.getByRole('button', { name: 'Cancel', exact: true })]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('developer-policy-confirmation.png'), fullPage: true });
+      await confirmation.getByRole('button', { name: 'Apply developer credential policy', exact: true }).click();
+      await expect(confirmation).toBeHidden();
+      await expect(page.locator('#instance-developer-credentials')).toContainText(`Developer credential ceiling saved: ${lowered} seconds`);
+      const clamped = await browserApi(page, 'GET', `${base}/developer-credentials`, zDeveloperCredentialList);
+      const reduced = clamped.items.find((credential) => credential.id === id);
+      if (reduced === undefined) throw new Error('The minted developer credential disappeared');
+      expect(Date.parse(reduced.expires_at)).toBe(Date.parse(minted.credential.created_at) + lowered * 1000);
+
+      // Restore through the same UI and prove the old expiry does not return.
+      await page.getByRole('button', { name: 'Edit developer credential policy', exact: true }).click();
+      await input.fill(String(lifetime));
+      await page.getByRole('button', { name: 'Review developer credential policy', exact: true }).click();
+      await confirmation.getByRole('button', { name: 'Apply developer credential policy', exact: true }).click();
+      await expect(confirmation).toBeHidden();
+      const raised = await browserApi(page, 'GET', `${base}/developer-credentials`, zDeveloperCredentialList);
+      expect(raised.items.find((credential) => credential.id === id)?.expires_at).toBe(reduced.expires_at);
+
+      await page.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=developer-credentials`);
+      await panel.getByRole('button', { name: `Revoke ${id}`, exact: true }).click();
+      const revoke = page.getByRole('dialog', { name: 'Revoke developer credential?' });
+      await expect(revoke).toContainText(id);
+      await revoke.getByRole('button', { name: 'Cancel', exact: true }).click();
+      const untouched = await browserApi(page, 'GET', `${base}/developer-credentials`, zDeveloperCredentialList);
+      expect(untouched.items.find((credential) => credential.id === id)?.revoked_at).toBeUndefined();
+      await panel.getByRole('button', { name: `Revoke ${id}`, exact: true }).click();
+      await revoke.getByRole('button', { name: 'Revoke credential', exact: true }).click();
+      await expect(panel).toContainText('Developer credential revoked. Its next fetch will be refused.');
+      await page.reload();
+      await expect(panel.getByRole('button', { name: `Revoke ${id}`, exact: true })).toHaveCount(0);
+      const revoked = await browserApi(page, 'GET', `${base}/developer-credentials`, zDeveloperCredentialList);
+      expect(revoked.items.find((credential) => credential.id === id)?.revoked_at).toBeDefined();
+      const refusedDelivery = await fetch(`${BASE_URL}${base}/environments/${seed.dev}/delivery`, {
+        headers: { Authorization: `Bearer ${minted.value}` },
+      });
+      expect(refusedDelivery.status).toBe(401);
+      await refusedDelivery.body?.cancel();
+      expect((await page.locator('body').innerText()).includes(minted.value)).toBe(false);
+      await expectNoSeriousAxeViolations(page);
+    } finally {
+      await browserApi(page, 'PUT', policyPath, zDeveloperCredentialPolicy, { max_lifetime_seconds: lifetime });
+      await browserApi(page, 'DELETE', `${base}/developer-credentials/${id}`, z.null());
+    }
+  });
 });

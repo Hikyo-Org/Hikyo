@@ -46,6 +46,7 @@ import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
+import { ProjectDeveloperCredentials } from './ProjectDeveloperCredentials.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -271,6 +272,10 @@ export function ProjectSettings() {
                 Entry point only: granting, revoking and inspection live on the members surface.
               </p>
             </Panel>
+          ) },
+
+          !prototypeMode && { id: 'project-developer-credentials', label: 'Developer credentials', content: (
+            <ProjectDeveloperCredentials key={`${org}/${project}`} org={org} project={project} />
           ) },
 
           !prototypeMode && { id: 'project-keys', label: 'Keys & crypto', content: (
