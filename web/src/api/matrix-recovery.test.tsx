@@ -339,3 +339,37 @@ it('keeps last-known topology on failed refresh and retires it after a successfu
     await matrix.unmount();
   }
 });
+
+
+it('keeps environment caches for a successful null metadata tombstone until an authoritative empty list arrives', async () => {
+  const matrix = await mountMatrix();
+  const ownedKeys = [
+    'values', 'reveal-window', 'revisions', 'revision-detail', 'revision-pins',
+    'matrix-signals', 'matrix-pending', 'environment-settings', 'approval-requests', 'access-requests',
+    'ssh-cas', 'ssh-profiles', 'ssh-certificates', 'delivery-targets', 'dynamic-leases',
+    'pki-certificates', 'pki-certificate-profiles',
+  ].map((resource) => [resource, ref.org, ref.project, prodId]);
+  try {
+    await matrix.render({ connection: 'healthy', recoveries: 0, lost: false });
+    for (const key of ownedKeys) {
+      if (matrix.client.getQueryData(key) === undefined) matrix.client.setQueryData(key, { fixture: 'retained' });
+    }
+    const before = ownedKeys.map((key) => matrix.client.getQueryData(key));
+    // Canonical metadata retirement writes null with setQueryData before its
+    // denied request rejects. That write is a successful cache state, so
+    // isSuccess alone cannot authorize topology-based retirement.
+    await act(async () => { matrix.client.setQueryData(environmentsKey(ref), null); });
+    await settleTasks();
+    expect(matrix.client.getQueryState(environmentsKey(ref))?.status).toBe('success');
+    expect(matrix.client.getQueryData(environmentsKey(ref))).toBeNull();
+    expect(matrix.container.querySelectorAll('[data-environment]')).toHaveLength(0);
+    expect(ownedKeys.map((key) => matrix.client.getQueryData(key))).toEqual(before);
+
+    matrix.setEnvironments([]);
+    await matrix.event({ type: 'environments.changed', projectId: ref.project });
+    expect(matrix.client.getQueryData(environmentsKey(ref))).toEqual({ items: [], count: 0 });
+    for (const key of ownedKeys) expect(matrix.client.getQueryData(key)).toBeUndefined();
+  } finally {
+    await matrix.unmount();
+  }
+});

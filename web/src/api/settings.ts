@@ -115,7 +115,8 @@ export function useEnvironments(
   useEffect(() => {
     // Only an authoritative successful list can retire data. A failed refresh
     // keeps the last usable topology and must not erase another workspace's cache.
-    if (!listing.isSuccess) return;
+    // A null metadata tombstone means unavailable, never an empty topology.
+    if (!listing.isSuccess || listing.data === null) return;
     const present = new Set(listing.data.items.map((environment) => environment.id));
     for (const queryKey of environmentOwnedQueryPrefixes({ org, project })) {
       queries.removeQueries({

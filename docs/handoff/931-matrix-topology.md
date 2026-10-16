@@ -4,7 +4,9 @@ The Matrix now refetches its environment list on stream recovery and on an
 opted-in `environments.changed` advisory event. A successful list reconciles
 identity-bound query rows and retires removed environments' cached data,
 including pending requests whose late responses must not refill the cache.
-Failed list refreshes retain the last usable topology.
+Transient failed list refreshes retain the last usable topology. A successful null metadata
+tombstone means unavailable, not an authoritative empty list, and never drives
+environment-owned cache retirement.
 
 The original reproduction mounted the real hook with production query defaults,
 added a backend environment, waited beyond stale time, then reconnected. It
@@ -55,7 +57,7 @@ reloading it. Screenshots are Playwright attachments for each viewport/state.
 
 ## Local validation
 
-- Pinned Node 26.7.0: 202 web suites, 1,773 tests pass. Web typecheck, lint and
+- Pinned Node 26.7.0: 202 web suites, 1,774 tests pass. Web typecheck, lint and
   production build pass; generated TypeScript client checks pass.
 - Two independent authenticated browser sessions: healthy and recovery flows
   pass on desktop and mobile. Both also verify that deleting a selected copy
@@ -73,6 +75,13 @@ reloading it. Screenshots are Playwright attachments for each viewport/state.
   after five actual-parent probes confirmed the existing lifetime boundary.
 - Full-file sensitivity review verified the changed Matrix/settings data paths
   before updating their inventory hashes. No new plaintext cache is introduced.
+
+The nullable-metadata follow-up first removed its guard and reproduced a
+`null.items` crash in the real hook. Restoring the guard passes 17 focused tests,
+web typecheck/lint, and the complete 1,774-test web suite. The regression retains
+all 17 environment cache families through a successful null tombstone, then
+retires them after a real successful empty listing. This proves the hook/cache
+contract; it does not claim a combined branch run with PR 948.
 
 Hosted exact-candidate and full merge-group validation remain required. These
 local browser timings are not hosted benchmarks, and no multi-node HA runtime
