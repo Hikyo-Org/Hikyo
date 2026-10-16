@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
@@ -227,5 +228,39 @@ func TestLegacyFinalInventoryRejectsLaggingSourceGeneration(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestLegacyDifferentBaseRefDoesNotBlockCurrentSource(t *testing.T) {
+	for _, status := range []string{"queued", "completed"} {
+		t.Run(status, func(t *testing.T) {
+			f := newFixture(t)
+			f.c.checkName = "ci-required-next"
+			current := (snapshot{PR: f.pr, Run: &f.source}).binding(10)
+			otherTarget := current
+			otherTarget.BaseRef = sha256.Sum256([]byte("release"))
+			otherTarget.Run++
+			prior := check{ID: 99, Name: f.c.checkName, HeadSHA: current.Head, ExternalID: otherTarget.externalID(), Status: status}
+			prior.App.ID, prior.App.Slug = actionsAppID, "github-actions"
+			if status == "completed" {
+				prior.Conclusion = "success"
+			}
+			f.api.checks = []check{prior}
+			// The higher-ID run from the intervening release target is no longer
+			// listed. The original main candidate still has fresh complete proof.
+			if err := f.execute(); err != nil {
+				t.Fatalf("unrelated target binding blocked current main proof: %v", err)
+			}
+			latest := newestQueueCheck(f.api.checks)
+			if latest.ExternalID != current.externalID() || latest.Status != "completed" || latest.Conclusion != "success" {
+				t.Fatalf("current source did not publish its own proof: %+v", latest)
+			}
+			if status == "completed" && f.api.checks[0] != prior {
+				t.Fatal("retargeting rewrote the other target's terminal provenance")
+			}
+			if status == "queued" && (f.api.checks[0].ExternalID != prior.ExternalID || f.api.checks[0].Conclusion != "cancelled") {
+				t.Fatal("old target's pending observation was hidden rather than retired")
+			}
+		})
 	}
 }

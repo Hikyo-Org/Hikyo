@@ -146,8 +146,9 @@ func (s *sweeper) owned(r run) bool {
 
 func (s *sweeper) inventory(ctx context.Context) ([]run, error) {
 	var result []run
-	seen := map[int64]bool{}
+	seen := map[int64]run{}
 	for _, status := range []string{"queued", "in_progress", "waiting", "pending", "requested"} {
+		statusSeen := map[int64]bool{}
 		count := -1
 		found := 0
 		complete := false
@@ -170,10 +171,22 @@ func (s *sweeper) inventory(ctx context.Context) ([]run, error) {
 				return nil, errors.New("active-run inventory changed during pagination")
 			}
 			for _, r := range response.Runs {
-				if !s.owned(r) || r.Status != status || r.Conclusion != nil || seen[r.ID] {
+				if !s.owned(r) || r.Status != status || r.Conclusion != nil || statusSeen[r.ID] {
 					return nil, errors.New("ambiguous active-run identity")
 				}
-				seen[r.ID] = true
+				statusSeen[r.ID] = true
+				if prior, ok := seen[r.ID]; ok {
+					// Status queries are separate snapshots. The same attempt can move
+					// between active states; only that status field may differ. Every
+					// cancellation still renews exact source, ref and live role authority.
+					identity := r
+					identity.Status = prior.Status
+					if identity != prior {
+						return nil, errors.New("active-run identity changed between status queries")
+					}
+					continue
+				}
+				seen[r.ID] = r
 				result = append(result, r)
 			}
 			found += len(response.Runs)

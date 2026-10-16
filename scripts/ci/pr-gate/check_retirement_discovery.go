@@ -12,6 +12,7 @@ import (
 )
 
 const retirementHistoryPages = 20
+const retirementHistoryWindow = 1000
 const retirementHistoryHeads = 100
 const retirementContextBatchSize = 10
 const retirementReporterTargets = 100
@@ -22,7 +23,17 @@ type reporterRetirementTarget struct {
 	Attempt int64  `json:"attempt"`
 }
 
+type retirementHistoryScope struct {
+	Snapshot         string `json:"snapshot"`
+	MaxCommits       int    `json:"max_commits"`
+	ScannedCommits   int    `json:"scanned_commits"`
+	CompleteAncestry bool   `json:"complete_ancestry"`
+	WindowLimited    bool   `json:"window_limited"`
+	NextCursor       string `json:"next_cursor,omitempty"`
+}
+
 type retirementTargets struct {
+	HistoryScope       retirementHistoryScope     `json:"history_scope"`
 	Queue              []string                   `json:"queue_heads"`
 	Observation        []string                   `json:"observation_heads"`
 	ObservationBatches [][]string                 `json:"observation_batches"`
@@ -61,9 +72,9 @@ type retirementHistoryCommit struct {
 	} `json:"statusCheckRollup"`
 }
 
-func (c *controller) retirementHistoryQuery(head, after string) string {
+func (c *controller) retirementHistoryQuery(head, after string, first int) string {
 	parts := strings.Split(c.repoName, "/")
-	args := "first:100"
+	args := fmt.Sprintf("first:%d", first)
 	if after != "" {
 		args += fmt.Sprintf(",after:%q", after)
 	}
@@ -71,8 +82,9 @@ func (c *controller) retirementHistoryQuery(head, after string) string {
 }
 
 // This read-only scheduled scan never acquires a writer lease or publishes a
-// verdict. Its immutable main-history snapshot finds missed close/synchronize
-// callbacks. Each discovered head is merely a hint for the existing independent
+// verdict. It inspects at most the newest 1000 commits of an immutable main
+// snapshot and explicitly reports when older ancestry remains outside that window.
+// Each discovered head is merely a hint for the existing independent
 // per-context ownership, live-role and readback proof under the proper lease.
 func (c *controller) discoverRetirements(ctx context.Context, name string, e event) (retirementTargets, error) {
 	targets := retirementTargets{Queue: []string{}, Observation: []string{}, ObservationBatches: [][]string{}, ReporterTargets: []reporterRetirementTarget{}}
@@ -102,6 +114,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 	seenHeads := make(map[string]bool)
 	reporters := make(map[string]reporterRetirementTarget)
 	for page := 1; page <= retirementHistoryPages; page++ {
+		first := min(100, retirementHistoryWindow-len(seenCommits))
 		var response struct {
 			Errors []json.RawMessage `json:"errors"`
 			Data   struct {
@@ -117,14 +130,14 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 				} `json:"repository"`
 			} `json:"data"`
 		}
-		if err := c.api.read(ctx, "graphql:"+c.retirementHistoryQuery(head, after), &response); err != nil {
+		if err := c.api.read(ctx, "graphql:"+c.retirementHistoryQuery(head, after, first), &response); err != nil {
 			return retirementTargets{}, fmt.Errorf("retirement history page %d: %w", page, err)
 		}
 		if len(response.Errors) != 0 {
 			return retirementTargets{}, graphQLDiagnostic(response.Errors)
 		}
 		repo := response.Data.Repo
-		if repo == nil || repo.ID != c.repo.ID || repo.Object == nil || repo.Object.OID != head || repo.Object.History.Nodes == nil || len(repo.Object.History.Nodes) > 100 || repo.Object.History.Page.More == nil {
+		if repo == nil || repo.ID != c.repo.ID || repo.Object == nil || repo.Object.OID != head || repo.Object.History.Nodes == nil || len(repo.Object.History.Nodes) > first || repo.Object.History.Page.More == nil {
 			return retirementTargets{}, errors.New("incomplete or foreign retirement main-history snapshot")
 		}
 		part := repo.Object.History
@@ -189,34 +202,46 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 			}
 		}
 		if !*part.Page.More {
-			for head := range queue {
-				targets.Queue = append(targets.Queue, head)
-			}
-			for head := range observation {
-				targets.Observation = append(targets.Observation, head)
-			}
-			sort.Strings(targets.Queue)
-			sort.Strings(targets.Observation)
-			targets.ObservationBatches = retirementObservationBatches(targets.Observation)
-			for _, target := range reporters {
-				targets.ReporterTargets = append(targets.ReporterTargets, target)
-			}
-			sort.Slice(targets.ReporterTargets, func(i, j int) bool {
-				a, b := targets.ReporterTargets[i], targets.ReporterTargets[j]
-				if a.Run != b.Run {
-					return a.Run < b.Run
-				}
-				return a.Attempt < b.Attempt
-			})
-			return targets, nil
+			targets.HistoryScope.CompleteAncestry = true
+			break
 		}
 		if part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seenCursors[*part.Page.End] {
 			return retirementTargets{}, errors.New("missing or repeated retirement history cursor")
 		}
 		after = *part.Page.End
 		seenCursors[after] = true
+		if len(seenCommits) == retirementHistoryWindow {
+			targets.HistoryScope.WindowLimited = true
+			targets.HistoryScope.NextCursor = after
+			break
+		}
+		if page == retirementHistoryPages {
+			return retirementTargets{}, errors.New("retirement discovery could not complete its recent window within the 20-page read budget; operator review required")
+		}
 	}
-	return retirementTargets{}, errors.New("retirement history exceeds complete 20-page/2000-commit budget; operator backfill or cursor expansion required")
+	targets.HistoryScope.Snapshot = head
+	targets.HistoryScope.MaxCommits = retirementHistoryWindow
+	targets.HistoryScope.ScannedCommits = len(seenCommits)
+	for head := range queue {
+		targets.Queue = append(targets.Queue, head)
+	}
+	for head := range observation {
+		targets.Observation = append(targets.Observation, head)
+	}
+	sort.Strings(targets.Queue)
+	sort.Strings(targets.Observation)
+	targets.ObservationBatches = retirementObservationBatches(targets.Observation)
+	for _, target := range reporters {
+		targets.ReporterTargets = append(targets.ReporterTargets, target)
+	}
+	sort.Slice(targets.ReporterTargets, func(i, j int) bool {
+		a, b := targets.ReporterTargets[i], targets.ReporterTargets[j]
+		if a.Run != b.Run {
+			return a.Run < b.Run
+		}
+		return a.Attempt < b.Attempt
+	})
+	return targets, nil
 }
 
 func (c *controller) retirementContextsQuery(head, after string) string {

@@ -1360,7 +1360,7 @@ func (c *controller) publish(ctx context.Context, p pull, b binding, selected *c
 // binding can reveal a later run/attempt than lagging source API snapshots.
 // Run0 carries no source authority and may only establish a pending barrier.
 func knownNewerLegacySource(prior, current binding) bool {
-	return prior.RepoID == current.RepoID && prior.Head == current.Head && prior.Run > 0 && current.Run > 0 && (prior.Run > current.Run || prior.Run == current.Run && prior.Attempt > current.Attempt)
+	return prior.RepoID == current.RepoID && prior.Head == current.Head && prior.BaseRef == current.BaseRef && prior.Run > 0 && current.Run > 0 && (prior.Run > current.Run || prior.Run == current.Run && prior.Attempt > current.Attempt)
 }
 
 func (c *controller) supersedeLegacyObservation(ctx context.Context, b binding, selected check) error {

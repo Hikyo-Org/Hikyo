@@ -44,32 +44,32 @@ publisher deadlines remain in force.
 
 - `scripts/ci/pr-gate/check_retirement*.go`: exact-context ownership checks,
   complete live-role verification, immutable terminal verdicts, cancellation
-  readback, and bounded discovery of effective pending checks in main history.
+  readback, and discovery of effective pending checks within the newest 1,000
+  commits of an immutable main snapshot. Output explicitly distinguishes full
+  ancestry from a limited recent window; older heads use exact-head backfill.
 - `ci-check-retirement.yml`: trusted asynchronous housekeeping under the same
   head-specific queue lease or global legacy-observer lease. Queue writers
   honor the existing operator activation variable. Group-completion cleanup
   stays inside the existing callback rather than racing admission with another
-  setup/compilation job under its lock.
+  setup/compilation job under its lock. Up to ten unique observation heads run
+  concurrently inside their shared writer lease after one compilation. Every
+  child is awaited and failures are aggregated, so one failure cannot starve
+  sibling heads or multiply the controller's three-minute deadline.
 - Legacy observation publication closes a superseded unfinished bound
   generation before creating its successor. Original bindings and terminal
   verdicts remain immutable; a known newer attempt cannot be replaced by an
-  older snapshot.
+  older snapshot for the same target base ref.
 - `scripts/ci/queue-report`: the existing discovery scan also routes unfinished
   informational reports to their original run/attempt lease. Recovery reads
   the exact completed source and merge parents, updates only an existing owned
   report, and verifies the original source outcome by readback. It adds no
   separate history scan or schedule.
-- `scripts/ci/repair-check-status` and the manual-only
-  `ci-check-status-repair.yml`: normalize an inconsistent native validation
-  check only when its exact check, job and source run independently prove the
-  same existing successful conclusion and completion time on main ancestry.
-  Fresh proof precedes the write; response and readback must preserve all
-  recorded metadata except status. This does not create checks, change verdicts,
-  rerun jobs or add scheduled work.
 - `scripts/ci/retire-runs` and `ci-run-retirement.yml`: authenticate nonterminal
   merge-group runs, preserve current main and complete live PR/group roles,
   require the old group ref to be absent or moved, reread the exact attempt,
-  cancel, and verify terminal state. No deletion or reruns.
+  cancel, and verify terminal state. Authenticated same-attempt transitions
+  between status queries are deduplicated; same-page duplicates or changed
+  identities still fail closed. No deletion or reruns.
 - Feedback/dependency concurrency supersedes useful earlier PR revisions.
   Candidate cancellation targets the predecessor head/base pair; metadata
   events never start another full suite. Reusable runs retain distinct run IDs.
@@ -140,9 +140,17 @@ carrying conclusion `success` and completion time `2026-08-23T11:15:21Z`.
 Its owning run `32636018661` is completed/successful. This is inconsistent
 status metadata, not evidence of an active runner. It must retain its recorded
 successful verdict and must not be processed as an owned gate check.
-The manual repair passed a live read-only eligibility check with two complete
-check/job/run/ancestry snapshots. Actual normalization through the workflow's
-App token remains a separate acceptance step.
+Two live read-only check/job/run/ancestry snapshots confirmed the inconsistency,
+but did not establish write support. GitHub explicitly prohibits changing
+native Actions check status/conclusions with a workflow token; the proposed
+mutation helper and workflow were therefore removed before merge. The original
+23 August run is also outside the documented 30-day rerun window, and a
+check-run rerequest explicitly leaves the check itself unchanged. No supported
+metadata-preserving repair for this native record has been demonstrated.
+This remains a GitHub metadata issue, separate from owned synthetic retirement.
+See the [native-check mutation restriction](https://github.blog/changelog/2025-02-12-notice-of-upcoming-deprecations-and-breaking-changes-for-github-actions/),
+[rerun limits](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs),
+and [rerequest semantics](https://docs.github.com/en/rest/checks/runs#rerequest-a-check-run).
 
 The separate empty `fuzz-report` run `34748394959`, queued since 13 September,
 rejected normal and force cancellation. After explicit owner approval and fresh
@@ -172,10 +180,10 @@ release contract fixtures also passed. These results do not replace the exact
 PR-head feedback and full protected merge-group run.
 
 The exhaustive-audit follow-up passed all CI Go packages, including the
-113.3-second CI contract suite, gate/reporter/native-repair race tests, Go vet,
+113.3-second CI contract suite, gate/reporter race tests, Go vet,
 pinned workflow lint and documentation verification. Independent Sol 6.1 high
 review covered the legacy generation guard, discovery routing, reporter replay,
-workflow leases and native metadata normalization. Historical write acceptance
+workflow leases and the native metadata limitation. Historical write acceptance
 and final protected merge proof are still separate requirements.
 
 ## Recovery and verification
@@ -193,26 +201,26 @@ gh workflow run ci-check-retirement.yml --repo Hikyo-Org/Hikyo --ref main \
 # Run the bounded obsolete-group sweep.
 gh workflow run ci-run-retirement.yml --repo Hikyo-Org/Hikyo --ref main
 
-# Normalize the independently verified successful native check's stale status.
-gh workflow run ci-check-status-repair.yml --repo Hikyo-Org/Hikyo --ref main \
-  -f check_id=97185789943
 ```
 
 Replace `FULL_COMMIT_SHA` with the complete authenticated SHA. Retirement must
 leave active/shared roles untouched and read back owned unfinished records as
 completed/cancelled. Terminal success and failure remain unchanged; historical
 cancelled results can render red rather than green. Discovery follows effective
-pending rollup contexts, then each selected worker inventories all owned check
+pending rollup contexts within its declared recent window, then each selected
+worker inventories all owned check
 history for that SHA. Hidden old rows behind a terminal effective verdict are
 not a pending badge or allocated job; exact-head backfill can inspect them.
 The read-only discovery job authenticates its scheduled or input-free manual
-default-branch event
-and current main before scanning; its internal command is not a standalone
+default-branch event and current main before scanning. Its `history_scope`
+output reports the immutable snapshot, scanned count and whether older ancestry
+remains outside the 1,000-commit window. It does not claim a limited window is a
+complete historical audit. Its internal command is not a standalone
 local CLI. Inspect its workflow output for discovered target SHAs.
 Informational reporter recovery preserves each source attempt's actual outcome,
-including failure. The native repair resends only the unchanged successful
-conclusion and original completion time required by GitHub's completed-status
-API contract; its response and readback must differ only in status.
+including failure. The native inconsistency above must remain separately
+reported until GitHub supplies a supported repair; do not delete its original
+evidence, publish replacement success, or claim the read-only diagnosis fixed it.
 
 A candidate whose admission base was superseded independently may finish if a
 later webhook cannot identify that old base. Exact-parent proof still rejects

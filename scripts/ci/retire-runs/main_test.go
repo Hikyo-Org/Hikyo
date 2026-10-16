@@ -163,7 +163,7 @@ func TestRetirementProtectsAllLiveRolesAndAuthenticatesObsoleteRun(t *testing.T)
 }
 
 func TestRetirementRefusesForeignOrAmbiguousRunIdentity(t *testing.T) {
-	for _, scenario := range []string{"workflow", "event", "path", "name", "repository", "head-repository", "branch", "sha", "attempt", "missing-count", "missing-runs", "too-many", "partial-page", "wrong-status", "has-conclusion", "duplicate-status"} {
+	for _, scenario := range []string{"workflow", "event", "path", "name", "repository", "head-repository", "branch", "sha", "attempt", "missing-count", "missing-runs", "too-many", "partial-page", "wrong-status", "has-conclusion", "same-status duplicate"} {
 		t.Run(scenario, func(t *testing.T) {
 			s, a := fixture()
 			switch scenario {
@@ -203,8 +203,8 @@ func TestRetirementRefusesForeignOrAmbiguousRunIdentity(t *testing.T) {
 						return map[string]any{"total_count": 1001, "workflow_runs": []run{}}, true
 					case "partial-page":
 						return map[string]any{"total_count": 2, "workflow_runs": []run{a.run}}, true
-					case "duplicate-status":
-						return map[string]any{"total_count": 1, "workflow_runs": []run{a.run}}, true
+					case "same-status duplicate":
+						return map[string]any{"total_count": 2, "workflow_runs": []run{a.run, a.run}}, true
 					}
 					return nil, false
 				}
@@ -517,5 +517,82 @@ func TestRetirementBoundsCancellationCountAndAPICalls(t *testing.T) {
 	live := githubAPI{remaining: 0}
 	if _, err := live.command(context.Background(), "api", "not-executed"); err == nil {
 		t.Fatal("API budget bypassed")
+	}
+}
+
+func TestRetirementDeduplicatesSameAttemptStatusTransition(t *testing.T) {
+	s, a := fixture()
+	a.run.Status = "in_progress"
+	a.readOverride = func(path string, _ int) (any, bool) {
+		for _, status := range []string{"queued", "in_progress"} {
+			if strings.Contains(path, "status="+status+"&") {
+				observed := a.run
+				observed.Status = status
+				return map[string]any{"total_count": 1, "workflow_runs": []run{observed}}, true
+			}
+		}
+		return nil, false
+	}
+	runs, err := s.inventory(context.Background())
+	if err != nil || len(runs) != 1 || runs[0].ID != a.run.ID || runs[0].Attempt != a.run.Attempt {
+		t.Fatalf("ordinary status transition aborted or duplicated inventory: %+v/%v", runs, err)
+	}
+	if err := s.sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if a.cancels != 1 || a.snapshots != 2 || a.refs != 2 || a.reads != 3 {
+		t.Fatalf("transition bypassed fresh roles/ref/source checks or cancelled twice: %+v", a)
+	}
+}
+
+func TestRetirementStatusTransitionStillRejectsChangedIdentityAndSameStatusDuplicates(t *testing.T) {
+	for _, fault := range []string{"attempt", "head", "branch", "workflow", "path", "name", "event", "repository", "head repository", "conclusion", "same-status first", "same-status later"} {
+		t.Run(fault, func(t *testing.T) {
+			s, a := fixture()
+			a.readOverride = func(path string, _ int) (any, bool) {
+				if strings.Contains(path, "status=queued&") {
+					runs := []run{a.run}
+					if fault == "same-status first" {
+						runs = append(runs, a.run)
+					}
+					return map[string]any{"total_count": len(runs), "workflow_runs": runs}, true
+				}
+				if strings.Contains(path, "status=in_progress&") {
+					changed := a.run
+					changed.Status = "in_progress"
+					switch fault {
+					case "attempt":
+						changed.Attempt++
+					case "head":
+						changed.Head = strings.Repeat("e", 40)
+					case "branch":
+						changed.Branch = "gh-readonly-queue/main/pr-4-b"
+					case "workflow":
+						changed.WorkflowID++
+					case "path":
+						changed.Path = ".github/workflows/other.yml"
+					case "name":
+						changed.Name = "other"
+					case "event":
+						changed.Event = "push"
+					case "repository":
+						changed.Repository.ID++
+					case "head repository":
+						changed.HeadRepository.ID++
+					case "conclusion":
+						changed.Conclusion = &a.conclusion
+					}
+					runs := []run{changed}
+					if fault == "same-status later" {
+						runs = append(runs, changed)
+					}
+					return map[string]any{"total_count": len(runs), "workflow_runs": runs}, true
+				}
+				return nil, false
+			}
+			if err := s.sweep(context.Background()); err == nil || a.cancels != 0 {
+				t.Fatalf("changed identity or same-status duplicate accepted: cancels=%d err=%v", a.cancels, err)
+			}
+		})
 	}
 }

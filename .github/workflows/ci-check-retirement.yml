@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       head:
-        description: Exact historical SHA, or leave empty to discover complete bounded main history
+        description: Exact historical SHA, or leave empty to inspect the newest 1000 main commits
         required: false
         type: string
 
@@ -41,7 +41,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Discover unfinished owned contexts across complete bounded main history
+      - name: Discover unfinished owned contexts in the declared recent main window
         id: targets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,6 +52,7 @@ jobs:
           queue_heads=$(jq -cer '.queue_heads' "$RUNNER_TEMP/retirement-targets.json")
           observation_batches=$(jq -cer '.observation_batches' "$RUNNER_TEMP/retirement-targets.json")
           reporter_targets=$(jq -cer '.reporter_targets' "$RUNNER_TEMP/retirement-targets.json")
+          jq -c '.history_scope' "$RUNNER_TEMP/retirement-targets.json"
           {
             echo "queue_heads=$queue_heads"
             echo "observation_batches=$observation_batches"
@@ -179,6 +180,23 @@ jobs:
         run: |
           set -euo pipefail
           printf '%s' "$HEADS" | jq -e 'type == "array" and length > 0 and length <= 10 and all(.[]; type == "string" and test("^[0-9a-f]{40}$")) and ((unique | length) == length)' > /dev/null
-          printf '%s' "$HEADS" | jq -r '.[]' | while IFS= read -r head; do
-            PR_GATE_RETIREMENT_HEAD="$head" "$RUNNER_TEMP/check-retirement" --retire-checks --expected-head "$head"
+          # Distinct heads have disjoint records. Keep the shared writer lease
+          # while each bounded controller runs, so one slow/failed head cannot
+          # starve its siblings or multiply the three-minute controller limit.
+          heads=()
+          pids=()
+          while IFS= read -r head; do
+            heads+=("$head")
+            PR_GATE_RETIREMENT_HEAD="$head" "$RUNNER_TEMP/check-retirement" --retire-checks --expected-head "$head" &
+            pids+=("$!")
+          done < <(printf '%s' "$HEADS" | jq -r '.[]')
+          failed=()
+          for index in "${!pids[@]}"; do
+            if ! wait "${pids[$index]}"; then
+              failed+=("${heads[$index]}")
+            fi
           done
+          if [ "${#failed[@]}" -ne 0 ]; then
+            printf 'Retirement failed for: %s\n' "${failed[@]}" >&2
+            exit 1
+          fi

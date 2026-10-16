@@ -351,13 +351,17 @@ inventory or ambiguous state fails closed. Neither retirement workflow removes
 required domains or adds a full suite after merge.
 
 Check retirement has an hourly fallback and input-free manual backlog sweep.
-Discovery reads complete bounded main history without holding a writer lease,
+Discovery reads the newest 1,000 main commits without holding a writer lease,
 then routes effective pending contexts to the existing context-specific leases.
-It emits no partial targets after a failed or truncated scan. The current
-limits are 2,000 reachable commits, 1,000 effective contexts per commit and 100
-distinct target heads. Exceeding a bound is an explicit operator error, never
-silent evidence that cleanup completed. Legacy observer heads are processed in
-batches of at most ten under their one global lease to avoid a separate runner
-setup per historical row. Targeted manual dispatch accepts one full `head` SHA.
+The logged `history_scope` distinguishes complete ancestry from a limited recent
+window, including its immutable snapshot, scanned count and continuation cursor.
+Older history uses exact-head backfill. API failures, incomplete pages, more
+than 1,000 effective contexts per commit or more than 100 target heads refuse
+all targets. Window completion is not evidence that all history was cleaned.
+Legacy observer heads run in batches of at most ten unique heads concurrently
+under their one global lease and compiled executable. Every child is awaited,
+then failures are reported together. This bounds batch duration by the slowest
+controller rather than ten sequential deadlines without adding runner jobs.
+Targeted manual dispatch accepts one full `head` SHA.
 See the [repair handoff](../handoff/ci-retirement-2026-10.md) for measurements,
 historical limitations and verification commands.
