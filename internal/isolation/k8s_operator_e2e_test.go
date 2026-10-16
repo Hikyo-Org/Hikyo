@@ -44,6 +44,7 @@ func TestK8sOperator(t *testing.T) {
 	must(t, err)
 	applyCRDs(t, t.Context(), bootstrap)
 
+	t.Run("all_keys", func(t *testing.T) { testAllKeys(t, restCfg, sch) })
 	t.Run("converge", func(t *testing.T) { testConverge(t, restCfg, sch) })
 	t.Run("native_secret_types", func(t *testing.T) { testNativeSecretTypes(t, restCfg, sch) })
 	t.Run("rotate_token_key", func(t *testing.T) { testRotateTokenKey(t, restCfg, sch) })

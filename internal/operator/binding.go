@@ -28,6 +28,8 @@ type bindingInput struct {
 	org, project, environment string
 	projection                string
 	mapping                   []hikyov1.Mapping
+	allKeys                   bool
+	acknowledgedLoaderKeys    []string
 	parameters                map[string]string
 	targetName                string
 	targetType                string
@@ -70,6 +72,19 @@ func bindingDigest(in bindingInput) string {
 	for _, p := range pairs {
 		buf = lp(buf, p[0])
 		buf = lp(buf, p[1])
+	}
+
+	// Preserve legacy mapped bindings. All-keys selection and its prospective
+	// loader-control grants are a distinct mode, including when the manifest
+	// currently happens to match an explicit mapping exactly.
+	if in.allKeys {
+		buf = lp(buf, "all-keys/v1")
+		acknowledged := slices.Clone(in.acknowledgedLoaderKeys)
+		slices.Sort(acknowledged)
+		buf = binary.AppendUvarint(buf, uint64(len(acknowledged)))
+		for _, name := range acknowledged {
+			buf = lp(buf, name)
+		}
 	}
 
 	if len(in.parameters) > 0 {

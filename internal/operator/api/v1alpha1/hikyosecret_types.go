@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"regexp"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -96,6 +98,13 @@ type ScopeID string
 // +kubebuilder:validation:Pattern=`^[A-Z_][A-Z0-9_]*$`
 type KeyName string
 
+var keyNameSyntax = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+
+// Valid mirrors KeyName admission for runtime selectors and response validation.
+func (k KeyName) Valid() bool {
+	return len(k) <= 128 && keyNameSyntax.MatchString(string(k))
+}
+
 // Scope is the Hikyo (org, project, environment) selector, as the API takes
 // them in the request path.
 type Scope struct {
@@ -167,6 +176,9 @@ type ParameterValue string
 // objects): the auth ref, the instance ref, the scope, the mapping, the managed
 // Secret target and policy, the projection and the loader-control
 // acknowledgement.
+//
+// +kubebuilder:validation:XValidation:rule="(has(self.allKeys) && self.allKeys) != (has(self.mapping) && size(self.mapping) > 0)",message="set exactly one of allKeys: true or a nonempty mapping"
+// +kubebuilder:validation:XValidation:rule="!has(self.allKeys) || !self.allKeys || !has(self.target.type) || self.target.type == 'Opaque'",message="allKeys requires an Opaque target; native Secret types require explicit mapping"
 type HikyoSecretSpec struct {
 	// Parameters supplies public config identifiers for the immutable fetched
 	// snapshot contract. Values are recorded in Hikyo audit events; never use secrets.
@@ -179,14 +191,21 @@ type HikyoSecretSpec struct {
 	Auth        AuthRef     `json:"auth"`
 	Scope       Scope       `json:"scope"`
 
-	// Mapping is non-empty and its effective secretKeys are unique. The
+	// AllKeys selects every key in this identity's authorized environment
+	// manifest, retaining its source name. It is mutually exclusive with a
+	// nonempty Mapping and supports only Opaque targets.
+	//
+	// +optional
+	AllKeys bool `json:"allKeys,omitempty"`
+
+	// Mapping is required unless AllKeys is true. Its effective secretKeys are unique. The
 	// uniqueness rule uses the effective key (secretKey when set, else key) so
 	// two sources cannot silently collide on one destination.
 	//
-	// +kubebuilder:validation:MinItems=1
+	// +optional
 	// +kubebuilder:validation:MaxItems=256
 	// +kubebuilder:validation:XValidation:rule="self.all(m1, self.exists_one(m2, (has(m2.secretKey) ? m2.secretKey : m2.key) == (has(m1.secretKey) ? m1.secretKey : m1.key)))",message="mapping secretKeys (effective) must be unique"
-	Mapping []Mapping `json:"mapping"`
+	Mapping []Mapping `json:"mapping,omitempty"`
 
 	Target Target `json:"target"`
 
@@ -197,7 +216,9 @@ type HikyoSecretSpec struct {
 	// AcknowledgedLoaderKeys lists exactly the mapped destination keys on the
 	// loader-control baseline that the CR author consents to deliver (§ 0.6).
 	// Sent verbatim as `acknowledged_keys` on every fetch so the server records
-	// it. Extra names not among the mapped keys are themselves a refusal.
+	// it. With explicit mapping, extra names not among the mapped keys are a
+	// refusal. With AllKeys, exact baseline names may be acknowledged before
+	// they appear in the manifest; non-baseline names and wildcards are refused.
 	//
 	// +optional
 	// +kubebuilder:validation:MaxItems=64

@@ -239,7 +239,7 @@ referenced Secret or ServiceAccount must carry both designation labels, and its
 
 ## Create a HikyoSecret
 
-This example uses the bootstrap Secret above and includes every spec field:
+This example uses the bootstrap Secret above with explicit key mappings:
 
 ```yaml
 apiVersion: hikyo.dev/v1alpha1
@@ -282,6 +282,72 @@ that omits secret keys; it is not a client-side filter. `creationPolicy` is
 > `secretbox` only on K3s ≥ v1.30.12+k3s1, v1.31.8+k3s1, v1.32.4+k3s1, or
 > v1.33.0+k3s1. Use the AES-CBC provider on older releases.
 
+## Deliver all authorized keys
+
+Upgrade both the operator and its CRD before using `spec.allKeys`. To deliver new
+settings without adding a mapping for each one, replace the complete `mapping`
+field in the example above with:
+
+```yaml
+spec:
+  allKeys: true
+  target:
+    name: payments-env
+    type: Opaque
+    creationPolicy: Owner
+```
+
+This is a fragment: keep the instance, identity, scope, projection and resync
+fields from the full example. Choose either `allKeys: true` or a nonempty
+`mapping`, never both. All-keys delivery supports only `Opaque` targets and keeps
+each source key's name. It does not grant additional access: the same identity,
+projection and reveal permissions govern every value. A presence-only secret
+refuses the whole delivery. Published additions and removals update the complete
+managed Secret, including removal of the last key.
+
+Consume that Secret without repeating its keys in a Deployment:
+
+```yaml
+metadata:
+  annotations:
+    hikyo.dev/secrets: payments-env
+spec:
+  template:
+    spec:
+      containers:
+        - name: payments
+          image: example.invalid/payments:1.0.0
+          envFrom:
+            - secretRef:
+                name: payments-env
+          env:
+            - name: LOG_LEVEL
+              value: info
+```
+
+The explicit `LOG_LEVEL` entry overrides a same-named Secret key. Other delivered
+keys become process environment variables. The application still validates its
+required settings and decides what recognized settings do. Kubernetes checks that
+the referenced Secret exists, but `envFrom` does not enforce individual required
+keys. With rollout triggering enabled, the workload annotation requests a restart
+when delivered content changes; unchanged content does not cause a restart.
+
+Protected loader-control names, including `PATH`, `NODE_OPTIONS`, `LD_*` and
+`GIT_*`, remain blocked unless each exact name appears in
+`acknowledgedLoaderKeys`. In all-keys mode an acknowledgement may name a protected
+key that is currently absent, so later additions and removals need no manifest
+edit. Wildcards, duplicates and unprotected names are invalid acknowledgements.
+A newly published unacknowledged protected key refuses the whole replacement,
+retaining the previous Secret and clearing the cursor for a fresh fetch. Only acknowledge names the workload
+intentionally trusts.
+
+> **K3s: encrypt the managed Secret at rest**
+>
+> All-keys delivery writes a native Kubernetes Secret. Enable K3s
+> `--secrets-encryption`; the datastore is plaintext at rest by default. Select
+> `secretbox` only on K3s ≥ v1.30.12+k3s1, v1.31.8+k3s1, v1.32.4+k3s1, or
+> v1.33.0+k3s1. Use the AES-CBC provider on older releases.
+
 ## The five-step journey
 
 1. Mint a workload service-account credential or configure federation.
@@ -300,8 +366,8 @@ that omits secret keys; it is not a client-side filter. `creationPolicy` is
    reaches.
 
 Until steps 4–5 are done, a workload principal delivers config values and
-secret presence only, and a `HikyoSecret` mapping that names any secret key is
-refused with `Delivery=False/UndeliveredSecrets`. Withdrawing the opt-in later
+secret presence only, and a `HikyoSecret` selecting any presence-only secret, through a mapping or
+`allKeys`, is refused with `Delivery=False/UndeliveredSecrets`. Withdrawing the opt-in later
 returns every workload in the project to that state on its next fetch, without
 touching the grants.
 

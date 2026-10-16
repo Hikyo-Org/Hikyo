@@ -1,5 +1,7 @@
 # Hikyo Kubernetes integration (ADR, locked 2026-07-31)
 
+> **Declared amendment (2026-10-16, owner-approved implementation scope; operative upon this change merging):** optional `spec.allKeys: true` delivers every authorized key to an Opaque target without maintaining a mapping. The [all-authorized-keys amendment](#amendment-all-authorized-keys) below defines selection, loader-control consent, cursor binding, and rollout behavior. Historical mapping-only text is preserved.
+
 > **Declared amendment (2026-09-23, [#683](https://github.com/Hikyo-Org/Hikyo/issues/683), owner decision locked; cross-model review waived by the owner on 2026-09-23; operative upon the condition-reporting governance PR merging):** the operator gains a **status-reporting channel separate from delivery**: at the end of every reconcile, after the status subresource write, it sends a fire-and-forget, value-free report when reportable content changes or a heartbeat of at least 5 min is due (and a best-effort tombstone on CR deletion, no finalizer) under the CR's own credential, only when the server advertises the capability and the principal holds `report-delivery-status`. Write ordering, the stale-but-valid stance and the no-operator-credential rule are unchanged; reporting failure never changes conditions, the Secret or the cursor. Operator RBAC gains `get` on the `kube-system` Namespace (`resourceNames`-restricted) for cluster identity. Push/webhook delivery stays deferred. This banner is a pointer; the normative contract is [k8s-condition-reporting.md](./k8s-condition-reporting.md). Historical text below is preserved.
 
 > **Declared amendment (2026-09-05, [#638](https://github.com/Hikyo-Org/Hikyo/issues/638), operative upon this governance and retirement PR merging):** Future Flux upgrades use a separate pull-based controller, full-stop schema migration and bounded repository plus exact patch-shape authority. The legacy host-helper Flux path is retired. Hikyo receives no cluster or Git deployment credential; direct Helm automation remains future work. The normative contract is [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md). Native Codex high-effort review concluded SOUND in three rounds; see [the review handoff](../handoff/638-signed-upgrade-governance.md). Historical text below is preserved.
@@ -228,3 +230,46 @@ refuse typed targets before credential acquisition or fetch, retain existing
 targets and clear cursors; migrate or remove typed targets before disabling.
 No Secret `list` or `watch` is added. Consumers can retain already-loaded values in memory;
 the existing restart and revocation limitations remain.
+
+## Amendment: all authorized keys
+
+A `HikyoSecret` selects either a nonempty `spec.mapping` or `spec.allKeys: true`,
+never both. Omitting `allKeys`, or setting it false, preserves mapping behavior.
+All-keys selection is restricted to `Opaque` targets; native Secret types still
+require explicit destination mappings. Each authorized source name becomes the
+same target data key. Invalid or duplicate response names refuse the complete
+delivery rather than silently overwriting data.
+
+This selection adds no authority. The same per-CR identity, environment scope,
+projection, machine-reveal opt-in and grants govern the fetch. Presence-only
+secret entries refuse the entire delivery. A complete response replaces the
+managed data, so newly published keys appear, withdrawn keys disappear, and an
+empty authorized response produces an empty Opaque Secret. Existing authoritative
+refusal, scrub, ownership and write-verification behavior remains in force.
+
+Loader-control protection applies to the returned keys. In all-keys mode,
+`acknowledgedLoaderKeys` may contain exact protected names even when those keys
+are absent from the current environment. This is explicit consent to future
+delivery of those particular names, not a wildcard or an acknowledgement of all
+future loader controls. Duplicates, invalid names and names outside the protected
+baseline are refused before credential acquisition or fetch. Any delivered
+protected key without its exact acknowledgement refuses the whole replacement,
+retains the previous target and does not advance the cursor. Mapping mode keeps
+its existing rule that acknowledgements exactly match the mapped protected keys.
+
+The cursor binding includes selection mode and, in all-keys mode, the sorted
+acknowledged names. Changing consent therefore forces a fresh authorization-bound
+fetch; a cached current answer cannot bypass the new selection policy. Delivered
+content continues to determine the keyed per-target stamp. Additions, removals and
+value changes request rollouts of opted-in workloads; unchanged content does not.
+
+Workloads may consume the managed Secret through Kubernetes `envFrom.secretRef`.
+Explicit workload `env` entries take precedence over imported names. The consuming
+application still owns validation of required settings and behavior for unknown
+settings. All-keys selection means every authorized setting reaches the Secret,
+not that arbitrary settings acquire application behavior.
+
+Upgrade the operator and install the matching CRD before setting `allKeys`.
+Existing mapping-based resources require no migration. Switching a resource is an
+explicit scope expansion within its already-authorized environment; review that
+environment and the consuming workload before opting in.

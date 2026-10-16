@@ -25,6 +25,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
+	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
 // pathPrefix mirrors api.PathPrefix ("/api/v1"). Duplicated as a const so the
@@ -228,10 +229,15 @@ func decodeDelivery(payload []byte) (*DeliveryResponse, error) {
 		CredentialExpiresAt: w.CredentialExpiresAt,
 		Keys:                make([]DeliveredKey, 0, len(*w.Keys)),
 	}
+	seen := make(map[string]bool, len(*w.Keys))
 	for i, k := range *w.Keys {
 		switch {
 		case k.Name == nil:
 			return nil, fmt.Errorf("delivered key %d missing required member: name", i)
+		case !hikyov1.KeyName(*k.Name).Valid():
+			return nil, fmt.Errorf("delivered key %d has an invalid name", i)
+		case seen[*k.Name]:
+			return nil, fmt.Errorf("delivered key %d repeats a name", i)
 		case k.Classification == nil:
 			return nil, fmt.Errorf("delivered key %q missing required member: classification", *k.Name)
 		case k.Presence == nil:
@@ -241,6 +247,7 @@ func decodeDelivery(payload []byte) (*DeliveryResponse, error) {
 		case !validPresence[*k.Presence]:
 			return nil, fmt.Errorf("delivered key %q has invalid presence %q", *k.Name, *k.Presence)
 		}
+		seen[*k.Name] = true
 		out.Keys = append(out.Keys, DeliveredKey{
 			Name:           *k.Name,
 			Classification: *k.Classification,
