@@ -1,10 +1,88 @@
 # 1.0 acceptance ledger
 
-**Internal candidate acceptance completed; official release remains gated.** PR #673 tested source `4394dd497b7e35b2bcf585528cffd9f020eab795` passed all 49 exact-head checks and merged on 2026-09-05 at 15:20:28 UTC as `549726d96c2c5938636f31d9b85232a761bb75a2`. GitHub verified the merge and both commits have tree `38588db4b34af5ce97179a9c40b617a41e25831e`. [Merge proof](../reports/1.0/evidence/acceptance-refresh-2026-09-05/merge-549-verification.json) preserves this binding. This ledger records 42 INTERNAL-PASS criteria, four EXTERNAL-PENDING criteria, one FREEZE-PENDING, one CEREMONY-PENDING and one POST-1.0 disposition. Internal PASS does not mean an official 1.0 release has been published.
+**Historical September candidate acceptance completed; current candidate acceptance and official release remain gated.** PR #673 tested source `4394dd497b7e35b2bcf585528cffd9f020eab795` passed all 49 exact-head checks and merged on 2026-09-05 at 15:20:28 UTC as `549726d96c2c5938636f31d9b85232a761bb75a2`. GitHub verified the merge and both commits have tree `38588db4b34af5ce97179a9c40b617a41e25831e`. [Merge proof](../reports/1.0/evidence/acceptance-refresh-2026-09-05/merge-549-verification.json) preserves this binding. This ledger records 42 INTERNAL-PASS criteria, four EXTERNAL-PENDING criteria, one FREEZE-PENDING, one CEREMONY-PENDING and one POST-1.0 disposition. Internal PASS does not mean an official 1.0 release has been published.
 
 Normative clauses remain in [mvp-boundary](../adr/mvp-boundary.md) sections 1.2/6 and the [SAML](../adr/saml-sp.md), [SCIM](../adr/scim-provisioning.md), [scanning](../adr/secret-scanning.md) and [GitHub](../adr/github-adapter.md) criteria. [Flat-model](../adr/flat-model.md) finalizes C1/C2, counted once. GH-E2E/GH-STUB/GH-CONTRACT name the three GitHub check classes, not new requirements.
 
-## Evidence rules
+## Current candidate: pending
+
+Preparation source: `6769ee55dcd4087eeaf42547e9abde01c4f0818c`, 2026-10-16.
+The criterion outcomes and artifact hashes below remain the September 5 record.
+No row is promoted to a current PASS by this documentation update. Preserve the
+full CI/E2E/UI criterion inventory and both-engine obligations while collecting
+new evidence under the [release plan](release-plan-1.0.md).
+
+[#936 / PR #937](https://github.com/Hikyo-Org/Hikyo/pull/937) merged at this
+source on 2026-10-16T16:40:31Z.
+[Run 38929885843](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
+has 48 successful jobs at that SHA with event `merge_group`. That result proves
+its stated validation scope; it neither refreshes every historical/external row
+nor satisfies `require-green-main.sh`'s separate exact-main workflow selection.
+No other pending implementation is marked merged by this snapshot.
+
+| Final gate | Required evidence | Snapshot disposition |
+| --- | --- | --- |
+| Candidate and inventory | One final clean source/tree, API revision, actual migration/artifact identities; all baseline and operative additional obligations mapped | Pending after combined implementation/review; the source-only revision/migration inventory is not a runtime measurement. |
+| Complete internal checks | Full exact-main graph, both engines, isolation/race, browser registry, client, deployment and native resource evidence | Pending. Latest passing merge-group evidence retains its own event/SHA. |
+| Operations and recovery | ops-spec fail-closed checklist and native floor backup/destroy/restore/reconcile with independent test custody sources | Pending final source; retain every restore/refusal/readability/RTO assertion and #930/#941 interaction. |
+| API/CLI freeze | Reviewed goldens, oasdiff fixtures, parity, enum/minimum-revision audit and client skew; immutable stable tag | Pre-freeze preparation pending. Dormant guard/rehearsal cannot claim frozen-tag acceptance; tag is a separate ceremony. |
+| Public interfaces | [Final self-hoster reassertion](self-hoster-candidate.md) with selected binary, image and chart | Pending, including actual install/admin/import/delivery/upgrade/recovery journeys. |
+| External providers and MCP | Real provider/consumption proof; #651 exact-image public HTTPS, two processes and advertised named clients | Pending; unsupported/unverified profiles do not become passes. Narrower mandatory claims require explicit scoped disposition. |
+| Docs and security channels | Live O4-O6 assertions and actual current PVR/fallback notification receipts | Pending candidate review; GET/MX checks do not establish notification acknowledgement. |
+| Official release | Recovery-authorized stable policy, signed immutable tag, reviewed complete signed artifacts and verified public downloads/OCI signatures | Ceremony pending; no tag, publication or production deployment is authorized by preparatory implementation. |
+
+The A7 historical POST-1.0 row records release membership, not a current claim
+that social sign-in is absent. #589 owns its narrow scope-text reconciliation;
+retain the row/reference inventory until that coordinated change lands. #15
+owns the capability ledger and #527 the roadmap. Their scoped approvals and
+#612's approved review route do not certify completion or waive unrelated gates.
+
+The old 49-row inventory does not automatically cover later operative capability
+additions. Reconcile each owning ADR, acceptance/review record and implementation
+at the final candidate without silently promoting explicitly deferred scope.
+Keep #79 open until its release checkbox is fulfilled; #41 is not changed here.
+
+## Amended capability inventory for the final candidate
+
+The historical 49-row total is not the complete amended gate. In particular,
+[mvp-boundary amendment 7 and C-ACC](../adr/mvp-boundary.md) explicitly admit
+temporary access to 1.0. The missing row is restored here as pending, without
+rewriting September's measured outcomes. Every row below requires fresh evidence
+bound to the selected candidate; source/test presence establishes neither PASS
+nor satisfaction of a conditional governance or implementation gate.
+
+| Criterion | Capability | Actual test entrypoints and supporting harnesses | CI job / lane | Status | Engine / release evidence |
+| --- | --- | --- | --- | --- | --- |
+| C-ACC | Approval-mediated temporary access (#152) | [TestAccessLifecycle](../../internal/isolation/access_e2e_test.go); [TestAccessConcurrentApprovals](../../internal/isolation/access_e2e_test.go); [TestAccessExpiryAcrossNodes](../../internal/isolation/access_e2e_test.go); [matrix.spec.ts](../../web/e2e/flows/matrix.spec.ts); [temporary-access registry](../../web/e2e/registry.ts) | test, full isolation race, web | CURRENT-CANDIDATE-PENDING | Both-engine policy/quorum/authority and immutable request lifecycle; expiry refuses an existing session within one second without a sweep; concurrent approvals/cross-node expiry; early revoke, permanent-grant independence, removal/restore and policy-change invalidation; bounded reauthenticated emergency bypass; access audit events and label-free metrics; desktop/mobile request, second-user approve, use, expire and revoke. Preserve every normative C-ACC assertion. No fresh run claimed. |
+
+The [inventory closure test](../../api/acceptance_ledger_test.go) now recognizes
+uppercase named C-criteria, including C-ACC, and constrains accepted rows to
+the owning ADR inventory. Previously both extraction expressions omitted
+C-ACC. The regression must reject a ledger missing an owning named criterion
+and accept the repaired inventory. Inventory closure remains distinct from
+candidate acceptance; execution evidence belongs to the tested source.
+
+| Capability / owner | Owning source and proof entrypoints | Required final reconciliation |
+| --- | --- | --- |
+| Single-region HA (#146) | [MVP boundary](../adr/mvp-boundary.md), [ops-spec](../adr/ops-spec.md), [scheduler HA integration](../../internal/app/scheduler_ha_integration_test.go) | Operative PostgreSQL-only application-tier HA: fencing, shared coordination and SQLite refusal; cross-region active-active stays out. |
+| Dynamic PostgreSQL credentials (#147) | [dynamic service](../../internal/service/dynamic.go), [dynamic audit/lifecycle](../../internal/isolation/dynamic_audit_e2e_test.go) | Preserve promoted provider lifecycle, TLS, audit and bounds; #934/#935 ceiling/TTL repairs need exact merged regression and provider proof. |
+| Change approvals (#151) | C-APV historical row and [MVP amendment 3](../adr/mvp-boundary.md) | Reassert all CI/E2E/UI classes on both engines; one exact reviewed change set, reauthorization and ordinary publish. Approval-to-reveal remains out. |
+| Temporary access (#152) | C-ACC current row above | Operative amendment 7 is additional to change approvals and cannot be absorbed into the old count. |
+| Private PKI (#154) | [PKI ADR](../adr/pki.md), [PKI lifecycle](../../internal/isolation/pki_e2e_test.go), [PKI CLI](../../internal/isolation/pki_cli_e2e_test.go) | Bind amendment's implementing-PR condition to recorded merge evidence, then issuer/profile lifecycle, CSR/display-once key, rotation, CRL, restore and node proof; no public CA/ACME/OCSP or HSM claim. |
+| SSH user certificates (#155) | [MVP boundary](../adr/mvp-boundary.md), [SSH lifecycle](../../internal/isolation/ssh_e2e_test.go), [real OpenSSH](../../internal/sshca/openssh_e2e_test.go) | Operative user-certificate scope: requester/grant revocation, expiry, KRL and key overlap; no remote shell, bastion or host-certificate promotion. |
+| Transit (#156) | [transit ADR](../adr/transit.md), [lifecycle](../../internal/isolation/transit_e2e_test.go), [conformance](../../internal/transit/conformance_test.go) | Bind implementing-PR condition to recorded merge evidence; closed algorithms, custody, rotation/rewrap/data keys and fail-closed lifecycle. #820 browser administration is separate pending work. |
+| Multi-target providers / GitLab (#157/#159) | [deployment seam](../adr/deployment-adapter.md), [GitLab ADR](../adr/gitlab-adapter.md), [GitLab handoff](../handoff/159-gitlab-adapter.md) | Amendment admits GitLab; preserve provider-specific no-read, ownership, replay and actual external consumer proof. Existing historical runs retain their own identity. |
+| Vault/OpenBao KV destination (#162) | [Vault KV ADR](../adr/vault-kv-adapter.md) | Distinct from M5 import. Its proposed banner requires #26 reopening, governance review and recorded amendment before operative status. Preserve CAS/ownership/loop/replay/no-read criteria; implementation alone does not discharge governance. |
+| AWS Secrets Manager (#158) | [MVP amendment 8](../adr/mvp-boundary.md), [AWS handoff](../handoff/158-aws-secrets-manager.md), [external harness](../../internal/isolation/aws_external_e2e_test.go) | Promoted In conditionally on implementing PR merge and adversarial review. The [recorded audit correction](https://github.com/Hikyo-Org/Hikyo/issues/158#issuecomment-6220607066) labels this release:1.0 plus release:decision to expose conditional relevance; the unchanged title/milestone still need reconciliation by its owner. This is no final promotion, acceptance or review waiver. Real provider proof remains separate. |
+| Explicit v1.1 destinations (#161/#163/#164) | [MVP amendments 5, 6 and 9](../adr/mvp-boundary.md), [sealed webhook](../spec/sealed-webhook.md), [file handoff](../handoff/164-generic-file-sync.md) | Cloudflare, sealed webhook and generic files do not automatically join 1.0. File scope is one-shot/poll-until-current, not a resident watch daemon; #819 UI has its own owner. |
+| Developer credentials (#807) | [developer credentials ADR](../adr/developer-credentials.md), MVP owner-locked banner | Scoped promotion becomes operative upon implementation PR merge; pending PR #942 is not satisfaction. Preserve exclusions of JIT deploy tokens, automation renewals and unattended human sessions. |
+| Publish/pin notification (#805) | [accepted notification issue](https://github.com/Hikyo-Org/Hikyo/issues/805) | Corrected A and scoped review approval cover only the accepted contract; refresh final API counts and actual notification proof after implementation merge. |
+| Scheduled rotation (#148) | [owning issue](https://github.com/Hikyo-Org/Hikyo/issues/148) | Preserve design, review, implementation and resource gates; no new rotation/provider policy inferred. |
+| MCP (#631/#651) | [MCP interface](../adr/mcp-server.md), [release-plan proof](release-plan-1.0.md#3-complete-external-and-self-hoster-evidence) | Approved no-OAuth scope does not replace #651 exact-image HTTPS, two-process and named-client evidence or authorize a narrower release claim. |
+| Social registration (#589) | [social specification](../spec/social-signin.md), A7 historical row | #589 owns the coordinated disposition; approved review route is not a merge or blanket waiver. Preserve historical A7 until that owner change lands. |
+| Signed upgrades and reporting (#638/#791) | [signed upgrade contract](../adr/signed-upgrade-compatibility.md), [reporting ADR](../adr/k8s-condition-reporting.md), [reporting isolation suite](../../internal/isolation/k8s_reporting_e2e_test.go) | These have designs/source, not an undrawn map. Reassert compatibility, applied-release ledger, target-binary gate and reporting claims on the final source, including #941. Disabled platform apply remains disabled until its own acceptance. |
+
+## Historical evidence rules
 
 INTERNAL-PASS means the mapped implemented acceptance suites and required internal deployment/resource checks passed for the tested candidate, reconciled to the identical merged tree. It does not certify official signing, public artifact availability, live external providers or an immutable freeze. Those remaining obligations have separate statuses. POST-1.0 remains the accepted deferred scope. No row is passed solely because a test exists.
 
@@ -79,7 +157,7 @@ The [dated report](../reports/1.0/acceptance-refresh-2026-09-05.html) and [candi
 | GH-STUB | GitHub deterministic state machine | [TestSyncSealsSecretsAndSurfacesFirstDispatch204Capture](../../internal/adapter/githubactions/module_test.go); [TestOwnedMissingVariableSurvivesCrashBoundaryAndRetriesCreateOnly](../../internal/adapter/githubactions/module_test.go); [TestStalePublicKeyRefetchesAndResealsOnce](../../internal/adapter/githubactions/module_test.go); [TestSyncResumeCursorDoesNotReplayCompletedName](../../internal/adapter/githubactions/module_test.go) | test, race | INTERNAL-PASS | Engine-independent GitHub state-machine/no-read fixtures and applicable both-engine outbox suites passed; live GitHub contract remains separate. |
 | GH-CONTRACT | GitHub real API contract pins | [TestGitHubDotComContract](../../internal/adapter/githubactions/contract_external_test.go); [TestProviderSurfaceHasNoVariableReadOperation](../../internal/adapter/githubactions/client_test.go) | dedicated external run; test | EXTERNAL-PENDING | Real409/PATCH/settings-preserving PUT and workflow consumption remain pending. Engine-independent structural no-read checks passed internally. |
 
-## Final release record
+## Historical release record, 2026-09-05
 
 | Gate | Required evidence | Current state |
 |---|---|---|

@@ -22,7 +22,7 @@ func TestReleaseAcceptanceLedgerReferences(t *testing.T) {
 		}
 		return string(raw)
 	}
-	criterion := regexp.MustCompile(`(?m)^\| (C-APV|[CAKSMO][0-9]+|S[ACS][0-9]+) \|`)
+	criterion := regexp.MustCompile(`(?m)^\| (C-[A-Z]+|[CAKSMO][0-9]+|S[ACS][0-9]+) \|`)
 	expected := map[string]bool{"GH-E2E": true, "GH-STUB": true, "GH-CONTRACT": true}
 	for _, source := range []string{"mvp-boundary", "saml-sp", "scim-provisioning", "secret-scanning"} {
 		for _, m := range criterion.FindAllStringSubmatch(read("docs/adr/"+source+".md"), -1) {
@@ -30,7 +30,7 @@ func TestReleaseAcceptanceLedgerReferences(t *testing.T) {
 		}
 	}
 	document := read("docs/release/acceptance-1.0.md")
-	row := regexp.MustCompile(`(?m)^\| (C-APV|[CAKSMO][0-9]+|S[ACS][0-9]+|GH-(?:E2E|STUB|CONTRACT)) \|`)
+	row := regexp.MustCompile(`(?m)^\| (C-[A-Z]+|[CAKSMO][0-9]+|S[ACS][0-9]+|GH-(?:E2E|STUB|CONTRACT)) \|`)
 	seen := make(map[string]bool)
 	for _, m := range row.FindAllStringSubmatch(document, -1) {
 		if seen[m[1]] {

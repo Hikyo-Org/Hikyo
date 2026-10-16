@@ -1,6 +1,63 @@
-# Candidate self-hoster reassertion, 2026-09-05
+# Candidate self-hoster reassertion
 
-**Implemented internal capability reassertion completed; official release sign-off remains gated.** Tested 4394 passed all 49 exact-head checks and merged as 549 with an identical tree. The [acceptance ledger](acceptance-1.0.md) records 42 internal passes and explicit external/freeze/ceremony/deferred portions. No hosted-exclusive implementation requirement was identified in this mapped scope. This is not an official 1.0 publication claim or completion of the pending GitHub contract.
+## Current candidate: pending reassertion
+
+Preparation source: `6769ee55dcd4087eeaf42547e9abde01c4f0818c`, 2026-10-16.
+No final combined candidate or released artifact set is certified here. The
+September results below retain their original source, measured bytes and scope;
+they are not relabeled as current acceptance. Follow the
+[release plan](release-plan-1.0.md) and [current ledger gate](acceptance-1.0.md#current-candidate-pending).
+
+Record the final clean source/tree, actual engine migration identities, binary
+and archive hashes/sizes, image RepoDigest, chart digest and authenticated trust
+profile before asserting the same outcomes for another candidate. Source head
+75 on both engines is a checked-in migration filename, not a running-database
+measurement. Development, nightly, signed-draft and official stable bytes keep
+separate identities and availability claims.
+
+| Journey | Evidence required for the final candidate |
+| --- | --- |
+| Native, Compose and chart install | Actual selected packages/image/chart boot with embedded UI, expected version, persistent state and authenticated health/doctor behavior. |
+| Setup, administration and recovery | Documented local/operator interfaces, account/credential establishment and per-principal recovery without a hosted-exclusive authority or tenant bypass. |
+| Import and workload delivery | Actual declared public connectors and supported identity/grant paths; selected provider/consumer checks and secret-safe error behavior. |
+| Upgrade and restore | Authenticated compatibility/catalog and artifact identities, backup/drain/migrate/health/restart proof, readable restored values, custody separation and credential reconciliation. Keep disabled automation disabled until its owning acceptance is satisfied. |
+| Browser and CLI | Claimed viewport/state/async/error coverage, reviewed spellings/goldens/parity and both-engine client skew with its actual rehearsal/frozen mode. |
+| Capacity and operations | Final native floor artifacts, process RSS, unchanged CPU/memory factors and workloads, plus separate authenticated deployment diagnostics. |
+| External providers and MCP | Real GitHub API/consumption and required provider evidence; consume #651's exact-image public HTTPS/two-process/named-client record. Missing mandatory profiles require explicit scoped disposition before narrowing the release claim. |
+| Governance and publication | Current O4-O6 and actual notification receipts; final signed/public immutable artifact verification remains a separate ceremony. |
+
+Inventory all operative shipped capabilities and accepted scope additions using
+their owning ADRs, interfaces and evidence. Do not treat an old post-1.0 list as
+proof that those capabilities are absent. A7's disposition remains owned by
+#589; the historical row below is preserved pending that coordinated update.
+No current capability or release PASS follows from this documentation refresh.
+
+### Additional public-interface reassertion
+
+Use the [amended inventory](acceptance-1.0.md#amended-capability-inventory-for-the-final-candidate)
+in addition to the historical table. For each admitted capability, exercise
+its documented public interface using the chosen candidate and record actual
+engine, viewport, artifact and provider identities. Test files alone are not
+self-hoster evidence.
+
+| Additional surface | Required public journey |
+| --- | --- |
+| HA and dynamic PostgreSQL credentials | Operator configures PostgreSQL-only HA/fencing, verifies SQLite refusal and exercises the TLS provider lease/revocation lifecycle with final ceiling/TTL fixes. |
+| Change approvals and temporary access | Distinct change/publish approval and C-ACC access journeys; requester and second approver use public interfaces, existing-session expiry and early revoke are observed, and bounded emergency bypass remains audited. |
+| Private PKI, SSH user certificates and transit | Public policy/issuer/key lifecycle and CLI/API issuance/use/revocation/restore; actual OpenSSH/KRL consumption and transit non-exportable custody. Pending administration UI does not acquire a pass from API proof. |
+| Provider destinations | Provider-specific configuration, no-read/ownership/refusal and real consumer proof, within the inventory's accepted or conditional release scope. Vault import is not KV destination proof; AWS's scope conflict stays explicit. |
+| Developer credentials and notifications | Reassert the accepted #807/#805 contract after its implementation merge, including expiration/revocation and actual notification behavior; refresh the API inventory then. |
+| Upgrade compatibility and condition reporting | Public authenticated upgrade/catalog and reporting interfaces; target-binary migration/refusal and resource conditions, with disabled platform automation still disabled. |
+
+A7 remains coordinated with #589. Explicit v1.1 Cloudflare, sealed webhook and
+file destinations are not promoted by this checklist. The same final source
+must back #651's external MCP evidence. Full Node/web checks can implicitly
+build the OIDC helper: provide compatible `HIKYO_E2E_OIDC_BINARY` or schedule
+Go capacity before executing them.
+
+## Historical reassertion, 2026-09-05
+
+**Historical implemented internal capability reassertion completed; official release sign-off remains gated.** Tested 4394 passed all 49 exact-head checks and merged as 549 with an identical tree. The [acceptance ledger](acceptance-1.0.md) records 42 internal passes and explicit external/freeze/ceremony/deferred portions. No hosted-exclusive implementation requirement was identified in this mapped scope. This is not an official 1.0 publication claim or completion of the pending GitHub contract.
 
 | Identity | Verified state |
 |---|---|
@@ -75,9 +132,9 @@ All rows are exact 549 development artifacts, not official release binaries. [Un
 
 Fresh MCP evidence: [4394 provenance](../reports/1.0/evidence/acceptance-refresh-2026-09-05/mcp-4394-result.json), [five tools](../reports/1.0/evidence/acceptance-refresh-2026-09-05/mcp-4394-five-tools.json), [official SDK](../reports/1.0/evidence/acceptance-refresh-2026-09-05/mcp-4394-official-sdk.json), [token revocation](../reports/1.0/evidence/acceptance-refresh-2026-09-05/mcp-4394-revocation.json), [grant removal/restoration](../reports/1.0/evidence/acceptance-refresh-2026-09-05/mcp-4394-grant-proof.json). Actual two-process verified HTTPS/PostgreSQL fixture, with synthetic signed production profile. MCP binary SHA256 `e9a3dcd9169597cff114cef8e034f2f263ec764a8edca177489089cbdffd993d` omits embedded browser assets and is not a release artifact. [Prior corrected MCP report](../reports/1.0/mcp-supported-grant-proof.html) retains historical direct HTTPS cancellation/drain only. Neither proof establishes fresh streaming cancellation or public named desktop-client acceptance. Unsupported project-wide workload grants remain superseded by canonical automation grants.
 
-## 5. Self-hoster and release verdict
+## 5. Historical self-hoster and release verdict
 
-Implemented internal capability reassertion is complete within the 42 internal ledger criteria and recorded internal portions of mixed criteria. Instance administration remains distinct from tenant grants; diagnostics grants no blanket tenant bypass. No single-tenant weakening or proprietary hosted policy/recovery engine was identified in this bounded review. Private recovery/signing custody remains operator-controlled; physical separate custody is an operator assertion.
+At the recorded September candidate, implemented internal capability reassertion completed within the 42 internal ledger criteria and recorded internal portions of mixed criteria. Instance administration remains distinct from tenant grants; diagnostics grants no blanket tenant bypass. No single-tenant weakening or proprietary hosted policy/recovery engine was identified in this bounded review. Private recovery/signing custody remains operator-controlled; physical separate custody is an operator assertion.
 
 **Published-release sign-off remains pending** for real GitHub API/consumption, immutable freeze, official trust/signing and published artifact verification, quarterly PVR receipt and official release publication. Public named MCP clients remain explicitly unverified additional evidence. These limits do not turn completed internal acceptance back into pending implementation.
 
