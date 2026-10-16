@@ -13,7 +13,7 @@ import { useInSystemScope } from './SystemScope.tsx';
 export function Projects() {
   const { activeOrgId } = useOutletContext<{ readonly activeOrgId: string }>();
   const projects = useProjects(activeOrgId);
-  const items = projects.data?.items ?? [];
+  const items = projects.isSuccess && projects.data !== null ? projects.data.items : [];
   // The system organisation holds exactly one project, the instance's own
   // configuration; the protected profile refuses another (permission-model
   // ADR, 2026-09-06 amendment), so the form is absent rather than refused.
@@ -44,10 +44,10 @@ export function Projects() {
               together, so they stay one page. */}
           <Panel id="projects-list" title="Projects">
             {projects.isPending ? <p role="status">Loading projects…</p> : null}
-            {projects.isError ? (
+            {projects.isError || projects.data === null ? (
               <Alert>Projects could not be loaded. Reload to try again.</Alert>
             ) : null}
-            {projects.isSuccess && items.length === 0 ? (
+            {projects.isSuccess && projects.data !== null && items.length === 0 ? (
               <p role="status">No projects yet. Create the first one below.</p>
             ) : null}
             {items.length === 0 ? null : <ProjectList org={activeOrgId} items={items} />}

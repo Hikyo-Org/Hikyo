@@ -2,18 +2,11 @@
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { renderForm } from '../testkit/renderForm.tsx';
+import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { Overview } from './Placeholder.tsx';
 
-const mocks = vi.hoisted(() => ({ items: [] as { id: string; name: string }[] }));
-
-vi.mock('../api/settings.ts', async (original) => ({
-  ...(await original<typeof import('../api/settings.ts')>()),
-  useProjects: () => ({ data: { items: mocks.items } }),
-}));
-
 afterEach(() => {
-  mocks.items = [];
+  vi.unstubAllGlobals();
 });
 
 async function landing() {
@@ -30,11 +23,21 @@ async function landing() {
 }
 
 it('lands on the only project’s matrix when the organisation has one', async () => {
-  mocks.items = [{ id: 'prj_a', name: 'Payments' }];
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({
+    items: [{
+      id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+      org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
+      name: 'Payments',
+      created_at: '2026-01-01T00:00:00Z',
+    }],
+    count: 1,
+  }))));
   const view = await landing();
   try {
+    await settleTask();
     expect(view.container.querySelector('h1')?.textContent).toBe('matrix');
   } finally {
     await view.unmount();
+    view.client.clear();
   }
 });

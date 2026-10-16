@@ -47,7 +47,7 @@ export function OrgSettings() {
   const projects = useProjects(org);
   const projectPolicies = useProjectRetentions(
     org,
-    projects.isSuccess ? projects.data.items : [],
+    projects.isSuccess && projects.data !== null ? projects.data.items : [],
   );
   const rename = useRenameOrg();
   const remove = useDeleteOrg(() => {
@@ -256,13 +256,13 @@ function ProjectRetentionList({
   return (
     <div className="project-retention-list">
       {projects.isPending ? <p role="status">Loading project retention policies…</p> : null}
-      {projects.isError ? (
+      {projects.isError || projects.data === null ? (
         <Alert>Projects could not be read, so their retention policies are unavailable.</Alert>
       ) : null}
-      {projects.isSuccess && projects.data.items.length === 0 ? (
+      {projects.isSuccess && projects.data !== null && projects.data.items.length === 0 ? (
         <p role="status">This organisation has no projects.</p>
       ) : null}
-      {projects.isSuccess ? (
+      {projects.isSuccess && projects.data !== null ? (
         <div>
           {projects.data.items.map((project) => {
             const state = policies.get(project.id);

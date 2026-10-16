@@ -4,6 +4,7 @@ import { generatePath, Link, Navigate, useOutletContext } from 'react-router';
 import { useProjects } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { ProjectList } from './Projects.tsx';
+import { ProjectQueryFeedback } from './ProjectQueryFeedback.tsx';
 import { Panel } from './Sections.tsx';
 
 /**
@@ -36,7 +37,8 @@ function Placeholder({
 export function Overview() {
   const { activeOrgId } = useOutletContext<{ readonly activeOrgId: string }>();
   const projects = useProjects(activeOrgId);
-  const items = projects.data?.items ?? [];
+  const readable = activeOrgId !== '' && projects.isSuccess && projects.data !== null;
+  const items = activeOrgId !== '' && projects.isSuccess && projects.data !== null ? projects.data.items : [];
   // One project leaves nothing to choose between, so the landing (and the
   // return after sign-in, which lands here) opens that project's matrix.
   const only = items.length === 1 ? items[0] : undefined;
@@ -49,12 +51,17 @@ export function Overview() {
     <Placeholder
       title="Overview"
       lede={
-        <>
+        readable ? <>
           <Link to={surfaceById('projects').path}>Choose a project</Link> to open its environment
           matrix, values, and access surfaces.
-        </>
+        </> : 'Your organisation’s projects and environment matrices.'
       }
     >
+      {activeOrgId === '' ? (
+        <p role="status">Ask an instance administrator to invite you to an organisation.</p>
+      ) : (
+        <ProjectQueryFeedback query={projects} empty="No projects yet." />
+      )}
       {items.length === 0 ? null : (
         <Panel id="overview-projects" title="Projects">
           <ProjectList org={activeOrgId} items={items} />

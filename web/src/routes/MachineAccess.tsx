@@ -155,14 +155,28 @@ export function MachineAccessPage() {
     () => environmentsQuery.data?.items ?? [],
     [environmentsQuery.data],
   );
-  const leases = useLeases(project, environments);
-  const certificates = useCertificates(project, environments);
+  const environmentsKnown = environmentsQuery.isSuccess && environmentsQuery.data !== null;
+  const environmentsUnavailable = !environmentsKnown && !environmentsQuery.isPending;
+  const leaseListings = useLeases(project, environments);
+  const certificateListings = useCertificates(project, environments);
+  // An empty fan-out is only a known empty inventory after the hierarchy read
+  // succeeds. Refused or retired metadata cannot prove there are no credentials.
+  const leases = {
+    ...leaseListings,
+    isPending: environmentsQuery.isPending || leaseListings.isPending,
+    isError: environmentsUnavailable || leaseListings.isError,
+  };
+  const certificates = {
+    ...certificateListings,
+    isPending: environmentsQuery.isPending || certificateListings.isPending,
+    isError: environmentsUnavailable || certificateListings.isError,
+  };
   const deliveryTargets = useDeliveryTargets(project, environments);
   // Until the environments are read the fan-out is empty, which would read as
   // "no reports": the reports are known only once the server says it accepts
   // them and every listing settled.
   const targetsKnown =
-    environmentsQuery.isSuccess &&
+    environmentsKnown &&
     deliveryTargets.support === 'supported' &&
     !deliveryTargets.isPending &&
     deliveryTargets.failures.length === 0;
@@ -269,7 +283,7 @@ export function MachineAccessPage() {
     liveSessionId !== null &&
     accountsQuery.isSuccess &&
     grantsQuery.isSuccess &&
-    environmentsQuery.isSuccess &&
+    environmentsKnown &&
     !credentials.isPending &&
     !credentials.isError;
 
@@ -300,7 +314,7 @@ export function MachineAccessPage() {
   const canMintLease =
     liveSessionId !== null &&
     providersQuery.isSuccess &&
-    environmentsQuery.isSuccess &&
+    environmentsKnown &&
     mintableProviders.length > 0 &&
     environments.length > 0;
 
@@ -455,7 +469,7 @@ export function MachineAccessPage() {
                       key={sa.id}
                       account={sa}
                       scope={scope}
-                      scopeKnown={grantsQuery.isSuccess && environmentsQuery.isSuccess}
+                      scopeKnown={grantsQuery.isSuccess && environmentsKnown}
                       machineReveal={machineReveal}
                       lastUsed={newest === undefined ? 'never' : isoDay(newest)}
                       onOpen={() => setPanelAccountId(sa.id)}
@@ -793,6 +807,7 @@ export function MachineAccessPage() {
                 {`${String(unknownLeases)} lease${unknownLeases === 1 ? '' : 's'} awaiting reconcile`}
               </p>
             )}
+            {leases.isPending ? <p role="status">Loading leases…</p> : null}
             {leases.isError ? (
               <p role="status">The leases could not be read for one or more environments.</p>
             ) : leases.rows.length === 0 && !leases.isPending ? (

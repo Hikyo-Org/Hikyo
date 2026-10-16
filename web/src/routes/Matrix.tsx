@@ -375,7 +375,7 @@ export function Matrix({
       })),
     );
   }, [environmentRows, keyDetailId, signalsByCell, valuesByCell]);
-  const keyDetailImpactReady = matrixImpactReady(matrix.environments.isSuccess, environmentRows);
+  const keyDetailImpactReady = matrixImpactReady(matrix.environments.isSuccess && matrix.environments.data !== null, environmentRows);
 
   const stateKeys = useMemo<readonly MatrixStateKey[]>(
     () =>
@@ -629,11 +629,11 @@ export function Matrix({
     isForbidden(matrix.environments) || isForbidden(matrix.keys) || isForbidden(matrix.groups);
   const loadError =
     !catalogueForbidden &&
-    ((matrix.environments.isError && matrix.environments.data === undefined) ||
+    ((matrix.environments.isError && matrix.environments.data == null) ||
       (matrix.keys.isError && matrix.keys.data === undefined) ||
       (matrix.groups.isError && matrix.groups.data === undefined));
   const backgroundRefreshError =
-    (matrix.environments.isError && matrix.environments.data !== undefined) ||
+    (matrix.environments.isError && matrix.environments.data != null) ||
     (matrix.keys.isError && matrix.keys.data !== undefined) ||
     (matrix.groups.isError && matrix.groups.data !== undefined) ||
     environmentRows.some((row) => row.readiness === 'stale');

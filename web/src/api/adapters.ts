@@ -5,7 +5,6 @@ import {
   createAdapterOp,
   deleteAdapterOp,
   listAdaptersOp,
-  listEnvironmentsOp,
   listKeysOp,
   pauseAdapterTargetOp,
   planAdapterTargetOp,
@@ -42,6 +41,8 @@ import type { z } from 'zod';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
 import { ApiError, ok, parsed } from './client.ts';
+import { environmentListQueryOptions } from './hierarchyQueries.ts';
+import { useMetadataQuery } from './metadataQuery.ts';
 import { requestInteger } from './requestInteger.ts';
 
 export type Adapter = z.infer<typeof zAdapter>;
@@ -84,7 +85,6 @@ export type ProjectRef = { readonly org: string; readonly project: string };
 type AdaptersKey = readonly ['adapters', string, string];
 type AdapterTargetKey = readonly ['adapter-target', string, string, string];
 type AdapterMoveKey = readonly ['adapter-move', string, string, string];
-type EnvironmentsKey = readonly ['environments', string, string];
 type KeysKey = readonly ['adapter-keys', string, string];
 
 // Query keys are addressed by (org, project): the adapters list is a project
@@ -103,27 +103,19 @@ const adapterMoveKey = (ref: ProjectRef, move: string): AdapterMoveKey => [
   ref.project,
   move,
 ];
-const environmentsKey = (ref: ProjectRef): EnvironmentsKey => ['environments', ref.org, ref.project];
 const keysKey = (ref: ProjectRef): KeysKey => ['adapter-keys', ref.org, ref.project];
 
 /** The project's environments, for the target form and for naming targets. */
 export function useProjectEnvironments(
   ref: ProjectRef,
   enabled = true,
-): UseQueryResult<z.infer<typeof zEnvironmentList>> {
-  return useQuery({
-    enabled,
-    queryKey: environmentsKey(ref),
-    queryFn: () => parsed(listEnvironmentsOp, { path: ref }),
-  });
+): UseQueryResult<z.infer<typeof zEnvironmentList> | null> {
+  return useQuery({ ...environmentListQueryOptions(ref), enabled: enabled && ref.org !== '' && ref.project !== '' });
 }
 
 /** The project's key catalogue, for the explicit key subset picker. */
-export function useProjectKeys(ref: ProjectRef): UseQueryResult<z.infer<typeof zKeyList>> {
-  return useQuery({
-    queryKey: keysKey(ref),
-    queryFn: () => parsed(listKeysOp, { path: ref }),
-  });
+export function useProjectKeys(ref: ProjectRef): UseQueryResult<z.infer<typeof zKeyList> | null> {
+  return useMetadataQuery(keysKey(ref), (signal) => parsed(listKeysOp, { path: ref, signal }));
 }
 
 export function useAdapters(ref: ProjectRef): UseQueryResult<AdapterList> {

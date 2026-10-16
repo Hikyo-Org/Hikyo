@@ -53,6 +53,7 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, ok, parsed } from './client.ts';
 import { environmentTopologyQueryPrefixes, environmentsKey } from './keys.ts';
 import { environmentListQueryOptions, projectRetentionQueryOptions } from './hierarchyQueries.ts';
+import { useMetadataQuery } from './metadataQuery.ts';
 import type { EnvironmentNode, ProjectNode } from './access.ts';
 import { useTransport } from './transport.tsx';
 
@@ -103,19 +104,16 @@ export function useProject(org: string, project: string): UseQueryResult<Project
 export function useEnvironments(
   org: string,
   project: string,
-): UseQueryResult<z.infer<typeof zEnvironmentList>> {
+): UseQueryResult<z.infer<typeof zEnvironmentList> | null> {
   const transport = useTransport();
   return useQuery(environmentListQueryOptions({ org, project }, transport.client));
 }
 
 /** One canonical project-list hook and query key for every chrome surface. */
-export function useProjects(org: string): UseQueryResult<z.infer<typeof zProjectList>> {
+export function useProjects(org: string): UseQueryResult<z.infer<typeof zProjectList> | null> {
   const transport = useTransport();
-  return useQuery({
-    queryKey: projectsKey(org),
-    queryFn: () => parsed(listProjectsOp, { path: { org }, ...transport }),
-    enabled: org !== '',
-  });
+  return useMetadataQuery(projectsKey(org),
+    (signal) => parsed(listProjectsOp, { path: { org }, ...transport, signal }), org !== '');
 }
 
 export function useOrgRetention(org: string): UseQueryResult<RetentionPolicy> {
@@ -295,7 +293,7 @@ export function useOrgTopology(org: string): {
   readonly ready: boolean;
 } {
   const projects = useProjects(org);
-  const items = projects.data === undefined ? [] : projects.data.items;
+  const items = projects.isSuccess && projects.data !== null ? projects.data.items : [];
 
   const environments = useQueries({
     queries: items.map((project) => environmentListQueryOptions({ org, project: project.id })),
@@ -303,7 +301,7 @@ export function useOrgTopology(org: string): {
 
   const flat = items.flatMap((project, index) => {
     const result = environments[index];
-    return result?.data === undefined
+    return result?.data == null
       ? []
       : result.data.items.map((env) => ({ project: project.id, env }));
   });
@@ -319,17 +317,20 @@ export function useOrgTopology(org: string): {
     protection.set(env.id, environmentSettingsReadState(settings[index]));
   });
 
-  const { isPending, isError, ready } = orgTopologyReadiness(
+  const readiness = orgTopologyReadiness(
     org,
     projects,
     environments,
     [...protection.values()],
   );
+  const isPending = readiness.isPending;
+  const isError = readiness.isError || projects.data === null || environments.some((query) => query.data === null);
+  const ready = readiness.ready && !isError;
 
   const nodes: ProjectNode[] = ready
     ? items.map((project, index) => {
         const environmentResult = environments[index];
-        if (environmentResult?.data === undefined) {
+        if (environmentResult?.data == null) {
           throw new Error(`project ${project.id} settled without parsed environments`);
         }
         return {
