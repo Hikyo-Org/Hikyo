@@ -11,6 +11,8 @@ import { Adapters } from './Adapters.tsx';
 const base = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 const url = `${base}/adapters`;
 const responses = [
+  { url: `${base}/file-targets`, body: { items: [] } },
+  { url: `${base}/service-accounts`, body: { items: [], count: 0 } },
   { url: `${base}/environments`, body: { items: [], count: 0 } satisfies z.input<typeof zEnvironmentList> },
   { url: `${base}/keys`, body: { items: [], count: 0, schema_revision: 1 } satisfies z.input<typeof zKeyList> },
 ];
@@ -67,7 +69,7 @@ const withTarget = [
       count: 1,
     } satisfies z.input<typeof zEnvironmentList>,
   },
-  ...responses.slice(1),
+  ...responses.filter((response) => response.url !== `${base}/environments`),
 ];
 
 // A target opens its detail in the side panel, not beside the adapter card.

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, type Page } from '@playwright/test';
-import { zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse } from '@hikyo/zod';
+import { zFileTarget, zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -1776,6 +1776,119 @@ test.describe('browser-only lifecycle', () => {
       await expectAbsentFromPage(page, secretValue, 'the secret value');
     } finally {
       await peer.dispose();
+    }
+  });
+});
+
+// File targets use the existing project adapters surface and workload identity
+// flows. API writes below represent a second administrator and the reporting
+// client; all administration under test is driven through the real browser.
+test.describe('file targets', () => {
+  test.use({ sharedSession: true });
+  test('file target browser lifecycle preserves reports, generation conflicts and credential binding', async ({ passkeyPage: page, playwright }, testInfo) => {
+    const api = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+    const base = `/orgs/${seed.org}/projects/${seed.project}`;
+    const name = `file-web-${testInfo.project.name}`;
+    const reporter = await playwright.request.newContext();
+    // The companion can rotate with the browser session. Read it for every
+    // direct cookie-authenticated write rather than retaining an old token.
+    const writeHeaders = async () => {
+      const csrf = (await page.context().cookies(BASE_URL)).find((cookie) => cookie.name === '__Host-hikyo-csrf');
+      if (csrf === undefined || csrf.value === '') throw new Error('Missing browser CSRF companion');
+      return { Origin: BASE_URL, 'X-Hikyo-CSRF': csrf.value };
+    };
+    await page.goto(`${base}/machine-access`);
+    await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
+    const createAccount = page.getByRole('dialog');
+    await createAccount.getByLabel('Name').fill(name);
+    const account = await captureCreated(page, `${api}/service-accounts`, zServiceAccount, async () => {
+      await createAccount.getByRole('button', { name: 'Create service account' }).click();
+    });
+    try {
+      await expect(createAccount).toBeHidden();
+      await accountRow(page, name).click();
+      const accountPanel = page.locator('.machine__sub');
+      await accountPanel.getByRole('button', { name: `Mint credential for ${name}` }).click();
+      const mint = page.getByRole('dialog');
+      await mint.getByRole('button', { name: /Mint credential|Use a passkey and mint/ }).click();
+      await expect(mint.locator('.machine__token')).toHaveText(/^hik_1_wl_/);
+      const token = (await mint.locator('.machine__token').textContent())?.trim() ?? '';
+      await mint.getByRole('checkbox').check();
+      await mint.getByRole('button', { name: 'Done' }).click();
+      await expect(mint).toBeHidden();
+
+      await page.goto(`${base}/adapters`);
+      const section = page.getByRole('region', { name: 'File targets', exact: true });
+      await section.getByRole('button', { name: 'Add file target' }).click();
+      const create = page.getByRole('complementary', { name: 'Add file target' });
+      await create.getByLabel('Target name').fill(name);
+      await create.getByLabel('Environment', { exact: true }).selectOption({ label: 'development' });
+      await create.getByLabel('Workload service account').selectOption(account.id);
+      await create.getByRole('checkbox', { name: 'LOG_LEVEL', exact: true }).check();
+      await create.getByRole('textbox', { name: 'Explicit names' }).fill('DB_PASSWORD');
+      const target = await captureCreated(page, `${api}/file-targets`, zFileTarget, async () => {
+        await create.getByRole('button', { name: 'Create file target' }).click();
+      });
+      const detail = page.getByRole('complementary', { name });
+      await expect(detail).toContainText('No client report. Host health is unknown.');
+      await expect(detail.getByRole('list', { name: 'Selected keys' })).toContainText('DB_PASSWORD');
+      await expect(detail.locator('.badge--ok')).toHaveCount(0);
+
+      const grant = await page.request.post(`${api}/environments/${target.environment_id}/grants`, {
+        headers: await writeHeaders(), data: { principal: account.principal_id, capability: 'report-delivery-status' },
+      });
+      expect(grant.status()).toBe(200);
+      const report = await reporter.post(`${BASE_URL}${api}/environments/${target.environment_id}/file-targets/${target.id}/report`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { state: 'current', revision: 1, generation: Number(target.generation), reported_at: new Date(Date.now() - 3 * 86_400_000).toISOString() },
+      });
+      expect(report.status()).toBe(204);
+      await detail.getByRole('button', { name: 'Refresh report' }).click();
+      await expect(detail).toContainText('Client reported current');
+      await expect(detail).toContainText('3d ago');
+      await expect(detail).toContainText('Current host health is not verified');
+      await page.screenshot({ path: testInfo.outputPath('file-targets-historical-report.png'), fullPage: true });
+      await expect(detail.locator('.badge--ok')).toHaveCount(0);
+
+      await detail.getByRole('button', { name: 'Edit key selection' }).click();
+      await detail.getByRole('checkbox', { name: 'DB_PASSWORD', exact: true }).uncheck();
+      const otherEdit = await page.request.patch(`${api}/file-targets/${target.id}`, {
+        headers: await writeHeaders(), data: { expected_generation: Number(target.generation), key_selection: { names: ['LOG_LEVEL'] } },
+      });
+      expect(otherEdit.status()).toBe(200);
+      await detail.getByRole('button', { name: 'Save selection' }).click();
+      await expect(detail).toContainText('Your selection has not been saved');
+      await expect(detail.getByRole('button', { name: 'Save selection' })).toBeDisabled();
+      await detail.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await detail.getByRole('button', { name: 'Refresh report' }).click();
+      await expect(detail).toContainText('different target generation');
+      await detail.getByRole('button', { name: 'Edit key selection' }).click();
+      await detail.getByRole('textbox', { name: 'Include patterns' }).fill('DB_*');
+      await detail.getByRole('combobox', { name: 'Classification' }).selectOption('secret');
+      await detail.getByRole('button', { name: 'Save selection' }).click();
+      await expect(detail).toContainText('Key selection saved');
+      await expect(detail.getByRole('list', { name: 'Selected keys' })).toContainText('DB_PASSWORD');
+
+      await detail.getByRole('button', { name: 'Delete file target' }).click();
+      const deletion = page.getByRole('dialog', { name: `Delete file target ${name}` });
+      await deletion.getByRole('button', { name: 'Confirm delete' }).click();
+      await expect(deletion.getByRole('alert')).toContainText('still holds live credentials');
+      await deletion.getByRole('button', { name: 'Cancel' }).click();
+      await detail.getByRole('link', { name: 'Manage workload accounts and credentials' }).click();
+      await accountRow(page, name).click();
+      await page.locator('.machine__sub').getByRole('button', { name: /^Revoke hik_1_wl_/ }).click();
+      await expect(page.locator('.machine__sub .cred')).toHaveCount(0);
+      await page.goto(`${base}/adapters?file-target=${target.id}`);
+      await detail.getByRole('button', { name: 'Delete file target' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Confirm delete' }).click();
+      await expect(section).toContainText('File target deleted. Local files were not changed.');
+      await expect(section.getByRole('article', { name: `File target ${name}` })).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText(token);
+      await page.screenshot({ path: testInfo.outputPath('file-targets-lifecycle.png'), fullPage: true });
+    } finally {
+      await reporter.dispose();
+      const cleanup = await page.request.delete(`${api}/service-accounts/${account.id}`, { headers: await writeHeaders() });
+      expect(cleanup.status()).toBe(204);
     }
   });
 });
