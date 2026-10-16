@@ -103,7 +103,7 @@ export function useProject(org: string, project: string): UseQueryResult<Project
 export function useEnvironments(
   org: string,
   project: string,
-): UseQueryResult<z.infer<typeof zEnvironmentList>> {
+): UseQueryResult<z.infer<typeof zEnvironmentList> | null> {
   const transport = useTransport();
   return useQuery(environmentListQueryOptions({ org, project }, transport.client));
 }
@@ -303,7 +303,7 @@ export function useOrgTopology(org: string): {
 
   const flat = items.flatMap((project, index) => {
     const result = environments[index];
-    return result?.data === undefined
+    return result?.data == null
       ? []
       : result.data.items.map((env) => ({ project: project.id, env }));
   });
@@ -319,17 +319,20 @@ export function useOrgTopology(org: string): {
     protection.set(env.id, environmentSettingsReadState(settings[index]));
   });
 
-  const { isPending, isError, ready } = orgTopologyReadiness(
+  const readiness = orgTopologyReadiness(
     org,
     projects,
     environments,
     [...protection.values()],
   );
+  const isPending = readiness.isPending;
+  const isError = readiness.isError || environments.some((query) => query.data === null);
+  const ready = readiness.ready && !isError;
 
   const nodes: ProjectNode[] = ready
     ? items.map((project, index) => {
         const environmentResult = environments[index];
-        if (environmentResult?.data === undefined) {
+        if (environmentResult?.data == null) {
           throw new Error(`project ${project.id} settled without parsed environments`);
         }
         return {

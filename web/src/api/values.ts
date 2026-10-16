@@ -59,7 +59,7 @@ export type RevealWindow = z.infer<typeof zRevealWindow>;
 export type EnvironmentList = z.infer<typeof zEnvironmentList>;
 
 /** useEnvironments lists the project's environments, the copy destinations. */
-export function useEnvironments(env: EnvRef): UseQueryResult<EnvironmentList> {
+export function useEnvironments(env: EnvRef): UseQueryResult<EnvironmentList | null> {
   const transport = useTransport();
   return useQuery({
     ...environmentListQueryOptions(env, transport.client),

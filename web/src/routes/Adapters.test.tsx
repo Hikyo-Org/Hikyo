@@ -38,8 +38,10 @@ it.each([
         state: 'active', created_at: '2026-09-01T00:00:00Z', targets: [],
       }] }));
     }
+    if (path === `${base}/service-accounts`) return Promise.resolve(Response.json({ items: [], count: 0 }));
+    if (path === `${base}/file-targets`) return Promise.resolve(Response.json({ items: [] }));
     if (path === `${base}/environments` || path === `${base}/keys`) {
-      return Promise.resolve(Response.json({ items: [] }));
+      return Promise.resolve(Response.json({ items: [], count: 0, schema_revision: 0 }));
     }
     throw new Error(`unexpected ${path}`);
   }));
@@ -141,8 +143,10 @@ it('lists each failed name on its own line and every warning separately', async 
     if (path === `${base}/adapter-targets/${target.id}`) {
       return Promise.resolve(Response.json({ target, conflicts: [], mapping: [] }));
     }
+    if (path === `${base}/service-accounts`) return Promise.resolve(Response.json({ items: [], count: 0 }));
+    if (path === `${base}/file-targets`) return Promise.resolve(Response.json({ items: [] }));
     if (path === `${base}/environments` || path === `${base}/keys`) {
-      return Promise.resolve(Response.json({ items: [] }));
+      return Promise.resolve(Response.json({ items: [], count: 0, schema_revision: 0 }));
     }
     throw new Error(`unexpected ${path}`);
   }));
@@ -376,7 +380,9 @@ it.each([true, false])('resuming an AWS origin move requires its loaded provider
         destination_id: 0, repository_id: 0, visibility: '', selected_repository_ids: [], name_prefix: '',
         orphaned_names: [], jobs: [] }],
     }));
-    if (path === `${base}/environments` || path === `${base}/keys`) return Promise.resolve(Response.json({ items: [] }));
+    if (path === `${base}/service-accounts`) return Promise.resolve(Response.json({ items: [], count: 0 }));
+    if (path === `${base}/file-targets`) return Promise.resolve(Response.json({ items: [] }));
+    if (path === `${base}/environments` || path === `${base}/keys`) return Promise.resolve(Response.json({ items: [], count: 0, schema_revision: 0 }));
     throw new Error(`unexpected ${request.method} ${path}`);
   }));
   const { container, unmount } = await renderForm(

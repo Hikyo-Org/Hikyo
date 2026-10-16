@@ -452,11 +452,11 @@ operations:
   adoptAdapterTargetNames:     {webui: adapters}
 
   # generic file destinations (#164 shipped API+CLI; management WebUI #819)
-  listFileTargets:             {issue: 819}
-  createFileTarget:            {issue: 819}
-  getFileTarget:               {issue: 819}
-  updateFileTarget:            {issue: 819}
-  deleteFileTarget:            {issue: 819}
+  listFileTargets:             {webui: adapters}
+  createFileTarget:            {webui: adapters}
+  getFileTarget:               {webui: adapters}
+  updateFileTarget:            {webui: adapters}
+  deleteFileTarget:            {webui: adapters}
 
   # dynamic secrets (#147 shipped API+CLI+read-only status; management WebUI #595)
   listLeases:                  {webui: machine-access}
