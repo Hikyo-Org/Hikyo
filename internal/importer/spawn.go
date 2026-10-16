@@ -170,7 +170,7 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 		_ = tree.kill()
 		return true, 1
 	}
-	if n, err := stdout.Write(output); err != nil || n != len(output) {
+	if n, err := writeSubprocessOutput(stdout, output); err != nil || n != len(output) {
 		_ = tree.kill()
 		return true, 1
 	}

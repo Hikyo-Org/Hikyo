@@ -7,6 +7,10 @@ read/wait errors, expired context after waiting, and failed or incomplete output
 delivery. It kills the owned process group or job before returning the existing
 content-free failure code. Output from an unsuccessful command is not delivered.
 Deadline selection, the output cap, and `subprocessWaitDelay` remain unchanged.
+During Unix output delivery only, a scoped SIGPIPE notification makes writes to
+a closed real stdout pipe return EPIPE instead of terminating the wrapper before
+cleanup. The registration starts after the helper exits and is removed after
+the write; other signal subscribers are preserved.
 
 Unix ownership is the process group created with `Setpgid`. Successful Unix
 helpers retain the existing behavior: background agents may survive. This is
@@ -34,8 +38,12 @@ does not claim Windows/Unix parity or resolve that separate Windows limitation.
   error, complete write with error, short write without error, output overflow,
   and successful-helper survival. Cleanup assertions wait at most three seconds
   for the grandchild to disappear. All fixture children have registered cleanup.
+- A real re-exec regression closes the stdout reader before starting the runner.
+  Before the SIGPIPE repair the runner terminates by signal and leaks its
+  grandchild. With the repair it exits 1 and cleans up. An open-reader control
+  preserves exit 0, complete output, and a surviving background agent.
 - Existing expired-before-start and timeout/grandchild tests remain covered.
-- The complete importer suite passes on macOS arm64 and Linux arm64: 110
+- The complete importer suite passes on macOS arm64 and Linux arm64: 111
   top-level tests/fuzz seed groups, zero skips on each platform. This includes
   Kubernetes exec credentials, credential refresh, plugin policy, deadline and
   overflow behavior, and Vault external token-helper sanitization and bounds.
@@ -44,6 +52,15 @@ does not claim Windows/Unix parity or resolve that separate Windows limitation.
 - Windows amd64 importer tests cross-compile with `CGO_ENABLED=0`; Windows
   process lifecycle semantics were inspected in source and official API
   documentation, not executed on a Windows host.
+
+## Review
+
+Adversarial Sol 6.1 high review found the real stdout SIGPIPE gap after the
+initial writer-error tests passed. The repaired re-exec path was independently
+reproduced on macOS and Linux. Round two reviewed the complete diff, including
+success behavior, scoped signal handling, bounds and Windows semantics, and
+reported no actionable findings. Windows runtime and custom pre-existing signal
+policy interactions were not exercised.
 
 ## Reproduction commands
 

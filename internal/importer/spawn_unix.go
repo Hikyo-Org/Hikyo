@@ -3,7 +3,10 @@
 package importer
 
 import (
+	"io"
+	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 )
 
@@ -33,3 +36,14 @@ func (t *processTree) kill() error {
 // Successful Unix helpers may intentionally leave background agents running.
 // Failure paths must call kill explicitly before releasing ownership.
 func (*processTree) release() {}
+
+func writeSubprocessOutput(stdout io.Writer, output []byte) (int, error) {
+	// os.Stdout.Write otherwise exits the runner on a broken pipe before it
+	// can clean up descendants. Notify makes that write return EPIPE instead.
+	// Scope the registration to delivery, after the helper has already exited,
+	// and Stop only our channel to preserve any other signal subscriptions.
+	brokenPipe := make(chan os.Signal, 1)
+	signal.Notify(brokenPipe, syscall.SIGPIPE)
+	defer signal.Stop(brokenPipe)
+	return stdout.Write(output)
+}

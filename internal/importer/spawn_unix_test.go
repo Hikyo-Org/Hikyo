@@ -4,9 +4,11 @@ package importer
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -150,6 +152,88 @@ func TestSubprocessSuccessLeavesTheGrandchildRunning(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	if err := syscall.Kill(pid, 0); err != nil {
 		t.Errorf("successful helper's grandchild %d did not survive: %v", pid, err)
+	}
+}
+
+// Re-exec is essential here: Go can terminate on SIGPIPE when writing to
+// os.Stdout before Write returns an error to the process-tree cleanup path.
+func TestSubprocessReexecStdoutPipe(t *testing.T) {
+	for _, closedReader := range []bool{true, false} {
+		name := "open_reader"
+		if closedReader {
+			name = "closed_reader"
+		}
+		t.Run(name, func(t *testing.T) {
+			pidFile := subprocessGrandchildPIDFile(t)
+			spec := subprocessSpec{
+				Command:  "/bin/sh",
+				Args:     []string{"-c", `sleep 30 </dev/null >/dev/null 2>&1 & echo $! > "$1"; printf helper-output`, "_", pidFile},
+				MaxBytes: 1024,
+			}
+			encoded, err := encodeSubprocessSpec(spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = reader.Close() })
+			t.Cleanup(func() { _ = writer.Close() })
+			if closedReader {
+				if err := reader.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// Bound the whole re-exec without spending the helper's own
+			// deadline on test-binary startup under a loaded runner.
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, os.Args[0], internalSubprocessMode)
+			cmd.Env = replaceEnv(os.Environ(), subprocessSpecEnv, encoded)
+			cmd.Stdout = writer // A real fd 1, not an io.Writer adapter.
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			started := time.Now()
+			runErr := cmd.Run() // Always waits for and reaps the wrapper.
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			pid := readSubprocessGrandchildPID(t, pidFile)
+			if ctx.Err() != nil || time.Since(started) > 10*time.Second {
+				t.Errorf("re-exec exceeded its bound: context=%v error=%v", ctx.Err(), runErr)
+			}
+			if cmd.ProcessState == nil {
+				t.Fatalf("wrapper did not start: %v", runErr)
+			}
+			if stderr.Len() != 0 {
+				t.Errorf("wrapper failure output was delivered on stderr: %q", stderr.String())
+			}
+			if closedReader {
+				var exitErr *exec.ExitError
+				if !errors.As(runErr, &exitErr) || cmd.ProcessState.ExitCode() != 1 {
+					t.Errorf("wrapper exit=%d error=%v, want ordinary exit 1", cmd.ProcessState.ExitCode(), runErr)
+				}
+				waitForSubprocessGrandchildExit(t, pid)
+				return
+			}
+			if runErr != nil || cmd.ProcessState.ExitCode() != 0 {
+				t.Errorf("wrapper exit=%d error=%v, want success exit 0", cmd.ProcessState.ExitCode(), runErr)
+			}
+			if err := reader.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			output, err := io.ReadAll(reader)
+			if err != nil || string(output) != "helper-output" {
+				t.Errorf("wrapper output=%q error=%v, want helper-output", output, err)
+			}
+			// Give an accidental kill time to be delivered and reaped.
+			time.Sleep(100 * time.Millisecond)
+			if err := syscall.Kill(pid, 0); err != nil {
+				t.Errorf("successful helper's grandchild %d did not survive: %v", pid, err)
+			}
+		})
 	}
 }
 
