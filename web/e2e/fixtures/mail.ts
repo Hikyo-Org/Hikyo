@@ -22,15 +22,20 @@ export function readMail(recipient: string, stateFile = STATE) {
 
 /** Run the existing Go TLS SMTP sink; product certificate and egress checks stay enabled. */
 export async function startMailSink(stateFile = STATE) {
+  const configuredBinary = process.env['HIKYO_E2E_MAIL_BINARY'];
+  if (process.env['CI'] !== undefined && (configuredBinary === undefined || configuredBinary === '')) {
+    throw new Error('CI browser mail requires HIKYO_E2E_MAIL_BINARY from the prebuilt app artifact');
+  }
   const directory = mkdtempSync(join(tmpdir(), 'hikyo-browser-mail-'));
   const certificate = join(directory, 'cert.pem');
   const messages = join(directory, 'messages.jsonl');
   const failure = join(directory, 'failure.txt');
-  const binary = process.env['HIKYO_E2E_MAIL_BINARY'] ?? join(directory, 'mail-sink');
+  const binary = configuredBinary ?? join(directory, 'mail-sink');
   let stopped = false;
   let published = false;
   writeFileSync(messages, '', { mode: 0o600 });
-  if (process.env['HIKYO_E2E_MAIL_BINARY'] === undefined) {
+  // Source compilation is a local development fallback; CI uses its same-run artifact.
+  if (configuredBinary === undefined) {
     const build = spawnSync('go', ['build', '-o', binary, './internal/mailtest/cmd'], { cwd: REPOSITORY, encoding: 'utf8' });
     if (build.status !== 0) {
       rmSync(directory, { recursive: true, force: true });

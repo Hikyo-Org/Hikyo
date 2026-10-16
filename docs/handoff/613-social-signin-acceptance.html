@@ -461,6 +461,42 @@ The complete web unit suite passed 201 files and 1,756 tests in 15.48 seconds;
 typecheck, deny-warnings lint and the structural graph refresh passed. These
 filtered browser runs do not establish registry execution closure. Required
 full hosted validation on the subsequent repair head remains pending.</p>
+<h2 id="ci-mail-helper-artifact-contract">CI mail-helper artifact contract</h2>
+<p>MergeWatch's <a href="https://github.com/Hikyo-Org/Hikyo/pull/928#discussion_r4292970897">rendered inline finding</a>
+identified the mail fixture's source-build fallback. Its claimed shared temporary
+directory replacement exploit was not established: direct Node probes on macOS
+and the Linux Playwright image both measured the <code>mkdtemp</code> child directory as
+mode <code>0700</code>. The repository path comes from the fixture module location, and
+CI already builds and executes the same candidate source. A shared temporary
+parent alone does not demonstrate write access to that private child directory
+or a new trust-boundary bypass.</p>
+<p>A narrower runtime contract gap was reproduced on head <code>808293717</code>: with <code>CI</code>
+present and the binary override absent, the real fixture attempted compilation.
+The diagnostic compiler trap only recorded invocation and exited; it did not
+compile or execute candidate source. The browser workflow already supplies
+<code>HIKYO_E2E_MAIL_BINARY</code> from its same-run app artifact. The fixture now rejects
+missing or empty configuration whenever <code>CI</code> is present, before allocating a
+temporary directory, writing files, compiling or spawning. The intentional local
+development fallback and explicit configured-binary paths remain available.
+Contributor instructions document those paths. No workflow trust policy,
+artifact selection, test deadline or coverage requirement changed.</p>
+<p>The seven focused regression cases first recorded four failures and three
+passes on the original implementation, then seven passes after repair. Four
+cases verify missing/empty configuration is rejected without filesystem or
+process effects, including empty and <code>false</code> CI values because presence is the
+existing CI convention. The remaining cases preserve local build-failure cleanup
+and configured-binary selection in local and CI modes; these unit cases stop at
+the process boundary rather than compiling Go inside Vitest.</p>
+<p>Separate actual-helper smoke checks verified the configured CI path in 378 ms
+and the local source-build fallback in 539 ms. Both reached TLS SMTP readiness,
+created private <code>0700</code> directories, and awaited process shutdown and removal of
+the state file and directory. These are local observations, not CI timing
+promises. The complete web unit suite passed 202 files and 1,763 tests in
+12.95 seconds. Typecheck, deny-warnings lint, the existing artifact-reuse
+structural fixture and the documentation-status check (35 ledger entries) passed.
+The structural graph refresh completed with its existing 17 Astro partial-
+extraction warnings. Full hosted validation of the subsequent hardening head
+remains required; these checks do not replace that gate.</p>
 <h2 id="delivery-gates">Delivery gates</h2>
 <p>The issue requires DCO and cryptographic signing for every commit, both-engine
 schema and lifecycle coverage, the requested review rounds, a verified preview,

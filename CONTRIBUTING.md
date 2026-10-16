@@ -193,6 +193,16 @@ Before you request review, run the checks for what you touched:
 You do not need to reproduce the full release gate locally; CI is the source of
 truth for that.
 
+For browser flow tests, run `pnpm --dir web run e2e:install`, then
+`pnpm --dir web run e2e` from the repository root. Local development can leave
+`HIKYO_E2E_MAIL_BINARY` unset: the fixture builds its TLS SMTP helper from the
+current checkout using Go. To use a prebuilt helper instead, set it to the
+absolute path of a fresh binary built with
+`go build -o ./mail-sink ./internal/mailtest/cmd`. When `CI` is present, the
+fixture requires a non-empty `HIKYO_E2E_MAIL_BINARY` before creating temporary
+files or starting a process. The browser workflow supplies this binary from its
+same-run app artifact; missing configuration fails instead of compiling locally.
+
 For optional feedback using the same package checks as the fast CI workflow:
 
 ```sh
