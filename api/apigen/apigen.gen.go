@@ -8396,7 +8396,7 @@ type MintInstanceConnectionRequest struct {
 
 // MintLeaseRequest defines model for MintLeaseRequest.
 type MintLeaseRequest struct {
-	// MaxTtlSeconds Requested maximum lifetime; the provider clamps to its own ceiling.
+	// MaxTtlSeconds Requested maximum lifetime in whole seconds, bounded by the largest representable duration. Values outside this range are refused before minting.
 	MaxTtlSeconds int64 `json:"max_ttl_seconds"`
 
 	// ProviderId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -9510,7 +9510,7 @@ type RenameRequest struct {
 
 // RenewLeaseRequest defines model for RenewLeaseRequest.
 type RenewLeaseRequest struct {
-	// MaxTtlSeconds Optional new ceiling; renewal never extends past the lease's max TTL.
+	// MaxTtlSeconds Optional per-renewal ceiling in whole seconds. Omitted or null retains the stored ceiling; an explicit value may only retain or tighten it. Renewal expires at the current time plus the effective ceiling, not at a fixed lifetime since original issuance. An unrepresentable effective ceiling is refused.
 	MaxTtlSeconds *int64 `json:"max_ttl_seconds,omitempty"`
 }
 

@@ -762,14 +762,14 @@ export type DynamicLeaseList = {
 export type MintLeaseRequest = {
     provider_id: Id;
     /**
-     * Requested maximum lifetime; the provider clamps to its own ceiling.
+     * Requested maximum lifetime in whole seconds, bounded by the largest representable duration. Values outside this range are refused before minting.
      */
     max_ttl_seconds: number;
 };
 
 export type RenewLeaseRequest = {
     /**
-     * Optional new ceiling; renewal never extends past the lease's max TTL.
+     * Optional per-renewal ceiling in whole seconds. Omitted or null retains the stored ceiling; an explicit value may only retain or tighten it. Renewal expires at the current time plus the effective ceiling, not at a fixed lifetime since original issuance. An unrepresentable effective ceiling is refused.
      */
     max_ttl_seconds?: number | null;
 };

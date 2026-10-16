@@ -16364,7 +16364,8 @@ components:
           type: integer
           format: int64
           minimum: 1
-          description: Requested maximum lifetime; the provider clamps to its own ceiling.
+          maximum: 9223372036
+          description: Requested maximum lifetime in whole seconds, bounded by the largest representable duration. Values outside this range are refused before minting.
 
     RenewLeaseRequest:
       type: object
@@ -16374,7 +16375,8 @@ components:
           type: [integer, "null"]
           format: int64
           minimum: 1
-          description: Optional new ceiling; renewal never extends past the lease's max TTL.
+          maximum: 9223372036
+          description: Optional per-renewal ceiling in whole seconds. Omitted or null retains the stored ceiling; an explicit value may only retain or tighten it. Renewal expires at the current time plus the effective ceiling, not at a fixed lifetime since original issuance. An unrepresentable effective ceiling is refused.
 
     MintLeaseResult:
       type: object

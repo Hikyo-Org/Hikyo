@@ -37,3 +37,31 @@ func TestNarrowConditionsNeverSatisfyChain(t *testing.T) {
 		}
 	}
 }
+
+func TestTypedParameterNarrowingRetainsChainProof(t *testing.T) {
+	rules := map[string]TableRule{"items": {Class: "project", Chain: []string{"org_id", "project_id"}}}
+	prefix := "SELECT id FROM items WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND "
+	for _, predicate := range []string{
+		"CAST(sqlc.arg(max_ttl_seconds) AS BIGINT)>0",
+		"CAST(sqlc.arg(limit) AS BIGINT) >= -1",
+	} {
+		if got := checkQuery("postgres", Query{Name: "typed_narrow", SQL: prefix + predicate}, rules); len(got) != 0 {
+			t.Errorf("valid typed narrowing %q: %v", predicate, got)
+		}
+	}
+	for _, sql := range []string{
+		// A parameter-only predicate cannot stand in for a missing chain column.
+		"SELECT id FROM items WHERE org_id=sqlc.arg(chain_org) AND CAST(sqlc.arg(chain_project) AS BIGINT)>0",
+		"SELECT id FROM items WHERE org_id=sqlc.arg(chain_org) AND CAST(project_id AS BIGINT)=sqlc.arg(chain_project)",
+		// This exception is closed over bind parameters, BIGINT and integers.
+		prefix + "CAST(project_id AS BIGINT)>0",
+		prefix + "CAST(evil(sqlc.arg(limit)) AS BIGINT)>0",
+		prefix + "CAST((SELECT id FROM another_tenant) AS BIGINT)>0",
+		prefix + "CAST(sqlc.arg(limit) AS TEXT)>0",
+		prefix + "CAST(sqlc.arg(limit) AS BIGINT)>0 OR TRUE",
+	} {
+		if got := checkQuery("postgres", Query{Name: "bad_typed_narrow", SQL: sql}, rules); len(got) == 0 {
+			t.Errorf("unproved typed predicate accepted: %s", sql)
+		}
+	}
+}

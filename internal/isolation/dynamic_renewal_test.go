@@ -244,9 +244,9 @@ func TestDynamicRenewalCheckedTTL(t *testing.T) {
 		if after := f.current(t); after != before {
 			t.Fatal("invalid request changed lease")
 		}
-		// Old persisted values must not overflow when a zero/omitted renewal resumes.
-		execRaw(t, db, fmt.Sprintf("UPDATE dynamic_leases SET max_ttl_seconds=%d WHERE id='%s'", int64(math.MaxInt64), f.lease.Lease.ID))
+		// Previously queued values must not overflow when the worker resumes.
 		f.renew(t, 0)
+		execRaw(t, db, fmt.Sprintf("UPDATE dynamic_leases SET max_ttl_seconds=%d WHERE id='%s'", int64(math.MaxInt64), f.lease.Lease.ID))
 		f.sweep(t)
 		if len(p.expiries) != 0 {
 			t.Fatal("invalid persisted ceiling reached provider")

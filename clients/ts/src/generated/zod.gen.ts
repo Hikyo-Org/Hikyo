@@ -634,11 +634,11 @@ export const zDynamicLeaseList = z.object({
 
 export const zMintLeaseRequest = z.object({
     provider_id: zId,
-    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(9223372036))
 });
 
 export const zRenewLeaseRequest = z.object({
-    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullish()
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(9223372036)).nullish()
 });
 
 export const zMintLeaseResult = z.object({
