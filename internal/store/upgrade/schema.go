@@ -41,15 +41,27 @@ func (r sqlCatalogRows) Close() { _ = r.Rows.Close() }
 
 type catalogQuery func(context.Context, string, ...any) (catalogRows, error)
 
-func inspectCatalog(ctx context.Context, q queryer, engine releaseidentity.Engine) (Catalog, error) {
-	return inspectCatalogWith(ctx, func(ctx context.Context, query string, args ...any) (catalogRows, error) {
-		r, err := q.QueryContext(ctx, query, args...)
+func sqlCatalogQuery(q queryer) catalogQuery {
+	return func(ctx context.Context, query string, args ...any) (catalogRows, error) {
+		rows, err := q.QueryContext(ctx, query, args...)
 		if err != nil {
 			return nil, err
 		}
-		return sqlCatalogRows{r}, nil
-	}, engine)
+		return sqlCatalogRows{rows}, nil
+	}
 }
+
+func inspectSQLCatalog(ctx context.Context, q queryer, engine releaseidentity.Engine, read catalogReader) (Catalog, error) {
+	if engine == releaseidentity.Postgres {
+		return inspectSQLPostgresCatalog(ctx, q, read)
+	}
+	return read(ctx, sqlCatalogQuery(q), engine)
+}
+
+func inspectCatalog(ctx context.Context, q queryer, engine releaseidentity.Engine) (Catalog, error) {
+	return inspectSQLCatalog(ctx, q, engine, inspectCatalogWith)
+}
+
 func inspectCatalogObjectsWith(ctx context.Context, queryRows catalogQuery, engine releaseidentity.Engine) (Catalog, error) {
 	c := Catalog{Format: "hikyo-schema/v1", Engine: engine, Objects: []string{}, Applied: []int64{}}
 	query := sqliteCatalogSQL

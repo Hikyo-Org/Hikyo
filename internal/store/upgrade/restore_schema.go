@@ -16,9 +16,7 @@ func PreparePostgresRestoreControlSchema(ctx context.Context, tx pgx.Tx, manifes
 	if tx == nil || manifest.Engine != releaseidentity.Postgres {
 		return ErrCorrupt
 	}
-	catalog, err := inspectCatalogWith(ctx, func(ctx context.Context, q string, args ...any) (catalogRows, error) {
-		return tx.Query(ctx, q, args...)
-	}, releaseidentity.Postgres)
+	catalog, err := inspectPostgresCatalog(ctx, tx, inspectCatalogWith)
 	if err != nil {
 		return err
 	}
