@@ -30,8 +30,9 @@ import (
 //     Checking that the subscriber may view the project is not enough: a user
 //     with `dev` but not `prod` would otherwise learn that prod exists, which
 //     keys it holds and when it changed. Every event is authorized against the
-//     environment it names, inside a transaction, at emit time -- so a grant
-//     revoked mid-session bites on the NEXT event, not at the next reconnect.
+//     environment it names, inside a transaction, at emit time. A topology
+//     event names only its project and requires full project read authority.
+//     Revocation bites on the NEXT event, not at the next reconnect.
 //
 //  3. ADVISORY ONLY. Correctness never depends on delivery. The serialized
 //     publish and the version-id freshness check are the authority; a client
@@ -43,9 +44,9 @@ import (
 //     performs a normal authorized refetch. Retaining event history would be a
 //     second audit log with weaker rules.
 //
-// THE POLLING FALLBACK is Revisions.Signals: the same facts, pulled under the
-// caller's own authorization. It is not a degraded mode bolted on for proxies
-// -- it is the matrix's ordinary read, and the stream only saves it a poll.
+// THE POLLING FALLBACK is Revisions.Signals and Environments.List: the same
+// facts pulled under the caller's own authorization. These are the matrix's
+// ordinary reads, and the stream only saves a poll.
 
 // advisoryBuffer bounds one subscriber's queue. A client that cannot keep up is
 // DROPPED rather than buffered without limit: the events are advisory, the
@@ -61,11 +62,12 @@ const (
 
 // AdvisoryEvent is one metadata-only fact about a change.
 type AdvisoryEvent struct {
-	// Type is one of the three the ADR enumerates: an environment advanced, a
-	// principal staged a draft, or a draft went stale under a publish.
+	// Type identifies an environment advance, draft, changed cell, or topology.
 	Type string
-	// EnvironmentID is the object every event is authorized against. There is
-	// no event that references no environment.
+	// ProjectID is populated only for topology events, which disclose no
+	// environment identity and remain authorizable after an environment deletes.
+	ProjectID string
+	// EnvironmentID is the object environment events are authorized against.
 	EnvironmentID string
 	KeyID         string
 	KeyName       string
@@ -87,11 +89,12 @@ const (
 	// a fact nobody checked. A subscriber that holds a draft on the named cell
 	// derives staleness itself: its own draft plus this event IS the fact.
 	AdvisoryChanged = "cell.changed"
+	// AdvisoryEnvironmentsChanged invalidates the authorized environment list.
+	AdvisoryEnvironmentsChanged = "environments.changed"
 )
 
-// Advisory is the in-process fan-out. There is no cross-process bus and none is
-// needed: v1 is a single node (system-architecture ADR), and a channel that
-// must survive a second node is a different design, not a bigger buffer.
+// Advisory is the in-process fan-out. Under HA it remains per node, as fixed
+// by ops-spec section 13; authorized polling supplies cross-node freshness.
 type Advisory struct {
 	mu   sync.Mutex
 	next int64
@@ -117,7 +120,7 @@ func (a *Advisory) emit(scope domain.Scope, ev AdvisoryEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for id, sub := range a.subs {
-		if sub.project != scope.Project || sub.dropped {
+		if sub.org != scope.Org || sub.project != scope.Project || sub.dropped {
 			continue
 		}
 		select {
@@ -131,6 +134,13 @@ func (a *Advisory) emit(scope domain.Scope, ev AdvisoryEvent) {
 			delete(a.subs, id)
 		}
 	}
+}
+
+// environmentsChanged is emitted only after a successful topology commit.
+// Deliberately omit the changed environment, including on deletion: the only
+// disclosed fact is that the project's authorized listing should be refetched.
+func (a *Advisory) environmentsChanged(scope domain.Scope) {
+	a.emit(scope, AdvisoryEvent{Type: AdvisoryEnvironmentsChanged, ProjectID: string(scope.Project)})
 }
 
 // published announces one or more environments advancing. It deliberately
@@ -212,8 +222,8 @@ var (
 )
 
 // Watch subscribes to the project's advisory events, authorized twice: once at
-// connect, for the project, and once PER EVENT against the environment that
-// event names. Events the recipient may not see are dropped, and an event
+// connect, for the project, and once PER EVENT against the project or environment
+// that event names. Events the recipient may not see are dropped, and an event
 // reduced to nothing is never sent.
 //
 // The returned channel closes when ctx ends, when the subscriber falls behind,
@@ -250,11 +260,22 @@ func (s *Revisions) Watch(ctx context.Context, actor Actor, scope domain.Scope) 
 				if !ok {
 					return
 				}
-				envScope := domain.Scope{
+				eventScope := domain.Scope{
 					Org: scope.Org, Project: scope.Project,
 					Env: domain.EnvID(ev.EnvironmentID),
 				}
-				if err := s.authorize(ctx, actor, authz.OpAdvisoryEvent, envScope); err != nil {
+				op := authz.OpAdvisoryEvent
+				if ev.Type == AdvisoryEnvironmentsChanged {
+					if ev.ProjectID != string(scope.Project) {
+						continue
+					}
+					// Watch requires full project read, not the selector-filtered
+					// navigation proof used by EnvList. A narrowed reader must
+					// not learn hidden topology timing.
+					op = authz.OpAdvisoryWatch
+					eventScope.Env = ""
+				}
+				if err := s.authorize(ctx, actor, op, eventScope); err != nil {
 					if errors.Is(err, domain.ErrUnauthenticated) {
 						// A rotated/revoked credential cannot recover on this
 						// subscription. Close it so clients reconnect with their
@@ -290,12 +311,11 @@ func (s *Revisions) Watch(ctx context.Context, actor Actor, scope domain.Scope) 
 // authorize evaluates one operation's formula against one scope, in its own
 // transaction, uncached -- the same chokepoint every other read uses. The
 // advisory path calls it twice per subscriber: once at connect against the
-// project, and once per event against the environment that event names.
+// project, and once per event against the project or environment it names.
 //
-// The connect check is `read` at PROJECT scope, which is the same grant the
-// matrix's key catalogue read already needs, so it excludes nobody who could
-// use the channel. It is not the control: per-event authorization is, which is
-// why a grant revoked mid-session bites on the next event.
+// The connect check requires full project read authority. Environment-restricted
+// directory navigation does not grant a project-wide subscription. Per-event
+// authorization remains the control, so revocation bites on the next event.
 func (s *Revisions) authorize(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) error {
 	_, err := s.authorizeIdentity(ctx, actor, op, scope)
 	return err

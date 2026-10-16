@@ -47,11 +47,12 @@ import {
 } from '@tanstack/react-query';
 import type { Client } from '@hikyo/runtime-core';
 import type { z } from 'zod';
+import { useEffect } from 'react';
 
 import { commonRefusalText, statusText } from './statusText.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, ok, parsed } from './client.ts';
-import { environmentTopologyQueryPrefixes, environmentsKey } from './keys.ts';
+import { environmentOwnedQueryPrefixes, environmentTopologyQueryPrefixes, environmentsKey } from './keys.ts';
 import { environmentListQueryOptions, projectRetentionQueryOptions } from './hierarchyQueries.ts';
 import type { EnvironmentNode, ProjectNode } from './access.ts';
 import { useTransport } from './transport.tsx';
@@ -103,9 +104,33 @@ export function useProject(org: string, project: string): UseQueryResult<Project
 export function useEnvironments(
   org: string,
   project: string,
+  refetchInterval: number | false = false,
 ): UseQueryResult<z.infer<typeof zEnvironmentList> | null> {
   const transport = useTransport();
-  return useQuery(environmentListQueryOptions({ org, project }, transport.client));
+  const queries = useQueryClient();
+  const listing = useQuery({
+    ...environmentListQueryOptions({ org, project }, transport.client),
+    refetchInterval,
+  });
+  useEffect(() => {
+    // Only an authoritative successful list can retire data. A failed refresh
+    // keeps the last usable topology and must not erase another workspace's cache.
+    // A null metadata tombstone means unavailable, never an empty topology.
+    if (!listing.isSuccess || listing.data === null) return;
+    const present = new Set(listing.data.items.map((environment) => environment.id));
+    for (const queryKey of environmentOwnedQueryPrefixes({ org, project })) {
+      queries.removeQueries({
+        queryKey,
+        predicate: (query) => {
+          const environment = query.queryKey[queryKey.length];
+          return typeof environment === 'string' && !present.has(environment);
+        },
+      });
+    }
+    // removeQueries destroys pending queries too, so late responses cannot
+    // repopulate a removed environment after its observers have detached.
+  }, [listing.data, listing.isSuccess, org, project, queries]);
+  return listing;
 }
 
 /** One canonical project-list hook and query key for every chrome surface. */

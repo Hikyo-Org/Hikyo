@@ -37,6 +37,9 @@ type AdvisoryEventType = 'revision.published' | 'cell.changed' | 'pending.staged
 
 /** One advisory event, camelCased for the SPA. */
 export type AdvisoryEvent = {
+  readonly type: 'environments.changed';
+  readonly projectId: string;
+} | {
   readonly type: AdvisoryEventType;
   readonly environmentId: string;
   readonly keyId?: string;
@@ -46,14 +49,18 @@ export type AdvisoryEvent = {
 };
 
 /**
- * The wire envelope every event shares (`wireAdvisory`, internal/server/
- * revisions.go): the type, and the environment the event was authorized
- * against. Metadata only, no field here could hold a value or a change
- * token, and the schemas below must never grow one.
+ * The wire envelope every event shares is its type. Validate the resource
+ * identity only after dispatch so future project-only types remain ignorable.
+ * Metadata only: no field here can hold a value or a change token, and the
+ * schemas below must never grow one.
  */
 const zAdvisoryEnvelope = z.object({
   type: z.string(),
-  environment_id: z.string().min(1),
+});
+
+const zEnvironmentsChangedWire = z.object({
+  type: z.literal('environments.changed'),
+  project_id: z.string().min(1),
 });
 
 const zEventKey = {
@@ -102,6 +109,10 @@ const zPendingStagedWire = z.object({
 export function parseAdvisoryEvent(input: unknown): AdvisoryEvent | null {
   const envelope = zAdvisoryEnvelope.parse(input);
   switch (envelope.type) {
+    case 'environments.changed': {
+      const wire = zEnvironmentsChangedWire.parse(input);
+      return { type: wire.type, projectId: wire.project_id };
+    }
     case 'revision.published':
       return wireAdvisoryEvent(zRevisionPublishedWire.parse(input));
     case 'cell.changed':
@@ -251,6 +262,7 @@ export function watchProjectAdvisoryStream(
           // controls, but the client forwards them to createSseClient.
           const streamOptions = {
             path: { org: ref.org, project: ref.project },
+            headers: { Accept: 'text/event-stream; hikyo-topology=1' },
             signal: controller.signal,
             onSseEvent: () => handlers.onState('healthy'),
             onSseError: () => handlers.onState('failed'),

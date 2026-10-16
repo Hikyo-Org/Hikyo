@@ -7,7 +7,9 @@ administration operations. `reportFileTarget` remains a client-local delivery
 operation. The accepted #164 amendment and #157 selection rules remain intact:
 file targets bind an existing workload account and environment, contain no host
 path or provider credential, and resolve selection to immutable key IDs at save.
-No backend policy, API schema, release or deployment changes are included.
+The file-target feature changes no backend policy or schema. Integration with
+PR #940 adds its reviewed topology event/schema changes; no release or
+deployment is included.
 
 ## Implementation
 
@@ -58,9 +60,9 @@ parent's resource slot. Frozen client/web dependency installation passed.
 
 | Check | Observed result |
 | --- | --- |
-| Full web unit suite, one worker | 207 files, 1,836 tests passed in 188.71 seconds after the aggregate repair |
+| Full web unit suite, one worker | 207 files, 1,847 tests passed in 74.57 seconds on combined PR #940/#948 source |
 | Expanded focused suite after full run | 6 files, 89 tests passed; includes every 401/403/404 denial followed by network failure and successful recovery |
-| Web typecheck and lint | Passed after the final aggregate repair and regression additions |
+| Web typecheck and lint | Passed on combined PR #940/#948 source |
 | Design checks | Passed; 68 tokens matched, literal-size budgets and markup checks passed |
 | Production SPA build | Passed, including demo isolation and precompression; existing large-chunk advisory retained |
 | Generated client | Typecheck and 37 tests passed |
@@ -145,11 +147,32 @@ lifecycles passed against independent genuine-auth instances. Six affected
 Adapters stories passed in each of dark and light modes. Source review
 and mocked-fetch tests are not runtime acceptance.
 
-Integration warning: PR #940 adds an environment cache-retirement effect after
-this branch base. When combining it with nullable metadata, its successful-read
-guard must also reject null before dereferencing items. Null must never be
-treated as an authoritative empty topology or trigger purging all environment
-caches. This combined branch has not yet been tested.
+## PR #940 integration
+
+The branch combines signed file-target head `728e347d8` with signed PR #940
+head `ed908f001`. `useEnvironments` retains the nullable return and canonical
+signal-aware metadata query while adding topology polling and cache retirement.
+Its effect requires both successful status and non-null data before reading
+items or purging environment-owned caches. Null is unavailable, never empty.
+The actual Matrix hook regression retains all 17 families for successful null
+and retires them after a successful empty read.
+
+Conflicts preserved both parents' custody notes, the #948 OrgTopology guards,
+and #940 polling behavior. Independent R8 read settings and Matrix in full;
+owner hash/source comparison confirmed the reviewed combination before the
+settings sensitivity pin was refreshed. On this combined source, 188 affected
+tests passed across 13 files, typecheck and lint passed, and the full suite
+passed 1,847 tests. The full suite used a compatible prebuilt OIDC fixture.
+The first focused filter mistakenly named a `.tsx` binding test; the actual
+`.ts` file was run separately and all nine tests passed. No failed test was
+removed or suppressed.
+
+The sibling #820 tree independently exercised the same canonical shared source,
+but its 1,874-test suite does not include FileTargets. Its evidence is not used
+as a substitute for the combined FileTargets tests above. #807/PR #942 is absent
+from both input heads; MachineAccess and Matrix route bytes remain unchanged
+from #948. Preserve #807 features and validate that combination when integrated.
+The earlier browser lifecycle and stories predate this integration.
 
 ## Aggregate inventory repair
 
@@ -174,18 +197,16 @@ aggregate repair; it is not represented as a new combined browser run.
 
 ## Remaining delivery gates
 
-1. Integrate current main when needed, preserving the PR #940 null guard and sibling Machine access ownership, and run affected integration checks.
-2. Local Node, Go parity, structural graph, desktop/mobile lifecycle and sibling story checks have passed; retain their evidence.
-3. Preserve the passed real-server desktop/mobile lifecycle screenshots and
-   final local evidence; hosted CI still needs to validate the pushed head.
-4. Review the final diff, update this handoff with actual evidence, commit with
-   signing and DCO, verify the entire PR range and staged path portability,
-   push, confirm GitHub verification, and open/link the self-contained PR.
-5. Parent owns PR watching. Repair valid findings and failures, pass protected
-   merge-group checks, then verify mergedAt, merge SHA and current main ancestry.
+1. Complete the signed integration commit and full-range DCO/signature checks,
+   push the validated candidate, and confirm GitHub verification.
+2. Preserve #807 features when integrating its changes, with affected proof.
+3. Parent owns PR #948 watching. Repair valid findings and failures, pass
+   protected merge-group checks, then verify mergedAt, merge SHA and current
+   main ancestry. A passing local suite is not merge proof.
 
-No commit, PR, remote CI or merge exists for this work yet. These are outstanding
-requirements, not completed issue acceptance or an authorization request.
+PR #948 already contains signed+DCO file-target head `728e347d8`. The combined
+integration candidate has local Node evidence; hosted validation and verified
+merge remain outstanding. No release or deployment is authorized here.
 
 ## Browser evidence
 
@@ -200,3 +221,11 @@ Screenshots were inspected at matching report states: IDs wrap on mobile, the
 historical disclaimer and age remain visible, and actions fit the available
 width. The files remain offline chat evidence, not repository artifacts. The
 filtered lifecycle intentionally does not claim the entire browser-flow suite.
+
+## Browser fixture resource accounting
+
+Earlier browser runs explicitly supplied prebuilt UI and OIDC fixtures. The
+mail fixture used the local build fallback and removed its private temporary
+binary during teardown; the logs do not retain that path. Future browser runs
+under a no-Go allocation must also supply `HIKYO_E2E_MAIL_BINARY`. This correction
+does not replace or invalidate the recorded passing browser assertions.
