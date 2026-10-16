@@ -1,5 +1,7 @@
 # Hikyo: social sign-in and open registration (handoff spec, synthesis 2026-09-03)
 
+> **Implementation reconciliation (2026-10-16):** The nine implementation tickets #605 through #613 are closed; current delivery evidence and the remaining #32 amendment-review gate are recorded in the [synthesis handoff](../handoff/589-social-signin-synthesis.md#current-acceptance-record-2026-10-16). This document retains its original sequencing and design examples. The historical migration placeholders 00042/00043 shipped as `00057_social_signin.sql` / `00058_registration_switch.sql` on both engines; #612 adds `00075_cli_login.sql`. Use the committed migrations for executable DDL. The [owner's release-scope ruling](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-5531905677) and the later mvp-boundary pre-freeze banner supersede the original 1.0-promotion assumption. Implementation on main does not establish a release or change that ruling.
+
 > **Declared mail-configuration amendment (2026-09-06):** the [approved self-configuration design](./self-configuration-proposal.md) extends section 7's mail transport with a managed source. Before adoption, external mail inputs are the seed. After atomic adoption, an explicitly applied project snapshot exclusively owns the supported mail settings, including managed `HIKYO_MAIL_PASSWORD` and managed-only `HIKYO_MAIL_CA_PEM`. Password/trust files are imported once; apply cannot read arbitrary files. SMTP TLS, egress policy, local-only validation, explicit test, deadlines, intent/outcome and no-outbox semantics remain unchanged. Managed credentials participate in ordinary project encryption, re-encryption and backups. Restore invalidates acknowledgements and fences outbound use until reconciliation and explicit confirmation/re-entry plus apply, superseding section 7's process-only exemption. Unrelated sign-up, registration policy and invitation work remains owned by its original tickets.
 
 > **Pre-1.0 amendment (2026-09-05, #617):** Automatic OIDC account creation is retired before the API freeze. Migration `00044_retire_oidc_provisioning.sql` removes its provider policy on both engines. Section 2.3 is now a no-op. Organisation rename already uses `manage-members@org`; delete remains instance administration. Existing protocol-kind, OIDC/SAML-purpose and grant-origin wire enums are open without adding future values. Migration numbers 00042 and 00043 below are historical planning placeholders already consumed by MCP; implementation tickets must allocate the next available pair.
@@ -22,7 +24,7 @@ The destination of wayfinder map [#578](https://github.com/Hikyo-Org/Hikyo/issue
 | Linking and local factors | [#586](https://github.com/Hikyo-Org/Hikyo/issues/586) | Social-only is a steady state; `establish` proves local-credential creation only via a session stamp; `PUT /auth/password` set-or-change; unlink predicate; kind-agnostic link |
 | Surfaces | [#587](https://github.com/Hikyo-Org/Hikyo/issues/587) | Staged entry, iteration 2 locked; intent is a server fact; inactive cause off the public page; brand rules |
 | Issuer departures and reauth | [#588](https://github.com/Hikyo-Org/Hikyo/issues/588) | Entra tenant-specific rows only; Google bare `iss` tolerated by the library, Hikyo belt deleted; pairwise `client_id` guard; reauth policy-gated at start; no `form_post` |
-| CLI | [#596](https://github.com/Hikyo-Org/Hikyo/issues/596) | Login handoff (unbuilt) rides unchanged, always `sign-in`; `--provider` preselect; establish, link, claim browser-only; step-up refusal before the browser |
+| CLI | [#596](https://github.com/Hikyo-Org/Hikyo/issues/596) | Login handoff (implemented by #612) rides unchanged, always `sign-in`; `--provider` preselect; establish, link, claim browser-only; step-up refusal before the browser |
 | Verified email | [#598](https://github.com/Hikyo-Org/Hikyo/issues/598) | Quality bar; fixed set `email_verified` or `xms_edov` boolean `true` beside `email`; ID token only; write-time `email` scope; cause `no-verified-email` |
 | Intent | [#604](https://github.com/Hikyo-Org/Hikyo/issues/604) | `intent` field on the `login` start, absent = `sign-in`; known identity signs in under either; unknown branches; budget charged only for unknown + `sign-up`; start stays policy-blind |
 
@@ -618,7 +620,7 @@ Spellings are in [api-cli-spellings.md § 8](./api-cli-spellings.md); every addi
 
 - `OidcStartRequest.purpose` enum: `[login, link, reauth, establish, claim]`; new optional `intent: [sign-in, sign-up]` (valid only with `login`; absent = `sign-in`); new optional `signup_org` (org id; valid only with `intent: sign-up`; absent = instance scope); `proof` description widens: the pre-existing proof for `link` (password or TOTP code per `proofSelection`), the credential-establishment authority for `claim`.
 - New `Oauth2StartRequest` (same shape, purpose enum `[login, link, establish, claim]`) and `POST /api/v1/auth/oauth2/{provider}/start`, `GET /api/v1/auth/oauth2/{provider}/callback` (`x-hikyo-class: unauthenticated`, parity `exception: identity-protocol`).
-- `IdentityProviderKind` enum gains `oauth2`; `AuthMethodProvider` gains optional `profile` (`[github]`); `AuthMethods` gains `signup_open: boolean` and `signup_methods: [{kind, slug} | local]` for the instance scope; `GET /api/v1/auth/methods?org=<id>` returns the org scope's door (unknown org = closed, uniform).
+- `IdentityProviderKind` enum gains `oauth2`; `AuthMethodProvider` gains optional `profile` (`[github]`) and optional presentation-only `brand` (`google | microsoft | github`, an open wire enum). The [owner-approved 2026-09-23 addition](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-5802773557) derives brand server-side from the pinned OIDC issuer or OAuth2 profile, never administrator input; admission does not use it; `AuthMethods` gains `signup_open: boolean` and `signup_methods: [{kind, slug} | local]` for the instance scope; `GET /api/v1/auth/methods?org=<id>` returns the org scope's door (unknown org = closed, uniform).
 - `AuthMethod` extensible enum documents `oauth2:<origin>`.
 - `PUT /api/v1/auth/password` `{password, proof?}` → `LoginResult` (reissued session), `operationId: setPassword`, parity `webui: settings`.
 - `POST /api/v1/auth/signup {email, org?}` → `202`; `POST /api/v1/auth/signup/verify {token, password, display_name, org_name?}` → `204`; both `security: []`, `x-hikyo-class: unauthenticated`, parity `exception: identity-protocol` (pre-auth provisioning ceremony endpoints; the api-cli-surface banner admits them by name).
@@ -650,7 +652,7 @@ The admission gate before the charge is a synthesis reorder of [#604](https://gi
 
 **Link / unlink**: proof by `proofSelection` (password, else confirmed TOTP; never `establish`); `oauth2` links through its own start with purpose `link`; unlink refuses `ErrLastCredential` iff no password, no passkey set satisfying the passkey-only invariant, and no other external identity would remain; sessions through the identity deleted.
 
-**Password set-or-change** (`PUT /auth/password`): `CheckPassword` → proof (`proofSelection` or live establish stamp) → seal → write with session deletion and reissue → `auth.password_changed {first, authorizing_credential}`.
+**Password set-or-change** (`PUT /auth/password`): `CheckPassword` → password-first proof or live establish stamp → seal → write with session deletion and reissue → `auth.password_changed {first, authorizing_credential}`. The [2026-10-15 owner ruling](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-6199131864) preserves #586: an existing password requires that password as proof; confirmed TOTP can set the first password only when no password exists. TOTP alone cannot replace an existing password. This settles the #611 acceptance wording without amending human-auth.
 
 **Provider PUT guard** (`oidc`): a `client_id` change on a row whose discovery advertises `subject_types_supported` = pairwise only and which has ≥1 linked identity is refused by name (`ErrIssuerImmutable` shape).
 
@@ -703,7 +705,7 @@ Catalogued in [ops-catalogue.md](./ops-catalogue.md): `signup` 20/h instance-wid
 
 ## 11. Residuals recorded, not fixed
 
-- Possession-first proof preference (human-auth letter) is implemented nowhere; `proofSelection` is password-first across every mutation (#586 d5).
+- The original across-the-board possession-first discrepancy is historical. The operative human-auth clause (k) and `internal/service/reauth.go` now distinguish possession-first passkey/recovery and reauth-gated operations from password-first identity/password mutations. The #611 password choice is settled by the owner ruling in section 4. Passkey proof for account-security mutations remains a separately recorded residual.
 - ops-spec § 4 credential-reset lifetime row (1 h) versus the code's `ResetLifetime = BootstrapLifetime` (24 h); editorial amendment on its own ticket.
 - `EstablishCredentialRequest` description omits the `recovery` issuer the DDL admits; fixed in passing by T6.
 - Google's non-authoritative `email_verified` caveat for non-Gmail addresses without `hd`: recorded, not enforced (#598 d1).
@@ -717,9 +719,11 @@ Catalogued in [ops-catalogue.md](./ops-catalogue.md): `signup` 20/h instance-wid
 2. **Member invitation (#568)**: merged; `claim` builds on its authority.
 3. **Prototype PR #603** merged (this spec is stacked on it).
 
-## 13. Implementation tickets (sequenced; `ready-for-agent`, one `model:*` label each)
+## 13. Original implementation sequence and routing
 
-Routing scheme, as evidenced by the label set and prior handoffs: `model:opus-4.8` for feature work reviewed by Codex `gpt-5.6-sol` high; `model:gpt-5.6` for front-end polish reviewed by Opus high; `model:fable-5` for the security-critical auth core. Every ticket: DCO, both engines, Codex R1–R3 high (cap 3), preview verified, handoff doc under `docs/handoff/<n>-…md`, no em-dash in new text.
+All nine tickets below are closed as of 2026-10-16. This table records the original sequence, planning migration numbers and model labels; it does not dispatch new work or override current review availability. The current evidence and remaining governance obligation are in the [synthesis handoff](../handoff/589-social-signin-synthesis.md#current-acceptance-record-2026-10-16).
+
+Original routing scheme, as evidenced by the label set and prior handoffs: `model:opus-4.8` for feature work reviewed by Codex `gpt-5.6-sol` high; `model:gpt-5.6` for front-end polish reviewed by Opus high; `model:fable-5` for the security-critical auth core. Every ticket: DCO, both engines, Codex R1–R3 high (cap 3), preview verified, handoff doc under `docs/handoff/<n>-…md`, no em-dash in new text.
 
 | # | Ticket | Label | Blocked by |
 |---|---|---|---|
