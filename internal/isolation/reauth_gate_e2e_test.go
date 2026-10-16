@@ -105,6 +105,7 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	}}
 	orgIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("gate-idp")}, Landing: orgTemplateLanding()}
 	instanceIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("gate-idp")}, Landing: service.RegistrationLanding{Kind: service.LandingNone}}
+	passwordVersion := queryInt(t, db, "SELECT row_version FROM password_credentials WHERE account_id = '"+accountID+"'")
 
 	probes := map[string]func() error{
 		"testInstanceMail": func() error {
@@ -122,6 +123,10 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 		"deleteInstanceRegistrationPolicy": func() error { return reg.Delete(ctx, actor, service.InstanceRegistrationScope(), "") },
 		"regenerateRecoveryCodes": func() error {
 			_, _, err := auth.GenerateRecoveryCodes(ctx, token, "")
+			return err
+		},
+		"setPassword": func() error {
+			_, err := auth.SetPassword(ctx, token, "a replacement password without proof", "")
 			return err
 		},
 		"unlinkIdentity": func() error {
@@ -206,6 +211,9 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 		}
 	}
 	// The gated state is untouched: nothing was unlinked, removed or renamed.
+	if got := queryInt(t, db, "SELECT row_version FROM password_credentials WHERE account_id = '"+accountID+"'"); got != passwordVersion {
+		t.Errorf("password row version after proof-less probes = %d, want %d", got, passwordVersion)
+	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM webauthn_credentials WHERE account_id = '"+accountID+"'"); n != 1 {
 		t.Errorf("passkeys after proof-less probes = %d, want 1", n)
 	}

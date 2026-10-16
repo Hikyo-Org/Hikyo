@@ -348,3 +348,62 @@ warnings. All four rewritten commits pass DCO and local signature checks.
 This integration adds regression and inventory coverage without changing the
 accepted password-first policy. Fresh hosted checks and protected merge-group
 validation remain separate from these local results.
+
+## First full queue run after CLI integration
+
+CodeRabbit approved `00a30c671344` with no new findings. The protected queue
+then validated merge-group revision `48be2663712b` in
+[run 38821528349](https://github.com/Hikyo-Org/Hikyo/actions/runs/38821528349).
+That attempt failed two isolation shards and the mandatory floor benchmark.
+The browser suites and closure, race and fuzz shards, release snapshot,
+source-artifact security, supply-chain, Kubernetes and other validation jobs
+passed. The failed attempt remains part of the evidence; admission success
+and these passing jobs do not constitute a completed merge-group proof.
+
+The isolation failures exposed two gaps. The operation-wide proof-less probe
+omitted the new `setPassword` operation. Its new probe supplies a valid
+replacement password with no proof and verifies refusal and an unchanged
+password row version. Separately, the CLI now reads credential inventory
+before TOTP enrollment, but the mandatory-MFA enrollment gate omitted
+`getTotpStatus`. This made PKI and retention CLI setup fail with HTTP 404 on
+both databases. The canonical allowlist now permits that read, while keeping
+the session's enrollment requirement and ordinary-operation denial intact.
+A real HTTP regression reproduced the refusal before the fix for browser
+and CLI sessions on both databases, then passed with the fix. All eight
+focused test families, including the original failing PKI and retention
+flows, pass in 109.487 seconds; authz tests, scoped vet and structural lint
+also pass. The existing-password requirement for replacement is unchanged.
+
+Both complete original failed-shard selections then pass locally: shard 1
+has 194 passing root families and four expected optional-fixture skips out of
+198 selected roots (576.681 seconds wall); shard 2 has 213 passes and one
+optional-fixture skip out of 214 roots (495.586 seconds wall). There are no
+failures across the 412 original selections. The skips require separate live
+AWS, generated-client, GitLab, disposable MCP deployment or native Codex
+fixtures. Required Moto coverage passes and both database engines run; no
+PostgreSQL legs are skipped. The new inventory regression runs separately
+because it was not part of the original shard plan.
+
+The floor artifact recorded a development-server exit before readiness, with
+boot, Argon and publish measurements still zero. The launcher discarded both
+child output streams, so the artifact could not identify the startup error.
+The repair captures both streams in a newly created, private `dev-server.log`
+inside the existing evidence artifact and points early-exit diagnostics to
+that file without printing its contents. It does not change the custody
+guard, performance thresholds or readiness deadline.
+
+The subprocess diagnostic regression runs in the normal bench-package test
+suite: a real child exits with status 17 after writing to both output streams,
+and the parent verifies the exit, both captured markers and file mode 0600.
+It passes on macOS and native Linux, as does a Linux floor-benchmark build.
+The actual startup helper with the final logging code reaches readiness on
+native Linux temporary storage in a separate startup-only probe. Independent
+Sol 6.1 high review found no defect in the complete repair diff and separately
+ran the admission and subprocess regression tests.
+
+The actual startup helper passes on native Linux temporary storage locally.
+A separate local Docker bind-mount failure was traced to virtual filesystem
+ownership differing from the process UID; that is not evidence of the same
+cause on GitHub's Linux runner. The GitHub startup cause remains unobserved
+until a subsequent run either succeeds or retains the new diagnostic log.
+Local startup checks are not a full hardware-floor acceptance result.
