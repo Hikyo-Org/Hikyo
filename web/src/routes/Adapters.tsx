@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type React
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
+import { FileTargets } from './FileTargets.tsx';
 import { formatWhen } from '../lib/formatWhen.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -56,12 +57,12 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge, type BadgeTone } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
-import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { AwsAccessFields, awsAccessComplete, awsAccessDescriptor, emptyAwsAccess, type AwsAccess } from './AwsAccessFields.tsx';
+import { TargetKeySelection, useTargetKeySelection } from './TargetKeySelection.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
@@ -174,6 +175,7 @@ function AdaptersPage() {
     if (target === '') next.delete('target');
     else next.set('target', target);
     next.delete('move');
+    next.delete('file-target');
     setSearch(next, { replace: true });
   };
 
@@ -182,6 +184,7 @@ function AdaptersPage() {
     if (moveId === '') next.delete('move');
     else next.set('move', moveId);
     next.delete('target');
+    next.delete('file-target');
     setSearch(next, { replace: true });
   };
 
@@ -251,6 +254,22 @@ function AdaptersPage() {
             </Button>
           </div>
         </section>
+
+        <FileTargets
+          key={`${ref.org}/${ref.project}`}
+          refData={ref}
+          selected={search.get('file-target') ?? ''}
+          panelAvailable={panel === null}
+          onSelect={(target) => {
+            setForm(null);
+            const next = new URLSearchParams(search);
+            next.delete('target');
+            next.delete('move');
+            if (target === '') next.delete('file-target');
+            else next.set('file-target', target);
+            setSearch(next, { replace: true });
+          }}
+        />
 
         {panel === 'form' && form !== null ? (
           <AdapterFormPanel
@@ -1253,12 +1272,7 @@ export function TargetForm({
   );
   const [repositoryIdsError, setRepositoryIdsError] = useState<string | null>(null);
   const environmentCreateHintId = useId();
-  const [keyIds, setKeyIds] = useState<ReadonlySet<string>>(
-    () => new Set(initial?.keys.map((key) => key.key_id) ?? []),
-  );
-  const [include, setInclude] = useState('');
-  const [exclude, setExclude] = useState('');
-  const [classification, setClassification] = useState<'' | 'secret' | 'config'>('');
+  const keySelection = useTargetKeySelection(initial?.keys.map((key) => key.key_id));
   const gitlab = provider === 'gitlab';
   const [scope, setScope] = useState(initial?.destination_scope ?? '*');
   const [variableProtected, setVariableProtected] = useState(initial?.variable_protected ?? false);
@@ -1269,12 +1283,6 @@ export function TargetForm({
   // during render so no state write is needed when environments load late.
   const effectiveEnvironmentId = environmentId || environments[0]?.id || '';
 
-  const patterns = (raw: string): string[] =>
-    raw
-      .split(',')
-      .map((pattern) => pattern.trim())
-      .filter((pattern) => pattern !== '');
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const selectsRepositories = !gitlab && effectiveKind === 'organization' && visibility === 'selected';
@@ -1284,16 +1292,6 @@ export function TargetForm({
       return;
     }
     setRepositoryIdsError(null);
-    const includePatterns = patterns(include);
-    const excludePatterns = patterns(exclude);
-    const selection =
-      includePatterns.length === 0 && excludePatterns.length === 0 && classification === ''
-        ? undefined
-        : {
-            ...(includePatterns.length === 0 ? {} : { include: includePatterns }),
-            ...(excludePatterns.length === 0 ? {} : { exclude: excludePatterns }),
-            ...(classification === '' ? {} : { classification }),
-          };
     void onSubmit({
       environment_id: effectiveEnvironmentId,
       destination_kind: effectiveKind,
@@ -1305,8 +1303,8 @@ export function TargetForm({
       visibility: effectiveKind === 'organization' && !gitlab ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
-      key_ids: [...keyIds],
-      ...(selection === undefined ? {} : { key_selection: selection }),
+      key_ids: keySelection.keyIds,
+      ...(keySelection.keySelection === undefined ? {} : { key_selection: keySelection.keySelection }),
       ...(gitlab
         ? {
             destination_scope: scope.trim() === '' ? '*' : scope.trim(),
@@ -1317,14 +1315,6 @@ export function TargetForm({
         : {}),
     });
   };
-
-  const toggle = (id: string) =>
-    setKeyIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
@@ -1529,40 +1519,7 @@ export function TargetForm({
           }
         />
       </div>
-      {keys.length === 0 ? <p className="adapters__empty">This project has no keys yet.</p> : null}
-      <ChoiceGroup legend="Keys" variant="chips" layout="wrap">
-        {keys.map((key) => (
-          <Checkbox key={key.id} mono label={key.name} checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />
-        ))}
-      </ChoiceGroup>
-      <div className="adapters__form adapters__form--two">
-        <label className="field">
-          <span className="field__label">Include patterns</span>
-          <input value={include} onChange={(event) => setInclude(event.target.value)} placeholder="DB_*, API_*" />
-        </label>
-        <label className="field">
-          <span className="field__label">Exclude patterns</span>
-          <input value={exclude} onChange={(event) => setExclude(event.target.value)} placeholder="*_TEST" />
-        </label>
-        <label className="field">
-          <span className="field__label">Classification</span>
-          <select
-            value={classification}
-            onChange={(event) => {
-              const value = event.target.value;
-              setClassification(value === 'secret' || value === 'config' ? value : '');
-            }}
-          >
-            <option value="">Any</option>
-            <option value="secret">Secrets only</option>
-            <option value="config">Config only</option>
-          </select>
-        </label>
-      </div>
-      <p className="field__hint">
-        Patterns and classification are resolved to explicit keys when you save and are not kept:
-        a key created later is never added on its own.
-      </p>
+      <TargetKeySelection keys={keys} value={keySelection.value} onChange={keySelection.onChange} />
       <div className="actions">
         <Button type="submit" variant="primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
