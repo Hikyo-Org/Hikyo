@@ -70,6 +70,7 @@ import {
   applyInstanceTemplate,
   applyOrgTemplate,
   applyProjectTemplate,
+  approveCliLogin,
   approveCliReauth,
   approveWorkspaceHandoff,
   authMethods,
@@ -275,6 +276,7 @@ import {
   patchSamlProvider,
   pauseAdapterTarget,
   planAdapterTarget,
+  pollCliDevice,
   previewInstanceConfigAdoption,
   publishPendingChanges,
   publishPkiIssuerCrl,
@@ -291,6 +293,7 @@ import {
   reauthTotp,
   reclassifyKey,
   reconcileOfflineRecords,
+  redeemCliLogin,
   redeemCliReauth,
   redeemWorkspaceHandoff,
   reencryptInstance,
@@ -385,6 +388,7 @@ import {
   setKeyGroup,
   setMachineReveal,
   setOrgRetention,
+  setPassword,
   setProjectRetention,
   settleLease,
   setValue,
@@ -392,6 +396,7 @@ import {
   showAdapterMove,
   showAdapterTarget,
   showCertificate,
+  showCliLoginTransaction,
   showCliReauthTransaction,
   showDynamicProvider,
   showInstanceConnection,
@@ -406,6 +411,8 @@ import {
   showWorkspaceHandoff,
   signupRequest,
   signupVerify,
+  startCliDevice,
+  startCliLogin,
   startCliReauth,
   startWorkspaceHandoff,
   stepUpPasskeyFinish,
@@ -456,6 +463,7 @@ import type {
   ApplyInstanceTemplateData,
   ApplyOrgTemplateData,
   ApplyProjectTemplateData,
+  ApproveCliLoginData,
   ApproveCliReauthData,
   ApproveWorkspaceHandoffData,
   AuthMethodsData,
@@ -661,6 +669,7 @@ import type {
   PatchSamlProviderData,
   PauseAdapterTargetData,
   PlanAdapterTargetData,
+  PollCliDeviceData,
   PreviewInstanceConfigAdoptionData,
   PublishPendingChangesData,
   PublishPkiIssuerCrlData,
@@ -677,6 +686,7 @@ import type {
   ReauthTotpData,
   ReclassifyKeyData,
   ReconcileOfflineRecordsData,
+  RedeemCliLoginData,
   RedeemCliReauthData,
   RedeemWorkspaceHandoffData,
   ReencryptInstanceData,
@@ -771,6 +781,7 @@ import type {
   SetKeyGroupData,
   SetMachineRevealData,
   SetOrgRetentionData,
+  SetPasswordData,
   SetProjectRetentionData,
   SettleLeaseData,
   SetValueData,
@@ -778,6 +789,7 @@ import type {
   ShowAdapterMoveData,
   ShowAdapterTargetData,
   ShowCertificateData,
+  ShowCliLoginTransactionData,
   ShowCliReauthTransactionData,
   ShowDynamicProviderData,
   ShowInstanceConnectionData,
@@ -792,6 +804,8 @@ import type {
   ShowWorkspaceHandoffData,
   SignupRequestData,
   SignupVerifyData,
+  StartCliDeviceData,
+  StartCliLoginData,
   StartCliReauthData,
   StartWorkspaceHandoffData,
   StepUpPasskeyFinishData,
@@ -842,6 +856,7 @@ import {
   zApplyInstanceTemplateResponse,
   zApplyOrgTemplateResponse,
   zApplyProjectTemplateResponse,
+  zApproveCliLoginResponse,
   zApproveCliReauthResponse,
   zApproveWorkspaceHandoffResponse,
   zAuthMethodsResponse,
@@ -1025,6 +1040,7 @@ import {
   zPatchSamlProviderResponse,
   zPauseAdapterTargetResponse,
   zPlanAdapterTargetResponse,
+  zPollCliDeviceResponse,
   zPreviewInstanceConfigAdoptionResponse,
   zPublishPendingChangesResponse,
   zPublishPkiIssuerCrlResponse,
@@ -1041,6 +1057,7 @@ import {
   zReauthTotpResponse,
   zReclassifyKeyResponse,
   zReconcileOfflineRecordsResponse,
+  zRedeemCliLoginResponse,
   zRedeemCliReauthResponse,
   zRedeemWorkspaceHandoffResponse,
   zReencryptInstanceResponse,
@@ -1113,6 +1130,7 @@ import {
   zSetKeyGroupResponse,
   zSetMachineRevealResponse,
   zSetOrgRetentionResponse,
+  zSetPasswordResponse,
   zSetProjectRetentionResponse,
   zSettleLeaseResponse,
   zSetValueResponse,
@@ -1120,6 +1138,7 @@ import {
   zShowAdapterResponse,
   zShowAdapterTargetResponse,
   zShowCertificateResponse,
+  zShowCliLoginTransactionResponse,
   zShowCliReauthTransactionResponse,
   zShowDynamicProviderResponse,
   zShowInstanceConnectionResponse,
@@ -1132,6 +1151,8 @@ import {
   zShowSshProfileResponse,
   zShowTransitKeyResponse,
   zShowWorkspaceHandoffResponse,
+  zStartCliDeviceResponse,
+  zStartCliLoginResponse,
   zStartCliReauthResponse,
   zStartWorkspaceHandoffResponse,
   zStepUpPasskeyFinishResponse,
@@ -1180,6 +1201,7 @@ export const applyInstanceConfigOp: BodyOperation<ApplyInstanceConfigData, typeo
 export const applyInstanceTemplateOp: BodyOperation<ApplyInstanceTemplateData, typeof zApplyInstanceTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyInstanceTemplate, [200], zApplyInstanceTemplateResponse);
 export const applyOrgTemplateOp: BodyOperation<ApplyOrgTemplateData, typeof zApplyOrgTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyOrgTemplate, [200], zApplyOrgTemplateResponse);
 export const applyProjectTemplateOp: BodyOperation<ApplyProjectTemplateData, typeof zApplyProjectTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyProjectTemplate, [200], zApplyProjectTemplateResponse);
+export const approveCliLoginOp: BodyOperation<ApproveCliLoginData, typeof zApproveCliLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(approveCliLogin, [200], zApproveCliLoginResponse);
 export const approveCliReauthOp: BodyOperation<ApproveCliReauthData, typeof zApproveCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(approveCliReauth, [200], zApproveCliReauthResponse);
 export const approveWorkspaceHandoffOp: BodyOperation<ApproveWorkspaceHandoffData, typeof zApproveWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(approveWorkspaceHandoff, [200], zApproveWorkspaceHandoffResponse);
 export const authMethodsOp: BodyOperation<AuthMethodsData, typeof zAuthMethodsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(authMethods, [200], zAuthMethodsResponse);
@@ -1363,6 +1385,7 @@ export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zP
 export const patchSamlProviderOp: BodyOperation<PatchSamlProviderData, typeof zPatchSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(patchSamlProvider, [200], zPatchSamlProviderResponse);
 export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof zPauseAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pauseAdapterTarget, [200], zPauseAdapterTargetResponse);
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
+export const pollCliDeviceOp: BodyOperation<PollCliDeviceData, typeof zPollCliDeviceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pollCliDevice, [200], zPollCliDeviceResponse);
 export const previewInstanceConfigAdoptionOp: BodyOperation<PreviewInstanceConfigAdoptionData, typeof zPreviewInstanceConfigAdoptionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(previewInstanceConfigAdoption, [200], zPreviewInstanceConfigAdoptionResponse);
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
 export const publishPkiIssuerCrlOp: BodyOperation<PublishPkiIssuerCrlData, typeof zPublishPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPkiIssuerCrl, [200], zPublishPkiIssuerCrlResponse);
@@ -1379,6 +1402,7 @@ export const reauthPasskeyStartOp: BodyOperation<ReauthPasskeyStartData, typeof 
 export const reauthTotpOp: BodyOperation<ReauthTotpData, typeof zReauthTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthTotp, [200], zReauthTotpResponse);
 export const reclassifyKeyOp: BodyOperation<ReclassifyKeyData, typeof zReclassifyKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reclassifyKey, [200], zReclassifyKeyResponse);
 export const reconcileOfflineRecordsOp: BodyOperation<ReconcileOfflineRecordsData, typeof zReconcileOfflineRecordsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reconcileOfflineRecords, [200], zReconcileOfflineRecordsResponse);
+export const redeemCliLoginOp: BodyOperation<RedeemCliLoginData, typeof zRedeemCliLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(redeemCliLogin, [200], zRedeemCliLoginResponse);
 export const redeemCliReauthOp: BodyOperation<RedeemCliReauthData, typeof zRedeemCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(redeemCliReauth, [200], zRedeemCliReauthResponse);
 export const redeemWorkspaceHandoffOp: BodyOperation<RedeemWorkspaceHandoffData, typeof zRedeemWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(redeemWorkspaceHandoff, [201], zRedeemWorkspaceHandoffResponse);
 export const reencryptInstanceOp: BodyOperation<ReencryptInstanceData, typeof zReencryptInstanceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reencryptInstance, [200], zReencryptInstanceResponse);
@@ -1451,6 +1475,7 @@ export const setEnvironmentSettingsOp: BodyOperation<SetEnvironmentSettingsData,
 export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setKeyGroup, [200], zSetKeyGroupResponse);
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
 export const setOrgRetentionOp: BodyOperation<SetOrgRetentionData, typeof zSetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgRetention, [200], zSetOrgRetentionResponse);
+export const setPasswordOp: BodyOperation<SetPasswordData, typeof zSetPasswordResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setPassword, [200], zSetPasswordResponse);
 export const setProjectRetentionOp: BodyOperation<SetProjectRetentionData, typeof zSetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectRetention, [200], zSetProjectRetentionResponse);
 export const settleLeaseOp: BodyOperation<SettleLeaseData, typeof zSettleLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(settleLease, [200], zSettleLeaseResponse);
 export const setValueOp: BodyOperation<SetValueData, typeof zSetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setValue, [200], zSetValueResponse);
@@ -1458,6 +1483,7 @@ export const showAdapterOp: BodyOperation<ShowAdapterData, typeof zShowAdapterRe
 export const showAdapterMoveOp: BodyOperation<ShowAdapterMoveData, typeof zShowAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showAdapterMove, [200], zShowAdapterMoveResponse);
 export const showAdapterTargetOp: BodyOperation<ShowAdapterTargetData, typeof zShowAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showAdapterTarget, [200], zShowAdapterTargetResponse);
 export const showCertificateOp: BodyOperation<ShowCertificateData, typeof zShowCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showCertificate, [200], zShowCertificateResponse);
+export const showCliLoginTransactionOp: BodyOperation<ShowCliLoginTransactionData, typeof zShowCliLoginTransactionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showCliLoginTransaction, [200], zShowCliLoginTransactionResponse);
 export const showCliReauthTransactionOp: BodyOperation<ShowCliReauthTransactionData, typeof zShowCliReauthTransactionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showCliReauthTransaction, [200], zShowCliReauthTransactionResponse);
 export const showDynamicProviderOp: BodyOperation<ShowDynamicProviderData, typeof zShowDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showDynamicProvider, [200], zShowDynamicProviderResponse);
 export const showInstanceConnectionOp: BodyOperation<ShowInstanceConnectionData, typeof zShowInstanceConnectionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showInstanceConnection, [200], zShowInstanceConnectionResponse);
@@ -1470,6 +1496,8 @@ export const showSshCertificateOp: BodyOperation<ShowSshCertificateData, typeof 
 export const showSshProfileOp: BodyOperation<ShowSshProfileData, typeof zShowSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshProfile, [200], zShowSshProfileResponse);
 export const showTransitKeyOp: BodyOperation<ShowTransitKeyData, typeof zShowTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showTransitKey, [200], zShowTransitKeyResponse);
 export const showWorkspaceHandoffOp: BodyOperation<ShowWorkspaceHandoffData, typeof zShowWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showWorkspaceHandoff, [200], zShowWorkspaceHandoffResponse);
+export const startCliDeviceOp: BodyOperation<StartCliDeviceData, typeof zStartCliDeviceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startCliDevice, [200], zStartCliDeviceResponse);
+export const startCliLoginOp: BodyOperation<StartCliLoginData, typeof zStartCliLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startCliLogin, [201], zStartCliLoginResponse);
 export const startCliReauthOp: BodyOperation<StartCliReauthData, typeof zStartCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startCliReauth, [201], zStartCliReauthResponse);
 export const startWorkspaceHandoffOp: BodyOperation<StartWorkspaceHandoffData, typeof zStartWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startWorkspaceHandoff, [201], zStartWorkspaceHandoffResponse);
 export const stepUpPasskeyFinishOp: BodyOperation<StepUpPasskeyFinishData, typeof zStepUpPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(stepUpPasskeyFinish, [200], zStepUpPasskeyFinishResponse);

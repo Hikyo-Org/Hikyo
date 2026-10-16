@@ -469,6 +469,23 @@ type BackupState struct {
 	LastDrillSchemaVersion int64
 }
 
+type CliLoginHandoff struct {
+	ID               string
+	StateVerifier    []byte
+	CodeVerifier     []byte
+	UserCodeVerifier []byte
+	Transport        string
+	PkceChallenge    string
+	RedirectUri      string
+	BrowserSessionID pgtype.Text
+	Snapshot         string
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	ConsumedAt       pgtype.Timestamptz
+	LastPollAt       pgtype.Timestamptz
+	PollInterval     int64
+}
+
 type CliReauthHandoff struct {
 	ID              string
 	StateVerifier   []byte
@@ -1553,6 +1570,7 @@ type Session struct {
 	HandoffID         pgtype.Text
 	EnrolmentRequired bool
 	Oauth2ProviderID  pgtype.Text
+	CliHandoffID      pgtype.Text
 }
 
 type SingletonLease struct {

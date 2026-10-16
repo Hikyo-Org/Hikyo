@@ -102,6 +102,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ApproveCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "9e8585fc9c9657b292e2671a8fc19ee971bf9ec510b0b45ab6bed4921a02c36d",
+    "reason": "a live browser session approves only the resolved unconsumed first-party login transaction"
+  },
+  {
+    "engine": "postgres",
     "name": "ApproveCLIReauthHandoff",
     "annotation": "authn-resolution",
     "hash": "302ce366f3dd370acf57da2e41f03918bb6defe1b13e362091b6cd2fb33f2906"
@@ -144,6 +151,27 @@
     "name": "BindSessionToSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "b5d86c12b60fdc2fdb44dd2e16bc2125228867912d25fa5903747154c73d6aad"
+  },
+  {
+    "engine": "postgres",
+    "name": "CLILoginByCode",
+    "annotation": "authn-resolution",
+    "hash": "66c6844a51250d697f3ed0e583eead076f98b45cba7428ae0220b52d4ada0d5d",
+    "reason": "opaque authorization or device code resolves only its first-party login transaction"
+  },
+  {
+    "engine": "postgres",
+    "name": "CLILoginByState",
+    "annotation": "authn-resolution",
+    "hash": "8122182db1d9176f30c08cfd18ef998c89587e6df2b09bff59634bbb9c111e7c",
+    "reason": "opaque state resolves only the first-party CLI login approval transaction"
+  },
+  {
+    "engine": "postgres",
+    "name": "CLILoginByUserCode",
+    "annotation": "authn-resolution",
+    "hash": "b7fcd114ddd52e56d367486af345ce8a307c12be754509001a6693ff373931fe",
+    "reason": "rate-limited human code resolves only its browser approval transaction"
   },
   {
     "engine": "postgres",
@@ -206,6 +234,13 @@
     "name": "ConfirmTOTP",
     "annotation": "authn-resolution",
     "hash": "59095ca36fdf72afb548db9b485dfbf9c7ce601731f47058aace861616a2ab2b"
+  },
+  {
+    "engine": "postgres",
+    "name": "ConsumeCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "8e8c894d6c7982d5d0bb240cc60ba02d65b50486c3ad7b085e32c3b17eae7a1b",
+    "reason": "atomic single-use redemption of an approved first-party login transaction gates session issuance"
   },
   {
     "engine": "postgres",
@@ -884,7 +919,7 @@
     "engine": "postgres",
     "name": "DeleteSessionsForOAuth2Provider",
     "annotation": "authn-resolution",
-    "hash": "837afec3e4067377fd2085be30fb3adca7cf21a8e765cd08c8a8f2334ea3a096",
+    "hash": "f5d15cae1a31e9a07b70d6ff91523829f65188251af7de04ebdb730c603fae30",
     "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
@@ -903,7 +938,7 @@
     "engine": "postgres",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
-    "hash": "35d7b8c347de725e6dd5bab401b88e4090c75f86f466552f917c58a8ab86f00c"
+    "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
   },
   {
     "engine": "postgres",
@@ -1082,6 +1117,13 @@
     "name": "GetCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc4d568512529604881c13b250d2d8922179bb5f49532ca64fb107f87f258810"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "773aee8d5a38be1548268c9537eb78dfcb48790b43c3a52b6b3666102e9453cb",
+    "reason": "Account-security credential creation reads only the acting session's purpose-bound establish stamp; service rechecks its principal, expiry and live no-local-proof precondition inside the write transaction."
   },
   {
     "engine": "postgres",
@@ -1471,6 +1513,13 @@
   },
   {
     "engine": "postgres",
+    "name": "InsertCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "25ff64340f50d5a469718efcd7146c221b2839a6fdf090fad8e973799fff0c93",
+    "reason": "pre-authentication login transport owns its state and code verifiers before a caller exists"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertCLIReauthHandoff",
     "annotation": "authn-resolution",
     "hash": "b72ad449e94f36d55c75a3a6f6d5a9da888fd5343fa7945e1121fb0b6e3721b6"
@@ -1661,7 +1710,7 @@
     "engine": "postgres",
     "name": "InsertSession",
     "annotation": "authn-resolution",
-    "hash": "36dcb5de896dc9717cec641ad485772435048a1dd426a58d9656f0078ad54574"
+    "hash": "cf377e8630114dcce04fcf9e97e3cf7ea4a439e9dd5ff7744ea5b2ccfaacbebf"
   },
   {
     "engine": "postgres",
@@ -2086,7 +2135,7 @@
     "engine": "postgres",
     "name": "ListSessionsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "10fbed34cef07c89220b201eae3fe1a1882ddb5c3db84e2e4f48a5e289b28f42"
+    "hash": "0308d8267a22d19983c6ae560726fdaa94bbac3c700f9f996c8de58a4c3a9a02"
   },
   {
     "engine": "postgres",
@@ -2420,6 +2469,13 @@
   },
   {
     "engine": "postgres",
+    "name": "PollCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "680bf6e7f45de47e56c129ff9f87f608c2cd744d8a4e9601ef22ffa872295f51",
+    "reason": "durable per-transaction device polling timestamps and intervals enforce RFC 8628 slowdown"
+  },
+  {
+    "engine": "postgres",
     "name": "PostLegacyMaxCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc0e657b407efb67ecc1393a4c8f63563f391fe5cd5b7433acd3b2ddc0341c32"
@@ -2573,6 +2629,13 @@
     "name": "ProjectMachineReveal",
     "annotation": "authn-resolution",
     "hash": "3e577763afe5aa3f27593372dcad2beacb3317148f5baf186c939c358b57f9a5"
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneCLILogins",
+    "annotation": "authn-resolution",
+    "hash": "291b0cd11d27ed0eebdce16b341f3dded7c766813c65d3cbec707292af37dd8c",
+    "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
   },
   {
     "engine": "postgres",
@@ -3345,6 +3408,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ApproveCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "313398d71491fdc334d55dd37a74495fe9d6c7fc24788c9a1f47d5db71e160f8",
+    "reason": "a live browser session approves only the resolved unconsumed first-party login transaction"
+  },
+  {
+    "engine": "sqlite",
     "name": "ApproveCLIReauthHandoff",
     "annotation": "authn-resolution",
     "hash": "925210eadc5372c7fa8976620c4523f53dc40b685c7315ed7a8ec3eaa82401c1"
@@ -3373,6 +3443,27 @@
     "name": "BindSessionToSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "0641ec905f2c406364637e77395f062fb8e295ff51e1b75025c35f8d7551c2c8"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CLILoginByCode",
+    "annotation": "authn-resolution",
+    "hash": "4cba173ac0bb5d1d519b5ca7110655846fa12e4cb07b3d0824818df46fb1dbba",
+    "reason": "opaque authorization or device code resolves only its first-party login transaction"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CLILoginByState",
+    "annotation": "authn-resolution",
+    "hash": "a427d2dd237ed970057d69870521e37ee8f515a51ffba06f64291cc06aae2b2c",
+    "reason": "opaque state resolves only the first-party CLI login approval transaction"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CLILoginByUserCode",
+    "annotation": "authn-resolution",
+    "hash": "6bdfe6188d9631b2e22589ededc2078f632f4179cc0ab7e829051c6e0c8c7735",
+    "reason": "rate-limited human code resolves only its browser approval transaction"
   },
   {
     "engine": "sqlite",
@@ -3435,6 +3526,13 @@
     "name": "ConfirmTOTP",
     "annotation": "authn-resolution",
     "hash": "4351e66bec34613178ea3ad67da06835e385ce87df92e458d0b8a5a669fe959d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "5489da859da0cd2c17892da600d6206c91ff4fd38c9b7d75cf95f39807d17503",
+    "reason": "atomic single-use redemption of an approved first-party login transaction gates session issuance"
   },
   {
     "engine": "sqlite",
@@ -4085,7 +4183,7 @@
     "engine": "sqlite",
     "name": "DeleteSessionsForOAuth2Provider",
     "annotation": "authn-resolution",
-    "hash": "a78a7d211bec01871cc5d6db7ef47041620b41a144e41e629b1bfc8cccf0375f",
+    "hash": "f5d15cae1a31e9a07b70d6ff91523829f65188251af7de04ebdb730c603fae30",
     "reason": "OAuth2 identity configuration and callback artifacts are instance-wide authentication resolution; service guards bind their provider, purpose, epoch and initiator before mutation."
   },
   {
@@ -4104,7 +4202,7 @@
     "engine": "sqlite",
     "name": "DeleteSessionsForProvider",
     "annotation": "authn-resolution",
-    "hash": "a788c304710e8d6ddaf13b14e16612ad276c0a6f235272243172d6e93319d9c6"
+    "hash": "1fd4371a5b9f2587ff3fe06cf970fd74dfac4f0646dfc08f5ec67c15aaf3b699"
   },
   {
     "engine": "sqlite",
@@ -4283,6 +4381,13 @@
     "name": "GetCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "fc4d568512529604881c13b250d2d8922179bb5f49532ca64fb107f87f258810"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetCredentialEstablish",
+    "annotation": "authn-resolution",
+    "hash": "9151322de1f529b166fb8671663a69e4d02fe7707790a6a90425fed37b2033f7",
+    "reason": "Account-security credential creation reads only the acting session's purpose-bound establish stamp; service rechecks its principal, expiry and live no-local-proof precondition inside the write transaction."
   },
   {
     "engine": "sqlite",
@@ -4672,6 +4777,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "InsertCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "28dbd294b8b00178471bc742da143e29bb87c349bd927a4123d2f739f56df4bf",
+    "reason": "pre-authentication login transport owns its state and code verifiers before a caller exists"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertCLIReauthHandoff",
     "annotation": "authn-resolution",
     "hash": "1c4645f45c68984dabe8482356d60594c9a484cf9208d3ff39de8746f13040a7"
@@ -4862,7 +4974,7 @@
     "engine": "sqlite",
     "name": "InsertSession",
     "annotation": "authn-resolution",
-    "hash": "468ef16655878634370ff848362266ec82019ab981bab22ed8cd5f49cc68de35"
+    "hash": "bc3e6bbf32f9a079513a9e5d7ceffa5db89386d91b457828c7b211bbf2c71358"
   },
   {
     "engine": "sqlite",
@@ -5287,7 +5399,7 @@
     "engine": "sqlite",
     "name": "ListSessionsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "99b234b5ff1eb47a8e98779309de76763e080bf519ade4fdbab4d7ce8bc1333c"
+    "hash": "8cafda722246f1dac5a7cf505a34933ff686e8b26da8305452bf53b9829cb378"
   },
   {
     "engine": "sqlite",
@@ -5621,6 +5733,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "PollCLILogin",
+    "annotation": "authn-resolution",
+    "hash": "8b006341686dd864428f7b8adb02938ee3eeecd42cd2a08f0adfcd326728e7f0",
+    "reason": "durable per-transaction device polling timestamps and intervals enforce RFC 8628 slowdown"
+  },
+  {
+    "engine": "sqlite",
     "name": "PostLegacyMaxCredentialEpoch",
     "annotation": "authn-resolution",
     "hash": "0126ad2a2d9c54a32eb996497128454cb28e26b80187585c3533e1cc81f5f01b"
@@ -5774,6 +5893,13 @@
     "name": "ProjectMachineReveal",
     "annotation": "authn-resolution",
     "hash": "3b0c014ddf8ad75bd5a8cfb5182da9ee122a126a7c5c577ee20a72ed1e491d49"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneCLILogins",
+    "annotation": "authn-resolution",
+    "hash": "e0bb4d38a7e966dabec66e9b999fa11603f5e86383d98019c54cb6e978043706",
+    "reason": "expired first-party login transaction metadata is removed opportunistically at issuance"
   },
   {
     "engine": "sqlite",

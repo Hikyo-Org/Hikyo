@@ -128,7 +128,7 @@ export function createReadOnlyFixtures(role: DemoRole, sessionTime: string) {
   }]));
   responses.set('/api/v1/instance/workspace-origins', list([{ origin: 'https://workspace.example.test', created_at: sessionTime, created_by: principalIds.admin }]));
   responses.set('/api/v1/me/profile', { username: role, display_name: account.name, email: `${role}@example.test`, email_verified: true, managed: false, username_editable: false });
-  responses.set('/api/v1/auth/identities', { identities: [{ id: id('idn', 1), kind: 'oidc', issuer: 'https://identity.example.test', subject: `demo-${role}`, provider_id: 'acme-sso', created_at: sessionTime }] });
+  responses.set('/api/v1/auth/identities', { identities: [{ id: id('idn', 1), kind: 'oidc', issuer: 'https://identity.example.test', subject: `demo-${role}`, provider_id: 'acme-sso', provider_slug: 'acme-sso', display_name: 'Acme SSO', created_at: sessionTime }] });
   responses.set('/api/v1/auth/webauthn/credentials', { passkeys: [{ id: id('psk', 1), label: 'Sample security key', discoverable: true, disabled: false, created_at: sessionTime, last_used_at: sessionTime }] });
   responses.set('/api/v1/me/sessions', list([{
     id: `ses_${principalIds[role].slice(4)}`, artifact: 'browser', auth_method: 'local-password+totp', created_at: sessionTime,

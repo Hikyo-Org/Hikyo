@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -63,5 +64,65 @@ func TestEncodeNameIDRefusesEmptyValue(t *testing.T) {
 	_, err := EncodeNameID(NameID{})
 	if !errors.Is(err, ErrEmptyNameID) {
 		t.Fatalf("EncodeNameID() error = %v, want ErrEmptyNameID", err)
+	}
+}
+
+func TestDecodeNameIDPreservesEncodedIdentity(t *testing.T) {
+	t.Parallel()
+	empty := ""
+	email := "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+	qualifier := "Exact Qualifier"
+	for _, want := range []NameID{
+		{Value: []byte("CaseSensitive")},
+		{Value: []byte{0, 0xff, 1}, Format: &empty, NameQualifier: &qualifier, SPNameQualifier: &empty},
+		{Value: []byte("Email@Example.test"), Format: &email},
+	} {
+		encoded, err := EncodeNameID(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := DecodeNameID(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("decoded identity=%#v want=%#v", got, want)
+		}
+		roundtrip, err := EncodeNameID(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(roundtrip, encoded) {
+			t.Fatal("identity encoding changed after roundtrip")
+		}
+	}
+}
+
+func TestDecodeNameIDRejectsMalformedEncoding(t *testing.T) {
+	t.Parallel()
+	valid, err := EncodeNameID(NameID{Value: []byte("alice")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	malformed := map[string][]byte{
+		"empty":                            {},
+		"absent mandatory value":           append([]byte{0, 0, 0, 0, 0}, valid[10:]...),
+		"empty mandatory value":            append([]byte{1, 0, 0, 0, 0}, valid[10:]...),
+		"invalid presence":                 append([]byte{2}, valid[1:]...),
+		"overflowed length":                append([]byte{1, 0xff, 0xff, 0xff, 0xff}, valid[5:]...),
+		"absent optional value with bytes": append(append([]byte{}, valid[:10]...), append([]byte{0, 0, 0, 0, 1, 'x'}, valid[15:]...)...),
+		"trailing bytes":                   append(append([]byte{}, valid...), 0),
+	}
+	for length := 1; length < len(valid); length++ {
+		if _, err := DecodeNameID(valid[:length]); !errors.Is(err, ErrInvalidNameIDEncoding) {
+			t.Errorf("truncation %d accepted: %v", length, err)
+		}
+	}
+	for name, encoded := range malformed {
+		t.Run(name, func(t *testing.T) {
+			if _, err := DecodeNameID(encoded); !errors.Is(err, ErrInvalidNameIDEncoding) {
+				t.Fatalf("malformed identity accepted: %v", err)
+			}
+		})
 	}
 }

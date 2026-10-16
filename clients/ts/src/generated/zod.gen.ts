@@ -965,6 +965,75 @@ export const zErrorCode = z.enum([
     'internal'
 ]);
 
+export const zCliLoginStartRequest = z.object({
+    transport: z.enum(['loopback']),
+    state: z.string().max(128),
+    pkce_challenge: z.string().max(128),
+    redirect_uri: z.string().max(512)
+});
+
+export const zCliLoginStart = z.object({
+    state: z.string(),
+    device_code: z.string(),
+    user_code: z.string(),
+    verification_uri: z.string(),
+    expires_at: z.iso.datetime(),
+    interval: z.int().gte(5)
+});
+
+export const zCliLoginTransaction = z.object({
+    reference: z.string(),
+    transport: z.enum(['loopback', 'device']),
+    redirect_uri: z.string(),
+    instance: z.string(),
+    expires_at: z.iso.datetime()
+});
+
+export const zCliLoginApproved = z.object({
+    code: z.string(),
+    state: z.string().min(8),
+    redirect_uri: z.string()
+});
+
+export const zCliLoginApproveRequest = z.object({
+    reference: z.string().min(8).max(128)
+});
+
+export const zCliLoginRedeemRequest = z.object({
+    code: z.string().min(1).max(512),
+    pkce_verifier: z.string().min(43).max(128),
+    redirect_uri: z.string().min(1).max(512)
+});
+
+export const zCliDeviceStartRequest = z.object({
+    client_id: z.enum(['hikyo-cli'])
+});
+
+export const zCliDeviceStart = z.object({
+    device_code: z.string().min(1),
+    user_code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{8}$/),
+    verification_uri: z.url(),
+    expires_in: z.int().gte(1),
+    expires_at: z.iso.datetime(),
+    interval: z.int().gte(5)
+});
+
+export const zCliDeviceTokenRequest = z.object({
+    device_code: z.string().min(1).max(512),
+    grant_type: z.enum(['urn:ietf:params:oauth:grant-type:device_code']),
+    client_id: z.enum(['hikyo-cli'])
+});
+
+export const zCliDeviceError = z.object({
+    error: z.enum([
+        'authorization_pending',
+        'slow_down',
+        'expired_token',
+        'access_denied'
+    ]),
+    interval: z.int().gte(0)
+});
+
 /**
  * OPEN enum: an instance may advertise a flow this client has never
  * heard of, and every generated consumer must preserve and tolerate the
@@ -1075,8 +1144,13 @@ export const zInstanceUpdateJob = z.object({
     finished_at: zTimestamp.optional()
 }).strict();
 
+export const zSetPasswordRequest = z.object({
+    password: z.string().min(12).max(1024),
+    proof: z.string().max(1024).optional()
+});
+
 export const zTotpEnrolStartRequest = z.object({
-    password: z.string().min(1).max(1024)
+    password: z.string().max(1024)
 });
 
 export const zTotpEnrolStartResult = z.object({
@@ -1244,7 +1318,7 @@ export const zTotpProofRequest = z.object({
 });
 
 export const zRecoveryProofRequest = z.object({
-    proof: z.string().min(1).max(1024)
+    proof: z.string().max(1024)
 });
 
 export const zRecoveryBeginRequest = z.object({
@@ -1338,6 +1412,14 @@ export const zPrincipal = z.object({
     id: zId,
     kind: zPrincipalKind,
     display_name: z.string().nullish()
+});
+
+export const zCliDeviceToken = z.object({
+    access_token: z.string().min(1),
+    token_type: z.enum(['Bearer']),
+    expires_in: z.int().gte(1),
+    session: zSession,
+    principal: zPrincipal
 });
 
 export const zLoginResult = z.object({
@@ -2596,6 +2678,14 @@ export const zError = z.object({
 });
 
 /**
+ * RFC 8628 protocol errors or the shared malformed-request refusal.
+ */
+export const zCliDeviceErrorResponse = z.union([
+    zCliDeviceError,
+    zError
+]);
+
+/**
  * The principal ids a key folder move gives access through their member
  * access rules, confirming it (member-access-rules ADR D9). It must name
  * exactly the people the refusal's `widening` names.
@@ -3663,6 +3753,8 @@ export const zAuthMethods = z.object({
 });
 
 export const zExternalIdentity = z.object({
+    provider_slug: z.string(),
+    display_name: z.string(),
     profile: z.enum(['github']).optional(),
     id: zId,
     kind: zIdentityProviderKind,
@@ -3814,6 +3906,8 @@ export const zWebauthnResponse = z.record(z.string(), z.unknown());
  * not know the factor state; the service enforces the selection, and
  * the field it did not select is ignored. A TOTP code is spent when the
  * ceremony is staged, so the same code cannot open a second ceremony.
+ * Empty proof is accepted only with a live establish stamp while no local
+ * proof credential stands.
  *
  */
 export const zWebauthnEnrolStartRequest = z.object({
@@ -3942,7 +4036,18 @@ export const zApprovalCeremonyBinding = z.object({
     window: zRevealWindow
 });
 
+export const zCredentialEstablishStatus = z.object({
+    kind: zIdentityProviderKind,
+    slug: z.string(),
+    display_name: z.string(),
+    expires_at: zTimestamp
+});
+
 export const zTotpStatus = z.object({
+    has_password: z.boolean(),
+    has_passkey: z.boolean(),
+    can_reauth_oidc: z.boolean(),
+    establish: zCredentialEstablishStatus.optional(),
     confirmed: z.boolean(),
     pending: z.boolean()
 });
@@ -5215,6 +5320,13 @@ export const zLogoutResponse = z.void();
  */
 export const zWhoamiResponse = zWhoAmI;
 
+export const zSetPasswordBody = zSetPasswordRequest;
+
+/**
+ * Password saved. The reissued session replaces the old one.
+ */
+export const zSetPasswordResponse = zLoginResult;
+
 export const zEnrolTotpStartBody = zTotpEnrolStartRequest;
 
 /**
@@ -5242,6 +5354,50 @@ export const zReauthTotpBody = zTotpReauthRequest;
  * The window this reauthentication opened.
  */
 export const zReauthTotpResponse = zReauthResult;
+
+export const zStartCliLoginBody = zCliLoginStartRequest;
+
+/**
+ * Login protocol result.
+ */
+export const zStartCliLoginResponse = zCliLoginStart;
+
+export const zStartCliDeviceBody = zCliDeviceStartRequest;
+
+/**
+ * RFC 8628 device authorization response.
+ */
+export const zStartCliDeviceResponse = zCliDeviceStart;
+
+export const zShowCliLoginTransactionPath = z.object({
+    reference: z.string().min(8).max(128)
+});
+
+/**
+ * Login protocol result.
+ */
+export const zShowCliLoginTransactionResponse = zCliLoginTransaction;
+
+export const zApproveCliLoginBody = zCliLoginApproveRequest;
+
+/**
+ * Login protocol result.
+ */
+export const zApproveCliLoginResponse = zCliLoginApproved;
+
+export const zRedeemCliLoginBody = zCliLoginRedeemRequest;
+
+/**
+ * Login protocol result.
+ */
+export const zRedeemCliLoginResponse = zLoginResult;
+
+export const zPollCliDeviceBody = zCliDeviceTokenRequest;
+
+/**
+ * Login protocol result.
+ */
+export const zPollCliDeviceResponse = zCliDeviceToken;
 
 export const zStartCliReauthBody = zCliReauthStartRequest;
 

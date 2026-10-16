@@ -511,7 +511,10 @@ func (q *Queries) DeleteSessionsForPrincipal(ctx context.Context, principalID st
 }
 
 const deleteSessionsForProvider = `-- name: DeleteSessionsForProvider :execrows
-DELETE FROM sessions WHERE provider_id = ?
+DELETE FROM sessions WHERE sessions.provider_id = ?1
+OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+ JOIN external_identities i ON i.id = e.identity_id
+ WHERE i.kind = 'oidc' AND i.provider_id = ?1)
 `
 
 // The federated-session sweep (A4): every session minted through a provider
@@ -1769,8 +1772,8 @@ INSERT INTO sessions
     (id, principal_id, verifier, artifact, session_generation, credential_epoch,
      auth_method, factors, authenticated_at, ceremony_id, created_at,
      last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent,
-     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required, cli_handoff_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -1795,6 +1798,7 @@ type InsertSessionParams struct {
 	RequestingOrigin  sql.NullString
 	HandoffID         sql.NullString
 	EnrolmentRequired int64
+	CliHandoffID      sql.NullString
 }
 
 // One insert for every session artifact, including the workspace session
@@ -1826,6 +1830,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.RequestingOrigin,
 		arg.HandoffID,
 		arg.EnrolmentRequired,
+		arg.CliHandoffID,
 	)
 	return err
 }
@@ -2277,7 +2282,7 @@ func (q *Queries) ListRecoveryCodesForReencrypt(ctx context.Context, arg ListRec
 const listSessionsForPrincipal = `-- name: ListSessionsForPrincipal :many
 SELECT id, artifact, auth_method, factors, authenticated_at, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, source_ip,
-       user_agent, requesting_origin, handoff_id
+       user_agent, requesting_origin, handoff_id, cli_handoff_id
 FROM sessions WHERE principal_id = ? ORDER BY created_at, id
 `
 
@@ -2295,6 +2300,7 @@ type ListSessionsForPrincipalRow struct {
 	UserAgent         string
 	RequestingOrigin  sql.NullString
 	HandoffID         sql.NullString
+	CliHandoffID      sql.NullString
 }
 
 // The active-session listing (#71 criterion 5). A workspace session appears
@@ -2325,6 +2331,7 @@ func (q *Queries) ListSessionsForPrincipal(ctx context.Context, principalID stri
 			&i.UserAgent,
 			&i.RequestingOrigin,
 			&i.HandoffID,
+			&i.CliHandoffID,
 		); err != nil {
 			return nil, err
 		}

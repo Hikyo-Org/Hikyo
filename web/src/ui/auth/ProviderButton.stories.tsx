@@ -33,6 +33,21 @@ export const Google: Story = {};
 /** The same row under the sign-up heading: Google permits "Sign up with". */
 export const GoogleSignUp: Story = { args: { intent: 'sign-up' } };
 
+export const VerifyGoogle: Story = {
+  args: { intent: 'verify' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: `Verify with ${google.display_name}` })).toBeVisible();
+    await expect(canvas.getByRole('button').querySelector('svg')).not.toBeNull();
+  },
+};
+
+export const VerifyMicrosoft: Story = {
+  args: { provider: contoso, intent: 'verify' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: `Verify with ${contoso.display_name}` })).toBeVisible();
+  },
+};
+
 /** Microsoft blesses only "Sign in with Microsoft"; the tenant follows the fixed text. */
 export const Microsoft: Story = { args: { provider: contoso } };
 

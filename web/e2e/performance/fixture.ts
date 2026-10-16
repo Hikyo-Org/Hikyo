@@ -37,7 +37,7 @@ export function installMatrixFixture() {
     const request = new Request(new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin), input instanceof Request ? input : init);
     const path = new URL(request.url).pathname;
     if (path === '/api/v1/auth/whoami') return json(identity);
-    if (path === '/api/v1/auth/totp') return json({ confirmed: true, pending: false });
+    if (path === '/api/v1/auth/totp') return json({ confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true });
     if (path === '/api/v1/auth/webauthn/credentials') return json({ passkeys: [] });
     if (path === '/api/v1/me/orgs') return json({ items: [{ id: ORG, name: 'Performance fixture' }], count: 1 });
     if (path === `/api/v1/orgs/${ORG}/projects`) return json({ items: [{ id: PRJ, org_id: ORG, name: 'Large project', created_at: timestamp }], count: 1 });

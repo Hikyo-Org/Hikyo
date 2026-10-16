@@ -233,6 +233,7 @@ const surfaceChecks = {
   adapters: { mode: 'read-only', heading: 'Deployment adapters', sample: 'acme/payments' },
   'project-audit': { mode: 'read-only', heading: 'Project audit', sample: 'revision.published' },
   'project-settings': { mode: 'read-only', heading: /^Project settings\s*·?\s*Payments$/, sample: 'Identity' },
+  'cli-login': { mode: 'excluded', result: 'unavailable' },
   'cli-reauth': { mode: 'excluded', result: 'unavailable' },
   'workspace-approve': { mode: 'excluded', result: 'unavailable' },
   'workspace-callback': { mode: 'excluded', result: 'unavailable' },

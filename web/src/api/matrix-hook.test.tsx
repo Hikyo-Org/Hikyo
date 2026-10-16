@@ -8,6 +8,7 @@ import type { ValueList } from '@hikyo/client';
 import { useDeleteKey, useInitializeMatrixValue, useKey, useMatrixProject, useStageMatrixValue } from './matrix.ts';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { pendingDraftsKey, signalsKey, valuesKey } from './keys.ts';
+import { ApiError } from './client.ts';
 
 const ref = { org: 'org_a', project: 'project_a' };
 const devId = 'env_01989abc-def0-7123-8123-123456789abc';
@@ -401,3 +402,71 @@ function matrixResponse(path: string): unknown {
   }
   throw new Error(`unexpected matrix request ${path}`);
 }
+
+it('keeps matrix row identity across local renders and updates it when query data changes', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return Promise.resolve(
+        new Response(JSON.stringify(matrixResponse(new URL(url, 'http://localhost').pathname)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const observed: ReturnType<typeof useMatrixProject>['environmentRows'][] = [];
+  function Rows() {
+    const matrix = useMatrixProject(ref);
+    observed.push(matrix.environmentRows);
+    return <span>{matrix.environmentRows.length}</span>;
+  }
+  const view = await renderForm(<Rows />, { client });
+  try {
+    await settleTasks();
+    const ready = observed.at(-1);
+    if (ready === undefined || ready.some((row) => row.readiness !== 'ready'))
+      throw new Error('matrix did not load');
+    await view.rerender(<Rows />);
+    await settleTasks();
+    expect(observed.at(-1)).toBe(ready);
+    await act(async () =>
+      client.setQueryData(valuesKey({ ...ref, environment: devId }), {
+        count: 1,
+        items: [
+          {
+            key_id: keyId,
+            name: 'LOG_LEVEL',
+            classification: 'config',
+            set: true,
+            revealed: true,
+            value: 'changed',
+          },
+        ],
+      }),
+    );
+    await settleTasks();
+    expect(observed.at(-1)).not.toBe(ready);
+    expect(
+      observed.at(-1)?.find((row) => row.environmentId === devId)?.values.data?.items[0]?.value,
+    ).toBe('changed');
+    const values = client
+      .getQueryCache()
+      .find({ queryKey: valuesKey({ ...ref, environment: devId }), exact: true });
+    if (values === undefined) throw new Error('missing value query');
+    await act(async () =>
+      values.setState({ status: 'error', error: new ApiError(403, 'forbidden') }),
+    );
+    await settleTasks();
+    const denied = observed.at(-1)?.find((row) => row.environmentId === devId);
+    expect(denied?.readiness).toBe('forbidden');
+    expect(denied?.values.data).toBeUndefined();
+  } finally {
+    await view.unmount();
+    client.clear();
+  }
+});

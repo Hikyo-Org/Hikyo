@@ -36,6 +36,7 @@ const EstablishCredential = lazy(() =>
 const EnrolmentGate = lazy(() =>
   loadAuthRoutes().then((routes) => ({ default: routes.EnrolmentGate })),
 );
+const CLILogin = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLILogin })));
 const CLIReauth = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLIReauth })));
 const OIDCDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.OIDCDone })));
 const SAMLDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.SAMLDone })));
@@ -135,6 +136,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   ),
   'machine-access': withRouteFallback(<MachineAccess />),
   adapters: withRouteFallback(<Adapters />),
+  'cli-login': withRouteFallback(<CLILogin />),
   'cli-reauth': withRouteFallback(<CLIReauth />),
   'workspace-approve': withRouteFallback(<WorkspaceApprove />),
   'workspace-callback': withRouteFallback(<WorkspaceCallback />),

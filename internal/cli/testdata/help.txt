@@ -1,14 +1,16 @@
 hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> --local [--as USER] [--name REF] [--socket PATH] [--trust-file PATH]
+  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--trust-file PATH]
+  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--trust-file PATH]
                                                  terminal-native local login
-  hikyo login <instance-url> --device              refused by name until the browser login lands
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
 accounts:
   hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
+  hikyo account password set|change
+      aliases: set the first password or replace an existing one
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up

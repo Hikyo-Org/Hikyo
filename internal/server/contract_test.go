@@ -187,6 +187,10 @@ func (s stubAuth) ListIdentities(context.Context, string) ([]service.ExternalIde
 	return nil, domain.ErrUnauthenticated
 }
 
+func (s stubAuth) SetPassword(context.Context, string, string, string) (service.LoginResult, error) {
+	return s.reissued()
+}
+
 func (s stubAuth) UnlinkIdentity(context.Context, string, string, string) (service.LoginResult, error) {
 	return s.reissued()
 }
@@ -2557,4 +2561,20 @@ func TestInitializeValueRefusalIsUniform(t *testing.T) {
 			t.Fatalf("initial-cell denial shape differs: %s / %s", bodies[0], body)
 		}
 	}
+}
+
+func (stubAuth) StartCLILogin(context.Context, string, string, string, string) (service.CLILoginStart, error) {
+	return service.CLILoginStart{}, domain.ErrUnauthenticated
+}
+func (stubAuth) CLILoginTransaction(context.Context, service.Actor, string) (service.CLILoginTransaction, error) {
+	return service.CLILoginTransaction{}, domain.ErrUnauthenticated
+}
+func (stubAuth) ApproveCLILogin(context.Context, service.Actor, string) (service.CLIReauthApproval, error) {
+	return service.CLIReauthApproval{}, domain.ErrUnauthenticated
+}
+func (stubAuth) RedeemCLILogin(context.Context, string, string, string) (service.LoginResult, error) {
+	return service.LoginResult{}, domain.ErrUnauthenticated
+}
+func (stubAuth) PollCLIDevice(context.Context, string) (service.CLIDeviceAttempt, error) {
+	return service.CLIDeviceAttempt{}, domain.ErrUnauthenticated
 }

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zAuthMethods } from '@hikyo/zod';
-import { expect, fn, userEvent } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
@@ -33,6 +33,8 @@ const codeOffered: CeremonyRequest = {
   window: { ...revealWindow(false), protected: false, effective_window_seconds: 300, totp_offered: true },
 };
 
+const inventory: MockRoute = { url: '/api/v1/auth/totp', body: { confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true } };
+
 const methods: MockRoute = {
   url: '/api/v1/auth/methods',
   body: {
@@ -56,7 +58,7 @@ const meta = {
   component: Ceremony,
   tags: ['ai-generated'],
   args: { request: production, onAuthorised: fn(), onCancel: fn() },
-  parameters: { ...topLayerDocs, app: { auth: true, responses: [methods] } },
+  parameters: { ...topLayerDocs, app: { auth: true, responses: [methods, inventory] } },
 } satisfies Meta<typeof Ceremony>;
 
 export default meta;
@@ -69,7 +71,7 @@ export const Protected: Story = {
     await expect(canvas.getByRole('dialog', { name: 'reveal · production' })).toBeVisible();
     await expect(canvas.getByRole('list', { name: /keys this decision covers/i })).toBeVisible();
     await expect(canvas.getByText(/this environment is protected/i)).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Use a passkey' })).toBeEnabled();
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Use a passkey' })).toBeEnabled());
     await expect(canvas.queryByLabelText(/code from your authenticator/i)).toBeNull();
   },
 };
@@ -79,7 +81,7 @@ export const CodeOffered: Story = {
   args: { request: codeOffered },
   play: async ({ canvas }) => {
     await expect(canvas.getByText(/success opens a sliding reveal window/i)).toBeVisible();
-    await expect(canvas.getByLabelText(/or a code from your authenticator/i)).toBeVisible();
+    await expect(await canvas.findByLabelText(/or a code from your authenticator/i)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Authorise with a code' })).toBeDisabled();
   },
 };
@@ -87,7 +89,7 @@ export const CodeOffered: Story = {
 // The same window from an OIDC session: the identity provider is a third factor.
 export const OIDC: Story = {
   args: { request: { ...codeOffered, purpose: 'publish' } },
-  parameters: { app: { auth: true, identity: oidcIdentity, responses: [methods] } },
+  parameters: { app: { auth: true, identity: oidcIdentity, responses: [methods, inventory] } },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('dialog', { name: 'publish into · production' })).toBeVisible();
     await expect(
@@ -105,7 +107,7 @@ export const Refused: Story = {
       auth: true,
       identity: oidcIdentity,
       responses: [
-        methods,
+        methods, inventory,
         { url: '/api/v1/auth/reauth/totp', method: 'POST', status: 401, body: { error: 'unauthenticated' } },
       ],
     },

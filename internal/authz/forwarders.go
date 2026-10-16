@@ -12,6 +12,15 @@ import (
 // txForwarded is the explicitly permitted resolver surface.
 // Additions require review of the transaction authority boundary.
 type txForwarded interface {
+	PruneCLILogins(ctx context.Context, at time.Time) error
+	CreateCLILogin(ctx context.Context, h CLILogin) error
+	CLILoginByState(ctx context.Context, verifier []byte) (CLILogin, error)
+	CLILoginByCode(ctx context.Context, verifier []byte) (CLILogin, error)
+	CLILoginByUserCode(ctx context.Context, verifier []byte) (CLILogin, error)
+	ApproveCLILogin(ctx context.Context, id, session, snapshot string, code []byte) (bool, error)
+	PollCLILogin(ctx context.Context, id string, at time.Time, interval int64) error
+	ConsumeCLILogin(ctx context.Context, id string, at time.Time) (bool, error)
+
 	VerifiedAccountEmailExists(ctx context.Context, email string) (bool, error)
 	PruneExpiredRegistrationSignup(ctx context.Context, id string, at time.Time) (bool, error)
 	// AccountByID resolves an account by id.
@@ -664,6 +673,7 @@ type txForwarded interface {
 	CredentialAuthorityByID(ctx context.Context, id string) (CredentialAuthority, error)
 	ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error)
 	StampCredentialEstablish(ctx context.Context, sessionID, identityID string, expires time.Time) error
+	CredentialEstablish(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error)
 	RegistrationSignupByEmail(ctx context.Context, email string) (RegistrationSignup, error)
 	RegistrationSignupByVerifier(ctx context.Context, verifier []byte) (RegistrationSignup, error)
 	ReissueRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error

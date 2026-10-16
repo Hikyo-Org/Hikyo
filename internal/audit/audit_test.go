@@ -412,7 +412,7 @@ func TestValidateRefusesValuesOutsideClosedTaxonomies(t *testing.T) {
 			[]string{"mixup", "nonce", "purpose", "state", "issuer", "audience", "signature", "epoch", "idp-error", "expired", "unknown-identity", "no-assurance-policy", "no-auth-time", "binding", "reconciliation", "window-zero", "no-possession", "downgrade", "identity-exists"}},
 		{"OIDC refusal purpose", EventOIDCRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "purpose",
 			Payload{"cause": "identity-exists", "purpose": "claim"},
-			[]string{"login", "link", "reauth", "claim"}},
+			[]string{"login", "link", "reauth", "claim", "establish"}},
 		{"authority refusal cause", EventAuthAuthorityRefused, OutcomeFailure, TrailInstance, domain.Scope{}, "cause",
 			Payload{"cause": "purpose"},
 			[]string{"malformed", "unknown", "consumed", "expired", "epoch-superseded", "purpose"}},

@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
     session: { assurance: { method: string; provider?: string } };
   },
   providerAvailable: false,
+  hasPasskey: true,
+  hasTotp: true,
+  canReauthOIDC: true,
   provider: { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
   methods: { isError: false, refetch: vi.fn() },
 }));
@@ -35,6 +38,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
 vi.mock('../api/account.ts', () => ({
   useSessionOIDCProvider: () => (mocks.providerAvailable ? mocks.provider : null),
   useAuthMethods: () => mocks.methods,
+  useTotpStatus: () => ({ isSuccess: true, data: { confirmed: mocks.hasTotp, has_passkey: mocks.hasPasskey, can_reauth_oidc: mocks.canReauthOIDC } }),
 }));
 
 vi.mock('../api/transport.tsx', () => ({
@@ -86,6 +90,7 @@ async function stage(name: string, committed: string[]): Promise<void> {
 }
 
 beforeEach(() => {
+  mocks.hasPasskey = true; mocks.hasTotp = true; mocks.canReauthOIDC = true;
   latestController = undefined;
   mocks.runPasskeyCeremony.mockReset();
   mocks.runOIDCCeremony.mockReset();
@@ -293,4 +298,17 @@ describe('Ceremony copy and factor state (a11y audit)', () => {
     await act(async () => passkey.resolve());
     await view.unmount();
   });
+});
+
+
+it('refuses disclosure when the current policy has no enrolled proof and links to Security', async () => {
+  mocks.hasPasskey = false; mocks.hasTotp = false; mocks.canReauthOIDC = false;
+  const view = await renderForm(<Ceremony request={ceremonyRequest('production')} onAuthorised={vi.fn()} onCancel={vi.fn()} />);
+  try {
+    expect(view.container.textContent).toContain('This needs a second factor');
+    expect(view.container.querySelector('a')?.getAttribute('href')).toBe('/settings?tab=factors');
+    const passkey = [...view.container.querySelectorAll('button')].find((button) => button.textContent === 'Use a passkey');
+    expect(passkey?.disabled).toBe(true);
+    expect(view.container.querySelector('input')).toBeNull();
+  } finally { await view.unmount(); }
 });

@@ -185,3 +185,8 @@ type NewOAuth2Provider = authn.NewOAuth2Provider
 type OAuth2ProviderUpdate = authn.OAuth2ProviderUpdate
 type OAuth2Transaction = authn.OAuth2Transaction
 type NewOAuth2Transaction = authn.NewOAuth2Transaction
+
+// CLILogin is the server-owned first-party login transaction.
+type CLILogin = authn.CLILogin
+
+type CredentialEstablishEvidence = authn.CredentialEstablishEvidence

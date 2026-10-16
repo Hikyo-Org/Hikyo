@@ -7,11 +7,11 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
-type Purpose = 'login' | 'link' | 'reauth' | 'claim';
+type Purpose = 'login' | 'link' | 'reauth' | 'claim' | 'establish';
 
 function purposeFromLocation(): Purpose | null {
   const purpose = new URLSearchParams(globalThis.location.search).get('purpose');
-  return purpose === 'login' || purpose === 'link' || purpose === 'reauth' || purpose === 'claim'
+  return purpose === 'login' || purpose === 'link' || purpose === 'reauth' || purpose === 'claim' || purpose === 'establish'
     ? purpose
     : null;
 }
@@ -27,6 +27,8 @@ function successLede(purpose: Purpose | null): string {
       return 'Reauthentication completed. You can close this window.';
     case 'claim':
       return 'Invitation claimed. Signing you in.';
+    case 'establish':
+      return 'Verification completed. Returning to account security.';
     case null:
       return 'Returning.';
   }
@@ -59,6 +61,8 @@ export function OIDCDone() {
         ? 'Your identity provider refused this sign-in. Return to sign in and try again.'
         : purpose === 'claim'
           ? AUTHORITY_REFUSAL
+          : purpose === 'establish'
+            ? 'Your identity provider refused this verification. Return to account security and try again.'
           : purpose === 'link'
             ? 'Your identity provider refused this link. Return to account security and try again.'
             : 'Your identity provider refused this reauthentication. Go back and try again.';
@@ -95,7 +99,8 @@ export function OIDCDone() {
       return;
     }
     const returnTo = takeOIDCReturn(state);
-    if (purpose === 'link') {
+    if (purpose === 'link' || purpose === 'establish') {
+      announceSessionChange();
       globalThis.location.replace(returnTo);
       return;
     }
@@ -122,7 +127,7 @@ export function OIDCDone() {
               ? 'Return to sign in'
               : purpose === 'claim'
                 ? 'Back to your setup authority'
-                : purpose === 'link'
+                : purpose === 'link' || purpose === 'establish'
                   ? 'Return to account security'
                   : 'Back'}
           </a>

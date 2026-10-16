@@ -55,6 +55,12 @@
 # fails naming it.
 
 operations:
+  startCLIDevice: {exception: identity-protocol}
+  startCLILogin: {exception: identity-protocol}
+  showCLILoginTransaction: {webui: cli-login}
+  approveCLILogin: {webui: cli-login}
+  redeemCLILogin: {exception: identity-protocol}
+  pollCLIDevice: {exception: identity-protocol}
   signupRequest: {webui: signup}
   signupVerify: {webui: signup-verify}
   getInstanceMail: {webui: instance-admin}
@@ -83,6 +89,7 @@ operations:
   whoami:                      {webui: overview}
   getMyProfile:                {webui: settings}
   updateMyProfile:             {webui: settings}
+  setPassword:                 {webui: settings}
   enrolTotpStart:              {webui: settings}
   enrolTotpConfirm:            {webui: settings}
   stepUpTotp:                  {webui: overview}

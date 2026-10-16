@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AUTHORITY_REFUSAL } from '../api/session.ts';
-import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
+import { renderForm, settle, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { EstablishCredential } from './EstablishCredential.tsx';
 
 afterEach(() => {
@@ -104,12 +104,12 @@ function button(root: ParentNode, text: string): HTMLButtonElement {
   return found;
 }
 
-/** Settles until the public methods list has rendered the named button. */
+/** Wait for the public methods query's notification task to render the button. */
 async function provided(root: ParentNode, text: string): Promise<HTMLButtonElement> {
   for (let round = 0; round < 50; round += 1) {
     const found = [...root.querySelectorAll('button')].find((candidate) => candidate.textContent?.includes(text));
     if (found instanceof HTMLButtonElement) return found;
-    await settle();
+    await settleTask();
   }
   return button(root, text);
 }

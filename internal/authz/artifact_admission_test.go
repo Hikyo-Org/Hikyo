@@ -87,8 +87,8 @@ func TestAdmitOperationEnrolmentGate(t *testing.T) {
 	}
 
 	// The allowlist the gate leaves open: the enrolment ceremony and whoami the
-	// SPA needs to complete or read the gate.
-	for _, id := range []string{"whoami", "enrolTotpStart"} {
+	// clients need to complete or read the gate.
+	for _, id := range []string{"whoami", "getTotpStatus", "enrolTotpStart"} {
 		allowed, err := operation.NewContract(
 			id, id, []string{"read@project"}, []string{operation.ArtifactHumanSession},
 		)

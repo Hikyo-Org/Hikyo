@@ -421,3 +421,24 @@ func oauth2ProviderConstraint(err error) error {
 	}
 	return err
 }
+
+type CredentialEstablishEvidence struct {
+	IdentityID string
+	ExpiresAt  time.Time
+}
+
+func (r *Resolver) CredentialEstablish(ctx context.Context, sessionID string, principal domain.PrincipalID, at time.Time) (CredentialEstablishEvidence, error) {
+	if r.sq != nil {
+		row, err := r.sq.GetCredentialEstablish(ctx, sqlitegen.GetCredentialEstablishParams{SessionID: sessionID, PrincipalID: string(principal), ExpiresAt: encodeTime(at)})
+		if err != nil {
+			return CredentialEstablishEvidence{}, notFoundOr(err)
+		}
+		at, err := decodeTime(row.ExpiresAt)
+		return CredentialEstablishEvidence{IdentityID: row.IdentityID, ExpiresAt: at}, err
+	}
+	row, err := r.pg.GetCredentialEstablish(ctx, pggen.GetCredentialEstablishParams{SessionID: sessionID, PrincipalID: string(principal), ExpiresAt: pgTimestamp(at)})
+	if err != nil {
+		return CredentialEstablishEvidence{}, notFoundOr(err)
+	}
+	return CredentialEstablishEvidence{IdentityID: row.IdentityID, ExpiresAt: row.ExpiresAt.Time}, nil
+}

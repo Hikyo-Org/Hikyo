@@ -33,6 +33,12 @@ import (
 
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
+	StartCLILogin(ctx context.Context, transport, state, challenge, redirect string) (service.CLILoginStart, error)
+	CLILoginTransaction(ctx context.Context, actor service.Actor, reference string) (service.CLILoginTransaction, error)
+	ApproveCLILogin(ctx context.Context, actor service.Actor, reference string) (service.CLIReauthApproval, error)
+	RedeemCLILogin(ctx context.Context, code, verifier, redirect string) (service.LoginResult, error)
+	PollCLIDevice(ctx context.Context, code string) (service.CLIDeviceAttempt, error)
+
 	OAuth2Start(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OAuth2Callback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
 	Signup(ctx context.Context, email string, org domain.OrgID) error
@@ -44,6 +50,7 @@ type AuthService interface {
 	LoginChallengeWebauthnStart(ctx context.Context, challengeID string) ([]byte, error)
 	LoginChallengeWebauthnFinish(ctx context.Context, challengeID string, responseJSON []byte) (service.LoginResult, error)
 	EstablishCredential(ctx context.Context, authority, password string) error
+	SetPassword(ctx context.Context, presented, password, proof string) (service.LoginResult, error)
 	Identity(ctx context.Context, presented string) (service.Identity, error)
 	Logout(ctx context.Context, presented string) error
 	VerifyBrowserCSRF(ctx context.Context, presented, csrfToken string) error
@@ -290,9 +297,9 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// capabilities before any session exists; everything past protocol
 	// selection happens after authentication.
 	//
-	// This instance serves the local floor only. The loopback handoff and
-	// device-code transports arrive with #54 and will advertise themselves
-	// here — which is exactly why the client asks rather than assumes.
+	// The local floor and first-party CLI login transports are advertised
+	// independently of the browser's provider choices. Provider discovery stays
+	// on auth/methods; this list selects only the supported transport.
 	var identity *string
 	if a.Discovery != nil {
 		value, err := a.Discovery.InstanceIdentity(ctx)
@@ -303,7 +310,7 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	}
 	// The delivery-target report tokens (#788, ADR D10): one per accepted
 	// vocabulary. An integration reports only when one is advertised.
-	capabilities := []apigen.ProtocolCapability{"local-password"}
+	capabilities := []apigen.ProtocolCapability{"local-password", "loopback-handoff", "device-code"}
 	for _, token := range deliverytarget.CapabilityTokens() {
 		capabilities = append(capabilities, apigen.ProtocolCapability(token))
 	}
@@ -346,6 +353,21 @@ func (a *API) EstablishCredential(ctx context.Context, req apigen.EstablishCrede
 		return nil, err
 	}
 	return apigen.EstablishCredential204Response{}, nil
+}
+
+func (a *API) SetPassword(ctx context.Context, req apigen.SetPasswordRequestObject) (apigen.SetPasswordResponseObject, error) {
+	if req.Body == nil {
+		return apigen.SetPassword400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	proof := ""
+	if req.Body.Proof != nil {
+		proof = *req.Body.Proof
+	}
+	result, err := a.Auth.SetPassword(ctx, bearer(ctx), req.Body.Password, proof)
+	if err != nil {
+		return nil, err
+	}
+	return sessionResponse(result), nil
 }
 
 func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.WhoamiResponseObject, error) {
@@ -465,10 +487,19 @@ func (a *API) GetTotpStatus(ctx context.Context, _ apigen.GetTotpStatusRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTotpStatus200JSONResponse(apigen.TotpStatus{
-		Confirmed: status.Confirmed,
-		Pending:   status.Pending,
-	}), nil
+	out := apigen.TotpStatus{
+		Confirmed: status.Confirmed, Pending: status.Pending,
+		HasPassword: status.HasPassword, HasPasskey: status.HasPasskey,
+		CanReauthOidc: status.CanReauthOIDC,
+	}
+	if status.Establish != nil {
+		out.Establish = &apigen.CredentialEstablishStatus{
+			Kind: apigen.IdentityProviderKind(status.Establish.Kind),
+			Slug: status.Establish.Slug, DisplayName: status.Establish.DisplayName,
+			ExpiresAt: status.Establish.ExpiresAt,
+		}
+	}
+	return apigen.GetTotpStatus200JSONResponse(out), nil
 }
 
 func (a *API) RegenerateRecoveryCodes(ctx context.Context, req apigen.RegenerateRecoveryCodesRequestObject) (apigen.RegenerateRecoveryCodesResponseObject, error) {
@@ -868,6 +899,12 @@ func (a *API) validateAgainstContractWith(
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		} else if r.Body != nil {
 			r.Body = http.MaxBytesReader(rootResponseWriter(w), r.Body, MaxRequestBytes)
+		}
+		if operation.ID == "startCLIDevice" || operation.ID == "pollCLIDevice" {
+			if err := validateCLIDeviceForm(r); err != nil {
+				a.writeValidationError(w, err)
+				return
+			}
 		}
 		validated, err := match.Validate()
 		if err != nil {

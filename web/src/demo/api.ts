@@ -93,7 +93,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === `${projectRoot}/key-groups`) return json(list([]));
         if (path === `${projectRoot}/grants` || path === `${orgRoot}/grants`) return json(list(grants));
         if (path === `${projectRoot}/rules` || path === `${orgRoot}/rules`) return json(list([]));
-        if (path === '/api/v1/auth/totp') return json({ confirmed: true, pending: false });
+        if (path === '/api/v1/auth/totp') return json({ confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true });
         if (path === '/api/v1/auth/methods') return json({ local_login_enabled: false, providers: [], signup_open: false, signup_paused: true, signup_methods: [] });
         const key = keys.find((candidate) => path === `${projectRoot}/keys/${candidate.id}` || path === `${projectRoot}/keys/${candidate.name}`);
         if (key !== undefined) return json(key);

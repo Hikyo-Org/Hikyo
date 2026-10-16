@@ -29,6 +29,9 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 		name, method, path string
 		revision           int
 	}{
+		{"credential inventory before social-only support", "GET", "/api/v1/auth/totp", 10},
+		{"password mutation before social-only support", "PUT", "/api/v1/auth/password", 10},
+		{"identity metadata before social-only support", "GET", "/api/v1/auth/identities", 10},
 		{"ordinary read", "GET", "/api/v1/orgs", 0},
 		{"ordinary mutation", "POST", "/api/v1/orgs", 0},
 		{"later definitions operation", "POST", "/api/v1/orgs/org_a/projects/prj_a/definitions/check", 1},

@@ -42,6 +42,30 @@ var managedNodeFiles = []struct{ source, target string }{
 // require the actual node to already run in development mode.
 func ManagedNodeKeys() []string { return slices.Clone(managedNodeKeys) }
 
+// MaintenanceOperationalListen resolves only the operational binding before
+// runtime admission. Bootstrap retains explicit flags and environment inputs
+// separately from the ordinary config fields. Recovery health must honor that
+// binding without importing seed files or opening managed runtime configuration.
+func (c *Config) MaintenanceOperationalListen() (string, error) {
+	address := c.OperationalListen
+	if captured, present := c.ManagedNodeInputs["HIKYO_OPERATIONAL_LISTEN"]; present {
+		address = captured
+	}
+	if err := validateManagedListenAddress("HIKYO_OPERATIONAL_LISTEN", address); err != nil {
+		return "", err
+	}
+	return address, nil
+}
+
+func validateManagedListenAddress(key, address string) error {
+	_, port, err := net.SplitHostPort(address)
+	number, portErr := strconv.Atoi(port)
+	if !utf8.ValidString(address) || len(address) > MaxManagedNodeValueBytes || err != nil || portErr != nil || number < 0 || number > 65535 {
+		return fmt.Errorf("%s: invalid TCP listen address", key)
+	}
+	return nil
+}
+
 func managedNodeInputKeys() []string {
 	keys := append(slices.Clone(managedNodeKeys[:7]), managedDevelopmentKeys...)
 	for _, source := range managedNodeFiles {
@@ -210,10 +234,8 @@ func parseManagedNodeValues(base *Config, values map[string]string) (*Config, er
 	node.ManagedInputs, node.ManagedNodeInputs = maps.Clone(base.ManagedInputs), maps.Clone(base.ManagedNodeInputs)
 	node.Listen, node.OperationalListen = values["HIKYO_LISTEN"], values["HIKYO_OPERATIONAL_LISTEN"]
 	for _, key := range []string{"HIKYO_LISTEN", "HIKYO_OPERATIONAL_LISTEN"} {
-		_, port, err := net.SplitHostPort(values[key])
-		number, portErr := strconv.Atoi(port)
-		if err != nil || portErr != nil || number < 0 || number > 65535 {
-			return nil, fmt.Errorf("%s: invalid TCP listen address", key)
+		if err := validateManagedListenAddress(key, values[key]); err != nil {
+			return nil, err
 		}
 	}
 	if node.Listen == node.OperationalListen {

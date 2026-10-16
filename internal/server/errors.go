@@ -200,6 +200,7 @@ var wireErrorRules = []struct {
 	{service.ErrTOTPCodeAlreadyUsed, apigen.ErrorCodeConflict},
 	{service.ErrCLIReauthInvalid, apigen.ErrorCodeConflict},
 	{service.ErrReauthRequired, apigen.ErrorCodeConflict},
+	{service.ErrCredentialRace, apigen.ErrorCodeConflict},
 	{service.ErrWeakPassword, apigen.ErrorCodeBadRequest},
 	{service.ErrCommonPassword, apigen.ErrorCodeBadRequest},
 	{service.ErrTOTPAlreadyEnrolled, apigen.ErrorCodeBadRequest},

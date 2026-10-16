@@ -160,10 +160,12 @@ func measureArgon(t *testing.T, e *Evidence) {
 
 func measureBoot(t *testing.T, e *Evidence) {
 	t.Helper()
-	cmd := exec.Command("/hikyo", "server", "--dev", "--listen", "127.0.0.1:49761", "--operational-listen", "127.0.0.1:49762")
-	cmd.Dir = t.TempDir()
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
+	cmd, log := floorBootCommand(t)
+	defer func() {
+		if err := log.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	started := time.Now()
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
@@ -196,7 +198,7 @@ func measureBoot(t *testing.T, e *Evidence) {
 			t.Fatal("default dev server did not become ready within one minute")
 		case err := <-done:
 			done <- err
-			t.Fatalf("default dev server exited before readiness: %v", err)
+			t.Fatalf("default dev server exited before readiness: %v; inspect dev-server.log", err)
 		case <-ticker.C:
 			response, err := client.Get("http://127.0.0.1:49762/readyz")
 			if err != nil {

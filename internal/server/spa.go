@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
@@ -217,6 +218,11 @@ func securityHeaders(hsts bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
+			// Login transport state, authorization codes and tokens are never cacheable.
+			if strings.HasPrefix(r.URL.Path, api.PathPrefix+"/auth/cli-login/") {
+				h.Set("Cache-Control", "no-store")
+				h.Set("Pragma", "no-cache")
+			}
 			h.Set("Content-Security-Policy", contentSecurityPolicy)
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("Referrer-Policy", "no-referrer")

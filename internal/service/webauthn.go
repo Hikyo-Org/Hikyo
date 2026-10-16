@@ -156,7 +156,7 @@ func (s *Auth) EnrolPasskeyStart(ctx context.Context, presented, password, code 
 	if err := s.requireRP(); err != nil {
 		return nil, err
 	}
-	account, evidence, err := s.verifyAccountSecurityProof(ctx, presented, password, code)
+	account, evidence, err := s.verifyLocalCreationProof(ctx, presented, password, code)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (s *Auth) EnrolPasskeyStart(ctx context.Context, presented, password, code 
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
 		}
-		if err := s.ConsumeReauthEvidence(ctx, az, evidence, live.Principal); err != nil {
+		if err := s.consumeLocalCreationProof(ctx, az, evidence, live, account.ID); err != nil {
 			return err
 		}
 		epoch, err := az.CredentialEpoch(ctx)
@@ -295,6 +295,11 @@ func (s *Auth) EnrolPasskeyFinish(ctx context.Context, presented string, respons
 		if !validCeremony(fresh, "enrol", account.ID, acting.SessionID, "", now) || fresh.CredentialEpoch != epoch {
 			return ErrNoWebAuthnCeremony
 		}
+		if fresh.OperationBinding == "establish" {
+			if err := s.consumeLocalCreationProof(ctx, az, ReauthEvidence{Principal: live.Principal, kind: reauthEvidenceEstablish, sessionID: live.SessionID}, live, account.ID); err != nil {
+				return err
+			}
+		}
 		consumed, err := az.ConsumeWebAuthnCeremony(ctx, fresh.ID, credID, now)
 		if err != nil {
 			return err
@@ -312,10 +317,10 @@ func (s *Auth) EnrolPasskeyFinish(ctx context.Context, presented string, respons
 		}
 		// Adding a credential never breaks the invariant, but the assertion is
 		// run in every credential-touching tx as the post-state discipline (B4).
-		if err := s.assertPasskeyOnlyInvariant(ctx, az, account.ID); err != nil {
+		if err := s.assertLoginCredential(ctx, az, account.ID, ""); err != nil {
 			return err
 		}
-		*result, err = s.reissueSession(ctx, az, account, ceremony.OperationBinding, MethodLocalPassword, Artifact(acting.Artifact), now)
+		*result, err = s.reissueAccountSecurity(ctx, az, account, ceremony.OperationBinding, live, now)
 		if err != nil {
 			return err
 		}
@@ -1116,7 +1121,7 @@ func (s *Auth) RemovePasskey(ctx context.Context, presented, credentialID, passw
 		if err := s.assertPasskeyOnlyInvariant(ctx, az, account.ID); err != nil {
 			return err
 		}
-		*result, err = s.reissueSession(ctx, az, account, proofClass, MethodLocalPassword, Artifact(live.Artifact), now)
+		*result, err = s.reissueAccountSecurity(ctx, az, account, proofClass, live, now)
 		if err != nil {
 			return err
 		}
@@ -1168,21 +1173,47 @@ func (s *Auth) ListPasskeys(ctx context.Context, presented string) ([]PasskeyVie
 // --- passkey-only invariant (B4/B13) ---
 
 // assertPasskeyOnlyInvariant is the POST-STATE predicate run in every tx that
-// touches the credential inventory: a passwordless account is admissible only
-// with >=2 discoverable, enabled authenticators AND a current recovery batch (a
-// live-epoch row with >=1 unconsumed hash). An account holding a password is
-// unconstrained here.
+// touches the credential inventory. With no current password or external
+// identity, login requires >=2 current discoverable, enabled authenticators
+// and a current recovery batch with at least one unconsumed hash.
 func (s *Auth) assertPasskeyOnlyInvariant(ctx context.Context, az *authz.TxAuthorizer, accountID string) error {
-	if _, err := az.PasswordCredentialFor(ctx, accountID); err == nil {
-		return nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
 		return err
 	}
+	password, err := az.PasswordCredentialFor(ctx, accountID)
+	if err == nil && password.CredentialEpoch == epoch {
+		return nil
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	if usable, err := s.hasUsableExternalIdentity(ctx, az, accountID, "", epoch); err != nil {
+		return err
+	} else if usable {
+		return nil
+	}
+	return s.assertPasskeyFloor(ctx, az, accountID)
+}
+
+// assertPasskeyFloor counts only passkeys and recovery, so a caller checking
+// a proposed post-unlink inventory cannot accidentally count the target identity.
+func (s *Auth) assertPasskeyFloor(ctx context.Context, az *authz.TxAuthorizer, accountID string) error {
 	creds, err := az.WebAuthnCredentialsForAccount(ctx, accountID)
 	if err != nil {
 		return err
 	}
-	if discoverableCount(creds) < 2 {
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
+		return err
+	}
+	live := 0
+	for _, key := range creds {
+		if key.Discoverable && !key.Disabled && key.CredentialEpoch == epoch {
+			live++
+		}
+	}
+	if live < 2 {
 		return ErrPasskeyOnlyViolation
 	}
 	ok, err := s.hasCurrentRecoveryBatch(ctx, az, accountID)
@@ -1199,10 +1230,21 @@ func (s *Auth) assertPasskeyOnlyInvariant(ctx context.Context, az *authz.TxAutho
 // invariant against the state that WOULD result from removing target, so an
 // impossible removal is refused before any proof is required.
 func (s *Auth) assertRemovalKeepsInvariant(ctx context.Context, az *authz.TxAuthorizer, accountID string, target authz.WebAuthnCredential) error {
-	if _, err := az.PasswordCredentialFor(ctx, accountID); err == nil {
-		return nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
 		return err
+	}
+	password, err := az.PasswordCredentialFor(ctx, accountID)
+	if err == nil && password.CredentialEpoch == epoch {
+		return nil
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
+	}
+	if usable, err := s.hasUsableExternalIdentity(ctx, az, accountID, "", epoch); err != nil {
+		return err
+	} else if usable {
+		return nil
 	}
 	creds, err := az.WebAuthnCredentialsForAccount(ctx, accountID)
 	if err != nil {
@@ -1213,7 +1255,7 @@ func (s *Auth) assertRemovalKeepsInvariant(ctx context.Context, az *authz.TxAuth
 		if c.ID == target.ID {
 			continue
 		}
-		if c.Discoverable && !c.Disabled {
+		if c.Discoverable && !c.Disabled && c.CredentialEpoch == epoch {
 			remaining++
 		}
 	}

@@ -17,7 +17,11 @@ import (
 // durable maintenance refusal. It opens no runtime datastore or tenant listener
 // and constructs no keyring, scheduler, provider, or authentication service.
 func bootMaintenance(cfg *config.Config, log *slog.Logger, resources bootResources) (*Server, error) {
-	ln, err := resources.listen("tcp", cfg.OperationalListen)
+	address, err := cfg.MaintenanceOperationalListen()
+	if err != nil {
+		return nil, fmt.Errorf("boot: maintenance operational listener: %w", err)
+	}
+	ln, err := resources.listen("tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("boot: maintenance operational listener: %w", err)
 	}

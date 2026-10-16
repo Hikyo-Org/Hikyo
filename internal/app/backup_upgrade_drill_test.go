@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -224,7 +225,49 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 74, while the
+func TestLegacyDrillFixtureRefusesCLILoginEvidence(t *testing.T) {
+	const childVariable = "HIKYO_TEST_LEGACY_CLI_EVIDENCE"
+	if child := os.Getenv(childVariable); child != "" {
+		engine, evidence, ok := strings.Cut(child, "/")
+		if !ok {
+			t.Fatal("invalid legacy fixture child selection")
+		}
+		newUpgradeDrillFixture(t, store.Engine(engine), true, true, func(db *store.DB) {
+			if evidence == "handoff" {
+				drillExec(t, db, `INSERT INTO cli_login_handoffs (id,state_verifier,transport,pkce_challenge,redirect_uri,created_at,expires_at,last_poll_at) VALUES ('cli_evidence',$1,'loopback','challenge','http://127.0.0.1:41234/callback','2026-09-05T00:00:00Z','2026-09-05T00:01:00Z','2026-09-05T00:00:00Z')`, []byte("synthetic-state"))
+			} else if evidence == "session" {
+				drillExec(t, db, `INSERT INTO sessions (id,principal_id,verifier,artifact,session_generation,credential_epoch,auth_method,factors,authenticated_at,created_at,last_seen_at,idle_expires_at,absolute_expires_at,source_ip,user_agent,cli_handoff_id) VALUES ('ses_cli_evidence','usr_drill',$1,'cli',1,1,'local-password','["password"]','2026-09-05T00:00:00Z','2026-09-05T00:00:00Z','2026-09-05T00:00:00Z','2026-09-05T00:01:00Z','2026-09-05T01:00:00Z','','','cli_evidence')`, []byte("synthetic-session"))
+			} else {
+				t.Fatal("invalid CLI evidence selection")
+			}
+		})
+		t.Fatal("legacy fixture discarded CLI login evidence")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		if engine == store.EnginePostgres && os.Getenv("HIKYO_TEST_POSTGRES_DSN") == "" {
+			if os.Getenv("CI") != "" {
+				t.Fatal("CI requires HIKYO_TEST_POSTGRES_DSN")
+			}
+			continue
+		}
+		for evidence, query := range map[string]string{"handoff": "SELECT COUNT(*) FROM cli_login_handoffs", "session": "SELECT COUNT(*) FROM sessions WHERE cli_handoff_id IS NOT NULL"} {
+			t.Run(string(engine)+"/"+evidence, func(t *testing.T) {
+				command := exec.CommandContext(t.Context(), executable, "-test.run=^TestLegacyDrillFixtureRefusesCLILoginEvidence$")
+				command.Env = append(os.Environ(), childVariable+"="+string(engine)+"/"+evidence)
+				output, err := command.CombinedOutput()
+				if err == nil || !bytes.Contains(output, []byte("legacy drill fixture cannot discard")) || !bytes.Contains(output, []byte(query)) {
+					t.Fatalf("legacy fixture did not refuse %s evidence: %v\n%s", evidence, err, output)
+				}
+			})
+		}
+	}
+}
+
+// The runtime-created fixture includes migrations 45 through 75, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +286,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+30 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 74 only")
+	if len(current.Entries) != len(legacy.Entries)+31 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 75 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -273,6 +316,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM self_config_rollouts",
 		"SELECT COUNT(*) FROM self_config_rollout_sequences",
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
+		"SELECT COUNT(*) FROM cli_login_handoffs",
+		"SELECT COUNT(*) FROM sessions WHERE cli_handoff_id IS NOT NULL",
 		"SELECT COUNT(*) FROM developer_credentials",
 		"SELECT COUNT(*) FROM developer_credential_policy WHERE max_lifetime_seconds <> 28800",
 		"SELECT COUNT(*) FROM adapters",
@@ -337,6 +382,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target or member-access-rule evidence", query, err)
 		}
 	}
+	// Reverse 00075 only after proving no login transaction or session
+	// provenance is being discarded, before lower migrations rebuild sessions.
+	drillExec(t, db, "DROP TABLE cli_login_handoffs")
+	drillExec(t, db, "ALTER TABLE sessions DROP COLUMN cli_handoff_id")
 	drillExec(t, db, "DROP TABLE developer_credentials")
 	drillExec(t, db, "DROP TABLE developer_credential_policy")
 	drillExec(t, db, "DROP TABLE credential_establish_evidence")
@@ -528,7 +577,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75)",
 	} {
 		drillExec(t, db, query)
 	}

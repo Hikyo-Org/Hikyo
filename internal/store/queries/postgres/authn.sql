@@ -196,8 +196,8 @@ INSERT INTO sessions
     (id, principal_id, verifier, artifact, session_generation, credential_epoch,
      auth_method, factors, authenticated_at, ceremony_id, created_at,
      last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent,
-     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21);
+     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required, cli_handoff_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22);
 
 -- The active-session listing (#71 criterion 5). A workspace session appears
 -- here as its own artifact type, beside the cli and browser rows, which is the
@@ -207,7 +207,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $
 -- name: ListSessionsForPrincipal :many
 SELECT id, artifact, auth_method, factors, authenticated_at, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, source_ip,
-       user_agent, requesting_origin, handoff_id
+       user_agent, requesting_origin, handoff_id, cli_handoff_id
 FROM sessions WHERE principal_id = sqlc.arg(principal_id) ORDER BY created_at, id;
 
 -- Self-scoped revocation: the principal conjunct is what makes one caller
@@ -452,7 +452,10 @@ DELETE FROM external_identities WHERE id = $1;
 -- provider is disabled or deleted. reauth_windows cascade from the session.
 -- hikyo:authn-resolution
 -- name: DeleteSessionsForProvider :execrows
-DELETE FROM sessions WHERE provider_id = $1;
+DELETE FROM sessions WHERE sessions.provider_id = sqlc.narg(provider_id)
+OR sessions.id IN (SELECT e.session_id FROM credential_establish_evidence e
+ JOIN external_identities i ON i.id = e.identity_id
+ WHERE i.kind = 'oidc' AND i.provider_id = sqlc.narg(provider_id));
 
 -- A FRESH CEREMONY SUPERSEDES THE PAIR'S PREVIOUS WINDOW (#58).
 --

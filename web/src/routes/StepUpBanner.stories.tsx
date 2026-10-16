@@ -17,8 +17,8 @@ const passwordOnly: WhoAmI = {
   },
 };
 
-const totpConfirmed = { url: '/api/v1/auth/totp', body: { confirmed: true, pending: false } };
-const noTotp = { url: '/api/v1/auth/totp', body: { confirmed: false, pending: false } };
+const totpConfirmed = { url: '/api/v1/auth/totp', body: { confirmed: true, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true } };
+const noTotp = { url: '/api/v1/auth/totp', body: { confirmed: false, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true } };
 const noPasskeys = { url: '/api/v1/auth/webauthn/credentials', body: { passkeys: [] } };
 const onePasskey = {
   url: '/api/v1/auth/webauthn/credentials',

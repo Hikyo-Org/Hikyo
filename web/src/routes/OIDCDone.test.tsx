@@ -37,6 +37,39 @@ afterEach(() => {
 });
 
 describe('OIDC done page', () => {
+  it('announces the session reissue after a successful identity link', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:link-complete', '/settings?tab=identities');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=link-complete&purpose=link');
+    const { unmount } = await renderForm(<OIDCDone />);
+    expect(globalThis.location.replace).toHaveBeenCalledWith('/settings?tab=identities');
+    expect(channels).toContainEqual({ name: 'hikyo-root-auth', message: { type: 'session-changed', sender: expect.any(String) }, closed: true });
+    await unmount();
+  });
+
+  it('returns an establish callback to its Security tab without claiming a reveal reauthentication', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:establish-state', '/settings?tab=factors');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=establish-state&purpose=establish');
+    const { container, unmount } = await renderForm(<OIDCDone />);
+    expect(container.textContent).toContain('Verification completed. Returning to account security.');
+    expect(globalThis.location.replace).toHaveBeenCalledWith('/settings?tab=factors');
+    expect(globalThis.close).not.toHaveBeenCalled();
+    expect(globalThis.sessionStorage.getItem('hikyo-oidc-return:establish-state')).toBeNull();
+    expect(channels).toContainEqual({ name: 'hikyo-root-auth', message: { type: 'session-changed', sender: expect.any(String) }, closed: true });
+    await unmount();
+  });
+
+  it('leaves a refused establish callback visible with a way back and no verification claim', async () => {
+    globalThis.sessionStorage.setItem('hikyo-oidc-return:establish-refused', '/settings?tab=recovery');
+    globalThis.history.replaceState({}, '', '/auth/oidc/done?state=establish-refused&purpose=establish&error=unauthenticated');
+    const { container, unmount } = await renderForm(<OIDCDone />);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('refused this verification');
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('/settings?tab=recovery');
+    expect(globalThis.location.replace).not.toHaveBeenCalled();
+    expect(globalThis.close).not.toHaveBeenCalled();
+    expect(channels.some((channel) => channel.name === 'hikyo-root-auth')).toBe(false);
+    await unmount();
+  });
+
   it('broadcasts a completed reauthentication on the transaction channel', async () => {
     globalThis.history.replaceState({}, '', '/auth/oidc/done?state=oidc-state&purpose=reauth');
     const { unmount } = await renderForm(<OIDCDone />);

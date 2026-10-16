@@ -59,6 +59,8 @@ vi.mock('../api/account.ts', () => {
       data: { providers: [] },
     }),
     useConfirmTotp: mutation,
+    useEstablishCredential: mutation,
+    useSetPassword: mutation,
     useEnrolPasskey: mutation,
     useEnrolTotpStart: () => ({ isPending: false, mutate: mocks.startTotp }),
     useIdentities: () => ({
@@ -88,7 +90,7 @@ vi.mock('../api/account.ts', () => {
       isError: false,
       isSuccess: true,
       isFetching: mocks.totpFetching,
-      data: { confirmed: false, pending: false },
+      data: { confirmed: false, pending: false, has_password: true, has_passkey: true, can_reauth_oidc: true },
     }),
     useUnlinkIdentity: mutation,
   };

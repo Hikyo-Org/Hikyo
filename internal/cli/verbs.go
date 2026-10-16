@@ -231,14 +231,16 @@ func Usage(w io.Writer) {
 const usageText = `hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> --local [--as USER] [--name REF] [--socket PATH] [--trust-file PATH]
+  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--trust-file PATH]
+  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--trust-file PATH]
                                                  terminal-native local login
-  hikyo login <instance-url> --device              refused by name until the browser login lands
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
 accounts:
   hikyo account establish-credential --instance <url|ref> [--as USER] [--socket PATH] [--trust-file PATH]
+  hikyo account password set|change
+      aliases: set the first password or replace an existing one
   hikyo account factor enrol-totp [--output-file PATH | --dangerously-print]
   hikyo account factor confirm-totp
   hikyo account factor step-up
@@ -784,6 +786,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	fs.SetOutput(ios.Stderr)
 	local := fs.Bool("local", false, "terminal-native local login (password prompted, never argv)")
 	device := fs.Bool("device", false, "RFC 8628 device-code flow")
+	provider := fs.String("provider", "", "preselect a browser provider: kind:slug, or an unambiguous slug")
 	as := fs.String("as", "", "username to log in as")
 	name := fs.String("name", "", "local reference to record this instance under (default: its host)")
 	socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
@@ -793,29 +796,23 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 
+	if len(positional) != 1 {
+		return failf(ExitUsage, "usage: hikyo login <instance-url> [--device] [--provider kind:slug] | --local --as <username>")
+	}
+	if *local && (*device || *provider != "") {
+		return failf(ExitUsage, "--local cannot be combined with --device or --provider")
+	}
+	if !*local && *as != "" {
+		return failf(ExitUsage, "--as is only available with --local; choose the identity in the browser")
+	}
+	if !*local {
+		if _, err := ios.terminalSession(); err != nil {
+			return failf(ExitRefused, "interactive login requires a controlling terminal")
+		}
+	}
 	st, err := NewState(ios.Env)
 	if err != nil {
 		return err
-	}
-
-	// Transport dispatch. The loopback browser handoff is the ADR's primary
-	// transport and the device flow its headless fallback; both need the
-	// instance's own login page, which arrives with the browser session
-	// surface (#54). Refusing by name is the point: a silent fallback to the
-	// local floor would skip a ceremony the operator asked for.
-	switch {
-	case *device:
-		return failf(ExitRefused,
-			"`login --device` is not served by this build. The device-code flow lands with the browser login surface; "+
-				"use `login --local` for the local floor in the meantime")
-	case !*local:
-		return failf(ExitRefused,
-			"browser handoff login is not served by this build. It lands with the browser login surface; "+
-				"pass --local to use the terminal-native local floor, which an installation can never remove")
-	}
-
-	if len(positional) == 0 {
-		return failf(ExitUsage, "usage: hikyo login <instance-url> --local --as <username>")
 	}
 	target := positional[0]
 
@@ -831,6 +828,9 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	meta, err := client.Meta(ctx)
 	if err != nil {
 		return err
+	}
+	if !*local {
+		return runInteractiveLogin(ctx, ios, st, client, meta, *device, *provider)
 	}
 	if err := CheckRevision(meta, "localLogin"); err != nil {
 		return err
@@ -1107,12 +1107,14 @@ func runWhoami(ctx context.Context, ios IO, args []string) error {
 // confirms or renames it before the freeze.
 func runAccount(ctx context.Context, ios IO, args []string) error {
 	if len(args) == 0 {
-		return failf(ExitUsage, "usage: hikyo account establish-credential|factor|passkey|recovery-codes|recovery|reset-credential ...")
+		return failf(ExitUsage, "usage: hikyo account establish-credential|password|factor|passkey|recovery-codes|recovery|reset-credential ...")
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
 	case "establish-credential":
 		return runEstablishCredential(ctx, ios, rest)
+	case "password":
+		return runAccountPassword(ctx, ios, rest)
 	case "factor":
 		return runFactor(ctx, ios, rest)
 	case "passkey":
@@ -1124,7 +1126,7 @@ func runAccount(ctx context.Context, ios IO, args []string) error {
 	case "reset-credential":
 		return runResetCredential(ctx, ios, rest)
 	default:
-		return failf(ExitUsage, "unknown account verb %q: use establish-credential, factor, passkey, recovery-codes, recovery or reset-credential", sub)
+		return failf(ExitUsage, "unknown account verb %q: use establish-credential, password, factor, passkey, recovery-codes, recovery or reset-credential", sub)
 	}
 }
 
@@ -1312,6 +1314,13 @@ func runFactorEnrolTOTP(ctx context.Context, ios IO, args []string) (returnErr e
 	client, _, err := authenticatedClient(st, ios, flags)
 	if err != nil {
 		return err
+	}
+	status, err := requireLocalAccountProof(ctx, client, "account factor enrol-totp")
+	if err != nil {
+		return err
+	}
+	if !status.HasPassword {
+		return failf(ExitRefused, "`account factor enrol-totp` requires a password proof on the terminal; use Settings > Security: %s", accountSecurityURL(client))
 	}
 	password, err := ios.readPassword("Password (to authorize enrolment): ")
 	if err != nil {

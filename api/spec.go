@@ -65,7 +65,9 @@ var SpecYAML []byte
 // Revision 9 requires authenticated per-value snapshot receipts when offline
 // disclosures are reconciled. Legacy unsigned records must be regenerated.
 // Revision 10 adds bounded online-only developer credentials.
-const Revision = 10
+// Revision 11 adds social-only credential establishment, password mutation,
+// and the authenticated local-credential inventory.
+const Revision = 11
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.
@@ -628,8 +630,8 @@ const (
 	// a request without it.
 	ReauthSelected = "selected"
 	// ReauthSession: one optional string member, required for every session
-	// caller (the schema admits its absence only because local host
-	// authority, which has no session, is exempt).
+	// caller unless a live establish stamp authorizes first local-credential
+	// creation. Local host authority, which has no session, is also exempt.
 	ReauthSession = "session"
 	// ReauthWhenValue: one optional string member, required when the body
 	// member `member` carries one of `values`.

@@ -8,6 +8,9 @@ import "github.com/Hikyo-Org/hikyo/internal/multicall"
 var reviewedWireExtras = wireExtras{
 	Version: 1,
 	Extensions: map[string]wireRow{
+		"http:POST /api/v1/auth/cli-login/redeem":       {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+		"http:POST /api/v1/auth/cli-login/device/token": {Events: []string{"EventAuthLogin", "EventAuthSessionCreated"}},
+
 		// Self-owned developer lifecycle resolves a human session without a tenant
 		// formula and records these events through RecordAuthEvent.
 		"http:GET /api/v1/auth/developer-credentials":                 {Events: []string{"EventDeveloperCredentialsListed"}},
@@ -17,7 +20,7 @@ var reviewedWireExtras = wireExtras{
 		"http:POST /api/v1/orgs/{org}/rules/replace":         {Ops: []string{"OpRuleRevoke"}},
 		"http:POST /api/v1/auth/signup":                      {Events: []string{"EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupExpired", "EventRegistrationMailIntent", "EventRegistrationMailOutcome"}},
 		"http:POST /api/v1/auth/signup/verify":               {Events: []string{"EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
-		"http:DELETE /api/v1/auth/identities/{id}":           {Events: []string{"EventIdentityUnlinked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
+		"http:DELETE /api/v1/auth/identities/{id}":           {Events: []string{"EventIdentityUnlinked", "EventDeveloperCredentialRevoked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:DELETE /api/v1/auth/totp":                      {Events: []string{"EventAuthFactorRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:DELETE /api/v1/auth/webauthn/credentials/{id}": {Events: []string{"EventAuthPasskeyRemoved", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		// The self-scoped revoke. A workspace session's death is a #71 event; an
@@ -30,7 +33,7 @@ var reviewedWireExtras = wireExtras{
 		"http:GET /api/v1/auth/cli-reauth/transactions/{state}":                                                 {Events: []string{"EventAuthCLIReauthHandoff"}},
 		// A sign-up-intent login (#607) adds the registration outcomes and, for
 		// a landing, the org creation and template grants its authority writes.
-		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/workspace/transactions/{state}": {Events: []string{"EventRemoteWorkspaceHandoffRead"}},
 		// The audit trail read surface (#45). Query and export at each addressed
@@ -161,6 +164,7 @@ var reviewedWireExtras = wireExtras{
 		// Each factor ceremony validates a proof under the per-account backoff, so
 		// a crossed threshold is an event it can emit, declared here so the
 		// audit-completeness contract covers it.
+		"http:PUT /api/v1/auth/password":               {Events: []string{"EventAuthPasswordChanged", "EventDeveloperCredentialRevoked", "EventAuthSessionCreated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/enrol/start":      {Events: []string{"EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/totp/step-up":          {Events: []string{"EventAuthReauthenticated", "EventAuthThrottleCrossed"}},
 		"http:POST /api/v1/auth/webauthn/enrol/finish": {Events: []string{"EventAuthPasskeyAdded", "EventAuthSessionCreated"}},

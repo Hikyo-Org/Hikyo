@@ -123,6 +123,7 @@ const (
 	// (the ADR requires the failures, uniform response notwithstanding), with a
 	// closed cause enum covering mix-up, nonce, purpose, state, issuer,
 	// audience, signature, epoch and IdP-error refusals.
+	EventAuthPasswordChanged EventType = "auth.password_changed"
 	EventCredentialEstablish EventType = "auth.credential_establish"
 	EventOAuth2Login         EventType = "auth.oauth2_login"
 	EventOAuth2Refused       EventType = "auth.oauth2_refused"
@@ -1283,6 +1284,10 @@ var registry = map[EventType]TypeSpec{
 			"sessions_swept": {Kind: KindInt, Required: true},
 		},
 	},
+	EventAuthPasswordChanged: {
+		SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{"account_id": {Kind: KindString, Required: true}, "first": {Kind: KindBool, Required: true}, "authorizing_credential": {Kind: KindString, Required: true, Enum: []string{"password", "totp", "establish"}}},
+	},
 	EventCredentialEstablish: {
 		SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
 		Schema: Schema{"account_id": {Kind: KindString, Required: true}, "identity_id": {Kind: KindString, Required: true}, "provider_id": {Kind: KindString, Required: true}, "kind": {Kind: KindString, Required: true, Enum: []string{"oidc", "oauth2"}}, "purpose": {Kind: KindString, Required: true, Enum: []string{"account-security"}}},
@@ -1354,7 +1359,7 @@ var registry = map[EventType]TypeSpec{
 				"reconciliation", "window-zero", "no-possession", "downgrade", "identity-exists",
 			}},
 			// The refused transaction's purpose, recorded once it resolved.
-			"purpose":     {Kind: KindString, Enum: []string{"login", "link", "reauth", "claim"}},
+			"purpose":     {Kind: KindString, Enum: []string{"login", "link", "reauth", "claim", "establish"}},
 			"provider_id": {Kind: KindString},
 			// A refused login's recorded intent and sign-up scope (#604 d8).
 			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
