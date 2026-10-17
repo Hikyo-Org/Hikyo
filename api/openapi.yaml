@@ -21252,7 +21252,8 @@ components:
         recipient, an identity or a key.
       required:
         [scheduled, last_success_at, artifact_age_seconds, rpo_seconds, rpo_exceeded,
-         last_failure_at, last_failure_reason, last_prune_at, last_drill_at, last_drill_ok, drill_stale]
+         last_failure_at, last_failure_reason, last_prune_at, last_drill_at, last_drill_ok, drill_stale,
+         last_prune_attempt_at, retention_breach, retention_reason, retained_expired_archives]
       properties:
         scheduled:
           type: boolean
@@ -21278,6 +21279,20 @@ components:
         last_prune_at:
           type: [string, "null"]
           format: date-time
+        last_prune_attempt_at:
+          type: [string, "null"]
+          format: date-time
+          description: Latest observed prune-attempt timestamp, including incomplete and failed attempts. The high-water timestamp is preserved during clock rollback.
+        retention_breach:
+          type: boolean
+          description: True for observed expiry, failed or unverified pruning, or missing/stale checks of a configured schedule. An absent schedule alone is a warning, not a breach; false does not certify unconfigured retention. This never authorizes deleting recovery material.
+        retention_reason:
+          type: string
+          description: Bounded retention status reason. not_scheduled is a configuration warning without a breach; other nonempty reasons identify expiry, failed or unverified pruning, or missing/stale configured checks.
+        retained_expired_archives:
+          type: integer
+          minimum: 0
+          description: Number of complete managed archives observed remaining over 180 days at the latest attempt; uncertainty is reported separately.
         last_drill_at:
           type: [string, "null"]
           format: date-time

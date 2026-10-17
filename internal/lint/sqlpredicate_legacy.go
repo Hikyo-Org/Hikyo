@@ -357,7 +357,6 @@ var legacyAnnotationNames = map[string]bool{
 	"SetBackupDrill":                               true,
 	"SetBackupExportFailure":                       true,
 	"SetBackupExportSuccess":                       true,
-	"SetBackupPruneSuccess":                        true,
 	"SetCredentialPolicy":                          true,
 	"SetEscrowVerification":                        true,
 	"SetLastPruneSuccess":                          true,

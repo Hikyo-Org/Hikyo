@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { zRetentionHealth } from '@hikyo/zod';
 
 import {
   diagnosticWarnings,
@@ -27,6 +28,10 @@ function health(over: Partial<RetentionHealth>): RetentionHealth {
       last_failure_at: null,
       last_failure_reason: '',
       last_prune_at: null,
+      last_prune_attempt_at: null,
+      retention_breach: true,
+      retention_reason: 'not_checked',
+      retained_expired_archives: 0,
       last_drill_at: null,
       last_drill_ok: false,
       drill_stale: true,
@@ -114,4 +119,16 @@ describe('diagnosticWarnings', () => {
     expect(storageBanner(result)?.kind).toBe('storage');
     expect(diagnosticWarnings(result).map((finding) => finding.code)).toEqual(['pin-expiry']);
   });
+});
+
+it('preserves backup retention breaches through the generated health parser', () => {
+  const input = health({});
+  input.backup.last_prune_attempt_at = '2026-08-15T10:00:00Z';
+  input.backup.retention_reason = 'protected_expired';
+  input.backup.retained_expired_archives = 1;
+  const parsed = zRetentionHealth.parse(input);
+  expect(parsed.backup.retention_breach).toBe(true);
+  expect(parsed.backup.retention_reason).toBe('protected_expired');
+  expect(parsed.backup.retained_expired_archives).toBe(1);
+  expect(parsed.backup.last_prune_attempt_at).toBe('2026-08-15T10:00:00Z');
 });

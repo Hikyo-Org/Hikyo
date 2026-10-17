@@ -405,6 +405,7 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 		PeakProjectBytes: 1_500_000_000, StorageWarn: true,
 		Backup: service.BackupHealth{
 			Scheduled: true, LastSuccessAt: last.Add(-time.Hour), RPOExceeded: true,
+			RetentionBreach: true, RetentionReason: "protected_expired", RetainedExpiredArchives: 1,
 			LastPruneAt: last.Add(-2 * time.Hour), LastDrillAt: last.Add(-3 * time.Hour), LastDrillOK: true,
 		},
 	}}
@@ -432,6 +433,8 @@ func TestMetricsExposeRetentionPrunerHealthWithoutLabels(t *testing.T) {
 		"# TYPE hikyo_last_backup_export_success_timestamp_seconds gauge\n",
 		"hikyo_last_backup_export_success_timestamp_seconds 1.7999964e+09\n",
 		"hikyo_backup_rpo_exceeded 1\n",
+		"hikyo_backup_retention_breach 1\n",
+		"hikyo_backup_retained_expired_archives 1\n",
 		"hikyo_last_backup_prune_success_timestamp_seconds 1.7999928e+09\n",
 		"hikyo_last_restore_drill_timestamp_seconds 1.7999892e+09\n",
 		"hikyo_restore_drill_ok 1\n",

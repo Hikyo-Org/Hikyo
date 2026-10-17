@@ -4318,6 +4318,22 @@ export type BackupHealth = {
      */
     last_failure_reason: string;
     last_prune_at: string | null;
+    /**
+     * Latest observed prune-attempt timestamp, including incomplete and failed attempts. The high-water timestamp is preserved during clock rollback.
+     */
+    last_prune_attempt_at: string | null;
+    /**
+     * True for observed expiry, failed or unverified pruning, or missing/stale checks of a configured schedule. An absent schedule alone is a warning, not a breach; false does not certify unconfigured retention. This never authorizes deleting recovery material.
+     */
+    retention_breach: boolean;
+    /**
+     * Bounded retention status reason. not_scheduled is a configuration warning without a breach; other nonempty reasons identify expiry, failed or unverified pruning, or missing/stale configured checks.
+     */
+    retention_reason: string;
+    /**
+     * Number of complete managed archives observed remaining over 180 days at the latest attempt; uncertainty is reported separately.
+     */
+    retained_expired_archives: number;
     last_drill_at: string | null;
     last_drill_ok: boolean;
     /**

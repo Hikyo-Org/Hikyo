@@ -12,26 +12,32 @@ import (
 
 const getBackupState = `-- name: GetBackupState :one
 
-SELECT last_success_at, last_artifact_name, last_artifact_bytes,
+SELECT last_success_at, last_artifact_name, last_artifact_bytes, last_artifact_sha256,
        last_failure_at, last_failure_reason, last_prune_at,
+       last_prune_attempt_at, last_prune_attempt_id, prune_failure_reason, retained_expired_archives,
        last_drill_at, last_drill_ok, last_drill_archive, last_drill_elapsed_ms,
        last_drill_binary_version, last_drill_schema_version
 FROM backup_state WHERE id = 1
 `
 
 type GetBackupStateRow struct {
-	LastSuccessAt          sql.NullString
-	LastArtifactName       string
-	LastArtifactBytes      int64
-	LastFailureAt          sql.NullString
-	LastFailureReason      string
-	LastPruneAt            sql.NullString
-	LastDrillAt            sql.NullString
-	LastDrillOk            int64
-	LastDrillArchive       string
-	LastDrillElapsedMs     int64
-	LastDrillBinaryVersion string
-	LastDrillSchemaVersion int64
+	LastSuccessAt           sql.NullString
+	LastArtifactName        string
+	LastArtifactBytes       int64
+	LastArtifactSha256      string
+	LastFailureAt           sql.NullString
+	LastFailureReason       string
+	LastPruneAt             sql.NullString
+	LastPruneAttemptAt      sql.NullString
+	LastPruneAttemptID      string
+	PruneFailureReason      string
+	RetainedExpiredArchives int64
+	LastDrillAt             sql.NullString
+	LastDrillOk             int64
+	LastDrillArchive        string
+	LastDrillElapsedMs      int64
+	LastDrillBinaryVersion  string
+	LastDrillSchemaVersion  int64
 }
 
 // backup_state is the single-row disaster-recovery health record (#145). Every
@@ -45,9 +51,14 @@ func (q *Queries) GetBackupState(ctx context.Context) (GetBackupStateRow, error)
 		&i.LastSuccessAt,
 		&i.LastArtifactName,
 		&i.LastArtifactBytes,
+		&i.LastArtifactSha256,
 		&i.LastFailureAt,
 		&i.LastFailureReason,
 		&i.LastPruneAt,
+		&i.LastPruneAttemptAt,
+		&i.LastPruneAttemptID,
+		&i.PruneFailureReason,
+		&i.RetainedExpiredArchives,
 		&i.LastDrillAt,
 		&i.LastDrillOk,
 		&i.LastDrillArchive,
@@ -105,30 +116,62 @@ func (q *Queries) SetBackupExportFailure(ctx context.Context, arg SetBackupExpor
 	return err
 }
 
-const setBackupExportSuccess = `-- name: SetBackupExportSuccess :exec
+const setBackupExportSuccess = `-- name: SetBackupExportSuccess :execrows
 UPDATE backup_state
-SET last_success_at = ?, last_artifact_name = ?, last_artifact_bytes = ?
+SET last_success_at = ?1, last_artifact_name = ?2,
+    last_artifact_bytes = ?3, last_artifact_sha256 = ?4
 WHERE id = 1
 `
 
 type SetBackupExportSuccessParams struct {
-	LastSuccessAt     sql.NullString
-	LastArtifactName  string
-	LastArtifactBytes int64
+	LastSuccessAt      sql.NullString
+	LastArtifactName   string
+	LastArtifactBytes  int64
+	LastArtifactSha256 string
 }
 
 // hikyo:instance-scoped
-func (q *Queries) SetBackupExportSuccess(ctx context.Context, arg SetBackupExportSuccessParams) error {
-	_, err := q.db.ExecContext(ctx, setBackupExportSuccess, arg.LastSuccessAt, arg.LastArtifactName, arg.LastArtifactBytes)
-	return err
+func (q *Queries) SetBackupExportSuccess(ctx context.Context, arg SetBackupExportSuccessParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setBackupExportSuccess,
+		arg.LastSuccessAt,
+		arg.LastArtifactName,
+		arg.LastArtifactBytes,
+		arg.LastArtifactSha256,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
-const setBackupPruneSuccess = `-- name: SetBackupPruneSuccess :exec
-UPDATE backup_state SET last_prune_at = ? WHERE id = 1
+const setBackupPruneResult = `-- name: SetBackupPruneResult :execrows
+UPDATE backup_state
+SET last_prune_attempt_at = ?1,
+    last_prune_attempt_id = ?2,
+    prune_failure_reason = ?3,
+    retained_expired_archives = CASE WHEN ?3 = 'in_progress' OR ?3 = 'directory_unavailable' THEN retained_expired_archives ELSE ?4 END,
+    last_prune_at = CASE WHEN ?3 = '' THEN ?1 ELSE last_prune_at END
+WHERE id = 1
 `
 
+type SetBackupPruneResultParams struct {
+	AttemptAt               sql.NullString
+	AttemptID               string
+	FailureReason           string
+	RetainedExpiredArchives int64
+}
+
+// hikyo:reason scheduler records instance-wide archive compliance in the singleton backup state; no tenant data is addressed
 // hikyo:instance-scoped
-func (q *Queries) SetBackupPruneSuccess(ctx context.Context, lastPruneAt sql.NullString) error {
-	_, err := q.db.ExecContext(ctx, setBackupPruneSuccess, lastPruneAt)
-	return err
+func (q *Queries) SetBackupPruneResult(ctx context.Context, arg SetBackupPruneResultParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setBackupPruneResult,
+		arg.AttemptAt,
+		arg.AttemptID,
+		arg.FailureReason,
+		arg.RetainedExpiredArchives,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
