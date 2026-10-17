@@ -939,6 +939,7 @@ test.describe('developer credential administration', () => {
       await expect(input).toHaveValue(String(lifetime));
       await input.fill('28801');
       await page.getByRole('button', { name: 'Review developer credential policy', exact: true }).click();
+      await expect(input).toBeInvalid();
       await expect(page.getByRole('dialog', { name: 'Change developer credential ceiling?' })).toBeHidden();
       await input.fill(String(lowered));
       await page.getByRole('button', { name: 'Review developer credential policy', exact: true }).click();

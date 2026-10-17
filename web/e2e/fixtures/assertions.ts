@@ -742,3 +742,27 @@ export async function openKeyDeclaration(page: Page, testInfo: TestInfo, name: s
   await expect(page).toHaveURL(/\/matrix$/);
   await link.tap();
 }
+
+declare global {
+  namespace PlaywrightTest {
+    interface Matchers<R, T> {
+      /** Asserts that a form element fails native HTML constraint validation. */
+      toBeInvalid(): Promise<R>;
+    }
+  }
+}
+
+expect.extend({
+  async toBeInvalid(locator: Locator) {
+    const valid = await locator.evaluate(
+      (element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement) => element.checkValidity(),
+    );
+    return {
+      pass: !valid,
+      message: () =>
+        valid
+          ? 'expected element to be invalid via checkValidity(), but it was valid'
+          : 'expected element to be valid via checkValidity(), but it was invalid',
+    };
+  },
+});

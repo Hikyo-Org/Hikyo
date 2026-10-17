@@ -58,14 +58,16 @@ parent's resource slot. Frozen client/web dependency installation passed.
 
 | Check | Observed result |
 | --- | --- |
-| Full web unit suite, one worker | 207 files, 1,836 tests passed in 188.71 seconds after the aggregate repair |
-| Expanded focused suite after full run | 6 files, 89 tests passed; includes every 401/403/404 denial followed by network failure and successful recovery |
-| Web typecheck and lint | Passed after the final aggregate repair and regression additions |
+| Full web unit suite, one worker (pre-rebase) | 207 files, 1,836 tests passed in 188.71 seconds after the aggregate repair |
+| Full web unit suite on replayed tree | 209 files, 1,911 tests passed |
+| Expanded focused suite after full run (pre-rebase) | 6 files, 89 tests passed; includes every 401/403/404 denial followed by network failure and successful recovery |
+| Web typecheck and lint on replayed tree | Passed |
+| Web typecheck and lint (pre-rebase) | Passed after the final aggregate repair and regression additions |
 | Design checks | Passed; 68 tokens matched, literal-size budgets and markup checks passed |
 | Production SPA build | Passed, including demo isolation and precompression; existing large-chunk advisory retained |
 | Generated client | Typecheck and 37 tests passed |
 | Documentation content | Read-only preparation check and its one regression test passed |
-| Real desktop/mobile browser and story tests | Desktop and mobile lifecycle passed (4.9s and 4.6s test bodies); Adapters stories 6 passed in each of dark and light modes |
+| Real desktop/mobile browser and story tests (pre-rebase) | Desktop and mobile lifecycle passed (4.9s and 4.6s test bodies); Adapters stories 6 passed in each of dark and light modes |
 | Go parity checks and structural graph refresh | All nine Go parity checks passed; embedded UI and OIDC fixture binaries built; structural refresh completed with one worker |
 
 Failed attempts are preserved in the offline evidence package. Seven initial
@@ -145,11 +147,14 @@ lifecycles passed against independent genuine-auth instances. Six affected
 Adapters stories passed in each of dark and light modes. Source review
 and mocked-fetch tests are not runtime acceptance.
 
-Integration warning: PR #940 adds an environment cache-retirement effect after
+Integration status: PR #940 adds an environment cache-retirement effect after
 this branch base. When combining it with nullable metadata, its successful-read
 guard must also reject null before dereferencing items. Null must never be
 treated as an authoritative empty topology or trigger purging all environment
-caches. This combined branch has not yet been tested.
+caches. On the replayed tree over current main
+(`b11e86c40606873b52506445ac28d8a845a2a097`), this combined integration was
+completed and verified: full web unit tests (209 files, 1,911 tests), web
+typecheck, and lint pass.
 
 ## Aggregate inventory repair
 
@@ -174,18 +179,11 @@ aggregate repair; it is not represented as a new combined browser run.
 
 ## Remaining delivery gates
 
-1. Integrate current main when needed, preserving the PR #940 null guard and sibling Machine access ownership, and run affected integration checks.
-2. Local Node, Go parity, structural graph, desktop/mobile lifecycle and sibling story checks have passed; retain their evidence.
-3. Preserve the passed real-server desktop/mobile lifecycle screenshots and
-   final local evidence; hosted CI still needs to validate the pushed head.
-4. Review the final diff, update this handoff with actual evidence, commit with
-   signing and DCO, verify the entire PR range and staged path portability,
-   push, confirm GitHub verification, and open/link the self-contained PR.
-5. Parent owns PR watching. Repair valid findings and failures, pass protected
-   merge-group checks, then verify mergedAt, merge SHA and current main ancestry.
-
-No commit, PR, remote CI or merge exists for this work yet. These are outstanding
-requirements, not completed issue acceptance or an authorization request.
+1. Main-ancestry gate: linear ancestry on current main has been established through the replayed tree (`b11e86c40`), preserving the PR #940 null guard and sibling Machine access ownership.
+2. Browser evidence: pre-rebase real-server desktop/mobile lifecycle screenshots and sibling story evidence are retained; earlier focused and browser results were not rerun on the replayed tree.
+3. Hosted CI: hosted CI validates the replayed PR head on GitHub.
+4. Current-head review: verify and address active review findings on the PR head.
+5. Protected merge: pass protected merge-group checks before final merge.
 
 ## Browser evidence
 
