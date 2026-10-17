@@ -123,7 +123,8 @@ export const Administrable: Story = {
       await canvas.findByRole('heading', { name: /project settings\s*·?\s*billing/i, level: 1 }),
     ).toBeVisible();
     await expect(canvas.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Identity', 'Metadata', 'Environments', 'Policy', 'Access', 'Keys & crypto', 'Danger zone',
+      'Identity', 'Metadata', 'Environments', 'Policy', 'Access', 'Developer credentials',
+      'Keys & crypto', 'Danger zone',
     ]);
     await openTab(canvas, 'Metadata');
     await expect(canvas.getByLabelText('Name')).toBeVisible();

@@ -115,8 +115,9 @@ export const SectionTabs: Story = {
   parameters: { app: { ...app(populated), path: '/instance#instance-pki-profiles', routePath: '/instance' } },
   play: async ({ canvas }) => {
     await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
-      'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Identity providers',
-      'GitHub sign-in', 'SAML', 'Federation', 'Certificates', 'Retention health', 'Keys & crypto',
+      'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Developer credentials',
+      'Identity providers', 'GitHub sign-in', 'SAML', 'Federation', 'Certificates',
+      'Retention health', 'Keys & crypto',
     ]);
     await expect(canvas.getByRole('tab', { name: 'Certificates' })).toHaveAttribute('aria-selected', 'true');
     await expect(canvas.getAllByRole('tab', { selected: true })).toHaveLength(1);

@@ -134,3 +134,31 @@ re-merged `api/settings.ts` pin.
 Required CI, current-head review, protected merge and verified main ancestry
 remain separate gates. Local logs and offline screenshot reports are external
 chat deliverables and are not committed.
+
+## Story assertions after settlement gating (2026-10-17)
+
+The full candidate suite runs the Storybook story tests, which the branch's
+earlier validation did not schedule. Five story assertions failed on the
+replayed tree. All five are fixed in the stories; no application source changed.
+
+- `web/src/routes/Overview.stories.tsx`: the `Empty` and `Create Project Journey`
+  stories read the lede's `Choose a project` link synchronously, immediately
+  after the `Overview` heading appears. This change renders that link only once
+  the project read has settled, so both lookups now await it. The link was
+  unconditional before, which is why the assertions held.
+- `web/src/routes/MachineAccess.stories.tsx`: the `CertificatesTab` story stubbed
+  each environment's certificate listing with `{ items: [] }`, which
+  `zCertificateList` rejects (it requires `certificates`). The listing failed to
+  parse, so the tab count read `unknown`. The story passed before only because it
+  asserted the pre-settle render, where the fan-out is still empty and the count
+  read `0`; a pending or failed fan-out now reports `unknown` instead of a false
+  zero, which exposed the malformed stub. Both stubs now parse
+  `{ certificates: [] }`, matching `CertificatesTab.test.tsx`.
+- `web/src/routes/ProjectSettings.stories.tsx` and
+  `web/src/routes/InstanceAdmin.stories.tsx`: the exact tab-list expectations
+  predate #807's `Developer credentials` tab and instance section. The tab is
+  added in its rendered position.
+
+Validation on the fixed tree, with Node 26.7.0: the full Storybook project
+passes all 797 tests across 138 files, and `web` typecheck and lint pass. The
+candidate suite on the pushed revision is the remaining evidence.

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
+  zCertificateList,
   zDeliveryTargetList,
   zDynamicLeaseList,
   zMeta,
@@ -499,8 +500,8 @@ export const CertificatesTab: Story = {
   parameters: {
     app: app(
       [
-        { url: `${BASE}/environments/${PROD}/certificates`, body: { items: [] } },
-        { url: `${BASE}/environments/${STAGING}/certificates`, body: { items: [] } },
+        { url: `${BASE}/environments/${PROD}/certificates`, body: zCertificateList.parse({ certificates: [] }) },
+        { url: `${BASE}/environments/${STAGING}/certificates`, body: zCertificateList.parse({ certificates: [] }) },
         ...populatedResponses,
       ],
       `${PATH}?tab=certificates`,
