@@ -1,5 +1,28 @@
 # #651 MCP production proof
 
+## Current status, 16 October 2026
+
+#651 remains open. The additive native-client test now proves actual Codex
+0.160.1 configuration reads, secret metadata boundaries and measured
+`2025-06-18` wire behavior on SQLite and PostgreSQL. The exact five-tool
+read-only catalog and original seven-tool profile are both checked; the latter
+exercises four calls, not all seven. See the
+[current report and support table](../reports/mcp-current-client-651.md) and
+[redacted evidence](../reports/mcp-current-client-651.json).
+
+The first PostgreSQL launcher attempt failed before MCP with an initializer
+readiness race; its log remains preserved. TCP readiness corrected that fixture
+failure. No product auth or protocol behavior changed. The final public
+candidate, two-process deployment and remaining named-client acceptance are
+still required. The accepted #631 no-OAuth decision remains separate.
+
+The following sections retain the historical rehearsal exactly as scoped.
+Their image IDs, client versions, cleanup state and validation results do not
+describe the current deployment or current checks. This handoff does not
+authorize restarting the old lab or reusing its credentials.
+
+## Historical rehearsal
+
 > Historical local artifact names below identify the original run only and are not included in this checkout. Recorded results were not rerun for this path cleanup.
 
 5 September 2026. Codex-authored. No commit or push by the implementation agent.

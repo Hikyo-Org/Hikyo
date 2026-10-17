@@ -1,0 +1,492 @@
+{
+  "recorded_at_utc": "2026-10-16T18:41:47.538488+00:00",
+  "source_commit": "c4c626a105d0139fcc8a6f5444e585e7a4e0a761",
+  "tracked_diff_sha256": "e42923a52abab6133b6a76d17023768876a4825f004286dc628d8f8843e8d95c",
+  "test_binary_sha256": "7d8346bd51747db186b40739ca034b1aef298b879f274afde4c0672a1c8f222a",
+  "endpoint": "local HTTP /mcp/codex",
+  "postgres_image": "postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941",
+  "postgres_read_only": {
+    "exec_session": 3965,
+    "exit_code": 0,
+    "wire": [
+      {
+        "engine": "postgres",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "resources/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "resources/templates/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      }
+    ],
+    "test_results": [
+      "--- PASS: TestMCPCodexNativeReadOnly (1.51s)",
+      "--- PASS: TestMCPCodexNativeReadOnly/postgres (1.50s)",
+      "PASS"
+    ],
+    "assertion_summary": [
+      "native Codex read-only profile discovered exactly five tools, read published config and secret metadata without canary disclosure, and created no draft or audit event"
+    ],
+    "codex_versions": [
+      "codex-cli 0.160.1"
+    ],
+    "log_sha256": "75545a50962694950ddcbef18cc77483ebbf5a36e87070e8fa561f7dd4d4a4cd",
+    "log_last_write_at_utc": "2026-10-16T18:37:56.653497+00:00"
+  },
+  "original_seven_tool_both_engines": {
+    "exec_session": 95547,
+    "exit_code": 0,
+    "wire": [
+      {
+        "engine": "sqlite",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "resources/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "resources/templates/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "sqlite",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "resources/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "resources/templates/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "engine": "postgres",
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      }
+    ],
+    "test_results": [
+      "--- PASS: TestMCPCodexNative (2.16s)",
+      "--- PASS: TestMCPCodexNative/sqlite (0.67s)",
+      "--- PASS: TestMCPCodexNative/postgres (1.47s)",
+      "PASS"
+    ],
+    "assertion_summary": [
+      "native Codex initialized, discovered seven tools, read published config and secret metadata without canary disclosure, validated and staged one inert draft; MCP audit verified",
+      "native Codex initialized, discovered seven tools, read published config and secret metadata without canary disclosure, validated and staged one inert draft; MCP audit verified"
+    ],
+    "codex_versions": [
+      "codex-cli 0.160.1"
+    ],
+    "log_sha256": "15c8b3f8a018e56acf779e3e1d0c242246cb675c473e77a1cb9aa34fa1c38a93",
+    "log_last_write_at_utc": "2026-10-16T18:40:12.861595+00:00",
+    "coverage": "Exact seven-tool catalog; four exercised calls per engine: listDefinitions, inspectConfiguration, validateChange, stageChange. Not all seven tools invoked."
+  },
+  "preserved_failed_attempt": {
+    "exec_session": 26679,
+    "exit_code": 1,
+    "failure": "PostgreSQL connection unexpected EOF before MCP call; socket pg_isready could observe temporary initializer.",
+    "log_sha256": "cb0a274a7706232264dda0638373aa8ab5c71817aafcb08b26bc1730f0903b91",
+    "pinned_image_entrypoint_sha256": "9c440299ae04a0a79d55b8bf03307036d890a40979d2fb698073c9050d4b20a5",
+    "source_evidence": "Temporary initializer uses listen_addresses empty and fast shutdown before exec final postgres.",
+    "read_rerun_readiness": "pg_isready -h 127.0.0.1",
+    "write_run_readiness": "Authenticated TCP psql SELECT 1 with environment-only password; same 30-second budget"
+  },
+  "owned_containers_removed": true,
+  "runtime_lane_released": true,
+  "claim_limit": "Local actual-client tests on pinned source plus test diff. PostgreSQL is a fresh local datastore; servers are in-process httptest, not two deployed service processes. No final candidate, public HTTPS, DB TLS, provider model turn, Go SDK/Inspector current runtime, cancellation/drain or full #651 closure.",
+  "sqlite_read_only": {
+    "run_kind": "local_in_process_http_sqlite_actual_codex_read_only",
+    "recorded_at_utc": "2026-10-16T18:12:05.260975+00:00",
+    "source_commit": "c4c626a105d0139fcc8a6f5444e585e7a4e0a761",
+    "tracked_diff_sha256": "e42923a52abab6133b6a76d17023768876a4825f004286dc628d8f8843e8d95c",
+    "test_binary_sha256": "7d8346bd51747db186b40739ca034b1aef298b879f274afde4c0672a1c8f222a",
+    "go_version": "go version go1.27.2 darwin/arm64",
+    "codex_versions": [
+      "codex-cli 0.160.1"
+    ],
+    "wire": [
+      {
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "initialize",
+        "requested_protocol": "2025-06-18",
+        "negotiated_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "notifications/initialized",
+        "header_protocol": "2025-06-18",
+        "status": 202,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "tools/list",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "resources/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "resources/templates/list",
+        "header_protocol": "2025-06-18",
+        "status": 404,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      },
+      {
+        "method": "tools/call",
+        "header_protocol": "2025-06-18",
+        "status": 200,
+        "request_session": false,
+        "response_session": false,
+        "bearer_present": true
+      }
+    ],
+    "test_results": [
+      "--- PASS: TestMCPCodexNativeReadOnly (0.73s)",
+      "--- PASS: TestMCPCodexNativeReadOnly/sqlite (0.69s)",
+      "PASS"
+    ],
+    "assertion_summary": [
+      "native Codex read-only profile discovered exactly five tools, read published config and secret metadata without canary disclosure, and created no draft or audit event"
+    ],
+    "public_https": false,
+    "deployed_candidate": false,
+    "postgres_executed": false,
+    "provider_model_turn": false,
+    "five_tool_read_only_profile": true,
+    "claim_limit": "Local SQLite actual-client regression proof only; final candidate public deployment and named-client/multi-process matrix remain pending.",
+    "log_last_write_at_utc": "2026-10-16T18:11:37.555289+00:00",
+    "unsupported_optional_methods": {
+      "resources/list": 404,
+      "resources/templates/list": 404
+    },
+    "unsupported_optional_methods_disposition": "Expected refusal: resources are outside Hikyo closed tools-only profile. Actual definitions/configuration calls succeeded."
+  },
+  "native_test_source_sha256": "a8b6ff94a9771bde24e4cb707c87142d2a3a644e5327d2f8c8da1fb0f7160fbe",
+  "issue_state": "open; references651 without closing",
+  "documentation_added_after_tested_patch": true
+}

@@ -178,8 +178,8 @@ describe credential channels; a listed profile is not a passing client claim.
 | Client | Pinned profile | Credential channel |
 | --- | --- | --- |
 | Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.8.0` | HTTP transport injects an environment-loaded bearer |
-| MCP Inspector | `@modelcontextprotocol/inspector 2.5.0` | Transient Authorization header, not a saved catalog |
-| Codex CLI | `0.155.0`, `/mcp/codex` | `bearer_token_env_var` |
+| MCP Inspector | `@modelcontextprotocol/inspector 2.10.1` | Transient Authorization header, not a saved catalog |
+| Codex CLI | `0.160.1`, `/mcp/codex` | `bearer_token_env_var` |
 | Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
 | OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
 
@@ -204,6 +204,17 @@ for image identity, limitations, and the excluded invalid endpoint attempt.
 Those historical observations do not cover the compatibility profile added
 for #781. Use the explicit Codex route below; do not weaken TLS or global
 modern endpoint validation.
+
+On 16 October 2026, actual Codex `0.160.1` passed local in-process HTTP tests
+on SQLite and PostgreSQL. The five-tool read-only profile exercised definitions
+and published configuration reads; the seven-tool profile exercised those two
+calls plus validation and staging. All seven tools were advertised, but only
+those four were invoked. The measured initialization and subsequent protocol
+headers were `2025-06-18`. Typed config/secret checks and all-frame canary/token
+exclusion passed. This does not establish public HTTPS or final-candidate
+acceptance. Current Go SDK `v1.8.0` and Inspector `2.10.1` are source pins, not
+new deployed passes. Current Claude and Responses remain unverified. See the
+[current client support table and evidence](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/reports/mcp-current-client-651.md).
 
 Set the credential only in the launching process:
 
@@ -237,15 +248,19 @@ codex mcp add hikyo \
   --bearer-token-env-var HIKYO_MCP_TOKEN
 ```
 
-Codex `0.155.0` was tested against a disposable SQLite datastore using actual
+Codex `0.160.1` was tested against disposable SQLite and PostgreSQL datastores using actual
 `codex app-server`, `mcpServerStatus/list` and `mcpServer/tool/call`, without a
-model turn or provider request. It discovered all seven tools, read a scoped
-definition, validated without staging, then staged exactly one inert draft.
-The test verifies `origin=mcp` audit rows and absence of publication. Reproduce:
+model turn or provider request. It discovered all seven tools and exercised
+four calls: definitions, published configuration, validation without staging,
+and staging exactly one inert draft. The separate read-only test discovers
+five tools and sends only the first two calls. Both verify config/secret
+boundaries; the write-profile test verifies `origin=mcp` audit rows and absence
+of publication. Reproduce with a private disposable `HIKYO_TEST_POSTGRES_DSN`
+to include PostgreSQL; without it that engine skips:
 
 ```bash
 HIKYO_TEST_CODEX_NATIVE=1 go test ./internal/isolation \
-  -run '^TestMCPCodexNative$' -count=1 -v
+  -run '^TestMCPCodexNative(ReadOnly)?$' -count=1 -v
 ```
 
 For T3, configure the same file in the Codex home selected by its provider
@@ -286,7 +301,7 @@ server only after reviewing the expanded URL and tool catalog.
 
 Inspector's CLI header is a command-line value, so expanding a production
 credential there can expose it to process inspection. For a manual smoke,
-start Inspector `2.5.0`, choose Streamable HTTP, set the URL from
+start Inspector `2.10.1`, choose Streamable HTTP, set the URL from
 `HIKYO_MCP_URL`, and set Protocol Era to **Modern**. Paste the bearer into the
 transient Authorization field from the secret manager, call
 `hikyo_list_definitions`, then clear the field and do not save the server
