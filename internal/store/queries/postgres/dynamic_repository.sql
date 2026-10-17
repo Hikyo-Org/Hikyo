@@ -49,8 +49,10 @@ UPDATE dynamic_leases SET state=sqlc.arg(state),max_ttl_seconds=sqlc.arg(max_ttl
 -- name: DynamicEnqueueRenewing :execrows
 UPDATE dynamic_leases SET state=sqlc.arg(state),last_transition_at=sqlc.arg(at),next_attempt_at=sqlc.arg(next_attempt_at),attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND (CAST(sqlc.arg(chain_env) AS TEXT)='' OR environment_id=sqlc.arg(chain_env)) AND state='active';
 
+-- The positivity predicate must bind the parameter as BIGINT rather than infer
+-- int4 from its zero literal; valid duration ceilings exceed the int4 range.
 -- name: DynamicEnqueueRenewingWithTTL :execrows
-UPDATE dynamic_leases SET state=sqlc.arg(state),max_ttl_seconds=sqlc.arg(max_ttl_seconds),last_transition_at=sqlc.arg(at),next_attempt_at=sqlc.arg(next_attempt_at),attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND (CAST(sqlc.arg(chain_env) AS TEXT)='' OR environment_id=sqlc.arg(chain_env)) AND state='active';
+UPDATE dynamic_leases SET state=sqlc.arg(state),max_ttl_seconds=sqlc.arg(max_ttl_seconds),last_transition_at=sqlc.arg(at),next_attempt_at=sqlc.arg(next_attempt_at),attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND (CAST(sqlc.arg(chain_env) AS TEXT)='' OR environment_id=sqlc.arg(chain_env)) AND state='active' AND CAST(sqlc.arg(max_ttl_seconds) AS BIGINT)>0 AND sqlc.arg(max_ttl_seconds)<=max_ttl_seconds;
 
 -- name: DynamicEnqueueUnknown :execrows
 UPDATE dynamic_leases SET state=sqlc.arg(state),last_transition_at=sqlc.arg(at),next_attempt_at=sqlc.arg(next_attempt_at),attempt_count=0,lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(lease_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND (CAST(sqlc.arg(chain_env) AS TEXT)='' OR environment_id=sqlc.arg(chain_env)) AND state='unknown';

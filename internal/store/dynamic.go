@@ -96,7 +96,8 @@ type DynamicLeaseFinishMint struct {
 
 // DynamicLeaseTransition enqueues renew/revoke/reconcile: it sets the transient
 // state and stamps next_attempt_at now so the worker claims it. MaxTTLSeconds,
-// when non-zero, tightens the per-period ceiling on a renew.
+// when non-zero, tightens the per-period ceiling on a renew. A larger ceiling
+// conflicts atomically with the current row; zero retains its existing ceiling.
 type DynamicLeaseTransition struct {
 	LeaseID       string
 	State         string
@@ -346,7 +347,9 @@ func (r dynamicQueries) EnqueueTransition(ctx context.Context, p authz.Proof, m 
 		return DynamicLease{}, err
 	}
 	if rows != 1 {
-		// The lease is missing or not in a state this transition may enter.
+		// The lease is missing, ineligible for this transition, or the requested
+		// renewal ceiling exceeds its current maximum. Refuse instead of silently
+		// clamping, using the same conflict contract as other row-state refusals.
 		if _, getErr := r.GetLease(ctx, p, m.LeaseID); errors.Is(getErr, ErrNotFound) {
 			return DynamicLease{}, ErrNotFound
 		}

@@ -55,6 +55,21 @@ func (s *Dynamic) RunLeaseSweep(ctx context.Context, workerID string) (bool, err
 		// Cannot determine the transition; release for a later attempt.
 		return true, s.Runtime.Retry(ctx, lease, s.now().Add(dynamicRetryDelay(lease.Attempt)))
 	}
+	// A queued lease may predate the checked input range. Refuse invalid
+	// renewal ceilings before loading credentials or opening the provider,
+	// including unknown effects that resume a renewal. Cleanup transitions
+	// must still be able to drop roles whose historical ceiling is invalid.
+	var renewTTL time.Duration
+	if kind == "renew" {
+		renewTTL, err = dynamic.TTLDuration(lease.MaxTTLSeconds)
+		if err != nil {
+			effectID, err := s.Runtime.RecordIntent(ctx, lease, "renew")
+			if err != nil {
+				return true, err
+			}
+			return true, s.Runtime.RecordOutcome(ctx, lease, effectID, "renew", "failure", "active", time.Time{}, time.Time{})
+		}
+	}
 	provider, release, err := s.openProvider(ctx, lease)
 	if err != nil {
 		if errors.Is(err, store.ErrNoProviderCredential) {
@@ -69,7 +84,7 @@ func (s *Dynamic) RunLeaseSweep(ctx context.Context, workerID string) (bool, err
 
 	switch kind {
 	case "renew":
-		return true, s.settleRenew(ctx, lease, provider)
+		return true, s.settleRenew(ctx, lease, provider, renewTTL)
 	case "revoke":
 		return true, s.settleDrop(ctx, lease, provider, "revoke", "revoked")
 	case "expire":
@@ -135,7 +150,7 @@ func (s *Dynamic) openProvider(ctx context.Context, lease store.ClaimedLease) (d
 
 // settleRenew re-authorizes the lease principal (renew creates access, so it
 // re-checks read+reveal and the machine-reveal opt-in) then extends the role.
-func (s *Dynamic) settleRenew(ctx context.Context, lease store.ClaimedLease, provider dynamic.Provider) error {
+func (s *Dynamic) settleRenew(ctx context.Context, lease store.ClaimedLease, provider dynamic.Provider, ttl time.Duration) error {
 	effectID, err := s.Runtime.RecordIntent(ctx, lease, "renew")
 	if err != nil {
 		return err
@@ -147,7 +162,7 @@ func (s *Dynamic) settleRenew(ctx context.Context, lease store.ClaimedLease, pro
 	}
 	opCtx, cancel := context.WithTimeout(ctx, s.leaseDeadline())
 	defer cancel()
-	newExpiry := s.now().Add(time.Duration(lease.MaxTTLSeconds) * time.Second)
+	newExpiry := s.now().Add(ttl)
 	err = provider.ExtendRole(opCtx, lease.ProviderHandle, newExpiry)
 	switch {
 	case err == nil:

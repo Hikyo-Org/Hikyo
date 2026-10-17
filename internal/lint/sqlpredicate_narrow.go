@@ -32,6 +32,13 @@ func narrowPredicate(text string, chain map[string]bool, columnOK func(string) b
 	if optionalEmptyRe.MatchString(text) {
 		return true
 	}
+	// A typed bind parameter compared with an integer is independent of row
+	// contents. It can only retain or discard rows already confined by the
+	// owning chain; it never supplies a chain-column binding. BIGINT is needed
+	// when PostgreSQL would otherwise infer int4 from an integer literal.
+	if typedParameterComparisonRe.MatchString(text) {
+		return true
+	}
 	if m := narrowComparisonRe.FindStringSubmatch(text); m != nil {
 		col := strings.ToLower(m[1])
 		return !chain[col] && columnOK(col)
@@ -101,14 +108,15 @@ func splitSQLTop(text, separator string) ([]string, bool) {
 }
 
 var (
-	narrowColumn              = `(?:\w+\.)?\w+`
-	narrowValue               = predicateValue
-	narrowComparisonRe        = regexp.MustCompile(`(?i)^(` + narrowColumn + `)\s*(?:=|<>|!=|<=|>=|<|>)\s*` + narrowValue + `$`)
-	narrowReverseComparisonRe = regexp.MustCompile(`(?i)^` + narrowValue + `\s*(?:=|<>|!=|<=|>=|<|>)\s*(` + narrowColumn + `)$`)
-	narrowNullRe              = regexp.MustCompile(`(?i)^(` + narrowColumn + `) IS (?:NOT )?NULL$`)
-	narrowAnyRe               = regexp.MustCompile(`(?i)^(` + narrowColumn + `)\s*=\s*ANY\((?:` + paramRe + `)(?:::text\[\])?\)$`)
-	narrowInRe                = regexp.MustCompile(`(?i)^(` + narrowColumn + `) (?:NOT )?IN \((.+)\)$`)
-	narrowSliceRe             = regexp.MustCompile(`(?i)^sqlc\.slice\('\w+'\)$`)
-	narrowValueRe             = regexp.MustCompile(`(?i)^` + narrowValue + `$`)
-	optionalEmptyRe           = regexp.MustCompile(`(?i)^(?:SQLCARG_\w+|CAST\(SQLCARG_\w+ AS TEXT\))\s*=\s*''$`)
+	narrowColumn               = `(?:\w+\.)?\w+`
+	narrowValue                = predicateValue
+	narrowComparisonRe         = regexp.MustCompile(`(?i)^(` + narrowColumn + `)\s*(?:=|<>|!=|<=|>=|<|>)\s*` + narrowValue + `$`)
+	narrowReverseComparisonRe  = regexp.MustCompile(`(?i)^` + narrowValue + `\s*(?:=|<>|!=|<=|>=|<|>)\s*(` + narrowColumn + `)$`)
+	narrowNullRe               = regexp.MustCompile(`(?i)^(` + narrowColumn + `) IS (?:NOT )?NULL$`)
+	narrowAnyRe                = regexp.MustCompile(`(?i)^(` + narrowColumn + `)\s*=\s*ANY\((?:` + paramRe + `)(?:::text\[\])?\)$`)
+	narrowInRe                 = regexp.MustCompile(`(?i)^(` + narrowColumn + `) (?:NOT )?IN \((.+)\)$`)
+	narrowSliceRe              = regexp.MustCompile(`(?i)^sqlc\.slice\('\w+'\)$`)
+	narrowValueRe              = regexp.MustCompile(`(?i)^` + narrowValue + `$`)
+	optionalEmptyRe            = regexp.MustCompile(`(?i)^(?:SQLCARG_\w+|CAST\(SQLCARG_\w+ AS TEXT\))\s*=\s*''$`)
+	typedParameterComparisonRe = regexp.MustCompile(`(?i)^CAST\(` + paramRe + `\s+AS\s+BIGINT\)\s*(?:=|<>|!=|<=|>=|<|>)\s*-?\d+$`)
 )

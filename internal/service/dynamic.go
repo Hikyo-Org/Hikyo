@@ -412,8 +412,9 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 	if scope.Project == "" || scope.Env == "" || req.ProviderID == "" {
 		return MintLeaseResult{}, fmt.Errorf("%w: lease mint requires environment scope and provider id", domain.ErrInvalid)
 	}
-	if req.MaxTTLSeconds <= 0 {
-		return MintLeaseResult{}, fmt.Errorf("%w: lease mint requires a positive max_ttl_seconds", domain.ErrInvalid)
+	ttl, err := dynamic.TTLDuration(req.MaxTTLSeconds)
+	if err != nil {
+		return MintLeaseResult{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 	}
 	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpLeaseMint, authz.OpLeaseMint, scope, s.now)
 	if err != nil {
@@ -497,7 +498,7 @@ func (s *Dynamic) MintLease(ctx context.Context, actor Actor, scope domain.Scope
 		return MintLeaseResult{}, err
 	}
 	defer provider.Close()
-	expiresAt := s.now().Add(time.Duration(req.MaxTTLSeconds) * time.Second)
+	expiresAt := s.now().Add(ttl)
 	createErr := provider.CreateRole(ctx, dynamic.CreateRoleRequest{
 		Name: roleName, Password: password, GrantRole: grantRole, ValidUntil: expiresAt,
 	})
@@ -679,6 +680,11 @@ func (s *Dynamic) GetLease(ctx context.Context, actor Actor, scope domain.Scope,
 }
 
 func (s *Dynamic) RenewLease(ctx context.Context, actor Actor, scope domain.Scope, leaseID string, maxTTLSeconds int64) (DynamicLeaseView, error) {
+	if maxTTLSeconds != 0 {
+		if _, err := dynamic.TTLDuration(maxTTLSeconds); err != nil {
+			return DynamicLeaseView{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+		}
+	}
 	return s.enqueueLeaseTransition(ctx, actor, scope, leaseID, authz.OpLeaseRenew, "renewing", "renew", maxTTLSeconds)
 }
 
@@ -700,6 +706,18 @@ func (s *Dynamic) enqueueLeaseTransition(ctx context.Context, actor Actor, scope
 		caller, proof, err := authorize(ctx, az, actor, op, scope, now)
 		if err != nil {
 			return err
+		}
+		// Omission retains the stored ceiling, which may predate the checked
+		// range. Validate that effective value before queuing a transition or
+		// recording its intent. A valid explicit tightening can repair it.
+		if kind == "renew" && maxTTLSeconds == 0 {
+			current, err := r.Dynamic().GetLease(ctx, proof, leaseID)
+			if err != nil {
+				return err
+			}
+			if _, err := dynamic.TTLDuration(current.MaxTTLSeconds); err != nil {
+				return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+			}
 		}
 		lease, err := r.Dynamic().EnqueueTransition(ctx, proof, store.DynamicLeaseTransition{
 			LeaseID: leaseID, State: state,
