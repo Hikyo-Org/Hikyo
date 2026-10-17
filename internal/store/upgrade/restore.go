@@ -126,9 +126,7 @@ func ReconcilePostgresRestoreIfPresent(ctx context.Context, tx pgx.Tx) error {
 	if tx == nil {
 		return ErrCorrupt
 	}
-	catalog, err := inspectCatalogWith(ctx, func(ctx context.Context, query string, args ...any) (catalogRows, error) {
-		return tx.Query(ctx, query, args...)
-	}, releaseidentity.Postgres)
+	catalog, err := inspectPostgresCatalog(ctx, tx, inspectCatalogWith)
 	if err != nil {
 		return err
 	}

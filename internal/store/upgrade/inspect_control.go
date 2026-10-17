@@ -44,13 +44,7 @@ func InspectControl(ctx context.Context, cfg Config) (State, error) {
 		return State{}, err
 	}
 	defer tx.Rollback()
-	catalog, err := inspectCatalogObjectsWith(ctx, func(ctx context.Context, query string, args ...any) (catalogRows, error) {
-		rows, err := tx.QueryContext(ctx, query, args...)
-		if err != nil {
-			return nil, err
-		}
-		return sqlCatalogRows{rows}, nil
-	}, cfg.Engine)
+	catalog, err := inspectSQLCatalog(ctx, tx, cfg.Engine, inspectCatalogObjectsWith)
 	if err != nil {
 		return State{}, err
 	}
