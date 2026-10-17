@@ -96,6 +96,41 @@ candidate evidence remain preserved. No unfinalized #820 feature or shared
 assertion patch is included. Node, Go and browser lanes were explicitly released
 when their handles completed; owned browser listeners were confirmed closed.
 
+## Rebase onto main (2026-10-17)
+
+The branch was replayed onto main
+`b11e86c40606873b52506445ac28d8a845a2a097`. The pre-rebase head
+`464d75b3294f6aef1fabce341ea7ab64cdb77e9b` is preserved as
+`recovery/pr-954-pre-rebase-20261017`. The dependency heads named above
+(`3a331d2d6` for #948, `03ad8f024` for #807) are no longer ancestors of the
+branch: their content is replayed in the linear order #932, #948, #807, and the
+merge commits that had integrated #940/#931 collapse into that order. Main had
+already merged #940/#931 and has since extended `api/matrix.ts` and
+`routes/Matrix.tsx`; the replayed commits do not touch those modules, so the
+rebase keeps main's revision.
+
+Conflicts and their resolutions:
+
+- `web/src/api/sensitiveInventory.json`: both prose logs are kept and every pin
+  was checked against the replayed source. `api/settings.ts` is the only module
+  changed on both sides; it was re-merged with main's environment guard, and its
+  pin is refreshed to the merged revision. The other 63 pins still match the
+  sources the branch reviewed.
+- `web/src/api/settings.ts`: resolved to the branch's merged revision, which
+  already carries main's environment guard and retirement behaviour.
+- `docs/handoff/932-project-query-states.md`: this accepted integration record
+  replaces the earlier "not yet integrated" note.
+
+Deterministic checks re-run on the replayed tree, with Node 26.7.0:
+
+- `web` typecheck and lint pass.
+- The `web` unit suite passes all 1,911 tests across 209 files.
+
+Ancestry is now linear on current main, so the mergeability gate no longer
+depends on sibling PRs' merge status. The earlier combined-validation evidence
+above still describes the same application source for every file except the
+re-merged `api/settings.ts` pin.
+
 Required CI, current-head review, protected merge and verified main ancestry
 remain separate gates. Local logs and offline screenshot reports are external
 chat deliverables and are not committed.
