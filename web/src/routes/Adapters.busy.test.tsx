@@ -37,8 +37,10 @@ async function rowButtons(): Promise<{ disabled: boolean[]; unmount: () => Promi
         state: 'active', created_at: '2026-09-01T00:00:00Z', targets: [],
       }] }));
     }
+    if (path === `${base}/service-accounts`) return Promise.resolve(Response.json({ items: [], count: 0 }));
+    if (path === `${base}/file-targets`) return Promise.resolve(Response.json({ items: [] }));
     if (path === `${base}/environments` || path === `${base}/keys`) {
-      return Promise.resolve(Response.json({ items: [] }));
+      return Promise.resolve(Response.json({ items: [], count: 0, schema_revision: 0 }));
     }
     throw new Error(`unexpected ${path}`);
   }));

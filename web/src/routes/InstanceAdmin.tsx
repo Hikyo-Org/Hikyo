@@ -34,6 +34,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { InstanceMailPanel } from './InstanceMailPanel.tsx';
+import { DeveloperCredentialPolicy } from './DeveloperCredentialPolicy.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OAuth2ProvidersPanel } from './OAuth2ProvidersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
@@ -200,6 +201,7 @@ export function InstanceAdmin() {
           </Panel>
         ) },
         { id: 'instance-settings', label: 'Policy', content: <CredentialPolicyPanel query={policy} editing={editingPolicy} setEditing={setEditingPolicy} notices={notices} onDone={ok} onFailure={report} /> },
+        { id: 'instance-developer-credentials', label: 'Developer credentials', content: <DeveloperCredentialPolicy /> },
         { id: 'instance-oidc', label: 'Identity providers', content: <OidcProvidersPanel /> },
         { id: 'instance-oauth2', label: 'GitHub sign-in', content: <OAuth2ProvidersPanel /> },
         // SAML providers and their SP signing keys are one feature: one tab.

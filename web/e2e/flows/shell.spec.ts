@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import { zRetentionHealth, zWhoAmI } from '@hikyo/zod';
+import { zProjectList, zRetentionHealth, zWhoAmI } from '@hikyo/zod';
 
 import type { RetentionHealth } from '../../src/api/retention.ts';
 import {
+  expectInteractiveAssertionSet,
   expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
@@ -54,6 +55,96 @@ async function mockRetentionHealth(
     await route.fulfill({ response, json: { ...health, diagnostics: [], ...overrides } });
   });
 }
+
+test.describe('project directory resilience', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('shows pending, failed and successful-empty reads in the landing page and navigation', async ({ page }, testInfo) => {
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let fail = true;
+    await page.route('**/api/v1/orgs/*/projects', async (route) => {
+      await pending;
+      await route.fulfill(fail
+        ? { status: 500, json: { error: { code: 'internal_error' } } }
+        : { status: 200, json: { items: [], count: 0 } });
+    });
+    try {
+      await page.goto('/');
+      const main = page.locator('#content');
+      await expect(main.getByRole('status').filter({ hasText: 'Loading projects' })).toBeVisible();
+      await expect(main.getByRole('link', { name: 'Choose a project' })).toHaveCount(0);
+      await testInfo.attach('projects-pending', { body: await page.screenshot({ path: testInfo.outputPath('projects-pending.png') }), contentType: 'image/png' });
+      await openNav(page);
+      const directory = page.locator('.sidebar__section--projects');
+      await expect(directory.getByRole('status')).toContainText('Loading projects');
+      release?.();
+      await expect(directory.getByRole('alert')).toContainText('Projects could not be loaded');
+      await expect(main.locator('[role="alert"]')).toContainText('Projects could not be loaded');
+      await expect(directory).not.toContainText('No projects yet');
+      await expect(main).not.toContainText('No projects yet');
+      await expectNoSeriousAxeViolations(page);
+      await expectInteractiveAssertionSet(page);
+      fail = false;
+      const retry = directory.getByRole('button', { name: 'Retry projects', exact: true });
+      await retry.focus();
+      await testInfo.attach('projects-error', { body: await page.screenshot({ path: testInfo.outputPath('projects-error.png') }), contentType: 'image/png' });
+      await retry.press('Enter');
+      await expect(directory.getByRole('status')).toContainText('No projects yet');
+      await expect(directory.getByRole('alert')).toHaveCount(0);
+      if (testInfo.project.name === 'mobile') {
+        await page.getByRole('button', { name: 'Close navigation' }).click();
+      }
+      await expect(main.getByRole('status')).toContainText('No projects yet');
+      await expect(main.getByRole('link', { name: 'Choose a project' })).toBeVisible();
+      await expectNoSeriousAxeViolations(page);
+      await testInfo.attach('projects-empty', { body: await page.screenshot({ path: testInfo.outputPath('projects-empty.png') }), contentType: 'image/png' });
+    } finally {
+      release?.();
+    }
+  });
+
+  test('recovers an HTTP 500 to the real project list or its single-project destination', async ({ page }, testInfo) => {
+    let fail = true;
+    const recovered: { items: Array<{ id: string; org_id: string; name: string }> | null } = { items: null };
+    await page.route('**/api/v1/orgs/*/projects', async (route) => {
+      if (fail) {
+        await route.fulfill({ status: 500, json: { error: { code: 'internal_error' } } });
+        return;
+      }
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      const listing = zProjectList.parse(await response.json());
+      recovered.items = listing.items;
+      await route.fulfill({ response });
+    });
+    await page.goto('/');
+    const main = page.locator('#content');
+    await expect(main.getByRole('alert')).toContainText('Projects could not be loaded');
+    await expect(main.getByRole('link', { name: 'Choose a project' })).toHaveCount(0);
+    await main.getByRole('button', { name: 'Retry projects', exact: true }).focus();
+    await testInfo.attach('projects-error-main', { body: await page.screenshot({ path: testInfo.outputPath('projects-error-main.png') }), contentType: 'image/png' });
+    fail = false;
+    await main.getByRole('button', { name: 'Retry projects', exact: true }).click();
+    await expect.poll(() => recovered.items !== null).toBe(true);
+    const items = recovered.items;
+    if (items === null || items.length === 0) throw new Error('The seeded organisation must hold a project');
+    if (items.length === 1) {
+      const only = items[0];
+      if (only === undefined) throw new Error('The recovered project is missing');
+      await expect(page).toHaveURL(new RegExp(`/orgs/${only.org_id}/projects/${only.id}/matrix$`));
+      await expect(main.getByRole('heading', { name: 'Overview', exact: true })).toHaveCount(0);
+    } else {
+      await expect(main.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+      await expect(main.locator('.projects__list li')).toHaveCount(items.length);
+      for (const project of items) {
+        await expect(main.locator('.projects__list')).toContainText(project.name);
+      }
+    }
+    await expect(main.getByText('Projects could not be loaded. Try again.', { exact: true })).toHaveCount(0);
+    await testInfo.attach('projects-recovered', { body: await page.screenshot({ path: testInfo.outputPath('projects-recovered.png') }), contentType: 'image/png' });
+  });
+});
 
 test.describe('app chrome', () => {
   test.use({ storageState: STORAGE_STATE });

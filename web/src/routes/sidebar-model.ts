@@ -32,7 +32,8 @@ export type SidebarModel = {
   readonly account: SidebarBlock;
   /**
    * The organisation's project list takes the project block's place: an
-   * organisation page with no project opened yet, projects loaded, local.
+   * organisation page with no project opened yet, local. Keep the section
+   * present while its query loads or fails so the shell can explain the state.
    */
   readonly orgProjectList: boolean;
   /**
@@ -167,7 +168,7 @@ export function sidebarModel(input: {
     context = instanceBlock;
   }
 
-  const orgProjectList = context === null && onOrgPage && activeOrgId !== '' && remote === '' && projects !== null;
+  const orgProjectList = context === null && onOrgPage && activeOrgId !== '' && remote === '';
   const lastProject = projects?.find((item) => item.id === lastProjectId);
   const backToProject =
     context === null && activeOrgId !== '' && !orgProjectList

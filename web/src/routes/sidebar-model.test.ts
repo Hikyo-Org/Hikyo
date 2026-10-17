@@ -158,10 +158,10 @@ describe('sidebarModel', () => {
     expect(model.backToProject).toBeNull();
   });
 
-  it('shows the back-link on an org page whose project list is not actually rendering (still loading)', () => {
+  it('keeps the project section present for loading and error feedback on an org page', () => {
     const model = sidebarModel({ ...base, surface: surfaceById('projects'), onOrgPage: true, projects: null });
-    expect(model.orgProjectList).toBe(false);
-    expect(model.backToProject).toEqual({ label: 'Projects', to: '/projects' });
+    expect(model.orgProjectList).toBe(true);
+    expect(model.backToProject).toBeNull();
   });
 
   it('shows no back-link with no organisation active', () => {

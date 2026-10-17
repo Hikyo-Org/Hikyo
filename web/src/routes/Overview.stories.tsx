@@ -48,7 +48,10 @@ type Story = StoryObj<typeof meta>;
 export const Empty: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByRole('heading', { name: 'Overview', level: 1 })).toBeVisible();
-    await expect(canvas.getByRole('link', { name: 'Choose a project' })).toBeVisible();
+    // The lede offers the way to a project list only once the organisation's
+    // projects have been read: while the read is pending the page says so
+    // instead, so the link arrives with the settled query.
+    await expect(await canvas.findByRole('link', { name: 'Choose a project' })).toBeVisible();
     await expect(await canvas.findByText('Acme operations')).toBeVisible();
     await expect(canvas.queryByRole('link', { name: 'Settings for Billing platform' })).toBeNull();
   },
@@ -238,7 +241,7 @@ export const CreateProjectJourney: Story = {
       await expect(canvas.queryByRole('link', { name: 'Settings for Billing platform' })).toBeNull();
     });
     await step('Follow the real Projects route', async () => {
-      await userEvent.click(canvas.getByRole('link', { name: 'Choose a project' }));
+      await userEvent.click(await canvas.findByRole('link', { name: 'Choose a project' }));
       await expect(await canvas.findByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
       await expect(await canvas.findByText('No projects yet. Create the first one below.')).toBeVisible();
       await expect(canvas.getByRole('button', { name: 'Create project' })).toBeDisabled();

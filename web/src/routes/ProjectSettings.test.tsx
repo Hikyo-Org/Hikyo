@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { useQuery } from '@tanstack/react-query';
-import { act, useState } from 'react';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { act, useEffect, useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -775,4 +775,32 @@ describe('CompactProjectRetention', () => {
     expect(input.value).toBe('5');
     await unmount();
   });
+});
+
+
+it('ProjectSettings accepts the shared retired environment marker without treating it as a successful empty catalogue', async () => {
+  let queries: QueryClient | undefined;
+  function CaptureQueries() {
+    const client = useQueryClient();
+    useEffect(() => { queries = client; }, [client]);
+    return null;
+  }
+  vi.stubGlobal('fetch', vi.fn(async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    return Response.json(path === '/api/v1/auth/whoami'
+      ? authenticatedIdentity : settingsResponse(request.method, path, 'db'));
+  }));
+  const view = await renderForm(<AuthProvider><CaptureQueries /><MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}>
+    <Routes><Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} /></Routes>
+  </MemoryRouter></AuthProvider>);
+  try {
+    await settleTask();
+    expect(view.container.textContent).toContain('This project holds no environments yet');
+    if (queries === undefined) throw new Error('query client was not captured');
+    await act(async () => queries?.setQueryData(['environments', 'org_1', 'project_1'], null));
+    await settleTask();
+    expect(view.container.textContent).toContain('Project settings');
+    expect(view.container.textContent).not.toContain('This project holds no environments yet');
+    expect(view.container.querySelector('#project-environments .factors')).toBeNull();
+  } finally { await view.unmount(); }
 });

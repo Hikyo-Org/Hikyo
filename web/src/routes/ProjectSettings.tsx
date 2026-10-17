@@ -46,6 +46,7 @@ import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
+import { ProjectDeveloperCredentials } from './ProjectDeveloperCredentials.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -71,6 +72,7 @@ export function ProjectSettings() {
   const project = params.project === undefined ? '' : params.project;
   const projectQuery = useProject(org, project);
   const environments = useEnvironments(org, project);
+  const environmentItems = environments.data?.items;
   const orgRetention = useOrgRetention(org);
   const projectRetention = useProjectRetention(org, project);
   const definitionsSettings = useDefinitionsSettings(org, project);
@@ -153,19 +155,19 @@ export function ProjectSettings() {
               </p>
               {environments.isError ? <Alert>This project&apos;s environments could not be read.</Alert> : null}
               {environments.isPending ? <p role="status">Loading environments…</p> : null}
-              {environments.isSuccess && environments.data.items.length === 0 ? (
+              {environments.isSuccess && environmentItems !== undefined && environmentItems.length === 0 ? (
                 <p role="status">This project holds no environments yet.</p>
               ) : null}
-              {environments.isSuccess && environments.data.items.length > 0 ? (
+              {environments.isSuccess && environmentItems !== undefined && environmentItems.length > 0 ? (
                 <ul className="factors">
-                  {environments.data.items.map((environment) => (
+                  {environmentItems.map((environment) => (
                     <li className="factor" key={environment.id}>
                       <strong className="mono">{environment.name}</strong>
                       <EnvironmentLifecycleActions
                         org={org}
                         project={project}
                         environment={environment}
-                        environments={environments.data.items}
+                        environments={environmentItems}
                         onDone={feedback.ok}
                       />
                     </li>
@@ -187,11 +189,11 @@ export function ProjectSettings() {
                 <Alert>This project&apos;s environments could not be read.</Alert>
               ) : null}
               {environments.isPending ? <p role="status">Loading environment policies…</p> : null}
-              {environments.isSuccess ? (
+              {environments.isSuccess && environmentItems !== undefined ? (
                 <EnvironmentPolicy
                   org={org}
                   project={project}
-                  environments={environments.data.items}
+                  environments={environmentItems}
                   onDone={feedback.ok}
                   onError={(error) => report('set-environment-settings', error)}
                 />
@@ -271,6 +273,10 @@ export function ProjectSettings() {
                 Entry point only: granting, revoking and inspection live on the members surface.
               </p>
             </Panel>
+          ) },
+
+          !prototypeMode && { id: 'project-developer-credentials', label: 'Developer credentials', content: (
+            <ProjectDeveloperCredentials key={`${org}/${project}`} org={org} project={project} />
           ) },
 
           !prototypeMode && { id: 'project-keys', label: 'Keys & crypto', content: (
