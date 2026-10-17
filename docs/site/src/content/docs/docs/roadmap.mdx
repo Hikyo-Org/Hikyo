@@ -9,7 +9,7 @@ controlled human onboarding, workload delivery and recovery operations. Features
 that earlier roadmaps placed after 1.0 have since been implemented. This page
 separates that implementation from release and deployment acceptance.
 
-<Callout type="warn" title="Implementation snapshot, 9 October 2026">
+<Callout type="warn" title="Implementation snapshot, 16 October 2026">
   These docs track the repository implementation. Local tests and implemented
   surfaces do not certify a release, a deployed installation or a real identity
   provider. The [implementation status](/implementation-status/) records owning
@@ -53,6 +53,29 @@ is not permission for uncontrolled registration. See
 The narrower guides document additional limits. The browser parity manifest
 (`api/parity.yaml`) tracks outstanding browser surfaces; it is not a promise
 that every API operation already has a form.
+
+## Execution and scope closeout
+
+The [execution tracker](https://github.com/Hikyo-Org/Hikyo/issues/527) sequences
+correctness repairs, browser completion, amendment closeout and final candidate
+evidence. Release-plan and historical-acceptance reconciliation belongs to
+[#79](https://github.com/Hikyo-Org/Hikyo/issues/79). Backup retention/erasure
+(#930), dynamic lease ceilings and TTL overflow (#934/#935), and PostgreSQL
+schema rendering (#941) need their
+own correction and acceptance evidence before freezing the affected contracts.
+
+Social sign-in and CLI browser/device login are implemented. Their accepted
+post-1.0 scope disposition remains separate from implementation; #589 owns its
+narrow text reconciliation. Kubernetes condition reporting is implemented and
+#791 records real-cluster/browser acceptance at its tested source. Neither lane
+should be presented as an unbuilt prerequisite solely because an older roadmap
+placed it after 1.0.
+
+Generic file destinations retain their accepted v1.1 boundary, with five browser
+administration operations tracked by #819. Four developer-credential project and
+policy administration operations remain under #807; own credential management
+stays CLI-only. Transit browser completion remains under #820. Implementation
+before a release does not automatically change an accepted release boundary.
 
 ## Release and deployment evidence
 
