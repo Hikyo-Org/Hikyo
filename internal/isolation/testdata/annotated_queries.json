@@ -1809,7 +1809,7 @@
     "engine": "postgres",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "9fb2e2e85cf2778f6d9365e106d47d284bbf3a80bd04f2837d2a4c3a6393d07b"
+    "hash": "3830e70f104853a361b3812795ccf98e87a3b3cb32a6c549225732cc3d8ee74a"
   },
   {
     "engine": "postgres",
@@ -5073,7 +5073,7 @@
     "engine": "sqlite",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "64888cbe63024e2aaf7064c027c68b1581bb408fe6af9e3fb42014bdc4409c18"
+    "hash": "723663c9963884b5ec2ec29c90248a291aa198d803d1486dcbd74a8d6c168521"
   },
   {
     "engine": "sqlite",

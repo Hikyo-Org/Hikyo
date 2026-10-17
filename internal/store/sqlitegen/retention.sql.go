@@ -42,21 +42,46 @@ func (q *Queries) GetLastPruneSuccess(ctx context.Context) (sql.NullString, erro
 }
 
 const listEligibleSnapshotPayloads = `-- name: ListEligibleSnapshotPayloads :many
+WITH RECURSIVE retention_window (
+    org_id, project_id, environment_id, cutoff_revision, remaining
+) AS (
+    SELECT e.org_id, e.project_id, e.id,
+           (SELECT n.revision FROM snapshots AS n
+            WHERE n.org_id = e.org_id AND n.project_id = e.project_id
+              AND n.environment_id = e.id
+            ORDER BY n.revision DESC LIMIT 1),
+           COALESCE(p.retention_revision_count, o.retention_revision_count)
+    FROM environments AS e
+    JOIN projects AS p ON p.org_id = e.org_id AND p.id = e.project_id
+    JOIN orgs AS o ON o.id = e.org_id
+    WHERE p.retention_age_seconds IS NOT NULL OR o.retention_mode <> 'unlimited'
+
+    UNION ALL
+
+    SELECT w.org_id, w.project_id, w.environment_id,
+           (SELECT n.revision FROM snapshots AS n
+            WHERE n.org_id = w.org_id AND n.project_id = w.project_id
+              AND n.environment_id = w.environment_id
+              AND n.revision < w.cutoff_revision
+            ORDER BY n.revision DESC LIMIT 1),
+           w.remaining - 1
+    FROM retention_window AS w
+    WHERE w.remaining > 1 AND w.cutoff_revision IS NOT NULL
+)
 SELECT s.id, s.org_id, s.project_id, s.environment_id, s.revision,
        COALESCE(p.retention_age_seconds, o.retention_age_seconds) AS age_seconds,
        COALESCE(p.retention_revision_count, o.retention_revision_count) AS revision_count
 FROM snapshots AS s
 JOIN projects AS p ON p.org_id = s.org_id AND p.id = s.project_id
 JOIN orgs AS o ON o.id = s.org_id
+JOIN retention_window AS w
+  ON w.org_id = s.org_id AND w.project_id = s.project_id
+ AND w.environment_id = s.environment_id AND w.remaining = 1
+ AND s.revision < w.cutoff_revision
 WHERE s.payload_present = 1
   AND (p.retention_age_seconds IS NOT NULL OR o.retention_mode <> 'unlimited')
   AND julianday(s.published_at) < julianday(?1) -
       (COALESCE(p.retention_age_seconds, o.retention_age_seconds) / 86400.0)
-  AND (
-      SELECT COUNT(*) FROM snapshots AS n
-      WHERE n.org_id = s.org_id AND n.project_id = s.project_id
-        AND n.environment_id = s.environment_id AND n.revision > s.revision
-  ) >= COALESCE(p.retention_revision_count, o.retention_revision_count)
   AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = s.id)
   AND NOT EXISTS (
       SELECT 1 FROM revision_pins
@@ -83,12 +108,13 @@ type ListEligibleSnapshotPayloadsRow struct {
 }
 
 // ListEligibleSnapshotPayloads selects the next batch of collectable payloads.
-// The latest-N cutoff is a per-environment count over the
-// (org_id, project_id, environment_id, revision DESC) index: a snapshot is
-// outside the window exactly when at least revision_count newer revisions
-// exist in its environment (collected or not, lineage is the unit of the
-// window). The outer scan touches only live payloads, so a collected backlog
-// never re-enters the ranking work.
+// Walk at most the retained N lineage headers per environment using indexed
+// predecessor lookups, then collect only below the Nth newest revision. A
+// missing predecessor stops the walk: histories shorter than N have no cutoff.
+// All lineage counts, including collected payloads and sparse revision numbers.
+// The cutoff is recomputed in this statement's transaction snapshot each batch;
+// it is never cached across policy changes or retries. This bounds ranking work,
+// not the outer candidate scan or the complete sweep's transaction/audit work.
 // hikyo:instance-scoped
 func (q *Queries) ListEligibleSnapshotPayloads(ctx context.Context, arg ListEligibleSnapshotPayloadsParams) ([]ListEligibleSnapshotPayloadsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listEligibleSnapshotPayloads, arg.Now, arg.BatchLimit)
