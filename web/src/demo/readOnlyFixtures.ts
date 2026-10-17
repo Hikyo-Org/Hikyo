@@ -1,6 +1,6 @@
 import type {
   Adapter, AdapterTarget, ApprovalPolicy, ApprovalRequest, AccessPolicy, AccessRequest,
-  AuditEvent, Grant, MachineCredential, ScimBinding, ScimMapping, ServiceAccount,
+  AuditEvent, DeveloperCredential, FileTarget, Grant, MachineCredential, ScimBinding, ScimMapping, ServiceAccount,
 } from '@hikyo/client';
 import { DEMO_ACCOUNTS, DEMO_IDS, type DemoRole } from './config.ts';
 import { environments, grants, keys, org, principalIds, project } from './fixtures.ts';
@@ -94,6 +94,42 @@ export function createReadOnlyFixtures(role: DemoRole, sessionTime: string) {
   responses.set(`${projectRoot}/adapter-targets/${target.id}`, {
     target, conflicts: [], mapping: keys.map((key) => ({ key_id: key.id, canonical_name: key.name, surface: key.classification === 'secret' ? 'secret' : 'variable', effective_name: `PAYMENTS_${key.name}` })),
   });
+
+  // The pull side of the same selection the adapters push. One target carries a
+  // converged client report and one has never reported, so the panel shows both
+  // an assertion and its absence without inventing host health.
+  const fileTargets: FileTarget[] = [
+    {
+      id: id('ftg', 1), environment_id: DEMO_IDS.staging, name: 'payments-api-env', service_account_id: id('svc', 1),
+      principal_id: id('prn', 1), generation: 2, created_at: sessionTime, updated_at: sessionTime,
+      keys: keys.map((key) => ({ key_id: key.id, name: key.name, classification: key.classification })),
+      report: { state: 'current', revision: 1, generation: 2, stamp: `v1-${'0'.repeat(32)}`, reported_at: sessionTime, received_at: sessionTime },
+    },
+    {
+      id: id('ftg', 2), environment_id: DEMO_IDS.development, name: 'release-pipeline-env', service_account_id: id('svc', 2),
+      principal_id: id('prn', 2), generation: 1, created_at: sessionTime, updated_at: sessionTime,
+      keys: keys.filter((key) => key.classification === 'config').map((key) => ({ key_id: key.id, name: key.name, classification: key.classification })),
+      report: null,
+    },
+  ];
+  responses.set(`${projectRoot}/file-targets`, list(fileTargets));
+  fileTargets.forEach((fileTarget) => { responses.set(`${projectRoot}/file-targets/${fileTarget.id}`, fileTarget); });
+
+  // Incident-response metadata for this project's bounded developer
+  // credentials: one live and one already revoked, so both table states read.
+  const developerCredentials: DeveloperCredential[] = [
+    {
+      id: id('dvc', 1), principal_id: id('prn', 6), authority_principal_id: principalIds.admin, org_id: org.id,
+      project_id: project.id, environment_id: DEMO_IDS.staging, created_at: sessionTime, expires_at: later(3600),
+      prefix_hint: 'hik_demo_only',
+    },
+    {
+      id: id('dvc', 2), principal_id: id('prn', 7), authority_principal_id: principalIds.developer, org_id: org.id,
+      project_id: project.id, environment_id: DEMO_IDS.development, created_at: sessionTime, expires_at: later(86_400),
+      revoked_at: sessionTime, prefix_hint: 'hik_demo_only',
+    },
+  ];
+  responses.set(`${projectRoot}/developer-credentials`, list(developerCredentials));
 
   const binding: ScimBinding = {
     id: id('bnd', 1), org_id: org.id, provider_kind: 'oidc', provider_slug: 'acme-sso', provider_issuer: 'https://identity.example.test',

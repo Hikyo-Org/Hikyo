@@ -9,11 +9,11 @@ import {
 } from '@hikyo/zod';
 import {
   zAccessPolicyList, zAccessQueue, zAccountProfile, zAdapterList, zAdapterTargetDetail, zApprovalPolicyList,
-  zApprovalRequestList, zAuditPage, zCertificateList, zDeliveryTargetList, zDirectoryListing, zDynamicLeaseList,
-  zDynamicProviderList, zIdentityList, zInstanceConnectionList, zMachineCredentialList, zPasskeyList,
-  zRemoteList, zScimBindingList, zScimCredentialList, zScimDirectoryGroupList, zScimDirectoryUserList,
-  zScimMappingList, zServiceAccountList, zSessionList, zSshcaList, zSshCertificateList, zSshProfileList,
-  zWorkspaceOriginList,
+  zApprovalRequestList, zAuditPage, zCertificateList, zDeliveryTargetList, zDeveloperCredentialList,
+  zDirectoryListing, zDynamicLeaseList, zDynamicProviderList, zFileTarget, zFileTargetList, zIdentityList,
+  zInstanceConnectionList, zMachineCredentialList, zPasskeyList, zRemoteList, zScimBindingList,
+  zScimCredentialList, zScimDirectoryGroupList, zScimDirectoryUserList, zScimMappingList, zServiceAccountList,
+  zSessionList, zSshcaList, zSshCertificateList, zSshProfileList, zWorkspaceOriginList,
 } from '@hikyo/zod';
 import { parsed } from '../api/client.ts';
 import { createDemoFetch } from './api.ts';
@@ -91,6 +91,9 @@ describe('browser demo API', () => {
       { path: `${env()}/access-requests`, schema: zAccessQueue },
       { path: `${project}/adapters`, schema: zAdapterList },
       { path: `${project}/adapter-targets/adt_aaaaaaaa-aaaa-4aaa-8aaa-000000000001`, schema: zAdapterTargetDetail },
+      { path: `${project}/file-targets`, schema: zFileTargetList },
+      { path: `${project}/file-targets/ftg_aaaaaaaa-aaaa-4aaa-8aaa-000000000001`, schema: zFileTarget },
+      { path: `${project}/developer-credentials`, schema: zDeveloperCredentialList },
       { path: `${org}/scim-bindings`, schema: zScimBindingList },
       { path: `${binding}/mappings`, schema: zScimMappingList },
       { path: `${binding}/credentials`, schema: zScimCredentialList },
@@ -132,6 +135,12 @@ describe('browser demo API', () => {
     expect(accounts.items.map((item) => item.name)).toEqual(['payments-api', 'release-pipeline']);
     const adapters = zAdapterList.parse(await (await fetch(`${project}/adapters`)).json());
     expect(adapters.items[0]?.targets[0]?.keys.length).toBe(6);
+    const fileTargets = zFileTargetList.parse(await (await fetch(`${project}/file-targets`)).json());
+    expect(fileTargets.items.map((item) => item.name)).toEqual(['payments-api-env', 'release-pipeline-env']);
+    expect(fileTargets.items.map((item) => item.report === null)).toEqual([false, true]);
+    const credentials = zDeveloperCredentialList.parse(await (await fetch(`${project}/developer-credentials`)).json());
+    expect(credentials.items.map((item) => item.environment_id)).toEqual([DEMO_IDS.staging, DEMO_IDS.development]);
+    expect(credentials.items.filter((item) => item.revoked_at !== undefined)).toHaveLength(1);
     const requests = zAccessQueue.parse(await (await fetch(`${env()}/access-requests`)).json());
     expect(requests.items[0]?.reason).toContain('Sample request');
   });
@@ -148,7 +157,9 @@ describe('browser demo API', () => {
     const paths = [
       `${project}/service-accounts`, `${project}/approval-policies`, `${env()}/approval-requests`,
       `${project}/access-policies`, `${env()}/access-requests`, `${project}/adapters`, `${env()}/delivery-targets`,
-      `${org}/scim-bindings`, '/api/v1/instance/remotes', '/api/v1/instance/connections', '/api/v1/me/profile',
+      `${project}/file-targets`, `${project}/file-targets/ftg_aaaaaaaa-aaaa-4aaa-8aaa-000000000001`,
+      `${project}/developer-credentials`, `${org}/scim-bindings`, '/api/v1/instance/remotes',
+      '/api/v1/instance/connections', '/api/v1/me/profile',
     ];
     for (const path of paths) {
       for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {

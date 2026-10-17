@@ -305,6 +305,26 @@ test('read-only details and filters work while management actions stay disabled'
   await expect(page.getByRole('button', { name: 'Test connection', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Target', exact: true })).toHaveCount(0);
+  // The workload pull side of the same surface: sample targets read without a
+  // refusal, one with a client assertion and one without, and the panel stays
+  // closed to changes.
+  await expect(page.getByRole('heading', { name: 'payments-api-env', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'release-pipeline-env', exact: true })).toBeVisible();
+  await expect(page.getByText('Client reported current', { exact: true })).toBeVisible();
+  await expect(page.getByText('No client report. Host health is unknown.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add file target', exact: true })).toBeDisabled();
+  await expect(page.getByRole('main').locator('.alert')).toHaveCount(0);
+
+  // The new project tab reads its sample too: a live credential and a revoked
+  // one, with revocation closed to the preview.
+  await page.goto(`./?account=admin#${projectPath}/settings`);
+  await page.getByRole('tab', { name: 'Developer credentials', exact: true }).click();
+  await expect(page.getByRole('main').getByText('Developer principal:').first()).toBeVisible();
+  await expect(page.getByRole('main').getByText(/^Revoked/).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Revoke / }).first()).toBeDisabled();
+  // Re-reading is not a change: the refresh stays available in the preview.
+  await expect(page.getByRole('button', { name: 'Refresh developer credentials', exact: true })).toBeEnabled();
+  await expect(page.getByRole('main').locator('.alert')).toHaveCount(0);
 
   await page.goto(`./?account=admin#${orgPath}/scim`);
   await page.getByRole('button', { name: 'Administer', exact: true }).click();

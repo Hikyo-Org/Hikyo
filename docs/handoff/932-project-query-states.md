@@ -162,3 +162,49 @@ replayed tree. All five are fixed in the stories; no application source changed.
 Validation on the fixed tree, with Node 26.7.0: the full Storybook project
 passes all 797 tests across 138 files, and `web` typecheck and lint pass. The
 candidate suite on the pushed revision is the remaining evidence.
+
+## Browser demo sample data for the new panels (2026-10-17)
+
+Reproducing the whole `validation / storybook` job locally, rather than stopping
+at CI's first failed step, surfaced a second failure the earlier evidence could
+not show: the job's last browser step, `test:demo`, failed four tests (desktop
+and mobile): `adapters: read-only for every demo account` and
+`project-settings: read-only for every demo account`, both at the `viewer` step,
+on `expect(page.locator('main .alert')).toHaveCount(0)`.
+
+Both are demo data gaps, not application defects. The branch adds two reads to
+screens the demo ships:
+
+- `GET /api/v1/orgs/{org}/projects/{project}/file-targets`, read by the file
+  target panel inside the adapters surface.
+- `GET /api/v1/orgs/{org}/projects/{project}/developer-credentials`, read by the
+  new project settings tab. The tab is mounted even while another tab is shown,
+  because `SectionTabs` renders every panel and hides the inactive ones, so the
+  count assertion saw it without the tab ever being selected.
+
+The demo replaces `fetch` with a mock whose fixture catalogue has no entry for
+either path, so both requests hit the deliberate
+`404 This feature is not included in the browser demo.` and each screen renders
+its 404 text as a danger alert (`This file target is no longer available in this
+project. Refresh the list.` and `Developer credential administration is not
+disclosed to this session...`). The demo suite passes on main because neither
+feature exists there, and the branch's earlier candidate runs never reached this
+step, so the gap was invisible until now.
+
+The fix is sample data only; no application source changed.
+
+- `web/src/demo/readOnlyFixtures.ts` serves both endpoints: two file targets
+  (one with a converged client report, one that has never reported) and two
+  developer credentials (one live, one revoked), so each panel shows both of its
+  display states read-only.
+- `web/src/demo/api.test.ts` pins both endpoints as schema-valid, adds the
+  nested file-target detail, asserts the sample content, and adds the new paths
+  to the read-only mutation refusal test.
+- `web/e2e/demo/demo.spec.ts` asserts the samples in the browser with
+  revocation and creation disabled, next to the existing adapters and machine
+  access steps.
+
+Validation on the fixed tree, with Node 26.7.0: the demo suite passes all 78
+browser tests (desktop and mobile), the `web` unit suite passes all 1,911 tests
+across 209 files, and `web` typecheck and lint pass. Screenshots of both panels
+under the viewer account were checked by hand; neither renders an alert.
