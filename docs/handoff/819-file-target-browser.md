@@ -68,7 +68,20 @@ parent's resource slot. Frozen client/web dependency installation passed.
 | Generated client | Typecheck and 37 tests passed |
 | Documentation content | Read-only preparation check and its one regression test passed |
 | Real desktop/mobile browser and story tests (pre-rebase) | Desktop and mobile lifecycle passed (4.9s and 4.6s test bodies); Adapters stories 6 passed in each of dark and light modes |
+| Storybook story tests on replayed tree | 138 files, 797 tests passed in each of dark and light modes |
+| Remaining Storybook job steps on replayed tree | Production Storybook build, Docs binding (138 modules, 797 stories, 138 generated Docs), theme-switching and Docs lifetimes, static demo build, and the design-image ship check all passed in one local reproduction in CI order |
+| Static demo suite on replayed tree (desktop and Pixel 5) | 78 tests passed |
 | Go parity checks and structural graph refresh | All nine Go parity checks passed; embedded UI and OIDC fixture binaries built; structural refresh completed with one worker |
+
+The static demo suite first failed on the replayed tree. The file-target panel
+inside the adapters surface and the project Developer credentials tab read two
+endpoints the demo's fixture catalogue did not serve, so both rendered the
+demo's deliberate 404 refusal as a danger alert for every demo account. The
+catalogue now serves sample file targets (one with a converged client report,
+one that has never reported) and sample developer credentials (one live, one
+revoked); `web/src/demo/api.test.ts` pins both and `web/e2e/demo/demo.spec.ts`
+asserts them with their controls disabled. `932-project-query-states.md`
+carries the full record.
 
 Failed attempts are preserved in the offline evidence package. Seven initial
 actual-parent regressions failed before error classification, metadata denial
@@ -180,7 +193,7 @@ aggregate repair; it is not represented as a new combined browser run.
 ## Remaining delivery gates
 
 1. Main-ancestry gate: linear ancestry on current main has been established through the replayed tree (`b11e86c40`), preserving the PR #940 null guard and sibling Machine access ownership.
-2. Browser evidence: pre-rebase real-server desktop/mobile lifecycle screenshots and sibling story evidence are retained; earlier focused and browser results were not rerun on the replayed tree.
+2. Browser evidence: the pre-rebase real-server desktop/mobile lifecycle screenshots are retained, and that real-server lifecycle has not been rerun on the replayed tree. The story suites were rerun there, in both palettes, and the static demo suite passes there; the acceptance table records both.
 3. Hosted CI: hosted CI validates the replayed PR head on GitHub.
 4. Current-head review: verify and address active review findings on the PR head.
 5. Protected merge: pass protected merge-group checks before final merge.

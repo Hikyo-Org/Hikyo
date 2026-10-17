@@ -82,6 +82,13 @@ Local Node 26.7.0 validation:
   verifies 44px action targets and no document overflow. Both viewports pass
   axe checks; the owner inspected screenshots of metadata and confirmation.
 
+The figures above are this change's own local run. On the replayed tree for the
+pull request that carries these commits, the shared suites were revalidated: 209
+files and 1,911 tests in the full web unit suite, 797 story tests in each of dark
+and light, and 78 static-demo browser tests, which now include this panel. The
+demo fixture catalogue gained sample developer credentials for that last suite;
+`932-project-query-states.md` records the change in full.
+
 The first desktop run caught misleading 403 text: the instance authorization
 owner returns the same status for missing grants and inadequate assurance.
 The UI and missing OpenAPI 403 declarations were corrected; the rerun passes.
