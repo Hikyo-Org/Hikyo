@@ -1,4 +1,4 @@
-package store_test
+package isolation
 
 import (
 	"context"
@@ -42,13 +42,13 @@ func TestRetentionRankingScaling(t *testing.T) {
 					t.Run(fmt.Sprintf("%s/%d", workload, size), func(t *testing.T) {
 						var db *store.DB
 						if engine == store.EngineSQLite {
-							db = openKeyTestDB(t, store.Config{Engine: engine, Path: t.TempDir() + "/retention.db"})
+							db = openSQLite(t)
 						} else {
-							db = postgresTestDB(t)
+							db = openPostgres(t)
 						}
 						now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 						want, retained := seedRetentionScaling(t, db, workload, size)
-						maxEnvs := retentionScalingCount(t, db, "SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) AS n FROM environments GROUP BY org_id, project_id) AS counts")
+						maxEnvs := queryInt(t, db, "SELECT COALESCE(MAX(n),0) FROM (SELECT COUNT(*) AS n FROM environments GROUP BY org_id, project_id) AS counts")
 						if workload != "quiet_environment_stress" && maxEnvs > service.MaxEnvironmentsPerProject {
 							t.Fatalf("fixture exceeds supported environment cap: %d", maxEnvs)
 						}
@@ -81,22 +81,22 @@ func TestRetentionRankingScaling(t *testing.T) {
 						if err != nil || got != int64(want) {
 							t.Fatalf("sweep=%d, %v; want=%d", got, err, want)
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshots"); got != int64(size) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshots"); got != int64(size) {
 							t.Fatalf("lineage=%d want=%d", got, size)
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE"); got != int64(len(retained)) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE"); got != int64(len(retained)) {
 							t.Fatalf("live payloads=%d want=%d", got, len(retained))
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE AND id IN ("+strings.Join(retained, ",")+")"); got != int64(len(retained)) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE AND id IN ("+strings.Join(retained, ",")+")"); got != int64(len(retained)) {
 							t.Fatalf("expected retained roots=%d want=%d", got, len(retained))
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshot_entries"); got != int64(len(retained)) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshot_entries"); got != int64(len(retained)) {
 							t.Fatalf("entries=%d want=%d", got, len(retained))
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshot_entries e JOIN snapshots s ON s.id=e.snapshot_id WHERE s.payload_present=FALSE"); got != 0 {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshot_entries e JOIN snapshots s ON s.id=e.snapshot_id WHERE s.payload_present=FALSE"); got != 0 {
 							t.Fatalf("collected entries=%d", got)
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='retention.payload_gc'"); got != int64(want) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='retention.payload_gc'"); got != int64(want) {
 							t.Fatalf("collection audits=%d want=%d", got, want)
 						}
 						if got, err := svc.Sweep(t.Context()); err != nil || got != 0 {
@@ -104,14 +104,14 @@ func TestRetentionRankingScaling(t *testing.T) {
 						}
 						// A later policy widening counts collected lineage but cannot
 						// resurrect its payload, even when N exceeds the whole history.
-						retentionScalingExec(t, db, fmt.Sprintf("UPDATE orgs SET retention_revision_count=%d", size+1))
+						execRaw(t, db, fmt.Sprintf("UPDATE orgs SET retention_revision_count=%d", size+1))
 						if got, err := svc.Sweep(t.Context()); err != nil || got != 0 {
 							t.Fatalf("widened policy sweep=%d, %v", got, err)
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshot_entries"); got != int64(len(retained)) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshot_entries"); got != int64(len(retained)) {
 							t.Fatalf("policy widening resurrected entries: got=%d want=%d", got, len(retained))
 						}
-						if got := retentionScalingCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE"); got != int64(len(retained)) {
+						if got := queryInt(t, db, "SELECT COUNT(*) FROM snapshots WHERE payload_present=TRUE"); got != int64(len(retained)) {
 							t.Fatalf("policy widening resurrected headers: got=%d want=%d", got, len(retained))
 						}
 						t.Logf("engine=%s workload=%s lineage=%d collected=%d retained=%d batch=%d first_batch=%s full_audited_sweep=%s", engine, workload, size, want, len(retained), service.RetentionBatchSize, firstElapsed, elapsed)
@@ -126,7 +126,7 @@ func TestRetentionRankingScaling(t *testing.T) {
 // per live snapshot; this tests retention and deletion, not cryptographic reads.
 func seedRetentionScaling(t *testing.T, db *store.DB, workload string, size int) (collect int, retained []string) {
 	t.Helper()
-	exec := func(q string) { t.Helper(); retentionScalingExec(t, db, q) }
+	exec := func(q string) { t.Helper(); execRaw(t, db, q) }
 	exec("INSERT INTO orgs(id,name,active,metadata,created_at) VALUES('org_rank','rank',TRUE,'{}','2020-01-01T00:00:00Z')")
 	exec("INSERT INTO projects(id,org_id,name,created_at) VALUES('prj_rank','org_rank','rank','2020-01-01T00:00:00Z')")
 	envs := 1
@@ -199,32 +199,4 @@ func seedRetentionScaling(t *testing.T, db *store.DB, workload string, size int)
 		exec("INSERT INTO revision_pins(id,org_id,project_id,environment_id,workload_principal_id,snapshot_id,revision,authority_principal_id,expires_at,created_at,authorized_at,history_authorized,schema_override) VALUES('pin_rank','org_rank','prj_rank','env_rank_0','mch_rank','snp_rank_3',34,'usr_rank','2027-01-01T00:00:00Z','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z',TRUE,FALSE)")
 	}
 	return collect, retained
-}
-
-func retentionScalingCount(t *testing.T, db *store.DB, q string) int64 {
-	t.Helper()
-	var n int64
-	var err error
-	if db.Engine() == store.EngineSQLite {
-		err = db.SQLiteWrite().QueryRowContext(t.Context(), q).Scan(&n)
-	} else {
-		err = db.PG().QueryRow(t.Context(), q).Scan(&n)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return n
-}
-
-func retentionScalingExec(t *testing.T, db *store.DB, q string) {
-	t.Helper()
-	var err error
-	if db.Engine() == store.EngineSQLite {
-		_, err = db.SQLiteWrite().ExecContext(t.Context(), q)
-	} else {
-		_, err = db.PG().Exec(t.Context(), q)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
 }

@@ -160,6 +160,46 @@ unfinished. No updater flag or timeout override was used. This is complete
 partitioned lint coverage, not a passing monolithic run. Signed delivery and
 remote merge gates remain separate from these local checks.
 
+## Merge-group boundary repair
+
+Merge-group runs `38976827157` and `39036727545` both failed
+`TestForbiddenEdges` in the default, UI, Darwin and Windows contexts: the new
+store test imported `internal/service`, contrary to the service-to-store
+dependency direction. The failing jobs were `validation / test_core` and
+`validation / race shard (2)`; `ci-required`, `merge-group-proof` and
+`ci-queue-required` failed as downstream gates. Every isolation shard was green
+in both runs, so the fix only had to keep the boundary rule satisfied.
+
+The scaling test and its independent reference companion move to
+`internal/isolation`, which already owns both-engine retention service probes.
+They use the existing empty admitted database fixtures and `execRaw`/`queryInt`
+helpers. The new raw-driver exception is removed, with no architecture exception
+added. All corpus construction, eligibility comparisons, sweep measurements and
+retention/deletion/audit/no-resurrection assertions are retained. Fixture setup
+remains outside the timed operations. SQLite outcome reads now use the existing
+read-pool helper after committed operations. PostgreSQL uses the isolation
+harness's reset sibling database rather than the former per-case store database.
+Earlier measurements remain observations of the original fixture at the pushed
+head; they are not new measurements of the relocated harness.
+
+The repair was verified locally on the moved head:
+
+- `go test ./internal/boundary -run TestForbiddenEdges` passes, and
+  `gofmt -l` / `go vet` are clean over the touched packages.
+- `go test ./internal/store` and `go test ./internal/lint` pass.
+- `go test -p 1 ./internal/isolation -run '^TestRetentionRanking(Reference|Scaling)$' -count=1`
+  passes on SQLite and on a disposable PostgreSQL 18 container, and the same
+  selection passes under `-race`.
+- The shard planner discovers both tests as isolation tests and no longer lists
+  them under `internal/store`.
+
+A full local run of the whole isolation package is not a meaningful signal on
+this machine: its shared PostgreSQL container is resource limited, and 128
+unrelated Postgres cases failed with deadlocks and missing relations in the same
+run. CI covers that package through the sharded isolation job, which was green on
+the pushed head. Remote checks and the full merge-group proof must run again on
+the repaired head before merge.
+
 ## Reproduction
 
 Run from the repository root with the pinned toolchain. Set
@@ -168,9 +208,9 @@ create/drop isolated test databases. PostgreSQL must use UTC for the signed
 schema-admission fixture. Tests create and drop their own databases.
 
 ```sh
-GOMAXPROCS=2 go test -p 1 ./internal/store -run '^TestRetentionRanking(Reference|Scaling)$' -count=1 -v
-HIKYO_RETENTION_SCALING_SIZES=1000,2000,4000 GOMAXPROCS=2 go test -p 1 ./internal/store -run '^TestRetentionRankingScaling$/postgres' -count=1 -v
-HIKYO_RETENTION_SCALING=1 GOMAXPROCS=2 go test -p 1 ./internal/store -run '^TestRetentionRankingScaling$/sqlite' -count=1 -v
+GOMAXPROCS=2 go test -p 1 ./internal/isolation -run '^TestRetentionRanking(Reference|Scaling)$' -count=1 -v
+HIKYO_RETENTION_SCALING_SIZES=1000,2000,4000 GOMAXPROCS=2 go test -p 1 ./internal/isolation -run '^TestRetentionRankingScaling$/postgres' -count=1 -v
+HIKYO_RETENTION_SCALING=1 GOMAXPROCS=2 go test -p 1 ./internal/isolation -run '^TestRetentionRankingScaling$/sqlite' -count=1 -v
 ```
 
 Without the PostgreSQL DSN, local PostgreSQL cases explicitly skip; that is not

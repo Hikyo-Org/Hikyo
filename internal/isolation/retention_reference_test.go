@@ -1,4 +1,4 @@
-package store_test
+package isolation
 
 import (
 	"context"
@@ -21,12 +21,12 @@ func TestRetentionRankingReference(t *testing.T) {
 		t.Run(string(engine), func(t *testing.T) {
 			var db *store.DB
 			if engine == store.EngineSQLite {
-				db = openKeyTestDB(t, store.Config{Engine: engine, Path: t.TempDir() + "/reference.db"})
+				db = openSQLite(t)
 			} else {
-				db = postgresTestDB(t)
+				db = openPostgres(t)
 			}
 			now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-			exec := func(q string) { t.Helper(); retentionScalingExec(t, db, q) }
+			exec := func(q string) { t.Helper(); execRaw(t, db, q) }
 			exec("INSERT INTO principals(id,kind,class,created_at) VALUES('mch_ref','machine','workload','2020-01-01T00:00:00Z'),('usr_ref','human','human','2020-01-01T00:00:00Z')")
 			type policy struct {
 				count     int
