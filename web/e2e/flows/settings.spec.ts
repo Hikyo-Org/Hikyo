@@ -987,8 +987,10 @@ test.describe('developer credential administration', () => {
       expect((await page.locator('body').innerText()).includes(minted.value)).toBe(false);
       await expectNoSeriousAxeViolations(page);
     } finally {
-      await browserApi(page, 'PUT', policyPath, zDeveloperCredentialPolicy, { max_lifetime_seconds: lifetime });
-      await browserApi(page, 'DELETE', `${base}/developer-credentials/${id}`, z.null());
+      // Restore the shared policy and drop the credential independently: a step that
+      // fails must not skip the other one, and cleanup must not replace the test failure.
+      await browserApi(page, 'PUT', policyPath, zDeveloperCredentialPolicy, { max_lifetime_seconds: lifetime }).catch(() => undefined);
+      await browserApi(page, 'DELETE', `${base}/developer-credentials/${id}`, z.null()).catch(() => undefined);
     }
   });
 });
