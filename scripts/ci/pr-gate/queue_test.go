@@ -861,7 +861,7 @@ func TestQueueReusesSourceBoundForkFeedbackWithoutHistoricalAssociation(t *testi
 }
 
 func TestQueueForkFeedbackRefusesContradictoryOrUnprovedSources(t *testing.T) {
-	for _, name := range []string{"wrong repository", "wrong repository name", "wrong source head", "wrong branch", "missing branch", "wrong head ref", "wrong head type", "wrong merge ref", "wrong merge object", "wrong base parent", "wrong head parent", "missing parent", "unknown mergeability", "ref transport", "contradictory association", "duplicate association", "shared current head", "vouch revoked", "DCO refused"} {
+	for _, name := range []string{"wrong repository", "wrong repository name", "wrong source head", "wrong branch", "missing branch", "wrong head ref", "wrong head type", "wrong merge ref", "wrong merge object", "wrong base parent", "wrong head parent", "missing parent", "ref transport", "contradictory association", "duplicate association", "shared current head", "vouch revoked", "DCO refused"} {
 		t.Run(name, func(t *testing.T) {
 			f := newQueueFixture(t)
 			f.sourceBoundFork()
@@ -903,9 +903,6 @@ func TestQueueForkFeedbackRefusesContradictoryOrUnprovedSources(t *testing.T) {
 					parents = parents[:1]
 				}
 				f.api.responses[f.c.endpoint("git/commits/"+f.pr.MergeCommitSHA)] = map[string]any{"sha": sha, "parents": parents}
-			case "unknown mergeability":
-				f.pr.Mergeable = nil
-				f.refresh()
 			case "ref transport":
 				f.api.responses[f.c.endpoint("git/ref/pull/7/head")] = errors.New("PR ref transport unavailable")
 			case "contradictory association":
@@ -1113,7 +1110,7 @@ func TestRESTNonzeroCLIResponsePreservesOnlyValidatedHTTPStatus(t *testing.T) {
 	}
 }
 
-func TestQueueForkRecomputationKeepsPublisherHealthyAndAdmissionPending(t *testing.T) {
+func TestQueueForkRefsDecideAdmissionWithoutWaitingForLazyMergeability(t *testing.T) {
 	for _, eventName := range []string{"push", "schedule"} {
 		for _, phase := range []string{"initial unknown", "initial absent candidate", "final transition"} {
 			t.Run(eventName+"/"+phase, func(t *testing.T) {
@@ -1144,21 +1141,25 @@ func TestQueueForkRecomputationKeepsPublisherHealthyAndAdmissionPending(t *testi
 				}
 				e := f.event
 				e.Ref = "refs/heads/main"
-				if err := f.q.execute(context.Background(), eventName, e); err != nil {
-					t.Fatalf("expected fork recomputation made publisher fail: %v", err)
-				}
+				err := f.q.execute(context.Background(), eventName, e)
 				if !observed {
 					t.Fatal("final metadata transition was not exercised")
 				}
+				latest := newestQueueCheck(f.api.checks)
+				if phase == "initial unknown" {
+					if err != nil || latest == nil || latest.Status != "completed" || latest.Conclusion != "success" {
+						t.Fatalf("exact immutable refs still waited for lazy mergeability: %+v %v", latest, err)
+					}
+					return
+				}
+				if err == nil {
+					t.Fatal("missing source proof was silently left pending")
+				}
 				f.assertNoSuccess(t)
-				latest := f.api.checks[len(f.api.checks)-1]
-				if latest.ID == old.ID || latest.HeadSHA != f.pr.Head.SHA || latest.Status != "queued" || latest.Conclusion != "" {
-					t.Fatalf("prior green was not superseded by blocking pending: %+v", latest)
+				if latest == nil || latest.ID == old.ID || latest.HeadSHA != f.pr.Head.SHA || !blockingQueueCheck(latest) {
+					t.Fatalf("unproved source did not supersede the old green: %+v", latest)
 				}
-				binding, err := decodeBinding(latest.ExternalID)
-				if err != nil || binding.PR != f.pr.Number || binding.Head != f.pr.Head.SHA || binding.Run != 0 || binding.Attempt != 0 {
-					t.Fatalf("pending recovery carried validation authority: %+v %v", binding, err)
-				}
+
 			})
 		}
 	}
@@ -1206,9 +1207,9 @@ func TestQueueGroupPendingAuthorityKeepsTerminalValidationTruth(t *testing.T) {
 		runFailed, jobsFailed bool
 		want                  string
 	}{
-		{"initial pending", 75, 0, false, false, "queued"},
-		{"final pending", 0, 75, false, false, "queued"},
-		{"both pending", 75, 75, false, false, "queued"},
+		{"initial pending", 75, 0, false, false, "failure"},
+		{"final pending", 0, 75, false, false, "failure"},
+		{"both pending", 75, 75, false, false, "failure"},
 		{"failed full run remains failed", 75, 75, true, false, "failure"},
 		{"failed aggregate remains failed", 75, 75, true, true, "failure"},
 		{"failed aggregate with successful run remains failed", 75, 75, false, true, "failure"},
@@ -1245,6 +1246,7 @@ func TestQueueGroupPendingAuthorityKeepsTerminalValidationTruth(t *testing.T) {
 			f.assertNoSuccess(t)
 			if tc.want == "failure" {
 				count := len(f.api.checks)
+				calls = 0
 				if err := f.group(); err != nil {
 					t.Fatal(err)
 				}
@@ -1352,7 +1354,7 @@ func TestQueueGroupPendingAuthorityRevokesGreenWithoutRepeatedGrowth(t *testing.
 			t.Fatal(err)
 		}
 		latest := newestQueueCheck(f.api.checks)
-		if latest == nil || latest.Status != "queued" || latest.Conclusion != "" {
+		if latest == nil || latest.Status != "completed" || latest.Conclusion != "failure" {
 			t.Fatalf("prior green survived pending authority: %+v", latest)
 		}
 		if len(f.api.checks) != 2 {

@@ -479,8 +479,7 @@ expect_policy_stdout 'policy-only workflow authority is independent of result pu
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
 mv "$work/pr-new.json" "$work/pr.json"
-expect_once_pending 'policy-only pending mergeability'
-expect_policy_silent
+expect_policy_stdout 'policy-only authority is independent of asynchronous mergeability' '{"workflow_change_authorized":false}'
 expect_reject 'policy-only superseded head' fedcba9876543210fedcba9876543210fedcba98
 expect_policy_silent
 unset PR_GATE_ONCE PR_GATE_POLICY_ONLY

@@ -201,7 +201,8 @@ fi
 # legacy polling remains isolated until the shadow check is activated.
 if [ "${PR_GATE_POLICY_ONLY:-0}" = 1 ]; then
 	check_current_pr
-	[ "$mergeable" = true ] || pending 'PR mergeability is still pending'
+	# Completion controllers independently prove immutable integration.
+	# GitHub's lazy mergeability calculation is not an authority decision.
 	printf '{"workflow_change_authorized":%s}\n' "$workflow_changed"
 	exit 0
 fi

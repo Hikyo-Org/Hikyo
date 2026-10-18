@@ -41,44 +41,19 @@ jobs:
           [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
           JOB_HEAD="$GITHUB_SHA"
           [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
-          # Jobs API status can lag a running step. Retry only that transient
-          # queued state, retaining the first authenticated job ID and clock.
-          first_identity=
-          attempt=0
-          while :; do
-            attempt=$((attempt + 1))
-            request_seconds=5
-            if [ -n "$first_identity" ]; then
-              remaining=$((started + 60 - $(date +%s)))
-              test "$remaining" -gt 0
-              if [ "$remaining" -lt "$request_seconds" ]; then request_seconds=$remaining; fi
-            fi
-            body=$(timeout --kill-after=1s "${request_seconds}s" gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
-            identity=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "publish-$HEAD" '
-              if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
-              if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
-              [.[] | select(.name == $name)] |
-              if length != 1 then error("ambiguous publisher job") else .[0] end |
-              if (.id | type) != "number" or .id != (.id | floor) or .id <= 0 or .run_id != $run or .run_attempt != $attempt or .head_sha != $head or (.status != "in_progress" and .status != "queued") or (.started_at | type) != "string" then error("invalid publisher job identity: " + ({actual: {id, run_id, run_attempt, head_sha, status, started_at}, expected: {id: "positive integer", run_id: $run, run_attempt: $attempt, head_sha: $head, status: "in_progress", started_at: "ISO 8601 timestamp"}} | tojson)) else [.id, (.started_at | fromdateiso8601), .status] | @tsv end')
-            IFS=$'\t' read -r job_id started status <<<"$identity"
-            now=$(date +%s)
-            test "$started" -gt 0
-            test "$started" -le "$now"
-            test "$now" -lt "$((started + 60))"
-            current_identity="$job_id:$started"
-            if [ -z "$first_identity" ]; then
-              first_identity=$current_identity
-            else
-              test "$current_identity" = "$first_identity"
-            fi
-            if [ "$status" = in_progress ]; then break; fi
-            if [ "$attempt" -ge 5 ]; then
-              echo 'Publisher job status remained queued within the original admission budget.' >&2
-              exit 1
-            fi
-            test "$now" -lt "$((started + 59))"
-            sleep 1
-          done
+          # This step is already executing. A lagging Jobs API status cannot
+          # change its authenticated run/attempt/head/start identity.
+          body=$(timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
+          started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "publish-$HEAD" '
+            if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
+            if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
+            [.[] | select(.name == $name)] |
+            if length != 1 then error("ambiguous publisher job") else .[0] end |
+            if (.id | type) != "number" or .id != (.id | floor) or .id <= 0 or .run_id != $run or .run_attempt != $attempt or .head_sha != $head or (.status != "in_progress" and .status != "queued") or (.started_at | type) != "string" then error("invalid publisher job identity: " + ({actual: {id, run_id, run_attempt, head_sha, status, started_at}, expected: {id: "positive integer", run_id: $run, run_attempt: $attempt, head_sha: $head, status: "queued or in_progress", started_at: "ISO 8601 timestamp"}} | tojson)) else .started_at | fromdateiso8601 end')
+          now=$(date +%s)
+          test "$started" -gt 0
+          test "$started" -le "$now"
+          test "$now" -lt "$((started + 60))"
           echo "PR_GATE_STARTED_AT=$started" >> "$GITHUB_ENV"
           echo "PR_GATE_DEADLINE=$((started + 60))" >> "$GITHUB_ENV"
       - name: Check out trusted default-branch tooling
