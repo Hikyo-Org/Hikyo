@@ -75,6 +75,36 @@ source review completed two rounds with no actionable findings in the final
 patch. These reviews inspected source; the owner ran the recorded tests. The
 final app identity and encrypted backup/restore checks passed in 16.785 seconds.
 
+## Merge-queue protocol inventory repair
+
+The first rebased merge-group run failed driver-handle confinement and raw-SQL
+protocol ownership checks. The new canonical rendering scope had not been
+registered in the source-owned inventories. The storage and upgrade-gate suites
+had passed locally, but those suites do not exercise the repository-wide policy
+checks.
+
+The repair grants driver handles only to `schema_postgres.go`, whose adapters
+use an already reserved connection or caller transaction. It registers
+`sqlCatalogQuery`, `inspectPostgresCatalog`, and `withPostgresCatalogScope` as
+named SQL owners, each restricted to its reviewed caller bodies. The scope
+accepts no pool and performs no acquisition or commit; it sets fixed rendering
+parameters, reads catalog metadata, and restores or invalidates its private
+transaction scope. Callback readers remain bound by the reviewed callers and
+helper dependency pins.
+
+Four former owners that now delegate SQL execution are retired from the raw
+protocol inventory. The existing explicit pin updater refreshes affected body,
+caller and transitive helper hashes across default, UI, Darwin and Windows
+builds. No analyzer, generated-query authority, test assertion or runtime
+behavior is changed by this repair.
+
+Local verification reproduced the original two repository policy failures, then
+passed the complete `internal/lint` suite in 203.268 seconds and the exact
+`TestInvariant09aDriverHandleConfinement` isolation regression in 20.073 seconds.
+`go vet ./internal/lint`, formatting and whitespace checks passed. The existing
+PostgreSQL/SQLite runtime evidence above remains separate from a fresh hosted
+merge-group result.
+
 ## Limits
 
 No released production binary, release publication, or deployed service was
