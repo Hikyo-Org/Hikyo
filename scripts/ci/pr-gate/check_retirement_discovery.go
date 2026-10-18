@@ -14,7 +14,6 @@ import (
 const retirementHistoryPages = 20
 const retirementHistoryWindow = 1000
 const retirementHistoryHeads = 100
-const retirementContextBatchSize = 10
 const retirementReporterTargets = 100
 
 type reporterRetirementTarget struct {
@@ -45,30 +44,10 @@ type retirementPageInfo struct {
 	End  *string `json:"endCursor"`
 }
 
-type retirementHistoryContext struct {
-	Kind       string `json:"__typename"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	ExternalID string `json:"externalId"`
-	Suite      *struct {
-		App *struct {
-			ID   int64  `json:"databaseId"`
-			Slug string `json:"slug"`
-		} `json:"app"`
-	} `json:"checkSuite"`
-}
-
-type retirementContexts struct {
-	Total *int                       `json:"totalCount"`
-	Nodes []retirementHistoryContext `json:"nodes"`
-	Page  retirementPageInfo         `json:"pageInfo"`
-}
-
 type retirementHistoryCommit struct {
 	OID    string `json:"oid"`
 	Rollup *struct {
-		State    string             `json:"state"`
-		Contexts retirementContexts `json:"contexts"`
+		State string `json:"state"`
 	} `json:"statusCheckRollup"`
 }
 
@@ -165,39 +144,32 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 				return retirementTargets{}, errors.New("unknown aggregate retirement rollup state")
 			}
 		}
-		for start := 0; start < len(candidates); start += retirementContextBatchSize {
-			batch := candidates[start:min(start+retirementContextBatchSize, len(candidates))]
-			commits, err := c.retirementContextBatch(ctx, batch)
+		for _, candidate := range candidates {
+			q, o, reporterWork, err := c.retirementPendingChecks(ctx, candidate)
 			if err != nil {
 				return retirementTargets{}, err
 			}
-			for _, commit := range commits {
-				q, o, reporterWork, err := c.retirementPendingContexts(ctx, commit)
-				if err != nil {
-					return retirementTargets{}, err
+			if !q && !o && len(reporterWork) == 0 {
+				continue
+			}
+			seenHeads[candidate] = true
+			if len(seenHeads) > retirementHistoryHeads {
+				return retirementTargets{}, errors.New("retirement discovery exceeds 100 heads; operator backfill required before retry")
+			}
+			if q {
+				queue[candidate] = true
+			}
+			if o {
+				observation[candidate] = true
+			}
+			for _, target := range reporterWork {
+				key := fmt.Sprintf("%d:%d", target.Run, target.Attempt)
+				if old, exists := reporters[key]; exists && old.Head != target.Head {
+					return retirementTargets{}, errors.New("reporter source attempt has ambiguous discovery heads")
 				}
-				if !q && !o && len(reporterWork) == 0 {
-					continue
-				}
-				seenHeads[commit.OID] = true
-				if len(seenHeads) > retirementHistoryHeads {
-					return retirementTargets{}, errors.New("retirement discovery exceeds 100 heads; operator backfill required before retry")
-				}
-				if q {
-					queue[commit.OID] = true
-				}
-				if o {
-					observation[commit.OID] = true
-				}
-				for _, target := range reporterWork {
-					key := fmt.Sprintf("%d:%d", target.Run, target.Attempt)
-					if old, exists := reporters[key]; exists && old.Head != target.Head {
-						return retirementTargets{}, errors.New("reporter source attempt has ambiguous discovery heads")
-					}
-					reporters[key] = target
-					if len(reporters) > retirementReporterTargets {
-						return retirementTargets{}, errors.New("reporter discovery exceeds 100 source attempts; operator backfill required")
-					}
+				reporters[key] = target
+				if len(reporters) > retirementReporterTargets {
+					return retirementTargets{}, errors.New("reporter discovery exceeds 100 source attempts; operator backfill required")
 				}
 			}
 		}
@@ -244,140 +216,69 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 	return targets, nil
 }
 
-func (c *controller) retirementContextsQuery(head, after string) string {
-	parts := strings.Split(c.repoName, "/")
-	return fmt.Sprintf(`query{repository(owner:%q,name:%q){databaseId object(oid:%q){... on Commit{oid statusCheckRollup{contexts(first:100,after:%q){totalCount nodes{__typename ... on CheckRun{name status externalId checkSuite{app{databaseId slug}}}} pageInfo{hasNextPage endCursor}}}}}}}`, parts[0], parts[1], head, after)
-}
-
-// A rollup enumerates effective contexts, rather than every historical check
-// run. Follow its connection completely; the selected head's worker later
-// inventories and authenticates all owned REST history before cancellation.
-func (c *controller) completeRetirementContexts(ctx context.Context, head string, part retirementContexts) ([]retirementHistoryContext, error) {
-	all := []retirementHistoryContext{}
+// REST exposes each check's app identity without traversing a foreign app's
+// GraphQL object, which can be denied by that app owner's IP allow list. Latest
+// preserves effective-context discovery; the worker later authenticates all owned
+// historical checks before cancellation. Never return a partial inventory.
+func (c *controller) completeRetirementChecks(ctx context.Context, head string) ([]check, error) {
+	all := []check{}
 	total := -1
-	seen := make(map[string]bool)
+	seen := make(map[int64]bool)
 	for page := 1; page <= 10; page++ {
-		if part.Total == nil || *part.Total < 0 || part.Nodes == nil || len(part.Nodes) > 100 || part.Page.More == nil || total != -1 && total != *part.Total {
-			return nil, errors.New("incomplete or changing retirement status context inventory")
+		var part struct {
+			Total  *int    `json:"total_count"`
+			Checks []check `json:"check_runs"`
+		}
+		path := fmt.Sprintf("commits/%s/check-runs?filter=latest&per_page=100&page=%d", head, page)
+		if err := c.api.read(ctx, c.endpoint(path), &part); err != nil {
+			return nil, fmt.Errorf("retirement checks for %s page %d: %w", head, page, err)
+		}
+		if part.Total == nil || *part.Total < 0 || part.Checks == nil || len(part.Checks) > 100 || total != -1 && total != *part.Total {
+			return nil, errors.New("incomplete or changing retirement check inventory")
 		}
 		total = *part.Total
-		all = append(all, part.Nodes...)
-		if len(all) > total || total > 1000 {
-			return nil, fmt.Errorf("retirement contexts exceed complete 1000-record budget on %s; operator exact-head backfill required", head)
+		if total > 1000 {
+			return nil, fmt.Errorf("retirement checks exceed complete 1000-record budget on %s; operator exact-head backfill required", head)
 		}
-		if !*part.Page.More {
-			if len(all) != total {
-				return nil, errors.New("incomplete retirement status context pagination")
+		for _, check := range part.Checks {
+			if check.ID <= 0 || seen[check.ID] || check.HeadSHA != head || check.Name == "" || check.App.ID <= 0 || check.App.Slug == "" {
+				return nil, errors.New("incomplete, duplicate or foreign retirement check identity")
 			}
+			seen[check.ID] = true
+			switch check.Status {
+			case "completed", "queued", "in_progress", "waiting", "pending", "requested":
+			default:
+				return nil, errors.New("unknown retirement check status")
+			}
+		}
+		all = append(all, part.Checks...)
+		if len(all) == total {
 			return all, nil
 		}
-		if len(part.Nodes) == 0 || len(all) >= total || part.Page.End == nil || *part.Page.End == "" || len(*part.Page.End) > 1024 || seen[*part.Page.End] {
-			return nil, errors.New("invalid or repeated retirement status context cursor")
+		if len(part.Checks) < 100 || len(all) > total {
+			return nil, errors.New("incomplete retirement check pagination")
 		}
-		cursor := *part.Page.End
-		seen[cursor] = true
-		if page == 10 {
-			return nil, errors.New("retirement contexts exceed complete ten-page budget; operator exact-head backfill required")
-		}
-		var response struct {
-			Errors []json.RawMessage `json:"errors"`
-			Data   struct {
-				Repo *struct {
-					ID     int64 `json:"databaseId"`
-					Object *struct {
-						OID    string `json:"oid"`
-						Rollup *struct {
-							Contexts retirementContexts `json:"contexts"`
-						} `json:"statusCheckRollup"`
-					} `json:"object"`
-				} `json:"repository"`
-			} `json:"data"`
-		}
-		if err := c.api.read(ctx, "graphql:"+c.retirementContextsQuery(head, cursor), &response); err != nil {
-			return nil, err
-		}
-		if len(response.Errors) != 0 {
-			return nil, graphQLDiagnostic(response.Errors)
-		}
-		repo := response.Data.Repo
-		if repo == nil || repo.ID != c.repo.ID || repo.Object == nil || repo.Object.OID != head || repo.Object.Rollup == nil {
-			return nil, errors.New("missing or foreign retirement context page")
-		}
-		part = repo.Object.Rollup.Contexts
 	}
-	return nil, errors.New("retirement contexts exceed complete ten-page budget; operator exact-head backfill required")
+	return nil, errors.New("retirement checks exceed complete ten-page budget; operator exact-head backfill required")
 }
 
-func (c *controller) retirementContextBatchQuery(heads []string) string {
-	parts := strings.Split(c.repoName, "/")
-	var query strings.Builder
-	fmt.Fprintf(&query, `query{repository(owner:%q,name:%q){databaseId `, parts[0], parts[1])
-	for i, head := range heads {
-		fmt.Fprintf(&query, `h%d:object(oid:%q){... on Commit{oid statusCheckRollup{contexts(first:100){totalCount nodes{__typename ... on CheckRun{name status externalId checkSuite{app{databaseId slug}}}} pageInfo{hasNextPage endCursor}}}}} `, i, head)
-	}
-	query.WriteString("}}")
-	return query.String()
-}
-func (c *controller) retirementContextBatch(ctx context.Context, heads []string) ([]retirementHistoryCommit, error) {
-	if len(heads) == 0 || len(heads) > retirementContextBatchSize {
-		return nil, errors.New("invalid retirement context batch")
-	}
-	var response struct {
-		Errors []json.RawMessage `json:"errors"`
-		Data   struct {
-			Repo map[string]json.RawMessage `json:"repository"`
-		} `json:"data"`
-	}
-	if err := c.api.read(ctx, "graphql:"+c.retirementContextBatchQuery(heads), &response); err != nil {
-		return nil, err
-	}
-	if len(response.Errors) != 0 {
-		return nil, graphQLDiagnostic(response.Errors)
-	}
-	var repoID int64
-	if err := decode(response.Data.Repo["databaseId"], &repoID); err != nil || repoID != c.repo.ID {
-		return nil, errors.New("missing or foreign retirement context batch repository")
-	}
-	commits := make([]retirementHistoryCommit, 0, len(heads))
-	for i, head := range heads {
-		var commit *retirementHistoryCommit
-		if err := decode(response.Data.Repo[fmt.Sprintf("h%d", i)], &commit); err != nil || commit == nil || commit.OID != head {
-			return nil, errors.New("missing or foreign retirement context batch commit")
-		}
-		commits = append(commits, *commit)
-	}
-	return commits, nil
-}
-func (c *controller) retirementPendingContexts(ctx context.Context, commit retirementHistoryCommit) (bool, bool, []reporterRetirementTarget, error) {
-	if commit.Rollup == nil {
-		return false, false, nil, errors.New("retirement candidate rollup disappeared during discovery; retry a complete snapshot")
-	}
-	contexts, err := c.completeRetirementContexts(ctx, commit.OID, commit.Rollup.Contexts)
+func (c *controller) retirementPendingChecks(ctx context.Context, head string) (bool, bool, []reporterRetirementTarget, error) {
+	checks, err := c.completeRetirementChecks(ctx, head)
 	if err != nil {
 		return false, false, nil, err
 	}
 	queue, observation := false, false
 	reporters := []reporterRetirementTarget{}
-	for _, check := range contexts {
-		if check.Kind == "StatusContext" {
-			continue
-		}
-		if check.Kind != "CheckRun" {
-			return false, false, nil, errors.New("unknown retirement status context kind")
-		}
+	for _, check := range checks {
 		isReporter := strings.HasPrefix(check.Name, "Merge queue validation (run ") || strings.HasPrefix(check.ExternalID, "hikyo-queue-report:")
-		if check.Name != queueCheckName && check.Name != "ci-required-next" && !isReporter || check.Suite == nil || check.Suite.App == nil || check.Suite.App.ID != actionsAppID || check.Suite.App.Slug != "github-actions" {
+		if check.Name != queueCheckName && check.Name != "ci-required-next" && !isReporter || check.App.ID != actionsAppID || check.App.Slug != "github-actions" {
 			continue
 		}
-		switch check.Status {
-		case "COMPLETED":
+		if check.Status == "completed" {
 			continue
-		case "QUEUED", "IN_PROGRESS", "WAITING", "PENDING", "REQUESTED":
-		default:
-			return false, false, nil, errors.New("unknown owned synthetic check status")
 		}
 		if isReporter {
-			target, err := c.reporterRetirementHint(commit.OID, check)
+			target, err := c.reporterRetirementHint(head, check)
 			if err != nil {
 				return false, false, nil, err
 			}
@@ -385,8 +286,8 @@ func (c *controller) retirementPendingContexts(ctx context.Context, commit retir
 			continue
 		}
 		b, err := decodeBinding(check.ExternalID)
-		if err != nil || b.RepoID != c.repo.ID || b.Head != commit.OID {
-			return false, false, nil, fmt.Errorf("unfinished synthetic context has ambiguous ownership on %s; operator review required", commit.OID)
+		if err != nil || b.RepoID != c.repo.ID || b.Head != head {
+			return false, false, nil, fmt.Errorf("unfinished synthetic context has ambiguous ownership on %s; operator review required", head)
 		}
 		if check.Name == queueCheckName {
 			queue = true
@@ -408,7 +309,7 @@ func retirementObservationBatches(heads []string) [][]string {
 // This validates only a canonical routing hint. The reporter owner independently
 // reauthenticates the source workflow/attempt, immutable merge parents, original
 // PR-head check and terminal readback before mutating any record.
-func (c *controller) reporterRetirementHint(head string, check retirementHistoryContext) (reporterRetirementTarget, error) {
+func (c *controller) reporterRetirementHint(head string, check check) (reporterRetirementTarget, error) {
 	parts := strings.Split(check.ExternalID, ":")
 	if len(parts) != 8 || parts[0] != "hikyo-queue-report" || parts[1] != "v1" || !shaPattern.MatchString(head) || !shaPattern.MatchString(parts[6]) || !shaPattern.MatchString(parts[7]) {
 		return reporterRetirementTarget{}, errors.New("malformed reporter discovery binding; operator review required")

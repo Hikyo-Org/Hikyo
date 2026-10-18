@@ -34,6 +34,7 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 			value       any
 		}{
 			{name: "valid"},
+			{"queued propagation lag", "status", "queued"},
 			{"invalid id type", "id", "123"},
 			{"nonpositive id", "id", 0},
 			{"fractional id", "id", 123.5},
@@ -69,6 +70,9 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "date"), []byte(clock), 0700); err != nil {
 					t.Fatal(err)
 				}
+				if err := os.WriteFile(filepath.Join(dir, "sleep"), []byte("#!/bin/sh\necho unexpected publisher polling >&2\nexit 99\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
 				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, "bash", "-c", workflow.Jobs["publish"].Steps[0].Run)
@@ -79,7 +83,7 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if test.name == "valid" {
+				if test.name == "valid" || test.name == "queued propagation lag" {
 					want := "PR_GATE_STARTED_AT=" + strconv.FormatInt(started, 10) + "\nPR_GATE_DEADLINE=" + strconv.FormatInt(started+60, 10) + "\n"
 					if runErr != nil || string(written) != want {
 						t.Fatalf("valid identity lost authenticated setup clock: %v %s %s", runErr, output, written)
@@ -101,7 +105,7 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 				if err := json.Unmarshal([]byte(strings.TrimSpace(diagnostic)), &captured); err != nil {
 					t.Fatalf("invalid identity diagnostic: %v: %s", err, diagnostic)
 				}
-				if len(captured.Actual) != 6 || len(captured.Expected) != 6 || captured.Expected["head_sha"] != source || captured.Expected["status"] != "in_progress" {
+				if len(captured.Actual) != 6 || len(captured.Expected) != 6 || captured.Expected["head_sha"] != source || captured.Expected["status"] != "queued or in_progress" {
 					t.Fatalf("incomplete identity diagnostic: %s", diagnostic)
 				}
 				want, err := json.Marshal(test.value)
@@ -120,8 +124,8 @@ func TestQueueBootstrapIdentityValidationAndDiagnostics(t *testing.T) {
 	}
 }
 
-// Replay the actual running-job/queued-response race without real sleeps or
-// network requests. A retry never grants a fresh setup clock or another job ID.
+// A running step needs its immutable identity and start clock, not a later
+// Jobs API status transition. Execute both routes without sleeps or retries.
 func TestQueueBootstrapStatusConsistency(t *testing.T) {
 	const head = "c90eee1ce8d5607ee7ca5fdb0c77b4bb6003e8f1"
 	const source = "6342ae361232fbb6d1b0dcef6f106a438a781718"
@@ -136,69 +140,37 @@ func TestQueueBootstrapStatusConsistency(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, tc := range []struct {
-			name      string
-			statuses  []string
-			change    string
-			secondNow int64
-			wantOK    bool
-			wantCalls int
+			name, status string
+			elapsed      int64
+			wantOK       bool
 		}{
-			{"running fast path", []string{"in_progress"}, "", 0, true, 1},
-			{"observed queued then running", []string{"queued", "in_progress"}, "", 0, true, 2},
-			{"queued twice then running", []string{"queued", "queued", "in_progress"}, "", 0, true, 3},
-			{"queued bounded", []string{"queued"}, "", 0, false, 5},
-			{"terminal status", []string{"completed"}, "", 0, false, 1},
-			{"changed job", []string{"queued", "in_progress"}, "id", 0, false, 2},
-			{"changed clock", []string{"queued", "in_progress"}, "started_at", 0, false, 2},
-			{"expired while retrying", []string{"queued", "in_progress"}, "", 60, false, 2},
-			{"wrong queued run", []string{"queued"}, "run_id", 0, false, 1},
+			{"running", "in_progress", 4, true},
+			{"queued status lag", "queued", 4, true},
+			{"last setup second retains original cutoff", "queued", 59, true},
+			{"expired original clock", "queued", 60, false},
+			{"future original clock", "queued", -1, false},
+			{"terminal job", "completed", 4, false},
 		} {
 			t.Run(filename+"/"+tc.name, func(t *testing.T) {
 				dir := t.TempDir()
-				for i, status := range tc.statuses {
-					job := map[string]any{"id": 117143001761, "run_id": 38951286305, "run_attempt": 1, "name": "publish-" + head, "head_sha": source, "status": status, "started_at": "2026-10-16T18:57:22Z"}
-					if i > 0 || tc.change == "run_id" {
-						switch tc.change {
-						case "id":
-							job["id"] = 999
-						case "started_at":
-							job["started_at"] = "2026-10-16T18:57:23Z"
-						case "run_id":
-							job["run_id"] = 999
-						}
-					}
-					body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}})
-					if err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("response-%d", i+1)), body, 0600); err != nil {
-						t.Fatal(err)
-					}
+				job := map[string]any{"id": 117143001761, "run_id": 38951286305, "run_attempt": 1, "name": "publish-" + head, "head_sha": source, "status": tc.status, "started_at": "2026-10-16T18:57:22Z"}
+				body, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{job}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "response"), body, 0600); err != nil {
+					t.Fatal(err)
 				}
 				files := map[string]string{
-					"gh": fmt.Sprintf(`#!/bin/sh
+					"gh": `#!/bin/sh
 set -eu
 test "$1" = api
 test "$2" = 'repos/Hikyo-Org/Hikyo/actions/runs/38951286305/attempts/1/jobs?per_page=100'
-n=0
-if [ -f "$FIXTURE/calls" ]; then n=$(cat "$FIXTURE/calls"); fi
-n=$((n+1))
-echo "$n" > "$FIXTURE/calls"
-if [ "$n" -gt %d ]; then n=%d; fi
-cat "$FIXTURE/response-$n"
-`, len(tc.statuses), len(tc.statuses)),
-					"date": fmt.Sprintf(`#!/bin/sh
-set -eu
-test "$1" = +%%s
-n=0
-if [ -f "$FIXTURE/calls" ]; then n=$(cat "$FIXTURE/calls"); fi
-if [ "$n" -gt 1 ] && [ %d -gt 0 ]; then echo %d; else echo %d; fi
-`, tc.secondNow, started+tc.secondNow, started+4),
-					"sleep": `#!/bin/sh
-set -eu
-test "$1" = 1
-echo sleep >> "$FIXTURE/sleeps"
+echo call >> "$FIXTURE/calls"
+cat "$FIXTURE/response"
 `,
+					"date":        fmt.Sprintf("#!/bin/sh\nset -eu\ntest \"$1\" = +%%s\necho %d\n", started+tc.elapsed),
+					"sleep":       "#!/bin/sh\necho unexpected publisher polling >&2\nexit 99\n",
 					"environment": "",
 				}
 				for name, body := range files {
@@ -215,8 +187,8 @@ echo sleep >> "$FIXTURE/sleeps"
 				if err != nil {
 					t.Fatal(err)
 				}
-				if strings.TrimSpace(string(calls)) != strconv.Itoa(tc.wantCalls) {
-					t.Fatalf("unexpected retries: %s, %v %s", calls, runErr, output)
+				if string(calls) != "call\n" {
+					t.Fatalf("bootstrap polled the Jobs API: %s", calls)
 				}
 				written, err := os.ReadFile(filepath.Join(dir, "environment"))
 				if err != nil {
@@ -224,18 +196,13 @@ echo sleep >> "$FIXTURE/sleeps"
 				}
 				if !tc.wantOK {
 					if runErr == nil || len(written) != 0 {
-						t.Fatalf("unsafe identity accepted: %v %s %s", runErr, output, written)
+						t.Fatalf("unsafe clock/status accepted: %v %s %s", runErr, output, written)
 					}
 					return
 				}
 				want := fmt.Sprintf("PR_GATE_STARTED_AT=%d\nPR_GATE_DEADLINE=%d\n", started, started+60)
 				if runErr != nil || string(written) != want {
 					t.Fatalf("original clock changed: %v %s %s", runErr, output, written)
-				}
-				if tc.wantCalls == 1 {
-					if _, err := os.Stat(filepath.Join(dir, "sleeps")); !os.IsNotExist(err) {
-						t.Fatal("running fast path slept")
-					}
 				}
 			})
 		}

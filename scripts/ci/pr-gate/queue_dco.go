@@ -35,8 +35,20 @@ func verifyQueueDCO(ctx context.Context, repoName string, p pull) (int, error) {
 		return 0, err
 	}
 	defer cleanupQueueDCOMetadata(dir)
-	return checkQueueDCO(ctx, p, repo)
+	code, err := checkQueueDCO(ctx, p, repo)
+	if err != nil || code != 0 {
+		return code, err
+	}
+	return 0, checkQueueMerge(ctx, repoName, p, repo)
 }
+
+// Both the initial filtered fetch and merge-time blob hydration use the same
+// fixed repository origin. No PR configuration or ambient credential helper can
+// select an alternate transport for a missing object.
+func queueDCOMetadataArgs(repoName, repo string) []string {
+	return []string{"-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-c", "remote.origin.url=https://github.com/" + repoName + ".git", "-c", "remote.origin.promisor=true", "-c", "remote.origin.partialclonefilter=blob:none", "-C", repo}
+}
+
 func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", "", err
@@ -60,7 +72,8 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	if err := init.Run(); err != nil {
 		return "", "", errors.New("cannot initialize queue DCO metadata repository")
 	}
-	cmd := gateCommand(ctx, "git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "-c", "http.lowSpeedLimit=1", "-c", "http.lowSpeedTime=30", "-C", repo, "fetch", "--quiet", "--no-tags", "--filter=blob:none", "https://github.com/"+repoName+".git", p.Base.SHA, p.Head.SHA)
+	args := append(queueDCOMetadataArgs(repoName, repo), "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--filter=blob:none", "origin", p.Base.SHA, p.Head.SHA)
+	cmd := gateCommand(ctx, "git", args...)
 	cmd.Env = queueDCOEnvironment()
 	if err := cmd.Run(); err != nil {
 		return "", "", errors.New("cannot fetch immutable queue DCO Git metadata")
@@ -89,7 +102,7 @@ func checkQueueDCO(ctx context.Context, p pull, repo string) (int, error) {
 }
 
 // The session belongs to one admission invocation, never to a cached verdict.
-// Only complete immutable metadata is reused; the canonical policy reruns.
+// Only complete immutable metadata is reused; DCO and conflict proof rerun.
 func admissionDCOVerifier(repoName string) (queueDCOVerifier, func()) {
 	var captured *pull
 	var dir, repo string
@@ -121,7 +134,14 @@ func admissionDCOVerifier(repoName string) (queueDCOVerifier, func()) {
 		fetchSeconds := time.Since(fetchStart).Seconds()
 		checkStart := time.Now()
 		code, err := checkQueueDCO(ctx, p, repo)
-		fmt.Fprintf(os.Stdout, "Queue DCO timing: reused_metadata=%t metadata_seconds=%.3f canonical_check_seconds=%.3f\n", reused, fetchSeconds, time.Since(checkStart).Seconds())
+		checkSeconds := time.Since(checkStart).Seconds()
+		mergeSeconds := 0.0
+		if err == nil && code == 0 {
+			mergeStart := time.Now()
+			err = checkQueueMerge(ctx, repoName, p, repo)
+			mergeSeconds = time.Since(mergeStart).Seconds()
+		}
+		fmt.Fprintf(os.Stdout, "Queue DCO timing: reused_metadata=%t metadata_seconds=%.3f canonical_check_seconds=%.3f conflict_check_seconds=%.3f\n", reused, fetchSeconds, checkSeconds, mergeSeconds)
 		return code, err
 	}
 	close := func() {

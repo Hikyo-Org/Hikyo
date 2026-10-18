@@ -18,6 +18,13 @@ type queueReassessment struct {
 	uncertainCreate  bool
 	verifiedTerminal bool
 	verifiedRetired  bool
+	finishedGroup    *finishedGroupProof
+}
+
+type finishedGroupProof struct {
+	run      run
+	policy   liveQueuePolicy
+	snapshot queueSnapshot
 }
 
 func newestQueueCheck(own []check) *check {
@@ -82,6 +89,14 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	} // Unknown history cannot authorize another creation.
 	latest := newestQueueCheck(own)
 	if blockingQueueCheck(latest) {
+		if cause != nil && state.finishedGroup != nil && latest.Status != "completed" && q.authenticatedQueueCheck(latest, q.expectedHead) {
+			b, err := decodeBinding(latest.ExternalID)
+			if err != nil {
+				return err
+			}
+			p := pull{Number: b.PR, Head: reference{SHA: b.Head}}
+			return q.finishGroupFailure(ctx, state.finishedGroup, p, b, latest, cause)
+		}
 		return nil
 	}
 	p := pull{Number: 1, State: "open", Head: reference{SHA: q.expectedHead, Repo: q.repo}, Base: reference{SHA: q.expectedHead, Ref: q.repo.DefaultBranch, Repo: q.repo}}
@@ -124,7 +139,30 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	if finalErr != nil || written == nil || current == nil || current.ID != written.ID || !blockingQueueCheck(current) {
 		return errors.Join(scanErr, finalErr, errors.New("newest owned blocking barrier could not be confirmed"))
 	}
+	if cause != nil && state.finishedGroup != nil {
+		return q.finishGroupFailure(ctx, state.finishedGroup, p, b, current, cause)
+	}
 	return scanErr
+}
+
+func (q *queueController) finishGroupFailure(ctx context.Context, proved *finishedGroupProof, p pull, b binding, selected *check, cause error) error {
+	policy, err := q.policy(ctx)
+	if err != nil {
+		return err
+	}
+	live, err := q.latestGroup(ctx, q.expectedHead)
+	if err != nil {
+		return err
+	}
+	snapshot, err := q.queue(ctx, q.expectedHead)
+	if err != nil {
+		return err
+	}
+	sameSource := live != nil && sameSourceEvent(proved.run, *live) && live.HeadBranch == proved.run.HeadBranch && live.Status == "completed" && live.Status == proved.run.Status && live.Conclusion == proved.run.Conclusion
+	if policy != proved.policy || !sameSource || snapshot.Digest != proved.snapshot.Digest {
+		return errors.New("completed group identity moved before failure publication")
+	}
+	return q.failOwnedBarrier(ctx, p, b, selected, cause)
 }
 
 func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error) error {
@@ -133,7 +171,7 @@ func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b bindin
 	if err != nil || latest == nil || latest.ID != selected.ID || !q.authenticatedQueueCheck(latest, q.expectedHead) {
 		return errors.Join(err, errors.New("failure fallback cannot authenticate the effective owned record"))
 	}
-	if blockingQueueCheck(latest) {
+	if blockingQueueCheck(latest) && (latest.Status == "completed" || q.queueRefresh == nil || q.queueRefresh.finishedGroup == nil) {
 		return nil
 	}
 	if cause == nil {
@@ -148,12 +186,12 @@ func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b bindin
 	if err := q.api.write(ctx, "PATCH", q.endpoint(fmt.Sprintf("check-runs/%d", latest.ID)), payload, &written); err != nil {
 		return err
 	}
-	if !q.authenticatedQueueCheck(&written, q.expectedHead) || written.ID != latest.ID || written.ExternalID != b.externalID() || !blockingQueueCheck(&written) {
+	if !q.authenticatedQueueCheck(&written, q.expectedHead) || written.ID != latest.ID || written.ExternalID != b.externalID() || written.Status != "completed" || written.Conclusion != "failure" {
 		return errors.New("failure fallback response did not establish an owned blocking verdict")
 	}
 	own, err = q.listOwnedChecks(ctx, q.expectedHead)
 	newest := newestQueueCheck(own)
-	if err != nil || newest == nil || newest.ID != written.ID || !blockingQueueCheck(newest) {
+	if err != nil || newest == nil || newest.ID != written.ID || newest.Status != "completed" || newest.Conclusion != "failure" {
 		return errors.Join(err, errors.New("failure fallback is not the effective blocking record"))
 	}
 	return nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,37 +10,72 @@ import (
 	"testing"
 )
 
+type retirementDiscoveryAPI struct{ *fakeAPI }
+
+func (a retirementDiscoveryAPI) read(ctx context.Context, path string, result any) error {
+	if strings.HasPrefix(path, "graphql:") && strings.Contains(path, "checkSuite") && strings.Contains(path, "app") {
+		return errors.New("organization IP allow list blocks foreign checkSuite.app traversal")
+	}
+	if strings.Contains(path, "/check-runs?") && !strings.Contains(path, "check_name=") {
+		a.reads[path]++
+		response, ok := a.responses[path]
+		if !ok {
+			return fmt.Errorf("unexpected retirement check read %s", path)
+		}
+		if err, ok := response.(error); ok {
+			return err
+		}
+		data, err := json.Marshal(response)
+		if err != nil {
+			return err
+		}
+		return decode(data, result)
+	}
+	return a.fakeAPI.read(ctx, path, result)
+}
+
 func retirementDiscoveryFixture(t *testing.T) (*queueFixture, string) {
 	t.Helper()
 	f := newQueueFixture(t)
 	f.c.expectedHead = ""
+	f.c.api = retirementDiscoveryAPI{f.api}
 	t.Setenv("GITHUB_REF", "refs/heads/main")
 	return f, f.pr.Base.SHA
+}
+
+func TestRetirementDiscoveryFindsOwnedChecksWhenForeignAppGraphQLIsBlocked(t *testing.T) {
+	f, head := retirementDiscoveryFixture(t)
+	owned := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, head, []map[string]any{owned})}, false, "")
+	f.api.responses[f.c.endpoint(fmt.Sprintf("commits/%s/check-runs?filter=latest&per_page=100&page=1", head))] = map[string]any{
+		"total_count": 2,
+		"check_runs": []map[string]any{
+			{"id": 10, "name": "foreign native check", "head_sha": head, "status": "queued", "app": map[string]any{"id": 42, "slug": "other"}},
+			{"id": 11, "name": queueCheckName, "head_sha": head, "status": "queued", "external_id": owned["external_id"], "app": map[string]any{"id": actionsAppID, "slug": "github-actions"}},
+		},
+	}
+	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+	if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) {
+		t.Fatalf("foreign app visibility prevented owned retirement discovery: %+v/%v", got, err)
+	}
+	if len(f.api.writes) != 0 {
+		t.Fatal("discovery mutated checks")
+	}
 }
 func retirementHistoryRecord(f *queueFixture, head, name, status string) map[string]any {
 	p := f.pr
 	p.Head.SHA = head
-	return map[string]any{"__typename": "CheckRun", "name": name, "status": status, "externalId": newBinding(f.c.repo.ID, p, nil).externalID(), "checkSuite": map[string]any{"app": map[string]any{"databaseId": actionsAppID, "slug": "github-actions"}}}
+	f.api.nextID++
+	return map[string]any{"id": f.api.nextID, "head_sha": head, "name": name, "status": strings.ToLower(status), "external_id": newBinding(f.c.repo.ID, p, nil).externalID(), "app": map[string]any{"id": actionsAppID, "slug": "github-actions"}}
 }
-func retirementHistoryNode(head string, checks []map[string]any) map[string]any {
-	return map[string]any{"oid": head, "statusCheckRollup": map[string]any{"state": "PENDING", "contexts": map[string]any{"totalCount": len(checks), "nodes": checks, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": nil}}}}
+func retirementChecksPath(f *queueFixture, head string, page int) string {
+	return f.c.endpoint(fmt.Sprintf("commits/%s/check-runs?filter=latest&per_page=100&page=%d", head, page))
+}
+func retirementHistoryNode(f *queueFixture, head string, checks []map[string]any) map[string]any {
+	f.api.responses[retirementChecksPath(f, head, 1)] = map[string]any{"total_count": len(checks), "check_runs": checks}
+	return map[string]any{"oid": head, "statusCheckRollup": map[string]any{"state": "PENDING"}}
 }
 func retirementHistoryResponse(f *queueFixture, head string, nodes []map[string]any, more bool, cursor string) map[string]any {
-	for start := 0; start < len(nodes); start += retirementContextBatchSize {
-		batch := nodes[start:min(start+retirementContextBatchSize, len(nodes))]
-		heads := []string{}
-		repo := map[string]any{"databaseId": f.c.repo.ID}
-		for _, node := range batch {
-			if node["statusCheckRollup"] == nil {
-				continue
-			}
-			repo[fmt.Sprintf("h%d", len(heads))] = node
-			heads = append(heads, node["oid"].(string))
-		}
-		if len(heads) > 0 {
-			f.api.responses["graphql:"+f.c.retirementContextBatchQuery(heads)] = map[string]any{"data": map[string]any{"repository": repo}}
-		}
-	}
 	return map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": map[string]any{"oid": head, "history": map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor}}}}}}
 }
 func TestRetirementDiscoveryFindsMissedCallbacksAcrossMainHistory(t *testing.T) {
@@ -52,10 +88,10 @@ func TestRetirementDiscoveryFindsMissedCallbacksAcrossMainHistory(t *testing.T) 
 	}
 	// Native and foreign-app checks never turn into cancellation targets.
 	foreign := retirementHistoryRecord(f, old, queueCheckName, "QUEUED")
-	foreign["checkSuite"] = map[string]any{"app": map[string]any{"databaseId": 42, "slug": "other"}}
-	second := []map[string]any{foreign, retirementHistoryRecord(f, old, "ordinary job", "QUEUED"), retirementHistoryRecord(f, old, "ci-required-next", "QUEUED"), {"__typename": "StatusContext"}}
-	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, first)}, true, "next")
-	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "next", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(old, second), {"oid": strings.Repeat("d", 40), "statusCheckRollup": nil}}, false, "")
+	foreign["app"] = map[string]any{"id": 42, "slug": "other"}
+	second := []map[string]any{foreign, retirementHistoryRecord(f, old, "ordinary job", "QUEUED"), retirementHistoryRecord(f, old, "ci-required-next", "QUEUED")}
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, head, first)}, true, "next")
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "next", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, old, second), {"oid": strings.Repeat("d", 40), "statusCheckRollup": nil}}, false, "")
 	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
 	want := retirementTargets{HistoryScope: retirementHistoryScope{Snapshot: head, MaxCommits: retirementHistoryWindow, ScannedCommits: 3, CompleteAncestry: true}, Queue: []string{head}, Observation: []string{head, old}, ObservationBatches: [][]string{{head, old}}, ReporterTargets: []reporterRetirementTarget{}}
 	if err != nil || !reflect.DeepEqual(got, want) {
@@ -66,16 +102,16 @@ func TestRetirementDiscoveryFindsMissedCallbacksAcrossMainHistory(t *testing.T) 
 	}
 }
 func TestRetirementDiscoveryRejectsIncompleteOrAmbiguousHistory(t *testing.T) {
-	for _, problem := range []string{"API", "GraphQL", "null repo", "foreign repo", "foreign head", "wrong first head", "null history", "empty history", "duplicate commit", "missing cursor", "repeated cursor", "missing context count", "partial contexts", "contexts overflow", "unknown context", "unknown status", "foreign binding", "missing app"} {
+	for _, problem := range []string{"API", "GraphQL", "null repo", "foreign repo", "foreign head", "wrong first head", "null history", "empty history", "duplicate commit", "missing cursor", "repeated cursor", "checks API", "missing check count", "negative check count", "partial checks", "checks overflow", "null checks", "null check", "missing check ID", "duplicate check", "foreign check head", "missing check name", "unknown status", "unknown native status", "foreign binding", "missing app", "missing app ID", "missing app slug"} {
 		t.Run(problem, func(t *testing.T) {
 			f, head := retirementDiscoveryFixture(t)
 			check := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
-			node := retirementHistoryNode(head, []map[string]any{check})
+			node := retirementHistoryNode(f, head, []map[string]any{check})
 			page := retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
 			repo := page["data"].(map[string]any)["repository"].(map[string]any)
 			object := repo["object"].(map[string]any)
 			history := object["history"].(map[string]any)
-			contexts := node["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)
+			checks := f.api.responses[retirementChecksPath(f, head, 1)].(map[string]any)
 			var response any = page
 			switch problem {
 			case "API":
@@ -100,30 +136,47 @@ func TestRetirementDiscoveryRejectsIncompleteOrAmbiguousHistory(t *testing.T) {
 				history["pageInfo"] = map[string]any{"hasNextPage": true}
 			case "repeated cursor":
 				history["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "same"}
-				other := retirementHistoryNode(strings.Repeat("e", 40), []map[string]any{})
+				other := retirementHistoryNode(f, strings.Repeat("e", 40), []map[string]any{})
 				f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "same", 100)] = retirementHistoryResponse(f, head, []map[string]any{other}, true, "same")
-			case "missing context count":
-				delete(contexts, "totalCount")
-			case "partial contexts":
-				contexts["totalCount"] = 2
-			case "contexts overflow":
-				contexts["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "more"}
-			case "unknown context":
-				check["__typename"] = "Unknown"
+			case "checks API":
+				f.api.responses[retirementChecksPath(f, head, 1)] = errors.New("check listing unavailable")
+			case "missing check count":
+				delete(checks, "total_count")
+			case "negative check count":
+				checks["total_count"] = -1
+			case "partial checks":
+				checks["total_count"] = 2
+			case "checks overflow":
+				checks["total_count"] = 1001
+			case "null checks":
+				checks["check_runs"] = nil
+			case "null check":
+				checks["check_runs"] = []map[string]any{nil}
+			case "missing check ID":
+				delete(check, "id")
+			case "duplicate check":
+				checks["total_count"] = 2
+				checks["check_runs"] = []map[string]any{check, check}
+			case "foreign check head":
+				check["head_sha"] = strings.Repeat("e", 40)
+			case "missing check name":
+				delete(check, "name")
 			case "unknown status":
 				check["status"] = "UNKNOWN"
+			case "unknown native status":
+				check["name"], check["status"] = "native job", "UNKNOWN"
 			case "foreign binding":
-				check["externalId"] = newBinding(11, f.pr, nil).externalID()
+				check["external_id"] = newBinding(11, f.pr, nil).externalID()
 			case "missing app":
-				check["checkSuite"] = nil
+				check["app"] = nil
+			case "missing app ID":
+				delete(check["app"].(map[string]any), "id")
+			case "missing app slug":
+				delete(check["app"].(map[string]any), "slug")
 			}
 			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = response
 			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
-			if problem == "missing app" {
-				if err != nil || len(got.Queue) != 0 {
-					t.Fatalf("unowned app became a target: %+v/%v", got, err)
-				}
-			} else if err == nil || len(got.Queue) != 0 || len(got.Observation) != 0 {
+			if err == nil || len(got.Queue) != 0 || len(got.Observation) != 0 || len(got.ReporterTargets) != 0 {
 				t.Fatalf("incomplete history authorized partial targets: %+v/%v", got, err)
 			}
 			if len(f.api.writes) != 0 {
@@ -158,7 +211,7 @@ func TestRetirementDiscoveryBoundsHistoryAndMatrixWithoutPartialOutput(t *testin
 					if bound == "heads" {
 						checks = append(checks, retirementHistoryRecord(f, oid, queueCheckName, "QUEUED"))
 					}
-					nodes = append(nodes, retirementHistoryNode(oid, checks))
+					nodes = append(nodes, retirementHistoryNode(f, oid, checks))
 				}
 				after := ""
 				if page > 0 {
@@ -174,52 +227,53 @@ func TestRetirementDiscoveryBoundsHistoryAndMatrixWithoutPartialOutput(t *testin
 	}
 }
 
-func TestRetirementDiscoveryPaginatesEffectiveContexts(t *testing.T) {
-	for _, fault := range []string{"none", "missing page", "changing total", "foreign commit", "repeated cursor"} {
+func TestRetirementDiscoveryPaginatesEffectiveChecks(t *testing.T) {
+	for _, fault := range []string{"none", "missing page", "changing total", "foreign commit", "duplicate identity", "empty final page", "too many records"} {
 		t.Run(fault, func(t *testing.T) {
 			f, head := retirementDiscoveryFixture(t)
 			checks := make([]map[string]any, 100)
 			for i := range checks {
-				checks[i] = map[string]any{"__typename": "StatusContext"}
+				checks[i] = retirementHistoryRecord(f, head, fmt.Sprintf("native job %d", i), "COMPLETED")
 			}
-			node := retirementHistoryNode(head, checks)
-			contexts := node["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)
-			contexts["totalCount"] = 101
-			contexts["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "context-next"}
+			node := retirementHistoryNode(f, head, checks)
+			f.api.responses[retirementChecksPath(f, head, 1)].(map[string]any)["total_count"] = 101
 			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
-			next := retirementHistoryNode(head, []map[string]any{retirementHistoryRecord(f, head, queueCheckName, "QUEUED")})
-			nextContexts := next["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)
-			nextContexts["totalCount"] = 101
+			pending := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
+			next := map[string]any{"total_count": 101, "check_runs": []map[string]any{pending}}
+			var response any = next
 			switch fault {
 			case "changing total":
-				nextContexts["totalCount"] = 102
+				next["total_count"] = 102
 			case "foreign commit":
-				next["oid"] = strings.Repeat("e", 40)
-			case "repeated cursor":
-				nextContexts["totalCount"] = 102
-				contexts["totalCount"] = 102
-				nextContexts["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "context-next"}
+				pending["head_sha"] = strings.Repeat("e", 40)
+			case "duplicate identity":
+				pending["id"] = checks[0]["id"]
+			case "empty final page":
+				next["check_runs"] = []map[string]any{}
+			case "too many records":
+				next["check_runs"] = []map[string]any{pending, retirementHistoryRecord(f, head, "ci-required-next", "QUEUED")}
+			case "missing page":
+				response = errors.New("second check page unavailable")
 			}
-			var response any = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": next}}}
-			if fault == "missing page" {
-				response = errors.New("second context page unavailable")
-			}
-			f.api.responses["graphql:"+f.c.retirementContextsQuery(head, "context-next")] = response
+			f.api.responses[retirementChecksPath(f, head, 2)] = response
 			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
 			if fault == "none" {
 				if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) {
 					t.Fatalf("second-page pending missed: %+v/%v", got, err)
 				}
 			} else if err == nil || len(got.Queue) != 0 {
-				t.Fatalf("partial context pages authorized output: %+v/%v", got, err)
+				t.Fatalf("partial check pages authorized output: %+v/%v", got, err)
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("paginated discovery performed mutation")
 			}
 		})
 	}
 }
 
-func TestRetirementDiscoverySkipsSuccessfulSummariesWithoutLoadingContexts(t *testing.T) {
+func TestRetirementDiscoverySkipsSuccessfulSummariesWithoutLoadingChecks(t *testing.T) {
 	f, head := retirementDiscoveryFixture(t)
-	node := retirementHistoryNode(head, []map[string]any{})
+	node := retirementHistoryNode(f, head, []map[string]any{})
 	node["statusCheckRollup"].(map[string]any)["state"] = "SUCCESS"
 	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
 	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
@@ -227,11 +281,56 @@ func TestRetirementDiscoverySkipsSuccessfulSummariesWithoutLoadingContexts(t *te
 		t.Fatalf("green summary discovery: %+v/%v", got, err)
 	}
 	for query, count := range f.api.reads {
-		if strings.Contains(query, "h0:object") && count != 0 {
-			t.Fatal("successful summary loaded expensive contexts")
+		if strings.Contains(query, "/check-runs?") && count != 0 {
+			t.Fatal("successful summary loaded expensive checks")
 		}
 	}
 }
+
+func TestRetirementDiscoveryRequiresExactActionsAppIdentity(t *testing.T) {
+	for _, mismatch := range []string{"ID", "slug"} {
+		t.Run(mismatch, func(t *testing.T) {
+			f, head := retirementDiscoveryFixture(t)
+			check := retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
+			app := check["app"].(map[string]any)
+			if mismatch == "ID" {
+				app["id"] = 42
+			} else {
+				app["slug"] = "other"
+			}
+			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, head, []map[string]any{check})}, false, "")
+			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+			if err != nil || len(got.Queue) != 0 || len(got.Observation) != 0 || len(got.ReporterTargets) != 0 {
+				t.Fatalf("inexact app identity authorized discovery: %+v/%v", got, err)
+			}
+			if len(f.api.writes) != 0 {
+				t.Fatal("foreign app discovery mutated checks")
+			}
+		})
+	}
+}
+
+func TestRetirementDiscoveryFindsPendingAtEffectiveCheckBudgetBoundary(t *testing.T) {
+	f, head := retirementDiscoveryFixture(t)
+	checks := make([]map[string]any, 1000)
+	for i := range checks {
+		checks[i] = retirementHistoryRecord(f, head, fmt.Sprintf("native job %d", i), "COMPLETED")
+	}
+	checks[len(checks)-1] = retirementHistoryRecord(f, head, queueCheckName, "QUEUED")
+	node := retirementHistoryNode(f, head, checks[:100])
+	for page := 1; page <= 10; page++ {
+		f.api.responses[retirementChecksPath(f, head, page)] = map[string]any{"total_count": 1000, "check_runs": checks[(page-1)*100 : page*100]}
+	}
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
+	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
+	if err != nil || !reflect.DeepEqual(got.Queue, []string{head}) {
+		t.Fatalf("last permitted check page was omitted: %+v/%v", got, err)
+	}
+	if f.api.reads[retirementChecksPath(f, head, 11)] != 0 || len(f.api.writes) != 0 {
+		t.Fatal("discovery exceeded its read budget or mutated checks")
+	}
+}
+
 func TestRetirementDiscoveryAuthenticatesReadOnlySchedule(t *testing.T) {
 	for _, change := range []string{"event", "lease", "repository", "default branch", "source ref"} {
 		t.Run(change, func(t *testing.T) {
@@ -317,16 +416,16 @@ func TestRetirementDiscoverySupportsOnlyEmptyHeadMainDispatch(t *testing.T) {
 func reporterDiscoveryRecord(f *queueFixture, head string, run, attempt int64) map[string]any {
 	name := fmt.Sprintf("Merge queue validation (run %d, attempt %d)", run, attempt)
 	record := retirementHistoryRecord(f, head, name, "IN_PROGRESS")
-	record["externalId"] = fmt.Sprintf("hikyo-queue-report:v1:%d:7:%d:%d:%s:%s", f.c.repo.ID, run, attempt, strings.Repeat("d", 40), strings.Repeat("e", 40))
+	record["external_id"] = fmt.Sprintf("hikyo-queue-report:v1:%d:7:%d:%d:%s:%s", f.c.repo.ID, run, attempt, strings.Repeat("d", 40), strings.Repeat("e", 40))
 	return record
 }
-func TestReporterDiscoveryReusesSameHistoryAndContextReads(t *testing.T) {
+func TestReporterDiscoveryReusesSameHistoryAndCheckReads(t *testing.T) {
 	f, head := retirementDiscoveryFixture(t)
 	checks := []map[string]any{retirementHistoryRecord(f, head, queueCheckName, "QUEUED"), reporterDiscoveryRecord(f, head, 901, 2), reporterDiscoveryRecord(f, head, 900, 1), reporterDiscoveryRecord(f, head, 901, 2)}
 	completed := reporterDiscoveryRecord(f, head, 902, 1)
-	completed["status"] = "COMPLETED"
+	completed["status"] = "completed"
 	checks = append(checks, completed)
-	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, checks)}, false, "")
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, head, checks)}, false, "")
 	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
 	want := []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}, {Head: head, Run: 901, Attempt: 2}}
 	if err != nil || !reflect.DeepEqual(got.ReporterTargets, want) || !reflect.DeepEqual(got.Queue, []string{head}) {
@@ -345,7 +444,7 @@ func TestReporterDiscoveryRejectsMalformedAndForeignHints(t *testing.T) {
 		t.Run(fault, func(t *testing.T) {
 			f, head := retirementDiscoveryFixture(t)
 			record := reporterDiscoveryRecord(f, head, 900, 1)
-			parts := strings.Split(record["externalId"].(string), ":")
+			parts := strings.Split(record["external_id"].(string), ":")
 			switch fault {
 			case "version":
 				parts[1] = "v2"
@@ -372,17 +471,17 @@ func TestReporterDiscoveryRejectsMalformedAndForeignHints(t *testing.T) {
 			case "unrecognized name":
 				record["name"] = "another context"
 			case "foreign app":
-				record["checkSuite"] = map[string]any{"app": map[string]any{"databaseId": 42, "slug": "other"}}
+				record["app"] = map[string]any{"id": 42, "slug": "other"}
 			case "missing app":
-				record["checkSuite"] = nil
+				record["app"] = nil
 			case "completed malformed":
-				record["status"] = "COMPLETED"
+				record["status"] = "completed"
 				parts[4] = "bad"
 			}
-			record["externalId"] = strings.Join(parts, ":")
-			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(head, []map[string]any{record})}, false, "")
+			record["external_id"] = strings.Join(parts, ":")
+			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, head, []map[string]any{record})}, false, "")
 			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
-			ignored := fault == "foreign app" || fault == "missing app" || fault == "completed malformed"
+			ignored := fault == "foreign app" || fault == "completed malformed"
 			if ignored {
 				if err != nil || len(got.ReporterTargets) != 0 {
 					t.Fatalf("unowned/terminal reporter became work: %+v/%v", got, err)
@@ -396,41 +495,40 @@ func TestReporterDiscoveryRejectsMalformedAndForeignHints(t *testing.T) {
 		})
 	}
 }
-func TestReporterDiscoveryFindsPendingBeyondFirstContextPage(t *testing.T) {
+func TestReporterDiscoveryFindsPendingBeyondFirstCheckPage(t *testing.T) {
 	f, head := retirementDiscoveryFixture(t)
 	checks := make([]map[string]any, 100)
 	for i := range checks {
-		checks[i] = map[string]any{"__typename": "StatusContext"}
+		checks[i] = retirementHistoryRecord(f, head, fmt.Sprintf("native job %d", i), "COMPLETED")
 	}
-	node := retirementHistoryNode(head, checks)
-	contexts := node["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)
-	contexts["totalCount"] = 101
-	contexts["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "reports"}
+	node := retirementHistoryNode(f, head, checks)
+	f.api.responses[retirementChecksPath(f, head, 1)].(map[string]any)["total_count"] = 101
 	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, []map[string]any{node}, false, "")
-	next := retirementHistoryNode(head, []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)})
-	next["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)["totalCount"] = 101
-	f.api.responses["graphql:"+f.c.retirementContextsQuery(head, "reports")] = map[string]any{"data": map[string]any{"repository": map[string]any{"databaseId": f.c.repo.ID, "object": next}}}
+	f.api.responses[retirementChecksPath(f, head, 2)] = map[string]any{"total_count": 101, "check_runs": []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)}}
 	got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
 	if err != nil || !reflect.DeepEqual(got.ReporterTargets, []reporterRetirementTarget{{Head: head, Run: 900, Attempt: 1}}) {
 		t.Fatalf("second-page reporter missed: %+v/%v", got, err)
+	}
+	if len(f.api.writes) != 0 {
+		t.Fatal("reporter discovery performed mutation")
 	}
 }
 func TestReporterDiscoveryRejectsAmbiguousHeadsAndMatrixOverflow(t *testing.T) {
 	for _, fault := range []string{"ambiguous heads", "too many attempts"} {
 		t.Run(fault, func(t *testing.T) {
 			f, head := retirementDiscoveryFixture(t)
-			nodes := []map[string]any{retirementHistoryNode(head, []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)})}
+			nodes := []map[string]any{retirementHistoryNode(f, head, []map[string]any{reporterDiscoveryRecord(f, head, 900, 1)})}
 			if fault == "ambiguous heads" {
 				other := strings.Repeat("c", 40)
-				nodes = append(nodes, retirementHistoryNode(other, []map[string]any{reporterDiscoveryRecord(f, other, 900, 1)}))
+				nodes = append(nodes, retirementHistoryNode(f, other, []map[string]any{reporterDiscoveryRecord(f, other, 900, 1)}))
 			} else {
 				first := []map[string]any{}
 				for i := 0; i < 100; i++ {
 					first = append(first, reporterDiscoveryRecord(f, head, int64(900+i), 1))
 				}
-				nodes[0] = retirementHistoryNode(head, first)
+				nodes[0] = retirementHistoryNode(f, head, first)
 				other := strings.Repeat("c", 40)
-				nodes = append(nodes, retirementHistoryNode(other, []map[string]any{reporterDiscoveryRecord(f, other, 1000, 1)}))
+				nodes = append(nodes, retirementHistoryNode(f, other, []map[string]any{reporterDiscoveryRecord(f, other, 1000, 1)}))
 			}
 			f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, "", 100)] = retirementHistoryResponse(f, head, nodes, false, "")
 			got, err := f.c.discoverRetirements(context.Background(), "schedule", f.event)
@@ -460,11 +558,11 @@ func retirementDiscoveryWindowFixture(t *testing.T, shortFirst bool) (*queueFixt
 			node := map[string]any{"oid": oid, "statusCheckRollup": nil}
 			if scanned+i == 0 {
 				oid = head
-				node = retirementHistoryNode(oid, []map[string]any{retirementHistoryRecord(f, oid, queueCheckName, "QUEUED")})
+				node = retirementHistoryNode(f, oid, []map[string]any{retirementHistoryRecord(f, oid, queueCheckName, "QUEUED")})
 			}
 			if scanned+i == retirementHistoryWindow-1 {
 				last = oid
-				node = retirementHistoryNode(oid, []map[string]any{retirementHistoryRecord(f, oid, "ci-required-next", "QUEUED")})
+				node = retirementHistoryNode(f, oid, []map[string]any{retirementHistoryRecord(f, oid, "ci-required-next", "QUEUED")})
 			}
 			nodes = append(nodes, node)
 		}
@@ -474,7 +572,7 @@ func retirementDiscoveryWindowFixture(t *testing.T, shortFirst bool) (*queueFixt
 		scanned += count
 	}
 	older := strings.Repeat("e", 40)
-	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, after, 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(older, []map[string]any{retirementHistoryRecord(f, older, queueCheckName, "QUEUED")})}, false, "")
+	f.api.responses["graphql:"+f.c.retirementHistoryQuery(head, after, 100)] = retirementHistoryResponse(f, head, []map[string]any{retirementHistoryNode(f, older, []map[string]any{retirementHistoryRecord(f, older, queueCheckName, "QUEUED")})}, false, "")
 	return f, head, last, after
 }
 
@@ -508,7 +606,7 @@ func TestRetirementDiscoveryCompletesDeclaredRecentWindowWhenOlderHistoryRemains
 }
 
 func TestRetirementDiscoveryWindowBoundaryNeverHidesActualErrors(t *testing.T) {
-	for _, fault := range []string{"history API", "history GraphQL", "invalid final commit", "unknown final rollup", "missing cursor", "repeated cursor", "incomplete final contexts", "too many final commits"} {
+	for _, fault := range []string{"history API", "history GraphQL", "invalid final commit", "unknown final rollup", "missing cursor", "repeated cursor", "incomplete final checks", "too many final commits"} {
 		t.Run(fault, func(t *testing.T) {
 			f, head, _, _ := retirementDiscoveryWindowFixture(t, false)
 			query := "graphql:" + f.c.retirementHistoryQuery(head, "window-page-9", 100)
@@ -529,8 +627,8 @@ func TestRetirementDiscoveryWindowBoundaryNeverHidesActualErrors(t *testing.T) {
 				history["pageInfo"] = map[string]any{"hasNextPage": true}
 			case "repeated cursor":
 				history["pageInfo"] = map[string]any{"hasNextPage": true, "endCursor": "window-page-9"}
-			case "incomplete final contexts":
-				final["statusCheckRollup"].(map[string]any)["contexts"].(map[string]any)["totalCount"] = 2
+			case "incomplete final checks":
+				f.api.responses[retirementChecksPath(f, final["oid"].(string), 1)].(map[string]any)["total_count"] = 2
 			case "too many final commits":
 				history["nodes"] = append(nodes, map[string]any{"oid": strings.Repeat("e", 40), "statusCheckRollup": nil})
 			}

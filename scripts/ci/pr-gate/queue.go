@@ -341,10 +341,6 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		trace.Policy = &policy
 		earlyFeedback, err = q.feedback(ctx, p)
 		if err != nil {
-			var computing *forkRecomputationPending
-			if errors.As(err, &computing) {
-				return q.blockMovement(ctx, number, "fork mergeability recomputation")
-			}
 			return err
 		}
 		trace.Run = earlyFeedback
@@ -408,10 +404,6 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					r, err = q.feedback(ctx, p)
 				}
 				if err != nil {
-					var computing *forkRecomputationPending
-					if errors.As(err, &computing) {
-						return q.blockMovement(ctx, number, "fork mergeability recomputation")
-					}
 					return err
 				}
 				selectedRun = r
@@ -492,10 +484,6 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		}
 		r, err := q.feedback(ctx, final)
 		if err != nil {
-			var computing *forkRecomputationPending
-			if errors.As(err, &computing) {
-				return q.blockMovement(ctx, number, "fork mergeability recomputation")
-			}
 			return err
 		}
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
@@ -655,12 +643,6 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 	return nil, errors.New("feedback pagination limit reached")
 }
 
-type forkRecomputationPending struct{}
-
-func (*forkRecomputationPending) Error() string {
-	return "GitHub is recomputing fork mergeability; current candidate source binding is pending"
-}
-
 func (q *queueController) sourceBoundForkFeedback(ctx context.Context, r run, p pull) error {
 	// GitHub omits associations for some fork runs. Reuse exact source-head
 	// feedback, not a claim about which historical PR triggered it. Current PR
@@ -669,12 +651,9 @@ func (q *queueController) sourceBoundForkFeedback(ctx context.Context, r run, p 
 	if p.Head.Repo.ID == q.repo.ID || r.HeadBranch == "" || r.HeadBranch != p.Head.Ref || (p.MergeCommitSHA != "" && !shaPattern.MatchString(p.MergeCommitSHA)) {
 		return errors.New("fork feedback lacks a usable current source binding")
 	}
-	// null is GitHub's authenticated background-computation state, not an API
-	// failure. No ref proof can authorize admission until a candidate is ready.
-	if p.Mergeable == nil {
-		return &forkRecomputationPending{}
-	}
-	if p.MergeCommitSHA == "" || !*p.Mergeable {
+	// Exact refs and immutable parents bind this source even while GitHub
+	// recomputes its mergeability field. Missing source proof is an error.
+	if p.MergeCommitSHA == "" || p.Mergeable != nil && !*p.Mergeable {
 		return errors.New("fork feedback lacks a usable current source binding")
 	}
 	shared, err := q.sharedHead(ctx, p)
@@ -986,6 +965,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if err != nil {
 		return err
 	}
+	if q.queueRefresh != nil {
+		q.queueRefresh.finishedGroup = &finishedGroupProof{run: r, policy: policy, snapshot: snap}
+	}
 	p.Number = snap.Entries[len(snap.Entries)-1].PR.Number
 	members, authorized, err := q.groupMembers(ctx, snap)
 	_, authorityPending := err.(*groupAuthorityPending)
@@ -1041,7 +1023,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	}
 	result := refused("Required merge-group validation failed; queue merge remains blocked.")
 	if ok && r.Conclusion == "success" && authorityPending {
-		result = pending("Trusted exact-head group member policy is pending; full validation alone cannot authorize merging.")
+		result = refused("Validation finished but exact-head group member authority could not be established; retry after resolving the policy failure.")
 	} else if ok && r.Conclusion == "success" {
 		result = outcome{Status: "completed", Conclusion: "success", Title: "Merge group validated", Summary: fmt.Sprintf("All domains required by the trusted plan passed on %s; authenticated queue membership, current base, source run %d attempt %d and authority verified.", r.HeadSHA, r.ID, r.Attempt)}
 	}
@@ -1062,7 +1044,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	if finalAuthorityPending && result.Conclusion == "success" {
-		result = pending("Trusted exact-head group member policy is pending; full validation alone cannot authorize merging.")
+		result = refused("Validation finished but exact-head group member authority could not be established; retry after resolving the policy failure.")
 	}
 	if len(members) != len(finalMembers) {
 		return errors.New("merge-group members changed")
