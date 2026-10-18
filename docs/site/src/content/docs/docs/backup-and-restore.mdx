@@ -70,8 +70,8 @@ returns an error.
 The retention prune manages complete `hikyo-<engine>-<timestamp>.age` archives
 for this engine, including numeric collision suffixes. It leaves `.partial`
 staging files, other engines and unrecognized files alone. Scheduled, manual and
-pre-migration archives share one policy; there is no separate pre-migration
-count-three limit.
+pre-migration archives in `HIKYO_BACKUP_DIR` share one policy; there is no separate
+pre-migration count-three limit. Scheduled pruning scans only that directory.
 
 Within an independent 180-day ceiling, the newest
 `HIKYO_BACKUP_RETAIN_COUNT` are protected from the earlier
@@ -184,6 +184,15 @@ not prove compliance. The successful-prune gauge above stays unchanged after
 failed checks or a run that preserved an expired recovery exception. Operational
 logs report the same retention outcome.
 
+A prune records `in_progress` before hashing the protected ciphertext. During
+that work, even a healthy run reports `retention_breach=true`, sets the breach
+gauge to 1, and makes doctor refuse. A successful compliant run clears the
+signal. Hashing a large archive can take substantial time: choose an alert's
+`for:` duration using measured normal hash-and-delete times, and investigate
+`in_progress` attempts that outlast that expectation using
+`last_prune_attempt_at`. A persistent incomplete attempt is not verified
+compliance; do not suppress its health signal.
+
 ## 3. Run a manual export
 
 ```bash
@@ -193,6 +202,13 @@ hikyo backup export
 The command refuses to write an unencrypted archive. You may override the
 destination with `--out` and repeat `--recipient` for a complete replacement
 recipient set.
+
+An export with `--out OTHER_DIR` can replace the recorded recovery point while
+placing the archive outside `HIKYO_BACKUP_DIR`. Scheduled pruning then reports
+`recovery_uncertain` and preserves candidates because it cannot verify that
+recovery point in the managed directory. Run `hikyo backup export` without
+`--out` to record a fresh recovery point there, then rerun pruning. Independently
+managed copies outside that directory need their own retention controls.
 
 Verify the reported path, byte count, engine, and schema version. Move a copy to
 storage that does not share the instance's failure domain.

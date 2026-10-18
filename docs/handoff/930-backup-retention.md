@@ -182,3 +182,23 @@ On 2026-10-16 the individual GPT-6 Astra high implementation owner completed the
 This is the owner's explicitly authorized qualifying path **only for #930 amendments to operations #32 and encryption #14**. It is not a global waiver and does not qualify #612. The reviewer task identity is `retention_contract_review`; the dated owner decision is linked above. Local focused acceptance does not certify a production shared filesystem, hosted exact-head CI, merge or deployment. Mandatory remote checks and required reviews still gate merge.
 
 API parity additionally passed in 1.517 s; canonical import formatting passed for 1992 handwritten Go files. The API freeze script exited successfully with its guard dormant because tag `v1.0.0` does not exist; this is not a freeze-comparison pass.
+
+## Rebased-head review repairs
+
+CodeRabbit's rebased-head review identified a legacy-server compatibility gap:
+omitted retention fields decoded to zero values and made doctor label a
+scheduled, unmeasured installation as verified. A regression decoded a legacy
+JSON response with an existing prune-success timestamp and reproduced that
+false `ok`. Doctor now warns that this server did not measure retention and
+needs upgrading. Explicit breaches still refuse, measured healthy state stays
+healthy, and unscheduled handling is unchanged. The complete CLI suite passed
+in 9.204 seconds after the fix; CLI vet also passed.
+
+The runbook now explains that an alternate `--out` directory can replace the
+recorded recovery point while leaving scheduled pruning unable to verify it in
+`HIKYO_BACKUP_DIR`. It gives the default-directory export as the recovery step.
+It also documents the intentional `in_progress` breach signal during hashing
+and pruning, doctor refusal during that interval, and alert timing based on
+measured run duration. The fail-closed service behavior is unchanged. Read-only
+documentation preparation and its regression test passed. Hosted validation of
+the follow-up commit remains separate from these local results.

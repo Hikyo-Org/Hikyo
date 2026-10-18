@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,27 @@ func TestDoctorBackupRetentionBreachRefuses(t *testing.T) {
 	result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Stale: false, StaleAfterSeconds: 86400, Backup: b}, now)
 	if result.Status != "error" {
 		t.Fatalf("retention breach did not refuse doctor: %+v", result)
+	}
+}
+
+func TestDoctorBackupRetentionMissingMeasurement(t *testing.T) {
+	now := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	var legacy apigen.BackupHealth
+	// Older servers include prune success but omit all retention measurement fields.
+	if err := json.Unmarshal([]byte(`{"scheduled":true,"last_prune_at":"2026-10-17T23:00:00Z"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	finding := doctorBackupFindings(legacy, now)[2]
+	if finding.Severity != "warn" || !strings.Contains(finding.Message, "not measured") || finding.EffectiveAt != "-" {
+		t.Fatalf("legacy server reported verified retention: %+v", finding)
+	}
+	legacy.RetentionBreach = true
+	legacy.RetentionReason = "not_checked"
+	if got := doctorBackupFindings(legacy, now)[2]; got.Severity != "error" {
+		t.Fatalf("explicit breach lost refusal: %+v", got)
+	}
+	if got := doctorBackupFindings(healthyBackup(now), now)[2]; got.Severity != "ok" {
+		t.Fatalf("measured healthy retention refused: %+v", got)
 	}
 }
 

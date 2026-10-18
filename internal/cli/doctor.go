@@ -312,6 +312,10 @@ func doctorBackupFindings(b apigen.BackupHealth, now time.Time) []doctorFinding 
 	if b.RetentionBreach {
 		retention.Severity = "error"
 		retention.Message = fmt.Sprintf("backup retention is breached or unverified (%s; %d expired archives last observed): restore a verified backup/export path, then rerun pruning; do not discard the only recovery copy", b.RetentionReason, b.RetainedExpiredArchives)
+	} else if b.Scheduled && b.LastPruneAttemptAt == nil && b.RetentionReason == "" {
+		// Older servers omit retention measurements; their zero values are not proof.
+		retention.Severity = "warn"
+		retention.Message = "backup retention was not measured by this server; upgrade the server"
 	} else if !b.Scheduled {
 		retention.Severity = "warn"
 		retention.Message = "no managed backup retention schedule is configured; review the recorded prune result and arrange ongoing checks"
