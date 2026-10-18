@@ -122,6 +122,17 @@ Native `<dialog>` with `showModal()`. `size`: `narrow` (520, a decision with two
 - Date, time and datetime inputs take the shared control box, tabular digits, faint ink until filled, and a drawn calendar indicator (no fetched image: CSP).
 - Choices: `Radio` for two to four short options; a longer list with descriptions is a `Select` with a live hint. Group them in `ChoiceGroup` (`layout` stack/wrap/nowrap, `columns`, `variant="chips"`). `ToggleChip` for dense include/exclude pick sets. Checkboxes and radios are never hand-written (`design:check`).
 
+### Combobox (`ui/Combobox.tsx`)
+
+Editable suggestions for a field that can reuse an existing value or accept a
+new one. Use it for folder assignment (declare, edit, cleanup). A visible
+chevron opens all choices; typing filters them. Arrow keys explore, Enter
+selects without submitting, Escape dismisses before the enclosing dialog,
+and Tab preserves typed text. Selection is explicit, never inferred on blur.
+The popover stays above modal and scrolling surfaces and flips above the field
+when space below is limited. Keep ordinary selects for finite choices and text
+inputs for secrets, prose, patterns and unique names being created or renamed.
+
 ### Disclosure (`ui/Disclosure.tsx`)
 
 Text plus a chevron that turns right to down, no border or fill, `--control` tall, `aria-expanded`. Use it to reveal supporting content in place. A `<details>` that opens a whole management block wears the button skin with a leading `chevron` glyph (`<summary className="btn">`: project settings "Manage …", change approvals "Advanced", the matrix editor's schema and raw declaration, the matrix `envs N/N` picker); that is the one place an expander looks like a button. One rule in `Button.css` (`summary.btn`) drops the native marker and turns the chevron down when open; a summary needs no CSS of its own for that.

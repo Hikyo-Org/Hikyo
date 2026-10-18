@@ -17,6 +17,7 @@ const mocks = vi.hoisted<{
   canEdit: boolean;
   groupId: string;
   folder: string;
+  foldersSuccess: boolean;
   create: ReturnType<typeof vi.fn>;
   initialize: ReturnType<typeof vi.fn>;
   stage: ReturnType<typeof vi.fn>;
@@ -29,6 +30,7 @@ const mocks = vi.hoisted<{
   canEdit: true,
   groupId: '',
   folder: 'app',
+  foldersSuccess: true,
   create: vi.fn(),
   initialize: vi.fn(),
   stage: vi.fn(),
@@ -56,6 +58,18 @@ vi.mock('../api/definitions.ts', async (importActual) => {
     ...actual,
     useDefinitionsSettings: () => ({
       data: { definitions_source: mocks.source, can_declare_keys: mocks.canDeclare, can_edit_definitions: mocks.canEdit },
+    }),
+  };
+});
+
+vi.mock('../api/catalogue.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/catalogue.ts')>();
+  return {
+    ...actual,
+    useFolders: () => ({
+      isSuccess: mocks.foldersSuccess,
+      // React Query can retain this data after a denied or failed refetch.
+      data: { items: [{ path: 'empty-folder' }], count: 1 },
     }),
   };
 });
@@ -141,6 +155,7 @@ afterEach(() => {
   mocks.canEdit = true;
   mocks.groupId = '';
   mocks.folder = 'app';
+  mocks.foldersSuccess = true;
   mocks.create.mockReset();
   mocks.initialize.mockReset();
   mocks.stage.mockReset();
@@ -162,6 +177,27 @@ function hasButton(container: HTMLElement, text: string): boolean {
 }
 
 describe('Matrix declaration availability by definitions source', () => {
+  it('suggests empty catalogue folders only while their query is successful', async () => {
+    const view = await render();
+    const click = async (label: string) => {
+      const button = [...view.container.querySelectorAll('button')].find((node) => node.textContent?.trim() === label);
+      if (button === undefined) throw new Error(`Missing ${label} action`);
+      await act(async () => button.click());
+    };
+    const options = () => [...view.container.querySelectorAll('.combobox [role="option"]')].map((node) => node.textContent);
+    await click('New key');
+    expect(options()).toEqual(['app', 'empty-folder']);
+    await click('Cancel');
+    mocks.foldersSuccess = false;
+    await click('New key');
+    expect(options()).toEqual(['app']);
+    await click('Cancel');
+    mocks.foldersSuccess = true;
+    await click('New key');
+    expect(options()).toEqual(['app', 'empty-folder']);
+    await view.unmount();
+  });
+
   it('stages supplied first values through initialization without publishing them', async () => {
     mocks.create.mockResolvedValue({ id: 'key_new' });
     mocks.initialize.mockResolvedValueOnce({ findings: [{ rule_id: 'test-rule', locator: 'NEW_KEY', acknowledgement: 'keep-token' }] });

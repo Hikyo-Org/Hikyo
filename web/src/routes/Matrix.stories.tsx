@@ -4,6 +4,7 @@ import {
   zEnvironmentList,
   zEnvironmentSettings,
   zEnvironmentSignals,
+  zFolderList,
   zKey,
   zKeyGroupList,
   zKeyList,
@@ -500,6 +501,26 @@ export const Populated: Story = {
     // A problem cell carries its own mark instead of a pencil.
     const problem = canvas.getByRole('button', { name: /^PUBLIC_BASE_URL in staging: problem/ });
     await expect(problem.querySelector('.matrix-cell__edit')).toBeNull();
+  },
+};
+
+export const EmptyFolderSuggestion: Story = {
+  parameters: app([
+    ...catalogue({}), ...allReady,
+    {
+      url: `${PROJECT_URL}/folders`,
+      body: {
+        count: 1,
+        items: [{ id: 'fld_123e4567-e89b-12d3-a456-426614174099', org_id: ORG, project_id: PRJ, path: 'empty-folder', created_at: '2026-01-01T00:00:00Z' }],
+      } satisfies z.input<typeof zFolderList>,
+    },
+  ]),
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: 'New key' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await expect(await canvas.findByRole('option', { name: 'empty-folder' })).toBeVisible();
+    await userEvent.click(canvas.getByRole('option', { name: 'empty-folder' }));
+    await expect(canvas.getByRole('combobox', { name: 'Group' })).toHaveValue('empty-folder');
   },
 };
 

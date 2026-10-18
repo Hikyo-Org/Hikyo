@@ -38,6 +38,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { isDemo } from '../demo/config.ts';
 import { Button } from '../ui/Button.tsx';
+import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { Sep } from '../ui/Sep.tsx';
@@ -71,6 +72,7 @@ type Environment = EnvironmentList['items'][number];
 export function KeyDeclarationDetail({
   refData,
   keyId,
+  folders = [],
   environments,
   impact,
   impactReady,
@@ -78,6 +80,8 @@ export function KeyDeclarationDetail({
 }: {
   refData: MatrixRef;
   keyId: string;
+  /** Known project folders, including empty folders, supplied by the matrix. */
+  folders?: readonly string[];
   environments: readonly Environment[];
   /**
    * This key's cross-environment occupancy, assembled by the matrix from the
@@ -165,6 +169,7 @@ export function KeyDeclarationDetail({
           refData={refData}
           keyId={keyId}
           record={key.data}
+          folders={folders}
           environments={environments}
           impact={impact}
           impactReady={impactReady}
@@ -213,6 +218,7 @@ function KeyDeclarationBody({
   refData,
   keyId,
   record,
+  folders,
   environments,
   impact,
   impactReady,
@@ -229,6 +235,7 @@ function KeyDeclarationBody({
   refData: MatrixRef;
   keyId: string;
   record: MatrixKey;
+  folders: readonly string[];
   environments: readonly Environment[];
   impact: KeyImpact;
   impactReady: boolean;
@@ -323,6 +330,7 @@ function KeyDeclarationBody({
           refData={refData}
           keyId={keyId}
           record={record}
+          folders={folders}
           environmentName={environmentName}
         />
       ) : null}
@@ -493,11 +501,13 @@ function MetadataEditor({
   refData,
   keyId,
   record,
+  folders,
   environmentName,
 }: {
   refData: MatrixRef;
   keyId: string;
   record: MatrixKey;
+  folders: readonly string[];
   environmentName: (id: string) => string;
 }) {
   const update = useUpdateKeyMetadata(refData, keyId);
@@ -647,15 +657,25 @@ function MetadataEditor({
         paste secret values here.
       </p>
 
-      <label className="field">
-        <span>Folder</span>
-        <input
+      <div className="field">
+        <label htmlFor="key-detail-folder">Folder</label>
+        <Combobox
+          id="key-detail-folder"
           className="mono"
+          options={[...new Set([record.folder_path, ...folders])]}
+          optionsLabel="folders"
+          emptyMessage="No matching folders. Enter a new folder name to create it when you save."
+          autoCapitalize="none"
+          spellCheck={false}
+          aria-describedby="key-detail-folder-hint"
           value={folderPath}
           disabled={update.isPending}
-          onChange={(event) => setFolderPath(event.target.value)}
+          onValueChange={setFolderPath}
         />
-      </label>
+        <p id="key-detail-folder-hint" className="field__hint">
+          Choose an existing folder, type a new name, or leave blank for the root.
+        </p>
+      </div>
 
       <label className="field">
         <span>Description</span>

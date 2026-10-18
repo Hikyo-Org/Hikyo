@@ -135,6 +135,21 @@ export const Editable: Story = {
   },
 };
 
+export const FolderPicker: Story = {
+  args: { folders: ['app', 'database', 'empty-folder'] },
+  play: async ({ canvas, userEvent }) => {
+    const folder = await canvas.findByRole('combobox', { name: 'Folder' });
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await userEvent.click(canvas.getByRole('option', { name: 'empty-folder' }));
+    await expect(folder).toHaveValue('empty-folder');
+    await userEvent.clear(folder);
+    await userEvent.type(folder, 'new/folder');
+    await userEvent.keyboard('{Escape}');
+    await expect(folder).toHaveValue('new/folder');
+    await expect(canvas.getByRole('heading', { name: 'Edit declaration' })).toBeVisible();
+  },
+};
+
 // A deprecated key still delivering values: the warning names the environments,
 // the any_of rules list, and the recorded scanning findings.
 export const Deprecated: Story = {

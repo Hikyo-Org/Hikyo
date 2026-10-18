@@ -1,8 +1,9 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
@@ -17,7 +18,7 @@ type Row = FolderProposal & {
  * FolderCleanupDialog is the dry run behind the matrix "Cleanup" button: one
  * row per root-level key with the folder `proposeFolders` derived from its
  * name, editable before anything is written. The operator can untick a key,
- * retype its folder (the datalist offers every proposed and existing folder),
+ * retype its folder (the combobox offers every proposed and existing folder),
  * or blank it to keep the key at the root. Nothing moves until "Move".
  *
  * After a run, moved keys leave the list and refused keys stay with their
@@ -43,7 +44,6 @@ export function FolderCleanupDialog({
   onApply: (moves: readonly FolderMove[]) => Promise<readonly FolderMoveOutcome[]>;
   onClose: () => void;
 }) {
-  const listId = useId();
   const [rows, setRows] = useState<readonly Row[]>(() =>
     proposals.map((proposal) => ({ ...proposal, include: proposal.folder !== '', error: null, widening: null })),
   );
@@ -148,14 +148,15 @@ export function FolderCleanupDialog({
                   onChange={(event) => update(row.id, { include: event.target.checked })}
                 />
                 <span className="mono">{row.name}</span>
-                <input
-                  type="text"
+                <Combobox
                   aria-label={`Folder for ${row.name}`}
-                  list={listId}
+                  options={options}
+                  optionsLabel={`folders for ${row.name}`}
+                  emptyMessage="No matching folders. Type a new folder name, or leave blank to keep this key at the root."
                   placeholder="(root)"
                   value={row.folder}
                   disabled={busy}
-                  onChange={(event) => update(row.id, { folder: event.target.value, include: true })}
+                  onValueChange={(folder) => update(row.id, { folder, include: true })}
                 />
               </div>
               {row.error === null ? null : (
@@ -170,11 +171,7 @@ export function FolderCleanupDialog({
           ))}
         </ul>
       )}
-      <datalist id={listId}>
-        {options.map((folder) => (
-          <option key={folder} value={folder} />
-        ))}
-      </datalist>
+
 
       {failure === null ? null : (
         <Alert>{failure}</Alert>

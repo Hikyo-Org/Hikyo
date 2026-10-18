@@ -7,6 +7,7 @@ import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
@@ -53,7 +54,6 @@ const INT64_MAX = 9223372036854775807n;
 const SAFE_MIN = BigInt(Number.MIN_SAFE_INTEGER);
 const SAFE_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 
-const normalizeFolder = (raw: string) => raw.trim().toLowerCase().replace(/[^a-z0-9_/-]/g, '');
 const normalizeName = (raw: string) => raw.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
 
 /**
@@ -160,7 +160,9 @@ export function MatrixKeyCreate({
   // The field keeps what was typed; the normalised form is previewed, not
   // forced in under the cursor.
   const normalizedName = normalizeName(name);
-  const normalizedFolder = normalizeFolder(folder);
+  // Folder paths accept printable UTF-8 and preserve case on the server.
+  // Never silently turn a selected or newly typed path into a different folder.
+  const normalizedFolder = folder.trim();
   const nearMiss = useMemo(
     () => nearMissKeyName(normalizedName, existingKeyNames),
     [existingKeyNames, normalizedName],
@@ -289,20 +291,22 @@ export function MatrixKeyCreate({
 
         <div className="matrix-key-create__field">
           <label htmlFor="matrix-create-folder">Group</label>
-          <input
+          <Combobox
             id="matrix-create-folder"
             className="mono"
-            list="matrix-create-folders"
-            autoComplete="off"
+            options={folders}
+            optionsLabel="folders"
+            emptyMessage="No matching folders. Enter a new folder name to create it when you declare the key."
+            autoCapitalize="none"
+            spellCheck={false}
+            aria-describedby="matrix-create-folder-hint"
             placeholder="group (e.g. app)"
             value={folder}
-            onChange={(event) => setFolder(event.target.value)}
+            onValueChange={setFolder}
           />
-          <datalist id="matrix-create-folders">
-            {folders.map((option) => (
-              <option key={option} value={option} />
-            ))}
-          </datalist>
+          <p id="matrix-create-folder-hint" className="field__hint">
+            Choose an existing folder or type a new folder name.
+          </p>
         </div>
 
         <div className="matrix-key-create__field">

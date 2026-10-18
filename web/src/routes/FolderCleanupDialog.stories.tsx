@@ -46,6 +46,20 @@ export const Default: Story = {
   },
 };
 
+export const FolderPicker: Story = {
+  play: async ({ canvas, userEvent, args }) => {
+    const folder = canvas.getByRole('combobox', { name: 'Folder for HIKYO_EXTERNAL_ORIGIN' });
+    await userEvent.click(folder);
+    await userEvent.click(canvas.getByRole('option', { name: 'Legacy' }));
+    await expect(folder).toHaveValue('Legacy');
+    await expect(canvas.getByLabelText('Move HIKYO_EXTERNAL_ORIGIN')).toBeChecked();
+    await userEvent.click(canvas.getByRole('button', { name: /move 3 key/i }));
+    await expect(args.onApply).toHaveBeenCalledWith(expect.arrayContaining([
+      { id: 'id_HIKYO_EXTERNAL_ORIGIN', name: 'HIKYO_EXTERNAL_ORIGIN', folder: 'Legacy' },
+    ]));
+  },
+};
+
 /** A move that gives someone new access through their access rules stays
  *  with a review action; the confirmation names who gains what. */
 export const WideningRefused: Story = {

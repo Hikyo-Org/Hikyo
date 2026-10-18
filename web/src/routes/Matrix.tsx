@@ -208,6 +208,12 @@ export function Matrix({
   // structure back. Metadata-only, so it follows the declaration lock.
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const folderRows = useFolders(ref);
+  // A failed catalogue refetch can retain old data. Only suggest its empty
+  // folders while that read is successful; key paths follow matrix custody.
+  const folderOptions = useMemo(() => [...new Set([
+    ...keys.map((key) => key.folder_path),
+    ...(folderRows.isSuccess ? folderRows.data.items.map((folder) => folder.path) : []),
+  ])].filter((path) => path !== '').sort(), [keys, folderRows.data, folderRows.isSuccess]);
   const moveKeys = useMoveKeysToFolders(ref);
   // Surface-2 scanner block (#183): the redacted findings a refused write
   // carried, plus the override that retries it with their acknowledgements.
@@ -1514,7 +1520,7 @@ export function Matrix({
 
       {create === null ? null : (
         <MatrixKeyCreate
-          folders={[...new Set(keys.map((key) => key.folder_path).filter((path) => path !== ''))]}
+          folders={folderOptions}
           environments={environments}
           protectedEnvironmentIds={protectedEnvironmentIds}
           initialFolder={create.folder}
@@ -1554,12 +1560,7 @@ export function Matrix({
       {!cleanupOpen || foldersLocked ? null : (
         <FolderCleanupDialog
           proposals={proposeFolders(keys)}
-          existingFolders={[
-            ...new Set([
-              ...keys.map((key) => key.folder_path),
-              ...(folderRows.data?.items ?? []).map((folder) => folder.path),
-            ]),
-          ].filter((path) => path !== '')}
+          existingFolders={folderOptions}
           busy={moveKeys.isPending}
           envName={(id) => environments.find((environment) => environment.id === id)?.name ?? id}
           onApply={(moves) =>
@@ -1638,6 +1639,7 @@ export function Matrix({
         <KeyDeclarationDetail
           refData={ref}
           keyId={keyDetailId}
+          folders={folderOptions}
           environments={environments}
           impact={keyDetailImpact}
           impactReady={keyDetailImpactReady}
