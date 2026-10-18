@@ -1,0 +1,71 @@
+name: aws-acceptance
+
+# Bootstrap this workflow on main before dispatching a reviewed candidate.
+# Configure the protected environment before enabling any AWS federation.
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_sha:
+        description: Full reviewed candidate commit, also pinned in the protected environment
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hikyo-158-aws-sandbox
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    if: github.repository == 'Hikyo-Org/Hikyo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    environment: hikyo-158-aws-sandbox
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # These are nonsecret approvals, configured only by the environment owner.
+      # Set the run ID while this job is awaiting its required review.
+      AWS_ACCEPTANCE_APPROVED_RUN_ID: ${{ vars.AWS_ACCEPTANCE_APPROVED_RUN_ID }}
+      AWS_ACCEPTANCE_APPROVED_WORKFLOW_SHA: ${{ vars.AWS_ACCEPTANCE_APPROVED_WORKFLOW_SHA }}
+      AWS_ACCEPTANCE_APPROVED_SHA: ${{ vars.AWS_ACCEPTANCE_APPROVED_SHA }}
+      AWS_ACCEPTANCE_AUTHORIZATION_ID: ${{ vars.AWS_ACCEPTANCE_AUTHORIZATION_ID }}
+      AWS_ACCEPTANCE_AUTH_EXPIRES_AT: ${{ vars.AWS_ACCEPTANCE_AUTH_EXPIRES_AT }}
+      AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT: ${{ vars.AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT }}
+      AWS_ACCEPTANCE_KMS_KEY_ARN: ${{ vars.AWS_ACCEPTANCE_KMS_KEY_ARN }}
+      AWS_ACCEPTANCE_EXTERNAL_ID: ${{ vars.AWS_ACCEPTANCE_EXTERNAL_ID }}
+      AWS_ACCEPTANCE_CANDIDATE_SHA: ${{ inputs.reviewed_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check exact approvals before candidate checkout or federation
+        run: python3 scripts/ci/aws-acceptance/runner.py check
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.reviewed_sha }}
+          path: acceptance-candidate
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: acceptance-candidate/go.mod
+          cache: false
+      - name: Start disposable PostgreSQL 18
+        run: ./scripts/ci/start-ci-postgres.sh
+      - name: Project private sessions, wait authentic expiry, and run both engines
+        # No configure-aws-credentials action or shared AWS profile is used.
+        run: python3 scripts/ci/aws-acceptance/runner.py run
+      - name: Remove disposable PostgreSQL
+        if: always()
+        run: docker container rm --force hikyo-ci-postgres >/dev/null 2>&1 || true
+      - name: Preserve only validated nonsecret acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aws-158-${{ github.run_id }}-${{ inputs.reviewed_sha }}
+          path: ${{ runner.temp }}/aws-acceptance-evidence/evidence.json
+          if-no-files-found: warn
+          retention-days: 14
