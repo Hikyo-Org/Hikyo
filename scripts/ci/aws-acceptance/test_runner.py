@@ -125,6 +125,73 @@ class EvidenceTests(unittest.TestCase):
     def emit_metadata(self, label, value):
         self.output("    aws_real_fixture_test.go:42: " + label + value + "\n")
 
+    def test_fixed_namespace_and_expected_suite_cases_remain_bounded(self):
+        self.assertEqual(runner.PREFIX, "hikyo-e2e-20261018b/")
+        self.assertEqual(len(runner.TEST_NAMES), 46)
+        self.assertEqual(self.evidence.data["maximum_create_reservations"], 32)
+        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.PREFIX, "hikyo-e2e-20261018a/"))
+        self.assertEqual(self.evidence.data["recorded_arns"], [])
+
+    def test_diagnostic_token_error_keeps_only_structured_enums(self):
+        self.output("    aws_real_diagnostics_test.go:42: synthetic AWS diagnostic: CreateSecret InvalidRequestException\n")
+        raw = json.loads(self.path.read_text())
+        self.assertEqual(raw["diagnostics"], [{
+            "test": runner.SUITE, "operation": "CreateSecret", "code": "InvalidRequestException",
+        }])
+        self.assertFalse(raw["diagnostics_truncated"])
+        self.assertNotIn("synthetic AWS diagnostic", self.path.read_text())
+
+    def test_diagnostic_contract_accepts_each_closed_operation_and_code(self):
+        for operation in runner.DIAGNOSTIC_OPERATIONS:
+            self.output(f"    aws_real_diagnostics_test.go:1: synthetic AWS diagnostic: {operation} other\n")
+        for code in runner.DIAGNOSTIC_CODES:
+            self.output(f"    aws_real_diagnostics_test.go:1: synthetic AWS diagnostic: CreateSecret {code}\n")
+        self.assertEqual({entry["operation"] for entry in self.evidence.data["diagnostics"]}, set(runner.DIAGNOSTIC_OPERATIONS))
+        self.assertEqual({entry["code"] for entry in self.evidence.data["diagnostics"]}, set(runner.DIAGNOSTIC_CODES))
+
+    def test_diagnostics_reject_untrusted_event_source_and_payload(self):
+        marker = "    aws_real_diagnostics_test.go:42: synthetic AWS diagnostic: CreateSecret InvalidRequestException\n"
+        for event in (
+            {"Action": "pass"}, {"Action": "fail"}, {"Action": "skip"},
+            {"Test": runner.SUITE + "/synthetic-private"}, {"Test": "arbitrary-test"},
+            {"Test": 42}, {"Test": [runner.SUITE]}, {"Test": ""},
+        ):
+            with self.subTest(event=event):
+                self.evidence.event({"Action": "output", "Test": runner.SUITE, "Output": marker, **event})
+        for output in (
+            marker.replace("aws_real_diagnostics_test.go", "aws_real_fixture_test.go"),
+            marker.replace("aws_real_diagnostics_test.go", "prefix/aws_real_diagnostics_test.go"),
+            marker.replace("aws_real_diagnostics_test.go", "aws_real_diagnostics_testXgo"),
+            marker.replace(":42:", ":0:"), marker.replace(":42:", ":-1:"),
+            marker.replace("CreateSecret", "CreatePolicy"),
+            marker.replace("InvalidRequestException", "synthetic-private"),
+            marker.replace("InvalidRequestException", "InvalidRequestException synthetic-private"),
+            marker.replace("InvalidRequestException", "InvalidRequestException\x00synthetic-private"),
+            "synthetic-private\n" + marker, "\n" + marker,
+            marker + "synthetic-private\n", marker + marker,
+            "    aws_real_diagnostics_test.go:42: synthetic AWS diagnostic: CreateSecret " + "x" * 60000,
+        ):
+            with self.subTest(output=output[:100]):
+                self.output(output)
+        self.assertEqual(self.evidence.data["diagnostics"], [])
+        self.assertFalse(self.evidence.data["diagnostics_truncated"])
+        self.assertNotIn("synthetic-private", self.path.read_text())
+
+    def test_diagnostics_cap_marks_only_additional_valid_records_truncated(self):
+        self.assertEqual(runner.MAX_DIAGNOSTICS, 128)
+        marker = "    aws_real_diagnostics_test.go:42: synthetic AWS diagnostic: CreateSecret InvalidRequestException\n"
+        for _ in range(128):
+            self.output(marker)
+        self.assertFalse(self.evidence.data["diagnostics_truncated"])
+        self.output(marker.replace("InvalidRequestException", "synthetic-private"))
+        self.assertFalse(self.evidence.data["diagnostics_truncated"])
+        for _ in range(10):
+            self.output(marker)
+        raw = json.loads(self.path.read_text())
+        self.assertEqual(len(raw["diagnostics"]), 128)
+        self.assertTrue(raw["diagnostics_truncated"])
+        self.assertNotIn("synthetic-private", self.path.read_text())
+
     def test_metadata_allowlist_drops_raw_secrets_foreign_arns_and_unknown_test_names(self):
         self.output('synthetic-private {"secret_access_key":"synthetic-private"}\n')
         self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.ACCOUNT, "111122223333"))

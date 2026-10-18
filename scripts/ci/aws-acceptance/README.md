@@ -36,12 +36,21 @@ The environment approval controls are documented in
 ## Verify the bounded AWS fixture
 
 Use only the separately approved sandbox account `099256073061`, region
-`eu-central-1`, prefix `hikyo-e2e-20261018a/`, one customer KMS key and the eight
+`eu-central-1`, prefix `hikyo-e2e-20261018b/`, one customer KMS key and the eight
 exact fixture roles. Effective role grants and absolute policy deadlines must
 match the approved policy templates. No root or setup identity enters the
 runner or tests. The complete suite shares one ceiling of 32 CreateSecret
 reservations, including retries and failed attempts, and the approved gross
 usage target is USD 1. The recorded budget is not an instantaneous billing cap.
+
+The fixed fresh namespace alone grants no authority. A replacement fixture and
+another run await an explicit owner decision. The prior `hikyo-e2e-20261018a/`
+attempt consumed 21 cumulative creation reservations; changing namespace does
+not reset or refund them. The unchanged per-suite ceiling of 32 does not approve
+32 additional creations. A proposed combined ceiling of 53 (21 prior plus 32
+additional) and replacement fixture require separate explicit owner approval,
+followed by approval of the exact pending job. The combined gross usage target
+remains USD 1 across attempts, and actual billing is still unverified.
 
 Use GitHub issuer `https://token.actions.githubusercontent.com`, audience
 `sts.amazonaws.com` and only this approved immutable subject:
@@ -116,8 +125,18 @@ outside the checkout; raw AWS and test output is not printed or uploaded.
 
 Only `aws-acceptance-evidence/evidence.json` beneath the runner's temporary
 directory is uploaded. It contains allowlisted test results, cumulative
-synthetic creation reservations, validated complete ARNs, verified absences and
-bounded unresolved names. Success requires every expected case, both engines,
+synthetic creation reservations, validated complete ARNs, verified absences,
+bounded unresolved names and structured diagnostics. Each `diagnostics` entry
+contains only `test`, `operation` and `code`. The runner accepts only output
+events from an exact expected test, with the anchored
+`aws_real_diagnostics_test.go:<line>: synthetic AWS diagnostic: <operation> <code>`
+marker and closed operation/code enums. It retains at most 128 entries and sets
+`diagnostics_truncated` when another valid entry exceeds that cap. Unknown
+tests, source files, operations, codes and extra text are discarded. Raw
+provider messages, response bodies and credential values remain excluded;
+existing per-line and total-output limits still refuse oversized output.
+Diagnostics describe observed categories and do not establish causality for
+other failures. Success requires all 46 expected cases, both engines,
 the creation ledger and exact recorded-resource cleanup. All raw test2json
 payloads are discarded after in-memory filtering.
 
