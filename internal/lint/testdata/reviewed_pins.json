@@ -1415,6 +1415,12 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
         "internal/store/upgrade/storage.go:Session.Read",
@@ -1489,6 +1495,12 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
         "internal/store/upgrade/storage.go:Session.Read",
@@ -1686,19 +1698,6 @@
         "internal/store/upgrade/configuration_migrate.go:configurationOneRow"
       ]
     },
-    "internal/store/upgrade/domain_catalog.go:DomainCatalogPostgres": {
-      "hash": "7e51e6c45041d1296f4e129995d05dae15a970912937d02901f19842cdd19b40",
-      "reason": "Upgrade schema identity protocol inventories the actual historical source catalog and migration lineage; typed queries tied to current runtime schema cannot establish source drift or feature absence.",
-      "dependencies": [
-        "internal/store/upgrade/control_schema.go:splitControl",
-        "internal/store/upgrade/control_schema.go:withoutControl",
-        "internal/store/upgrade/domain_catalog.go:domainCatalog",
-        "internal/store/upgrade/schema.go:controlPresent",
-        "internal/store/upgrade/schema.go:inspectAppliedWith",
-        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
-        "internal/store/upgrade/schema.go:inspectCatalogWith"
-      ]
-    },
     "internal/store/upgrade/fresh_instance.go:Session.ReconcileFreshInstance": {
       "hash": "bca33b298011e0dba0e75f3555fcfe0e6764cab91f90a57325cb9f6d8551c976",
       "reason": "Fresh-genesis adoption protocol checks empty source hierarchy and credential epochs then reconciles singleton instance identity under exclusion; it precedes runtime datastore/key initialization.",
@@ -1720,6 +1719,12 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
         "internal/store/upgrade/storage.go:Session.Read",
@@ -1756,7 +1761,13 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/lock.go:open",
         "internal/store/upgrade/schema.go:Catalog.Digest",
-        "internal/store/upgrade/schema.go:controlPresent"
+        "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog"
       ],
       "build_dependencies": {
         "darwin": [
@@ -1793,37 +1804,16 @@
         "internal/store/upgrade/genesis.go:validateGenesis",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
         "internal/store/upgrade/state.go:newIncarnation"
       ]
-    },
-    "internal/store/upgrade/inspect_control.go:InspectControl": {
-      "hash": "33f72f5c42393d5d9227811d82850d0c890998903f19ab1b10c660f612a78933",
-      "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
-      "dependencies": [
-        "internal/releaseidentity/identity.go:Engine.Validate",
-        "internal/store/upgrade/control_schema.go:splitControl",
-        "internal/store/upgrade/control_schema.go:withoutControl",
-        "internal/store/upgrade/lock.go:canonicalSQLite",
-        "internal/store/upgrade/lock.go:checkedFile",
-        "internal/store/upgrade/lock.go:open",
-        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith"
-      ],
-      "build_dependencies": {
-        "darwin": [
-          "internal/store/upgrade/identity_unix.go:requireSingleLink"
-        ],
-        "default": [
-          "internal/store/upgrade/identity_unix.go:requireSingleLink"
-        ],
-        "ui": [
-          "internal/store/upgrade/identity_unix.go:requireSingleLink"
-        ],
-        "windows": [
-          "internal/store/upgrade/identity_windows.go:requireSingleLink"
-        ]
-      }
     },
     "internal/store/upgrade/inspection.go:InspectInstalled": {
       "hash": "3a58697946b2adc8623d333941838e0015c772600e11491978b45552e1fa0ffa",
@@ -1853,6 +1843,12 @@
         "internal/store/upgrade/lock.go:open",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:Incarnation.UnmarshalText",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
@@ -1875,7 +1871,7 @@
       }
     },
     "internal/store/upgrade/inspection.go:InspectPostgresSource": {
-      "hash": "37fc7b019e9fc9104efaaf58235f7690a7f5858482bae49ab47704ff3313e38d",
+      "hash": "0d90cbaf51eb07b879db587dc46913c6678eb94ad91309db167f8bed67522eac",
       "reason": "Read-only upgrade source/control inspection operates on one existing historical snapshot and hashes actual schema/lineage; no current runtime schema is assumed and no tenant payload is exposed.",
       "dependencies": [
         "internal/releaseidentity/floor.go:SnapshotFloor.Validate",
@@ -1934,6 +1930,12 @@
         "internal/store/upgrade/inspection.go:inspectSource",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:Incarnation.UnmarshalText",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
@@ -2081,6 +2083,12 @@
         "internal/store/upgrade/preparation.go:PreparationAdmission.Valid",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:Incarnation.UnmarshalText",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
@@ -2154,6 +2162,12 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:Incarnation.UnmarshalText",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate",
@@ -2302,6 +2316,12 @@
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate"
       ],
@@ -2342,18 +2362,6 @@
         "internal/store/upgrade/storage.go:scanState"
       ]
     },
-    "internal/store/upgrade/restore.go:ReconcilePostgresRestoreIfPresent": {
-      "hash": "f4473a2e21f4c4d0df1218146ed8f0590e86e1f72a74e67a2d96ffdaf27c2368",
-      "reason": "Authenticated archive reconciliation rewrites recovery control identity for the restored historical snapshot while retaining its owning transaction; missing historical control records and old format are explicitly handled.",
-      "dependencies": [
-        "internal/store/upgrade/control_schema.go:splitControl",
-        "internal/store/upgrade/control_schema.go:withoutControl",
-        "internal/store/upgrade/schema.go:controlPresent",
-        "internal/store/upgrade/schema.go:inspectAppliedWith",
-        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
-        "internal/store/upgrade/schema.go:inspectCatalogWith"
-      ]
-    },
     "internal/store/upgrade/restore.go:ReconcileSQLiteRestore": {
       "hash": "c3204750d62476bc06bcb57b380999cb90a0a9b6c8bbf32dddc9e4afc63182ba",
       "reason": "Authenticated archive reconciliation rewrites recovery control identity for the restored historical snapshot while retaining its owning transaction; missing historical control records and old format are explicitly handled.",
@@ -2377,7 +2385,7 @@
       ]
     },
     "internal/store/upgrade/restore_schema.go:PreparePostgresRestoreControlSchema": {
-      "hash": "a45c76ea36b893bddcb6f2086f8ce444ff847404578137378ccb9f402918e396",
+      "hash": "8ecda38e94de6a5e4b4a9c69d5a801db9cd1b019eafbee098a8f62a064e4d556",
       "reason": "Recovery control-schema DDL prepares exactly empty upgrade authority tables inside the caller-owned restore transaction; it cannot assume they existed in the historical archive.",
       "dependencies": [
         "internal/releaseidentity/identity.go:Digest.Validate",
@@ -2410,7 +2418,13 @@
         "internal/store/upgrade/inspection.go:appliedMatches",
         "internal/store/upgrade/restore_schema.go:prepareRestoreSchema",
         "internal/store/upgrade/schema.go:Catalog.Digest",
-        "internal/store/upgrade/schema.go:controlPresent"
+        "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog"
       ]
     },
     "internal/store/upgrade/runtime_snapshot.go:ReadPostgresSnapshot": {
@@ -2432,14 +2446,32 @@
         "internal/store/upgrade/storage.go:scanState"
       ]
     },
-    "internal/store/upgrade/schema.go:inspectCatalog": {
-      "hash": "396326f6f38147ec9e2f3bd4537b49c62bdfa28b5ff5c37ba2d7896c030c458c",
-      "reason": "Upgrade schema identity protocol inventories the actual historical source catalog and migration lineage; typed queries tied to current runtime schema cannot establish source drift or feature absence.",
-      "dependencies": [
-        "internal/store/upgrade/schema.go:inspectAppliedWith",
-        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
-        "internal/store/upgrade/schema.go:inspectCatalogWith"
-      ]
+    "internal/store/upgrade/schema.go:sqlCatalogQuery": {
+      "callers": {
+        "internal/store/upgrade/schema.go:inspectSQLCatalog": "f2c95557c0b194e0223b7917770055ac190a8c6fa125200b4320347dafc1440c",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
+      },
+      "hash": "f7af7d30f6b51d0cdc49caf2721aaa8652a2224c8c2daa8148f07478bf0ea291",
+      "reason": "Reserved-connection catalog row adapter for exact historical schema inspection. Only the reviewed SQL catalog dispatch and PostgreSQL transaction adapter may select SQL; no runtime tenant query entry point."
+    },
+    "internal/store/upgrade/schema_postgres.go:inspectPostgresCatalog": {
+      "callers": {
+        "internal/store/upgrade/domain_catalog.go:DomainCatalogPostgres": "a03f51f127b80608f7a3d2a058daa4b863f2ee2c7cb8aae970d8741de8956aeb",
+        "internal/store/upgrade/inspection.go:InspectPostgresSource": "0d90cbaf51eb07b879db587dc46913c6678eb94ad91309db167f8bed67522eac",
+        "internal/store/upgrade/restore.go:ReconcilePostgresRestoreIfPresent": "dd8c0c5ae741ab519e905f5cb545e44afe8b25a3e93204a697b9c97962233bb9",
+        "internal/store/upgrade/restore_schema.go:PreparePostgresRestoreControlSchema": "8ecda38e94de6a5e4b4a9c69d5a801db9cd1b019eafbee098a8f62a064e4d556",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
+      },
+      "hash": "14719dbd3c447ba35c8699afa7fc6a9591ef8c8b075e4762f1fc8f3cfcda9e91",
+      "reason": "Canonical PostgreSQL catalog row adapter on a reserved usable connection or caller-owned transaction. Reviewed catalog, source inspection and authenticated restore callers only; no pool acquisition or tenant data query authority."
+    },
+    "internal/store/upgrade/schema_postgres.go:withPostgresCatalogScope": {
+      "callers": {
+        "internal/store/upgrade/schema_postgres.go:inspectPostgresCatalog": "14719dbd3c447ba35c8699afa7fc6a9591ef8c8b075e4762f1fc8f3cfcda9e91",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
+      },
+      "hash": "534fd0cb01ea5cd27508cd6100c491df3cbe00c8bc43b0bfc9ad3770d6fda0b0",
+      "reason": "Canonical catalog rendering transaction/savepoint protocol. Fixed settings and bounded cleanup preserve the caller snapshot and locks; failed cleanup invalidates the transaction or connection. Only the two reviewed connection adapters supply query and catalog-reader callbacks."
     },
     "internal/store/upgrade/scratch_reset.go:SeparatePostgresScratch": {
       "hash": "b8851b8f37658aff60858602f17c02930faf8261b3e8f282d8a4919ef92286fb",
@@ -2461,7 +2493,13 @@
         "internal/store/upgrade/lock.go:Session.check",
         "internal/store/upgrade/lock.go:checkedFile",
         "internal/store/upgrade/schema.go:Catalog.Digest",
-        "internal/store/upgrade/schema.go:controlPresent"
+        "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog"
       ],
       "build_dependencies": {
         "darwin": [
@@ -2545,6 +2583,12 @@
         "internal/store/upgrade/maintenance_leases.go:Session.invalidateSingletonLeases",
         "internal/store/upgrade/schema.go:Catalog.Digest",
         "internal/store/upgrade/schema.go:controlPresent",
+        "internal/store/upgrade/schema.go:inspectAppliedWith",
+        "internal/store/upgrade/schema.go:inspectCatalog",
+        "internal/store/upgrade/schema.go:inspectCatalogObjectsWith",
+        "internal/store/upgrade/schema.go:inspectCatalogWith",
+        "internal/store/upgrade/schema.go:inspectSQLCatalog",
+        "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog",
         "internal/store/upgrade/state.go:Incarnation.MarshalText",
         "internal/store/upgrade/state.go:State.Validate",
         "internal/store/upgrade/state.go:TrustDomain.Validate"
@@ -2829,8 +2873,11 @@
     "internal/store/upgrade/schema.go:Catalog.Digest": "54ada04ae98ce42277ee4d2ec0698ec8a060fcb2c0801d9dd4b77589b014a57b",
     "internal/store/upgrade/schema.go:controlPresent": "88d99b4c41b34f4fc8acf06fc32ce29ca88515ade062a08370d5fc61a999ca19",
     "internal/store/upgrade/schema.go:inspectAppliedWith": "b9e7764640ea80745d453417a23a0330a21eaad432c8e171ed73b8cad8f5e199",
+    "internal/store/upgrade/schema.go:inspectCatalog": "62a6e91deb14e167d265ba2a7fafb21571b151d749a0d10b3811f06e97b42825",
     "internal/store/upgrade/schema.go:inspectCatalogObjectsWith": "102ece97082f7643c91bb18bb72ed388472e10626bc9866bae65cf1e3867d107",
     "internal/store/upgrade/schema.go:inspectCatalogWith": "0c00b132f800cc8497b3e3cd36d2041d40d83ca6daa66800920fb78da89d4937",
+    "internal/store/upgrade/schema.go:inspectSQLCatalog": "f2c95557c0b194e0223b7917770055ac190a8c6fa125200b4320347dafc1440c",
+    "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928",
     "internal/store/upgrade/state.go:Incarnation.MarshalText": "6668c134b007d0924907bdffe24bd76ae4eed831ef0ec01c3fb16ee1612f21e5",
     "internal/store/upgrade/state.go:Incarnation.UnmarshalText": "b7fdd60102dcbbb71527a9c39c45c1158405df271c0afa391e2d28c5203dac3d",
     "internal/store/upgrade/state.go:State.Validate": "63925a4f0ab221f6ead60b19041a8aa37fc3116ece727799bef408081de3ec69",

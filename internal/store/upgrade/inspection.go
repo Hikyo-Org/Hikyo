@@ -40,9 +40,7 @@ func InspectPostgresSource(ctx context.Context, q PGSnapshotQueries, manifest re
 	if manifest.Engine != releaseidentity.Postgres {
 		return InstalledSource{}, ErrConflict
 	}
-	catalog, err := inspectCatalogWith(ctx, func(ctx context.Context, query string, args ...any) (catalogRows, error) {
-		return q.Query(ctx, query, args...)
-	}, releaseidentity.Postgres)
+	catalog, err := inspectPostgresCatalog(ctx, q, inspectCatalogWith)
 	if err != nil {
 		return InstalledSource{}, err
 	}

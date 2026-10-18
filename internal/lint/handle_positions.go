@@ -127,6 +127,7 @@ var driverFiles = map[string]bool{
 	"internal/store/upgrade/restore_test.go":                     true,
 	"internal/store/upgrade/route_test.go":                       true,
 	"internal/store/upgrade/schema.go":                           true,
+	"internal/store/upgrade/schema_postgres.go":                  true, // canonical catalog scope on the reserved migration/admission connection; no pool access
 	"internal/store/upgrade/scratch_reset.go":                    true,
 	"internal/store/upgrade/snapshot.go":                         true,
 	"internal/store/upgrade/state.go":                            true,
