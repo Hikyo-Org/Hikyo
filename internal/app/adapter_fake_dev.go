@@ -25,8 +25,9 @@ import (
 // It is refused at boot outside --dev (config.go), so it can never stand in
 // for a provider on an instance that is not an evaluation instance.
 type devFakeProvider struct {
-	mu     sync.Mutex
-	stores map[string]*devFakeStore
+	mu        sync.Mutex
+	stores    map[string]*devFakeStore
+	awsStores map[string]*devAWSStore
 }
 
 type devFakeStore struct {
@@ -35,7 +36,7 @@ type devFakeStore struct {
 }
 
 func newDevFakeProvider() *devFakeProvider {
-	return &devFakeProvider{stores: make(map[string]*devFakeStore)}
+	return &devFakeProvider{stores: make(map[string]*devFakeStore), awsStores: make(map[string]*devAWSStore)}
 }
 
 // hasState keeps a mode switch from abandoning simulated remote ownership.
@@ -45,6 +46,11 @@ func (p *devFakeProvider) hasState() bool {
 	defer p.mu.Unlock()
 	for _, store := range p.stores {
 		if len(store.secrets) != 0 || len(store.variables) != 0 {
+			return true
+		}
+	}
+	for _, store := range p.awsStores {
+		if len(store.secrets) != 0 {
 			return true
 		}
 	}
@@ -68,9 +74,14 @@ func (p *devFakeProvider) store(origin string, destination adapter.Destination) 
 // auth-refusal path deterministically. The e2e-possible-capture and
 // e2e-owned-missing credentials simulate provider races through the real
 // journal protocol below; they carry no authority outside this --dev fake.
-func (p *devFakeProvider) factory(_ adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
+// AWS instead parses its descriptor and delegates to the real AWS module over
+// an in-memory API; its authentication is still explicitly simulated.
+func (p *devFakeProvider) factory(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 	if credential == "" {
 		return nil, adapter.ErrProviderAuth
+	}
+	if provider == adapter.AWSSecretsManagerProvider {
+		return p.awsModule(config, credential)
 	}
 	return adapter.NewModuleLease(&devFakeModule{provider: p, origin: config.Origin, credential: credential}, func() {})
 }

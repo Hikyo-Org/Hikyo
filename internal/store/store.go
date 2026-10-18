@@ -617,6 +617,7 @@ type AdapterConflictEntry struct {
 	Surface                 string
 	EffectiveName           string
 	ObservedProviderVersion *int64
+	ObservedProviderWitness string `json:"-"`
 }
 
 type AdapterConflictArtifact struct {

@@ -125,6 +125,8 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 	roots.AddCert(emulator.Certificate())
 	var afterCreate func(context.Context) error
 	var afterStage func(context.Context) error
+	var afterPromotion func(context.Context) error
+	var finishAdoption func(string) error
 	build := func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		client, err := awssm.NewClient(awssm.ClientConfig{
 			Origin: config.Origin, Credential: credential, Deadline: 5 * time.Second,
@@ -137,10 +139,16 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 		var api awssm.API = client
 		if afterCreate != nil {
 			api = &awsRevokeAfterCreateClient{Client: client, afterCreate: afterCreate}
+		} else if afterPromotion != nil {
+			api = &awsPromotedAdoptionClient{Client: client, afterPromotion: afterPromotion}
 		} else if afterStage != nil {
 			api = &awsInterruptedAdoptionClient{Client: client, afterStage: afterStage}
 		}
-		return adapter.NewModuleLease(&awssm.Module{API: api}, client.Forget)
+		var module adapter.Module = &awssm.Module{API: api}
+		if finishAdoption != nil {
+			module = &awsAdoptionFinishModule{Module: module, finish: finishAdoption}
+		}
+		return adapter.NewModuleLease(module, client.Forget)
 	}
 	kr := probeKeyring(t, db)
 	svc := &service.Adapters{
@@ -340,6 +348,65 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("per-key INTENT/OUTCOME pairs = %d, want create, update, and delete", linked)
 	}
 
+	// Initial adoption must retain the exact plan-time resource and version,
+	// not infer consent from whichever value exists when the worker starts.
+	for _, mutation := range []string{"external-edit", "replacement"} {
+		for _, timing := range []string{"before-adopt", "after-adopt"} {
+			t.Run("adoption-witness/"+mutation+"/"+timing, func(t *testing.T) {
+				name := "prod/witness-" + mutation + "-" + timing
+				emulator.Seed(name, "reviewed legacy", map[string]string{})
+				target, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+					EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject),
+					DestinationOwner: awsAccount, DestinationName: name, KeySelection: selection,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				planned, err := svc.Plan(ctx, operator, scope, target.ID)
+				if err != nil || planned.ArtifactID == "" {
+					t.Fatal("initial adoption plan failed")
+				}
+				mutate := func() {
+					if mutation == "replacement" {
+						emulator.Recreate(name, "unreviewed external")
+					} else {
+						emulator.ExternalPut(name, "unreviewed external")
+					}
+				}
+				if timing == "before-adopt" {
+					mutate()
+				}
+				if _, err := svc.Adopt(ctx, operator, scope, service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: planned.ArtifactID, ExpectedGeneration: target.Generation, ExpectedDestinationID: target.DestinationID, Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}}}); err != nil {
+					t.Fatal(err)
+				}
+				if timing == "after-adopt" {
+					mutate()
+				}
+				versions := emulator.Versions(name)
+				drain()
+				state := inspect(target.ID)
+				if got, _ := emulator.Value(name); got != "unreviewed external" || emulator.Versions(name) != versions || state.LastErrorClass != adapter.ErrorClassConflict || state.Health() == adapter.HealthConverged {
+					t.Fatal("stale adoption witness allowed an unreviewed resource/version")
+				}
+				if queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'`, target.ID)) != 1 {
+					t.Fatal("stale-witness refusal lost custody")
+				}
+				// A genuinely fresh plan may authorize this new resource/version.
+				fresh, err := svc.Plan(ctx, operator, scope, target.ID)
+				if err != nil || fresh.ArtifactID == "" {
+					t.Fatal("fresh adoption plan failed")
+				}
+				if _, err := svc.Adopt(ctx, operator, scope, service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: fresh.ArtifactID, ExpectedGeneration: state.Generation, ExpectedDestinationID: state.DestinationID, Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}}}); err != nil {
+					t.Fatal(err)
+				}
+				drain()
+				if inspect(target.ID).Health() != adapter.HealthConverged || emulator.Versions(name) != versions+1 {
+					t.Fatal("fresh reviewed adoption did not recover exactly once")
+				}
+			})
+		}
+	}
+
 	for _, interruption := range []string{"lost-stage-response", "pre-promotion-refusal"} {
 		t.Run("adoption/"+interruption, func(t *testing.T) {
 			name := "prod/adopt-" + interruption
@@ -396,6 +463,101 @@ func runAWSSecretsManagerLifecycle(t *testing.T, db *store.DB) {
 				t.Fatalf("adoption retry did not converge once: value=%q versions=%d err=%v", got, emulator.Versions(name), err)
 			}
 		})
+	}
+
+	// A promotion may commit while the adopted ledger remains Owned and its
+	// success outcome is absent. Replay must retain the original durable
+	// witness and repair only this job's version, including after crash closure.
+	for _, interruption := range []string{"finish-failure", "definite-marker-failure"} {
+		for _, mutation := range []string{"unchanged", "foreign-current", "replacement"} {
+			t.Run("promoted-adoption/"+interruption+"/"+mutation, func(t *testing.T) {
+				name := "prod/promoted-" + interruption + "-" + mutation
+				emulator.Seed(name, "reviewed legacy", map[string]string{})
+				target, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+					EnvironmentID: string(envA1), DestinationKind: string(adapter.JSONObject),
+					DestinationOwner: awsAccount, DestinationName: name, KeySelection: selection,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				planned, err := svc.Plan(ctx, operator, scope, target.ID)
+				if err != nil || planned.ArtifactID == "" {
+					t.Fatal("fresh adoption artifact unavailable")
+				}
+				if _, err := svc.Adopt(ctx, operator, scope, service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: planned.ArtifactID, ExpectedGeneration: target.Generation, ExpectedDestinationID: target.DestinationID, Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}}}); err != nil {
+					t.Fatal(err)
+				}
+				interrupted := false
+				if interruption == "finish-failure" {
+					finishAdoption = func(id string) error {
+						if id != target.ID || interrupted {
+							return nil
+						}
+						interrupted = true
+						return errors.New("injected journal transaction loss after promotion")
+					}
+				} else {
+					afterPromotion = func(context.Context) error {
+						interrupted = true
+						afterPromotion = nil
+						emulator.FailNext("UpdateSecretVersionStage", 400, "InvalidRequestException", "")
+						return nil
+					}
+				}
+				defer func() { finishAdoption, afterPromotion = nil, nil }()
+				loader := &awsAdoptionReplayLoader{Loader: worker.Loader, t: t, targetID: target.ID}
+				replayWorker := *worker
+				replayWorker.Loader = loader
+				for attempt := 0; attempt < 16 && !interrupted; attempt++ {
+					clock = clock.Add(time.Second)
+					// The injected Finish failure leaves the old fence unresolved; the
+					// immediate retry can refuse it as superseded before crash recovery.
+					if worked, err := replayWorker.RunOnce(ctx); !worked || (err != nil && !(interrupted && interruption == "finish-failure" && errors.Is(err, adapter.ErrSuperseded))) {
+						t.Fatalf("before promoted interruption: worked=%v err=%v", worked, err)
+					}
+				}
+				finishAdoption, afterPromotion = nil, nil
+				if !interrupted || emulator.Versions(name) != 2 || queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'`, target.ID)) != 1 {
+					t.Fatal("fixture did not retain Owned custody after promotion")
+				}
+				var delivered map[string]string
+				got, _ := emulator.Value(name)
+				if err := json.Unmarshal([]byte(got), &delivered); err != nil || delivered["SHARED_KEY"] != awsSecretV2 {
+					t.Fatal("injected failure occurred before the value became current")
+				}
+				if mutation == "foreign-current" {
+					emulator.ExternalPut(name, "later external")
+				} else if mutation == "replacement" {
+					emulator.Recreate(name, "later external")
+				}
+				versions := emulator.Versions(name)
+				// Expire the actual provider fence as well as the worker lease.
+				// ClaimDue must close an unfinished effect before LoadExecution.
+				clock = clock.Add(adapter.LeaseTime + time.Minute)
+				for attempt := 0; attempt < 16 && loader.loads < 2; attempt++ {
+					if worked, err := replayWorker.RunOnce(ctx); err != nil || !worked {
+						t.Fatalf("promoted replay: worked=%v err=%v", worked, err)
+					}
+				}
+				if loader.loads != 2 || emulator.Versions(name) != versions {
+					t.Fatal("replay did not load durable consent or duplicated a version")
+				}
+				if interruption == "finish-failure" && queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE target_id='%s' AND outcome='unknown'`, target.ID)) != 1 {
+					t.Fatal("crash-window reconciliation did not close the unfinished effect")
+				}
+				state := inspect(target.ID)
+				if mutation == "unchanged" {
+					if state.Health() != adapter.HealthConverged {
+						t.Fatal("same-job promotion could not repair metadata")
+					}
+				} else if got, _ := emulator.Value(name); got != "later external" || state.LastErrorClass != adapter.ErrorClassConflict || state.Health() == adapter.HealthConverged {
+					t.Fatal("replay overwrote an unreviewed current version or replacement")
+				}
+				if queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'`, target.ID)) != 1 {
+					t.Fatal("replay lost custody")
+				}
+			})
+		}
 	}
 
 	for _, loss := range []string{"tag-removed", "resource-recreated"} {

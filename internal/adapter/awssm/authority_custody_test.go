@@ -70,6 +70,7 @@ func TestRevocationStopsEverySubsequentAWSRequest(t *testing.T) {
 				req.Ledger = journal.ledger()
 				if operation == "tag" {
 					req.Ledger[0].AdoptionPending = true
+					req.Ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 				}
 				wrapped := &revokeAfterRequestAPI{fakeAPI: api, journal: journal, after: operation, err: gateErr}
 				_, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal)
@@ -122,6 +123,7 @@ func TestPendingAdoptionPermitsWriteButNeverUntaggedPrune(t *testing.T) {
 			journal.states["prod/app"] = adapter.Owned
 			ledger := journal.ledger()
 			ledger[0].AdoptionPending = true
+			ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, JobID: "adopt", Teardown: teardown}
 			if teardown {
 				req.Manifest = nil

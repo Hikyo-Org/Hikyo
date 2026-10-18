@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -187,7 +188,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	for i := range changes {
 		change := &changes[i]
 		record, held := ledger[adapter.NewLedgerKey(change.Surface, change.EffectiveName)]
-		if change.Disposition == adapter.Delete || !held || (record.State != adapter.Owned && record.State != adapter.Dispatched) {
+		if change.Disposition == adapter.Delete || (change.Disposition != adapter.Conflict && (!held || (record.State != adapter.Owned && record.State != adapter.Dispatched))) {
 			continue
 		}
 		meta, inspected := metadata[change.EffectiveName]
@@ -206,8 +207,58 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		if found && meta.Tags[adapter.SentinelName] != req.Target.ID {
 			change.Disposition = adapter.Conflict
 		}
+		if found && change.Disposition == adapter.Conflict {
+			change.ObservedProviderWitness = adoptionWitness(meta)
+		}
 	}
 	return adapter.Plan{Changes: changes}, nil
+}
+
+// adoptionWitness is canonical metadata, not a value hash. It preserves the
+// complete ARN (including replacement suffix) and opaque AWSCURRENT version.
+// An empty current version is still bound to this particular empty resource.
+func adoptionWitness(meta SecretMetadata) string {
+	current := ""
+	for version, stages := range meta.Stages {
+		if slices.Contains(stages, awsCurrent) {
+			if current != "" || version == "" {
+				return "" // Ambiguous metadata must never authorize adoption.
+			}
+			current = version
+		}
+	}
+	if meta.ARN == "" {
+		return ""
+	}
+	raw, err := json.Marshal([2]string{meta.ARN, current})
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// permitsAdoption binds first-write consent to the plan-time resource/version.
+// A completed promotion may outlive its journal outcome. Only the same complete
+// ARN and this exact job's owned current token may resume metadata-only repair.
+func permitsAdoption(meta SecretMetadata, witness, targetID, token string) bool {
+	observed := adoptionWitness(meta)
+	if witness == "" || observed == "" {
+		return false
+	}
+	if witness == observed {
+		return true
+	}
+	var approved []string
+	if err := json.Unmarshal([]byte(witness), &approved); err != nil || len(approved) != 2 || approved[0] != meta.ARN {
+		return false
+	}
+	canonical, err := json.Marshal(approved)
+	if err != nil || string(canonical) != witness {
+		return false
+	}
+	return token != "" && meta.Tags[adapter.SentinelName] == targetID &&
+		slices.Contains(meta.Stages[token], awsCurrent) &&
+		(slices.Contains(meta.Stages[token], PendingStage) || slices.Contains(meta.Stages[token], CurrentStage) || meta.Tags[VersionTag] == token)
 }
 
 // rowStatus says how one name's failure affects the rest of the sync.
@@ -421,6 +472,10 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		return change, statusFor(err), err
 	}
 	token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, row.EffectiveName)
+	if record.AdoptionPending && (!found || !permitsAdoption(meta, record.AdoptionWitness, req.Target.ID, token)) {
+		change.Disposition = adapter.Conflict
+		return change, rowConflict, fmt.Errorf("%w: secret %s changed since the reviewed adoption plan; a fresh plan is required", adapter.ErrConflict, row.EffectiveName)
+	}
 	plan := decide(meta, found, state, record.AdoptionPending, req.Target.ID, token)
 	if plan.conflict != "" {
 		change.Disposition = adapter.Conflict
