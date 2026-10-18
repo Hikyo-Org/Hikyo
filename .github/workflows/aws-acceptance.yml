@@ -20,7 +20,7 @@ concurrency:
 jobs:
   sandbox:
     if: github.repository == 'Hikyo-Org/Hikyo' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 65
     environment: hikyo-158-aws-sandbox
     permissions:
