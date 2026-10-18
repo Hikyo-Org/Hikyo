@@ -58,6 +58,8 @@ export function environmentOwnedQueryPrefixes(ref: MatrixRef) {
     ['dynamic-leases', ref.org, ref.project],
     ['pki-certificates', ref.org, ref.project],
     ['pki-certificate-profiles', ref.org, ref.project],
+    ['transit-keys', ref.org, ref.project],
+    ['transit-key', ref.org, ref.project],
   ];
 }
 

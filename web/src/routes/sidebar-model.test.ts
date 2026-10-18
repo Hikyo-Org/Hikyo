@@ -68,6 +68,7 @@ describe('sidebarModel', () => {
     expect(model.context?.links.map((l) => [l.label, l.to])).toEqual([
       ['Environment matrix', '/orgs/org_1/projects/prj_1/matrix'],
       ['Machine access', '/orgs/org_1/projects/prj_1/machine-access'],
+      ['Transit keys', '/orgs/org_1/projects/prj_1/transit-keys'],
       ['Change approvals', '/orgs/org_1/projects/prj_1/change-approvals'],
       ['Temporary access', '/orgs/org_1/projects/prj_1/temporary-access'],
       ['Deployment adapters', '/orgs/org_1/projects/prj_1/adapters'],
@@ -89,6 +90,8 @@ describe('sidebarModel', () => {
     const links = model.context?.links;
     expect(mustFind(links, 'matrix').to).toBe('/orgs/org_1/projects/prj_1/matrix?remote=ew');
     expect(mustFind(links, 'matrix').disabledReason).toBeNull();
+    expect(mustFind(links, 'transit-keys').to).toBe('/orgs/org_1/projects/prj_1/transit-keys?remote=ew');
+    expect(mustFind(links, 'transit-keys').disabledReason).toBeNull();
     expect(mustFind(links, 'machine-access').disabledReason).toBe(
       'Machine access is local-instance only',
     );
@@ -197,6 +200,7 @@ describe('sidebarModel in the Hikyo system scope', () => {
     });
     expect(model.context?.links.map((l) => l.label)).toEqual([
       'Environment matrix',
+      'Transit keys',
       'Change approvals',
       'Temporary access',
       'Project audit',

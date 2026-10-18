@@ -113,6 +113,7 @@ export const FLOWS: readonly Flow[] = [
   // from the base branch); it rides `machine-access.spec.ts`, already in
   // group 3 and the project-scoped sibling surface.
   { id: 'adapters', spec: 'flows/machine-access.spec.ts', surfaces: ['adapters'] },
+  { id: 'transit-keys', spec: 'flows/machine-access.spec.ts', surfaces: ['transit-keys'] },
   // Project audit (#572) is a new SURFACE and rides `machine-access.spec.ts`
   // (group 3 on main, the project-scoped sibling) for the same base-branch
   // `ci.yml` reason as the adapters entry above.
