@@ -208,12 +208,16 @@ export function Matrix({
   // structure back. Metadata-only, so it follows the declaration lock.
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const folderRows = useFolders(ref);
-  // A failed catalogue refetch can retain old data. Only suggest its empty
-  // folders while that read is successful; key paths follow matrix custody.
+  // A failed catalogue refetch can retain old data. Only trust its paths for
+  // suggestions and cleanup creation decisions while the read is successful.
+  const catalogueFolderPaths = useMemo(
+    () => folderRows.isSuccess ? folderRows.data.items.map((folder) => folder.path) : [],
+    [folderRows.data, folderRows.isSuccess],
+  );
   const folderOptions = useMemo(() => [...new Set([
     ...keys.map((key) => key.folder_path),
-    ...(folderRows.isSuccess ? folderRows.data.items.map((folder) => folder.path) : []),
-  ])].filter((path) => path !== '').sort(), [keys, folderRows.data, folderRows.isSuccess]);
+    ...catalogueFolderPaths,
+  ])].filter((path) => path !== '').sort(), [keys, catalogueFolderPaths]);
   const moveKeys = useMoveKeysToFolders(ref);
   // Surface-2 scanner block (#183): the redacted findings a refused write
   // carried, plus the override that retries it with their acknowledgements.
@@ -1566,7 +1570,7 @@ export function Matrix({
           onApply={(moves) =>
             moveKeys.mutateAsync({
               moves,
-              existingFolders: (folderRows.data?.items ?? []).map((folder) => folder.path),
+              existingFolders: catalogueFolderPaths,
             })
           }
           onClose={() => setCleanupOpen(false)}

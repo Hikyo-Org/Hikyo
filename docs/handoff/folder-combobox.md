@@ -18,8 +18,9 @@ CI and merge state; deployment remains outside this change's scope.
 - The popover stays above dialogs and scroll containers, flips above the
   field near the viewport bottom, and follows scrolling and viewport changes.
 - Folder options combine paths already used by keys with registered empty
-  folders. Failed catalogue reads do not contribute retained stale suggestions.
-  The merged list is memoized in `Matrix.tsx`.
+  folders. Failed catalogue reads do not contribute retained stale suggestions
+  or cleanup's known-folder list. Both use one guarded catalogue-path list in
+  `Matrix.tsx`; the suggestion union is memoized separately.
 - Existing and new folder paths preserve case, spaces and UTF-8. Only outer
   whitespace is trimmed; the server remains the authority on path validity.
   Creation still occurs on the existing Declare, Save or Move action.
@@ -52,7 +53,7 @@ client/web dependencies.
 | `node --run typecheck` | Passed |
 | `node --run lint` | Passed |
 | `node --run design:check` | Passed, including the new CSS owner's zero literal-size budget |
-| `node --run test` | 209 files, 1,912 tests passed |
+| `node --run test` | 209 files, 1,914 tests passed |
 | Affected Storybook browser tests, dark | 5 files, 41 stories passed |
 | Affected Storybook browser tests, light | 5 files, 41 stories passed |
 | `node --run build` | Passed; bundle-size warning remains informational |
@@ -63,6 +64,10 @@ Browser stories covered `Combobox`, `MatrixKeyCreate`, `FolderCleanupDialog`,
 `KeyDeclarationDetail` and `Matrix`. Regressions cover registered empty folders,
 failed catalogue reads and recovery, exact existing paths, new UTF-8 paths,
 filtering, selection, custom text, disabled controls and keyboard behavior.
+Cleanup regressions exercise its actual submit callback with successful and
+failed catalogue reads that retain the same data. Before the follow-up repair,
+the failed-read case reproduced a stale known-folder list; after the repair,
+both cases and the existing folder-creation/move tests pass.
 Manual collaborative-browser checks covered desktop and 390px layouts, both
 themes, focus retention, upward placement and repositioning on scroll. The
 390px page and popup had no horizontal overflow.
@@ -70,7 +75,9 @@ themes, focus retention, upward placement and repositioning on scroll. The
 Independent review read `Matrix.tsx` and `KeyDeclarationDetail.tsx` in full and
 checked the shared component and integrations. Its three findings were fixed:
 listbox ID wiring, stale catalogue suggestions and lossy folder normalization.
-No actionable findings remained. Existing mutation custody, authorization,
+CodeRabbit subsequently identified stale catalogue paths in cleanup's mutation
+arguments; the shared guard and regression above address that fourth finding.
+Existing mutation custody, authorization,
 scanner acknowledgements and access-widening confirmation remain in their
 existing owners. Neither module required a sensitivity-inventory pin update.
 
