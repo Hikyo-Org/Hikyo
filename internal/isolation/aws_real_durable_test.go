@@ -150,7 +150,7 @@ func (h *realAWSDurable) configureRuntime(mode string) {
 		if err != nil {
 			return nil, err
 		}
-		var module adapter.Module = &awssm.Module{API: &realAWSWriter{API: client, s: h.s, losePut: &h.losePut, failCurrentMarker: &h.failCurrentMarker, afterPut: func(ctx context.Context, id string) error {
+		var module adapter.Module = &awssm.Module{API: &realAWSWriter{API: client, t: h.t, s: h.s, losePut: &h.losePut, failCurrentMarker: &h.failCurrentMarker, afterPut: func(ctx context.Context, id string) error {
 			if h.afterPut != nil {
 				return h.afterPut(ctx, id)
 			}

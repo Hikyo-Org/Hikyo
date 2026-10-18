@@ -479,7 +479,11 @@ func (s *realAWSSandbox) call(ctx context.Context, oracle bool, operation, id st
 		}
 		in["SecretId"] = id
 	}
-	return requestAWSFixture(ctx, env, operation, in, out)
+	err := requestAWSFixture(ctx, env, operation, in, out)
+	if operation != "DescribeSecret" || !realAWSCode(err, "ResourceNotFoundException") {
+		logRealAWSDiagnostic(s.t, operation, err)
+	}
+	return err
 }
 
 // The raw signer stays outside production. Callers must first bind the exact
@@ -596,6 +600,7 @@ func (s *realAWSSandbox) clean(t *testing.T) {
 // and guards the scope before mutations; it adds no read-value capability.
 type realAWSWriter struct {
 	awssm.API
+	t                 *testing.T
 	s                 *realAWSSandbox
 	losePut           *bool
 	afterPut          func(context.Context, string) error
@@ -617,7 +622,11 @@ func (a *realAWSWriter) DescribeSecret(ctx context.Context, id string) (awssm.Se
 			return awssm.SecretMetadata{}, errors.New("metadata request outside recorded sandbox resources")
 		}
 	}
-	return a.API.DescribeSecret(ctx, id)
+	meta, err := a.API.DescribeSecret(ctx, id)
+	if !awssm.IsNotFound(err) {
+		logRealAWSDiagnostic(a.t, "DescribeSecret", err)
+	}
+	return meta, err
 }
 
 func (a *realAWSWriter) ListSecretNames(ctx context.Context, prefix string, limit int) ([]string, error) {
@@ -632,11 +641,12 @@ func (a *realAWSWriter) CreateSecret(ctx context.Context, in awssm.CreateSecretI
 		return err
 	}
 	// Refuse occupied names before create; never claim an unrelated fixture.
-	if _, err := a.API.DescribeSecret(ctx, in.Name); !awssm.IsNotFound(err) {
+	if _, err := a.DescribeSecret(ctx, in.Name); !awssm.IsNotFound(err) {
 		return errors.New("sandbox name is not provably unused")
 	}
 	err := a.API.CreateSecret(ctx, in)
-	meta, describeErr := a.API.DescribeSecret(ctx, in.Name)
+	logRealAWSDiagnostic(a.t, "CreateSecret", err)
+	meta, describeErr := a.DescribeSecret(ctx, in.Name)
 	if describeErr == nil && meta.Tags[adapter.SentinelName] == in.Tags[adapter.SentinelName] && in.Tags[adapter.SentinelName] != "" {
 		if rememberErr := a.s.remember(in.Name, meta.ARN); rememberErr != nil {
 			return rememberErr
@@ -671,6 +681,7 @@ func (a *realAWSWriter) PutSecretValue(ctx context.Context, id, token, value str
 		return err
 	}
 	if err := a.API.PutSecretValue(ctx, id, token, value); err != nil {
+		logRealAWSDiagnostic(a.t, "PutSecretValue", err)
 		return err
 	}
 	if a.afterPut != nil {
@@ -694,23 +705,31 @@ func (a *realAWSWriter) UpdateSecretVersionStage(ctx context.Context, id, stage,
 		// This is replay fault injection, not evidence of an AWS IAM denial.
 		return &awssm.ResponseError{Status: 400, Code: "InvalidRequestException"}
 	}
-	return a.API.UpdateSecretVersionStage(ctx, id, stage, to, from)
+	err := a.API.UpdateSecretVersionStage(ctx, id, stage, to, from)
+	logRealAWSDiagnostic(a.t, "UpdateSecretVersionStage", err)
+	return err
 }
 func (a *realAWSWriter) TagSecret(ctx context.Context, id string, tags map[string]string) error {
 	if err := a.mutation(id, "TagResource"); err != nil {
 		return err
 	}
-	return a.API.TagSecret(ctx, id, tags)
+	err := a.API.TagSecret(ctx, id, tags)
+	logRealAWSDiagnostic(a.t, "TagResource", err)
+	return err
 }
 func (a *realAWSWriter) RestoreSecret(ctx context.Context, id string) error {
 	if err := a.mutation(id, "RestoreSecret"); err != nil {
 		return err
 	}
-	return a.API.RestoreSecret(ctx, id)
+	err := a.API.RestoreSecret(ctx, id)
+	logRealAWSDiagnostic(a.t, "RestoreSecret", err)
+	return err
 }
 func (a *realAWSWriter) DeleteSecret(ctx context.Context, id string) error {
 	if err := a.mutation(id, "DeleteSecret"); err != nil {
 		return err
 	}
-	return a.API.DeleteSecret(ctx, id)
+	err := a.API.DeleteSecret(ctx, id)
+	logRealAWSDiagnostic(a.t, "DeleteSecret", err)
+	return err
 }
