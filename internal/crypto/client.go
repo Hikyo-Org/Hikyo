@@ -60,6 +60,7 @@ var stampGrammar = regexp.MustCompile(`^v1-[0-9a-f]{32}$`)
 // LocalKeys is the two derived client keys. Callers hold it for the life of a
 // render/fetch and let it go; the underlying local key stays on disk 0600.
 type LocalKeys struct {
+	redactor
 	stampKey    []byte
 	snapshotKey []byte
 }
