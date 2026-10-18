@@ -4,10 +4,10 @@ on:
   schedule:
     - cron: "0 2 * * *"
   # repository_dispatch always loads this workflow from the default branch.
-  # This preserves the deliberate chain-restart path without exposing release
-  # credentials to a branch-selected workflow definition.
+  # The manual wrapper requests an ordinary release through this event, keeping
+  # publication out of a branch-selected workflow definition.
   repository_dispatch:
-    types: [nightly-chain-restart]
+    types: [nightly-release, nightly-chain-restart]
 
 permissions:
   actions: read
@@ -175,7 +175,7 @@ jobs:
         if: steps.identity.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}
           PREDECESSOR_EDGES: 8
         run: |
           set -o pipefail
@@ -328,7 +328,7 @@ jobs:
       - name: Verify exact signed inventory and assemble runtime evidence
         if: steps.identity.outputs.skip != 'true'
         env:
-          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}
         run: |
           go run ./scripts/release/nightly verify --directory nightly-payloads
           if [ -d "$RUNNER_TEMP/previous-nightly" ]; then
@@ -352,7 +352,7 @@ jobs:
         if: steps.identity.outputs.skip != 'true'
         env:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
-          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.allow_missing_predecessor == true }}
+          ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}
         run: |
           if [ ! -d "$RUNNER_TEMP/previous-nightly" ] && [ "$ALLOW_MISSING_PREDECESSOR" != true ]; then
             echo '::error::Signed predecessor missing at the populated upgrade proof'
