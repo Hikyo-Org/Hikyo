@@ -109,6 +109,8 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 		"# TYPE " + server.MetricLastBackupExportSuccess + " gauge",
 		"# TYPE " + server.MetricBackupRPOExceeded + " gauge",
 		"# TYPE " + server.MetricLastBackupPruneSuccess + " gauge",
+		"# TYPE " + server.MetricBackupRetentionBreach + " gauge",
+		"# TYPE " + server.MetricBackupRetainedExpired + " gauge",
 		"# TYPE " + server.MetricLastRestoreDrill + " gauge",
 		"# TYPE " + server.MetricRestoreDrillOK + " gauge",
 	} {

@@ -213,8 +213,8 @@ type Config struct {
 	BackupRPO               time.Duration // HIKYO_BACKUP_RPO, default 26h, at least the interval
 	AuditAccessRetainDays   int           // HIKYO_AUDIT_ACCESS_RETAIN_DAYS, 90 by default
 	AuditSecurityRetainDays int           // HIKYO_AUDIT_SECURITY_RETAIN_DAYS, 365 by default
-	BackupRetainCount       int           // HIKYO_BACKUP_RETAIN_COUNT, default 7, minimum 1
-	BackupRetainDays        int           // HIKYO_BACKUP_RETAIN_DAYS, default 180, maximum 180
+	BackupRetainCount       int           // HIKYO_BACKUP_RETAIN_COUNT, default 7, minimum 1; protects only within 180 days
+	BackupRetainDays        int           // HIKYO_BACKUP_RETAIN_DAYS, earlier pruning outside count; default/max 180
 	BackupRTOTarget         time.Duration // HIKYO_BACKUP_RTO_TARGET, default 30m; the drill's verdict line
 
 	// DevAdmissionPerIPPerMinute raises the per-source-IP pre-auth allowance.

@@ -100,6 +100,8 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_last_backup_export_success_timestamp_seconds", MaxSeries: 1},
 		{Name: "hikyo_backup_rpo_exceeded", MaxSeries: 1},
 		{Name: "hikyo_last_backup_prune_success_timestamp_seconds", MaxSeries: 1},
+		{Name: "hikyo_backup_retention_breach", MaxSeries: 1},
+		{Name: "hikyo_backup_retained_expired_archives", MaxSeries: 1},
 		{Name: "hikyo_last_restore_drill_timestamp_seconds", MaxSeries: 1},
 		{Name: "hikyo_restore_drill_ok", MaxSeries: 1},
 		{Name: "hikyo_dynamic_leases_active", MaxSeries: 1},

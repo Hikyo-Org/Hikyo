@@ -486,17 +486,21 @@ func wireBackupHealth(b service.BackupHealth) apigen.BackupHealth {
 		return &at
 	}
 	return apigen.BackupHealth{
-		Scheduled:          b.Scheduled,
-		LastSuccessAt:      optional(b.LastSuccessAt),
-		ArtifactAgeSeconds: int(b.ArtifactAge / time.Second),
-		RpoSeconds:         int(b.RPO / time.Second),
-		RpoExceeded:        b.RPOExceeded,
-		LastFailureAt:      optional(b.LastFailureAt),
-		LastFailureReason:  b.LastFailureReason,
-		LastPruneAt:        optional(b.LastPruneAt),
-		LastDrillAt:        optional(b.LastDrillAt),
-		LastDrillOk:        b.LastDrillOK,
-		DrillStale:         b.DrillStale,
+		Scheduled:               b.Scheduled,
+		LastSuccessAt:           optional(b.LastSuccessAt),
+		ArtifactAgeSeconds:      int(b.ArtifactAge / time.Second),
+		RpoSeconds:              int(b.RPO / time.Second),
+		RpoExceeded:             b.RPOExceeded,
+		LastFailureAt:           optional(b.LastFailureAt),
+		LastFailureReason:       b.LastFailureReason,
+		LastPruneAt:             optional(b.LastPruneAt),
+		LastPruneAttemptAt:      optional(b.LastPruneAttemptAt),
+		RetentionBreach:         b.RetentionBreach,
+		RetentionReason:         b.RetentionReason,
+		RetainedExpiredArchives: int(b.RetainedExpiredArchives),
+		LastDrillAt:             optional(b.LastDrillAt),
+		LastDrillOk:             b.LastDrillOK,
+		DrillStale:              b.DrillStale,
 	}
 }
 

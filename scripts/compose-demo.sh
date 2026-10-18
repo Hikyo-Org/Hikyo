@@ -535,4 +535,4 @@ grep -F "GREETING=$updated" "$work_dir/sync.log" >/dev/null || fail 'sync did no
 printf 'compose demo passed: %s stored values including GREETING delivered byte-exactly; surrounding whitespace proved trim-only transformation\n' "$(wc -l <"$representable" | tr -d ' ')"
 printf 'compose demo passed: embedded newline refused by name with exit 4 and no generation/stamp change\n'
 printf 'compose demo passed: doctor returned only allowed findings; sync moved the stamp and restarted app\n'
-printf 'compose demo passed: authenticated instance doctor reported all 12 operational finding families\n'
+printf 'compose demo passed: authenticated instance doctor reported the complete measured finding set\n'

@@ -306,5 +306,22 @@ func doctorBackupFindings(b apigen.BackupHealth, now time.Time) []doctorFinding 
 	default:
 		drill.Message = fmt.Sprintf("last successful restore drill is %s old", drillAge)
 	}
-	return []doctorFinding{rpo, drill}
+	retention := doctorFinding{Provider: "-", Code: "backup-retention", Severity: "ok"}
+	retention.EffectiveAt, _ = age(b.LastPruneAttemptAt)
+	retention.Message = "managed backup retention verified; external copies remain operator-owned"
+	if b.RetentionBreach {
+		retention.Severity = "error"
+		retention.Message = fmt.Sprintf("backup retention is breached or unverified (%s; %d expired archives last observed): restore a verified backup/export path, then rerun pruning; do not discard the only recovery copy", b.RetentionReason, b.RetainedExpiredArchives)
+	} else if b.Scheduled && b.LastPruneAttemptAt == nil && b.RetentionReason == "" {
+		// Older servers omit retention measurements; their zero values are not proof.
+		retention.Severity = "warn"
+		retention.Message = "backup retention was not measured by this server; upgrade the server"
+	} else if !b.Scheduled {
+		retention.Severity = "warn"
+		retention.Message = "no managed backup retention schedule is configured; review the recorded prune result and arrange ongoing checks"
+		if b.LastPruneAttemptAt == nil {
+			retention.Message = "no managed backup retention schedule is configured; retention has not been checked"
+		}
+	}
+	return []doctorFinding{rpo, drill, retention}
 }

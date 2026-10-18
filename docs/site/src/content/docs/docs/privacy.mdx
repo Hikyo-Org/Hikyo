@@ -167,6 +167,34 @@ The [backup runbook](/docs/backup-and-restore/#off-host-storage) explains the
 archive-directory boundary. External copies, database snapshots and failed restore
 drill targets need their own expiry and access controls.
 
+**The 180-day managed-backup policy is not an unconditional erasure deadline.**
+It overrides retained-count protection, but preserves the last durably recorded
+successful archive until a durable replacement exists. Missing or uncertain
+recovery state preserves candidates rather than assuming a newer filename is
+safe; more than one expired archive can remain. These exceptions can persist
+indefinitely and must appear as breached or unverified retention health. Check
+the retention findings and actual pruning outcome, not only the configured
+retention days or recent export success.
+
+Legacy successful-export records without a ciphertext SHA-256 digest remain
+uncertain until a fresh export succeeds. Doctor's `backup-retention` finding is
+an error when the policy is breached or unverified. The health API's
+`backup.retention_breach` and label-free `hikyo_backup_retention_breach` gauge
+include uncertainty, while `retained_expired_archives` and its metric are only
+last-observed counts. A zero count or an older successful-prune timestamp is not
+proof of current compliance. Retention verification needs no root key or backup
+identity and does not replace a readable-restore drill.
+
+Count time from **actual successful collection or deletion**, not when a row
+first becomes eligible. A backup snapshot taken before collection can still
+contain the data even if its archive is published afterward. Retirement from
+managed history therefore depends on the last containing archive, snapshot and
+export delay, expiry, successful pruning, scheduling/deletion failures and
+recovery exceptions. Other archives, decrypted copies, replicas and storage
+snapshots extend the lifecycle independently. There is no general “GC eligibility
+plus 180 days” or 270-day erasure promise. Destroying a live datastore key does
+not erase the key hierarchy already stored in an archive.
+
 Before reopening a restored instance, verify the current approved receipt register
 and reapply each applicable restriction or identity erasure:
 

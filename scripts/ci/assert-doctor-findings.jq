@@ -2,7 +2,7 @@
 # measured server findings, not a replacement health response. $engine names
 # the deployment under test so remote PostgreSQL capacity cannot pass as local.
 def expected_codes:
-  ["adapter-targets", "argon2-floor", "backup-rpo", "data-volume",
+  ["adapter-targets", "argon2-floor", "backup-retention", "backup-rpo", "data-volume",
    "database-durability", "pin-expiry", "pki", "project-storage", "reencrypt",
    "restore-drill", "retention-prune", "root-escrow", "root-rotation"] | sort;
 
@@ -12,7 +12,7 @@ all(.findings[];
   (.provider == "-") and
   (.message | type == "string" and length > 0) and
   (if .code == "retention-prune" then (.severity == "ok" or .severity == "warn")
-   elif .code == "backup-rpo" or .code == "restore-drill" then .severity == "warn"
+   elif .code == "backup-retention" or .code == "backup-rpo" or .code == "restore-drill" then .severity == "warn"
    elif .code == "root-escrow" then .severity == "warn"
    elif .code == "data-volume" then
      if $engine == "postgres" then .severity == "unknown" and $volume_severity == "unknown"

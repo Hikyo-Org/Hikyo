@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,6 +19,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -49,6 +51,15 @@ func TestRetentionCLIStartupSweepPostgres(t *testing.T) {
 func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	t.Helper()
 	cfg := retentionAppConfig(t, engine)
+	// Exercise real backup health alongside payload retention, including the
+	// breach/recovery surfaces below, without weakening unrelated-error checks.
+	_, recipient, err := backup.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.BackupRecipients, cfg.BackupDir = []string{recipient}, t.TempDir()
+	cfg.BackupInterval, cfg.BackupRPO = config.DefaultBackupInterval, config.DefaultBackupRPO
+	cfg.BackupRetainCount, cfg.BackupRetainDays = config.DefaultBackupRetainCount, config.DefaultBackupRetainDays
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	first, err := app.Boot(t.Context(), cfg, log)
@@ -67,6 +78,7 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	}
 	defer db.Close()
 	waitForCount(t, db, "SELECT COUNT(*) FROM retention_runtime WHERE id = 1 AND last_prune_success IS NOT NULL", 1)
+	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_success_at IS NOT NULL AND last_artifact_sha256 <> '' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
 
 	rootKey, err := crypto.ReadRootKey(cfg.RootKeyFile, "")
 	if err != nil {
@@ -169,6 +181,10 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	runCLI(cli.ExitOK, "project", "retention", "get", "--org", retentionCLIOrg, "--project", retentionCLIProject, "-o", "json")
 
 	seedRetentionCLICorpus(t, db, boot.PrincipalID, time.Now().UTC())
+	beforeRestart, err := (&service.Backup{DB: db}).State(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	stopFirst()
 
 	second, err := app.Boot(t.Context(), cfg, log)
@@ -182,6 +198,9 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
 	defer stopSecond()
 	waitHTTP(t, "http://"+second.OperationalAddr+"/healthz")
 	waitForCount(t, db, "SELECT COUNT(*) FROM snapshots WHERE collected_at IS NOT NULL", 3)
+	// Payload GC precedes backup jobs. Require this startup's completed prune,
+	// not the old successful timestamp while a new attempt is in progress.
+	waitForCount(t, db, "SELECT COUNT(*) FROM backup_state WHERE id = 1 AND last_prune_attempt_id <> '"+beforeRestart.LastPruneAttemptID+"' AND last_prune_at IS NOT NULL AND prune_failure_reason = ''", 1)
 
 	for _, pair := range []string{retentionCLIEnv + ":1", retentionCLIEnv + ":3", retentionCLIEnvInherit + ":1"} {
 		env, revision, _ := strings.Cut(pair, ":")
@@ -266,6 +285,84 @@ func runRetentionCLIStartupSweep(t *testing.T, engine store.Engine) {
           AND payload LIKE '%"revision_payloads":3%'`); got != 1 {
 		t.Errorf("completed startup prune-run events with 3 collections = %d, want 1", got)
 	}
+	runBackupRetentionCLISurfaces(t, db, cfg, ios, "http://"+second.OperationalAddr)
+}
+
+// Exercise the same durable breach through the live health API, CLI doctor,
+// and operational metrics, then prove a fresh recovery copy clears it.
+func runBackupRetentionCLISurfaces(t *testing.T, db *store.DB, cfg *config.Config, ios func() cli.IO, operationalOrigin string) {
+	t.Helper()
+	svc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
+	past := time.Now().UTC().Add(-181 * 24 * time.Hour)
+	svc.Now = func() time.Time { return past }
+	old, err := svc.Export(t.Context(), cfg.BackupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RecordExport(t.Context(), service.TriggerManual, old); err != nil {
+		t.Fatal(err)
+	}
+	svc.Now = nil
+	policy := service.PrunePolicy{RetainCount: cfg.BackupRetainCount, RetainDays: cfg.BackupRetainDays}
+	if _, err := svc.Prune(t.Context(), cfg.BackupDir, policy); err == nil {
+		t.Fatal("expired protected copy reported success")
+	}
+	check := func(breached bool) {
+		t.Helper()
+		output := &strings.Builder{}
+		invocation := ios()
+		invocation.Stdout = output
+		exit := cli.Run(t.Context(), invocation, []string{"doctor", "-o", "json"})
+		var report retentionDoctorOutput
+		if err := json.Unmarshal([]byte(output.String()), &report); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, finding := range report.Findings {
+			if finding.Code != "backup-retention" {
+				continue
+			}
+			found = true
+			if breached {
+				if finding.Severity != "error" || !strings.Contains(finding.Message, "protected_expired") || exit != cli.ExitRefused {
+					t.Fatalf("doctor hid protected expiry: %+v exit%d", finding, exit)
+				}
+			} else if finding.Severity != "ok" {
+				t.Fatalf("fresh replacement did not clear doctor: %+v", finding)
+			}
+		}
+		if !found {
+			t.Fatal("doctor omitted backup retention")
+		}
+		resp, err := http.Get(operationalOrigin + "/metrics")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := "0"
+		if breached {
+			value = "1"
+		}
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), "hikyo_backup_retention_breach "+value+"\n") || !strings.Contains(string(raw), "hikyo_backup_retained_expired_archives "+value+"\n") {
+			t.Fatal("metrics disagree with durable backup retention verdict")
+		}
+	}
+	check(true)
+	fresh, err := svc.Export(t.Context(), cfg.BackupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RecordExport(t.Context(), service.TriggerManual, fresh); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Prune(t.Context(), cfg.BackupDir, policy); err != nil {
+		t.Fatal(err)
+	}
+	check(false)
 }
 
 func retentionAppConfig(t *testing.T, engine store.Engine) *config.Config {
