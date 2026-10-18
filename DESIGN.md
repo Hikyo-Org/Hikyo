@@ -112,7 +112,7 @@ The surface for a detail or for any form a button opens. A form, a typed-name co
 
 ### Dialog (`ui/Dialog.tsx`)
 
-Native `<dialog>` with `showModal()`. `size`: `narrow` (520, a decision with two or three buttons) or `wide` (760, an editor). Title h2, optional `lede`, `actions` row with the primary last. No corner X: Escape and Cancel are the exits; `onBackdropClick` is opt-in for editors; `pinActions` keeps title and actions fixed while the body scrolls.
+Native `<dialog>` with `showModal()`. `size`: `narrow` (520, a decision with two or three buttons) or `wide` (760, an editor). Title h2, optional `lede`, `actions` row with the primary last. Decision dialogs omit a corner X: Escape and Cancel are the exits. Editors can opt into a corner close through `onClose`, using their existing dismissal handler (#959); the value editor does so. `onBackdropClick` is opt-in for editors; `pinActions` keeps title and actions fixed while the body scrolls.
 
 ### Forms (`ui/Field.tsx`, `Input`, `Select`, `Textarea`, `Checkbox`, `Radio`, `ChoiceGroup`, `ToggleChip`)
 

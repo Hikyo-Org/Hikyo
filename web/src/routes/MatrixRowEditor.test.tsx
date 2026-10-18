@@ -278,7 +278,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(dialog.getAttribute('aria-labelledby')).toBe(heading?.id);
     expect(heading?.textContent).toBe(keyRecord.name);
 
-    // The close X is gone with the shell; the Close action replaces it.
+    // The footer remains available alongside the corner close.
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => button(container, 'Close').click());
     expect(onClose).toHaveBeenCalledOnce();
@@ -302,6 +302,15 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     await at('mousedown', 10, 10);
     await at('click', 10, 10);
     expect(onClose).toHaveBeenCalledTimes(2);
+    const corner = dialog.querySelector<HTMLButtonElement>('.dialog__header button');
+    expect(corner?.getAttribute('aria-label')).toBe('Close dialog');
+    expect(corner?.type).toBe('button');
+    await act(async () => corner?.click());
+    expect(onClose).toHaveBeenCalledTimes(3);
+    const cancel = new Event('cancel', { cancelable: true });
+    await act(async () => dialog.dispatchEvent(cancel));
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(4);
     await unmount();
   });
 

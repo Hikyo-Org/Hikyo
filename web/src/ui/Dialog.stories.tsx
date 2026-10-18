@@ -1,7 +1,7 @@
 import { interactionOnce } from '../../.storybook/interactionCoverage.ts';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { SyntheticEvent } from 'react';
-import { expect, fn } from 'storybook/test';
+import { expect, fn, userEvent } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { Alert } from './Alert.tsx';
@@ -35,7 +35,25 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Decision: Story = {};
+export const Decision: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByRole('button', { name: 'Close dialog' })).toBeNull();
+  },
+};
+
+/** Editors opt in; long identifiers must leave room for the close target. */
+export const CornerClose: Story = {
+  args: { title: 'LONG_IDENTIFIER_'.repeat(12), mono: true, onClose: fn() },
+  play: async ({ canvas, args }) => {
+    const dialog = canvas.getByRole('dialog');
+    const close = canvas.getByRole('button', { name: 'Close dialog' });
+    const heading = canvas.getByRole('heading');
+    await expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+    await expect(close.getBoundingClientRect().left).toBeGreaterThanOrEqual(heading.getBoundingClientRect().right);
+    await userEvent.click(close);
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
 
 export const WithRefusal: Story = {
   args: {
