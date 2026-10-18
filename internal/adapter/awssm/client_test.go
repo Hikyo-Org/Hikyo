@@ -195,7 +195,7 @@ func TestSignedWireStagingPreservesCurrentAndRequiresExactPredecessor(t *testing
 	server := awssmtest.New(testAccount, testRegion)
 	defer server.Close()
 	client := emulatorClient(t, server)
-	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging"}); err != nil {
+	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging", ClientRequestToken: strings.Repeat("c", 64)}); err != nil {
 		t.Fatal(err)
 	}
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
@@ -451,7 +451,7 @@ func TestServiceQuotaFailureIsDefiniteWithoutThrottleRetry(t *testing.T) {
 		server.FailNext(operation, 400, "LimitExceededException", "")
 		var err error
 		if operation == "CreateSecret" {
-			err = client.CreateSecret(t.Context(), CreateSecretInput{Name: "quota"})
+			err = client.CreateSecret(t.Context(), CreateSecretInput{Name: "quota", ClientRequestToken: strings.Repeat("d", 64)})
 		} else {
 			err = client.PutSecretValue(t.Context(), "quota", strings.Repeat("a", 64), "value")
 		}

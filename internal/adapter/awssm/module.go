@@ -526,7 +526,7 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 		if err := beforeRequest(); err != nil {
 			return mutated, err
 		}
-		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
+		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, ClientRequestToken: token, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
 		if err != nil && !IsExists(err) {
 			return mutated, err
 		}

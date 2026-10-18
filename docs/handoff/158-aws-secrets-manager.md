@@ -15,7 +15,75 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Continuation evidence, 2026-10-18
+## Failed live acceptance and offline repair, 2026-10-18
+
+This section supersedes the execution and resource states in the historical
+continuation below. Bootstrap [PR #968](https://github.com/Hikyo-Org/Hikyo/pull/968)
+merged as `cb78b6be111029335e744aa3e4dcc956d5194ba1`. Feature
+[PR #969](https://github.com/Hikyo-Org/Hikyo/pull/969) remains draft and issue #158
+remains open. Standalone adoption-witness migration 77 is owner-approved;
+main last verified before execution ended at 76.
+
+The owner personally approved one protected-environment job:
+[run 39158333194](https://github.com/Hikyo-Org/Hikyo/actions/runs/39158333194),
+attempt 1, candidate `3856fcca58c86e972ea54c493e50c277f78d09aa`, workflow main
+`cb78b6be111029335e744aa3e4dcc956d5194ba1`. Exact approval and PostgreSQL startup
+passed. Real-provider acceptance failed: all 46 expected results were reported,
+with 11 passes, 35 failures, zero skips and zero missing results. Identity and
+genuinely expired-credential preflights passed; functional acceptance did not.
+Raw test diagnostics were discarded by the trusted runner, so its artifact
+cannot establish the exact failed assertion or provider error.
+
+Subsequent read-only CloudTrail inspection recovered all eight unrecorded
+CreateSecret errors: InvalidRequestException with a diagnostic referring to
+providing ClientRequestToken. Each request lacked that token and both value
+fields. The event records also contained eight complete response ARNs. Every
+recovered exact ARN was checked through owner-console metadata navigation and
+redirected to the empty, unfiltered Frankfurt list. This is additional UI
+reconciliation, not direct API absence proof. No raw provider message,
+credential or request value was retained. CloudTrail corroborates the token
+defect on these eight requests; it does not explain all 35 failed test results
+or prove that the repaired candidate passes AWS acceptance.
+
+The run conservatively reserved 21 of the approved 32 cumulative synthetic
+creations, including failures and pre-create attempts. Thirteen complete ARNs
+were recorded and all thirteen verified absent. Eight reservations had no
+recorded ARN; each exact name was separately checked through owner-console
+metadata navigation and redirected to an empty, unfiltered Frankfurt list.
+These UI checks are not direct API ResourceNotFound evidence. No unrecorded
+ARN or prefix-wide sweep was deleted. Artifact ID `12148766232`, evidence JSON
+SHA256 `7343dc9e422ed737fff8efd7e43b37075365869fb1b11413362326d86e90f718`.
+Its complete-creation-ledger flag remains false; retirement does not turn
+failed acceptance into success.
+
+Exact cleanup removed eight roles and their inline policies, the created OIDC
+provider, the setup user/login and exact MFA device, both managed policies,
+the KMS alias and the dedicated GitHub environment. The temporary setup CLI
+session was logged out, its isolated cache removed and its private browser
+closed. Root MFA and three preexisting service-linked roles were retained.
+The single KMS key is PendingDeletion with an exact seven-day window and
+scheduled deletion at `2026-10-25T19:57:36.420Z`; physical deletion is pending.
+Actual gross billing is not yet verified against the USD 1 procedural target.
+
+Offline regressions exposed two independent source defects. The real-provider
+fixture clock could lag services' wall-time enqueue timestamps and falsely
+report an empty drain. The fixture now floors its clock at wall time on every
+iteration while preserving explicit future replay advances. Real SQLite and
+PostgreSQL claim/authorization/settlement regressions cover both cases.
+The raw CreateSecret request also omitted ClientRequestToken. It now carries
+the existing stable job/target/generation/name token. Local wire and retry
+regressions require the token and preserve metadata-only creation, with both
+SecretString and SecretBinary absent. These fixes do not expand provider
+permissions. CloudTrail corroborates the eight token-related create rejections;
+the clock defect's contribution to this particular live run remains unproven.
+
+No live rerun or new fixture is authorized by these repairs. The original
+one-time execution, fixed deadlines and cumulative count are not reset.
+Required feature CI, successful live acceptance, current-head review and
+verified main merge remain delivery gates. Ordinary CI uses simulated AWS.
+No recurring AWS tests, paid-plan upgrade, release or deployment is enabled.
+
+## Historical continuation evidence, 2026-10-18
 
 The preserved R7 candidate was integrated onto main commit
 `7bef4d670d2dce0defb963326f0e1e05cfdb6798`. Its original 55 changed paths,

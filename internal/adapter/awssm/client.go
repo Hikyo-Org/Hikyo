@@ -73,12 +73,14 @@ type SecretMetadata struct {
 	Stages map[string][]string
 }
 
-// CreateSecretInput creates a secret with no version. The first value is
-// written by PutSecretValue so every Hikyo version carries CurrentStage.
+// CreateSecretInput creates a secret with no version. Raw HTTP callers supply
+// the stable token even without a value. The first value is written by
+// PutSecretValue so every Hikyo version carries CurrentStage.
 type CreateSecretInput struct {
-	Name     string
-	KMSKeyID string
-	Tags     map[string]string
+	Name               string
+	ClientRequestToken string
+	KMSKeyID           string
+	Tags               map[string]string
 }
 
 // API is the complete provider surface. The closure test pins this exact
@@ -504,11 +506,12 @@ func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) 
 
 func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) error {
 	request := struct {
-		Name        string `json:"Name"`
-		Description string `json:"Description"`
-		KmsKeyID    string `json:"KmsKeyId,omitempty"`
-		Tags        []tag  `json:"Tags"`
-	}{Name: input.Name, Description: "Managed by Hikyo. Values are overwritten on every sync.", KmsKeyID: input.KMSKeyID, Tags: tagList(input.Tags)}
+		Name               string `json:"Name"`
+		ClientRequestToken string `json:"ClientRequestToken"`
+		Description        string `json:"Description"`
+		KmsKeyID           string `json:"KmsKeyId,omitempty"`
+		Tags               []tag  `json:"Tags"`
+	}{Name: input.Name, ClientRequestToken: input.ClientRequestToken, Description: "Managed by Hikyo. Values are overwritten on every sync.", KmsKeyID: input.KMSKeyID, Tags: tagList(input.Tags)}
 	return c.do(ctx, "create-secret", request, nil)
 }
 

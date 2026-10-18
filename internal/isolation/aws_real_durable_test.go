@@ -225,6 +225,11 @@ func (h *realAWSDurable) publishVersions(versions []string) {
 func (h *realAWSDurable) drain() {
 	h.t.Helper()
 	for range 24 {
+		// Services enqueue against wall time, which can overtake the fixture
+		// clock during real provider calls. Preserve deliberate replay advances.
+		if now := time.Now().UTC(); h.clock.Before(now) {
+			h.clock = now
+		}
 		h.clock = h.clock.Add(time.Second)
 		worked, err := h.worker.RunOnce(h.t.Context())
 		if err != nil {
