@@ -11,8 +11,11 @@ job uses the built-in workflow token to send a normal `nightly-release`
 repository dispatch. It checks out no code and references no release secret.
 The existing publishing workflow consumes that event from the default branch.
 It retains exact-source full CI, signing, startup and upgrade checks, concurrency,
-and duplicate-source skipping. Only the explicit `nightly-chain-restart` event
-can opt into building without a predecessor.
+and duplicate-source skipping for immutable GitHub release publication. The
+downstream container job still runs: it can build or reuse the immutable image
+and promote its digest to `:nightly` if that release remains the latest published
+nightly. Only the explicit `nightly-chain-restart` event can opt into building
+without a predecessor.
 
 ## Use after merge
 

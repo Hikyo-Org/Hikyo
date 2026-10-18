@@ -27,9 +27,12 @@ the default-branch commit at dispatch time. Follow that run for the release
 result; a successful request alone does not mean publication succeeded.
 
 Manual releases run the same full CI, signing, startup and upgrade checks as the
-02:00 UTC schedule. They skip publication when the source commit already has a
-nightly. Selecting another branch skips the request job. Manual requests cannot
-bypass the signed predecessor requirement.
+02:00 UTC schedule. When the source commit already has a nightly, they skip
+creating another immutable GitHub release. The downstream container job still
+runs: it can build or reuse the immutable image and promote its digest to
+`:nightly` if that release remains the latest published nightly. Selecting
+another branch skips the request job. Manual requests cannot bypass the signed
+predecessor requirement.
 
 ## One-time public trust authorization
 
