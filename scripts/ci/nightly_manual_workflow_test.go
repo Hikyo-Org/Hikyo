@@ -11,9 +11,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// TestNightlyManualWorkflow verifies the request boundary, dispatch failures and
-// chain-restart-only predecessor exception without publishing a release.
-func TestNightlyManualWorkflow(t *testing.T) {
+// TestMainValidationWorkflowPolicyNightlyManual verifies the request boundary,
+// dispatch failures and chain-restart-only exception without publishing a release.
+func TestMainValidationWorkflowPolicyNightlyManual(t *testing.T) {
 	read := func(name string) queueWorkflowContract {
 		t.Helper()
 		raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", name))

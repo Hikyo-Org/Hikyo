@@ -33,13 +33,23 @@ exists on the default branch.
 - The regression test rejects the original trigger configuration and accepts
   the new configuration. It executes the real request step with a fake GitHub
   CLI to verify its fixed payload, successful summary, and API failure handling.
-- The new test is included in CI's existing workflow-policy test selection.
+- The new test uses the existing `TestMainValidationWorkflowPolicy` prefix, so
+  CI selects it without changing the frozen validation command or inventory.
 - Selected CI workflow-policy and security-release tests passed locally.
 - The nightly release shell fixtures, ShellCheck, actionlint for all changed
   workflows, and whitespace checks passed locally.
 - Commit, push, PR and merge are authorized. The local checks above do not
   establish remote CI or merge; use the delivery PR for that evidence. No
   nightly release was requested from the live repository during validation.
+
+## First merge-group failure
+
+Merge-group run `39134710103` failed in core tests and race shard 4 on the same
+coverage-conservation assertions. The initial registration edit changed the
+frozen supply-chain test command. The failure reproduced locally. Restoring
+the command and moving the new test under the existing workflow-policy prefix
+preserves the baseline checks and selects the new test. The baseline inventory
+and all coverage-reduction rejection tests remain unchanged.
 
 ## Existing operator configuration
 
