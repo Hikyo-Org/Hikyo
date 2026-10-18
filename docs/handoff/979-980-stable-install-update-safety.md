@@ -6,7 +6,9 @@ Implementation commit: `fe46f23b7ecc86e7edd9dfbd488faeaad7f7613e`.
 PR: [#991](https://github.com/Hikyo-Org/Hikyo/pull/991), linked to the
 implementation and parent coordination threads.
 The live issues were open with no comments and no matching open PR when work
-started on 2026-10-18. This work authorizes a PR only. Merge, auto-merge, enqueueing, release and deployment remain on hold.
+started on 2026-10-18. Agent delivery is authorized through PR creation and
+validation. Agents must not enqueue, enable auto-merge, merge, release or deploy.
+The user may manually enqueue or merge; preserve user-set queue state.
 
 ## #979: validate authenticated archive members
 
@@ -77,6 +79,17 @@ Passed on the implementation:
 - Repository-wide pinned goimports 0.50.0 check passed for 2,034 handwritten
   files; changed Go files pass gofmt.
 - `git diff --check`.
+- Canonical cache preparation: `go run -p 2 ./scripts/ci/prepare-lint-cache`
+  passed all default/UI/Darwin/Windows contexts.
+- Repository analyzers: `go test -p 2 -parallel 2 ./internal/lint -run 'Repo$' -count=1`
+  passed with the existing ten-minute timeout (243.809 seconds).
+- Static isolation invariants: `go test -p 2 -parallel 2 ./internal/isolation -run '^TestInvariant' -count=1`
+  passed (18.934 seconds). These are source invariants, not database integration.
+
+The final three checks ran sequentially in a completed host-wide queue job with
+`GOMAXPROCS=2`, `GOMEMLIMIT=512MiB`, `GOGC=50` and `GOFLAGS=-p=2`.
+Other operator-started queue work overlapped. These durations describe check
+execution and do not establish isolated performance or a memory guarantee.
 
 The first repository analyzer run (`go test -p 2 ./internal/lint -run 'Repo$'
 -count=1`, with `GOMAXPROCS=2`) timed out after ten minutes in
@@ -84,11 +97,9 @@ The first repository analyzer run (`go test -p 2 ./internal/lint -run 'Repo$'
 repository compiler-cache preparation completed its default context in 647.2
 seconds, then was gracefully interrupted in the UI context at the user
 resource-coordination boundary. Its processes exited and logs/cache were
-preserved. The analyzer retry and static isolation invariants are queued as a
-finite sequential batch through the host-wide validation queue, without a
-nested manual mutex. The batch uses `GOMAXPROCS=2`, `GOMEMLIMIT=512MiB`,
-`GOGC=50` and Go parallelism two. Queued work is not a passing result. The first
-clustered graph refresh was
+preserved. The later completed cache preparation, analyzer retry and static
+isolation results above supersede the incomplete attempt without erasing it.
+The first clustered graph refresh was
 stopped after AST extraction stalled; bounded structural retries also timed
 out (120/240 seconds). The AST pass reported 17 pre-existing Astro syntax
 warnings and no completed graph was produced. Source inspection, rather than
@@ -102,12 +113,17 @@ PostgreSQL integration, full repository suite, race suite, native Linux runtime,
 privileged installer, production release, provider acceptance or performance
 benchmark is claimed. The installer delivery fixtures stub network and bundle
 verification; actual trust signatures are exercised separately by the Go suites.
-Exact implementation-head Go/frontend feedback passed. Full-suite merge proof
+Exact implementation-head and signed evidence-head Go/frontend feedback and
+Go CodeQL passed. The evidence head inspected was
+`c6b17f211423ba095dcc0709d4ffbf905c2785f3`; subsequent documentation pushes
+require their own exact-head status inspection. Full-suite merge proof
 and maintainer security review remain required before any later merge decision.
 An unexpected merge-queue entry was observed and removed at
 2026-10-18 19:00:55 UTC to enforce the hold. A fresh GitHub read showed the PR
 open with both `mergeQueueEntry` and `autoMergeRequest` null. The enqueue
 timeline names account `Dunky13` but does not identify the initiating session.
+That removal preceded the user clarification permitting manual enqueue/merge.
+Future manual queue entries are preserved; agents do not restore removed entries.
 CodeRabbit reported a rate limit despite its success status, Qodo was
 billing-blocked, and MergeWatch reported action-required. There were no review
 threads at inspection. Cross-provider review was not run; it is not CLEAN.
