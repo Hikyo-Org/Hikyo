@@ -349,12 +349,13 @@ func buildCurrentState(ctx context.Context, cat store.CatalogueReader, envs stor
 	for _, g := range groups {
 		cur.KeyGroups = append(cur.KeyGroups, definitions.KeyGroup{ID: g.ID, Name: g.Name})
 	}
+	presenceByKey := indexPresenceByKey(presence)
 	for _, row := range keys {
 		decl, err := schema.ParseDeclaration([]byte(row.Declaration))
 		if err != nil {
 			return definitions.CurrentState{}, fmt.Errorf("service: key %s: stored declaration unreadable: %w", row.ID, err)
 		}
-		rules := presenceOf(row.ID, row.RequiredMode, row.ForbiddenMode, presence)
+		rules := presenceOf(row.ID, row.RequiredMode, row.ForbiddenMode, presenceByKey[row.ID])
 		cur.Keys = append(cur.Keys, definitions.CurrentKey{
 			ID: row.ID, Name: row.Name, FolderPath: row.FolderPath,
 			Classification: row.Classification, Description: row.Description,

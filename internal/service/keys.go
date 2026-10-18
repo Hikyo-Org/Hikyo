@@ -326,6 +326,17 @@ func presenceOf(keyID, requiredMode, forbiddenMode string, rows []store.KeyPrese
 	return out
 }
 
+// indexPresenceByKey buckets one immutable read's explicit rows in input order.
+// Callers keep the index local to that snapshot and rebuild after any writes.
+// The existing decoder still owns mode handling, including symbolic all/none.
+func indexPresenceByKey(rows []store.KeyPresence) map[string][]store.KeyPresence {
+	byKey := make(map[string][]store.KeyPresence)
+	for _, row := range rows {
+		byKey[row.KeyID] = append(byKey[row.KeyID], row)
+	}
+	return byKey
+}
+
 // presenceRows renders the explicit halves for storage. Nothing is written for
 // `all` or `none`: `all` must keep covering environments created later, so
 // expanding it here would silently exempt them.
@@ -777,8 +788,9 @@ func (s *Keys) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Key
 			return err
 		}
 		out = make([]Key, 0, len(rows))
+		presenceByKey := indexPresenceByKey(presence)
 		for _, row := range rows {
-			key, err := keyOf(row, presence)
+			key, err := keyOf(row, presenceByKey[row.ID])
 			if err != nil {
 				return err
 			}
