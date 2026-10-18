@@ -512,6 +512,9 @@ func (l *Limiter) allowIPIn(bucket map[string][]time.Time, ip string, allowance 
 // information — a bucket with no hits inside the window is indistinguishable
 // from one that never existed — so this is pure reclamation.
 func evictStale(bucket map[string][]time.Time, cutoff time.Time) {
+	var oldestKey string
+	var oldest time.Time
+	reclaimed := false
 	for k, hits := range bucket {
 		live := false
 		for _, t := range hits {
@@ -522,27 +525,19 @@ func evictStale(bucket map[string][]time.Time, cutoff time.Time) {
 		}
 		if !live {
 			delete(bucket, k)
+			reclaimed = true
+		} else if !reclaimed && (oldestKey == "" || hits[0].Before(oldest)) {
+			oldestKey, oldest = k, hits[0]
 		}
 	}
 	// If every tracked subject is live, forget the oldest. Losing a live
 	// bucket forgives whoever it belonged to, which is the safe direction:
 	// the instance-wide semaphore still bounds the work, and the alternative
 	// is unbounded memory.
-	if len(bucket) >= MaxTrackedSubjects {
-		var oldestKey string
-		var oldest time.Time
-		for k, hits := range bucket {
-			if len(hits) == 0 {
-				delete(bucket, k)
-				continue
-			}
-			if oldestKey == "" || hits[0].Before(oldest) {
-				oldestKey, oldest = k, hits[0]
-			}
-		}
-		if oldestKey != "" {
-			delete(bucket, oldestKey)
-		}
+	// Select the fallback during the stale sweep. Once any stale bucket is
+	// reclaimed there is room, so no further live-victim comparisons are needed.
+	if len(bucket) >= MaxTrackedSubjects && oldestKey != "" {
+		delete(bucket, oldestKey)
 	}
 }
 
@@ -704,30 +699,25 @@ func (l *Limiter) recordSuccess(key subjectKey) {
 // it is the one closest to being forgiven anyway, and the instance-wide
 // semaphore still bounds the actual work an admitted attempt can do.
 //
-// Both passes read the same map in the same order — an entry's count and its
-// deadline are one value, so there is no way for the sweep to drop one and
-// keep the other, and no length comparison between two maps to get backwards.
+// Find the fallback in the stale sweep rather than scanning the full map a
+// second time under mu. Once reclamation frees a slot, no fallback is needed.
+// Count and deadline remain one value and leave together.
 func (l *Limiter) evictAccounts() {
 	now := l.now()
+	var soonestKey subjectKey
+	var soonest time.Time
+	found, reclaimed := false, false
 	for key, state := range l.accounts {
 		// A zero `until` is an account still under the threshold: no live
 		// delay, nothing to lose by forgetting it.
 		if !state.until.After(now) {
 			delete(l.accounts, key)
-		}
-	}
-	if len(l.accounts) < MaxTrackedSubjects {
-		return
-	}
-	var soonestKey subjectKey
-	var soonest time.Time
-	found := false
-	for key, state := range l.accounts {
-		if !found || state.until.Before(soonest) {
+			reclaimed = true
+		} else if !reclaimed && (!found || state.until.Before(soonest)) {
 			soonestKey, soonest, found = key, state.until, true
 		}
 	}
-	if found {
+	if len(l.accounts) >= MaxTrackedSubjects && found {
 		delete(l.accounts, soonestKey)
 	}
 }
