@@ -1,11 +1,13 @@
 package selfupdate
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -13,7 +15,7 @@ import (
 )
 
 func TestStableWorkflowInstallerAuthenticatesBeforePersisting(t *testing.T) {
-	for _, mutation := range []string{"none", "canonical old", "installer state", "legacy state", "installer lock", "missing policy", "wrong archive signature", "rollback"} {
+	for _, mutation := range []string{"none", "canonical old", "installer state", "legacy state", "legacy catalog state", "catalog rollback", "catalog equivocation", "canonical metadata rollback", "canonical metadata equivocation", "canonical highest rollback", "installer lock", "missing policy", "wrong archive signature", "rollback"} {
 		t.Run(mutation, func(t *testing.T) {
 			f, m, stable, sign := testfixture.StableWorkflow(t)
 			installer, status, _, responses := installerFixtureForVersion(t, "1.0.0", false, "")
@@ -38,8 +40,33 @@ func TestStableWorkflowInstallerAuthenticatesBeforePersisting(t *testing.T) {
 				if err := os.WriteFile(statePath, testfixture.JSON(t, snapshot.Floor()), 0600); err != nil {
 					t.Fatal(err)
 				}
+			case "legacy catalog state", "catalog rollback", "catalog equivocation", "canonical metadata rollback", "canonical metadata equivocation", "canonical highest rollback":
+				snapshot, err := releasetrust.VerifySnapshot(f.Pinned, m, releasetrust.SnapshotFloor{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				floor := snapshot.Floor()
+				switch mutation {
+				case "catalog rollback":
+					floor.CatalogSequence++
+				case "catalog equivocation":
+					floor.CatalogSHA256 = releaseidentity.Hash([]byte("conflicting authenticated bytes"))
+				case "canonical metadata rollback":
+					floor.MetadataSequence++
+				case "canonical metadata equivocation":
+					floor.MetadataSHA256 = releaseidentity.Hash([]byte("conflicting authenticated bytes"))
+				case "canonical highest rollback":
+					floor.HighestReleaseSequence++
+				}
+				raw := testfixture.JSON(t, floor)
+				if mutation == "legacy catalog state" {
+					raw = testfixture.JSON(t, verificationState{TrustSequence: floor.MetadataSequence, MetadataSHA256: string(floor.MetadataSHA256), CatalogSequence: floor.CatalogSequence, CatalogSHA256: string(floor.CatalogSHA256), HighestReleaseSequence: f.Metadata.HighestReleaseSequence, HighestRelease: f.Metadata.HighestRelease})
+				}
+				if err := os.WriteFile(statePath, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
 			case "legacy state":
-				if err := updateVerificationState(statePath, f.Metadata, m.Metadata); err != nil {
+				if err := os.WriteFile(statePath, testfixture.JSON(t, verificationState{TrustSequence: f.Metadata.Sequence, MetadataSHA256: digestHex(m.Metadata), HighestReleaseSequence: f.Metadata.HighestReleaseSequence, HighestRelease: f.Metadata.HighestRelease}), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "installer lock":
@@ -69,12 +96,13 @@ func TestStableWorkflowInstallerAuthenticatesBeforePersisting(t *testing.T) {
 			case "rollback":
 				newer := f.Metadata
 				newer.Sequence = 3
-				if err := updateVerificationState(statePath, newer, testfixture.JSON(t, newer)); err != nil {
+				if err := os.WriteFile(statePath, testfixture.JSON(t, verificationState{TrustSequence: newer.Sequence, MetadataSHA256: digestHex(testfixture.JSON(t, newer)), HighestReleaseSequence: newer.HighestReleaseSequence, HighestRelease: newer.HighestRelease}), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
+			before, _ := os.ReadFile(statePath)
 			err := installer.verifyStable(t.Context(), status, archiveName, archive)
-			if mutation == "none" || mutation == "canonical old" || mutation == "installer state" || mutation == "legacy state" {
+			if mutation == "none" || mutation == "canonical old" || mutation == "installer state" || mutation == "legacy state" || mutation == "legacy catalog state" {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -85,10 +113,9 @@ func TestStableWorkflowInstallerAuthenticatesBeforePersisting(t *testing.T) {
 				if err == nil {
 					t.Fatal("accepted invalid release")
 				}
-				if mutation != "rollback" {
-					if _, err := os.Stat(statePath); !os.IsNotExist(err) {
-						t.Fatalf("persisted failed evidence: %v", err)
-					}
+				after, readErr := os.ReadFile(statePath)
+				if !bytes.Equal(before, after) || (before == nil && !os.IsNotExist(readErr)) {
+					t.Fatalf("failed evidence changed state: %v", readErr)
 				}
 			}
 		})

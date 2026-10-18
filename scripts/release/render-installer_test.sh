@@ -8,7 +8,12 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-installer-fixture.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 printf '{"root":"fixture"}\n' >"$fixture_dir/root.json"
-printf '#!/bin/sh\nexit 0\n' >"$fixture_dir/verify.sh"
+cat >"$fixture_dir/verify.sh" <<'VERIFY'
+#!/bin/sh
+set -eu
+touch "$INSTALLER_FIXTURE/verified"
+[ "${INSTALLER_VERIFY_FAIL:-}" != 1 ]
+VERIFY
 
 "$script_dir/render-installer.sh" 0.1.0 "$fixture_dir/root.json" \
 	"$fixture_dir/verify.sh" "$fixture_dir/install.sh" >/dev/null
@@ -127,7 +132,7 @@ printf 'installer fixture: metadata cannot overwrite pinned bootstrap paths or d
 
 # Happy path: every download is bounded, the executable lands via rename, and
 # staged files never outlive a failed publish. Verification is stubbed
-# (verify.sh exits 0); this exercises delivery mechanics, not trust.
+# (verify.sh records ordering); this exercises delivery mechanics, not trust.
 case "$(uname -s)" in Linux) os=Linux ;; Darwin) os=Darwin ;; *) exit 1 ;; esac
 case "$(uname -m)" in x86_64 | amd64) arch=x86_64 ;; arm64 | aarch64) arch=arm64 ;; *) exit 1 ;; esac
 archive="hikyo_1.0.0_${os}_${arch}.tar.gz"
@@ -168,13 +173,19 @@ printf '%s\n' "$*" >>"$INSTALLER_FIXTURE/mv-args"
 [ "${INSTALLER_MV_FAIL:-}" != 1 ] || exit 1
 exec /bin/mv "$@"
 EOF2
-chmod +x "$fixture_dir/bin/curl" "$fixture_dir/bin/mv"
+# Record the sync request without flushing unrelated worktrees on this host.
+cat >"$fixture_dir/bin/sync" <<'EOF2'
+#!/bin/sh
+touch "$INSTALLER_FIXTURE/synced"
+EOF2
+chmod +x "$fixture_dir/bin/curl" "$fixture_dir/bin/mv" "$fixture_dir/bin/sync"
 install_dir="$fixture_dir/install"
 printf 'verifier fixture Linux_arm64\n' >"$fixture_dir/verifiers/hikyo-release-verifier_Linux_arm64"
 run_installer() {
 	: >"$fixture_dir/curl-args"
 	: >"$fixture_dir/downloads"
 	: >"$fixture_dir/mv-args"
+	rm -f "$fixture_dir/verified" "$fixture_dir/synced"
 	PATH="$fixture_dir/bin:$PATH" INSTALLER_FIXTURE="$fixture_dir" \
 		INSTALLER_LIBRARY="$script_dir/../lib/release.sh" \
 		HIKYO_INSTALL_DIR="$install_dir" XDG_STATE_HOME="$fixture_dir/state" \
@@ -183,6 +194,7 @@ run_installer() {
 "$script_dir/render-installer.sh" 1.0.0 "$fixture_dir/root.json" \
 	"$fixture_dir/verify.sh" "$fixture_dir/stable-install.sh" "$fixture_dir/verifiers" >/dev/null
 run_installer || { cat "$fixture_dir/install-error" >&2; printf 'installer fixture failed: happy path\n' >&2; exit 1; }
+[ -e "$fixture_dir/synced" ]
 [ "$("$install_dir/hikyo")" = fixture-hikyo ] || { printf 'installed executable is not the archive payload\n' >&2; exit 1; }
 [ "$(wc -l <"$fixture_dir/curl-args")" -gt 0 ]
 awk '!/--max-filesize [0-9]+/ || !/--max-time [0-9]+/ || !/--connect-timeout [0-9]+/ || !/--proto-redir =https/ {bad=1; print}
@@ -193,6 +205,72 @@ awk -v dir="$install_dir" '$1 == "-f" && index($2, dir "/.hikyo-install.") == 1 
 	|| { printf 'installer fixture failed: executable was not published by rename\n' >&2; exit 1; }
 [ "$(ls -A "$install_dir")" = hikyo ] || { printf 'staged file left behind after install\n' >&2; exit 1; }
 printf 'installer fixture: downloads bounded; executable published by rename\n'
+
+# Archive refusal must preserve an existing executable and never publish a stage.
+cp "$fixture_dir/$archive" "$fixture_dir/valid.tar.gz"
+printf 'old executable\n' >"$fixture_dir/old-executable"
+for member in symlink hardlink duplicate empty nonexecutable directory fifo oversized expansion malformed malformed-tar truncated; do
+	rm -rf "$fixture_dir/payload"
+	mkdir "$fixture_dir/payload"
+	cp "$fixture_dir/old-executable" "$install_dir/hikyo"
+	case "$member" in
+		symlink) ln -s "$install_dir/hikyo" "$fixture_dir/payload/hikyo" ;;
+		hardlink)
+			printf 'linked payload\n' >"$fixture_dir/payload/other"
+			ln "$fixture_dir/payload/other" "$fixture_dir/payload/hikyo"
+			;;
+		directory) mkdir "$fixture_dir/payload/hikyo" ;;
+		fifo) mkfifo "$fixture_dir/payload/hikyo" ;;
+		empty) : >"$fixture_dir/payload/hikyo"; chmod 755 "$fixture_dir/payload/hikyo" ;;
+		nonexecutable) printf 'payload\n' >"$fixture_dir/payload/hikyo"; chmod 644 "$fixture_dir/payload/hikyo" ;;
+		expansion)
+			printf 'payload\n' >"$fixture_dir/payload/hikyo"; chmod 755 "$fixture_dir/payload/hikyo"
+			dd if=/dev/zero of="$fixture_dir/payload/other" bs=1 count=1 seek=536870912 2>/dev/null
+			;;
+		oversized)
+			# A sparse, harmless zero-filled source compresses cheaply.
+			dd if=/dev/zero of="$fixture_dir/payload/hikyo" bs=1 count=1 seek=268435456 2>/dev/null
+			chmod 755 "$fixture_dir/payload/hikyo"
+			;;
+		*) printf 'payload\n' >"$fixture_dir/payload/hikyo"; chmod 755 "$fixture_dir/payload/hikyo" ;;
+	esac
+	case "$member" in
+		expansion) tar --format=ustar -czf "$fixture_dir/$archive" -C "$fixture_dir/payload" hikyo other ;;
+		hardlink) tar -czf "$fixture_dir/$archive" -C "$fixture_dir/payload" other hikyo ;;
+		duplicate) tar -czf "$fixture_dir/$archive" -C "$fixture_dir/payload" hikyo hikyo ;;
+		malformed) printf 'not an archive\n' >"$fixture_dir/$archive" ;;
+		malformed-tar) printf 'not a tar archive\n' | gzip >"$fixture_dir/$archive" ;;
+		truncated) dd if="$fixture_dir/valid.tar.gz" of="$fixture_dir/$archive" bs=1 count=50 2>/dev/null ;;
+		*) tar -czf "$fixture_dir/$archive" -C "$fixture_dir/payload" hikyo ;;
+	esac
+	if run_installer; then
+		printf 'installer fixture failed: accepted %s archive\n' "$member" >&2; exit 1
+	fi
+	grep -E 'archive|member|expansion' "$fixture_dir/install-error" >/dev/null
+	cmp -s "$fixture_dir/old-executable" "$install_dir/hikyo" || { printf 'archive refusal replaced installed executable\n' >&2; exit 1; }
+	[ "$(ls -A "$install_dir")" = hikyo ]
+	[ ! -s "$fixture_dir/mv-args" ]
+done
+cp "$fixture_dir/valid.tar.gz" "$fixture_dir/$archive"
+printf 'installer fixture: invalid selected archive members and expansion refused before publication\n'
+
+# Failed authentication must never reach decompression or member inspection.
+cat >"$fixture_dir/bin/gzip" <<'GZIP'
+#!/bin/sh
+[ -f "$INSTALLER_FIXTURE/verified" ] || exit 1
+touch "$INSTALLER_FIXTURE/decompressed"
+exec /usr/bin/gzip "$@"
+GZIP
+chmod +x "$fixture_dir/bin/gzip"
+rm -f "$fixture_dir/decompressed"
+if (INSTALLER_VERIFY_FAIL=1 run_installer); then
+	printf 'installer fixture failed: ignored verification failure\n' >&2; exit 1
+fi
+[ ! -e "$fixture_dir/decompressed" ]
+cmp -s "$fixture_dir/old-executable" "$install_dir/hikyo"
+run_installer || { cat "$fixture_dir/install-error" >&2; exit 1; }
+[ -e "$fixture_dir/decompressed" ]
+printf 'installer fixture: bundle authentication precedes decompression and extraction\n'
 
 # A failed publish must leave neither a staged file nor a half-written target.
 rm -rf "$install_dir"

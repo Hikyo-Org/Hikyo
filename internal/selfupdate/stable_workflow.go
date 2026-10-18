@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
@@ -85,9 +84,5 @@ func (i *Installer) verifyStableWorkflow(ctx context.Context, status updatecheck
 	if err := releasetrust.VerifyStableArtifactSignature(snapshot, release, documents[archiveName+".sigstore.json"], archive); err != nil {
 		return err
 	}
-	var metadata releasetrust.Metadata
-	if err := definitions.DecodeStrict(material.Metadata, &metadata); err != nil {
-		return err
-	}
-	return updateVerificationState(statePath, metadata, material.Metadata, snapshot.Floor())
+	return updateVerificationState(statePath, snapshot.Floor())
 }
