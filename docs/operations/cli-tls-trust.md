@@ -84,8 +84,8 @@ second request or credential forwarding.
 
 ## Interactive establishment
 
-An operator may explicitly select system-CA verification when establishing a
-new HTTPS instance:
+An operator must explicitly select a verification mode when establishing a
+new HTTPS instance. For system-CA verification:
 
 ```bash
 hikyo context create production \
@@ -97,9 +97,30 @@ hikyo login https://secrets.example.com --tls-mode system-ca
 Both require a controlling terminal. The trust ceremony verifies the server
 using normal TLS and asks the operator to confirm the canonical origin and
 system-CA tradeoff before recording it. A new origin cannot be silently
-established by repository scripts. Omitting `--tls-mode` retains the existing
-SPKI fingerprint confirmation. `--tls-mode` cannot override a provisioned
-bundle or an already established reference with a different effective mode.
+established by repository scripts. Omitting `--tls-mode` for a new HTTPS origin
+is refused before any connection is opened. Existing stored entries and
+protected provisioned bundles retain their recorded or legacy mode without
+requiring a new flag. `--tls-mode` cannot override a provisioned bundle or an
+already established reference with a different effective mode.
+
+To establish an SPKI identity explicitly:
+
+```bash
+hikyo context create private \
+  --instance https://private.example.com --tls-mode spki
+```
+
+This choice authorizes first-contact inspection without CA-chain, expiry or
+hostname verification. The inspection sends no credentials or HTTP requests;
+the operator must independently verify and confirm the displayed fingerprint
+before it is stored. Subsequent requests must match that recorded leaf key.
+The SPKI-only `remote add` ceremony asks for explicit permission before its
+unverified inspection, followed by a separate fingerprint confirmation before
+reading metadata or asking for a directory credential.
+
+Account credential-establishment and recovery commands use already established
+trust or a protected trust bundle. Establish a new HTTPS reference with
+`context create --tls-mode spki|system-ca` before invoking those commands.
 
 ## Deliberate migration and refusal
 

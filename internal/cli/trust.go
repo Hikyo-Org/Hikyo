@@ -336,30 +336,21 @@ func SPKIFingerprint(cert *x509.Certificate) string {
 	return tlspolicy.SPKIFingerprint(cert)
 }
 
-// FetchIdentity opens a TLS connection purely to read the peer's public-key
-// fingerprint, for the establishment ceremony to display.
-//
-// Certificate verification is deliberately skipped HERE and only here: the
-// ceremony's whole purpose is to show a human what identity is on the other
-// end so they can confirm it, which includes the case of a self-signed
-// certificate a homelab operator issued themselves. Nothing is trusted as a
-// result of this call — the human's confirmation is what records the pin, and
-// every later connection verifies against that recorded pin.
-func FetchIdentity(origin string) (string, error) {
-	return fetchIdentity(context.Background(), origin, 10*time.Second)
-}
-
-func fetchIdentity(parent context.Context, origin string, timeout time.Duration) (string, error) {
-	return inspectTLSIdentity(parent, origin, timeout, TLSModeSPKI)
-}
-
-func inspectTLSIdentity(parent context.Context, origin string, timeout time.Duration, mode TLSMode) (string, error) {
+// inspectTLSIdentity probes only the TLS identity, without application requests
+// or credentials. trustMode must be earned before calling: an explicit TLS-mode
+// flag for new trust, or terminal consent for an SPKI-only remote inspection.
+// Empty and unknown policies never dial. A later fingerprint confirmation is
+// still required before the SPKI result may become trusted.
+func inspectTLSIdentity(parent context.Context, origin string, timeout time.Duration, trustMode TLSMode) (string, error) {
+	if trustMode != TLSModeSPKI && trustMode != TLSModeSystemCA {
+		return "", failf(ExitRefused, "TLS identity inspection requires an explicit verification policy, got %q", trustMode)
+	}
 	u, err := url.Parse(origin)
 	if err != nil {
 		return "", err
 	}
 	if u.Scheme != "https" {
-		return "", nil
+		return "", failf(ExitRefused, "TLS identity inspection requires HTTPS")
 	}
 	// url.Hostname/Port strip the brackets an IPv6 literal carries in a URL,
 	// and net.JoinHostPort puts them back. Splitting on ":" by hand gets
@@ -374,13 +365,13 @@ func inspectTLSIdentity(parent context.Context, origin string, timeout time.Dura
 	if err != nil {
 		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
 	}
-	config := &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12}
-	if mode == TLSModeSPKI {
-		// First-contact SPKI establishment shows the fingerprint for a human
-		// to confirm. No credential or application request crosses this
-		// connection. System-CA establishment retains normal verification.
-		// codeql[go/disabled-certificate-check]
-		config.InsecureSkipVerify = true //nolint:gosec // SPKI ceremony only; the operator must confirm the displayed identity
+	config := &tls.Config{
+		ServerName: u.Hostname(),
+		MinVersion: tls.VersionTLS12,
+		// Only explicit SPKI inspection consent permits the unverified
+		// fingerprint probe. System-CA inspection always verifies normally.
+		// Neither policy sends application requests or credentials here.
+		InsecureSkipVerify: trustMode == TLSModeSPKI,
 	}
 	conn := tls.Client(rawConn, config)
 	if err := conn.HandshakeContext(ctx); err != nil {

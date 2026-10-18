@@ -28,6 +28,9 @@ contexts:
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
 
+  New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
+  Existing stored or provisioned trust does not require the flag.
+
 managed configuration:
   hikyo instance-config status [-o table|json]
   hikyo instance-config adopt [--yes] [--confirm-restored-credentials]

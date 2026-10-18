@@ -92,7 +92,7 @@ The local CLI login prompts on the controlling terminal. Passwords never cross
 argv. Sessions are stored in the local Hikyo state directory with mode `0600`.
 
 ```bash
-hikyo login https://hikyo.example.com --local --as alice
+hikyo login https://hikyo.example.com --tls-mode system-ca --local --as alice
 hikyo whoami --instance https://hikyo.example.com
 hikyo logout --instance https://hikyo.example.com
 ```

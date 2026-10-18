@@ -28,14 +28,18 @@ from silently directing today's disclosure command.
 ```bash
 hikyo context create production \
   --instance https://hikyo.example.com \
+  --tls-mode system-ca \
   --org platform \
   --project payments-api \
   --env production
 ```
 
-For a new URL, the CLI shows the certificate identity and requires confirmation
-on a controlling terminal. Automation must receive a trust bundle through a
-protected channel.
+For a new HTTPS URL, explicitly choose `--tls-mode system-ca` for trusted-chain,
+validity and hostname verification, or `--tls-mode spki` to inspect and confirm
+the leaf fingerprint without those CA checks. The CLI requires confirmation on
+a controlling terminal. Omitting the mode refuses before connecting. Existing
+stored and provisioned pins retain their behavior. Automation must receive a
+trust bundle through the credential's protected channel.
 
 ```bash
 hikyo context list

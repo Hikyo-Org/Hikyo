@@ -139,7 +139,10 @@ The CLI needs the same root-key source as the server. The cloud Compose recipe
 sets `HIKYO_ROOT_KEY_FILE` for local operator commands as well as the server flag.
 Transfer the single-use authority securely to the administrator; the image is
 distroless and has no `cat` or shell. Use `docker compose cp` to copy it to a
-protected local directory, then use a matching verified CLI's
+protected local directory. With a matching verified CLI, first establish trust
+using `hikyo context create admin --instance https://hikyo.example.com:8443 --tls-mode system-ca`
+and confirm the origin. Use explicit `--tls-mode spki` for an independently
+verified private leaf fingerprint. Then invoke
 `hikyo account establish-credential --instance https://hikyo.example.com:8443 --as admin`
 on the administrator's machine. Enter the authority at its prompt, never in an
 argument, environment variable, or cloud output. Remove the authority files

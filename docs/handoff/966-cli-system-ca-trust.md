@@ -15,7 +15,10 @@ against system trust. Leaf-key rotation is acceptable when the new certificate
 passes that verification. Production leaves `RootCAs` unset and never enables
 `InsecureSkipVerify` or a pin callback in this mode.
 
-Omitted modes preserve legacy SPKI verification; explicit `spki` is equivalent.
+Omitted modes in stored entries and provisioned bundles preserve legacy SPKI
+verification; explicit `spki` is equivalent. New interactive HTTPS establishment
+requires an explicit `--tls-mode spki` or `--tls-mode system-ca` selection before
+connecting. This is the owner's selected policy following the CodeQL review.
 Missing pins never select system CA verification. Unknown, empty or null JSON
 modes and unknown or empty explicit flags are refused. Conflicting mode, pin
 and socket combinations are refused. Existing local-socket policy is retained.
@@ -45,17 +48,20 @@ non-operative amendment. It does not claim approval or a review waiver.
 All checks below passed against the final implementation on Go 1.27.2/macOS:
 
 ```sh
-go test ./internal/cli -count=1
-go test -race ./internal/cli -run 'TestTrustModes|TestProvisionedTrustMode|TestEstablishmentTLSModeFlag|TestSystemCATrust|TestPinnedClient|TestTrustStore|TestFetchIdentity' -count=1
-go test ./cmd/hikyo
+go test ./internal/cli ./cmd/hikyo -count=1
+go test -race ./internal/cli -run 'TestNewHTTPSInteractive|TestRemoteAdd|TestTLSIdentityInspection|TestExplicitSPKI|TestExistingAndProvisionedSPKI|TestContextCreateExplicitSPKI|TestSystemCATrust|TestTrustModes|TestProvisionedTrustMode|TestPinnedClient' -count=1
 go vet ./internal/cli
 go build ./cmd/hikyo
 scripts/ci/check-go-imports.sh
+node --test docs/site/scripts/test-prepare-content.mjs
 git diff --check
 ```
 
-The final full CLI suite completed in 9.618 seconds and focused race checks in
-6.171 seconds. The command-entry suite passed in 1.315 seconds. The API freeze
+The corrected full CLI suite completed in 9.711 seconds, the command-entry suite
+in 1.175 seconds and focused race checks in 9.006 seconds. Before the consent
+correction, head `7dc30f973` had passed the earlier CLI, focused race and command
+checks in 9.618, 6.171 and 1.315 seconds respectively; those earlier passes did
+not cover the first-contact permission gap. The API freeze
 guard reported dormant because the `v1.0.0` tag does not exist; that is not an
 active compatibility verification.
 
@@ -80,12 +86,41 @@ local and ignored by Git; documentation semantics were not regenerated.
 
 ## Review and remaining gates
 
-The parent reviewed the implementation and a separate same-provider reviewer
-checked it against live #966 and the repository rules. No production
-correctness/security finding remained. The reviewer identified a masked-test
+The initial parent review and a separate same-provider review checked the
+implementation against live #966 and the repository rules without identifying
+the first-contact consent gap later reported by CodeQL. That reviewer identified a masked-test
 weakness; malformed bundles now run against fresh stores as well as existing
 stores, and the reviewer verified that correction. This is source review, not
 cross-provider approval.
+
+The current-head CodeQL review of `7dc30f973` subsequently reported
+[alert 186](https://github.com/Hikyo-Org/Hikyo/security/code-scanning/186):
+the SPKI inspection handshake disabled CA checks before terminal confirmation.
+The owner selected explicit mode choice for new HTTPS establishment on
+2026-10-18. The correction refuses omitted modes before network access, preserves
+stored/provisioned pin compatibility, and requires explicit pre-probe consent
+in the shared SPKI-only remote-add ceremony. Fingerprint confirmation remains
+separate from permission to inspect. The inspection API has no implicit
+unverified default. The alert is not dismissed and no new scan suppression is
+introduced.
+
+The new regression tests failed before the correction: missing-mode login
+opened two connections, sent one HTTP request and persisted a pin; context
+creation opened one connection and persisted a pin; remote inspection without
+a terminal or after declined consent still connected once. Empty/unknown
+inspection policies also dialed. The corrected tests pass with zero accepted
+connections on those refusal paths. Positive tests retain explicit self-signed
+SPKI establishment and separately enforce fingerprint acceptance before trust
+is stored. The shared remote ceremony separately enforces fingerprint
+confirmation before any metadata request or credential prompt.
+
+The parent and independent same-provider reviewer found no remaining production
+issue in the correction. The reviewer caught stale validation commands/timings
+in this handoff; those now describe the corrected test run above. A fresh built
+binary smoke check verified missing-mode and non-TTY refusal plus legacy bundle
+and stored-pin compatibility. Hosted CodeQL and review state must be checked
+against the exact pushed head; local tests and source review alone do not
+establish alert closure.
 
 The [governance amendment procedure](../../GOVERNANCE.md#amendment-procedure)
 requires reopening the originating ticket, adversarial cross-model review and
@@ -95,8 +130,12 @@ authorize a qualifying review path or explicitly waive that review gate before
 the amendment can be locked. Claude subscription review is unavailable under
 the current working rules; another provider or paid route was not substituted.
 
-No remote CI, Windows/Linux runtime, live managed-proxy rotation, artifact
-publication/signature verification or downstream CI acceptance was performed.
+The initial PR head passed Go/frontend feedback and language analysis, but its
+combined CodeQL security check failed on the alert above. CodeRabbit, Qodo and
+MergeWatch did not produce reviews because of quota or billing limits; their
+availability notices are not approval. No Windows/Linux runtime, live
+managed-proxy rotation, artifact publication/signature verification or downstream
+CI acceptance was performed.
 The local unsigned development binary is not a signed CLI release. Keep #966
 open through ADR approval, merge, verified signed publication and the documented
 consumer update. Merge and release retain their separate authorization gates.

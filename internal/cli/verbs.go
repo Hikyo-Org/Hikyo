@@ -257,6 +257,9 @@ contexts:
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
 
+  New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
+  Existing stored or provisioned trust does not require the flag.
+
 managed configuration:
   hikyo instance-config status [-o table|json]
   hikyo instance-config adopt [--yes] [--confirm-restored-credentials]
@@ -790,7 +793,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	name := fs.String("name", "", "local reference to record this instance under (default: its host)")
 	socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 	trustFile := fs.String("trust-file", "", "provisioned trust bundle (the CI path)")
-	tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki (default) or system-ca")
+	tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki or system-ca (required for new HTTPS trust)")
 	positional, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -981,6 +984,10 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 		return entry, nil
 	}
 
+	if strings.HasPrefix(origin, "https://") && tlsMode == "" {
+		return TrustEntry{}, failf(ExitRefused, "new HTTPS trust requires an explicit verification choice: --tls-mode spki or --tls-mode system-ca; use login or context create to establish it")
+	}
+
 	// Interactive establishment. It REQUIRES a terminal and refuses non-TTY
 	// invocation outright: there is no silent trust-on-first-use, because the
 	// whole point is that a human looked at the fingerprint.
@@ -992,9 +999,12 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 	if err != nil {
 		return TrustEntry{}, failf(ExitRefused, "establishing an instance requires an interactive terminal so a human can confirm its trust mode and identity: %v", err)
 	}
-	pin, err := inspectTLSIdentity(context.Background(), origin, 10*time.Second, effectiveTLSMode(entry))
-	if err != nil {
-		return TrustEntry{}, err
+	var pin string
+	if strings.HasPrefix(origin, "https://") {
+		pin, err = inspectTLSIdentity(context.Background(), origin, 10*time.Second, entry.TLSMode)
+		if err != nil {
+			return TrustEntry{}, err
+		}
 	}
 	if entry.TLSMode != TLSModeSystemCA {
 		entry.SPKIPin = pin
@@ -1007,6 +1017,9 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 	}
 	identityLabel, identity := "certificate", shortPin(pin)
 	mode := effectiveTLSMode(entry)
+	if entry.TLSMode == TLSModeSPKI {
+		identity += " (leaf SPKI; no CA chain, certificate validity or hostname verification)"
+	}
 	if entry.TLSMode == TLSModeSystemCA {
 		identityLabel, identity = "verification", "system trusted CA chain, validity and hostname; certificate keys may rotate"
 	}
@@ -1614,7 +1627,7 @@ func runContext(_ context.Context, ios IO, args []string) error {
 		project := fs.String("project", "", "project")
 		environment := fs.String("env", "", "environment")
 		trustFile := fs.String("trust-file", "", "provisioned trust bundle")
-		tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki (default) or system-ca")
+		tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki or system-ca (required for new HTTPS trust)")
 		socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 		positional, err := parseInterspersed(fs, rest)
 		if err != nil {

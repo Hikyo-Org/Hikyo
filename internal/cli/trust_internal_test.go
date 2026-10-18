@@ -21,7 +21,7 @@ func TestPinnedClientReplacesPKIVerificationWithExactLeafIdentity(t *testing.T) 
 	}))
 	t.Cleanup(server.Close)
 
-	pin, err := FetchIdentity(server.URL)
+	pin, err := inspectTLSIdentity(t.Context(), server.URL, 10*time.Second, TLSModeSPKI)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestPinnedClientReplacesPKIVerificationWithExactLeafIdentity(t *testing.T) 
 	}
 }
 
-func TestFetchIdentityBoundsStalledTLSHandshake(t *testing.T) {
+func TestTLSIdentityInspectionBoundsStalledTLSHandshake(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestFetchIdentityBoundsStalledTLSHandshake(t *testing.T) {
 		}
 	}()
 	started := time.Now()
-	_, err = fetchIdentity(t.Context(), "https://"+listener.Addr().String(), 50*time.Millisecond)
+	_, err = inspectTLSIdentity(t.Context(), "https://"+listener.Addr().String(), 50*time.Millisecond, TLSModeSPKI)
 	if err == nil {
 		t.Fatal("stalled TLS handshake succeeded")
 	}
