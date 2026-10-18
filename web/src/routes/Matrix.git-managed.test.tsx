@@ -17,10 +17,12 @@ const mocks = vi.hoisted<{
   canEdit: boolean;
   groupId: string;
   folder: string;
+  foldersSuccess: boolean;
   create: ReturnType<typeof vi.fn>;
   initialize: ReturnType<typeof vi.fn>;
   stage: ReturnType<typeof vi.fn>;
   publish: ReturnType<typeof vi.fn>;
+  move: ReturnType<typeof vi.fn>;
 }>(() => ({
   source: 'db',
   workspace: null,
@@ -29,10 +31,12 @@ const mocks = vi.hoisted<{
   canEdit: true,
   groupId: '',
   folder: 'app',
+  foldersSuccess: true,
   create: vi.fn(),
   initialize: vi.fn(),
   stage: vi.fn(),
   publish: vi.fn(),
+  move: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-virtual', () => ({
@@ -57,6 +61,19 @@ vi.mock('../api/definitions.ts', async (importActual) => {
     useDefinitionsSettings: () => ({
       data: { definitions_source: mocks.source, can_declare_keys: mocks.canDeclare, can_edit_definitions: mocks.canEdit },
     }),
+  };
+});
+
+vi.mock('../api/catalogue.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/catalogue.ts')>();
+  return {
+    ...actual,
+    useFolders: () => ({
+      isSuccess: mocks.foldersSuccess,
+      // React Query can retain this data after a denied or failed refetch.
+      data: { items: [{ path: 'empty-folder' }], count: 1 },
+    }),
+    useMoveKeysToFolders: () => ({ mutateAsync: mocks.move, isPending: false }),
   };
 });
 
@@ -141,10 +158,12 @@ afterEach(() => {
   mocks.canEdit = true;
   mocks.groupId = '';
   mocks.folder = 'app';
+  mocks.foldersSuccess = true;
   mocks.create.mockReset();
   mocks.initialize.mockReset();
   mocks.stage.mockReset();
   mocks.publish.mockReset();
+  mocks.move.mockReset();
 });
 
 function render() {
@@ -162,6 +181,51 @@ function hasButton(container: HTMLElement, text: string): boolean {
 }
 
 describe('Matrix declaration availability by definitions source', () => {
+  it.each([
+    { state: 'successful', successful: true, expected: ['empty-folder'] },
+    { state: 'failed with retained data', successful: false, expected: [] },
+  ])('passes only a $state catalogue to cleanup moves', async ({ successful, expected }) => {
+    mocks.folder = '';
+    mocks.foldersSuccess = successful;
+    mocks.move.mockResolvedValue([{ id: 'key_a', error: null }]);
+    const view = await render();
+    const cleanup = [...view.container.querySelectorAll('button')].find((node) => node.textContent?.trim() === 'Cleanup');
+    if (cleanup === undefined) throw new Error('Cleanup action missing');
+    await act(async () => cleanup.click());
+    const folder = view.container.querySelector<HTMLInputElement>('input[aria-label="Folder for LOG_LEVEL"]');
+    if (folder === null) throw new Error('Cleanup folder input missing');
+    await act(async () => typeInto(folder, 'empty-folder'));
+    const move = [...view.container.querySelectorAll('button')].find((node) => node.textContent?.trim() === 'Move 1 key(s)');
+    if (move === undefined) throw new Error('Move action missing');
+    await act(async () => move.click());
+    expect(mocks.move).toHaveBeenCalledExactlyOnceWith({
+      moves: [{ id: 'key_a', name: 'LOG_LEVEL', folder: 'empty-folder' }],
+      existingFolders: expected,
+    });
+    await view.unmount();
+  });
+
+  it('suggests empty catalogue folders only while their query is successful', async () => {
+    const view = await render();
+    const click = async (label: string) => {
+      const button = [...view.container.querySelectorAll('button')].find((node) => node.textContent?.trim() === label);
+      if (button === undefined) throw new Error(`Missing ${label} action`);
+      await act(async () => button.click());
+    };
+    const options = () => [...view.container.querySelectorAll('.combobox [role="option"]')].map((node) => node.textContent);
+    await click('New key');
+    expect(options()).toEqual(['app', 'empty-folder']);
+    await click('Cancel');
+    mocks.foldersSuccess = false;
+    await click('New key');
+    expect(options()).toEqual(['app']);
+    await click('Cancel');
+    mocks.foldersSuccess = true;
+    await click('New key');
+    expect(options()).toEqual(['app', 'empty-folder']);
+    await view.unmount();
+  });
+
   it('stages supplied first values through initialization without publishing them', async () => {
     mocks.create.mockResolvedValue({ id: 'key_new' });
     mocks.initialize.mockResolvedValueOnce({ findings: [{ rule_id: 'test-rule', locator: 'NEW_KEY', acknowledgement: 'keep-token' }] });

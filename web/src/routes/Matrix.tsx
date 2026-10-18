@@ -208,6 +208,16 @@ export function Matrix({
   // structure back. Metadata-only, so it follows the declaration lock.
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const folderRows = useFolders(ref);
+  // A failed catalogue refetch can retain old data. Only trust its paths for
+  // suggestions and cleanup creation decisions while the read is successful.
+  const catalogueFolderPaths = useMemo(
+    () => folderRows.isSuccess ? folderRows.data.items.map((folder) => folder.path) : [],
+    [folderRows.data, folderRows.isSuccess],
+  );
+  const folderOptions = useMemo(() => [...new Set([
+    ...keys.map((key) => key.folder_path),
+    ...catalogueFolderPaths,
+  ])].filter((path) => path !== '').sort(), [keys, catalogueFolderPaths]);
   const moveKeys = useMoveKeysToFolders(ref);
   // Surface-2 scanner block (#183): the redacted findings a refused write
   // carried, plus the override that retries it with their acknowledgements.
@@ -1514,7 +1524,7 @@ export function Matrix({
 
       {create === null ? null : (
         <MatrixKeyCreate
-          folders={[...new Set(keys.map((key) => key.folder_path).filter((path) => path !== ''))]}
+          folders={folderOptions}
           environments={environments}
           protectedEnvironmentIds={protectedEnvironmentIds}
           initialFolder={create.folder}
@@ -1554,18 +1564,13 @@ export function Matrix({
       {!cleanupOpen || foldersLocked ? null : (
         <FolderCleanupDialog
           proposals={proposeFolders(keys)}
-          existingFolders={[
-            ...new Set([
-              ...keys.map((key) => key.folder_path),
-              ...(folderRows.data?.items ?? []).map((folder) => folder.path),
-            ]),
-          ].filter((path) => path !== '')}
+          existingFolders={folderOptions}
           busy={moveKeys.isPending}
           envName={(id) => environments.find((environment) => environment.id === id)?.name ?? id}
           onApply={(moves) =>
             moveKeys.mutateAsync({
               moves,
-              existingFolders: (folderRows.data?.items ?? []).map((folder) => folder.path),
+              existingFolders: catalogueFolderPaths,
             })
           }
           onClose={() => setCleanupOpen(false)}
@@ -1638,6 +1643,7 @@ export function Matrix({
         <KeyDeclarationDetail
           refData={ref}
           keyId={keyDetailId}
+          folders={folderOptions}
           environments={environments}
           impact={keyDetailImpact}
           impactReady={keyDetailImpactReady}

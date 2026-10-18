@@ -54,9 +54,8 @@ describe('FolderCleanupDialog', () => {
     expect(view.input('Move HIKYO_ARGON2_TIME').checked).toBe(true);
     expect(view.input('Move HIKYO_EXTERNAL_ORIGIN').checked).toBe(false);
     expect(view.button(/^Move/).textContent).toBe('Move 2 key(s)');
-    // Datalist offers existing and proposed folders once each.
-    const options = [...view.container.querySelectorAll('datalist option')].map((node) => node.getAttribute('value'));
-    expect(options).toEqual(['Argon2', 'Legacy']);
+    // Every row exposes the shared editable folder combobox.
+    expect(view.container.querySelectorAll('input[role="combobox"]')).toHaveLength(3);
 
     // Untick one, retype another, type a folder for the root key (which ticks it).
     await act(async () => {

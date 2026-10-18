@@ -44,3 +44,45 @@ export const Default: Story = {
     await expect(canvas.getByRole('button', { name: /^declare$/i })).toBeEnabled();
   },
 };
+
+export const FolderPicker: Story = {
+  args: { folders: ['app', 'database', 'empty-folder'], initialFolder: null },
+  play: async ({ canvas, userEvent, args }) => {
+    const folder = canvas.getByRole('combobox', { name: 'Group' });
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await expect(canvas.getByRole('option', { name: 'empty-folder' })).toBeVisible();
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
+    await expect(folder).toHaveValue('database');
+    await expect(args.onCreate).not.toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await userEvent.keyboard('{Escape}');
+    await expect(canvas.getByRole('heading', { name: /new key/i })).toBeVisible();
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.clear(folder);
+    await userEvent.type(folder, 'New services/日本語');
+    await userEvent.tab();
+    await userEvent.type(canvas.getByLabelText('Key name'), 'NEW_KEY');
+    await userEvent.click(canvas.getByRole('button', { name: /^declare$/i }));
+    await expect(args.onCreate).toHaveBeenCalledWith(expect.objectContaining({ folderPath: 'New services/日本語', name: 'NEW_KEY' }));
+  },
+};
+
+export const PhoneFolderPicker: Story = {
+  args: { folders: ['app', 'database', 'long/nested-folder-name-for-production'], initialFolder: null },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await expect(canvas.getByRole('option', { name: /long\/nested/ })).toBeVisible();
+  },
+};
+
+export const ExistingFolderKeepsItsName: Story = {
+  args: { folders: ['Database/Primary', 'Team keys/日本語'], initialFolder: null },
+  play: async ({ canvas, userEvent, args }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Show folders' }));
+    await userEvent.click(canvas.getByRole('option', { name: 'Team keys/日本語' }));
+    await userEvent.type(canvas.getByLabelText('Key name'), 'NEW_KEY');
+    await userEvent.click(canvas.getByRole('button', { name: /^declare$/i }));
+    await expect(args.onCreate).toHaveBeenCalledWith(expect.objectContaining({ folderPath: 'Team keys/日本語' }));
+  },
+};
