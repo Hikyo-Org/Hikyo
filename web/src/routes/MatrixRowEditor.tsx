@@ -208,6 +208,7 @@ export function MatrixRowEditor({
           onClose();
         }}
         onBackdropClick={onClose}
+        onClose={onClose}
       >
         <form
           onSubmit={(event) => {
@@ -552,8 +553,7 @@ export function MatrixRowEditor({
           {/* One action row, and it is last: everything the dialog asks for sits
               above it, the way ui/Dialog's own anatomy reads. */}
           <div className="dialog__actions">
-            {/* The close X is gone (ui/Dialog): Escape and this button are the
-                two ways out, and it leads the row the way Cancel does. */}
+            {/* Keep the footer exit alongside the opt-in corner close. */}
             <Button type="button" onClick={onClose}>
               Close
             </Button>

@@ -3413,6 +3413,22 @@ fieldset.field > legend {
   background: var(--scrim);
 }
 
+.dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.dialog__header .dialog__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dialog__header .btn {
+  flex-shrink: 0;
+}
+
 .dialog__title {
   margin: 0;
   font-size: var(--fs-lg);
