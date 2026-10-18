@@ -78,7 +78,7 @@ func oauth2StartError(a *API, ctx context.Context, err error) apigen.Oauth2Start
 	}
 	// OAuth2 cannot provide reauthentication evidence. Name the local-factor remedy.
 	if errors.Is(err, service.ErrOAuth2Reauth) {
-		return apigen.Oauth2Start409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, err.Error()))}
+		return apigen.Oauth2Start409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, service.ErrOAuth2Reauth.Error()))}
 	}
 	policy := wireErrorFor(err)
 	switch policy.code {

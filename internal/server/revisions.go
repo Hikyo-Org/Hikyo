@@ -538,9 +538,9 @@ func (s eventStream) VisitWatchProjectEventsResponse(w http.ResponseWriter) erro
 		return controller.SetWriteDeadline(time.Time{})
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	// no-cache and no proxy buffering: an intermediary that buffers a stream
+	// No storage and no proxy buffering: an intermediary that buffers a stream
 	// turns it into a hang, and one that caches it turns it into a lie.
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Add("Vary", "Accept")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Connection", "keep-alive")
