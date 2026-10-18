@@ -302,6 +302,14 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  {
+    id: 'transit-keys',
+    path: '/orgs/:org/projects/:project/transit-keys',
+    label: 'Transit keys',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Change approvals (#151). Project-scoped: the policy administration is a
   // project act, and the review queue reads the project's environments. It sits
   // in the project block beside machine access and settings.

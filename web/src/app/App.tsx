@@ -57,6 +57,7 @@ const InstanceConfig = lazy(() => loadSettingsRoutes().then((routes) => ({ defau
 const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
 const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
 const Adapters = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Adapters })));
+const TransitKeys = lazy(() => import('../routes/TransitKeys.tsx').then((routes) => ({ default: routes.TransitKeys })));
 const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
 const OrgSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.OrgSettings })));
 const ProjectSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ProjectSettings })));
@@ -136,6 +137,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   ),
   'machine-access': withRouteFallback(<MachineAccess />),
   adapters: withRouteFallback(<Adapters />),
+  'transit-keys': withRouteFallback(<WorkspaceScope><TransitKeys /></WorkspaceScope>),
   'cli-login': withRouteFallback(<CLILogin />),
   'cli-reauth': withRouteFallback(<CLIReauth />),
   'workspace-approve': withRouteFallback(<WorkspaceApprove />),

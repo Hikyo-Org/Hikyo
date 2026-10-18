@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, type Page } from '@playwright/test';
-import { zFileTarget, zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse } from '@hikyo/zod';
+import {
+  zFileTarget, zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse,
+  zTransitKey, zTransitCiphertextResult, zTransitDecryptResult, zTransitDataKeyResult,
+  zTransitSignatureResult, zTransitHmacResult, zTransitVerifyResult, zTransitTrimResult,
+} from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -1446,6 +1450,271 @@ async function expectAbsentFromPage(page: Page, value: string, what: string): Pr
   expect(value).not.toBe('');
   expect((await page.content()).includes(value), `${what} is present in the page`).toBe(false);
 }
+
+/** Observe the real browser request without replacing its response. */
+async function captureTransitResponse<T>(
+  page: Page,
+  pathname: string,
+  method: 'GET' | 'POST' | 'PATCH',
+  schema: z.ZodType<T>,
+  act: () => Promise<void>,
+): Promise<T> {
+  const response = page.waitForResponse((candidate) =>
+    candidate.request().method() === method && new URL(candidate.url()).pathname === pathname,
+  );
+  await act();
+  const received = await response;
+  expect(received.status()).toBe(method === 'POST' && pathname.endsWith('/transit-keys') ? 201 : 200);
+  return schema.parse(await received.json());
+}
+
+// #820 rides this existing CI shard. Every management and data-plane assertion
+// below reaches the real embedded SPA and Go service; no response is mocked.
+test.describe('transit keys', () => {
+  test.use({ sharedSession: true });
+
+  test('runs the real transit lifecycle, every cryptographic operation and display-once plaintext', async ({ passkeyPage: page }, testInfo) => {
+    const projectApi = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+    const route = `/orgs/${seed.org}/projects/${seed.project}/transit-keys`;
+    await page.goto(`${route}?env=${seed.dev}`);
+    await expect(page.getByRole('heading', { name: 'Transit keys', level: 1 })).toBeVisible();
+    const writeHeaders = async () => {
+      const csrf = (await page.context().cookies(BASE_URL)).find((cookie) => cookie.name === '__Host-hikyo-csrf');
+      if (csrf === undefined || csrf.value === '') throw new Error('Missing browser CSRF companion');
+      return { Origin: BASE_URL, 'X-Hikyo-CSRF': csrf.value };
+    };
+    // Each viewport owns an environment, so the empty-state proof does not
+    // depend on execution order or another flow's keys.
+    const environmentResponse = await page.request.post(`${projectApi}/environments`, {
+      headers: await writeHeaders(), data: { name: `transit-${testInfo.project.name}` },
+    });
+    expect(environmentResponse.status()).toBe(201);
+    const environment = zEnvironment.parse(await environmentResponse.json());
+    const api = `${projectApi}/environments/${environment.id}/transit-keys`;
+    const selectKey = async (name: string) => {
+      await page.getByRole('button', { name: `Inspect ${name}`, exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Key versions' })).toBeVisible();
+      await expect(page).toHaveURL(new RegExp(`key=${name}(?:&|$)`));
+    };
+    const manage = async (label: string, endpoint: string, fill?: () => Promise<void>) => {
+      await page.getByRole('region', { name: 'Key management', exact: true }).getByRole('button', { name: label, exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: label, exact: true });
+      if (fill !== undefined) await fill();
+      const key = await captureTransitResponse(page, endpoint, label === 'Configure key' ? 'PATCH' : 'POST', zTransitKey, async () => {
+        await dialog.getByRole('button', { name: label, exact: true }).click();
+      });
+      await expect(dialog).toBeHidden();
+      // A mutation's response can precede its metadata refetch. Wait for the
+      // public version/state before filling a form keyed by that revision.
+      const facts = page.getByRole('region', { name: 'Selected Transit key', exact: true }).locator('dl');
+      await expect(facts.locator('dt').filter({ hasText: /^State$/ }).locator('+ dd')).toHaveText(key.state);
+      await expect(facts.locator('dt').filter({ hasText: /^Latest version$/ }).locator('+ dd')).toHaveText(String(key.latest_version));
+      await expect(facts.locator('dt').filter({ hasText: /^Compromised through version$/ }).locator('+ dd')).toHaveText(String(key.compromised_through_version));
+      return key;
+    };
+    const chooseOperation = async (operation: string) => {
+      await page.getByRole('combobox', { name: 'Operation', exact: true }).selectOption(operation);
+    };
+    const run = async <T,>(name: string, operation: string, schema: z.ZodType<T>) =>
+      captureTransitResponse(page, `${api}/${name}/${operation}`, 'POST', schema, async () => {
+        await page.getByRole('button', { name: 'Run operation', exact: true }).click();
+      });
+    const clearPlaintext = async (plaintext: string) => {
+      const clear = page.getByRole('button', { name: 'Clear result', exact: true });
+      await expect(clear).toBeDisabled();
+      await page.getByRole('checkbox', { name: 'I have stored this plaintext', exact: true }).check();
+      await clear.click();
+      await expect(page.getByLabel('Plaintext output (base64)', { exact: true })).toHaveCount(0);
+      await expectAbsentFromPage(page, plaintext, 'display-once Transit plaintext');
+    };
+    const createKey = async (name: string, algorithm: string, plaintext = false) => {
+      await page.getByRole('button', { name: 'Create key', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Create transit key', exact: true });
+      await dialog.getByLabel('Key name', { exact: true }).fill(name);
+      await dialog.getByLabel('Algorithm', { exact: true }).selectOption(algorithm);
+      if (plaintext) await dialog.getByRole('checkbox', { name: 'Allow plaintext data keys', exact: true }).check();
+      const key = await captureTransitResponse(page, api, 'POST', zTransitKey, async () => {
+        await dialog.getByRole('button', { name: 'Create key', exact: true }).click();
+      });
+      await expect(dialog).toBeHidden();
+      await selectKey(name);
+      return key;
+    };
+    try {
+      await page.goto(`${route}?env=${environment.id}`);
+      await expect(page.getByRole('combobox', { name: 'Environment', exact: true })).toHaveValue(environment.id);
+      const empty = page.getByRole('status').filter({ hasText: 'No Transit keys in this environment.' });
+      await expectStatusIsTextAndAria(page, empty);
+
+      const encryption = await createKey('encryption', 'xchacha20-poly1305', true);
+      expect(encryption.exportable).toBe(false);
+      expect(encryption.latest_version).toBe(1n);
+      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true })).toContainText('crypto-use');
+      const message = Buffer.from(`transit-input-${testInfo.project.name}`).toString('base64');
+      const context = Buffer.from('browser-transit-context').toString('base64');
+      await chooseOperation('encrypt');
+      await page.getByLabel('Plaintext (base64)', { exact: true }).fill(message);
+      await page.getByLabel('Context (base64)', { exact: true }).fill(context);
+      const encrypted = await run('encryption', 'encrypt', zTransitCiphertextResult);
+      expect(encrypted.ciphertext).toMatch(/^hikyo:v1:/);
+      await expect(page.getByLabel('Ciphertext output', { exact: true })).toHaveValue(encrypted.ciphertext);
+
+      await chooseOperation('decrypt');
+      await page.getByLabel('Ciphertext', { exact: true }).fill(encrypted.ciphertext);
+      await page.getByLabel('Context (base64)', { exact: true }).fill(context);
+      const decrypted = await run('encryption', 'decrypt', zTransitDecryptResult);
+      expect(decrypted.plaintext === message, 'Transit decrypt did not recover the input').toBe(true);
+      expect(await page.getByLabel('Plaintext output (base64)', { exact: true }).inputValue() === message,
+        'the decrypt output is not the real plaintext').toBe(true);
+      await clearPlaintext(message);
+
+      const rotated = await manage('Rotate key', `${api}/encryption/rotate`);
+      expect(rotated.latest_version).toBe(2n);
+      await chooseOperation('rewrap');
+      await page.getByLabel('Ciphertext', { exact: true }).fill(encrypted.ciphertext);
+      await page.getByLabel('Context (base64)', { exact: true }).fill(context);
+      const rewrapped = await run('encryption', 'rewrap', zTransitCiphertextResult);
+      expect(rewrapped.key_version).toBe(2n);
+      expect(rewrapped.ciphertext).toMatch(/^hikyo:v2:/);
+
+      await chooseOperation('datakey');
+      await page.getByLabel('Data key size', { exact: true }).selectOption('256');
+      await page.getByRole('checkbox', { name: 'Return plaintext data key', exact: true }).check();
+      const dataKey = await run('encryption', 'datakey', zTransitDataKeyResult);
+      if (dataKey.plaintext == null) throw new Error('The real data-key operation omitted requested plaintext');
+      expect(Buffer.from(dataKey.plaintext, 'base64').length).toBe(32);
+      expect(await page.getByLabel('Plaintext output (base64)', { exact: true }).inputValue() === dataKey.plaintext,
+        'the displayed data key differs from the real response').toBe(true);
+      await clearPlaintext(dataKey.plaintext);
+
+      // This is explicit synthetic-blur coverage of the rendered application.
+      // Pinned headless Chromium keeps both tabs focused, including after a
+      // secondary CDP session disables focus emulation. Native OS/window focus
+      // loss is not proven here. The real data key still comes from the server.
+      const focusedDataKey = await run('encryption', 'datakey', zTransitDataKeyResult);
+      if (focusedDataKey.plaintext == null) throw new Error('The focus-loss data key omitted requested plaintext');
+      await expect(page.getByLabel('Plaintext output (base64)', { exact: true })).toBeVisible();
+      await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+      await expect(page.getByLabel('Plaintext output (base64)', { exact: true })).toHaveCount(0);
+      await expectAbsentFromPage(page, focusedDataKey.plaintext, 'data-key plaintext after synthetic blur');
+      await expect(page.getByRole('status').filter({ hasText: 'The window lost focus. Sensitive inputs and results were cleared.' })).toBeVisible();
+
+      // Configuration renders both the window and the exact caller entry.
+      const configured = await manage('Configure key', `${api}/encryption`, async () => {
+        const dialog = page.getByRole('dialog', { name: 'Configure key', exact: true });
+        await dialog.getByLabel('Minimum encrypt version', { exact: true }).fill('2');
+        await dialog.getByLabel('Minimum decrypt version', { exact: true }).fill('2');
+        await dialog.getByLabel('Rotation period (seconds)', { exact: true }).fill('3600');
+        await dialog.getByLabel('Caller entries', { exact: true }).fill(`${seed.principal} encrypt,decrypt,rewrap,datakey,datakey-plaintext`);
+      });
+      expect(configured.min_decrypt_version).toBe(2n);
+      expect(configured.rotation_period_seconds).toBe(3600n);
+      await expect(page.getByRole('region', { name: 'Selected Transit key', exact: true })).toContainText(seed.principal);
+      await page.getByRole('region', { name: 'Key management', exact: true }).getByRole('button', { name: 'Trim versions', exact: true }).click();
+      const trimDialog = page.getByRole('dialog', { name: 'Trim versions', exact: true });
+      await expect(trimDialog.getByRole('button', { name: 'Trim versions', exact: true })).toBeDisabled();
+      await trimDialog.getByRole('checkbox', { name: 'I understand these versions cannot be recovered', exact: true }).check();
+      const trimmed = await captureTransitResponse(page, `${api}/encryption/trim`, 'POST', zTransitTrimResult, async () => {
+        await trimDialog.getByRole('button', { name: 'Trim versions', exact: true }).click();
+      });
+      expect(trimmed.versions_deleted).toBe(1n);
+      expect(trimmed.key.versions.map((version) => version.version)).toEqual([2n]);
+      await expect(trimDialog).toBeHidden();
+
+      const assertEncryptRefused = async () => {
+        await chooseOperation('encrypt');
+        await page.getByLabel('Plaintext (base64)', { exact: true }).fill(message);
+        const response = page.waitForResponse((candidate) =>
+          candidate.request().method() === 'POST' && new URL(candidate.url()).pathname === `${api}/encryption/encrypt`,
+        );
+        await page.getByRole('button', { name: 'Run operation', exact: true }).click();
+        expect((await response).status()).toBe(409);
+        const refusal = page.getByRole('alert').filter({ hasText: 'The key state or policy refused this operation' });
+        await expectStatusIsTextAndAria(page, refusal);
+        await expect(page.getByRole('region', { name: 'Operation result', exact: true })).toHaveCount(0);
+      };
+      expect((await manage('Disable', `${api}/encryption/lifecycle`)).state).toBe('disabled');
+      await expect(page.getByRole('alert').filter({ hasText: 'This key is disabled. Cryptographic operations are refused.' })).toBeVisible();
+      await assertEncryptRefused();
+      expect((await manage('Enable', `${api}/encryption/lifecycle`)).state).toBe('active');
+      expect((await manage('Compromise', `${api}/encryption/lifecycle`)).compromised_through_version).toBe(2n);
+      await expect(page.getByRole('alert').filter({ hasText: 'Versions through 2 are compromised.' })).toBeVisible();
+      await assertEncryptRefused();
+      expect((await manage('Rotate key', `${api}/encryption/rotate`)).latest_version).toBe(3n);
+      await chooseOperation('encrypt');
+      await page.getByLabel('Plaintext (base64)', { exact: true }).fill(message);
+      expect((await run('encryption', 'encrypt', zTransitCiphertextResult)).key_version).toBe(3n);
+      expect((await manage('Retire', `${api}/encryption/lifecycle`)).state).toBe('retired');
+      expect((await manage('Schedule deletion', `${api}/encryption/lifecycle`)).state).toBe('pending-deletion');
+      expect((await manage('Cancel deletion', `${api}/encryption/lifecycle`)).state).toBe('disabled');
+
+      const signing = await createKey('signing', 'ed25519');
+      const publicKey = signing.versions[0]?.public_key;
+      if (publicKey == null) throw new Error('The real signing key omitted its public key');
+      await page.getByText('Public key for version 1', { exact: true }).click();
+      await expect(page.getByLabel('Public key version 1', { exact: true })).toHaveValue(publicKey);
+      await chooseOperation('sign');
+      await page.getByLabel('Message (base64)', { exact: true }).fill(message);
+      const signature = await run('signing', 'sign', zTransitSignatureResult);
+      await chooseOperation('verify');
+      await page.getByLabel('Message (base64)', { exact: true }).fill(message);
+      await page.getByLabel('Signature', { exact: true }).fill(signature.signature);
+      expect((await run('signing', 'verify', zTransitVerifyResult)).valid).toBe(true);
+      await expect(page.getByRole('status').filter({ hasText: 'Verification succeeded.' })).toBeVisible();
+      await page.getByLabel('Message (base64)', { exact: true }).fill(Buffer.from('a different message').toString('base64'));
+      await page.getByLabel('Signature', { exact: true }).fill(signature.signature);
+      expect((await run('signing', 'verify', zTransitVerifyResult)).valid).toBe(false);
+      await expect(page.getByRole('status').filter({ hasText: 'Verification failed.' })).toBeVisible();
+
+      await createKey('authentication', 'hmac-sha256');
+      await chooseOperation('hmac');
+      await page.getByLabel('Message (base64)', { exact: true }).fill(message);
+      const mac = await run('authentication', 'hmac', zTransitHmacResult);
+      await chooseOperation('hmac-verify');
+      await page.getByLabel('Message (base64)', { exact: true }).fill(message);
+      await page.getByLabel('MAC', { exact: true }).fill(mac.mac);
+      expect((await run('authentication', 'hmac-verify', zTransitVerifyResult)).valid).toBe(true);
+      await expect(page.getByRole('status').filter({ hasText: 'Verification succeeded.' })).toBeVisible();
+      await page.getByLabel('Message (base64)', { exact: true }).fill(Buffer.from('a different message').toString('base64'));
+      await page.getByLabel('MAC', { exact: true }).fill(mac.mac);
+      expect((await run('authentication', 'hmac-verify', zTransitVerifyResult)).valid).toBe(false);
+      await expect(page.getByRole('status').filter({ hasText: 'Verification failed.' })).toBeVisible();
+      await page.getByRole('button', { name: 'Clear result', exact: true }).click();
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Key versions' })).toBeVisible();
+      await expectAbsentFromPage(page, message, 'Transit operation input after reload');
+      await expectAbsentFromPage(page, dataKey.plaintext, 'data-key plaintext after reload');
+      await page.screenshot({ path: testInfo.outputPath('transit-keys-lifecycle.png'), fullPage: true });
+    } finally {
+      const deleted = await page.request.delete(`${projectApi}/environments/${environment.id}`, { headers: await writeHeaders() });
+      expect(deleted.status()).toBe(204);
+    }
+  });
+
+  for (const scheme of COLOR_SCHEMES) {
+    for (const surface of surfacesForFlow('transit-keys')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ passkeyPage: page }, testInfo) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(`/orgs/${seed.org}/projects/${seed.project}/transit-keys?env=${seed.dev}`);
+          const heading = page.getByRole('heading', { name: 'Transit keys', level: 1 });
+          await expect(heading).toBeVisible();
+          const create = page.getByRole('button', { name: 'Create key', exact: true });
+          const panel = page.getByRole('region', { name: 'Transit keys list', exact: true });
+          await expectPinnedAssertionSet(page, {
+            flow: 'transit-keys', surface: surface.id, theme: scheme,
+            text: [heading], radii: [[panel, 'container'], [create, 'control']],
+            fonts: [[heading, 'ui']],
+            colours: [[heading, 'color', '--tx'], [panel, 'backgroundColor', '--bg-panel'], [panel, 'borderTopColor', '--line']],
+            hairlines: [panel], density: [[create, testInfo.project.name === 'mobile' ? '--touch' : '--row']],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
+});
 
 test.describe('browser-only lifecycle', () => {
   test('takes an empty organisation to Kubernetes-ready delivery without the CLI', async ({
