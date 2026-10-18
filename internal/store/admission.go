@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Hikyo-Org/hikyo/internal/store/auditrow"
+	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/jackc/pgx/v5"
@@ -16,8 +18,9 @@ import (
 // SQLiteTransaction retains host reader/writer exclusion until SQL settles.
 // The native transaction cannot escape through a raw handle getter.
 type SQLiteTransaction struct {
-	tx    *sql.Tx
-	guard *upgrade.SQLiteGuard
+	auditActor auditActorCache
+	tx         *sql.Tx
+	guard      *upgrade.SQLiteGuard
 	// These two SQL templates contain no tenant results or retained arguments.
 	// They belong to this transaction alone; database/sql closes them when the
 	// transaction settles. Repository proof verification still precedes every
@@ -27,6 +30,8 @@ type SQLiteTransaction struct {
 }
 
 func (t *SQLiteTransaction) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	if slot, ok := sqlitegen.SnapshotInsertSlot(q); ok {
 		t.snapshotMu.Lock()
 		statement := t.snapshotStatements[slot]
@@ -47,16 +52,28 @@ func (t *SQLiteTransaction) ExecContext(ctx context.Context, q string, args ...a
 	return t.tx.ExecContext(ctx, q, args...)
 }
 func (t *SQLiteTransaction) PrepareContext(ctx context.Context, q string) (*sql.Stmt, error) {
+	// A returned statement can execute later without returning through this owner.
+	t.auditActor.disable()
 	return t.tx.PrepareContext(ctx, q)
 }
 func (t *SQLiteTransaction) QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	return t.tx.QueryContext(ctx, q, args...)
 }
 func (t *SQLiteTransaction) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	return t.tx.QueryRowContext(ctx, q, args...)
 }
-func (t *SQLiteTransaction) Commit() error   { return errors.Join(t.tx.Commit(), t.guard.Close()) }
-func (t *SQLiteTransaction) Rollback() error { return errors.Join(t.tx.Rollback(), t.guard.Close()) }
+func (t *SQLiteTransaction) Commit() error {
+	t.auditActor.disable()
+	return errors.Join(t.tx.Commit(), t.guard.Close())
+}
+func (t *SQLiteTransaction) Rollback() error {
+	t.auditActor.disable()
+	return errors.Join(t.tx.Rollback(), t.guard.Close())
+}
 
 // BeginSQLite acquires host admission before BEGIN. The write pool retains its
 // BEGIN IMMEDIATE policy; WAL readers retain the shared host guard too.
@@ -86,23 +103,32 @@ func (d *DB) BeginSQLite(ctx context.Context, readonly bool) (*SQLiteTransaction
 // connection that could outlive admission. Its shared control lock is owned by
 // this same SQL transaction and is released only by commit or rollback.
 type PostgresTransaction struct {
-	tx      pgx.Tx
-	release func() error
+	auditActor auditActorCache
+	tx         pgx.Tx
+	release    func() error
 }
 
 func (t *PostgresTransaction) Exec(ctx context.Context, q string, args ...any) (pgconn.CommandTag, error) {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	return t.tx.Exec(ctx, q, args...)
 }
 func (t *PostgresTransaction) Query(ctx context.Context, q string, args ...any) (pgx.Rows, error) {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	return t.tx.Query(ctx, q, args...)
 }
 func (t *PostgresTransaction) QueryRow(ctx context.Context, q string, args ...any) pgx.Row {
+	t.auditActor.invalidate()
+	defer t.auditActor.invalidate()
 	return t.tx.QueryRow(ctx, q, args...)
 }
 func (t *PostgresTransaction) Commit(ctx context.Context) error {
+	t.auditActor.disable()
 	return errors.Join(t.tx.Commit(ctx), t.closeOwner())
 }
 func (t *PostgresTransaction) Rollback(ctx context.Context) error {
+	t.auditActor.disable()
 	return errors.Join(t.tx.Rollback(ctx), t.closeOwner())
 }
 
@@ -146,7 +172,7 @@ func (d *DB) beginPostgresOn(ctx context.Context, beginner postgresBeginner, opt
 			return nil, err
 		}
 	}
-	return &PostgresTransaction{tx: tx}, nil
+	return &PostgresTransaction{tx: tx, auditActor: auditActorCache{disabled: options.IsoLevel != pgx.Serializable && options.IsoLevel != pgx.RepeatableRead}}, nil
 }
 
 // CheckAdmission is a read-only readiness decision under the same transaction
@@ -164,4 +190,22 @@ func (d *DB) CheckAdmission(ctx context.Context) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (t *SQLiteTransaction) auditActorKind(ctx context.Context, id string) (string, error) {
+	return t.auditActor.lookup(ctx, sqlitegen.New(t.tx).GetPrincipalKind, id)
+}
+
+func (t *PostgresTransaction) auditActorKind(ctx context.Context, id string) (string, error) {
+	return t.auditActor.lookup(ctx, pggen.New(t.tx).GetPrincipalKind, id)
+}
+
+// These private doors provide generated queries for audit insertion and the
+// kind resolver. Native transaction handles remain confined to this owner.
+func (t *SQLiteTransaction) auditSQLiteInserts() (*sqlitegen.Queries, auditrow.KindLookup) {
+	return sqlitegen.New(t.tx), t.auditActorKind
+}
+
+func (t *PostgresTransaction) auditPGInserts() (*pggen.Queries, auditrow.KindLookup) {
+	return pggen.New(t.tx), t.auditActorKind
 }

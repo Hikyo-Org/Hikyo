@@ -48,6 +48,9 @@ func TestAuditFilterMatches(t *testing.T) {
 			if got := tc.f.Matches(row); got != tc.want {
 				t.Fatalf("Matches = %v, want %v", got, tc.want)
 			}
+			if got := tc.f.Compile().Matches(row); got != legacyAuditMatches(tc.f, row) || got != tc.want {
+				t.Fatalf("compiled row predicate = %v, want %v", got, tc.want)
+			}
 		})
 	}
 }
