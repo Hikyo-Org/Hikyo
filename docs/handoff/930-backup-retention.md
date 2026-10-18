@@ -202,3 +202,27 @@ and pruning, doctor refusal during that interval, and alert timing based on
 measured run duration. The fail-closed service behavior is unchanged. Read-only
 documentation preparation and its regression test passed. Hosted validation of
 the follow-up commit remains separate from these local results.
+
+## Deployment doctor acceptance repair
+
+[Merge-group run 39122354784](https://github.com/Hikyo-Org/Hikyo/actions/runs/39122354784)
+failed Compose and Kubernetes acceptance after authenticating the native CLI
+doctor. Both consumers used the same exact finding-set validator, which omitted
+the new `backup-retention` finding. A fresh deployment legitimately reports it
+as a warning because no backup schedule is configured. The captured Compose
+response contained all fourteen findings and reproduced the rejection locally.
+
+The shared validator now requires that finding with exactly warning severity
+for these fresh unscheduled fixtures. Errors, missing or duplicate findings,
+unexpected healthy retention, and unrelated errors still refuse. Twenty-four
+behavioral regression cases cover SQLite capacity verdicts and PostgreSQL's
+unknown remote capacity. The captured hosted response passes the repaired
+validator. Both consumer success messages no longer embed a stale finding count.
+
+The complete CI-script Go suite passed in 111.105 seconds, along with its vet
+check, ShellCheck and shell syntax checks. The actual local macOS Compose
+round-trip passed authenticated doctor, byte-exact delivery, newline refusal,
+stamp advancement and app restart. Its independently measured critical storage
+capacity remained visible and was validated as an error; this is functional
+delivery proof, not healthy-capacity certification. Kubernetes was not rerun
+locally; a fresh hosted merge-group run must validate that deployment path.

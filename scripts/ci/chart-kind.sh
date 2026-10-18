@@ -491,7 +491,7 @@ if ! jq -e --arg engine postgres --arg volume_severity unknown -f scripts/ci/ass
 	jq '{status,findings:[.findings[]|{code,severity}]}' "$doctor_private/doctor.json" >&2
 	exit 1
 fi
-echo 'chart-kind: authenticated instance doctor reported all 12 operational finding families'
+echo 'chart-kind: authenticated instance doctor reported the complete measured finding set'
 
 document_status=$(forwarded_get https://localhost:18080/ "$work/document.html" \
 	--cacert "$work/tls/ca.crt" --header 'Accept: text/html') || exit 1
