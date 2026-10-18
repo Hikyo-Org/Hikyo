@@ -163,8 +163,40 @@ case "$os" in
 	Linux | Darwin) archive="$archive.tar.gz" ;;
 esac
 [ -f "$bundle/$archive" ] || fail "verified archive $archive is absent"
+# Inspect only authenticated bytes. Decompress under a file-size ceiling before
+# tar scans headers: selected-member checks alone do not bound a gzip bomb.
+# POSIX shells use 512-byte blocks; some supported shells use 1024-byte blocks.
+# This caps the temporary file at at most 1 GiB and accepts at most 512 MiB.
+(ulimit -f 1048576 && gzip -dc "$bundle/$archive" >"$scratch/archive.tar") \
+	|| fail 'invalid archive or expansion limit exceeded'
+[ "$(wc -c <"$scratch/archive.tar")" -le 536870912 ] || fail 'archive expansion limit exceeded'
+(ulimit -f 8192 && LC_ALL=C tar -tf "$scratch/archive.tar" >"$scratch/members") \
+	|| fail 'malformed archive or member inventory exceeds limit'
+# Reject aliases and escaped/ambiguous names so tar cannot select another path
+# as hikyo. Other release files are inspected but never materialized.
+awk '
+	/[^A-Za-z0-9._\/-]/ || /^\// || /(^|\/)\.\.?($|\/)/ {bad=1}
+	$0 == "hikyo" {selected++}
+	END {exit (bad || NR > 10000 || selected != 1)}
+' "$scratch/members" || fail 'archive must contain exactly one unambiguous hikyo member'
+(ulimit -f 2048 && LC_ALL=C tar --numeric-owner -tvf "$scratch/archive.tar" hikyo >"$scratch/member") \
+	|| fail 'cannot inspect hikyo archive member'
+# GNU tar prints owner/group and size in columns 2/3; BSD tar prints the
+# link count, owner, group and size in columns 2/3/4/5. Refuse other layouts.
+binary_size=$(awk '
+	{
+		if (NF == 6 && $2 ~ /^[0-9]+\/[0-9]+$/) size=$3
+		else if (NF == 9 && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/) size=$5
+		else exit 1
+		if ($1 !~ /^-/ || $1 !~ /[xst]/ || $NF != "hikyo" || size !~ /^[0-9]+$/ || size < 1 || size > 268435456) exit 1
+		print size
+	}
+	END {if (NR != 1) exit 1}
+' "$scratch/member") || fail 'hikyo member must be a nonempty bounded regular executable'
+# Extract to stdout, never to an archive-controlled filesystem path.
+LC_ALL=C tar -xOf "$scratch/archive.tar" hikyo >"$scratch/hikyo" || fail 'cannot extract hikyo member'
+[ "$(wc -c <"$scratch/hikyo")" -eq "$binary_size" ] || fail 'hikyo member size mismatch'
 mkdir -p "$install_dir"
-tar -xzf "$bundle/$archive" -C "$scratch" hikyo
 # Publish the way internal/selfupdate/replace_unix.go does: stage beside the
 # target, then rename. rename(2) is atomic on one filesystem, so a reader sees
 # the old executable or the new one, never a partial write. Two known gaps:
