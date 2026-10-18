@@ -30,7 +30,7 @@ import urllib.request
 
 ACCOUNT = "099256073061"
 REGION = "eu-central-1"
-PREFIX = "hikyo-e2e-20261018a/"
+PREFIX = "hikyo-e2e-20261018b/"
 REPOSITORY = "Hikyo-Org/Hikyo"
 SUBJECT = (
     "repo:Hikyo-Org@316726515/Hikyo@1316165429:"
@@ -45,6 +45,21 @@ ROLE_NAMES.update({name: "hikyo-158-" + name for name in ("source", "oracle", "c
 SHA = re.compile(r"[0-9a-f]{40}")
 MAX_LINE = 65536
 MAX_OUTPUT = 16 * 1024 * 1024
+MAX_DIAGNOSTICS = 128
+DIAGNOSTIC_OPERATIONS = (
+    "DescribeSecret", "CreateSecret", "PutSecretValue", "UpdateSecretVersionStage",
+    "TagResource", "DeleteSecret", "RestoreSecret", "GetSecretValue",
+)
+DIAGNOSTIC_CODES = (
+    "AccessDeniedException", "DecryptionFailure", "EncryptionFailure", "ExpiredToken",
+    "ExpiredTokenException", "InvalidClientTokenId", "InvalidParameterException",
+    "InvalidRequestException", "LimitExceededException", "ResourceExistsException",
+    "ResourceNotFoundException", "ThrottlingException", "UnrecognizedClientException", "other",
+)
+DIAGNOSTIC_PATTERN = re.compile(
+    r"[ \t]+aws_real_diagnostics_test\.go:[1-9][0-9]*: synthetic AWS diagnostic: ("
+    + "|".join(DIAGNOSTIC_OPERATIONS) + r") (" + "|".join(DIAGNOSTIC_CODES) + r")\n?"
+)
 GROUPS = (
     "auth-boundaries", "lifecycle", "role-auth", "kms-denial", "iam-denial",
     "adoption-witness", "promoted-replay",
@@ -349,7 +364,8 @@ class Evidence:
                      "status": "preparing", "stage": "compile", "account": ACCOUNT, "region": REGION, "prefix": PREFIX,
                      "recorded_arns": [], "verified_absent_arns": [], "unresolved_names": [],
                      "tests": {}, "maximum_create_reservations": 32,
-                     "creation_reservations": [], "complete_creation_ledger": False}
+                     "creation_reservations": [], "complete_creation_ledger": False,
+                     "diagnostics": [], "diagnostics_truncated": False}
         self.save()
 
     def save(self) -> None:
@@ -363,6 +379,15 @@ class Evidence:
                 self.data["tests"][test] = action
         output = event.get("Output", "")
         require(isinstance(output, str) and len(output) <= MAX_LINE)
+        if action == "output" and isinstance(test, str) and test in TEST_NAMES:
+            diagnostic = DIAGNOSTIC_PATTERN.fullmatch(output)
+            if diagnostic:
+                if len(self.data["diagnostics"]) < MAX_DIAGNOSTICS:
+                    self.data["diagnostics"].append({
+                        "test": test, "operation": diagnostic[1], "code": diagnostic[2],
+                    })
+                else:
+                    self.data["diagnostics_truncated"] = True
         # Only exact known fixture diagnostics are accepted, never general
         # provider messages, raw JSON, panic text or arbitrary test output.
         arn_pattern = re.escape(f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:{PREFIX}") + r"[A-Za-z0-9/_+=.@-]{1,450}-[A-Za-z0-9]{6}"
