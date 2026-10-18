@@ -799,7 +799,7 @@ func (s *Delivery) recordUnbound(ctx context.Context, actor Actor, cause error) 
 // snapshotRevision (the delivered revision, pinned or latest) rides out for the
 // per-value disclosure records; schemaRevision is the human-facing catalogue
 // ordering.
-func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
+func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer deliveryFieldOpener,
 	scope domain.Scope, selected *store.Snapshot, grants []authz.GrantRow, mode delivery.Mode,
 	pinnedNonCurrent bool, supplied map[string]string, only map[string]bool) (keys []DeliveredKey, manifest []delivery.Row, schemaRevision, snapshotRevision int64, err error) {
 	var snapshot store.Snapshot
@@ -890,6 +890,12 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 	// validated against is a property of the snapshot, and a schema that has
 	// moved since must not make history claim it was validated at the new one.
 	return keys, manifest, snapshot.SchemaRevision, snapshot.Revision, nil
+}
+
+// deliveryFieldOpener keeps snapshot-open accounting in tests around the real
+// project sealer, without adding a production probe or retaining plaintext.
+type deliveryFieldOpener interface {
+	OpenField(crypto.ProjectFieldAAD, []byte) ([]byte, error)
 }
 
 // withoutReveal is the grant set a machine caller effectively holds while its
