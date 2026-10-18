@@ -1,0 +1,26 @@
+name: nightly-release-manual
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  request:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      # Creating a repository_dispatch event requires contents: write.
+      contents: write
+    steps:
+      # No checkout or release credentials: repository_dispatch loads the
+      # publishing workflow and source from the default branch.
+      - name: Request nightly release from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api --method POST "repos/$GH_REPO/dispatches" -f event_type=nightly-release
+          printf 'Nightly release requested. Follow [nightly-release](%s/%s/actions/workflows/nightly.yml) for validation and publication.\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" >>"$GITHUB_STEP_SUMMARY"

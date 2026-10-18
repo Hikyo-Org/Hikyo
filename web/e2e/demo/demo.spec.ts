@@ -130,6 +130,49 @@ test('developer stages drafts, cannot publish or edit production, and reset clea
   await expect(page.getByRole('button', { name: /^LOG_LEVEL in development:/ })).toHaveText('debug');
 });
 
+test('value editor corner close discards edits, restores focus and retires revealed secrets', async ({ page, isMobile }) => {
+  await page.goto('./?account=admin');
+  const opener = page.getByRole('button', { name: /^LOG_LEVEL in development:/ });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'LOG_LEVEL', exact: true });
+  const close = dialog.getByRole('button', { name: 'Close dialog', exact: true });
+  await expect(close).toBeInViewport();
+  const bounds = await close.boundingBox();
+  const heading = await dialog.getByRole('heading', { name: 'LOG_LEVEL', exact: true }).boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(heading).not.toBeNull();
+  if (bounds === null || heading === null) throw new Error('missing dialog header');
+  expect(bounds.x).toBeGreaterThan(heading.x + heading.width);
+  expect(Math.abs(bounds.y - heading.y)).toBeLessThanOrEqual(1);
+  if (isMobile) {
+    expect(bounds.width).toBeGreaterThanOrEqual(44);
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+  }
+  await dialog.getByRole('textbox', { name: 'development value' }).fill('discard-me');
+  // Keyboard activation of the icon must close without submitting the form.
+  await close.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await expect(opener).toHaveText('debug');
+  await opener.click();
+  await expect(page.getByRole('textbox', { name: 'development value' })).toHaveValue('debug');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+
+  const secretOpener = page.getByRole('button', { name: /^AUTH_SECRET in development:/ });
+  await secretOpener.click();
+  await page.getByRole('button', { name: 'Reveal AUTH_SECRET', exact: true }).click();
+  const revealed = page.getByText('DEMO_ONLY_development_not_a_real_secret', { exact: true });
+  await expect(revealed).toBeVisible();
+  await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(secretOpener).toBeFocused();
+  await secretOpener.click();
+  await expect(revealed).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'development value' })).toHaveValue('');
+});
+
 test('admin publishes, browses new history, reveals fake secrets and switches to a fresh viewer', async ({ page }) => {
   await page.goto('./?account=admin');
   await page.getByRole('button', { name: /^LOG_LEVEL in development:/ }).click();
@@ -231,6 +274,7 @@ const surfaceChecks = {
   'change-approvals': { mode: 'read-only', heading: 'Change approvals', sample: 'Sample review: rotate the payment provider credential.', tab: 'Review queue', environment: DEMO_IDS.staging },
   'temporary-access': { mode: 'read-only', heading: 'Temporary access', sample: 'Sample request: investigate a checkout error.', environment: DEMO_IDS.staging },
   adapters: { mode: 'read-only', heading: 'Deployment adapters', sample: 'acme/payments' },
+  'transit-keys': { mode: 'excluded', result: 'unavailable' },
   'project-audit': { mode: 'read-only', heading: 'Project audit', sample: 'revision.published' },
   'project-settings': { mode: 'read-only', heading: /^Project settings\s*·?\s*Payments$/, sample: 'Identity' },
   'cli-login': { mode: 'excluded', result: 'unavailable' },

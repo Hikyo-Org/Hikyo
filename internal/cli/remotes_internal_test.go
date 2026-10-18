@@ -14,7 +14,7 @@ import (
 )
 
 // `remote add`'s CEREMONY ORDER (#71, multi-instance ADR § The connection
-// entry): TLS connect, fingerprint confirm, PRE-AUTH META READ, and only then
+// entry): inspection consent, TLS connect, fingerprint confirm, PRE-AUTH META READ, and only then
 // the credential paste.
 //
 // The meta read is not decoration. It is what lets the command refuse a peer
@@ -58,7 +58,7 @@ func fakePeer(t *testing.T, meta *apigen.Meta, hits *int) *httptest.Server {
 // asked for. Every case below must refuse before that point.
 func addRemoteIO(t *testing.T) IO {
 	t.Helper()
-	session, err := disclose.NewTerminalSession(&answeringTTY{in: strings.NewReader("y\n")})
+	session, err := disclose.NewTerminalSession(&answeringTTY{in: strings.NewReader("y\ny\n")})
 	if err != nil {
 		t.Fatal(err)
 	}

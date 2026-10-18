@@ -271,6 +271,13 @@ authenticated-API budget.
   reading inputs from stdin or files.
 - The client SDK is the generated TypeScript client and the generated Go
   models; there is no bespoke SDK.
+- The project's **Transit keys** WebUI selects one environment and exposes
+  metadata, management and the cryptographic data plane through these same
+  generated operations. Managed private key material is never returned.
+  Cryptographic inputs and outputs stay outside browser storage and
+  query/mutation caches;
+  decrypted plaintext and opted-in plaintext data keys are displayed once and
+  cleared on dismissal, departure, focus loss or authority replacement.
 - Label-free gauges for live keys, keys due for rotation and keys pending
   deletion, guarded by a known-flag gauge like the dynamic-secret gauges.
 

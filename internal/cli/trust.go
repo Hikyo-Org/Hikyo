@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -33,7 +35,7 @@ import (
 // which repository content can perform:
 //
 //   - interactive establishment, which requires a terminal and displays the
-//     origin and its certificate fingerprint for explicit confirmation;
+//     origin and its TLS verification policy for explicit confirmation;
 //   - provisioned establishment, where a trust bundle arrives through the
 //     same protected channel as the credential itself.
 //
@@ -41,8 +43,29 @@ import (
 // who cannot read the secret store cannot redirect the credential, and one
 // who can read it already holds the credential.
 
-// TrustEntry records one instance's canonical origin and the certificate
-// identity captured at establishment.
+// TLSMode is the explicit HTTPS verification choice. Its zero value is only
+// for legacy entries whose JSON omits tls_mode, never an explicit JSON value.
+type TLSMode string
+
+func (m *TLSMode) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("TLS verification mode must be spki or system-ca: %w", err)
+	}
+	if value != TLSModeSPKI && value != TLSModeSystemCA {
+		return fmt.Errorf("unknown TLS verification mode %q", value)
+	}
+	*m = TLSMode(value)
+	return nil
+}
+
+const (
+	TLSModeSPKI     = "spki"
+	TLSModeSystemCA = "system-ca"
+)
+
+// TrustEntry records the canonical origin and verification policy captured
+// at establishment.
 type TrustEntry struct {
 	// Name is the local reference a pin file or context names. A repository
 	// file may name a reference; it can never introduce an origin.
@@ -51,9 +74,11 @@ type TrustEntry struct {
 	// only to this origin, and a redirect off it is never followed with one.
 	Origin string `json:"origin"`
 	// SPKIPin is base64(sha256(SubjectPublicKeyInfo)) of the certificate
-	// identity seen at establishment. Empty only for a loopback HTTP origin
-	// carried over the same-user Unix socket recorded below.
+	// identity seen at establishment. Empty for explicit system-ca trust or
+	// a loopback HTTP origin carried over the same-user Unix socket below.
 	SPKIPin string `json:"spki_pin,omitempty"`
+	// TLSMode selects HTTPS verification. Omission preserves legacy SPKI trust.
+	TLSMode TLSMode `json:"tls_mode,omitempty"`
 	// CLISocket carries loopback HTTP without putting credentials on an
 	// identity-free TCP listener. Its directory and socket are euid-owned 0700
 	// and 0600, and both peers verify the other's kernel-reported UID.
@@ -64,10 +89,11 @@ type TrustEntry struct {
 // format. It is deliberately the same shape as a store entry — trust material
 // is not a secret, it is a binding.
 type TrustBundle struct {
-	Name      string `json:"name"`
-	Origin    string `json:"origin"`
-	SPKIPin   string `json:"spki_pin,omitempty"`
-	CLISocket string `json:"cli_socket,omitempty"`
+	Name      string  `json:"name"`
+	Origin    string  `json:"origin"`
+	SPKIPin   string  `json:"spki_pin,omitempty"`
+	TLSMode   TLSMode `json:"tls_mode,omitempty"`
+	CLISocket string  `json:"cli_socket,omitempty"`
 }
 
 // ErrUntrusted reports an instance reference that is not in the local store.
@@ -93,7 +119,7 @@ func (s *TrustStore) Load() (map[string]TrustEntry, error) {
 		return nil, err
 	}
 	var entries map[string]TrustEntry
-	if err := json.Unmarshal(raw, &entries); err != nil {
+	if err := decodeTrustJSON(raw, &entries); err != nil {
 		return nil, fmt.Errorf("trust store at %s is unreadable: %w", s.path(), err)
 	}
 	if entries == nil {
@@ -115,7 +141,13 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	if err != nil || origin != entry.Origin {
 		return errors.New("origin must be canonical")
 	}
+	if err := validateTLSMode(entry); err != nil {
+		return err
+	}
 	if strings.HasPrefix(origin, "https://") {
+		if entry.TLSMode == TLSModeSystemCA {
+			return nil
+		}
 		if entry.CLISocket != "" {
 			return errors.New("https trust cannot carry a local CLI socket")
 		}
@@ -139,7 +171,37 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	return nil
 }
 
+// effectiveTLSMode makes omitted legacy SPKI and explicit SPKI equivalent.
+func effectiveTLSMode(entry TrustEntry) TLSMode {
+	if strings.HasPrefix(entry.Origin, "https://") && entry.TLSMode == "" {
+		return TLSModeSPKI
+	}
+	return entry.TLSMode
+}
+
+func validateTLSMode(entry TrustEntry) error {
+	if entry.TLSMode != "" && entry.TLSMode != TLSModeSPKI && entry.TLSMode != TLSModeSystemCA {
+		return fmt.Errorf("unknown TLS verification mode %q", entry.TLSMode)
+	}
+	if !strings.HasPrefix(entry.Origin, "https://") {
+		if entry.TLSMode != "" {
+			return errors.New("TLS verification modes require HTTPS and cannot carry a local CLI socket")
+		}
+		return nil
+	}
+	if entry.CLISocket != "" {
+		return errors.New("https trust cannot carry a local CLI socket")
+	}
+	if entry.TLSMode == TLSModeSystemCA && entry.SPKIPin != "" {
+		return errors.New("system-ca trust cannot carry an SPKI pin")
+	}
+	return nil
+}
+
 func validateCredentialTransport(entry TrustEntry) error {
+	if err := validateTLSMode(entry); err != nil {
+		return err
+	}
 	if strings.HasPrefix(entry.Origin, "https://") {
 		if entry.CLISocket != "" {
 			return errors.New("https trust cannot carry a local CLI socket")
@@ -195,14 +257,14 @@ func (s *TrustStore) Put(e TrustEntry) error {
 		return err
 	}
 	if prior, ok := entries[e.Name]; ok {
-		if prior.Origin != e.Origin || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket {
+		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket {
 			return failf(ExitRefused,
 				"instance %q is already established with a different identity\n"+
-					"  recorded: %s (pin %s)\n"+
-					"  offered:  %s (pin %s)\n"+
-					"A changed pin is what an interception looks like. If the change is legitimate, "+
+					"  recorded: %s (mode %s, pin %s)\n"+
+					"  offered:  %s (mode %s, pin %s)\n"+
+					"A changed origin, mode or identity requires deliberate re-establishment. If the change is legitimate, "+
 					"remove the entry deliberately with `hikyo context delete --instance %s` and establish it again.",
-				e.Name, prior.Origin, shortPin(prior.SPKIPin), e.Origin, shortPin(e.SPKIPin), e.Name)
+				e.Name, prior.Origin, effectiveTLSMode(prior), shortPin(prior.SPKIPin), e.Origin, effectiveTLSMode(e), shortPin(e.SPKIPin), e.Name)
 		}
 		return nil
 	}
@@ -274,26 +336,21 @@ func SPKIFingerprint(cert *x509.Certificate) string {
 	return tlspolicy.SPKIFingerprint(cert)
 }
 
-// FetchIdentity opens a TLS connection purely to read the peer's public-key
-// fingerprint, for the establishment ceremony to display.
-//
-// Certificate verification is deliberately skipped HERE and only here: the
-// ceremony's whole purpose is to show a human what identity is on the other
-// end so they can confirm it, which includes the case of a self-signed
-// certificate a homelab operator issued themselves. Nothing is trusted as a
-// result of this call — the human's confirmation is what records the pin, and
-// every later connection verifies against that recorded pin.
-func FetchIdentity(origin string) (string, error) {
-	return fetchIdentity(context.Background(), origin, 10*time.Second)
-}
-
-func fetchIdentity(parent context.Context, origin string, timeout time.Duration) (string, error) {
+// inspectTLSIdentity probes only the TLS identity, without application requests
+// or credentials. trustMode must be earned before calling: an explicit TLS-mode
+// flag for new trust, or terminal consent for an SPKI-only remote inspection.
+// Empty and unknown policies never dial. A later fingerprint confirmation is
+// still required before the SPKI result may become trusted.
+func inspectTLSIdentity(parent context.Context, origin string, timeout time.Duration, trustMode TLSMode) (string, error) {
+	if trustMode != TLSModeSPKI && trustMode != TLSModeSystemCA {
+		return "", failf(ExitRefused, "TLS identity inspection requires an explicit verification policy, got %q", trustMode)
+	}
 	u, err := url.Parse(origin)
 	if err != nil {
 		return "", err
 	}
 	if u.Scheme != "https" {
-		return "", nil
+		return "", failf(ExitRefused, "TLS identity inspection requires HTTPS")
 	}
 	// url.Hostname/Port strip the brackets an IPv6 literal carries in a URL,
 	// and net.JoinHostPort puts them back. Splitting on ":" by hand gets
@@ -308,15 +365,15 @@ func fetchIdentity(parent context.Context, origin string, timeout time.Duration)
 	if err != nil {
 		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
 	}
-	conn := tls.Client(rawConn, &tls.Config{
-		// This first-contact ceremony cannot verify an identity it has not yet
-		// shown the operator. It returns only the fingerprint; no credential or
-		// application request crosses this connection.
-		// codeql[go/disabled-certificate-check]
-		InsecureSkipVerify: true, //nolint:gosec // the ceremony displays the identity for a human to confirm; nothing is trusted here
-		ServerName:         u.Hostname(),
-		MinVersion:         tls.VersionTLS12,
-	})
+	config := &tls.Config{
+		ServerName: u.Hostname(),
+		MinVersion: tls.VersionTLS12,
+		// Only explicit SPKI inspection consent permits the unverified
+		// fingerprint probe. System-CA inspection always verifies normally.
+		// Neither policy sends application requests or credentials here.
+		InsecureSkipVerify: trustMode == TLSModeSPKI,
+	}
+	conn := tls.Client(rawConn, config)
 	if err := conn.HandshakeContext(ctx); err != nil {
 		_ = conn.Close()
 		return "", failf(ExitUnavailable, "cannot reach %s: %v", origin, err)
@@ -331,10 +388,24 @@ func fetchIdentity(parent context.Context, origin string, timeout time.Duration)
 
 func shortPin(pin string) string {
 	if pin == "" {
-		return "none (same-user local socket)"
+		return "none"
 	}
 	if len(pin) <= 16 {
 		return pin
 	}
 	return pin[:16] + "…"
+}
+
+// Trust schemas reject unsupported fields instead of silently discarding a
+// requested verification policy or accepting a misspelled security field.
+func decodeTrustJSON(raw []byte, out any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return errors.New("expected one JSON object")
+	}
+	return nil
 }

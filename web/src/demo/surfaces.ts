@@ -27,6 +27,7 @@ export const DEMO_SURFACE_POLICIES = {
   'key-detail': { mode: 'interactive' },
   values: { mode: 'interactive' },
   'machine-access': { mode: 'read-only' },
+  'transit-keys': { mode: 'excluded', reason: 'Managed cryptographic keys require a full Hikyo installation.' },
   'change-approvals': { mode: 'read-only' },
   'temporary-access': { mode: 'read-only' },
   adapters: { mode: 'read-only' },

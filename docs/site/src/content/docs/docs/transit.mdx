@@ -122,6 +122,24 @@ the version's public key (shown by `hikyo transit key show`) can verify them
 without Hikyo. MAC verification is constant-time. An invalid signature or MAC is
 a successful answer of `valid: false`, and the CLI exits with status 4.
 
+## Web interface
+
+Open **Transit keys** in a project's sidebar, then choose an environment. The
+inventory shows key metadata, retained versions and public keys, caller entries,
+rotation status and pending deletion. Managed private key material is never
+returned to the browser.
+
+Key management requires `crypto-manage`; cryptographic operations require
+`crypto-use` in the selected environment and must also satisfy the key's allowed
+operations and caller entries. These atoms are not included in role templates.
+The server evaluates authorization and lifecycle policy on every request.
+
+The interactive data plane accepts base64 inputs and the encoded Transit
+ciphertext, signature or MAC formats. Decrypted plaintext and opted-in plaintext
+data keys appear once. Dismissal, navigation and loss of window focus clear
+the displayed result. Inputs and outputs are never saved in browser storage or
+the query cache; save any output you need before dismissing it.
+
 ## Rotation and the version window
 
 Rotation appends a new version; new output uses it immediately and old

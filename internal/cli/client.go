@@ -26,8 +26,8 @@ import (
 //
 // Two properties it enforces that a bare http.Client does not:
 //
-//   - the recorded SPKI pin is verified on connect, so a validly-certificated
-//     impostor is refused even though its chain is real;
+//   - the established TLS policy is verified on connect: either the exact
+//     leaf SPKI pin, or system-CA chain, validity and hostname verification;
 //   - a redirect is NEVER followed with a credential attached. A redirect off
 //     the recorded origin is the exfiltration path the trust store exists to
 //     close, and following it would hand the bearer to whoever answered.
@@ -125,6 +125,9 @@ func (c *Client) wait(ctx context.Context, d time.Duration) error {
 
 // NewClient builds a client bound to a trust entry.
 func NewClient(entry TrustEntry, bearer string) (*Client, error) {
+	if err := validateTLSMode(entry); err != nil {
+		return nil, failf(ExitRefused, "invalid trust entry %q: %v; re-establish it", entry.Name, err)
+	}
 	transport := &http.Transport{
 		TLSHandshakeTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:   true,
@@ -134,49 +137,56 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 		if entry.CLISocket != "" {
 			return nil, failf(ExitRefused, "trust entry %q combines https with a local CLI socket; re-establish it", entry.Name)
 		}
-		if entry.SPKIPin == "" {
+		if effectiveTLSMode(entry) == TLSModeSPKI && entry.SPKIPin == "" {
 			return nil, failf(ExitRefused,
 				"trust entry %q names an https origin with no recorded certificate pin; re-establish it", entry.Name)
 		}
-		pin := entry.SPKIPin
-		transport.TLSClientConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			// The pin REPLACES chain and hostname verification rather than
-			// supplementing it, deliberately: the self-hosted audience this
-			// product is built for routinely runs a certificate their own CA
-			// issued, and refusing that would push them to a worse workaround.
-			// What is left is strictly stronger than a chain for this purpose
-			// — an impostor needs the pinned private key, and a
-			// publicly-trusted certificate for the same hostname does not
-			// become acceptable just because it chains to a public root.
-			//
-			// The pin is checked against the LEAF ONLY (rawCerts[0]).
-			// Scanning the whole chain would let an attacker satisfy it by
-			// including the legitimate certificate as an intermediate while
-			// presenting a leaf whose private key they hold — the pin would
-			// match a certificate that is not the one terminating the
-			// connection.
-			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-				if len(rawCerts) == 0 {
-					return fmt.Errorf("%s presented no certificate", entry.Origin)
-				}
-				leaf, err := x509.ParseCertificate(rawCerts[0])
-				if err != nil {
-					return fmt.Errorf("%s presented an unparseable certificate: %w", entry.Origin, err)
-				}
-				if SPKIFingerprint(leaf) == pin {
-					return nil
-				}
-				return fmt.Errorf(
-					"certificate identity for %s does not match the pin recorded at establishment (%s). "+
-						"This is what an interception looks like; it is also what a re-keyed certificate looks like. "+
-						"If the change is legitimate, re-establish the instance deliberately",
-					entry.Origin, shortPin(pin))
-			},
-			// Chain verification is intentionally replaced by the exact leaf
-			// SPKI check above so operator-issued certificates remain usable.
-			// codeql[go/disabled-certificate-check]
-			InsecureSkipVerify: true, //nolint:gosec // replaced by the leaf public-key pin above, which a valid chain alone cannot satisfy
+
+		if entry.TLSMode == TLSModeSystemCA {
+			// Ordinary Go TLS verifies the chain, validity and hostname against
+			// the system roots. No pin callback or verification bypass applies.
+			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		} else {
+			pin := entry.SPKIPin
+			transport.TLSClientConfig = &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				// The pin REPLACES chain and hostname verification rather than
+				// supplementing it, deliberately: the self-hosted audience this
+				// product is built for routinely runs a certificate their own CA
+				// issued, and refusing that would push them to a worse workaround.
+				// What is left is strictly stronger than a chain for this purpose
+				// — an impostor needs the pinned private key, and a
+				// publicly-trusted certificate for the same hostname does not
+				// become acceptable just because it chains to a public root.
+				//
+				// The pin is checked against the LEAF ONLY (rawCerts[0]).
+				// Scanning the whole chain would let an attacker satisfy it by
+				// including the legitimate certificate as an intermediate while
+				// presenting a leaf whose private key they hold — the pin would
+				// match a certificate that is not the one terminating the
+				// connection.
+				VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+					if len(rawCerts) == 0 {
+						return fmt.Errorf("%s presented no certificate", entry.Origin)
+					}
+					leaf, err := x509.ParseCertificate(rawCerts[0])
+					if err != nil {
+						return fmt.Errorf("%s presented an unparseable certificate: %w", entry.Origin, err)
+					}
+					if SPKIFingerprint(leaf) == pin {
+						return nil
+					}
+					return fmt.Errorf(
+						"certificate identity for %s does not match the pin recorded at establishment (%s). "+
+							"This is what an interception looks like; it is also what a re-keyed certificate looks like. "+
+							"If the change is legitimate, re-establish the instance deliberately",
+						entry.Origin, shortPin(pin))
+				},
+				// Chain verification is intentionally replaced by the exact leaf
+				// SPKI check above so operator-issued certificates remain usable.
+				// codeql[go/disabled-certificate-check]
+				InsecureSkipVerify: true, //nolint:gosec // replaced by the leaf public-key pin above, which a valid chain alone cannot satisfy
+			}
 		}
 	} else if !isLoopbackOrigin(entry.Origin) {
 		// http to anywhere but loopback would put the bearer on the wire in

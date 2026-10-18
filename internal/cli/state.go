@@ -246,7 +246,7 @@ func FindPinFile(dir string) (PinFile, string, error) {
 		switch {
 		case err == nil:
 			var pin PinFile
-			if err := json.Unmarshal(raw, &pin); err != nil {
+			if err := decodeTrustJSON(raw, &pin); err != nil {
 				return PinFile{}, "", failf(ExitRefused, "%s is not valid JSON: %v", candidate, err)
 			}
 			return pin, candidate, nil

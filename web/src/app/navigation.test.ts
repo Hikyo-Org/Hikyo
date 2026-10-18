@@ -28,6 +28,7 @@ describe('the route policy registry', () => {
     expect(sectionsFor('project').map((s) => s.id)).toEqual([
       'matrix',
       'machine-access',
+      'transit-keys',
       'change-approvals',
       'temporary-access',
       'adapters',

@@ -346,6 +346,10 @@ export async function seedTenant(
   // break-glass `reveal` could not be revoked over the network, and the
   // write-only editing flow needs to take it away and give it back.
   for (const capability of [
+    // Transit atoms are never template-seeded. Grant them before browser
+    // sessions are minted so the flow exercises real authorization.
+    'crypto-use',
+    'crypto-manage',
     'read',
     'edit',
     'publish',

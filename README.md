@@ -167,7 +167,7 @@ hikyo update channel stable|nightly|off
 hikyo update check
 
 # Create a scoped environment
-hikyo login <instance-url> --local --as <user>
+hikyo login <instance-url> --tls-mode system-ca --local --as <user>
 hikyo org create --name <name>
 hikyo project create --name <name> --org <org-id>
 hikyo env create --name <name> --org <org-id> --project <project-id>
@@ -183,6 +183,10 @@ hikyo values list --context <ctx>
 hikyo values diff --context <ctx> --left development --right production
 hikyo values copy --context <ctx> --from staging --to production --keys NAME
 ```
+
+New HTTPS trust requires an explicit `--tls-mode system-ca` or `--tls-mode spki`
+choice before connecting. Existing stored and provisioned pins retain their
+behavior; a missing pin never enables CA verification.
 
 Secret values never belong in command-line arguments. Use `--value-file` or
 `--stdin`. Every command answers `--help` at any depth (`hikyo values set --help`,

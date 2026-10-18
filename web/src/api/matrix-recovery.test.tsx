@@ -254,6 +254,7 @@ for (const remote of [false, true]) {
             'matrix-signals', 'matrix-pending', 'environment-settings', 'approval-requests', 'access-requests',
             'ssh-cas', 'ssh-profiles', 'ssh-certificates', 'delivery-targets', 'dynamic-leases',
             'pki-certificates', 'pki-certificate-profiles',
+            'transit-keys', 'transit-key',
           ].map((resource) => [resource, ref.org, ref.project, prodId]);
           for (const key of retiredKeys) {
             if (matrix.client.getQueryData(key) === undefined) matrix.client.setQueryData(key, { fixture: 'retired' });
@@ -348,6 +349,7 @@ it('keeps environment caches for a successful null metadata tombstone until an a
     'matrix-signals', 'matrix-pending', 'environment-settings', 'approval-requests', 'access-requests',
     'ssh-cas', 'ssh-profiles', 'ssh-certificates', 'delivery-targets', 'dynamic-leases',
     'pki-certificates', 'pki-certificate-profiles',
+    'transit-keys', 'transit-key',
   ].map((resource) => [resource, ref.org, ref.project, prodId]);
   try {
     await matrix.render({ connection: 'healthy', recoveries: 0, lost: false });

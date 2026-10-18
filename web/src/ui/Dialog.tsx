@@ -9,6 +9,8 @@ import {
 } from 'react';
 
 import { cx } from './cx.ts';
+import { Button } from './Button.tsx';
+import { Glyph } from './Glyph.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -26,8 +28,9 @@ import { useModalDialog } from './useModalDialog.ts';
  * - Shadow on: DESIGN.md reserves shadows for modal overlays, so both
  *   families get one.
  * - Buttons and fields are the page's: one control height, no dialog tier.
- * - No close X (decided 2026-09-16): Escape and the Cancel action are the
- *   two ways out; a corner X invites dismiss-by-reflex on a decision surface.
+ * - Decision surfaces omit a close X (decided 2026-09-16). Editors can opt
+ *   into a corner close with `onClose` (#959), using their existing dismissal
+ *   handler; acknowledgement and decision surfaces keep their existing exits.
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
  * acknowledged before it closes calls `preventDefault()` there.
@@ -48,6 +51,7 @@ export function Dialog({
   size = 'narrow',
   actions,
   onCancel,
+  onClose,
   onBackdropClick,
   initialFocus,
   pinActions,
@@ -62,6 +66,8 @@ export function Dialog({
   /** The button row. Put the primary action last. */
   actions?: ReactNode;
   onCancel?: (event: SyntheticEvent<HTMLDialogElement>) => void;
+  /** Opt-in corner close for editors. Use the same handler as their other exits. */
+  onClose?: () => void;
   /**
    * Called when a click lands on the scrim. The dialog receives the click for
    * its own PADDING as well as for the backdrop (`event.target` is the dialog
@@ -127,9 +133,20 @@ export function Dialog({
             }
       }
     >
-      <h2 className={cx('dialog__title', mono === true && 'mono')} id={titleId}>
-        {title}
-      </h2>
+      {onClose === undefined ? (
+        <h2 className={cx('dialog__title', mono === true && 'mono')} id={titleId}>
+          {title}
+        </h2>
+      ) : (
+        <div className="dialog__header">
+          <h2 className={cx('dialog__title', mono === true && 'mono')} id={titleId}>
+            {title}
+          </h2>
+          <Button type="button" variant="quiet" icon readOnlySafe aria-label="Close dialog" onClick={onClose}>
+            <Glyph name="cross" />
+          </Button>
+        </div>
+      )}
       {lede !== undefined ? <p className="dialog__lede">{lede}</p> : null}
       {pinActions === true ? (
         <div className="dialog__body" ref={body}>

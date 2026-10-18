@@ -147,7 +147,7 @@ export function sidebarModel(input: {
       .filter((item) => !systemProject || !SYSTEM_SCOPE_REFUSES.has(item.id))
       .map((item) => {
         const path = generatePath(item.path, params);
-        if (item.id === 'matrix') return link(item, withRemote(path, remote));
+        if (item.id === 'matrix' || item.id === 'transit-keys') return link(item, withRemote(path, remote));
         return link(item, path, remote === '' ? null : localOnly(item.label));
       });
     // The filtered members projection sits before Project settings, so the
