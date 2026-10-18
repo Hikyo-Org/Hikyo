@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,6 +74,9 @@ func TestGateSubprocessCancellationReleasesDescendantsAndPipes(t *testing.T) {
 			case err := <-done:
 				if err == nil {
 					t.Fatal("cancelled subprocess reported success")
+				}
+				if kind == "gh" && !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancelled GitHub subprocess concealed context cancellation: %v", err)
 				}
 			case <-time.After(1500 * time.Millisecond):
 				t.Fatal("cancelled subprocess consumed the publication reserve")

@@ -1,0 +1,39 @@
+{
+  "base_revision": "748ecff709c07fc877a11968a218c7f749d6d3ea",
+  "measurement": "Local authenticated GitHub reads with constructed schedule event and mutation-refusing transport",
+  "hosted_failure": "https://github.com/Hikyo-Org/Hikyo/actions/runs/39121365975",
+  "baseline": {
+    "executable_sha256": "dde6f86a2aacc32703b38a679b11cb343e711cb771380a72c3f1e3579ff34088",
+    "elapsed_seconds": 180.237,
+    "exit_code": 1,
+    "completed_api_requests": 163,
+    "completed_inventory_requests": 158,
+    "complete": false
+  },
+  "candidate": {
+    "executable_sha256": "906eabc93768e84727f6fbfd22f943b8ebabccb18cb1691987f32b1e308fe0de",
+    "elapsed_seconds": 100.899,
+    "exit_code": 0,
+    "completed_api_requests": 342,
+    "completed_inventory_requests": 329,
+    "history_pages": 10,
+    "candidate_heads": 278,
+    "commits": 942,
+    "worker_limit": 4,
+    "complete": true,
+    "queue_heads": 53,
+    "observation_heads": 77,
+    "reporter_targets": 3
+  },
+  "comparison_limit": "Baseline timed out before completing the scan. This is not a comparison of equal completed work or a hosted performance distribution. Live timing preceded the final GraphQL error-chain-only correction.",
+  "offline_replay": {
+    "same_captured_responses": true,
+    "target_json_identical": true,
+    "complete_ancestry": true,
+    "commits": 942,
+    "queue_heads": 53,
+    "observation_heads": 77,
+    "reporter_targets": 3
+  },
+  "hosted_acceptance": "Pending exact-head CI and hosted retirement execution; no mutation was performed by the local scan."
+}

@@ -17,6 +17,8 @@ func (a retirementDiscoveryAPI) read(ctx context.Context, path string, result an
 		return errors.New("organization IP allow list blocks foreign checkSuite.app traversal")
 	}
 	if strings.Contains(path, "/check-runs?") && !strings.Contains(path, "check_name=") {
+		a.mu.Lock()
+		defer a.mu.Unlock()
 		a.reads[path]++
 		response, ok := a.responses[path]
 		if !ok {
