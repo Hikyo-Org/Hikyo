@@ -7,7 +7,7 @@ import { nextTotpCode, readSeed } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
 
 /**
- * SOURCE DRAFT, NOT EXECUTED: #158 browser product-surface coverage.
+ * Browser product-surface coverage for #158.
  *
  * The flow fixture selects the development provider. For AWS it runs the real
  * awssm.Module over an in-memory, metadata-aware awssm.API. Browser, API,
@@ -18,7 +18,7 @@ import { test } from '../fixtures/passkey.ts';
  * These tests deliberately assert lifecycle acceptance and persisted pause
  * state, not real AWS convergence, retention, or completed remote pruning.
  * The invented .example endpoints, account and access fields have no cloud
- * authority. Never point this draft at a real-provider fixture unchanged.
+ * authority. Never point this simulated fixture at a real provider unchanged.
  *
  * Registered by machine-access.spec.ts so the base-branch CI spec list loads
  * these tests for desktop and mobile. No additional registry/pinned-surface
