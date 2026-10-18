@@ -27,7 +27,7 @@ beforeEach(() => {
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
   }));
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 async function mount() {
   const form = await renderForm(<RevisionDiffDialog env={{ org: 'org', project: 'project', environment: 'env' }} environmentName="Development" left={1n} right={2n} onClose={() => {}} />);
   await settle();
@@ -72,3 +72,51 @@ it('discards an in-flight disclosure when the session retires', async () => {
     expect(form.client.getMutationCache().getAll()).toEqual([]);
   } finally { await form.unmount(); }
 });
+
+it('schedules no countdown while revision values are masked (#973)', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+  const form = await mount();
+  try {
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => vi.advanceTimersByTime(5_000));
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { await form.unmount(); }
+});
+
+for (const reason of ['mask', 'expiry', 'delayed expiry', 'blur', 'visibilitychange', 'unmount']) {
+  it(`stops the revision clock on ${reason} without refetching the comparison`, async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const form = await mount();
+    let unmounted = false;
+    try {
+      expect(fetch).toHaveBeenCalledTimes(1);
+      // Start after a long masked period to expose stale initial clock samples.
+      vi.setSystemTime(Date.now() + 60_000);
+      await act(async () => button(form.container, 'Reveal TOKEN in diff').click());
+      await settle();
+      expect(form.container.textContent).toContain('Re-masks in 30 seconds');
+      expect(vi.getTimerCount()).toBe(1);
+      await act(async () => vi.advanceTimersByTime(1_000));
+      expect(form.container.textContent).toContain('Re-masks in 29 seconds');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      if (reason === 'mask') {
+        await act(async () => button(form.container, 'Mask TOKEN').click());
+      } else if (reason === 'expiry') {
+        await act(async () => vi.advanceTimersByTime(29_000));
+      } else if (reason === 'delayed expiry') {
+        vi.setSystemTime(Date.now() + 60_000);
+        await act(async () => vi.advanceTimersByTime(1_000));
+      } else if (reason === 'unmount') {
+        await form.unmount();
+        unmounted = true;
+      } else {
+        await act(async () => (reason === 'blur' ? window : document).dispatchEvent(new Event(reason)));
+      }
+      expect(form.container.textContent).not.toContain('before-secret');
+      expect(vi.getTimerCount()).toBe(0);
+      await act(async () => vi.advanceTimersByTime(60_000));
+      expect(form.container.textContent).not.toContain('before-secret');
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally { if (!unmounted) await form.unmount(); }
+  });
+}

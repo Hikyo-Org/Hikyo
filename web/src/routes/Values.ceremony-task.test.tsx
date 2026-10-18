@@ -131,6 +131,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('Values reveal gating', () => {
@@ -303,5 +305,121 @@ describe('Values ceremony task ownership', () => {
     expect(container.textContent).not.toContain('must-not-cross-environments');
     expect(container.textContent).toContain('No disclosures yet.');
     await unmount();
+  });
+});
+
+describe('Values countdown lifecycle (#972)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    mocks.guard = revealWindow(false);
+    mocks.fetchRevealWindow.mockResolvedValue(revealWindow(true));
+    mocks.revealOne.mockResolvedValue({ key_id: 'key-a', name: 'KEY_A', value: 'clock-secret' });
+    mocks.revealAll.mockResolvedValue({ items: [
+      { key_id: 'key-a', name: 'KEY_A', classification: 'secret', value: 'clock-secret' },
+      { key_id: 'key-b', name: 'KEY_B', classification: 'secret', value: 'other-secret' },
+    ] });
+  });
+
+  for (const state of ['locked', 'single-decision']) {
+    it(`schedules no clock updates while fully masked and ${state}`, async () => {
+      if (state === 'single-decision') mocks.guard = { ...revealWindow(true), single_decision: true };
+      const form = await renderValues();
+      try {
+        expect(vi.getTimerCount()).toBe(0);
+        await act(async () => vi.advanceTimersByTime(5_000));
+        expect(vi.getTimerCount()).toBe(0);
+      } finally { await form.unmount(); }
+    });
+  }
+
+  for (const action of ['Reveal KEY_A', 'Reveal every secret']) {
+    it(`uses one clock for ${action} and stops at the absolute deadline`, async () => {
+      const form = await renderValues();
+      try {
+        // An idle clock sample must not inflate the next disclosure countdown.
+        vi.setSystemTime(Date.now() + 60_000);
+        await act(async () => button(form.container, action).click());
+        await settle();
+        expect(vi.getTimerCount()).toBe(1);
+        expect(form.container.querySelector('.values__countdown')?.textContent).toContain('10 seconds');
+        const announcement = form.container.querySelector('.values__reveal-announcement')?.textContent;
+        await act(async () => vi.advanceTimersByTime(1_000));
+        expect(form.container.querySelector('.values__countdown')?.textContent).toContain('9 seconds');
+        expect(form.container.querySelector('.values__reveal-announcement')?.textContent).toBe(announcement);
+        await act(async () => vi.advanceTimersByTime(9_000));
+        expect(form.container.textContent).not.toContain('clock-secret');
+        expect(form.container.textContent).not.toContain('other-secret');
+        expect(vi.getTimerCount()).toBe(0);
+      } finally { await form.unmount(); }
+    });
+  }
+
+  for (const event of ['blur', 'visibilitychange']) {
+    it(`stops the disclosure clock on ${event} and stays masked on return`, async () => {
+      const form = await renderValues();
+      try {
+        await act(async () => button(form.container, 'Reveal KEY_A').click());
+        await settle();
+        expect(vi.getTimerCount()).toBe(1);
+        await act(async () => (event === 'blur' ? window : document).dispatchEvent(new Event(event)));
+        expect(form.container.textContent).not.toContain('clock-secret');
+        expect(vi.getTimerCount()).toBe(0);
+        vi.setSystemTime(Date.now() + 60_000);
+        await act(async () => window.dispatchEvent(new Event('focus')));
+        expect(form.container.textContent).not.toContain('clock-secret');
+        expect(vi.getTimerCount()).toBe(0);
+      } finally { await form.unmount(); }
+    });
+  }
+
+  it('expires a disclosure by wall time after delayed callbacks', async () => {
+    const form = await renderValues();
+    try {
+      await act(async () => button(form.container, 'Reveal KEY_A').click());
+      await settle();
+      vi.setSystemTime(Date.now() + 60_000);
+      await act(async () => vi.advanceTimersByTime(250));
+      expect(form.container.textContent).not.toContain('clock-secret');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { await form.unmount(); }
+  });
+
+  it('keeps the shared clock while a guard outlives focus-remasked plaintext', async () => {
+    mocks.guard = { ...revealWindow(true), expires_at: new Date(Date.now() + 12_000).toISOString() };
+    const form = await renderValues();
+    try {
+      await act(async () => button(form.container, 'Reveal KEY_A').click());
+      await settle();
+      expect(vi.getTimerCount()).toBe(1);
+      await act(async () => window.dispatchEvent(new Event('blur')));
+      expect(form.container.textContent).not.toContain('clock-secret');
+      expect(vi.getTimerCount()).toBe(1);
+      await act(async () => vi.advanceTimersByTime(12_000));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { await form.unmount(); }
+  });
+
+  it('ticks a timed guard without plaintext, then stops when its window expires', async () => {
+    mocks.guard = { ...revealWindow(true), expires_at: new Date(Date.now() + 3_000).toISOString() };
+    const form = await renderValues();
+    try {
+      expect(vi.getTimerCount()).toBe(1);
+      expect(form.container.textContent).toMatch(/Reveal window.*3 seconds/);
+      await act(async () => vi.advanceTimersByTime(1_000));
+      expect(form.container.textContent).toMatch(/Reveal window.*2 seconds/);
+      await act(async () => vi.advanceTimersByTime(2_000));
+      expect(form.container.textContent).toMatch(/Reveal window.*0 seconds/);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { await form.unmount(); }
+  });
+
+  it('cleans up an active disclosure clock on unmount', async () => {
+    const form = await renderValues();
+    await act(async () => button(form.container, 'Reveal KEY_A').click());
+    await settle();
+    expect(vi.getTimerCount()).toBe(1);
+    await form.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

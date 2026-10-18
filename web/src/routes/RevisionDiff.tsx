@@ -30,7 +30,6 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
   }, [compare, reveal, setData, setDisclosure]);
   useEffect(() => {
     actions.current.compare.mutate(undefined, { onSuccess: (result) => actions.current.setData(result) });
-    const ticker = window.setInterval(() => setNow(Date.now()), 1000);
     const clear = () => {
       preflightGeneration.current += 1;
       actions.current.reveal.reset();
@@ -39,11 +38,17 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
     window.addEventListener('blur', clear);
     document.addEventListener('visibilitychange', clear);
     return () => {
-      window.clearInterval(ticker);
       window.removeEventListener('blur', clear);
       document.removeEventListener('visibilitychange', clear);
     };
   }, []);
+  // Disclosure changes must not refetch the comparison or replace the focus
+  // listeners. Only the countdown scheduler follows this sensitive state.
+  useEffect(() => {
+    if (disclosure === null) return;
+    const ticker = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(ticker);
+  }, [disclosure]);
   useEffect(() => {
     if (disclosure !== null && now >= disclosure.until) setDisclosure(null);
   }, [now, disclosure, setDisclosure]);
@@ -57,7 +62,11 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
       if (document.hidden) { ceremony.finish(task); return; }
       try {
         const value = await reveal.mutateAsync(row.key_id);
-        ceremony.commit(task, () => setDisclosure({ row: value, until: Date.now() + 30_000 }));
+        ceremony.commit(task, () => {
+          const revealedAt = Date.now();
+          setNow(revealedAt);
+          setDisclosure({ row: value, until: revealedAt + 30_000 });
+        });
       } catch (error) {
         ceremony.commit(task, () => setFailure(error instanceof Error ? error.message : 'Revision disclosure refused.'));
       } finally { ceremony.finish(task); }
