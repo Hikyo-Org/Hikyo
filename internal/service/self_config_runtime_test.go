@@ -53,7 +53,7 @@ func selfConfigFixtureDB(t testing.TB, db *store.DB, seed map[string]string) (*S
 	return s, LocalPrincipal(bootstrap.PrincipalID)
 }
 
-func selfConfigPostgres(t *testing.T) store.Config {
+func selfConfigPostgres(t testing.TB) store.Config {
 	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_POSTGRES_DSN")
 	if dsn == "" {
@@ -87,7 +87,7 @@ func selfConfigPostgres(t *testing.T) store.Config {
 	return store.Config{Engine: store.EnginePostgres, DSN: parsed.String()}
 }
 
-func selfConfigSession(t *testing.T, s *SelfConfig, local Actor) (Actor, string) {
+func selfConfigSession(t testing.TB, s *SelfConfig, local Actor) (Actor, string) {
 	t.Helper()
 	artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactBrowserSession)
 	if err != nil {
