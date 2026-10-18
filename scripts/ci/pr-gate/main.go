@@ -367,14 +367,32 @@ type ghAPI struct{}
 type githubReadError struct {
 	path   string
 	status int
+	cause  error
 }
 
 func (e *githubReadError) Error() string {
+	details := []string{}
 	if e.status != 0 {
-		return fmt.Sprintf("GitHub read failed for %s (HTTP %d)", e.path, e.status)
+		details = append(details, fmt.Sprintf("HTTP %d", e.status))
+	}
+	var exit *exec.ExitError
+	switch {
+	case errors.Is(e.cause, context.DeadlineExceeded):
+		details = append(details, context.DeadlineExceeded.Error())
+	case errors.Is(e.cause, context.Canceled):
+		details = append(details, context.Canceled.Error())
+	case errors.As(e.cause, &exit):
+		details = append(details, fmt.Sprintf("command exit status %d", exit.ExitCode()))
+	case e.cause != nil:
+		details = append(details, "command failed")
+	}
+	if len(details) != 0 {
+		return fmt.Sprintf("GitHub read failed for %s (%s)", e.path, strings.Join(details, "; "))
 	}
 	return fmt.Sprintf("GitHub read failed for %s", e.path)
 }
+
+func (e *githubReadError) Unwrap() error { return e.cause }
 
 func decode(data []byte, result any) error {
 	d := json.NewDecoder(bytes.NewReader(data))
@@ -394,6 +412,11 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 	}
 	data, err := gateCommand(ctx, "gh", args...).Output()
 	if err != nil {
+		// Process-group cancellation can surface as a killed command rather than
+		// ctx.Err(). Keep the controlling deadline/cancellation recognizable.
+		if cause := ctx.Err(); cause != nil {
+			return &githubReadError{path: path, cause: cause}
+		}
 		// gh exits nonzero for HTTP-successful GraphQL error responses too.
 		// Preserve bounded server diagnostics without exposing partial data.
 		if strings.HasPrefix(path, "graphql:") {
@@ -401,7 +424,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				Errors []json.RawMessage `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
-				return graphQLDiagnostic(response.Errors)
+				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err})
 			}
 		}
 		var failure struct {
@@ -413,7 +436,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				status = code
 			}
 		}
-		return &githubReadError{path: path, status: status}
+		return &githubReadError{path: path, status: status, cause: err}
 	}
 	return decode(data, result)
 }
@@ -489,6 +512,7 @@ type controller struct {
 	queueRefresh  *queueReassessment
 	dryRun        bool
 	output        io.Writer
+	diagnostics   io.Writer
 }
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
@@ -1682,7 +1706,7 @@ func main() {
 		err = decode(data, &e)
 	}
 	if err == nil {
-		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout}
+		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout, diagnostics: os.Stderr}
 		if *discoverRetirement {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()

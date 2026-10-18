@@ -65,11 +65,23 @@ func (c *controller) retirementHistoryQuery(head, after string, first int) strin
 // snapshot and explicitly reports when older ancestry remains outside that window.
 // Each discovered head is merely a hint for the existing independent
 // per-context ownership, live-role and readback proof under the proper lease.
-func (c *controller) discoverRetirements(ctx context.Context, name string, e event) (retirementTargets, error) {
-	targets := retirementTargets{Queue: []string{}, Observation: []string{}, ObservationBatches: [][]string{}, ReporterTargets: []reporterRetirementTarget{}}
+func (c *controller) discoverRetirements(ctx context.Context, name string, e event) (targets retirementTargets, err error) {
+	scan := newRetirementDiscoveryScan()
+	defer func() {
+		if reportErr := scan.report(c.diagnostics, err); reportErr != nil {
+			err = errors.Join(err, reportErr)
+		}
+		if err != nil {
+			targets = retirementTargets{}
+		}
+	}()
+	targets = retirementTargets{Queue: []string{}, Observation: []string{}, ObservationBatches: [][]string{}, ReporterTargets: []reporterRetirementTarget{}}
 	if err := c.init(ctx); err != nil {
 		return targets, err
 	}
+	reader := *c
+	reader.api = retirementDiscoveryReadAPI{api: c.api, scan: scan}
+	c = &reader
 	trustedSource := name == "schedule" || name == "workflow_dispatch" && e.Ref == "refs/heads/"+c.repo.DefaultBranch && e.Inputs.Head == "" && e.Inputs.PR == "" && e.Inputs.Work == ""
 	if !trustedSource || c.expectedHead != "" || e.Repository.ID != c.repo.ID || !strings.EqualFold(e.Repository.FullName, c.repoName) || e.Repository.DefaultBranch != c.repo.DefaultBranch || os.Getenv("GITHUB_REF") != "refs/heads/"+c.repo.DefaultBranch {
 		return targets, errors.New("retirement discovery requires a trusted default-branch schedule or empty-head dispatch without a writer lease")
@@ -88,6 +100,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 		return targets, errors.New("retirement discovery could not authenticate current main")
 	}
 	head, after := ref.Object.SHA, ""
+	scan.snapshot = head
 	seenCommits, seenCursors := make(map[string]bool), make(map[string]bool)
 	queue, observation := make(map[string]bool), make(map[string]bool)
 	seenHeads := make(map[string]bool)
@@ -112,6 +125,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 		if err := c.api.read(ctx, "graphql:"+c.retirementHistoryQuery(head, after, first), &response); err != nil {
 			return retirementTargets{}, fmt.Errorf("retirement history page %d: %w", page, err)
 		}
+		scan.historyPages++
 		if len(response.Errors) != 0 {
 			return retirementTargets{}, graphQLDiagnostic(response.Errors)
 		}
@@ -128,6 +142,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 		}
 		candidates := []string{}
 		for _, commit := range part.Nodes {
+			scan.commitsExamined++
 			if !shaPattern.MatchString(commit.OID) || seenCommits[commit.OID] {
 				return retirementTargets{}, errors.New("duplicate or invalid retirement history commit")
 			}
@@ -144,25 +159,25 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 				return retirementTargets{}, errors.New("unknown aggregate retirement rollup state")
 			}
 		}
-		for _, candidate := range candidates {
-			q, o, reporterWork, err := c.retirementPendingChecks(ctx, candidate)
-			if err != nil {
-				return retirementTargets{}, err
-			}
-			if !q && !o && len(reporterWork) == 0 {
+		inventories, err := c.retirementCandidateInventories(ctx, candidates, scan)
+		if err != nil {
+			return retirementTargets{}, err
+		}
+		for _, inventory := range inventories {
+			if !inventory.queue && !inventory.observation && len(inventory.reporters) == 0 {
 				continue
 			}
-			seenHeads[candidate] = true
+			seenHeads[inventory.head] = true
 			if len(seenHeads) > retirementHistoryHeads {
 				return retirementTargets{}, errors.New("retirement discovery exceeds 100 heads; operator backfill required before retry")
 			}
-			if q {
-				queue[candidate] = true
+			if inventory.queue {
+				queue[inventory.head] = true
 			}
-			if o {
-				observation[candidate] = true
+			if inventory.observation {
+				observation[inventory.head] = true
 			}
-			for _, target := range reporterWork {
+			for _, target := range inventory.reporters {
 				key := fmt.Sprintf("%d:%d", target.Run, target.Attempt)
 				if old, exists := reporters[key]; exists && old.Head != target.Head {
 					return retirementTargets{}, errors.New("reporter source attempt has ambiguous discovery heads")
