@@ -10,6 +10,30 @@ This automation requires the public trust bootstrap below. The repository's
 `.example` files are deliberately invalid placeholders; they do not authorize
 production releases.
 
+## Request a nightly manually
+
+In GitHub Actions, open **nightly-release-manual**, choose **Run workflow**, and
+select **main**. From the GitHub CLI, use:
+
+```sh
+gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main
+```
+
+The request workflow must first be merged into the default branch for GitHub to
+offer the manual trigger. It sends an ordinary `nightly-release` repository
+dispatch using the built-in workflow token, without checking out code or using
+release credentials. The separate **nightly-release** run validates and publishes
+the default-branch commit at dispatch time. Follow that run for the release
+result; a successful request alone does not mean publication succeeded.
+
+Manual releases run the same full CI, signing, startup and upgrade checks as the
+02:00 UTC schedule. When the source commit already has a nightly, they skip
+creating another immutable GitHub release. The downstream container job still
+runs: it can build or reuse the immutable image and promote its digest to
+`:nightly` if that release remains the latest published nightly. Selecting
+another branch skips the request job. Manual requests cannot bypass the signed
+predecessor requirement.
+
 ## One-time public trust authorization
 
 Complete the existing [offline trust bootstrap](../release/signing.md#one-time-trust-bootstrap)
@@ -90,9 +114,10 @@ older declared predecessor still exists. A run with no signed predecessor releas
 before building: every nightly declares its predecessor as an upgrade source,
 so a missing one means the chain was cut and every installation below the gap
 would be stranded. Revoke a bad nightly through the policy instead of deleting
-its release. To restart the chain deliberately, dispatch the workflow with
-`allow_missing_predecessor=true` and publish a recovery bridge for the
-installations below the gap, as catalog 3 did after nightly 26 was deleted.
+its release. To restart the chain deliberately, send the `nightly-chain-restart`
+repository dispatch with `client_payload.allow_missing_predecessor=true` and
+publish a recovery bridge for the installations below the gap, as catalog 3 did
+after nightly 26 was deleted.
 
 ## Container images
 
