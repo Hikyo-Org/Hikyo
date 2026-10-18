@@ -11,6 +11,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TestNightlyManualWorkflow verifies the request boundary, dispatch failures and
+// chain-restart-only predecessor exception without publishing a release.
 func TestNightlyManualWorkflow(t *testing.T) {
 	read := func(name string) queueWorkflowContract {
 		t.Helper()

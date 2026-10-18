@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
+      # Creating a repository_dispatch event requires contents: write.
       contents: write
     steps:
       # No checkout or release credentials: repository_dispatch loads the
