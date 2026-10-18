@@ -148,7 +148,24 @@ func addRemote(ctx context.Context, ios IO, st *State, flags commonFlags, f Form
 			"    the directory channel is TLS with a pinned key; there is no fingerprint to "+
 			"confirm without it, and the credential would cross an unencrypted wire.", rawURL)
 	}
-	pin, err := FetchIdentity(origin)
+	// The SPKI-only directory protocol needs explicit consent before even
+	// inspecting an unverified certificate. Acquire the terminal first so a
+	// non-interactive invocation cannot trigger an unverified probe.
+	session, err := ios.terminalSession()
+	if err != nil {
+		return failf(ExitRefused, "hikyo remote add: %v (this command is interactive-only)", err)
+	}
+	inspect, err := session.Confirm(fmt.Sprintf(
+		"Inspect the TLS key at %s for SPKI trust?\n"+
+			"This probe performs no CA chain, certificate validity or hostname verification.\n"+
+			"No application request or credential is sent; you must confirm the fingerprint afterward.\nInspect key", origin))
+	if err != nil {
+		return failf(ExitRefused, "hikyo remote add: %v (this command is interactive-only)", err)
+	}
+	if !inspect {
+		return failf(ExitRefused, "hikyo remote add: TLS key inspection declined; nothing was contacted or stored")
+	}
+	pin, err := inspectTLSIdentity(ctx, origin, 10*time.Second, TLSModeSPKI)
 	if err != nil {
 		return failf(ExitRefused, "hikyo remote add: connecting to %s: %v", origin, err)
 	}
@@ -161,10 +178,6 @@ func addRemote(ctx context.Context, ios IO, st *State, flags commonFlags, f Form
 	// The fingerprint goes to the TERMINAL and the answer comes back from it,
 	// so a log-capturing pipe sees neither the key being trusted nor the
 	// intent to trust it.
-	session, err := ios.terminalSession()
-	if err != nil {
-		return failf(ExitRefused, "hikyo remote add: %v (this command is interactive-only)", err)
-	}
 	ok, err := session.Confirm(
 		fmt.Sprintf("%s presents key fingerprint\n    %s\ntrust it?", origin, pin))
 	if err != nil {

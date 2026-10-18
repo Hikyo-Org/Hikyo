@@ -1,8 +1,8 @@
 hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--trust-file PATH]
-  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--trust-file PATH]
+  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--tls-mode spki|system-ca] [--trust-file PATH]
+  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]
                                                  terminal-native local login
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
@@ -22,11 +22,14 @@ accounts:
 
 contexts:
   hikyo context create <name> --instance <url|ref> [--org O] [--project P] [--env E]
-      [--socket PATH] [--trust-file PATH]          authenticated local transport or provisioned trust
+      [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]          authenticated local transport or provisioned trust
   hikyo context list [-o table|json]
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
+
+  New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
+  Existing stored or provisioned trust does not require the flag.
 
 managed configuration:
   hikyo instance-config status [-o table|json]

@@ -81,6 +81,12 @@ code is single-use. Regeneration immediately voids every old code.
 
 From a trusted client with no active session:
 
+If this client has not established the HTTPS origin yet, first run
+`hikyo context create recovery --instance https://hikyo.example.com --tls-mode system-ca`
+and confirm its trust policy. Use explicit `--tls-mode spki` when independently
+verifying a private leaf fingerprint. Existing stored or protected provisioned
+trust remains usable without a new mode flag.
+
 ```bash
 hikyo account recovery begin \
   --instance https://hikyo.example.com \

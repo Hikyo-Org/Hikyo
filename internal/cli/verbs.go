@@ -3,7 +3,6 @@ package cli
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -231,8 +230,8 @@ func Usage(w io.Writer) {
 const usageText = `hikyo - environment and secret management
 
 authentication:
-  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--trust-file PATH]
-  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--trust-file PATH]
+  hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--tls-mode spki|system-ca] [--trust-file PATH]
+  hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]
                                                  terminal-native local login
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
@@ -252,11 +251,14 @@ accounts:
 
 contexts:
   hikyo context create <name> --instance <url|ref> [--org O] [--project P] [--env E]
-      [--socket PATH] [--trust-file PATH]          authenticated local transport or provisioned trust
+      [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]          authenticated local transport or provisioned trust
   hikyo context list [-o table|json]
   hikyo context show <name> [-o table|json]
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
+
+  New HTTPS interactive trust requires --tls-mode spki or --tls-mode system-ca.
+  Existing stored or provisioned trust does not require the flag.
 
 managed configuration:
   hikyo instance-config status [-o table|json]
@@ -791,11 +793,15 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	name := fs.String("name", "", "local reference to record this instance under (default: its host)")
 	socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 	trustFile := fs.String("trust-file", "", "provisioned trust bundle (the CI path)")
+	tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki or system-ca (required for new HTTPS trust)")
 	positional, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
 	}
 
+	if err := validateTLSModeFlag(fs, *tlsMode); err != nil {
+		return err
+	}
 	if len(positional) != 1 {
 		return failf(ExitUsage, "usage: hikyo login <instance-url> [--device] [--provider kind:slug] | --local --as <username>")
 	}
@@ -816,7 +822,7 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 	}
 	target := positional[0]
 
-	entry, err := establish(ios, st, target, *name, *trustFile, *socket)
+	entry, err := establishWithTLSMode(ios, st, target, *name, *trustFile, *socket, *tlsMode)
 	if err != nil {
 		return err
 	}
@@ -886,6 +892,13 @@ func runLogin(ctx context.Context, ios IO, args []string) error {
 // establish records an instance in the trust store by one of the two
 // permitted acts, and only those two.
 func establish(ios IO, st *State, target, name, trustFile, socket string) (TrustEntry, error) {
+	return establishWithTLSMode(ios, st, target, name, trustFile, socket, "")
+}
+
+func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tlsMode string) (TrustEntry, error) {
+	if tlsMode != "" && tlsMode != TLSModeSPKI && tlsMode != TLSModeSystemCA {
+		return TrustEntry{}, failf(ExitRefused, "unknown TLS verification mode %q", tlsMode)
+	}
 	store := st.Trust()
 
 	// Provisioned establishment: trust arrives through the same protected
@@ -898,7 +911,7 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 			return TrustEntry{}, failf(ExitRefused, "reading the trust bundle: %v", err)
 		}
 		var bundle TrustBundle
-		if err := json.Unmarshal(raw, &bundle); err != nil {
+		if err := decodeTrustJSON(raw, &bundle); err != nil {
 			return TrustEntry{}, failf(ExitRefused, "trust bundle %s is not valid JSON: %v", bundlePath, err)
 		}
 		origin, err := CanonicalOrigin(bundle.Origin)
@@ -908,7 +921,10 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		if socket != "" && socket != bundle.CLISocket {
 			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the provisioned trust bundle")
 		}
-		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, CLISocket: bundle.CLISocket}
+		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, TLSMode: bundle.TLSMode, CLISocket: bundle.CLISocket}
+		if err := requireSameTLSMode(tlsMode, entry); err != nil {
+			return TrustEntry{}, err
+		}
 		if entry.Name == "" {
 			return TrustEntry{}, failf(ExitRefused, "trust bundle %s names no instance reference", bundlePath)
 		}
@@ -920,6 +936,9 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		// file redirect a command whose target the operator typed by hand —
 		// the credential would still be correctly bound to that origin, but
 		// to the wrong one.
+		if !strings.Contains(target, "://") && target != entry.Name {
+			return TrustEntry{}, failf(ExitRefused, "instance reference %q does not match provisioned reference %q", target, entry.Name)
+		}
 		if err := requireSameOrigin(target, entry.Origin); err != nil {
 			return TrustEntry{}, err
 		}
@@ -937,6 +956,9 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		entry, err := store.Lookup(target)
 		if err == nil && socket != "" && socket != entry.CLISocket {
 			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match established instance %q", target)
+		}
+		if err == nil {
+			err = requireSameTLSMode(tlsMode, entry)
 		}
 		return entry, err
 	}
@@ -956,17 +978,37 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		if socket != "" && socket != entry.CLISocket {
 			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the established instance")
 		}
+		if err := requireSameTLSMode(tlsMode, entry); err != nil {
+			return TrustEntry{}, err
+		}
 		return entry, nil
+	}
+
+	if strings.HasPrefix(origin, "https://") && tlsMode == "" {
+		return TrustEntry{}, failf(ExitRefused, "new HTTPS trust requires an explicit verification choice: --tls-mode spki or --tls-mode system-ca; use login or context create to establish it")
 	}
 
 	// Interactive establishment. It REQUIRES a terminal and refuses non-TTY
 	// invocation outright: there is no silent trust-on-first-use, because the
 	// whole point is that a human looked at the fingerprint.
-	pin, err := FetchIdentity(origin)
-	if err != nil {
-		return TrustEntry{}, err
+	entry := TrustEntry{Name: originReference(origin, name), Origin: origin, TLSMode: TLSMode(tlsMode), CLISocket: socket}
+	if err := validateTLSMode(entry); err != nil {
+		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 	}
-	entry := TrustEntry{Name: originReference(origin, name), Origin: origin, SPKIPin: pin, CLISocket: socket}
+	session, err := ios.terminalSession()
+	if err != nil {
+		return TrustEntry{}, failf(ExitRefused, "establishing an instance requires an interactive terminal so a human can confirm its trust mode and identity: %v", err)
+	}
+	var pin string
+	if strings.HasPrefix(origin, "https://") {
+		pin, err = inspectTLSIdentity(context.Background(), origin, 10*time.Second, entry.TLSMode)
+		if err != nil {
+			return TrustEntry{}, err
+		}
+	}
+	if entry.TLSMode != TLSModeSystemCA {
+		entry.SPKIPin = pin
+	}
 	if err := validateTrustEntry(entry.Name, entry); err != nil {
 		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 	}
@@ -974,17 +1016,20 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		return TrustEntry{}, failf(ExitRefused, "cannot establish %s: %v", origin, err)
 	}
 	identityLabel, identity := "certificate", shortPin(pin)
+	mode := effectiveTLSMode(entry)
+	if entry.TLSMode == TLSModeSPKI {
+		identity += " (leaf SPKI; no CA chain, certificate validity or hostname verification)"
+	}
+	if entry.TLSMode == TLSModeSystemCA {
+		identityLabel, identity = "verification", "system trusted CA chain, validity and hostname; certificate keys may rotate"
+	}
 	if socket != "" {
 		identityLabel, identity = "local socket", socket+" (same uid required)"
+		mode = "same-user local socket"
 	}
 	prompt := fmt.Sprintf(
-		"Establish trust for a new instance?\n\n    origin:       %s\n    %-13s %s\n\nRecord it",
-		origin, identityLabel+":", identity)
-	session, err := ios.terminalSession()
-	if err != nil {
-		return TrustEntry{}, failf(ExitRefused,
-			"establishing an instance requires an interactive terminal so a human can confirm the certificate identity: %v", err)
-	}
+		"Establish trust for a new instance?\n\n    origin:       %s\n    trust mode:   %s\n    %-13s %s\n\nRecord it",
+		origin, mode, identityLabel+":", identity)
 	ok, err := session.Confirm(prompt)
 	if err != nil {
 		return TrustEntry{}, failf(ExitRefused,
@@ -998,6 +1043,27 @@ func establish(ios IO, st *State, target, name, trustFile, socket string) (Trust
 		return TrustEntry{}, err
 	}
 	return entry, nil
+}
+
+func validateTLSModeFlag(fs *flag.FlagSet, mode string) error {
+	var explicit bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "tls-mode" {
+			explicit = true
+		}
+	})
+	if explicit && mode != TLSModeSPKI && mode != TLSModeSystemCA {
+		return failf(ExitRefused, "TLS mode must be spki or system-ca, got %q", mode)
+	}
+	return nil
+}
+
+// An explicit flag can confirm established trust, never rewrite its mode.
+func requireSameTLSMode(requested string, entry TrustEntry) error {
+	if requested != "" && TLSMode(requested) != effectiveTLSMode(entry) {
+		return failf(ExitRefused, "TLS mode %q does not match established or provisioned mode %q; remove the entry deliberately and establish it again", requested, effectiveTLSMode(entry))
+	}
+	return nil
 }
 
 // requireSameOrigin refuses when the caller named an explicit URL and the
@@ -1561,16 +1627,20 @@ func runContext(_ context.Context, ios IO, args []string) error {
 		project := fs.String("project", "", "project")
 		environment := fs.String("env", "", "environment")
 		trustFile := fs.String("trust-file", "", "provisioned trust bundle")
+		tlsMode := fs.String("tls-mode", "", "HTTPS establishment verification: spki or system-ca (required for new HTTPS trust)")
 		socket := fs.String("socket", "", "same-user local CLI socket for a loopback HTTP instance")
 		positional, err := parseInterspersed(fs, rest)
 		if err != nil {
+			return err
+		}
+		if err := validateTLSModeFlag(fs, *tlsMode); err != nil {
 			return err
 		}
 		name := first(positional)
 		if name == "" || *instance == "" {
 			return failf(ExitUsage, "usage: hikyo context create <name> --instance <url|ref>")
 		}
-		entry, err := establish(ios, st, *instance, "", *trustFile, *socket)
+		entry, err := establishWithTLSMode(ios, st, *instance, "", *trustFile, *socket, *tlsMode)
 		if err != nil {
 			return err
 		}

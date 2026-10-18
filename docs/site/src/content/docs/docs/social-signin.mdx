@@ -168,7 +168,7 @@ authority once, creates no session, and returns the user to sign-in.
 With the provider enabled and an account admitted or linked, run:
 
 ```sh
-hikyo login https://hikyo.example.com --provider oidc:work --name example
+hikyo login https://hikyo.example.com --tls-mode system-ca --provider oidc:work --name example
 hikyo whoami --instance example
 ```
 
