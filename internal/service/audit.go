@@ -107,6 +107,10 @@ func queryEvent(ctx context.Context, principal domain.PrincipalID, f store.Audit
 // stops there. The cursor advances over SCANNED rows within the ceiling, not
 // matched ones, so a sparse filter never skips or re-reads.
 func filterPage(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64) AuditPage {
+	return filterPageMatching(scanned, f, ceiling, f.Compile())
+}
+
+func filterPageMatching(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64, matcher store.AuditMatcher) AuditPage {
 	matched := make([]store.AuditEvent, 0, len(scanned))
 	page := AuditPage{NextSeq: f.AfterSeq, UpperSeq: ceiling}
 	reachedCeiling := false
@@ -116,7 +120,7 @@ func filterPage(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64) 
 			break
 		}
 		page.NextSeq = e.Seq
-		if f.Matches(e) {
+		if matcher.Matches(e) {
 			matched = append(matched, e)
 		}
 	}
@@ -168,6 +172,7 @@ func fillPage(ctx context.Context, f store.AuditFilter, ceiling int64, read func
 	// store pages (up to 16 000 scanned rows) before yielding; raise if a real
 	// trail needs a deeper single-request reach.
 	const maxChunks = 16
+	matcher := f.Compile()
 	for i := 0; i < maxChunks; i++ {
 		cf.AfterSeq = out.NextSeq
 		scanned, err := read(ctx, cf)
@@ -176,7 +181,7 @@ func fillPage(ctx context.Context, f store.AuditFilter, ceiling int64, read func
 		}
 		// filterPage scans one chunk under the ceiling: cf.Limit == chunk, so its
 		// short-page EOF test compares against the size actually requested.
-		cp := filterPage(scanned, cf, ceiling)
+		cp := filterPageMatching(scanned, cf, ceiling, matcher)
 		for idx, e := range cp.Events {
 			if keep != nil {
 				ok, err := keep(e)
@@ -586,6 +591,8 @@ func (s *Audits) export(
 		})
 	}
 
+	// Compile only after authorization and validation of the durable INTENT.
+	matcher := f.Compile()
 	streamed := 0
 	commitCursor := store.AuditCommitSeq(0)
 	writersSettled := false
@@ -651,7 +658,7 @@ func (s *Audits) export(
 			// filters down to fewer than pageSize matches is never mistaken for
 			// the end of the trail.
 			commitCursor = e.CommitSeq
-			if !f.Matches(e) {
+			if !matcher.Matches(e) {
 				continue
 			}
 			// The ActorName filter (glob on the resolved principal name) runs off

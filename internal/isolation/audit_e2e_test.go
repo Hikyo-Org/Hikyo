@@ -8,15 +8,20 @@ package isolation
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"modernc.org/sqlite"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
@@ -25,6 +30,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
@@ -1506,5 +1512,361 @@ func runDeveloperAuditLifecycle(t *testing.T, db *store.DB) {
 	}
 	if _, err := credentials.SetPolicy(ctx, actor, 8*time.Hour); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// This driver counts actual generated principal-kind statements, including
+// those issued by the audit repository's native transaction query set.
+type auditCountDriver struct {
+	sqlite.Driver
+	reads atomic.Int64
+}
+type auditCountConn struct {
+	driver.Conn
+	reads *atomic.Int64
+}
+
+var auditCounter = &auditCountDriver{}
+
+func init() { sql.Register("hikyo-audit-kind-count", auditCounter) }
+func (d *auditCountDriver) Open(name string) (driver.Conn, error) {
+	c, err := d.Driver.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &auditCountConn{c, &d.reads}, nil
+}
+func (c *auditCountConn) BeginTx(ctx context.Context, o driver.TxOptions) (driver.Tx, error) {
+	return c.Conn.(driver.ConnBeginTx).BeginTx(ctx, o)
+}
+func (c *auditCountConn) ExecContext(ctx context.Context, q string, a []driver.NamedValue) (driver.Result, error) {
+	return c.Conn.(driver.ExecerContext).ExecContext(ctx, q, a)
+}
+func (c *auditCountConn) QueryContext(ctx context.Context, q string, a []driver.NamedValue) (driver.Rows, error) {
+	if strings.Contains(q, "-- name: GetPrincipalKind") {
+		c.reads.Add(1)
+	}
+	return c.Conn.(driver.QueryerContext).QueryContext(ctx, q, a)
+}
+
+type auditActorFixture struct {
+	repos    store.Repos
+	az       *authz.TxAuthorizer
+	exec     func(string) error
+	queryRow func(string, ...any) interface{ Scan(...any) error }
+	count    func() int64
+	prepare  func(string) (*sql.Stmt, error)
+}
+
+// Minimal temporary tables retain generated-query behavior while the public
+// transaction owners come from real, signed-admitted fixture databases.
+func newAuditActorFixture(t *testing.T, engine string) auditActorFixture {
+	t.Helper()
+	ctx := t.Context()
+	tok := authz.NewTxToken()
+	t.Cleanup(tok.Invalidate)
+	var f auditActorFixture
+	stamp, boolean := "TEXT", "INTEGER"
+	if engine == "sqlite" {
+		cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "actor.db"), SQLiteDriver: "hikyo-audit-kind-count"}
+		db, err := openIsolationFixture(t, cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		owner, err := db.BeginSQLite(ctx, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = owner.Rollback() })
+		f.repos = store.SQLiteTxRepos(owner, tok)
+		f.az = authz.NewTxAuthorizer(authn.NewSQLite(owner), tok)
+		f.exec = func(q string) error { _, err := owner.ExecContext(ctx, q); return err }
+		f.queryRow = func(q string, args ...any) interface{ Scan(...any) error } {
+			return owner.QueryRowContext(ctx, q, args...)
+		}
+		f.prepare = func(q string) (*sql.Stmt, error) { return owner.PrepareContext(ctx, q) }
+		baseline := auditCounter.reads.Load()
+		f.count = func() int64 { return auditCounter.reads.Load() - baseline }
+	} else {
+		baseDSN := postgresTestDSN(t)
+		dsn := derivedDatabase(t, baseDSN, fmt.Sprintf("_audit_actor_%d", time.Now().UnixNano()))
+		target, err := url.Parse(dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			conn, err := pgx.Connect(context.Background(), baseDSN)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer conn.Close(context.Background())
+			if _, err := conn.Exec(context.Background(), "DROP DATABASE "+pgx.Identifier{strings.TrimPrefix(target.Path, "/")}.Sanitize()); err != nil {
+				t.Error(err)
+			}
+		})
+		db, err := openIsolationFixture(t, store.Config{Engine: store.EnginePostgres, DSN: dsn})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		owner, err := db.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = owner.Rollback(context.Background()) })
+		// Mutations address the backing table. Kind reads address the instrumented
+		// view, whose volatile projection increments exactly once per returned kind.
+		// Counter inspection happens after the warmed assertion-refusal probes.
+		backing := func(q string) string {
+			for _, prefix := range []string{"CREATE TEMP TABLE principals(", "UPDATE principals ", "DELETE FROM principals ", "INSERT INTO principals "} {
+				if strings.HasPrefix(q, prefix) {
+					return strings.Replace(q, "principals", "audit_actor_principals", 1)
+				}
+			}
+			return q
+		}
+		f.repos = store.PGTxRepos(owner, tok)
+		f.az = authz.NewTxAuthorizer(authn.NewPG(owner), tok)
+		f.exec = func(q string) error { _, err := owner.Exec(ctx, backing(q)); return err }
+		f.queryRow = func(q string, args ...any) interface{ Scan(...any) error } {
+			return owner.QueryRow(ctx, backing(q), args...)
+		}
+		f.count = func() int64 {
+			var n int64
+			if err := owner.QueryRow(ctx, "SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM pg_temp.audit_actor_reads").Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		stamp, boolean = "TIMESTAMPTZ", "BOOLEAN"
+	}
+	for _, q := range []string{
+		"CREATE TEMP TABLE principals(id TEXT PRIMARY KEY, kind TEXT NOT NULL)",
+		"CREATE TEMP TABLE orgs(id TEXT PRIMARY KEY)",
+		"INSERT INTO principals VALUES ('actor','human')",
+		"INSERT INTO orgs VALUES ('org')",
+	} {
+		if err := f.exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if engine == "postgres" {
+		for _, q := range []string{
+			"CREATE TEMP SEQUENCE audit_actor_reads",
+			`CREATE FUNCTION pg_temp.audit_actor_kind(input_kind TEXT) RETURNS TEXT LANGUAGE plpgsql VOLATILE AS $$
+BEGIN
+ PERFORM nextval('pg_temp.audit_actor_reads');
+ RETURN input_kind;
+END
+$$`,
+			"CREATE TEMP VIEW principals AS SELECT id, pg_temp.audit_actor_kind(kind) AS kind FROM audit_actor_principals",
+		} {
+			if err := f.exec(q); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, trail := range []string{"tenant", "instance"} {
+		q := fmt.Sprintf(`CREATE TEMP TABLE audit_%s_events (
+   id TEXT PRIMARY KEY, type TEXT, schema_version BIGINT, occurred_at %s,
+   occurred_asserted %s, recorded_at %s DEFAULT CURRENT_TIMESTAMP,
+   actor_id TEXT, actor_class TEXT, actor_credential_id TEXT, authority_id TEXT,
+   scope_class TEXT, org_id TEXT, project_id TEXT, env_id TEXT,
+   object_type TEXT, object_id TEXT, outcome TEXT, correlation_id TEXT,
+   source_ip TEXT, user_agent TEXT, origin TEXT, payload TEXT)`, trail, stamp, boolean, stamp)
+		if err := f.exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return f
+}
+
+func auditBulkEvent(id string, tenant bool) audit.Event {
+	typ := audit.EventRootEscrowVerified
+	payload := audit.Payload{"root_key_epoch": int64(1), "separate_custody_asserted": true}
+	if tenant {
+		typ = audit.EventRetentionPayloadGC
+		payload = audit.Payload{"org": "org", "project": "prj", "environment": "env", "revision": int64(1), "snapshot_id": "snapshot", "policy": "bounded", "collected_at": "2026-10-18T12:00:00Z"}
+	}
+	return audit.Event{ID: id, Type: typ, SchemaVersion: 1, OccurredAt: time.Now(), Actor: audit.Actor{ID: "actor", CredentialID: "credential"}, AuthorityID: "authority", Outcome: audit.OutcomeSuccess, Origin: audit.OriginSystem, Payload: payload}
+}
+
+func TestAuditActorTransactionReuse(t *testing.T) {
+	for _, engine := range []string{"sqlite", "postgres"} {
+		t.Run(engine, func(t *testing.T) {
+			for _, tenant := range []bool{false, true} {
+				t.Run(fmt.Sprintf("tenant=%v", tenant), func(t *testing.T) {
+					f := newAuditActorFixture(t, engine)
+					proof, err := authz.SystemAuthority(authz.SiteEscrow, f.az.Token())
+					if tenant {
+						proof, err = f.az.ScopedSystemAuthority(t.Context(), authz.SiteScheduler, domain.Scope{Org: "org"})
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					insert := func(e audit.Event) error {
+						if tenant {
+							return f.repos.Audit().InsertTenant(t.Context(), proof, e)
+						}
+						return f.repos.Audit().InsertInstance(t.Context(), proof, e)
+					}
+					for i := range 300 {
+						if err := insert(auditBulkEvent(fmt.Sprint(i), tenant)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					// Caller assertions remain refused even after warming authoritative state.
+					for _, class := range []audit.ActorClass{audit.ActorHuman, audit.ActorMachine} {
+						forged := auditBulkEvent("forged", tenant)
+						forged.Actor.Class = class
+						if err := insert(forged); err == nil {
+							t.Fatalf("accepted asserted %s", class)
+						}
+					}
+					queries := f.count()
+					if queries != 1 {
+						t.Fatalf("300 inserts plus assertion refusals queried kind %d times, want 1", queries)
+					}
+					t.Logf("300 inserts: %d authoritative kind query", queries)
+					if err := f.exec("UPDATE principals SET kind='machine' WHERE id='actor'"); err != nil {
+						t.Fatal(err)
+					}
+					if err := insert(auditBulkEvent("machine", tenant)); err != nil {
+						t.Fatal(err)
+					}
+					if f.count() != 2 {
+						t.Fatalf("kind mutation did not refresh lookup: %d", f.count())
+					}
+					table := "audit_instance_events"
+					if tenant {
+						table = "audit_tenant_events"
+					}
+					var actor, class, credential, authority string
+					if err := f.queryRow("SELECT actor_id,actor_class,actor_credential_id,authority_id FROM "+table+" WHERE id='machine'").Scan(&actor, &class, &credential, &authority); err != nil {
+						t.Fatal(err)
+					}
+					if actor != "actor" || class != "machine" || credential != "credential" || authority != "authority" {
+						t.Fatalf("attribution changed: %s %s %s %s", actor, class, credential, authority)
+					}
+					// The attribution SELECT above invalidates reuse. Warm it again
+					// so deletion must invalidate a retained machine kind.
+					if err := insert(auditBulkEvent("before-delete", tenant)); err != nil {
+						t.Fatal(err)
+					}
+					if err := f.exec("DELETE FROM principals WHERE id='actor'"); err != nil {
+						t.Fatal(err)
+					}
+					if err := insert(auditBulkEvent("deleted", tenant)); err != nil {
+						t.Fatal(err)
+					}
+					var absentActor, absentCredential sql.NullString
+					if err := f.queryRow("SELECT actor_id,actor_class,actor_credential_id FROM "+table+" WHERE id='deleted'").Scan(&absentActor, &class, &absentCredential); err != nil {
+						t.Fatal(err)
+					}
+					if absentActor.Valid || absentCredential.Valid || class != "unauthenticated" {
+						t.Fatal("deleted principal retained attribution")
+					}
+					if err := f.exec("INSERT INTO principals VALUES ('actor','human')"); err != nil {
+						t.Fatal(err)
+					}
+					if err := insert(auditBulkEvent("recreated", tenant)); err != nil {
+						t.Fatal(err)
+					}
+					if err := f.queryRow("SELECT actor_class FROM " + table + " WHERE id='recreated'").Scan(&class); err != nil || class != "human" {
+						t.Fatalf("recreated principal class %q: %v", class, err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func auditActorInsertInstance(t *testing.T, f auditActorFixture, id string) {
+	t.Helper()
+	p, err := authz.SystemAuthority(authz.SiteEscrow, f.az.Token())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.repos.Audit().InsertInstance(t.Context(), p, auditBulkEvent(id, false)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func auditActorWantClass(t *testing.T, f auditActorFixture, id, want string) {
+	t.Helper()
+
+	var got string
+	if err := f.queryRow("SELECT actor_class FROM audit_instance_events WHERE id=$1", id).Scan(&got); err != nil || got != want {
+		t.Fatalf("%s class=%q, want %q: %v", id, got, want, err)
+	}
+}
+
+func TestAuditActorPreparedMutationDisablesReuse(t *testing.T) {
+	f := newAuditActorFixture(t, "sqlite")
+	statement, err := f.prepare("UPDATE principals SET kind='machine' WHERE id='actor'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statement.Close()
+	auditActorInsertInstance(t, f, "before")
+	if _, err := statement.ExecContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	auditActorInsertInstance(t, f, "after")
+	auditActorWantClass(t, f, "after", "machine")
+	if f.count() != 2 {
+		t.Fatalf("prepared handle reused kind: %d queries", f.count())
+	}
+}
+
+func TestAuditActorReturningMutation(t *testing.T) {
+	for _, engine := range []string{"sqlite", "postgres"} {
+		t.Run(engine, func(t *testing.T) {
+			f := newAuditActorFixture(t, engine)
+			auditActorInsertInstance(t, f, "before")
+			var kind string
+			if err := f.queryRow("UPDATE principals SET kind='machine' WHERE id='actor' RETURNING kind").Scan(&kind); err != nil {
+				t.Fatal(err)
+			}
+			auditActorInsertInstance(t, f, "after")
+			auditActorWantClass(t, f, "after", "machine")
+		})
+	}
+}
+
+// The pinned modernc driver applies RETURNING writes at the first step, before
+// Scan. Read attribution only after all probes, so no verification SELECT can
+// accidentally invalidate a stale slot before the audit insert under test.
+func TestAuditActorSQLiteReturningBeforeScan(t *testing.T) {
+	f := newAuditActorFixture(t, "sqlite")
+	auditActorInsertInstance(t, f, "before")
+	row := f.queryRow("UPDATE principals SET kind='machine' WHERE id='actor' RETURNING kind")
+	auditActorInsertInstance(t, f, "before-scan")
+	var kind string
+	if err := row.Scan(&kind); err != nil {
+		t.Fatal(err)
+	}
+	auditActorInsertInstance(t, f, "after-scan")
+	auditActorWantClass(t, f, "before-scan", "machine")
+	auditActorWantClass(t, f, "after-scan", "machine")
+}
+
+func TestAuditActorTransactionOwnersAreIndependent(t *testing.T) {
+	for _, engine := range []string{"sqlite", "postgres"} {
+		t.Run(engine, func(t *testing.T) {
+			first := newAuditActorFixture(t, engine)
+			next := newAuditActorFixture(t, engine)
+			auditActorInsertInstance(t, first, "first-before")
+			if err := next.exec("UPDATE principals SET kind='machine' WHERE id='actor'"); err != nil {
+				t.Fatal(err)
+			}
+			auditActorInsertInstance(t, next, "next")
+			auditActorInsertInstance(t, first, "first-after")
+			auditActorWantClass(t, first, "first-before", "human")
+			auditActorWantClass(t, first, "first-after", "human")
+			auditActorWantClass(t, next, "next", "machine")
+		})
 	}
 }

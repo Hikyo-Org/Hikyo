@@ -67,16 +67,31 @@ type AuditFilter struct {
 // malformed-pattern error path (unlike path.Match), so no validation plumbing
 // is needed at the transport boundary — every string is a valid pattern.
 func matchGlob(pattern, s string) bool {
+	return compileAuditGlob(pattern).matches(s)
+}
+
+type auditGlob struct {
+	exact string
+	parts []string
+}
+
+func compileAuditGlob(pattern string) auditGlob {
 	if !strings.Contains(pattern, "*") {
-		return pattern == s
+		return auditGlob{exact: pattern}
 	}
-	parts := strings.Split(pattern, "*")
-	if !strings.HasPrefix(s, parts[0]) {
+	return auditGlob{parts: strings.Split(pattern, "*")}
+}
+
+func (g auditGlob) matches(s string) bool {
+	if g.parts == nil {
+		return g.exact == s
+	}
+	if !strings.HasPrefix(s, g.parts[0]) {
 		return false
 	}
-	s = s[len(parts[0]):]
-	last := parts[len(parts)-1]
-	for _, mid := range parts[1 : len(parts)-1] {
+	s = s[len(g.parts[0]):]
+	last := g.parts[len(g.parts)-1]
+	for _, mid := range g.parts[1 : len(g.parts)-1] {
 		i := strings.Index(s, mid)
 		if i < 0 {
 			return false
@@ -85,6 +100,34 @@ func matchGlob(pattern, s string) bool {
 	}
 	return strings.HasSuffix(s, last)
 }
+
+// AuditMatcher is an immutable snapshot of the row predicates in an AuditFilter.
+// Cursor, normalization and actor-name resolution remain owned by the caller.
+// It is safe to reuse across chunks even when the source filter is later edited.
+type AuditMatcher struct {
+	actor, correlationID      string
+	typ, objectType, objectID auditGlob
+	outcomes                  []string
+}
+
+// Compile snapshots the filter's row predicates and splits wildcard patterns once.
+func (f AuditFilter) Compile() AuditMatcher {
+	m := f.rowMatcher()
+	m.outcomes = slices.Clone(f.Outcomes)
+	return m
+}
+
+// rowMatcher borrows Outcomes for a single synchronous match. Only Compile
+// returns a reusable matcher, after detaching that slice from the source.
+func (f AuditFilter) rowMatcher() AuditMatcher {
+	return AuditMatcher{
+		actor: f.Actor, correlationID: f.CorrelationID,
+		typ: compileAuditGlob(f.Type), objectType: compileAuditGlob(f.ObjectType),
+		objectID: compileAuditGlob(f.ObjectID), outcomes: f.Outcomes,
+	}
+}
+
+func (g auditGlob) unset() bool { return g.parts == nil && g.exact == "" }
 
 // Matches reports whether a scanned row satisfies the filter's row fields. It is
 // pure and engine-independent by construction, so browser and CLI queries over
@@ -96,18 +139,23 @@ func matchGlob(pattern, s string) bool {
 // service can resolve (it needs the authorizer), so the service applies it
 // after Matches — see internal/service/audit.go.
 func (f AuditFilter) Matches(e AuditEvent) bool {
+	return f.rowMatcher().Matches(e)
+}
+
+// Matches applies the compiled row predicates without per-row allocations.
+func (m AuditMatcher) Matches(e AuditEvent) bool {
 	switch {
-	case f.Actor != "" && e.Actor.ID != f.Actor:
+	case m.actor != "" && e.Actor.ID != m.actor:
 		return false
-	case f.Type != "" && !matchGlob(f.Type, string(e.Type)):
+	case !m.typ.unset() && !m.typ.matches(string(e.Type)):
 		return false
-	case len(f.Outcomes) > 0 && !slices.Contains(f.Outcomes, string(e.Outcome)):
+	case len(m.outcomes) > 0 && !slices.Contains(m.outcomes, string(e.Outcome)):
 		return false
-	case f.ObjectType != "" && !matchGlob(f.ObjectType, e.Object.Type):
+	case !m.objectType.unset() && !m.objectType.matches(e.Object.Type):
 		return false
-	case f.ObjectID != "" && !matchGlob(f.ObjectID, e.Object.ID):
+	case !m.objectID.unset() && !m.objectID.matches(e.Object.ID):
 		return false
-	case f.CorrelationID != "" && e.CorrelationID != f.CorrelationID:
+	case m.correlationID != "" && e.CorrelationID != m.correlationID:
 		return false
 	default:
 		return true
@@ -273,18 +321,31 @@ type AuditRepo interface {
 // --- sqlite ---
 
 type sqliteAudit struct {
-	q   *sqlitegen.Queries
-	tok *authz.TxToken
+	inserts *sqlitegen.Queries
+	kindOf  auditrow.KindLookup
+	q       *sqlitegen.Queries
+	tok     *authz.TxToken
 }
 
-func (r sqliteRepos) Audit() AuditRepo { return sqliteAudit{q: sqlitegen.New(r.db), tok: r.tok} }
+func (r sqliteRepos) Audit() AuditRepo {
+	q := sqlitegen.New(r.db)
+	a := sqliteAudit{q: q, inserts: q, kindOf: q.GetPrincipalKind, tok: r.tok}
+	if owner, ok := r.db.(interface {
+		auditSQLiteInserts() (*sqlitegen.Queries, auditrow.KindLookup)
+	}); ok {
+		// Only audit inserts bypass ordinary statement invalidation. They cannot
+		// mutate principals; reads and all other repositories keep the owner path.
+		a.inserts, a.kindOf = owner.auditSQLiteInserts()
+	}
+	return a
+}
 
 func (a sqliteAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Event) error {
 	chain, err := authz.VerifyEvent(p, authz.StoreAuditTenantInsert, a.tok, e.Type)
 	if err != nil {
 		return err
 	}
-	e.Actor, err = auditrow.ResolveActorClass(ctx, a.q.GetPrincipalKind, e.Actor, authz.IsSystemProof(p))
+	e.Actor, err = auditrow.ResolveActorClass(ctx, a.kindOf, e.Actor, authz.IsSystemProof(p))
 	if err != nil {
 		return err
 	}
@@ -292,7 +353,7 @@ func (a sqliteAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Ev
 	if err != nil {
 		return err
 	}
-	return a.q.InsertTenantAuditEvent(ctx, auditrow.SQLiteTenant(row))
+	return a.inserts.InsertTenantAuditEvent(ctx, auditrow.SQLiteTenant(row))
 }
 
 func (a sqliteAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.Event) error {
@@ -300,7 +361,7 @@ func (a sqliteAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.
 		return err
 	}
 	var err error
-	e.Actor, err = auditrow.ResolveActorClass(ctx, a.q.GetPrincipalKind, e.Actor, authz.IsSystemProof(p))
+	e.Actor, err = auditrow.ResolveActorClass(ctx, a.kindOf, e.Actor, authz.IsSystemProof(p))
 	if err != nil {
 		return err
 	}
@@ -308,7 +369,7 @@ func (a sqliteAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.
 	if err != nil {
 		return err
 	}
-	err = a.q.InsertInstanceAuditEvent(ctx, auditrow.SQLiteInstance(row))
+	err = a.inserts.InsertInstanceAuditEvent(ctx, auditrow.SQLiteInstance(row))
 	if sqliteUniqueViolation(err) {
 		return fmt.Errorf("%w: duplicate instance audit event", ErrConflict)
 	}
@@ -517,18 +578,31 @@ func (a sqliteAudit) pageInstanceExport(ctx context.Context, f AuditFilter, from
 // --- postgres ---
 
 type pgAudit struct {
-	q   *pggen.Queries
-	tok *authz.TxToken
+	inserts *pggen.Queries
+	kindOf  auditrow.KindLookup
+	q       *pggen.Queries
+	tok     *authz.TxToken
 }
 
-func (r pgRepos) Audit() AuditRepo { return pgAudit{q: pggen.New(r.db), tok: r.tok} }
+func (r pgRepos) Audit() AuditRepo {
+	q := pggen.New(r.db)
+	a := pgAudit{q: q, inserts: q, kindOf: q.GetPrincipalKind, tok: r.tok}
+	if owner, ok := r.db.(interface {
+		auditPGInserts() (*pggen.Queries, auditrow.KindLookup)
+	}); ok {
+		// Only audit inserts bypass ordinary statement invalidation. They cannot
+		// mutate principals; reads and all other repositories keep the owner path.
+		a.inserts, a.kindOf = owner.auditPGInserts()
+	}
+	return a
+}
 
 func (a pgAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Event) error {
 	chain, err := authz.VerifyEvent(p, authz.StoreAuditTenantInsert, a.tok, e.Type)
 	if err != nil {
 		return err
 	}
-	e.Actor, err = auditrow.ResolveActorClass(ctx, a.q.GetPrincipalKind, e.Actor, authz.IsSystemProof(p))
+	e.Actor, err = auditrow.ResolveActorClass(ctx, a.kindOf, e.Actor, authz.IsSystemProof(p))
 	if err != nil {
 		return err
 	}
@@ -536,7 +610,7 @@ func (a pgAudit) InsertTenant(ctx context.Context, p authz.Proof, e audit.Event)
 	if err != nil {
 		return err
 	}
-	return a.q.InsertTenantAuditEvent(ctx, auditrow.PGTenant(row))
+	return a.inserts.InsertTenantAuditEvent(ctx, auditrow.PGTenant(row))
 }
 
 func (a pgAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.Event) error {
@@ -544,7 +618,7 @@ func (a pgAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.Even
 		return err
 	}
 	var err error
-	e.Actor, err = auditrow.ResolveActorClass(ctx, a.q.GetPrincipalKind, e.Actor, authz.IsSystemProof(p))
+	e.Actor, err = auditrow.ResolveActorClass(ctx, a.kindOf, e.Actor, authz.IsSystemProof(p))
 	if err != nil {
 		return err
 	}
@@ -552,7 +626,7 @@ func (a pgAudit) InsertInstance(ctx context.Context, p authz.Proof, e audit.Even
 	if err != nil {
 		return err
 	}
-	err = a.q.InsertInstanceAuditEvent(ctx, auditrow.PGInstance(row))
+	err = a.inserts.InsertInstanceAuditEvent(ctx, auditrow.PGInstance(row))
 	if pgUniqueViolation(err) {
 		return fmt.Errorf("%w: duplicate instance audit event", ErrConflict)
 	}

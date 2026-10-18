@@ -109,6 +109,13 @@ type Cache struct {
 
 // caches is the closed cache registry.
 var caches = map[string]Cache{
+	"store.audit-actor-kind": {
+		// Principals are instance-owned. The exact actor id is compared inside
+		// one transaction-owned slot, with no tenant chain or concatenation.
+		// This records audit attribution only; it never caches authorization.
+		KeyConstructor: "internal/store.auditActorCache.lookup: transaction owner identity + exact actor principal ID",
+		ProofGatedAt:   "sqliteAudit/pgAudit InsertTenant and InsertInstance: VerifyEvent, then ResolveActorClass; ordinary statements invalidate, prepared handles and settlement disable reuse",
+	},
 	"app.unattended-image": {
 		// One public release descriptor per private installation directory.
 		// Every read reauthenticates the bundle and native archive against the
