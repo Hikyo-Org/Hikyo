@@ -164,13 +164,14 @@ type fileSyncCursor struct {
 // configDigest binds the cursor to every setting that shapes the rendered
 // bytes or where they land.
 func (s *fileSyncSession) configDigest() string {
-	raw, _ := json.Marshal(struct {
+	input := struct {
 		Target      string
 		Environment string
 		Destination filesync.DestinationSettings
 		Files       []filesync.File
 		Policy      filesync.Policy
-	}{s.cfg.Target, s.cfg.Environment, s.cfg.Destination, s.cfg.Files, s.policy})
+	}{s.cfg.Target, s.cfg.Environment, s.cfg.Destination, s.cfg.Files, s.policy}
+	raw, _ := json.Marshal(input)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
@@ -357,7 +358,8 @@ func (s *fileSyncSession) publish(ctx context.Context, dest *filesync.Destinatio
 
 func (s *fileSyncSession) printResult(ios IO, res filesync.Result, source string) {
 	if res.Changed {
-		fmt.Fprintf(ios.Stderr, "rendered %s generation %s into %s\n", source, res.Stamp, s.cfg.Destination.Directory)
+		directory := s.cfg.Destination.Directory
+		fmt.Fprintf(ios.Stderr, "rendered %s generation %s into %s\n", source, res.Stamp, directory)
 	} else {
 		fmt.Fprintf(ios.Stderr, "unchanged %s generation %s\n", source, res.Stamp)
 	}

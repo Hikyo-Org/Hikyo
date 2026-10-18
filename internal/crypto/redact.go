@@ -42,8 +42,12 @@ type redactionSurface interface {
 
 // The compile-time pin of the sensitive set: each type must carry all five
 // surfaces. The lint analyzer's list (lint.SensitiveTypes) names the same
-// exported types; its test asserts the two stay in sync.
+// exported types; TestRedactionPinsMatchSensitiveTypes asserts the two stay
+// in sync, with explicit internal-only exceptions. This checks the declared
+// sets, not discovery of every future material-holding type.
 var (
+	_ redactionSurface = LocalKeys{}
+	_ redactionSurface = (*LocalKeys)(nil)
 	_ redactionSurface = (*Keyring)(nil)
 	_ redactionSurface = (*ProjectSealer)(nil)
 	_ redactionSurface = (*InstanceSealer)(nil)

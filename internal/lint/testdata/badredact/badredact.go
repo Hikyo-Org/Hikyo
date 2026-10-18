@@ -31,3 +31,11 @@ func LeakByErasure(kr *crypto.Keyring, ev audit.Event) {
 	log.Printf("field: %v", ev.Payload["x"]) // pinned map indexed
 	fmt.Printf("%v", any(kr))                // erased sensitive type
 }
+
+// Both LocalKeys forms must be guarded, including static-type erasure.
+func LeakLocalKeys(value crypto.LocalKeys, pointer *crypto.LocalKeys) {
+	fmt.Printf("%#v", value)
+	fmt.Printf("%v", any(pointer))
+	_, _ = json.Marshal(value)
+	slog.Info("local keys", "keys", pointer)
+}

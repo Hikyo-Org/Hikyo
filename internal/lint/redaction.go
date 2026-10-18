@@ -28,9 +28,11 @@ import (
 // extraction, custom serializers), per the ADR — never a proof.
 
 // SensitiveTypes pins the material-holding types; crypto's compile-time
-// redactionSurface pin names the same set, and CheckRedactionSurfaces
-// asserts this list actually carries the five methods.
+// redactionSurface pins name the same exported set. The synchronization test
+// documents internal-only exceptions; CheckRedactionSurfaces asserts this
+// list actually carries the five methods. Neither discovers unlisted holders.
 var SensitiveTypes = map[string]bool{
+	Module + "/internal/crypto.LocalKeys":      true,
 	Module + "/internal/crypto.Keyring":        true,
 	Module + "/internal/crypto.ProjectSealer":  true,
 	Module + "/internal/crypto.InstanceSealer": true,

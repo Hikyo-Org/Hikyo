@@ -598,15 +598,20 @@ func TestSensitiveFormattingCatchesViolations(t *testing.T) {
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.ProjectSealer to fmt",
 			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json",
+			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to fmt",
+			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to encoding/json",
+			"passes sensitive type " + Module + "/internal/crypto.LocalKeys to log/slog",
 			"logs audit content " + Module + "/internal/audit.Event",
 			"logs audit content " + Module + "/internal/store.AuditEvent",
 		})
 		// The erasure evasions must be caught at the lines where they are
 		// written, not merely somewhere in the file.
 		for marker, what := range map[string]string{
-			`any(ev)`:                   "any-conversion erasure",
-			`ev.Payload["x"]`:           "payload map-index erasure",
-			`fmt.Printf("%v", any(kr))`: "sensitive-type erasure",
+			`any(ev)`:                        "any-conversion erasure",
+			`ev.Payload["x"]`:                "payload map-index erasure",
+			`fmt.Printf("%v", any(kr))`:      "sensitive-type erasure",
+			`fmt.Printf("%#v", value)`:       "LocalKeys value",
+			`fmt.Printf("%v", any(pointer))`: "LocalKeys pointer erasure",
 		} {
 			line := fixtureLine(t, filepath.Join("testdata", "badredact", "badredact.go"), marker)
 			want := fmt.Sprintf("badredact.go:%d:", line)
