@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ func init() {
 		scenario{"advisory_environment_topology_isolation", scenarioAdvisoryTopologyIsolation},
 		scenario{"advisory_environment_topology_definitions", scenarioAdvisoryTopologyDefinitions},
 		scenario{"advisory_environment_topology_revoked_sessions", scenarioAdvisoryTopologyRevokedSessions},
+		scenario{"advisory_authority_changes_between_events", scenarioAdvisoryAuthorityChanges},
 	)
 }
 
@@ -336,6 +338,96 @@ func scenarioAdvisoryTopologyRevokedSessions(t *testing.T, db *store.DB) {
 				}
 			case <-time.After(time.Second):
 				t.Fatal("revoked session stream did not close on topology event")
+			}
+		})
+	}
+}
+
+// Both engines must resolve mutable authority again after a delivered event.
+func scenarioAdvisoryAuthorityChanges(t *testing.T, db *store.DB) {
+	for _, mutation := range []string{"expired", "grant_removed"} {
+		t.Run(mutation, func(t *testing.T) {
+			who, scope, values, envs, keys := valueFixture(t, db, "advisorybetween"+mutation)
+			actor := service.LocalPrincipal(who)
+			dev := mustEnv(t, envs, actor, scope, "dev")
+			mustKey(t, keys, actor, scope, "NOTICE", string(schema.Config), schema.DefaultPresenceRules())
+			reader := newPrincipal(t, db, "usr_advisory_between_"+mutation, []grantSpec{{"read", scope}})
+			artifact, verifier, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			err = tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				generation, err := az.PrincipalGeneration(ctx, reader)
+				if err != nil {
+					return err
+				}
+				epoch, err := az.CredentialEpoch(ctx)
+				if err != nil {
+					return err
+				}
+				return az.MintSession(ctx, authz.NewSession{
+					ID: "ses_advisory_between_" + mutation, PrincipalID: reader, Verifier: verifier,
+					Artifact: "cli", SessionGeneration: generation, CredentialEpoch: epoch,
+					AuthMethod: "local-password", Factors: `["password"]`, AuthenticatedAt: now, CreatedAt: now,
+					IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(24 * time.Hour),
+				})
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			advisory := service.NewAdvisory()
+			envs.Advisory = advisory
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var clock atomic.Int64
+			clock.Store(now.UnixMicro())
+			revisions := &service.Revisions{DB: db, Advisory: advisory, Now: func() time.Time { return time.UnixMicro(clock.Load()) }}
+			events, err := revisions.Watch(ctx, service.Bearer(artifact), scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := envs.Rename(t.Context(), actor, dev, "first-event", nil); err != nil {
+				t.Fatal(err)
+			}
+			awaitTopology(t, events, scope)
+			if mutation == "expired" {
+				// A logical clock avoids a sleep and races: the first event was received,
+				// and no event is in flight when the next transaction sees the new clock.
+				clock.Store(now.Add(25 * time.Hour).UnixMicro())
+			} else {
+				execConformance(t, db, `DELETE FROM grants WHERE principal_id=$1`, string(reader))
+				execConformance(t, db, `INSERT INTO grants(id,principal_id,capability,org_id,project_id,env_id,created_at)
+                 VALUES ($1,$2,'read',$3,$4,$5,'2026-01-01T00:00:00Z')`, "grt_advisory_between_dev", string(reader), string(scope.Org), string(scope.Project), string(dev.Env))
+			}
+			if _, err := envs.Rename(t.Context(), actor, dev, "second-event", nil); err != nil {
+				t.Fatal(err)
+			}
+			if mutation == "expired" {
+				select {
+				case ev, ok := <-events:
+					if ok {
+						t.Fatalf("expired session received event: %+v", ev)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("expired session did not close")
+				}
+			} else {
+				// The next topology event must be suppressed after removal of
+				// project read. A later dev event is still authorized and is
+				// an ordered barrier proving the denied event was consumed.
+				values.Advisory = advisory
+				if _, err := values.Set(t.Context(), actor, dev, "NOTICE", "barrier", nil); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case ev, ok := <-events:
+					if !ok || ev.Type != service.AdvisoryStaged || ev.EnvironmentID != string(dev.Env) {
+						t.Fatalf("project grant removal projection: %+v, open=%v", ev, ok)
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("authorized barrier event did not arrive")
+				}
 			}
 		})
 	}
