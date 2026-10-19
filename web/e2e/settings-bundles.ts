@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { z } from 'zod';
 
 import { BASE_URL, readSeed, STORAGE_STATE } from './fixtures/instance.ts';
+import { assertSettingsRouteIsolation, buildSettingsInventory, type SettingsChunk } from '../scripts/settings-bundle-inventory.ts';
 
 const samples = z.coerce.number().int().min(1).max(20)
   .parse(process.env['HIKYO_SETTINGS_BUNDLE_SAMPLES'] ?? '1');
@@ -22,6 +23,13 @@ const screens = [
   { module: 'InstanceAdmin', path: '/instance', heading: 'Instance settings' },
   { module: 'InstanceConfig', path: '/instance/config', heading: 'Hikyo configuration' },
 ];
+
+let inventory: SettingsChunk[];
+test.beforeAll(async () => {
+  // Match resource URLs against ownership from the current production build.
+  // write:false leaves the served bundle and its compression sidecars intact.
+  inventory = await buildSettingsInventory({ write: false });
+});
 
 // Run against the embedded production SPA. Each sample gets a fresh browser
 // context, so its resource timings include cold network fetches, not cache hits.
@@ -88,12 +96,7 @@ for (const screen of screens) {
         expect(measurement.headingMs).toBeGreaterThan(0);
         expect(measurement.scripts.length).toBeGreaterThan(0);
         const fetched = measurement.scripts.map((entry) => entry.file);
-        expect(fetched.some((file) => file.startsWith(`/assets/${screen.module}-`))).toBe(true);
-        for (const other of screens) {
-          if (other.module !== screen.module) {
-            expect(fetched.some((file) => file.startsWith(`/assets/${other.module}-`))).toBe(false);
-          }
-        }
+        assertSettingsRouteIsolation(fetched, inventory, screen.module, screens.map((entry) => entry.module));
         for (const asset of measurement.scripts) expect(asset.transferBytes).toBeGreaterThan(0);
         expect(errors).toEqual([]);
         const representations = await Promise.all(headers);

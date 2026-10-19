@@ -213,3 +213,34 @@ main `ce7326696aa9414381f0add082785e39da514a6c`. Both the complete `web/` and
 the feature patches remain unchanged. Only CI and handoff changes landed in the
 intervening main range. Fresh exact-head feedback, admission and complete
 protected merge-group validation remain required after publishing this refresh.
+
+## Review follow-through: module ownership
+
+[Review comment 4311800137](https://github.com/Hikyo-Org/Hikyo/pull/996#discussion_r4311800137)
+identified a gap in the browser assertion: filename prefixes do not detect a
+foreign settings implementation inside a generically named shared chunk. A
+focused regression reproduced that gap before the repair.
+
+The measurement command and browser probes now share the production Vite
+module-ownership collector. The browser setup collects the current inventory
+with `write: false`, preserving the served assets and compression sidecars.
+Each fetched content-hashed JS filename must match that inventory and contain no
+other settings screen. The fetched set must include the addressed screen's
+ownership. Existing entry filename checks remain. The checks still cover all
+twelve screens; shared non-settings dependencies are allowed, and unknown fetched
+assets fail closed.
+
+The six focused tests cover the hidden foreign screen, allowed shared modules,
+unknown assets, missing addressed ownership, addressed entry filenames, and
+unfetched foreign chunks. All six pass after the repair. Web typecheck and lint
+passed, as did the full unit project: 213 files / 1,971 tests, at most two workers.
+The fresh production inventory, demo isolation and precompression also passed.
+Independent Standards and Spec source reviews found no actionable issues.
+Fresh embedded-production browser runs passed 14 desktop and 14 mobile checks,
+one worker, no retries. Each run includes one cold sample for all twelve screens,
+anonymous sign-in gating, and navigation/history. The existing compression,
+cache, CSP, private-document caching and page-error assertions also passed.
+The structural graph refresh completed with the existing 17 Astro parser warnings.
+
+These checks strengthen isolation evidence; they do not replace the original
+five-sample timing experiment or establish a latency or memory improvement.
