@@ -39,14 +39,17 @@ provide no live-provider or hosted-CI proof.
 
 ## Explicit holds
 
-- Numeric approval for up to three manual runs and 96 additional creations is
-  **PENDING**, not granted. The two prior runs reserved 48 creations; a proposed
-  lifetime total of 144 is not authorization. Reconcile the cumulative ledger
-  and actual billing independently.
+- The owner subsequently approved at most three additional manual runs, 96
+  additional and 144 lifetime creation reservations, one replacement key and
+  the bounded reusable fixture in account `099256073061`, `eu-central-1`.
+  The 48 prior reservations remain consumed. The combined USD 1 gross target
+  and both old key deletion schedules remain unchanged. This source PR grants
+  no execution authority beyond that separate decision; reconcile the ledger,
+  effective scope and billing before every exact protected job.
 - No AWS, credential, browser, OIDC, protected-environment or effective-policy
   change, workflow dispatch, fixture creation, deletion or spending belongs to
-  this PR. The recovered owner session remains read-only.
-- Before any later live phase, obtain explicit resource and numeric authority,
+  this PR. Owner bootstrap and private setup-MFA enrollment are separate phases.
+- Before any later live phase, verify the recorded resource and numeric authority,
   verify effective policies and deadlines, claim historical cleanup once in the
   operator ledger bound to the exact first pending run ID, and clear its optional
   flag for subsequent runs. Verify fresh namespace custody, exact candidate and
