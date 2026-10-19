@@ -19,35 +19,131 @@ Historical cross-provider SKIP remains; no additional formal pass is required.
 
 This section supersedes the resource and authorization states in the historical
 sections below. Issue #158 remains open and feature PR #969 remains draft.
-Successful real-provider acceptance and exact cleanup have not been established.
-The reviewed runner diagnostics bootstrap, PR #999, merged as
+The second approved real-provider execution,
+[run 39221282489](https://github.com/Hikyo-Org/Hikyo/actions/runs/39221282489),
+attempt 1, failed against candidate
+`2682f59f4dbd7680c6647f6979c4270f230d37c5` and trusted main workflow
+`911efa1e7eb85e43f5ab681625383911ccaaf93d`. The owner personally approved its
+protected-environment deployment; automation did not approve it. All 46 expected
+result records are present: 24 pass, 22 fail, zero skips and zero missing.
+These counts include containers. Evidence JSON SHA256 is
+`1e3b5c372a924cc71a221a3c469dc2d5d650cf7dd56f56ea2d5aeedd16a821e4`.
+The reviewed diagnostics bootstrap, PR #999, merged as
 `92080565e4d1bcdb33d217b2a77528975d89d2b5`.
 
-The owner explicitly approved exactly one additional manual fixture/run in
-account `099256073061`, region `eu-central-1`, retaining the original 21
-conservative creation reservations and allowing at most 32 more, 53 combined.
-The combined USD 1 gross usage target, eight exact roles, at most one OIDC
-provider, protected environment, MFA-gated non-root setup, exact cleanup and
-seven-day KMS deletion remain required. No paid upgrade, recurring execution
-or automatic retry is authorized. The exact pending GitHub job still needs
-human environment approval after candidate and effective-policy verification.
+The additional one-time authorization was consumed in account `099256073061`,
+region `eu-central-1`: 27 new conservative creation reservations plus the prior
+21 total 48 of the approved lifetime cap of 53. Unused numerical allowance does
+not authorize another run. No further AWS acceptance run or resource creation
+is authorized or running. The combined USD 1 gross usage target remains
+unchanged; actual gross billing is unverified. No automatic retry, recurring
+execution or paid upgrade is authorized.
 
-The replacement key is
-`arn:aws:kms:eu-central-1:099256073061:key/10908b8d-fe54-40e3-9210-a3eefea709b6`.
-The dedicated alias, setup and boundary policies, setup user/login and protected
-GitHub environment have been created. The eight roles and new OIDC provider
-have not been created; no additional acceptance run or synthetic creation has
-occurred. The old key remains scheduled for deletion at
-`2026-10-25T19:57:36.420Z`. Actual combined gross billing remains unverified.
+All 24 runner-recorded secret ARNs were API-verified absent by the trusted
+runner, with independent artifact inventory review. Both denied-create names
+were separately checked through exact owner-console detail navigation and an
+unfiltered list including scheduled deletion; neither exists. Those two checks
+are UI evidence, distinct from direct API ResourceNotFound proof.
 
-The initial replacement-fixture policy windows expired before activation. A
-reviewed readiness-only setup-policy revision renews own password/MFA enrollment
-and official local CLI login until `2026-10-19T11:16:34Z`. Privileged fixture
-setup grants retain their expired deadlines. Owner-console readback confirmed
-the exact saved default policy, the sole direct setup-policy attachment, no
-groups and no access keys. Password-update metadata changed after user
-creation; MFA enrollment and a fresh MFA sign-in are still pending. Fresh full
-activation policies must be reviewed and verified before fixture provisioning.
+The remaining Web Identity/PostgreSQL secret was recovered as the exact ARN
+`arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-20261018b/web-identity/postgres/role-document-vmN1Vj`.
+It is bound to the replacement key below and PendingDeletion after an exact
+seven-day deletion request at `2026-10-19T09:40:57Z`. The console's
+"Deleted on 10/19/2026" text is a request-date label. Its final deletion timestamp
+is not established, and absence is not claimed. Reviewed containment records
+the ordering exception after scheduling that secret, retains its pending ARN,
+and preserves `acceptancePassed=false`, `cleanupComplete=false` and
+`syntheticCleanupProven=false`.
+
+All eight owned roles, their eight inline policies, the created OIDC provider
+and the exact KMS alias are verified absent. The dedicated GitHub environment
+is deleted and its exact GET returns 404; repository OIDC defaults were not
+changed. The replacement key
+`arn:aws:kms:eu-central-1:099256073061:key/10908b8d-fe54-40e3-9210-a3eefea709b6`
+is API-verified PendingDeletion with an exact seven-day window and scheduled
+deletion at `2026-10-26T09:54:54.536Z`. Physical deletion is pending. The old key
+remains scheduled for `2026-10-25T19:57:36.420Z` and was not targeted.
+
+The setup CLI session is officially logged out, its isolated login storage is
+removed and its temporary browser is closed. Credential values were not read
+or retained. No verified non-root administrative CLI session for this account
+was found in installed profile metadata. No unrelated profile credentials were
+used. The setup console login profile is removed, fresh owner-console readback
+shows its password not enabled, and access-key count is zero. Its sole managed
+policy attachment is removed with fresh permission-policy count zero. Both
+owned managed policies and all their versions are deleted; fresh exact-policy
+console navigation reports each ARN not found. No new session-revocation policy
+was created. The setup MFA association was deactivated with HTTP 200. A fresh,
+complete HTTP 200 Unassigned-device inventory excludes its exact serial, and a
+fresh exact-user check shows attached MFA zero and all credential counts zero.
+The controlled cleanup chain permitted no Enable/reassignment. This retires the
+known-deactivated device from the owned inventory; it is not an all-device
+inventory or an observed DeleteVirtualMFADevice HTTP 200. Guarded cleanup
+forwarded zero additional MFA deletions and no MFA creations. Its diagnostic
+flags remain unchanged. The bare setup user is deleted; fresh exact-user
+owner-console reload reports that `hikyo-158-setup` cannot be found. The initial
+confirmation preparation was reconciled before completing the required written
+consent; no duplicate deletion confirmation was submitted. Root MFA and
+preexisting service-linked roles were not targeted. The final owner-console IAM
+dashboard shows zero users, customer-managed policies and identity providers,
+with the three preexisting roles retained. The owner Chrome session remains
+connected.
+
+All 31 current-run UpdateSecretVersionStage events were inspected through
+allowlisted CloudTrail metadata. Exactly three failed: lifecycle SQLite and
+PostgreSQL SHARED_KEY, and Web Identity SQLite. Each attempted AWSCURRENT
+without RemoveFromVersionId and received InvalidParameterException for the
+missing predecessor. The other 28 stage requests succeeded; no observed failed
+stage request targeted HIKYO_CURRENT. These observations do not explain every
+failed result record.
+
+The reviewed local production repair in `internal/adapter/awssm/module.go`
+performs at most three metadata reads of the original complete ARN, with
+cancellable 100 ms and 200 ms waits. It skips promotion only after observing
+this exact job's token current; foreign or persistently invisible current
+versions remain conflicts without ownership-marker advancement. Every read
+retains the authorization gate, ARN/tenant/scope checks and ownership/adoption
+policy. Nonempty-predecessor compare-and-swap behavior is unchanged. No blind
+promotion, secret-value read, write retry or permission expansion was added.
+
+A separate value-metadata scan inspected 32 GetSecretValue event details and
+retained 21 exact-scope projections: 20 successes and one failure. At 09:16:06
+UTC, the approved oracle role's AWSCURRENT read of the AssumeRole/PostgreSQL
+role-document returned ResourceNotFoundException immediately after its
+successful HIKYO_CURRENT attachment. Source inspection identifies the positive
+oracle assertion before negative external-ID checks. Its one-shot read failed;
+logging through the root test pointer explains the suite-level diagnostic.
+No later successful read of that exact ARN proves actual transient recovery.
+
+The separately reviewed fixture repair in
+`internal/isolation/aws_real_fixture_test.go` captures the exact recorded ARN
+once and performs at most three oracle-only AWSCURRENT reads, with the same
+cancellable 100 ms and 200 ms waits, only for ResourceNotFoundException.
+Persistent absence still fails. Denial, decryption, server/transport errors and
+the first visible mismatched value are not retried; exact caller value
+assertions remain unchanged. The fix changes observation of documented read
+visibility, not the production client's value-blind API, identities, policies,
+expiry or creation accounting. Offline wire regressions demonstrate the old
+failure and bounded recovery when the provider later exposes the expected
+value. They do not establish that the actual failed run would recover.
+
+Fresh local provider validation passed 60 top-level tests plus 105 subtests
+(165 pass events) in each normal and race run, with zero test failures/skips.
+Offline fixture race validation passed 15 top-level tests plus 46 subtests
+(61 pass events), including all 12 new oracle test/subtest events. Two unrelated
+PostgreSQL drain-clock subcases skipped because `HIKYO_TEST_POSTGRES_DSN` was
+unset; they are not both-engine proof. Scoped vet, formatting and structural
+Graphify refreshes passed. Independent security and specification reviews of
+both local source repairs found no remaining material findings.
+
+The reviewed local source SHA256 pins are:
+
+| Repository path | SHA256 |
+| --- | --- |
+| `internal/adapter/awssm/module.go` | `c0878a5e72466d31eaa236d11e3948c1a53be4cd4cd35ce19c7d4d37b2f1f99a` |
+| `internal/adapter/awssm/client_test.go` | `00083fa2eadf728e338d43ce2d4ea101f5cb7e2ccae75453820a4e82f0f120a2` |
+| `internal/isolation/aws_real_fixture_test.go` | `6fa0ae972b70482be522f9fff4b50cf93c7c8b7e25662917ee94d7cb9378d3d3` |
+| `internal/isolation/aws_real_oracle_test.go` | `2da9e550a7804e99d4bf8bab60219fe275838169eccdaa2a883cb1dd793c97eb` |
 
 Main now owns migration 77 for `authorization_pending_indexes` from PR #1000.
 The owner approved moving only this issue's standalone adoption witness to 78.
@@ -58,17 +154,20 @@ SQLite and PostgreSQL 18 catalogs; an independent fresh-catalog check passed.
 The legacy upgrade drill reverses witness 78 before the pristine indexes at 77
 and retains its refusal to discard witness evidence. Reviewed SQL pins retain
 all main records and only the three existing AWS query records differ.
+Earlier main/migration integration checks passed provider, adoption store,
+migrations, legacy drills, offline fixture diagnostics, local adoption/lifecycle
+isolation, compatibility, full lint, scoped vet/import formatting and 17 Python
+runner tests. The signed CLI drill passed with required cosign; full lint
+skipped only its explicit opt-in pin updater. Those broader results and the
+integration reviews are historical to that integration stage, not fresh proof
+for the later source repairs or current-head remote CI.
 
-Relevant local validation passed: AWS provider, adoption store, migrations,
-legacy drills, offline fixture diagnostics, local adoption/lifecycle isolation,
-compatibility, full lint, scoped vet/import formatting, and 17 Python runner
-tests. The signed CLI drill passed separately with required cosign. Full lint
-skipped only its explicit opt-in pin updater. No live AWS smoke entry point ran.
-Graphify's AST refresh completed with 17 partial-extraction warnings. Local
-checks do not establish current-head remote CI, live acceptance or feature
-merge. Independent integration security and specification reviews found no
-remaining material source findings after documentation corrections. Verify the
-signed, DCO-signed candidate commit and current-head CI after publication.
+Both repairs are published in signed/DCO commit
+`35309b5b732db430d9f2f12182313e88a8915ad7`; GitHub reports Verified. The
+live-tested candidate above is unchanged, and no live AWS run has validated
+either repair. Successful real-provider acceptance, required cleanup completion,
+current-head CI and verified feature merge remain open delivery gates. No
+release or deployment is authorized by this work.
 
 ## Failed live acceptance and offline repair, 2026-10-18
 
