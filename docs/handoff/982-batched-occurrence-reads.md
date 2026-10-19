@@ -156,3 +156,49 @@ performance are not established by these local checks. The new store benchmark
 is not in the current hosted benchmark package lists. No frontend code changed,
 so application browser flows and web checks were not run. Merge, queue,
 auto-merge, release and deployment remain outside this task.
+
+## PR #995 merge follow-through, 2026-10-19
+
+The subsequent babysitting request authorizes CI repairs, review responses and
+merge of PRs #995 and #996, later extended to #1002. Release and deployment are
+not part of that request.
+The original implementation commit was rebased with signing and DCO onto main
+`b14f4c416571e66a0b891d6301c3d6588eafb186` before the CI repair.
+
+The [latest failed merge-group run](https://github.com/Hikyo-Org/Hikyo/actions/runs/39204141729)
+failed desktop flow group 3 in `workspace.spec.ts`: the popup-ceremony test read
+the redemption response body after Chromium could no longer retrieve it
+(`Network.getResponseBody: No data found for resource with given identifier`).
+Its successor expected one revoked workspace session but the retained browser
+error context shows two, consistent with the first test exiting before its
+kill-switch checks. The unchanged pair passed locally in 3.7 minutes; the
+intermittent CI failure was not reproduced locally.
+
+The test now reads the exact bearer from the already-observed first liveness
+request's Authorization header. This avoids the delayed response-body read and
+retains the actual-value storage checks, both origins' cookie checks, ambient
+cookie refusal, popup isolation and both kill switches. It rejects missing or
+wrong-kind bearer headers without printing their contents. Product code,
+timeouts, retries and assertions about exact revocation counts are unchanged.
+
+Independent Standards and Spec source reviews found no actionable issues at
+original head `690e23731718cd945505e4bf00f6f841106a1776`. A separate source review
+of the CI repair found no actionable issues and checked transport provenance,
+bearer grammar and retention of the security assertions. These are source
+reviews, not fresh runtime evidence. Qodo was billing-blocked and CodeRabbit
+rate-limited; neither is counted as a completed review. The initial Jev advisory
+readiness score was 0.18 on a 0-3 scale, with 85% blocked probability and 0.83
+confidence, while the recorded CI failures remained open.
+
+An older merge-group failure in `TestRangeMergeOnlyScansNewCombinedContent`
+reported temporary Git directory cleanup failure. The latest merge group passed
+`validation / test_core`; no unsupported fix to that earlier failure was made.
+
+Fresh local validation passed: `node --run typecheck`, `node --run lint`, all
+212 unit-test files / 1,965 tests with at most two workers, and the complete
+`workspace.spec.ts` suite on desktop and mobile, 17 tests per viewport. Both
+browser runs used fresh real instance pairs, one worker and zero retries;
+the previously failing pair and both kill switches passed on each viewport.
+These filtered file runs do not establish full browser-suite closure.
+Protected merge-group proof remains pending after publication. Queue admission
+is not merge evidence.
