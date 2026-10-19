@@ -91,41 +91,70 @@ type client struct {
 }
 
 func (c client) request(ctx context.Context, method, path string, body, result any) error {
-	var payload io.Reader
+	var data []byte
 	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
+		var err error
+		if data, err = json.Marshal(body); err != nil {
 			return err
 		}
-		payload = bytes.NewReader(data)
 	}
 	endpoint := c.base + "/repos/" + c.repo
 	if path != "" {
 		endpoint += "/" + path
 	}
+	// Only idempotent reads are retried; check-run writes stay single-shot.
+	attempts := 1
+	if method == http.MethodGet {
+		attempts = maxReadAttempts
+	}
+	for attempt := 1; ; attempt++ {
+		retryAfter, retryable, err := c.attempt(ctx, method, path, endpoint, data, result)
+		if err == nil || !retryable || attempt == attempts {
+			return err
+		}
+		wait, ok := retryDelay(ctx, attempt, retryAfter)
+		if !ok {
+			return err
+		}
+		logRetry(attempt, wait, err)
+		if retryWait(ctx, wait) != nil {
+			return err
+		}
+	}
+}
+
+func (c client) attempt(ctx context.Context, method, path, endpoint string, data []byte, result any) (retryAfter time.Duration, retryable bool, err error) {
+	var payload io.Reader
+	if data != nil {
+		payload = bytes.NewReader(data)
+	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, payload)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if body != nil {
+	if data != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return 0, transientTransportError(ctx, err), err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("GitHub %s %s: HTTP %d", method, path, resp.StatusCode)
+		return retryAfterSeconds(resp), retryableStatus(resp.StatusCode), fmt.Errorf("GitHub %s %s: HTTP %d", method, path, resp.StatusCode)
 	}
 	if result == nil {
-		return nil
+		return 0, false, nil
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(result)
+	// Decode buffers a whole value before unmarshalling, so a truncated body
+	// leaves result untouched and the read can be repeated.
+	err = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(result)
+	return 0, err != nil && transientTransportError(ctx, err), err
 }
+
 func (c client) read(ctx context.Context, path string, result any) error {
 	return c.request(ctx, http.MethodGet, path, nil, result)
 }

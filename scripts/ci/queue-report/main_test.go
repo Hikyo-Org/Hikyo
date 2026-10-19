@@ -30,6 +30,8 @@ type fixture struct {
 	requests     []string
 	mutate       func(string, any) any
 	writeMutate  func(check) check
+	// inject answers a request with that status instead of serving it; 0 serves normally.
+	inject func(method, path string) int
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -56,6 +58,12 @@ func newFixture(t *testing.T) *fixture {
 		}
 		path := strings.TrimPrefix(strings.TrimPrefix(req.URL.Path, "/repos/owner/repo"), "/")
 		f.requests = append(f.requests, path)
+		if f.inject != nil {
+			if code := f.inject(req.Method, path); code != 0 {
+				http.Error(w, "injected", code)
+				return
+			}
+		}
 		if req.Method != http.MethodGet {
 			var body map[string]any
 			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {

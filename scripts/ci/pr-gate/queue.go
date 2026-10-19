@@ -207,7 +207,14 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
 		return errors.New("queue event repository identity mismatch")
 	}
-	return q.reassess(ctx, func(ctx context.Context) error { return q.executeProof(ctx, name, e) })
+	return q.reassessHeld(ctx, q.rereadsGroup(name == "workflow_run" && e.Run.Event == "merge_group"), func(ctx context.Context) error { return q.executeProof(ctx, name, e) })
+}
+
+// The one test for waiting on GitHub metadata, shared by the queue-gate group
+// callback and the group head worker (isGroup). Targeted admission, group-only
+// repair, schedule and every other worker role stay bounded and reassess once.
+func (q *queueController) rereadsGroup(isGroup bool) bool {
+	return isGroup && !q.targeted && !q.repairOnly
 }
 
 func (q *queueController) executeProof(ctx context.Context, name string, e event) error {
@@ -981,7 +988,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	if q.queueRefresh != nil {
-		q.queueRefresh.finishedGroup = &finishedGroupProof{run: r, policy: policy, snapshot: snap}
+		if err := q.queueRefresh.proveGroup(&finishedGroupProof{run: r, policy: policy, snapshot: snap}); err != nil {
+			return err
+		}
 	}
 	p.Number = snap.Entries[len(snap.Entries)-1].PR.Number
 	members, authorized, err := q.groupMembers(ctx, snap)
@@ -1025,14 +1034,11 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if err != nil {
 		return err
 	}
-	counts := make(map[string]int)
-	ok := true
-	for _, j := range jobs {
-		if j.Name == "validation / ci-required" || j.Name == "merge-group-proof" {
-			counts[j.Name]++
-			ok = ok && j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
-		}
+	summary := summarizeProofJobs(jobs, r)
+	if len(summary.unsettled) > 0 {
+		return &groupProofIncomplete{jobs: summary.unsettled, run: r}
 	}
+	counts, ok := summary.counts, summary.ok
 	if counts["validation / ci-required"] != 1 || counts["merge-group-proof"] != 1 {
 		return errors.New("missing or duplicated full merge-group proof")
 	}
@@ -1119,6 +1125,69 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	return q.publish(ctx, p, b, newestQueueCheck(own), result)
+}
+
+// groupProofIncomplete means the completed successful run's proof jobs are not
+// yet listed as finished. It never authorizes a verdict; callers may only wait.
+// run is the identity-checked run whose jobs lag, for a jobs-only poll.
+type groupProofIncomplete struct {
+	jobs []string
+	run  run
+}
+
+func (e *groupProofIncomplete) Error() string {
+	return "merge-group proof jobs are not yet final in GitHub job metadata: " + strings.Join(e.jobs, ", ")
+}
+
+type proofJobSummary struct {
+	counts    map[string]int
+	ok        bool     // every listed proof job succeeded on this head
+	unsettled []string // set only for lag: waiting could still change the verdict
+}
+
+// summarizeProofJobs is the one definition of "lagging". A successful run whose
+// proof jobs are still listed as unfinished or are not listed yet is GitHub
+// metadata lag. Only a failed, mismatched or duplicated proof job is a verdict
+// that waiting cannot change.
+func summarizeProofJobs(jobs []job, r run) proofJobSummary {
+	s := proofJobSummary{counts: make(map[string]int), ok: true}
+	definite := false
+	var unsettled []string
+	for _, j := range jobs {
+		if j.Name == "validation / ci-required" || j.Name == "merge-group-proof" {
+			s.counts[j.Name]++
+			good := j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
+			s.ok = s.ok && good
+			switch {
+			case good:
+			case r.Conclusion == "success" && lagging(j, r.HeadSHA):
+				unsettled = append(unsettled, j.Name+" ("+j.Status+")")
+			default:
+				definite = true
+			}
+		}
+	}
+	if s.counts["validation / ci-required"] <= 1 && s.counts["merge-group-proof"] <= 1 && !definite && r.Conclusion == "success" {
+		for _, name := range []string{"validation / ci-required", "merge-group-proof"} {
+			if s.counts[name] == 0 {
+				unsettled = append(unsettled, name+" (missing)")
+			}
+		}
+		s.unsettled = unsettled
+	}
+	return s
+}
+
+// lagging reports a job of this exact head that GitHub still lists as unfinished.
+func lagging(j job, head string) bool {
+	if j.HeadSHA != head || j.Conclusion != "" {
+		return false
+	}
+	switch j.Status {
+	case "queued", "in_progress", "waiting", "pending", "requested":
+		return true
+	}
+	return false
 }
 
 func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, error) {

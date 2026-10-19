@@ -61,7 +61,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-invariants.yml` | Read-only early signals for dependency bumps and repository-invariant suites that otherwise fail only in the serial queue. Neither is a required context. |
-| Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
+| Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
 | Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
@@ -261,6 +261,28 @@ Startup or terminal transport failure remains a failure, never a green fallback.
 The initial job lookup tolerates GitHub briefly reporting that same running job
 as queued. Up to five reads retain the original job ID, start timestamp and
 absolute deadline; this does not grant another execution budget.
+
+Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
+504, or with a `gh` failure that reports no status (except authentication and
+cancellation): three attempts with 1 and 3 second backoff, never past the
+invocation deadline. Writes are never retried. Discovery dispatch, retirement
+discovery and the legacy gate keep single-attempt reads.
+
+The full-group callback and the group worker are the only invocations that
+wait.
+- When a successful merge-group run's proof jobs are still listed as
+  unfinished or missing, they poll that run's jobs every 20 seconds, then
+  repeat the complete reassessment once.
+- When other reads keep failing transiently, the full reassessment repeats
+  after 20, 40, 80 and then 120 seconds.
+- A rate limit (HTTP 429) ends waiting at once.
+
+If GitHub stays incomplete or unreadable for 6 minutes, the publisher writes
+the distinct terminal refusal "Merge group proof metadata unavailable", so the
+PR can be re-queued instead of waiting for the queue's 60-minute timeout. The
+exception is when no pass ever proved the merge group's identity: then the
+record stays pending, as before. See the
+[transient read handoff](../handoff/queue-proof-transient-reads.md).
 
 Queue jobs run only when `QUEUE_HEAD_WORKERS_ENABLED` is enabled. Before a
 new source generation is enabled, drain old unleased compiled publishers and
