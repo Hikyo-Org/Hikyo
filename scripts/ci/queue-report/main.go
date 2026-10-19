@@ -501,6 +501,9 @@ func jobTitle(r run, pr int, t tally, firstFailed string) string {
 		return fmt.Sprintf("PR #%d: %d cancelled, %d done", pr, t.cancelled, t.passed+t.skipped) + unfinishedTail(t)
 	case r.Status == "completed" && r.Conclusion != "success":
 		return fmt.Sprintf("PR #%d: run %s, %d reported, 0 failed", pr, titleName(r.Conclusion), t.total)
+	case t.running > 0 || t.queued > 0:
+		// Run and job snapshots can disagree; keep unfinished work visible.
+		break
 	case r.Status == "completed" && t.skipped == 0 && t.total == 1:
 		return fmt.Sprintf("PR #%d: 1 job passed", pr)
 	case r.Status == "completed" && t.skipped == 0:

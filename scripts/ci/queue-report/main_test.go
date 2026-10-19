@@ -678,6 +678,19 @@ func TestTitleLeadsWithProgressAndFirstFailure(t *testing.T) {
 		{"all passed", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "completed", "success")}, "PR #995: all 2 jobs passed"},
 		{"all passed with one job is singular", succeeded, []job{testJob(1, "a", "completed", "success")}, "PR #995: 1 job passed"},
 		{"all passed with skipped jobs", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "completed", "skipped")}, "PR #995: 1 passed, 1 skipped, 0 failed"},
+		{"successful run with one running job reports progress", succeeded, []job{testJob(1, "a", "in_progress", "")}, "PR #995: 1 reported, 0 failed, 1 running"},
+		{"successful run with one queued job reports progress", succeeded, []job{testJob(1, "a", "queued", "")}, "PR #995: 1 reported, 0 failed, 0 running, 1 queued"},
+		{"successful run with mixed unfinished jobs reports progress", succeeded, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "e2e", "in_progress", ""),
+			testJob(3, "bench", "queued", ""),
+		}, "PR #995: 3 reported, 0 failed, 1 running, 1 queued"},
+		{"successful run with skipped and unfinished jobs reports progress", succeeded, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "docs", "completed", "skipped"),
+			testJob(3, "e2e", "in_progress", ""),
+			testJob(4, "bench", "waiting", ""),
+		}, "PR #995: 4 reported, 0 failed, 1 running, 1 queued"},
 		{"failed run without a failed job is not reported as passed", failedRun, []job{testJob(1, "a", "completed", "success")}, "PR #995: run failure, 1 reported, 0 failed"},
 	}
 	for _, tt := range tests {
