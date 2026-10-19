@@ -2,10 +2,62 @@
 
 Issue: <https://github.com/Hikyo-Org/Hikyo/issues/966>.
 Baseline: `7bef4d670d2dce0defb963326f0e1e05cfdb6798`.
-Delivery authorization: signed commit, branch push and pull-request creation.
-The implementation is locally validated; hosted delivery and CI status belong
-to the pull request. Merge, release and downstream changes remain outside the
-current authorization.
+Implementation: [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967), merged on
+2026-10-18 as `69e32a25a6431426e839cb463aafd78c781ef15d`.
+Closeout baseline: `eb991c991bcad853590cb0ab2c09367052a92c02`.
+
+## Amendment preparation, 2026-10-19
+
+The owner selected preparation of the exact trust-contract amendment and the
+scoped cross-provider-waiver route, with fresh adversarial OpenAI review. The
+authorized endpoint for this preparation is a signed, DCO-compliant amendment
+PR ready for final owner approval. This selection does not itself approve the
+final contract text or make its proposed waiver operative. Amendment merge,
+release and downstream acceptance remain separate gates.
+
+| Gate | Evidence and remaining work |
+| --- | --- |
+| Implementation merge | #967 merged as `69e32a25a6431426e839cb463aafd78c781ef15d`, an ancestor of the closeout baseline. |
+| Trusted merge validation | [Run 39144169996](https://github.com/Hikyo-Org/Hikyo/actions/runs/39144169996) completed successfully on that exact merge commit. |
+| Contract and review disposition | The [exact amendment](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966) is prepared for owner approval. Its waiver is limited to #966's cross-provider requirement; same-provider review, technical checks and ordinary PR gates remain required. |
+| Fresh OpenAI review | Required on the amendment's exact revision: separate Standards and Spec reviews of this amendment and the implemented trust boundary. Their revision and results belong to the amendment PR; the implementation review history below remains historical evidence. |
+| Signed publication | At the closeout inspection, latest published nightly `v0.0.1-nightly.20261018.81.g35db63eb` predated #967. [Run 39213654522](https://github.com/Hikyo-Org/Hikyo/actions/runs/39213654522) targeted the closeout baseline but had not completed or published. Recheck its eventual result; no artifact verification is claimed. |
+| Consumer acceptance | Pending: exact verified CLI version plus protected `system-ca` bundle, fresh isolated runner state and authenticated read-only `env list` against the approved origin. No consumer update or production rollout was performed. |
+
+Reopen [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) for the amendment
+record. After final owner approval, mark this PR's amendment owner-locked and
+operative on its merge. On merge, re-close #25 with that evidence. Keep #966 open through
+verified signed publication and documented consumer acceptance. A signed
+nightly may satisfy publication before 1.0; the contract must be dispositioned
+before freezing a 1.0 candidate that includes #967. Use the
+[operations closeout procedure](../operations/cli-tls-trust.md#signed-release-and-consumer-update)
+for the release identity, verification and consumer evidence to record.
+
+## Amendment validation, 2026-10-19
+
+Fresh checks on Go 1.27.2/macOS passed:
+
+```sh
+go test -p 2 -parallel 2 ./internal/cli ./cmd/hikyo -count=1
+go test -p 2 -parallel 2 -race ./internal/cli -run 'TestNewHTTPSInteractive|TestRemoteAdd|TestTLSIdentityInspection|TestExplicitSPKI|TestExistingAndProvisionedSPKI|TestContextCreateExplicitSPKI|TestSystemCATrust|TestTrustModes|TestProvisionedTrustMode|TestPinnedClient' -count=1
+node --test docs/site/scripts/test-prepare-content.mjs
+git diff --check
+```
+
+The CLI suite completed in 8.889 seconds, the command-entry suite in 1.211
+seconds, and focused race checks in 10.555 seconds. The documentation preparation
+test passed, and all 39 relative Markdown links in the changed documents resolved.
+
+The initial full CLI run exposed a fixture assumption in
+`TestTrustStoreRejectsUncontrolledFilesystemObjects/shared_file`: the validation
+runner's `0077` umask created the requested `0644` fixture as `0600`, so the
+loader correctly accepted it. A focused rerun reproduced that failure. The
+fixture now explicitly sets `0644` after creation; the focused test, full CLI
+suite and race checks passed under the same `0077` umask. Production permission
+checks and runner policy are unchanged.
+
+These are fresh local checks. Hosted checks belong to the amendment PR. No
+signed CLI artifact or live downstream consumer was exercised by these tests.
 
 ## Implemented behavior
 
@@ -43,7 +95,7 @@ migration/refusal rules, release verification and downstream update procedure.
 The [API/CLI ADR](../adr/api-cli-surface.md) carries a clearly proposed,
 non-operative amendment. It does not claim approval or a review waiver.
 
-## Local validation
+## Implementation validation, 2026-10-18
 
 All checks below passed against the final implementation on Go 1.27.2/macOS:
 
@@ -84,7 +136,7 @@ overview help instead of command help and failed that assertion; the corrected
 Relative documentation targets were checked. Structural Graphify refresh is
 local and ignored by Git; documentation semantics were not regenerated.
 
-## Review and remaining gates
+## Implementation review history, 2026-10-18
 
 The initial parent review and a separate same-provider review checked the
 implementation against live #966 and the repository rules without identifying
@@ -125,7 +177,7 @@ establish alert closure.
 The [governance amendment procedure](../../GOVERNANCE.md#amendment-procedure)
 requires reopening the originating ticket, adversarial cross-model review and
 recording the amendment. The originating API/CLI ticket is
-[#25](https://github.com/Hikyo-Org/Hikyo/issues/25), currently closed. The owner must approve the proposed contract and
+[#25](https://github.com/Hikyo-Org/Hikyo/issues/25), which was closed at the implementation handoff. The owner must approve the proposed contract and
 authorize a qualifying review path or explicitly waive that review gate before
 the amendment can be locked. Claude subscription review is unavailable under
 the current working rules; another provider or paid route was not substituted.
@@ -136,6 +188,8 @@ MergeWatch did not produce reviews because of quota or billing limits; their
 availability notices are not approval. No Windows/Linux runtime, live
 managed-proxy rotation, artifact publication/signature verification or downstream
 CI acceptance was performed.
-The local unsigned development binary is not a signed CLI release. Keep #966
-open through ADR approval, merge, verified signed publication and the documented
-consumer update. Merge and release retain their separate authorization gates.
+The local unsigned development binary was not a signed CLI release. The
+implementation subsequently merged as recorded above. Keep #966 open through
+final ADR approval and amendment merge, verified signed publication and the
+documented consumer update. Release and downstream rollout retain their separate
+authorization gates.

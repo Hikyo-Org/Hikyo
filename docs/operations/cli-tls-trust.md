@@ -1,6 +1,9 @@
 # CLI TLS trust modes (#966)
 
-Status: proposed contract and implementation awaiting ADR approval and merge.
+Status: implementation merged in [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967)
+as `69e32a25a6431426e839cb463aafd78c781ef15d`. The exact
+[ADR amendment and scoped review disposition](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966)
+are prepared for final owner approval; the contract is not yet operative.
 Use these examples only with a verified signed CLI release containing #966.
 Older releases do not support `tls_mode`; an older bundle importer may ignore
 that field and will then refuse an HTTPS entry without a pin. An imported file
@@ -155,15 +158,23 @@ eligibility, token handling, reveal policy or server configuration.
 ## Signed release and consumer update
 
 Local tests and a signed Git commit do not establish a published CLI release.
-Keep #966 open until its ADR approval is recorded, its implementation is merged,
-and a release containing that merge has passed the repository's signing and
-publication process. Follow [signed nightlies](signed-nightlies.md) or the
+Keep #966 open until its ADR approval and review disposition are recorded, its
+amendment PR is merged, and a release containing the implementation merge has
+passed the repository's signing and publication process. A verified signed
+nightly can satisfy this gate; stable 1.0 is not a prerequisite. Follow
+[signed nightlies](signed-nightlies.md) or the
 [release signing procedure](../release/signing.md); verify the artifact using
 the documented trusted release verifier before executing it.
 
-Then update the downstream CI's exact CLI version and protected bundle together.
-On an isolated runner, confirm the read-only `env list` check above against the approved origin before
-resuming the normal deployment flow. Record the verified release version and
-consumer result in #966. No downstream production change or TLS proxy account
+Record the immutable release version, source commit containing #967, CLI
+artifact digest and successful trusted-verifier result. A workflow request,
+queued run, release page or successful bundle import is not that verification.
+
+For the authorized downstream acceptance, update the CI's exact CLI version and
+protected bundle together on an isolated runner with fresh CLI state. Confirm
+the read-only authenticated `env list` check above against the approved origin.
+Record the non-secret consumer result and exact version in #966 before closing
+it. Keep the existing runner configuration available for deliberate rollback.
+Production rollout requires its own authorization. No TLS proxy account
 access is part of this implementation. A certificate rotation test against a
 local test CA is regression evidence; it is not live proxy or release evidence.
