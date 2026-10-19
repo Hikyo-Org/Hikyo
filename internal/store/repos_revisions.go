@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -519,6 +520,11 @@ func (r sqliteSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Sn
 	return out, nil
 }
 
+// Keep each read below SQLite's historical 999-variable limit, including the
+// three proof-derived chain binds. PostgreSQL uses the same bounded candidate
+// chunks with a text array, so neither engine builds an unbounded statement.
+const secretOccurrenceBatchSize = 500
+
 func (r sqliteSnapshots) SecretValueOccurrenceIDsIn(ctx context.Context, p authz.Proof, valueEntryIDs []string) (map[string]bool, error) {
 	chain, err := authz.Verify(p, authz.StoreSnapshotsSecretValueOccurrenceIDsIn, r.tok)
 	if err != nil {
@@ -528,18 +534,15 @@ func (r sqliteSnapshots) SecretValueOccurrenceIDsIn(ctx context.Context, p authz
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one point read per candidate, bounded by the keys of one
-	// environment; batch through an array predicate once the analyzer can
-	// prove that chain shape.
 	out := make(map[string]bool, len(valueEntryIDs))
-	for _, id := range valueEntryIDs {
-		n, err := r.q.CountSecretValueOccurrence(ctx, sqlitegen.CountSecretValueOccurrenceParams{
-			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env, ValueEntryID: id,
+	for batch := range slices.Chunk(valueEntryIDs, secretOccurrenceBatchSize) {
+		ids, err := r.q.ListSecretValueOccurrenceIDsIn(ctx, sqlitegen.ListSecretValueOccurrenceIDsInParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env, ValueEntryIds: batch,
 		})
 		if err != nil {
 			return nil, err
 		}
-		if n > 0 {
+		for _, id := range ids {
 			out[id] = true
 		}
 	}
@@ -1386,18 +1389,15 @@ func (r pgSnapshots) SecretValueOccurrenceIDsIn(ctx context.Context, p authz.Pro
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one point read per candidate, bounded by the keys of one
-	// environment; batch through an array predicate once the analyzer can
-	// prove that chain shape.
 	out := make(map[string]bool, len(valueEntryIDs))
-	for _, id := range valueEntryIDs {
-		n, err := r.q.CountSecretValueOccurrence(ctx, pggen.CountSecretValueOccurrenceParams{
-			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env, ValueEntryID: id,
+	for batch := range slices.Chunk(valueEntryIDs, secretOccurrenceBatchSize) {
+		ids, err := r.q.ListSecretValueOccurrenceIDsIn(ctx, pggen.ListSecretValueOccurrenceIDsInParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env, ValueEntryIds: batch,
 		})
 		if err != nil {
 			return nil, err
 		}
-		if n > 0 {
+		for _, id := range ids {
 			out[id] = true
 		}
 	}
