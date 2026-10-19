@@ -184,6 +184,9 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 	}
 	roles, err := q.roles(ctx, q.expectedHead)
 	if err != nil {
+		if kind == "group" {
+			return q.retireMovedGroup(ctx, err)
+		}
 		return err
 	}
 	if roles.Group && len(roles.Pulls) > 0 {
