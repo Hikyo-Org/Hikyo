@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -19,6 +20,12 @@ type queueReassessment struct {
 	verifiedTerminal bool
 	verifiedRetired  bool
 	finishedGroup    *finishedGroupProof
+	// Set only by a re-reading group invocation whose window ended with GitHub
+	// metadata still incomplete or unreadable. It selects the terminal wording.
+	rereadExpired bool
+	// The first finished-group identity a re-reading invocation observed. Later
+	// passes may only confirm it; a different one is movement, never new proof.
+	pinned *finishedGroupProof
 }
 
 type finishedGroupProof struct {
@@ -38,7 +45,16 @@ func newestQueueCheck(own []check) *check {
 	return latest
 }
 
-func (q *queueController) reassess(ctx context.Context, work func(context.Context) error) (err error) {
+func (q *queueController) reassess(ctx context.Context, work func(context.Context) error) error {
+	return q.reassessHeld(ctx, false, work)
+}
+
+// Group-kind invocations (the group callback job and the group head worker)
+// run once per completed merge-group run with a 10-minute budget, and nothing
+// retriggers them after that run completes. They may therefore repeat the whole
+// reassessment while GitHub job metadata lags or a read fails transiently.
+// Every other invocation reassesses exactly once and never waits.
+func (q *queueController) reassessHeld(ctx context.Context, rereads bool, work func(context.Context) error) error {
 	if q.queueRefresh != nil {
 		return work(ctx)
 	}
@@ -50,7 +66,144 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 			return err
 		}
 	}
+	if !rereads || q.dryRun {
+		_, err := q.reassessOnce(ctx, work, nil)
+		return err
+	}
+	return q.rereadGroup(ctx, work)
+}
+
+// The window leaves the 10-minute group job room for setup (about 30s), the
+// last pass and the terminal write; a job timeout would strand the record
+// pending until the queue's own 60-minute timeout. Wall-clock caps: passes,
+// waits and retries stop at the fence; the terminal write gets its own reserve
+// that may run until groupRereadHardStop after the loop began.
+const groupRereadWindow = 6 * time.Minute
+const groupRereadInterval = 20 * time.Second
+
+// A full pass costs dozens of requests against about 1000 an hour, so waits
+// between full passes double from the interval up to this cap while reads keep
+// failing. Polling the jobs listing alone keeps the fixed interval.
+const groupRereadMaxBackoff = 2 * time.Minute
+
+// Variables rather than constants so tests can shrink them.
+var (
+	groupRereadFence    = 7*time.Minute + 30*time.Second
+	groupRereadReserve  = time.Minute
+	groupRereadHardStop = 9 * time.Minute
+)
+
+var groupRereadNow = time.Now
+var groupRereadWait = waitForReadRetry
+
+type groupRereads struct {
+	parent  context.Context
+	started time.Time // window clock, replaceable in tests
+	fence   time.Time // wall-clock caps: context deadlines run on time.Now
+	hardEnd time.Time
+	pinned  *finishedGroupProof
+	streak  int           // consecutive full passes deferred by a failed read
+	delay   time.Duration // the wait the loop was last asked to make
+}
+
+func newGroupRereads(parent context.Context) *groupRereads {
+	wall := time.Now()
+	return &groupRereads{parent: parent, started: groupRereadNow(), fence: wall.Add(groupRereadFence), hardEnd: wall.Add(groupRereadHardStop)}
+}
+
+// open reports whether a wait of next, and so the step after it, still starts
+// inside the window. It is the only test for waiting: once false, the pass in
+// hand is the final decision.
+func (g *groupRereads) open(next time.Duration) bool {
+	return groupRereadNow().Sub(g.started)+next < groupRereadWindow
+}
+
+// passDelay is the wait before the next full pass: the interval, doubled once
+// per consecutive deferral, capped.
+func (g *groupRereads) passDelay() time.Duration {
+	delay := groupRereadInterval
+	for i := 0; i < g.streak && delay < groupRereadMaxBackoff; i++ {
+		delay *= 2
+	}
+	return min(delay, groupRereadMaxBackoff)
+}
+
+// What a looping pass asks of the loop.
+type rereadNext int
+
+const (
+	rereadStop     rereadNext = iota // the outcome is final
+	rereadPass                       // wait, then reassess from scratch
+	rereadPollJobs                   // barrier confirmed; wait on the jobs listing alone
+)
+
+func (q *queueController) rereadGroup(ctx context.Context, work func(context.Context) error) error {
+	loop := newGroupRereads(ctx)
+	pass, cancel := context.WithDeadline(ctx, loop.fence)
+	defer cancel()
+	for {
+		next, err := q.reassessOnce(pass, work, loop)
+		if next == rereadStop {
+			return err
+		}
+		if _, writeErr := fmt.Fprintf(q.output, "Merge group proof metadata is not final; re-reading in %s: %v\n", loop.delay, err); writeErr != nil {
+			return errors.Join(err, writeErr)
+		}
+		var waitErr error
+		if next == rereadPollJobs {
+			waitErr = q.pollProofJobs(pass, loop, err)
+		} else {
+			waitErr = groupRereadWait(pass, loop.delay)
+		}
+		if waitErr != nil {
+			return errors.Join(err, waitErr)
+		}
+	}
+}
+
+// While proof jobs lag, repeating the full reassessment every interval costs
+// dozens of requests each time against a budget of about 1000 an hour. Poll the
+// run's jobs listing alone, with all of its identity checks, until both proof
+// jobs are final or the window has no room left. The caller then runs exactly
+// one full pass, which re-verifies everything before any verdict.
+func (q *queueController) pollProofJobs(ctx context.Context, loop *groupRereads, waiting error) error {
+	var incomplete *groupProofIncomplete
+	if !errors.As(waiting, &incomplete) {
+		if !loop.open(groupRereadInterval) {
+			return nil
+		}
+		return groupRereadWait(ctx, groupRereadInterval) // never spin
+	}
+	for loop.open(groupRereadInterval) {
+		if err := groupRereadWait(ctx, groupRereadInterval); err != nil {
+			return err
+		}
+		// The closing pass re-reads the listing itself, so this read only pays
+		// off when another wait can follow it.
+		if !loop.open(groupRereadInterval) {
+			return nil
+		}
+		jobs, err := q.jobs(ctx, incomplete.run)
+		if err != nil {
+			if transientGitHubRead(err) && !rateLimitedGroupRead(err) {
+				continue
+			}
+			return nil // let the full pass classify it
+		}
+		if len(summarizeProofJobs(jobs, incomplete.run).unsettled) == 0 {
+			return nil
+		}
+	}
+	return nil
+}
+
+// A looping pass leaves a nonterminal barrier and asks to wait; any other
+// outcome is final. Nothing terminal is written while the window is open.
+func (q *queueController) reassessOnce(ctx context.Context, work func(context.Context) error, rereads *groupRereads) (next rereadNext, err error) {
 	state := &queueReassessment{}
+	if rereads != nil {
+		state.pinned = rereads.pinned
+	}
 	q.queueRefresh = state
 	defer func() { q.queueRefresh = nil }()
 	own, readErr := q.listOwnedChecks(ctx, q.expectedHead)
@@ -61,14 +214,112 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 		err = readErr
 	}
 	if q.dryRun {
-		return err
+		return rereadStop, err
+	}
+	if rereads != nil && rereads.pinned == nil {
+		rereads.pinned = state.finishedGroup
 	}
 	if err == nil && state.verifiedTerminal || state.verifiedRetired && (err == nil || onlyStaleHeadWork(err)) {
-		return err
+		return rereadStop, err
 	}
 	// Cancellation may have interrupted mutable authority or an uncertain write.
 	// A separate short reserve is bounded by the invocation's original deadline.
-	end := time.Now().Add(5 * time.Second)
+	// A looping invocation derives a longer one from its parent, never from the
+	// fenced pass context: the terminal refusal takes about nine sequential calls.
+	var reserve context.Context
+	var stop context.CancelFunc
+	if rereads != nil {
+		reserve, stop = q.reserveFor(rereads.parent, groupRereadReserve, rereads.hardEnd)
+	} else {
+		reserve, stop = q.reserveContext(ctx)
+	}
+	defer stop()
+	if rereads != nil && !state.uncertainCreate && rereads.parent.Err() == nil && !q.groupSettled(state) {
+		// Only the loop's own fence can have ended the pass context here.
+		fenced := ctx.Err() != nil
+		if fenced && expirableGroupRead(err) || !fenced && deferrableGroupRead(err) {
+			var incomplete *groupProofIncomplete
+			lagging := errors.As(err, &incomplete)
+			next := rereads.passDelay()
+			if lagging {
+				next = groupRereadInterval
+			}
+			// A rate limit is not cured by waiting out the window: expire at once.
+			if !fenced && !rateLimitedGroupRead(err) && rereads.open(next) {
+				// An existing blocking record is left untouched; a missing one is still
+				// created so the wait never leaves a stale non-blocking verdict effective.
+				blockErr := q.ensureBlocking(reserve, state, err)
+				if blockErr != nil && !deferrableGroupRead(blockErr) {
+					return rereadStop, errors.Join(err, blockErr)
+				}
+				// Without a confirmed barrier the next step must be a full pass,
+				// which establishes one again.
+				polling := blockErr == nil && lagging
+				next = rereads.passDelay()
+				if polling {
+					next = groupRereadInterval
+				}
+				// ensureBlocking takes several sequential calls: decide again on the
+				// clock it left. A closed window expires on this pass's own evidence.
+				if !rateLimitedGroupRead(blockErr) && rereads.open(next) {
+					rereads.delay = next
+					if polling {
+						rereads.streak = 0 // a pass that read enough to see lag is healthy
+						return rereadPollJobs, err
+					}
+					rereads.streak++
+					return rereadPass, errors.Join(err, blockErr)
+				}
+			}
+			state.rereadExpired = true
+			if state.finishedGroup == nil {
+				// The final pass failed before re-proving the group. The identity an
+				// earlier pass proved is still re-verified against live state before
+				// any write.
+				state.finishedGroup = state.pinned
+			}
+		}
+	}
+	return rereadStop, errors.Join(err, q.ensureBlocking(reserve, state, err))
+}
+
+// A completed owned record that already carries this run's identity (or is the
+// expiry refusal written onto the run-less held-head record) means another
+// invocation has issued the verdict. Waiting would only spend requests, so such
+// a pass behaves as a single reassessment. The pending barrier a running group
+// establishes has no run, so an expiry refusal written onto it has Run 0: a
+// same-head re-run after one therefore takes the single-pass path, which is
+// acceptable because the refusal tells the operator to re-queue (a new head).
+func (q *queueController) groupSettled(s *queueReassessment) bool {
+	proved := s.finishedGroup
+	if proved == nil {
+		proved = s.pinned
+	}
+	if proved == nil || s.latest == nil || s.latest.Status != "completed" || !q.authenticatedQueueCheck(s.latest, q.expectedHead) {
+		return false
+	}
+	held, err := decodeBinding(s.latest.ExternalID)
+	if err != nil {
+		return false
+	}
+	// A run-less completed record settles only as the expiry refusal; a
+	// retirement-cancelled barrier or an unsafe-proof refusal is run-less too.
+	return held.Run == proved.run.ID && held.Attempt == proved.run.Attempt || held.Run == 0 && s.latest.Output.Title == metadataExpiredRefusal.Title
+}
+
+// Cancellation may have interrupted mutable authority or an uncertain write.
+// A separate short reserve is bounded by the invocation's original deadline.
+func (q *queueController) reserveContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return q.reserveFor(ctx, 5*time.Second, time.Time{})
+}
+
+// reserveFor derives from ctx without its cancellation. A nonzero hardEnd caps
+// the budget.
+func (q *queueController) reserveFor(ctx context.Context, budget time.Duration, hardEnd time.Time) (context.Context, context.CancelFunc) {
+	end := time.Now().Add(budget)
+	if !hardEnd.IsZero() && hardEnd.Before(end) {
+		end = hardEnd
+	}
 	if !q.queueDeadline.IsZero() && q.queueDeadline.Before(end) {
 		end = q.queueDeadline
 	}
@@ -77,9 +328,62 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 			end = outer
 		}
 	}
-	reserve, stop := context.WithDeadline(context.WithoutCancel(ctx), end)
-	defer stop()
-	return errors.Join(err, q.ensureBlocking(reserve, state, err))
+	return context.WithDeadline(context.WithoutCancel(ctx), end)
+}
+
+// deferrableGroupRead reports whether err consists only of causes that waiting
+// can cure: incomplete GitHub job metadata or a transient read failure. Context
+// cancellation from a sibling read that failed that way is tolerated, never alone.
+func deferrableGroupRead(err error) bool {
+	curable, other, _ := classifyGroupRead(err, false)
+	return curable && !other
+}
+
+// rateLimitedGroupRead reports whether any cause in err is an HTTP 429.
+func rateLimitedGroupRead(err error) bool {
+	_, _, limited := classifyGroupRead(err, false)
+	return limited
+}
+
+// expirableGroupRead is the same test once the loop's own fence has ended the
+// pass: its deadline error says nothing about GitHub, so it is tolerated too,
+// even alone.
+func expirableGroupRead(err error) bool {
+	_, other, _ := classifyGroupRead(err, true)
+	return err != nil && !other
+}
+
+func classifyGroupRead(err error, fenced bool) (curable, other, limited bool) {
+	// Cancellation is never evidence. The deadline is only once the fence fired.
+	neutral := func(err error) bool {
+		return errors.Is(err, context.Canceled) || fenced && errors.Is(err, context.DeadlineExceeded)
+	}
+	switch e := err.(type) {
+	case nil:
+		return false, false, false
+	case *groupProofIncomplete:
+		return true, false, false
+	case *githubReadError:
+		if transientGitHubRead(e) {
+			return true, false, e.status == http.StatusTooManyRequests
+		}
+		return false, e.rejected || e.status != 0 || !neutral(e.cause), false
+	}
+	if many, ok := err.(interface{ Unwrap() []error }); ok {
+		parts := many.Unwrap()
+		if len(parts) == 0 {
+			return false, true, false
+		}
+		for _, part := range parts {
+			c, o, l := classifyGroupRead(part, fenced)
+			curable, other, limited = curable || c, other || o, limited || l
+		}
+		return curable, other, limited
+	}
+	if one, ok := err.(interface{ Unwrap() error }); ok {
+		return classifyGroupRead(one.Unwrap(), fenced)
+	}
+	return false, err != context.Canceled && !(fenced && err == context.DeadlineExceeded), false
 }
 
 func (q *queueController) ensureBlocking(ctx context.Context, state *queueReassessment, cause error) error {
@@ -89,13 +393,13 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	} // Unknown history cannot authorize another creation.
 	latest := newestQueueCheck(own)
 	if blockingQueueCheck(latest) {
-		if cause != nil && state.finishedGroup != nil && latest.Status != "completed" && q.authenticatedQueueCheck(latest, q.expectedHead) {
+		if state.terminalGroupCause(cause) && latest.Status != "completed" && q.authenticatedQueueCheck(latest, q.expectedHead) {
 			b, err := decodeBinding(latest.ExternalID)
 			if err != nil {
 				return err
 			}
 			p := pull{Number: b.PR, Head: reference{SHA: b.Head}}
-			return q.finishGroupFailure(ctx, state.finishedGroup, p, b, latest, cause)
+			return q.finishGroupFailure(ctx, state.finishedGroup, p, b, latest, cause, state.groupFailure())
 		}
 		return nil
 	}
@@ -122,7 +426,7 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 		if scanErr != nil || latest == nil {
 			return errors.Join(scanErr, errors.New("uncertain queued creation; no effective blocking identity confirmed"))
 		}
-		return q.failOwnedBarrier(ctx, p, b, latest, cause)
+		return q.failOwnedBarrier(ctx, p, b, latest, cause, unsafeProofRefusal)
 	}
 	result := pending("Current held-head proof is incomplete; admission and merging remain blocked.")
 	written, writeErr := q.publishQueueRecord(ctx, p, b, latest, result)
@@ -130,7 +434,7 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 		// Never retry the uncertain CREATE. Only the complete inventory captured
 		// before it may authorize a failure on that known owned record.
 		if latest != nil && scanErr == nil {
-			return errors.Join(writeErr, q.failOwnedBarrier(ctx, p, b, latest, writeErr))
+			return errors.Join(writeErr, q.failOwnedBarrier(ctx, p, b, latest, writeErr, unsafeProofRefusal))
 		}
 		return errors.Join(scanErr, writeErr)
 	}
@@ -139,13 +443,49 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	if finalErr != nil || written == nil || current == nil || current.ID != written.ID || !blockingQueueCheck(current) {
 		return errors.Join(scanErr, finalErr, errors.New("newest owned blocking barrier could not be confirmed"))
 	}
-	if cause != nil && state.finishedGroup != nil {
-		return q.finishGroupFailure(ctx, state.finishedGroup, p, b, current, cause)
+	if state.terminalGroupCause(cause) {
+		return q.finishGroupFailure(ctx, state.finishedGroup, p, b, current, cause, state.groupFailure())
 	}
 	return scanErr
 }
 
-func (q *queueController) finishGroupFailure(ctx context.Context, proved *finishedGroupProof, p pull, b binding, selected *check, cause error) error {
+var unsafeProofRefusal = refused("Current proof could not be safely established; the owned verdict is blocking.")
+
+// A finished group's failure is terminal because nothing retriggers it. The
+// exceptions are causes only waiting can cure: they stay pending unless a
+// re-reading invocation exhausted its window, which publishes a distinct refusal.
+func (s *queueReassessment) terminalGroupCause(cause error) bool {
+	return cause != nil && s.finishedGroup != nil && (s.rereadExpired || !deferrableGroupRead(cause))
+}
+
+// proveGroup records the finished-group identity a pass is about to verdict. A
+// re-reading pass that finds a different one keeps the pinned proof, so the only
+// possible outcome is the existing identity-moved refusal to write.
+func (s *queueReassessment) proveGroup(proved *finishedGroupProof) error {
+	if s.pinned != nil && !sameGroupProof(*s.pinned, *proved) {
+		s.finishedGroup = s.pinned
+		return &queueSnapshotChanged{reason: "merge group identity moved between re-reads"}
+	}
+	s.finishedGroup = proved
+	return nil
+}
+
+func sameGroupProof(proved, live finishedGroupProof) bool {
+	return proved.policy == live.policy && sameSourceEvent(proved.run, live.run) && proved.run.HeadBranch == live.run.HeadBranch && proved.run.Status == live.run.Status && proved.run.Conclusion == live.run.Conclusion && proved.snapshot.Digest == live.snapshot.Digest
+}
+
+// The refusal a re-reading invocation publishes when it gives up; groupSettled
+// recognises it by Title.
+var metadataExpiredRefusal = outcome{Status: "completed", Conclusion: "failure", Title: "Merge group proof metadata unavailable", Summary: "GitHub job metadata stayed incomplete or unreadable after a successful merge-group run, through bounded re-reads or a rate limit; re-queue the PR."}
+
+func (s *queueReassessment) groupFailure() outcome {
+	if s.rereadExpired {
+		return metadataExpiredRefusal
+	}
+	return unsafeProofRefusal
+}
+
+func (q *queueController) finishGroupFailure(ctx context.Context, proved *finishedGroupProof, p pull, b binding, selected *check, cause error, result outcome) error {
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
@@ -158,14 +498,13 @@ func (q *queueController) finishGroupFailure(ctx context.Context, proved *finish
 	if err != nil {
 		return err
 	}
-	sameSource := live != nil && sameSourceEvent(proved.run, *live) && live.HeadBranch == proved.run.HeadBranch && live.Status == "completed" && live.Status == proved.run.Status && live.Conclusion == proved.run.Conclusion
-	if policy != proved.policy || !sameSource || snapshot.Digest != proved.snapshot.Digest {
+	if live == nil || live.Status != "completed" || !sameGroupProof(*proved, finishedGroupProof{run: *live, policy: policy, snapshot: snapshot}) {
 		return errors.New("completed group identity moved before failure publication")
 	}
-	return q.failOwnedBarrier(ctx, p, b, selected, cause)
+	return q.failOwnedBarrier(ctx, p, b, selected, cause, result)
 }
 
-func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error) error {
+func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
 	own, err := q.listOwnedChecks(ctx, q.expectedHead)
 	latest := newestQueueCheck(own)
 	if err != nil || latest == nil || latest.ID != selected.ID || !q.authenticatedQueueCheck(latest, q.expectedHead) {
@@ -177,7 +516,6 @@ func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b bindin
 	if cause == nil {
 		cause = errors.New("queued blocking barrier could not be established")
 	}
-	result := refused("Current proof could not be safely established; the owned verdict is blocking.")
 	payload, err := q.checkPayload(b, result)
 	if err != nil {
 		return err
