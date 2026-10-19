@@ -157,8 +157,44 @@ values and error behavior are unchanged.
 Regression coverage includes large signed and unsigned 32-bit boundary inputs
 for both settings and successful parsing at the 10,000-key edge. The complete
 configuration and runtime-configuration test suites pass after this repair.
-Hosted CodeQL confirmation is pending at repair delivery; local parsing tests
-do not establish that the remote diagnostic has cleared.
+Hosted CodeQL passed on `1e30f47820be` and the reported review thread resolved.
+
+## Merge queue integration follow-up
+
+Merge-group run `39255626623` exposed integration gaps in the historical
+upgrade fixture, reviewed security inventories and static browser demo.
+
+- The legacy upgrade drill now explicitly admits migration 78, removes its
+  columns and ledger entry only after proving every project has no override
+  and revision zero, then repeats the existing exact legacy schema inspection.
+  New subprocess tests refuse either saved override or revision evidence on
+  SQLite and PostgreSQL. The immutable legacy migration prefix is unchanged.
+- The operation formula inventory adds capacity read and set under
+  `project-settings@project`. Existing operation formulas are unchanged.
+- Generic project metadata reads retain their historical projection. They do
+  not read capacity columns before migration 78 exists during a legacy restore.
+  Capacity still uses its separate proof-gated query. Existing both-engine
+  automatic credential-proof tests caught this regression with org-scoped grants
+  after the stale fixture guard was repaired.
+- Reviewed SQL protocol hashes follow the additive managed configuration
+  migrations and their resolved version constants. The canonical updater
+  refuses changes to authority, protocol ownership and caller sets.
+- The static demo serves schema-valid inherited capacity for its six keys and
+  three environments. Capacity writes remain refused and preserve fixture
+  state. Browser checks explicitly exercise inspection refresh while all policy
+  mutations remain disabled, following the existing credential refresh pattern.
+
+The original legacy fixture failure and missing demo response reproduced
+locally before the repair. Frontend typecheck, lint, all 1,978 unit tests and
+all 82 static demo browser checks passed after it on desktop and phone.
+The actual offline Cosign restore drill passed. Canonical pin regeneration
+passed across all four build contexts. The normal reviewed SQL protocol,
+predicate and inventory guards passed again against the regenerated pins.
+Refreshed Standards and Spec source reviews found no actionable findings.
+The first complete app run found the legacy metadata projection regression.
+After that repair, the focused legacy regressions passed on both databases,
+the complete app suite passed, and the complete configuration upgrade suite
+passed. Hosted checks on the new commit remain separate evidence.
 
 ## UI consistency pass
 

@@ -4,7 +4,7 @@ import { listValuesOp, publishPendingChangesOp, setValueOp } from '@hikyo/operat
 import {
   zDefinitionsSettings, zEnvironmentList, zEnvironmentSettings, zEnvironmentSignals, zError,
   zFolderList, zGrantList, zKeyList, zMeta, zMyOrgList, zOrg, zPendingChange, zPendingDraftList,
-  zProject, zProjectList, zProjectRetentionPolicy, zPublishResult, zRevealWindow, zRevisionDetail,
+  zProject, zProjectCapacity, zProjectList, zProjectRetentionPolicy, zPublishResult, zRevealWindow, zRevisionDetail,
   zRevisionList, zRuleList, zValueCell, zValueList, zWhoAmI,
 } from '@hikyo/zod';
 import {
@@ -40,6 +40,7 @@ describe('browser demo API', () => {
       [`${project}/environments`, zEnvironmentList], [`${project}/keys`, zKeyList],
       [`${project}/folders`, zFolderList], [`${org}/grants`, zGrantList], [`${org}/rules`, zRuleList],
       [`${project}/definitions/settings`, zDefinitionsSettings], [`${project}/retention`, zProjectRetentionPolicy],
+      [`${project}/capacity`, zProjectCapacity],
       [`${env()}/values`, zValueList], [`${env()}/signals`, zEnvironmentSignals],
       [`${env()}/settings`, zEnvironmentSettings], [`${env()}/pending`, zPendingDraftList],
       [`${env()}/reveal-window`, zRevealWindow], [`${env()}/revisions`, zRevisionList],
@@ -65,9 +66,13 @@ describe('browser demo API', () => {
     const definitions = zDefinitionsSettings.parse(await (await fetch(definitionsPath)).json());
     expect(definitions.can_declare_keys).toBe(false);
     expect(definitions.can_edit_definitions).toBe(false);
+    const capacityPath = `${project}/capacity`;
+    const capacity = zProjectCapacity.parse(await (await fetch(capacityPath)).json());
+    expect(capacity).toMatchObject({ key_count: 6, environment_count: 3, effective_limit: 1000, inherited: true });
     const writes = [
       { path: project, method: 'PATCH', body: { name: 'Renamed project' } },
       { path: definitionsPath, method: 'PUT', body: { definitions_source: 'git' } },
+      { path: capacityPath, method: 'PUT', body: { key_limit_override: 5000, expected_revision: 0, expected_instance_default: 1000, expected_instance_maximum: 10000 } },
       { path: `${project}/retention`, method: 'PUT', body: { mode: 'keep-if-either', max_age_seconds: 86400, last_revisions: 5 } },
       { path: `${env()}/settings`, method: 'PUT', body: { protected: true, reauth_window_seconds: 600 } },
     ];
@@ -76,6 +81,7 @@ describe('browser demo API', () => {
       expect(response.status, write.path).toBe(404);
     }
     expect(zDefinitionsSettings.parse(await (await fetch(definitionsPath)).json())).toEqual(definitions);
+    expect(zProjectCapacity.parse(await (await fetch(capacityPath)).json())).toEqual(capacity);
   });
 
   it('serves useful schema-valid read-only examples for every expanded screen and nested details', async () => {

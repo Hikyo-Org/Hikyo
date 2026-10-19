@@ -85,6 +85,8 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
         if (path === projectRoot) return json({ ...project, can_manage_policy: role === 'admin' });
         if (path === `${orgRoot}/retention`) return json(retention);
         if (path === `${projectRoot}/retention`) return json({ ...retention, inherited: true });
+        if (path === `${projectRoot}/capacity`) return json({ key_limit_override: null, instance_default: 1000, instance_maximum: 10000,
+          effective_limit: 1000, key_count: keys.length, environment_count: environments.length, revision: 0, inherited: true, capped: false });
         if (path === `${projectRoot}/definitions/settings`) return json({ definitions_source: 'db', can_declare_keys: false, can_edit_definitions: false });
         if (path === `${projectRoot}/machine-reveal`) return json({ enabled: false });
         if (path === `${projectRoot}/environments`) return json(list(environments));

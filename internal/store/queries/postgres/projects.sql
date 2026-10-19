@@ -6,17 +6,19 @@
 INSERT INTO projects (id, org_id, name, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(chain_org_id), sqlc.arg(name), sqlc.arg(created_at));
 
+-- Keep ordinary metadata reads compatible with pre-capacity recovery schemas.
+-- Capacity policy is read through its separate proof-gated query below.
 -- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
+       machine_reveal, machine_reveal_generation
 FROM projects
 WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id);
 
 -- name: ListProjects :many
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
+       machine_reveal, machine_reveal_generation
 FROM projects
 WHERE org_id = sqlc.arg(chain_org_id) ORDER BY name;
 
