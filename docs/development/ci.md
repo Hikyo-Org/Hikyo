@@ -19,6 +19,8 @@ route when operators restore strict legacy policy.
 | --- | --- | --- |
 | Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
 | Refresh the bounded feedback compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Compiles the CLI/CI dependency seed in a fresh dedicated directory, checks its size and file count, then publishes it for read-only feedback reuse. |
+| Refresh the shared race compiler cache | `ci-race-cache` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
+| Run repository invariants before queueing | `repository-invariants` | Advisory, per PR push touching Go code, workflows, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Prove queued changes | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Prove a legacy recovery candidate | `pr-candidate` | Under restored strict legacy policy, a maintainer adds `ci:full`. Trusted `ci-required-next` requires the complete immutable current-main merge. |
 | Validate all of main | `ci-main` | Manual full graph, including development snapshot artifacts. |
@@ -52,28 +54,40 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 23 YAML workflow files. GitHub's sidebar also contains
+The source contains 33 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
+| Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-invariants.yml` | Read-only early signals for dependency bumps and repository-invariant suites that otherwise fail only in the serial queue. Neither is a required context. |
 | Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner. |
 | Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. |
+| Queue diagnostics | `ci-queue-report.yml`, `ci-impact-shadow.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run), and observe backend impact selection. Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
-| Feedback compiler seed | `ci-feedback-cache.yml` | Trusted-main-only producer for bounded, dedicated Go build entries; PR feedback only reads them. |
-| Release acceptance | `release-acceptance.yml`, `ops-floor.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
-| Publication | `nightly.yml`, `release.yml`, `docs.yml` | Nightly, stable tags, and Pages retain separate credentials and gates. |
+| Compiler cache seeds | `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
+| Release acceptance | `release-acceptance.yml`, `ops-floor.yml`, `aws-acceptance.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
+| Publication | `nightly.yml`, `nightly-manual.yml`, `release.yml`, `security-release.yml`, `docs.yml` | Nightly, stable tags, and Pages retain separate credentials and gates. |
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may
 differ from filenames. `ci.yml` and `matrix-performance.yml` are reusable graphs.
 
 Historical workflow entries can remain in GitHub even after source consolidation.
 The permanent legacy full-only publisher is retained for protected rollback.
+
+Scheduled triggers are best effort. Between 12 and 19 October 2026 GitHub
+delivered each 15-minute control-plane schedule (`pr-gate`, `queue-gate`,
+`check-retirement`) about seven times per 24 hours, and the 02:00 UTC nightly
+started between 06:21 UTC
+([run 39009622432](https://github.com/Hikyo-Org/Hikyo/actions/runs/39009622432))
+and 08:39 UTC
+([run 38370804480](https://github.com/Hikyo-Org/Hikyo/actions/runs/38370804480)).
+Treat scheduled repair and cache seeding as hours-scale, not minutes-scale;
+dispatch the workflow manually when a fresher result matters.
 
 ## Coverage and trust rules
 
