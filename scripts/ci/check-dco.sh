@@ -35,12 +35,14 @@ failed=0
 signed=0
 exempt=0
 for commit in $commits; do
-	identity=$(git -C "$repo" show -s --format='%an <%ae>' "$commit")
+	# show -s can still inspect blobs for rename detection. Admission metadata
+	# is blob-filtered; author and trailer checks need commit objects only.
+	identity=$(git -C "$repo" log -1 --no-patch --format='%an <%ae>' "$commit")
 	if [ -n "$exempt_author" ] && [ "$identity" = "$exempt_author" ]; then
 		exempt=$((exempt + 1))
 		continue
 	fi
-	trailers=$(git -C "$repo" show -s --format='%B' "$commit" | git -C "$repo" interpret-trailers --parse)
+	trailers=$(git -C "$repo" log -1 --no-patch --format='%B' "$commit" | git -C "$repo" interpret-trailers --parse)
 	if ! printf '%s\n' "$trailers" | grep -F -i -x "Signed-off-by: $identity" >/dev/null; then
 		printf 'DCO check: %s missing Signed-off-by: %s\n' "$commit" "$identity" >&2
 		failed=1

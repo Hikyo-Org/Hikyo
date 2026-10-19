@@ -105,8 +105,26 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	tree := object("tree", "")
-	base := object("commit", "tree "+tree+"\nauthor Fixture Base <base@example.test> 1700000000 +0000\ncommitter Fixture Base <base@example.test> 1700000000 +0000\n\nFixture base\n")
+	tree := func(name, blob string) string {
+		t.Helper()
+		cmd := exec.Command("git", "-C", repo, "mktree")
+		cmd.Stdin = strings.NewReader("100644 blob " + blob + "\t" + name + "\n")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	deleted := object("blob", "one\ntwo\nthree\nfour\nfive\n")
+	baseTree := tree("deleted.txt", deleted)
+	headTree := tree("added.txt", object("blob", "one\ntwo\nthree\nfour\nhead\n"))
+	base := object("commit", "tree "+baseTree+"\nauthor Fixture Base <base@example.test> 1700000000 +0000\ncommitter Fixture Base <base@example.test> 1700000000 +0000\n\nFixture base\n")
+	// Blob-filtered admission metadata contains commits and trees, but the
+	// deleted file need not exist locally. DCO must not run rename detection
+	// or read file contents while checking commit authors and trailers.
+	if err := os.Remove(filepath.Join(repo, "objects", deleted[:2], deleted[2:])); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, identity, actor, message string
 		want                           int
@@ -118,7 +136,7 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 		{"authenticated dependabot", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "dependabot[bot]", "Dependency edit\n", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			head := object("commit", "tree "+tree+"\nparent "+base+"\nauthor "+tc.identity+" 1700000001 +0000\ncommitter "+tc.identity+" 1700000001 +0000\n\n"+tc.message)
+			head := object("commit", "tree "+headTree+"\nparent "+base+"\nauthor "+tc.identity+" 1700000001 +0000\ncommitter "+tc.identity+" 1700000001 +0000\n\n"+tc.message)
 			p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}
 			p.User.ID = 12
 			p.User.Login = tc.actor
