@@ -218,10 +218,14 @@ func securityHeaders(hsts bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
-			// Login transport state, authorization codes and tokens are never cacheable.
-			if strings.HasPrefix(r.URL.Path, api.PathPrefix+"/auth/cli-login/") {
+			// The contract can return plaintext, credentials and disclosure
+			// material. Cover the whole API, including refusals before a handler,
+			// so new operations inherit non-storage without a route allowlist.
+			// Static assets and SPA documents keep their own cache policies.
+			if r.URL.Path == api.PathPrefix || strings.HasPrefix(r.URL.Path, api.PathPrefix+"/") {
 				h.Set("Cache-Control", "no-store")
 				h.Set("Pragma", "no-cache")
+				h.Add("Vary", "Cookie, Authorization")
 			}
 			h.Set("Content-Security-Policy", contentSecurityPolicy)
 			h.Set("X-Content-Type-Options", "nosniff")
