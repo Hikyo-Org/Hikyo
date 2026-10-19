@@ -156,13 +156,18 @@ function ValuesSurface({
     setRevealAnnouncement(null);
   }, [setDisclosed]));
 
-  // One ticker drives every countdown on the surface: the remask timers and
-  // the window chip are the same question asked of different deadlines, and a
-  // timer per cell is a timer per cell to leak.
+  const timedWindow = revealGuard.data;
+  const windowDeadline = timedWindow?.live === true && !timedWindow.single_decision
+    && timedWindow.expires_at !== undefined ? Date.parse(timedWindow.expires_at) : 0;
+  const clockActive = Object.keys(disclosed).length > 0 || windowDeadline > now;
+
+  // One ticker drives every countdown, and stops when neither plaintext nor
+  // a timed reveal window needs it. Focus remasking keeps its own listeners.
   useEffect(() => {
+    if (!clockActive) return;
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
+  }, [clockActive]);
 
   // Remasking is DERIVED from the deadline rather than scheduled: a tab that
   // was backgrounded past the deadline comes back masked, which a

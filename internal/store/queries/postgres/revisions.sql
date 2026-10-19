@@ -198,13 +198,12 @@ INSERT INTO secret_value_occurrences (
     sqlc.arg(chain_project_id), sqlc.arg(chain_env_id)
 ) ON CONFLICT (value_entry_id) DO NOTHING;
 
--- CountSecretValueOccurrence is the point membership read of the sticky
--- sensitivity lineage: one value entry, in the proof's environment. Callers
--- ask about the handful of entries they hold, never the lifetime history.
--- name: CountSecretValueOccurrence :one
-SELECT COUNT(*) FROM secret_value_occurrences
+-- ListSecretValueOccurrenceIDsIn reads only the requested candidates in the
+-- proof's environment, never the lifetime sensitivity history.
+-- name: ListSecretValueOccurrenceIDsIn :many
+SELECT value_entry_id FROM secret_value_occurrences
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = sqlc.arg(chain_env_id) AND value_entry_id = sqlc.arg(value_entry_id);
+  AND environment_id = sqlc.arg(chain_env_id) AND value_entry_id = ANY(sqlc.arg(value_entry_ids)::text[]);
 
 -- name: DeleteSecretValueOccurrencesForEnvironment :execrows
 DELETE FROM secret_value_occurrences

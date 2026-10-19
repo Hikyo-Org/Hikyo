@@ -65,3 +65,34 @@ func TestTypedParameterNarrowingRetainsChainProof(t *testing.T) {
 		}
 	}
 }
+
+func TestOccurrenceBatchPredicatesKeepCompleteChain(t *testing.T) {
+	rules := map[string]TableRule{"secret_value_occurrences": {Class: "environment", Chain: []string{"org_id", "project_id"}}}
+	for _, engine := range []string{"sqlite", "postgres"} {
+		t.Run(engine, func(t *testing.T) {
+			membership := "value_entry_id IN (sqlc.slice('value_entry_ids'))"
+			if engine == "postgres" {
+				membership = "value_entry_id = ANY(sqlc.arg(value_entry_ids)::text[])"
+			}
+			sql := "SELECT value_entry_id FROM secret_value_occurrences WHERE org_id=sqlc.arg(chain_org_id) AND project_id=sqlc.arg(chain_project_id) AND environment_id=sqlc.arg(chain_env_id) AND " + membership
+			if got := checkQuery(engine, Query{Name: "occurrences", SQL: sql}, rules); len(got) != 0 {
+				t.Fatal(got)
+			}
+			for name, bad := range map[string]string{
+				"missing org":       strings.Replace(sql, "org_id=sqlc.arg(chain_org_id) AND ", "", 1),
+				"missing project":   strings.Replace(sql, "project_id=sqlc.arg(chain_project_id) AND ", "", 1),
+				"literal org":       strings.Replace(sql, "org_id=sqlc.arg(chain_org_id)", "org_id='foreign'", 1),
+				"chain slice":       strings.Replace(sql, "project_id=sqlc.arg(chain_project_id)", "project_id IN (sqlc.slice('projects'))", 1),
+				"chain array":       strings.Replace(sql, "project_id=sqlc.arg(chain_project_id)", "project_id=ANY(sqlc.arg(projects)::text[])", 1),
+				"outer disjunction": sql + " OR TRUE",
+				"nested read":       strings.Replace(sql, membership, "value_entry_id IN (SELECT value_entry_id FROM secret_value_occurrences)", 1),
+			} {
+				t.Run(name, func(t *testing.T) {
+					if got := checkQuery(engine, Query{Name: "occurrences", SQL: bad}, rules); len(got) == 0 {
+						t.Fatal("unproved batch accepted")
+					}
+				})
+			}
+		})
+	}
+}

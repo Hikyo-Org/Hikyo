@@ -267,7 +267,7 @@ func TestLegacyDrillFixtureRefusesCLILoginEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 77, while the
+// The runtime-created fixture includes migrations 45 through 78, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -286,10 +286,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+33 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 77 only")
+	if len(current.Entries) != len(legacy.Entries)+34 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 78 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -384,8 +384,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target or member-access-rule evidence", query, err)
 		}
 	}
-	// Reverse 00077 only after proving no reviewed AWS resource witness is discarded.
+	// Reverse 00078 only after proving no reviewed AWS resource witness is discarded.
 	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_witness")
+	// Reverse 00077: indexes carry no independent data or uniqueness.
+	drillExec(t, db, "DROP INDEX grants_principal")
+	drillExec(t, db, "DROP INDEX pending_changes_owner_key")
 	// Reverse 00076 only after proving its retention and identity evidence is pristine.
 	for _, column := range []string{"last_prune_attempt_at", "last_prune_attempt_id", "prune_failure_reason", "retained_expired_archives", "last_artifact_sha256"} {
 		drillExec(t, db, "ALTER TABLE backup_state DROP COLUMN "+column)
@@ -585,7 +588,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78)",
 	} {
 		drillExec(t, db, query)
 	}

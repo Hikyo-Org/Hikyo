@@ -456,12 +456,12 @@
     "AdapterMoveBeginOriginTargets": {
       "authority": "Verified origin-move chain restricts active target rows by adapter/org/project. Nested owned/dispatched ledger aggregation correlates target ID and full org/project/environment to each target. Selected repositories, orphaned names, generations and active-job state stay in the same admitted snapshot; PostgreSQL row locking and target-ID order are preserved.",
       "sql_hash": {
-        "sqlite": "fa01b7d3ef1343ab1e9a5beaef5f4e90833097d2ce220c3c3e948d8047eae750",
-        "postgres": "4dd7dec672ad2aaf7d24add160a800a192932adf925865e22c20735431170a56"
+        "postgres": "4dd7dec672ad2aaf7d24add160a800a192932adf925865e22c20735431170a56",
+        "sqlite": "fa01b7d3ef1343ab1e9a5beaef5f4e90833097d2ce220c3c3e948d8047eae750"
       },
       "api_hash": {
-        "sqlite": "69d11711aead800fdc72c8811da0aa5302a557b52a51a2ad6ace5e640a3baf47",
-        "postgres": "b931d7b4ce78882655dd3f6187ade2beb942c9b87f391c5af7224eb24fec9ad2"
+        "postgres": "b931d7b4ce78882655dd3f6187ade2beb942c9b87f391c5af7224eb24fec9ad2",
+        "sqlite": "69d11711aead800fdc72c8811da0aa5302a557b52a51a2ad6ace5e640a3baf47"
       },
       "tests": [
         "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
@@ -470,12 +470,12 @@
     "AdapterMoveBeginTarget": {
       "authority": "Verified target-move project chain restricts the active target and matching active adapter composite owner join. Busy lease uses the unchanged observed clock; orphaned-name ledger aggregation correlates target ID/org/project/environment. The caller binds the already-authorized target ID and preserves the generation/state transition snapshot.",
       "sql_hash": {
-        "sqlite": "c57bd966a10692a910e7300df538b76e6881b4e97f994176ef2557426b33787b",
-        "postgres": "08c1276c6fda028dca488ff4161cce54ac320f58deb6d3b18192bfaf77390015"
+        "postgres": "08c1276c6fda028dca488ff4161cce54ac320f58deb6d3b18192bfaf77390015",
+        "sqlite": "c57bd966a10692a910e7300df538b76e6881b4e97f994176ef2557426b33787b"
       },
       "api_hash": {
-        "sqlite": "84a3b1c42ecac79a1b6a7badf278a53c7e41282ddd3eebecc47bc7209777bcf8",
-        "postgres": "82e100b74aee819346a84265c15c302b0bcd30bf15508ac6a097427e70fa38f2"
+        "postgres": "82e100b74aee819346a84265c15c302b0bcd30bf15508ac6a097427e70fa38f2",
+        "sqlite": "84a3b1c42ecac79a1b6a7badf278a53c7e41282ddd3eebecc47bc7209777bcf8"
       },
       "tests": [
         "internal/isolation/adapter_generated_read_scope_test.go:TestAdapterGeneratedQueriesBindOwningChain"
@@ -555,12 +555,12 @@
     "AdapterRetireCredentialJobs": {
       "authority": "ReplaceCredential/RevokeCredential verify their dedicated store proofs and lock the scoped active adapter/targets before generation change. This update binds org/project and correlates each queued/running job to its target by target ID plus org/project/environment, then restricts the owning adapter ID and active target state. Only those pending jobs are superseded with their worker lease detached; terminal outcomes and provider custody fields are unchanged. Direct generated wrong-org/project/adapter controls refuse independently and owning controls preserve terminal success.",
       "sql_hash": {
-        "sqlite": "1fad7efbbe863501f89e5ddf0881225e8733a56d73227783a0eaf811cc31edf2",
-        "postgres": "1fad7efbbe863501f89e5ddf0881225e8733a56d73227783a0eaf811cc31edf2"
+        "postgres": "1fad7efbbe863501f89e5ddf0881225e8733a56d73227783a0eaf811cc31edf2",
+        "sqlite": "1fad7efbbe863501f89e5ddf0881225e8733a56d73227783a0eaf811cc31edf2"
       },
       "api_hash": {
-        "sqlite": "590b9ad68ee5d984bab7a890730839bd196d2dfee8098b07da1e14fc3569e3b6",
-        "postgres": "b288ba52142371e1493e01bcf72836b17e215fc86181a873c8740bfef007f41e"
+        "postgres": "b288ba52142371e1493e01bcf72836b17e215fc86181a873c8740bfef007f41e",
+        "sqlite": "590b9ad68ee5d984bab7a890730839bd196d2dfee8098b07da1e14fc3569e3b6"
       },
       "tests": [
         "internal/isolation/adapter_reviewed_predicate_scope_test.go:TestAdapterRetireCredentialJobsBindsAdapterAndOwningChain"
@@ -583,12 +583,12 @@
     "AdapterWorkerActivateCollisionQuery": {
       "authority": "Shared provider namespace count intentionally has no tenant-coordinate inputs. Activate supplies durable move/target IDs only after exact leased activation job, full current org/project/environment, move, generation and owner validation in its transaction. Direct foreign IDs prove absent move-target membership; shared destination positives and foreign ledger custody checks prove collision semantics. Cross-scope refusal occurs in the actual worker activation flow before this read, not in this count query.",
       "sql_hash": {
-        "sqlite": "0e7a2d86367e0c68e136d8f30d1e996ff3a9f5f611537886ec5fff26a75a11b6",
-        "postgres": "0e7a2d86367e0c68e136d8f30d1e996ff3a9f5f611537886ec5fff26a75a11b6"
+        "postgres": "0e7a2d86367e0c68e136d8f30d1e996ff3a9f5f611537886ec5fff26a75a11b6",
+        "sqlite": "0e7a2d86367e0c68e136d8f30d1e996ff3a9f5f611537886ec5fff26a75a11b6"
       },
       "api_hash": {
-        "sqlite": "1e370dc55bd4d9e389efb6525709e9664658554064fc1189466f771818f32143",
-        "postgres": "2e9c185d9529c69d0c1880ae299796cde6d8cc229e21a22a0966ffa149735e7a"
+        "postgres": "2e9c185d9529c69d0c1880ae299796cde6d8cc229e21a22a0966ffa149735e7a",
+        "sqlite": "1e370dc55bd4d9e389efb6525709e9664658554064fc1189466f771818f32143"
       },
       "tests": [
         "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
@@ -600,12 +600,12 @@
     "AdapterWorkerActivateLookup": {
       "authority": "exact full current chain, target generation and same org/project move-target identity delimit the pending route; unequal pending/current environment is refused before custody writes.",
       "sql_hash": {
-        "sqlite": "3cdf28d309e4161195f57a681c688aa523c03221778aa03c81797fffcad7f1e8",
-        "postgres": "c88c2ea17e27fd2c749a6cae1f8564add27cab393f0a739c1af0dd0a4ac523ef"
+        "postgres": "c88c2ea17e27fd2c749a6cae1f8564add27cab393f0a739c1af0dd0a4ac523ef",
+        "sqlite": "3cdf28d309e4161195f57a681c688aa523c03221778aa03c81797fffcad7f1e8"
       },
       "api_hash": {
-        "sqlite": "b07164d9eb3d99653e1159d36a99132587fe58f770c08703fe4f1c058b5052a7",
-        "postgres": "7cda3d611a37b3add6bc824ee1e314c1df85ac6cb0da4865f89f15bd32675cbd"
+        "postgres": "7cda3d611a37b3add6bc824ee1e314c1df85ac6cb0da4865f89f15bd32675cbd",
+        "sqlite": "b07164d9eb3d99653e1159d36a99132587fe58f770c08703fe4f1c058b5052a7"
       },
       "tests": [
         "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
@@ -631,12 +631,12 @@
     "AdapterWorkerFinishDeadCredentialScrubErase": {
       "authority": "Dead-credential scrub terminal settlement derives adapter ID from its same-chain job target and generation-fences retirement in the existing runtime transaction. Erasure additionally matches adapter ID/org/project and refuses any retained non-tombstoned target or queued/running scrub correlated to that adapter by full target chain. The parent may remain active after last-target removal; no retained route credentials or provider custody are erased. Direct generated tests isolate retained-target and pending-job guards, reject wrong org/project while otherwise eligible, and erase exactly the settled owning credential.",
       "sql_hash": {
-        "sqlite": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f",
-        "postgres": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f"
+        "postgres": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f",
+        "sqlite": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f"
       },
       "api_hash": {
-        "sqlite": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2",
-        "postgres": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2"
+        "postgres": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2",
+        "sqlite": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2"
       },
       "tests": [
         "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
@@ -645,12 +645,12 @@
     "AdapterWorkerFinishJobErase": {
       "authority": "Successful terminal scrub obtains adapter ID from the exact same-chain job target and generation-fences target retirement in the runtime transaction. Erasure matches adapter ID/org/project and refuses every retained non-tombstoned target or queued/running scrub joined to that adapter by full target chain. This permits unused last-target credentials to be erased even when the parent remains active, without affecting provider data or any retained route. Direct generated controls isolate retained targets/pending jobs and reject wrong org/project after all custody guards become eligible, then prove exactly the owning settled credential erased.",
       "sql_hash": {
-        "sqlite": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f",
-        "postgres": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f"
+        "postgres": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f",
+        "sqlite": "a779da44f41f0ce74994de8b6b86aba4b652d35e3bf942f64b61005a6ab8372f"
       },
       "api_hash": {
-        "sqlite": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2",
-        "postgres": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2"
+        "postgres": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2",
+        "sqlite": "241135368389345c5f1577d1b5d5e753c4b8e81c8ce5a782887609f687f667e2"
       },
       "tests": [
         "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedCredentialErasePreservesRetainedCustody"
@@ -690,12 +690,12 @@
     "AdapterWorkerLoadExecutionCompletedQuery": {
       "authority": "LoadExecution supplies the freshly gated claimed job and exact loaded positive source revision. Effects, job, target and owned nonmissing ledger join on target and full org/project/environment; exact job ID, target ID, current generation, running converge state, lease owner and durable authority principal are required. The same-chain INTENT audit row additionally binds type/outcome/schema/system actor/authority/env scope/adapter-job origin/target/correlation and a numeric positive input_revision equal to that loaded revision. Only successful create/update names are returned, never values. Real journal outcomes seed direct generated probes for foreign chain/job/lease/generation/authority/revision and missing/released/unknown custody, independently of the preceding Gate.",
       "sql_hash": {
-        "sqlite": "68148c40966eec5cf72614dcf4b946eaffacf34d0c63462c61f4dc0425777a1e",
-        "postgres": "544072a4ede41e22a92ef51a5d5967fce1241292526e0155652bc749c758366b"
+        "postgres": "544072a4ede41e22a92ef51a5d5967fce1241292526e0155652bc749c758366b",
+        "sqlite": "68148c40966eec5cf72614dcf4b946eaffacf34d0c63462c61f4dc0425777a1e"
       },
       "api_hash": {
-        "sqlite": "09349e0f49eb1779dae6ca07778ea1670f5439aa4d6210fa85355da47323fbfc",
-        "postgres": "af2e9e6f3545c197fb33090131741df8bf12c8dbe7217470c5c5d3ff8387ad02"
+        "postgres": "af2e9e6f3545c197fb33090131741df8bf12c8dbe7217470c5c5d3ff8387ad02",
+        "sqlite": "09349e0f49eb1779dae6ca07778ea1670f5439aa4d6210fa85355da47323fbfc"
       },
       "tests": [
         "internal/isolation/adapter_durable_progress_test.go:TestAdapterDurableProgressRequiresExactAcknowledgedRevisionAndCustody"
@@ -736,12 +736,12 @@
     "AdapterWorkerLoadExecutionQuery": {
       "authority": "immutable target/adapters/outbox joins bind every alias through same-column full chain equality; target and job identities, target generation, running state and lease owner all match claimed job. Read follows Gate; credential stays sealed. Snapshot entry membership is additionally bound to target key membership and same tenant chain.",
       "sql_hash": {
-        "sqlite": "2feebec1cdab001d0f0e583b1be58853527e2ac1001f173535695d74e23581c2",
-        "postgres": "d64454cac72f6b1786cb7edc8d92af3a03ed5b888a74f590ae4e88d9bd68c598"
+        "postgres": "d64454cac72f6b1786cb7edc8d92af3a03ed5b888a74f590ae4e88d9bd68c598",
+        "sqlite": "2feebec1cdab001d0f0e583b1be58853527e2ac1001f173535695d74e23581c2"
       },
       "api_hash": {
-        "sqlite": "d1b83183f7d940924e791ba3b10de7b36b843f5efa8e01e1de25eda7b8ed551a",
-        "postgres": "d3a77d6ce13235ac4d25e941854b913ba33d2977bcef2f3ccf69719b3c87467a"
+        "postgres": "d3a77d6ce13235ac4d25e941854b913ba33d2977bcef2f3ccf69719b3c87467a",
+        "sqlite": "d1b83183f7d940924e791ba3b10de7b36b843f5efa8e01e1de25eda7b8ed551a"
       },
       "tests": [
         "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
@@ -753,12 +753,12 @@
     "AdapterWorkerLockCustodyTarget": {
       "authority": "Journal Reserve/Prepare lock target before job in the custody transaction, then rerun fresh Gate after metadata waits. This no-op target update binds target ID/full org/project/environment/current generation. Correlated adapter ownership requires the admitted lifecycle for the supplied job kind: active unpaused convergence, moving unpaused activation, or explicit tombstoned/moving scrub. A second EXISTS binds the exact running job, full chain, target, generation, kind, worker lease owner and strictly live lease time. No row or custody is revived after lifecycle/lease loss. Generated direct probes independently reject foreign coordinates/job/kind/generation/lease, expiry, pause and tombstoned convergence.",
       "sql_hash": {
-        "sqlite": "e13445388f274d80504e743107f9753dc11cffda47879c4d3e7be627e62094a1",
-        "postgres": "e13445388f274d80504e743107f9753dc11cffda47879c4d3e7be627e62094a1"
+        "postgres": "e13445388f274d80504e743107f9753dc11cffda47879c4d3e7be627e62094a1",
+        "sqlite": "e13445388f274d80504e743107f9753dc11cffda47879c4d3e7be627e62094a1"
       },
       "api_hash": {
-        "sqlite": "655802bffdf014d61c08862723106498850847204f535ad959a8ee28c427a927",
-        "postgres": "55930469a284a0c8e215987df95ab69d629a02c28b7d426f85147ee10a9ac75b"
+        "postgres": "55930469a284a0c8e215987df95ab69d629a02c28b7d426f85147ee10a9ac75b",
+        "sqlite": "655802bffdf014d61c08862723106498850847204f535ad959a8ee28c427a927"
       },
       "tests": [
         "internal/isolation/adapter_reviewed_predicate_scope_test.go:TestAdapterWorkerLockCustodyTargetBindsLiveLeaseAndOwningChain"
@@ -784,12 +784,12 @@
     "AdapterWorkerReservePendingQuery": {
       "authority": "reads full scoped current target + owning adapter, then checks pending route claims in the global provider destination namespace (origin, destination kind/owner/name/environment/exact destination scope, surface, normalized name), excluding current target. Claims may belong to another tenant because the remote namespace is shared. Returns only count; conflict refuses before reservation. Subsequent ledger writes use complete claimed job chain.",
       "sql_hash": {
-        "sqlite": "6ffcdda16d3ae88b87329b0dd7e695607260392448a19b76d21558e46f100a1b",
-        "postgres": "6ffcdda16d3ae88b87329b0dd7e695607260392448a19b76d21558e46f100a1b"
+        "postgres": "6ffcdda16d3ae88b87329b0dd7e695607260392448a19b76d21558e46f100a1b",
+        "sqlite": "6ffcdda16d3ae88b87329b0dd7e695607260392448a19b76d21558e46f100a1b"
       },
       "api_hash": {
-        "sqlite": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e",
-        "postgres": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e"
+        "postgres": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e",
+        "sqlite": "9f62c1da813307de20eaaeb50bc302ddaedb31c22a3fb97ab7f7f38437a4523e"
       },
       "tests": [
         "internal/isolation/adapter_runtime_direct_scope_test.go:TestAdapterRuntimeDirectGeneratedQueriesBindOwningChain"
@@ -872,42 +872,61 @@
       }
     },
     "internal/store/admission.go:DB.beginPostgresOn": {
-      "hash": "a50a8f25e3e84b3f0c1d52c64060707381a2fcf4cf74758d224839e58b97cb72",
+      "hash": "36e9941bb75d574c9d91949f7aed681a6f2218d8df59066a41bd833e741b9a2e",
       "reason": "PostgreSQL transaction protocol changes to READ ONLY only after writer-mode authority admission; moving it before the custody guard would prevent that guard from establishing its fence.",
       "dependencies": [
         "internal/store/upgrade/admission.go:Admission.Valid"
       ]
     },
     "internal/store/admission.go:PostgresTransaction.Exec": {
-      "hash": "39c1d8b506bda51c9864fd269821a03b9167ea789e60dd2dd6c13ae276af4dd7",
-      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
-    },
-    "internal/store/admission.go:PostgresTransaction.Query": {
-      "hash": "97c94eaffc1db66826937a27372c75e076b73ca94aa8750362f77f45ac1675be",
-      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
-    },
-    "internal/store/admission.go:PostgresTransaction.QueryRow": {
-      "hash": "367ed585cc1672fdaec6b3f36af99fc8582fde7527c9ea586447c10b459ee357",
-      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
-    },
-    "internal/store/admission.go:SQLiteTransaction.ExecContext": {
-      "hash": "b02678a233811a22fb5ac068d1eb2638ac7c4862391955bf2e0ca1e93125d4e6",
+      "hash": "512ec5efc53dba04c14c01bffac3f2e7a7e9212daf424b27f4d6c5ddaae2f43f",
       "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
       "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate"
+      ]
+    },
+    "internal/store/admission.go:PostgresTransaction.Query": {
+      "hash": "e3506d3b7444e97ca981f47ea1f7a6eb4229c98f96692bfbbd5f963a873fc268",
+      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate"
+      ]
+    },
+    "internal/store/admission.go:PostgresTransaction.QueryRow": {
+      "hash": "45d524739ff5db21418ef6af08872226660b07cceeb6fde4cf81346e7a578ebe",
+      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate"
+      ]
+    },
+    "internal/store/admission.go:SQLiteTransaction.ExecContext": {
+      "hash": "1e67fb6f44e3c90a52165cfd1e29be8064ad05b3b3bca89bcf6fe74ba69f7db8",
+      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate",
         "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot"
       ]
     },
     "internal/store/admission.go:SQLiteTransaction.PrepareContext": {
-      "hash": "335f461419b6e0e0ff8f08bfd325651e2c90513223d77fe47693483693561af4",
-      "reason": "Driver-only sqlc prepared-statement bridge on the already admitted transaction or observed resolution executor; delegates the generated statement without constructing application queries. CI rejects handwritten callers outside named protocols."
+      "hash": "2fab2a0cbf1706e265d7426a104d540084701d9dc47e5fc21f75acc8371423af",
+      "reason": "Driver-only sqlc prepared-statement bridge on the already admitted transaction or observed resolution executor; delegates the generated statement without constructing application queries. CI rejects handwritten callers outside named protocols.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.disable"
+      ]
     },
     "internal/store/admission.go:SQLiteTransaction.QueryContext": {
-      "hash": "7d3be6b21a8c8eb3e6e2d8e2e97da8f8f1698427561f3eaab786ddfb27587dd5",
-      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+      "hash": "cb2d8a999c2d6bde807ac6b84529f77b98cccb3f6f817be2ca68cb1e9f4b88cd",
+      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate"
+      ]
     },
     "internal/store/admission.go:SQLiteTransaction.QueryRowContext": {
-      "hash": "3e6c3b8e2ba1cc4533e90c58b038080250c8e31672c58dd7e4b2b0739eed7c36",
-      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
+      "hash": "f1cb98e6e15103f99aaa9b01f5fba77f41e5b27d0a17274f05a40b783563e7e1",
+      "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement.",
+      "dependencies": [
+        "internal/store/audit_actor_cache.go:auditActorCache.invalidate"
+      ]
     },
     "internal/store/authn/authn.go:observedPG.Exec": {
       "hash": "b387db842ed82aaba4352063ac990e642a9c9fa081401d9dabc139e5eb798f97",
@@ -1244,7 +1263,8 @@
       "dependencies": [
         "internal/store/admission.go:PostgresTransaction.Commit",
         "internal/store/admission.go:PostgresTransaction.Rollback",
-        "internal/store/admission.go:PostgresTransaction.closeOwner"
+        "internal/store/admission.go:PostgresTransaction.closeOwner",
+        "internal/store/audit_actor_cache.go:auditActorCache.disable"
       ]
     },
     "internal/store/store.go:DB.provePostgresSource": {
@@ -1254,6 +1274,7 @@
         "internal/store/admission.go:DB.BeginPostgres",
         "internal/store/admission.go:PostgresTransaction.Rollback",
         "internal/store/admission.go:PostgresTransaction.closeOwner",
+        "internal/store/audit_actor_cache.go:auditActorCache.disable",
         "internal/store/store.go:rollbackPostgresSourceProof"
       ]
     },
@@ -1268,6 +1289,7 @@
         "internal/store/admission.go:PostgresTransaction.Rollback",
         "internal/store/admission.go:PostgresTransaction.closeOwner",
         "internal/store/admission.go:SQLiteTransaction.Commit",
+        "internal/store/audit_actor_cache.go:auditActorCache.disable",
         "internal/store/store.go:postgresPool.pin",
         "internal/store/store.go:postgresPool.retireLocked",
         "internal/store/upgrade/admission.go:Admission.CheckTarget",
@@ -2447,31 +2469,31 @@
       ]
     },
     "internal/store/upgrade/schema.go:sqlCatalogQuery": {
+      "hash": "f7af7d30f6b51d0cdc49caf2721aaa8652a2224c8c2daa8148f07478bf0ea291",
+      "reason": "Reserved-connection catalog row adapter for exact historical schema inspection. Only the reviewed SQL catalog dispatch and PostgreSQL transaction adapter may select SQL; no runtime tenant query entry point.",
       "callers": {
         "internal/store/upgrade/schema.go:inspectSQLCatalog": "f2c95557c0b194e0223b7917770055ac190a8c6fa125200b4320347dafc1440c",
         "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
-      },
-      "hash": "f7af7d30f6b51d0cdc49caf2721aaa8652a2224c8c2daa8148f07478bf0ea291",
-      "reason": "Reserved-connection catalog row adapter for exact historical schema inspection. Only the reviewed SQL catalog dispatch and PostgreSQL transaction adapter may select SQL; no runtime tenant query entry point."
+      }
     },
     "internal/store/upgrade/schema_postgres.go:inspectPostgresCatalog": {
+      "hash": "14719dbd3c447ba35c8699afa7fc6a9591ef8c8b075e4762f1fc8f3cfcda9e91",
+      "reason": "Canonical PostgreSQL catalog row adapter on a reserved usable connection or caller-owned transaction. Reviewed catalog, source inspection and authenticated restore callers only; no pool acquisition or tenant data query authority.",
       "callers": {
         "internal/store/upgrade/domain_catalog.go:DomainCatalogPostgres": "a03f51f127b80608f7a3d2a058daa4b863f2ee2c7cb8aae970d8741de8956aeb",
         "internal/store/upgrade/inspection.go:InspectPostgresSource": "0d90cbaf51eb07b879db587dc46913c6678eb94ad91309db167f8bed67522eac",
         "internal/store/upgrade/restore.go:ReconcilePostgresRestoreIfPresent": "dd8c0c5ae741ab519e905f5cb545e44afe8b25a3e93204a697b9c97962233bb9",
         "internal/store/upgrade/restore_schema.go:PreparePostgresRestoreControlSchema": "8ecda38e94de6a5e4b4a9c69d5a801db9cd1b019eafbee098a8f62a064e4d556",
         "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
-      },
-      "hash": "14719dbd3c447ba35c8699afa7fc6a9591ef8c8b075e4762f1fc8f3cfcda9e91",
-      "reason": "Canonical PostgreSQL catalog row adapter on a reserved usable connection or caller-owned transaction. Reviewed catalog, source inspection and authenticated restore callers only; no pool acquisition or tenant data query authority."
+      }
     },
     "internal/store/upgrade/schema_postgres.go:withPostgresCatalogScope": {
+      "hash": "534fd0cb01ea5cd27508cd6100c491df3cbe00c8bc43b0bfc9ad3770d6fda0b0",
+      "reason": "Canonical catalog rendering transaction/savepoint protocol. Fixed settings and bounded cleanup preserve the caller snapshot and locks; failed cleanup invalidates the transaction or connection. Only the two reviewed connection adapters supply query and catalog-reader callbacks.",
       "callers": {
         "internal/store/upgrade/schema_postgres.go:inspectPostgresCatalog": "14719dbd3c447ba35c8699afa7fc6a9591ef8c8b075e4762f1fc8f3cfcda9e91",
         "internal/store/upgrade/schema_postgres.go:inspectSQLPostgresCatalog": "8bc76626ec60db0e44a8bc8b1bcade73d894c2e495f33391f214cdcf5e04c928"
-      },
-      "hash": "534fd0cb01ea5cd27508cd6100c491df3cbe00c8bc43b0bfc9ad3770d6fda0b0",
-      "reason": "Canonical catalog rendering transaction/savepoint protocol. Fixed settings and bounded cleanup preserve the caller snapshot and locks; failed cleanup invalidates the transaction or connection. Only the two reviewed connection adapters supply query and catalog-reader callbacks."
+      }
     },
     "internal/store/upgrade/scratch_reset.go:SeparatePostgresScratch": {
       "hash": "b8851b8f37658aff60858602f17c02930faf8261b3e8f282d8a4919ef92286fb",
@@ -2792,10 +2814,12 @@
     "internal/store/admission.go:DB.BeginPostgres": "2d578b409ceb664137581740d654cee047fe23959090ee44eea9493b02e41845",
     "internal/store/admission.go:DB.BeginSQLite": "10d854d281716969b5e65597469683b0dd58d21cb1b4e9eb6f981ddcc6719865",
     "internal/store/admission.go:DB.CheckAdmission": "3c4e56a02d3ffa03d9cbcc930c976a378fc6bdca854cf6d9a92823670863483a",
-    "internal/store/admission.go:PostgresTransaction.Commit": "5134f26cd32f5fe723c48ac67819a8084ad07ed78f229730690b9bcba15e88b2",
-    "internal/store/admission.go:PostgresTransaction.Rollback": "68dd19ecf7e4a3d5540ad2db933cf1eda9ad4b4218a1ff6f21afed4253a404c4",
+    "internal/store/admission.go:PostgresTransaction.Commit": "ae0e706188ba588241f9e72c6cc7277990cd068ce47ab18d0908cbd44384953c",
+    "internal/store/admission.go:PostgresTransaction.Rollback": "55361fba7c12ec3de46269fd93fab7c74c4ace293606fce1ab1f0d1ea187fa9b",
     "internal/store/admission.go:PostgresTransaction.closeOwner": "4823c0cec4e1c619e15cd7ba234c660d3e9f4c1a341ceb23df854511e8a9fa36",
-    "internal/store/admission.go:SQLiteTransaction.Commit": "065491353e792db8ef2df9931c3ee75d9d861fea451fd2323dde5562276e3092",
+    "internal/store/admission.go:SQLiteTransaction.Commit": "8359c9a9d63caeda481f0c4f6b01b5492ff4134810a6cd897aebf1f131d9f086",
+    "internal/store/audit_actor_cache.go:auditActorCache.disable": "a2d45d70f711e72ac45c086dc4757fc59b300ca9175cb996040c18bcb329a7a7",
+    "internal/store/audit_actor_cache.go:auditActorCache.invalidate": "e70fc0d92236527242ea55ddd33b4adce63b2f228e93f766e9f8e6c9716a61aa",
     "internal/store/authn/authn.go:NewPG": "11bc99db0a27fc5d40e2c550367eb473c6e69bfd97a59e705956a0aa17ceebeb",
     "internal/store/authn/authn.go:NewSQLite": "406d62ab022033051b0bbcf969dadadc471f90e099ae0e981e4b968de37e3a40",
     "internal/store/authn/human.go:canon": "fc223a200f1a9880e85c01ead3889a66a34a616c779588b70a57c1735ae97260",

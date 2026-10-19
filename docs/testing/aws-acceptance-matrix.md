@@ -2,12 +2,14 @@
 
 ## Current continuation
 
-The October 18 continuation integrates the frozen R7 candidate, uses the
-owner-approved migration 77, regenerates SQL bindings and the development
-compatibility declaration, and executes local acceptance. See the current
-[issue handoff](../handoff/158-aws-secrets-manager.md#continuation-evidence-2026-10-18)
-for current results. The scoped AWS resource proposal is now owner-approved;
-provisioning, protected inputs and real-provider execution remain separate.
+The October 19 continuation integrates current main and uses owner-approved
+migration 78 for the adoption witness, preserving main's migration 77 indexes.
+Canonical SQL bindings and the development compatibility declaration have been
+regenerated and checked against fresh catalogs. See the current
+[issue handoff](../handoff/158-aws-secrets-manager.md#current-continuation-2026-10-19)
+for results and the separately approved additional bounded AWS run. Provisioning,
+protected inputs, exact human job approval and real-provider execution remain
+separate gates.
 The historical source matrix below retains its original evidence boundaries.
 
 ## Historical evidence and subsequent source reconciliation
@@ -128,7 +130,7 @@ sandbox setup remain external prerequisites as detailed below.
 
 1. Review all current source drafts together, resolve independently confirmed
    findings, format/compile them in an allocated lane, and validate the canonical
-   migration77 bindings generated after the October 18 owner decision. Do not
+   migration 78 bindings generated after the October 19 owner decision. Do not
    copy unsigned sibling drafts or hand-edit generated SQL bindings.
 2. Run both-engine controlled durable tests and the real sandbox suite. The new
    auth tests cover fresh-client reconstruction after expired inputs, not

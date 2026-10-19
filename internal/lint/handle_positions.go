@@ -13,6 +13,9 @@ import (
 const artifactHarnessRuntimeFile = "scripts/security/artifact-harness/runtime.go"
 
 var driverFiles = map[string]bool{
+	"internal/store/migrate/authorization_pending_indexes_test.go": true, // exact historical-schema fixture measures complete query plans and unchanged row/uniqueness behavior
+	"internal/service/advisory_benchmark_test.go":                  true, // signed-admitted benchmark seeds isolated session/grant fixtures and counts actual driver transactions
+
 	artifactHarnessRuntimeFile:                                   true, // blackbox fixture creates/drops its owned disposable PostgreSQL database only
 	"internal/store/self_config_test.go":                         true, // admitted, isolated both-engine protected hierarchy/activation fixtures
 	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only

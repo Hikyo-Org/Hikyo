@@ -549,6 +549,7 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 	// Register this declaration precisely; future app caches still need their
 	// own key and access review instead of inheriting a package exemption.
 	registeredDeclarations := map[string]string{
+		lint.Module + "/internal/store.auditActorCache":       "store.audit-actor-kind",
 		lint.Module + "/internal/app.cachedUnattendedImage":   "app.unattended-image",
 		lint.Module + "/internal/operator.capabilityCacheTTL": "operator.delivery-capabilities",
 	}

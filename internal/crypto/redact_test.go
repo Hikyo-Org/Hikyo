@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"bytes"
+	"encoding"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,21 +23,31 @@ func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 	kr.master.Store(singleMaster(1, planted))
 	kr.instance.Store(&versionSet{active: 1, byVer: map[uint32]keyHandle{1: {id: "dek-instance", version: 1, key: planted}}})
 	dekSet := &versionSet{active: 1, byVer: map[uint32]keyHandle{1: {id: "dek", key: planted}}}
+	local := LocalKeys{stampKey: planted, snapshotKey: planted}
 	sealers := map[string]any{
-		"keyring":         kr,
-		"project sealer":  &ProjectSealer{kr: kr, orgID: "o", projectID: "p", deks: dekSet},
-		"instance sealer": &InstanceSealer{kr: kr},
-		"key handle":      keyHandle{id: "h", key: planted},
-		"swap handle":     &kr.token,
-		"version set":     dekSet,
-		"master set":      kr.master.Load(),
-		"dek entry":       dekEntry{scope: "s", set: dekSet},
+		"local keys value":   local,
+		"local keys pointer": &local,
+		"keyring":            kr,
+		"project sealer":     &ProjectSealer{kr: kr, orgID: "o", projectID: "p", deks: dekSet},
+		"instance sealer":    &InstanceSealer{kr: kr},
+		"key handle":         keyHandle{id: "h", key: planted},
+		"swap handle":        &kr.token,
+		"version set":        dekSet,
+		"master set":         kr.master.Load(),
+		"dek entry":          dekEntry{scope: "s", set: dekSet},
 	}
 
+	hexBytes := make([]string, len(planted))
+	for i, b := range planted {
+		hexBytes[i] = fmt.Sprintf("%#x", b)
+	}
 	leaks := []string{
 		string(planted),
 		hex.EncodeToString(planted),
-		fmt.Sprintf("%v", planted), // the byte-slice decimal dump reflection would print
+		strings.ToUpper(hex.EncodeToString(planted)),
+		fmt.Sprintf("%v", planted),   // the byte-slice decimal dump reflection would print
+		fmt.Sprintf("%#v", planted),  // the Go-syntax hex-byte dump
+		strings.Join(hexBytes, ", "), // also catches reflection's different byte type spelling
 	}
 	assertClean := func(name, surface, out string) {
 		t.Helper()
@@ -60,6 +72,15 @@ func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 			t.Fatalf("%s: not a slog.LogValuer", name)
 		}
 		assertClean(name, "LogValue", lv.LogValue().String())
+		for _, jsonHandler := range []bool{false, true} {
+			var out bytes.Buffer
+			var handler slog.Handler = slog.NewTextHandler(&out, nil)
+			if jsonHandler {
+				handler = slog.NewJSONHandler(&out, nil)
+			}
+			slog.New(handler).Info("redaction test", "keys", v)
+			assertClean(name, "slog handler", out.String())
+		}
 
 		b, err := json.Marshal(v)
 		if err != nil {
@@ -67,7 +88,7 @@ func TestRedactionSurfacesAgainstPlantedSecret(t *testing.T) {
 		}
 		assertClean(name, "MarshalJSON", string(b))
 
-		tm, ok := v.(interface{ MarshalText() ([]byte, error) })
+		tm, ok := v.(encoding.TextMarshaler)
 		if !ok {
 			t.Fatalf("%s: no MarshalText", name)
 		}

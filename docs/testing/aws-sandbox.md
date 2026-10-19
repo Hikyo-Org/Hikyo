@@ -1,7 +1,7 @@
 # AWS adapter sandbox acceptance
 
 Status: local acceptance is executing; real AWS execution and effective IAM
-validation remain outstanding. See the [current handoff](../handoff/158-aws-secrets-manager.md#continuation-evidence-2026-10-18)
+validation remain outstanding. See the [current handoff](../handoff/158-aws-secrets-manager.md#current-continuation-2026-10-19)
 for exact results. The owner-approved B review route covers both AWS amendments;
 historical formal SKIP remains. Final integrated review, non-root setup and
 protected credential delivery precede real execution. Do not use an existing
@@ -274,9 +274,11 @@ provider run passed 57 top-level tests (155 including subtests), with no skips
 or failures; the current handoff supersedes the historical execution limits.
 
 The owner authorized migration 77 for the exact AWS witness column on October
-18, superseding the previous 80 reservation and prerequisite sequence. Both SQL
-files are byte-identical to the reviewed candidate; canonical SQL generation
-has run. Database validation is tracked in the issue handoff. No unsigned
+18, superseding the previous 80 reservation and prerequisite sequence. After
+main occupied 77, the owner approved moving only the witness to 78 on October
+19. Both SQL files are byte-identical to the reviewed candidate; canonical SQL
+generation and fresh compatibility catalog checks have run against integrated
+main. Database validation is tracked in the issue handoff. No unsigned
 prerequisite migrations were copied from sibling trees.
 
 The browser source in `web/e2e/flows/aws-adapters.flows.ts` is registered from

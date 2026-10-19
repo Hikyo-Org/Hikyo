@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
@@ -222,6 +224,9 @@ func TestNightlyTrackVerifiesAPromotedStableWithThePinnedRoot(t *testing.T) {
 	responses[trustURL("metadata.json")] = metadata
 	responses[trustURL("metadata.sigstore.json")] = signatureBundle(t, recoveryPrivate, metadata)
 	responses[trustURL("primary-1.pub")] = primaryPublic
+	catalog := mustJSON(t, releasetrust.Catalog{Schema: "hikyo.dev/upgrade-trust/v1", Sequence: 1, StableMetadataSHA256: releaseidentity.Hash(metadata), NightlyPolicies: []releaseidentity.Digest{}, Bridges: []releaseidentity.Digest{}})
+	responses[trustURL("catalog.json")] = catalog
+	responses[trustURL("catalog.sigstore.json")] = signatureBundle(t, recoveryPrivate, catalog)
 	addAssetResponse(&status, responses, base, "release-manifest.json", manifest)
 	addAssetResponse(&status, responses, base, "release-manifest.sigstore.json", signatureBundle(t, primaryPrivate, manifest))
 	addAssetResponse(&status, responses, base, "release-candidate.json", candidate)

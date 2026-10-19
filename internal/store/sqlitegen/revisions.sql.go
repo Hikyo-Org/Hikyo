@@ -8,6 +8,7 @@ package sqlitegen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const countPendingChangeForCell = `-- name: CountPendingChangeForCell :one
@@ -64,33 +65,6 @@ type CountRevisionPinsForProjectParams struct {
 
 func (q *Queries) CountRevisionPinsForProject(ctx context.Context, arg CountRevisionPinsForProjectParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countRevisionPinsForProject, arg.OrgID, arg.ProjectID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countSecretValueOccurrence = `-- name: CountSecretValueOccurrence :one
-SELECT COUNT(*) FROM secret_value_occurrences
-WHERE org_id = ? AND project_id = ? AND environment_id = ? AND value_entry_id = ?
-`
-
-type CountSecretValueOccurrenceParams struct {
-	OrgID         string
-	ProjectID     string
-	EnvironmentID string
-	ValueEntryID  string
-}
-
-// CountSecretValueOccurrence is the point membership read of the sticky
-// sensitivity lineage: one value entry, in the proof's environment. Callers
-// ask about the handful of entries they hold, never the lifetime history.
-func (q *Queries) CountSecretValueOccurrence(ctx context.Context, arg CountSecretValueOccurrenceParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countSecretValueOccurrence,
-		arg.OrgID,
-		arg.ProjectID,
-		arg.EnvironmentID,
-		arg.ValueEntryID,
-	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -1097,6 +1071,57 @@ func (q *Queries) ListRevisionPins(ctx context.Context, arg ListRevisionPinsPara
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSecretValueOccurrenceIDsIn = `-- name: ListSecretValueOccurrenceIDsIn :many
+SELECT value_entry_id FROM secret_value_occurrences
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3 AND value_entry_id IN (/*SLICE:value_entry_ids*/?)
+`
+
+type ListSecretValueOccurrenceIDsInParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	ValueEntryIds  []string
+}
+
+// ListSecretValueOccurrenceIDsIn reads only the requested candidates in the
+// proof's environment, never the lifetime sensitivity history.
+func (q *Queries) ListSecretValueOccurrenceIDsIn(ctx context.Context, arg ListSecretValueOccurrenceIDsInParams) ([]string, error) {
+	query := listSecretValueOccurrenceIDsIn
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ChainOrgID)
+	queryParams = append(queryParams, arg.ChainProjectID)
+	queryParams = append(queryParams, arg.ChainEnvID)
+	if len(arg.ValueEntryIds) > 0 {
+		for _, v := range arg.ValueEntryIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:value_entry_ids*/?", strings.Repeat(",?", len(arg.ValueEntryIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:value_entry_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var value_entry_id string
+		if err := rows.Scan(&value_entry_id); err != nil {
+			return nil, err
+		}
+		items = append(items, value_entry_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

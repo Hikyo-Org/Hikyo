@@ -71,34 +71,6 @@ func (q *Queries) CountRevisionPinsForProject(ctx context.Context, arg CountRevi
 	return count, err
 }
 
-const countSecretValueOccurrence = `-- name: CountSecretValueOccurrence :one
-SELECT COUNT(*) FROM secret_value_occurrences
-WHERE org_id = $1 AND project_id = $2
-  AND environment_id = $3 AND value_entry_id = $4
-`
-
-type CountSecretValueOccurrenceParams struct {
-	ChainOrgID     string
-	ChainProjectID string
-	ChainEnvID     string
-	ValueEntryID   string
-}
-
-// CountSecretValueOccurrence is the point membership read of the sticky
-// sensitivity lineage: one value entry, in the proof's environment. Callers
-// ask about the handful of entries they hold, never the lifetime history.
-func (q *Queries) CountSecretValueOccurrence(ctx context.Context, arg CountSecretValueOccurrenceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countSecretValueOccurrence,
-		arg.ChainOrgID,
-		arg.ChainProjectID,
-		arg.ChainEnvID,
-		arg.ValueEntryID,
-	)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const deletePendingChangeByID = `-- name: DeletePendingChangeByID :execrows
 DELETE FROM pending_changes
 WHERE org_id = $1 AND project_id = $2
@@ -1124,6 +1096,46 @@ func (q *Queries) ListRevisionPins(ctx context.Context, arg ListRevisionPinsPara
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSecretValueOccurrenceIDsIn = `-- name: ListSecretValueOccurrenceIDsIn :many
+SELECT value_entry_id FROM secret_value_occurrences
+WHERE org_id = $1 AND project_id = $2
+  AND environment_id = $3 AND value_entry_id = ANY($4::text[])
+`
+
+type ListSecretValueOccurrenceIDsInParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	ValueEntryIds  []string
+}
+
+// ListSecretValueOccurrenceIDsIn reads only the requested candidates in the
+// proof's environment, never the lifetime sensitivity history.
+func (q *Queries) ListSecretValueOccurrenceIDsIn(ctx context.Context, arg ListSecretValueOccurrenceIDsInParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listSecretValueOccurrenceIDsIn,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
+		arg.ValueEntryIds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var value_entry_id string
+		if err := rows.Scan(&value_entry_id); err != nil {
+			return nil, err
+		}
+		items = append(items, value_entry_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

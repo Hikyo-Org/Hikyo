@@ -15,14 +15,69 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
+## Current continuation, 2026-10-19
+
+This section supersedes the resource and authorization states in the historical
+sections below. Issue #158 remains open and feature PR #969 remains draft.
+Successful real-provider acceptance and exact cleanup have not been established.
+The reviewed runner diagnostics bootstrap, PR #999, merged as
+`92080565e4d1bcdb33d217b2a77528975d89d2b5`.
+
+The owner explicitly approved exactly one additional manual fixture/run in
+account `099256073061`, region `eu-central-1`, retaining the original 21
+conservative creation reservations and allowing at most 32 more, 53 combined.
+The combined USD 1 gross usage target, eight exact roles, at most one OIDC
+provider, protected environment, MFA-gated non-root setup, exact cleanup and
+seven-day KMS deletion remain required. No paid upgrade, recurring execution
+or automatic retry is authorized. The exact pending GitHub job still needs
+human environment approval after candidate and effective-policy verification.
+
+The replacement key is
+`arn:aws:kms:eu-central-1:099256073061:key/10908b8d-fe54-40e3-9210-a3eefea709b6`.
+The dedicated alias, setup and boundary policies, setup user/login and protected
+GitHub environment have been created. The eight roles and new OIDC provider
+have not been created; no additional acceptance run or synthetic creation has
+occurred. The old key remains scheduled for deletion at
+`2026-10-25T19:57:36.420Z`. Actual combined gross billing remains unverified.
+
+The initial replacement-fixture policy windows expired before activation. A
+reviewed readiness-only setup-policy revision renews own password/MFA enrollment
+and official local CLI login until `2026-10-19T11:16:34Z`. Privileged fixture
+setup grants retain their expired deadlines. Owner-console readback confirmed
+the exact saved default policy, the sole direct setup-policy attachment, no
+groups and no access keys. Password-update metadata changed after user
+creation; MFA enrollment and a fresh MFA sign-in are still pending. Fresh full
+activation policies must be reviewed and verified before fixture provisioning.
+
+Main now owns migration 77 for `authorization_pending_indexes` from PR #1000.
+The owner approved moving only this issue's standalone adoption witness to 78.
+Integration uses main `eb991c991bcad853590cb0ab2c09367052a92c02`, preserving
+both engine migration 77 files and the witness SQL bytes. Canonical sqlc
+bindings and development compatibility metadata were regenerated from actual
+SQLite and PostgreSQL 18 catalogs; an independent fresh-catalog check passed.
+The legacy upgrade drill reverses witness 78 before the pristine indexes at 77
+and retains its refusal to discard witness evidence. Reviewed SQL pins retain
+all main records and only the three existing AWS query records differ.
+
+Relevant local validation passed: AWS provider, adoption store, migrations,
+legacy drills, offline fixture diagnostics, local adoption/lifecycle isolation,
+compatibility, full lint, scoped vet/import formatting, and 17 Python runner
+tests. The signed CLI drill passed separately with required cosign. Full lint
+skipped only its explicit opt-in pin updater. No live AWS smoke entry point ran.
+Graphify's AST refresh completed with 17 partial-extraction warnings. Local
+checks do not establish current-head remote CI, live acceptance or feature
+merge. Independent integration security and specification reviews found no
+remaining material source findings after documentation corrections. Verify the
+signed, DCO-signed candidate commit and current-head CI after publication.
+
 ## Failed live acceptance and offline repair, 2026-10-18
 
-This section supersedes the execution and resource states in the historical
-continuation below. Bootstrap [PR #968](https://github.com/Hikyo-Org/Hikyo/pull/968)
+This historical section records the first execution and retirement. The current
+continuation above supersedes its subsequent authorization and resource state. Bootstrap [PR #968](https://github.com/Hikyo-Org/Hikyo/pull/968)
 merged as `cb78b6be111029335e744aa3e4dcc956d5194ba1`. Feature
 [PR #969](https://github.com/Hikyo-Org/Hikyo/pull/969) remains draft and issue #158
-remains open. Standalone adoption-witness migration 77 is owner-approved;
-main last verified before execution ended at 76.
+remains open. At that execution, the standalone adoption witness used migration 77 and
+main ended at 76; the later owner-approved slot is 78.
 
 The owner personally approved one protected-environment job:
 [run 39158333194](https://github.com/Hikyo-Org/Hikyo/actions/runs/39158333194),
@@ -77,7 +132,8 @@ SecretString and SecretBinary absent. These fixes do not expand provider
 permissions. CloudTrail corroborates the eight token-related create rejections;
 the clock defect's contribution to this particular live run remains unproven.
 
-No live rerun or new fixture is authorized by these repairs. The original
+These repairs alone did not authorize a live rerun or new fixture. The later
+explicit owner approval above supplies the additional bounded scope. The original
 one-time execution, fixed deadlines and cumulative count are not reset.
 Required feature CI, successful live acceptance, current-head review and
 verified main merge remain delivery gates. Ordinary CI uses simulated AWS.
@@ -127,6 +183,8 @@ could not satisfy the repository's PostgreSQL 18 control catalog; that failed
 attempt and its generated artifact remain preserved separately. The committed
 metadata uses PostgreSQL 18.6 in UTC.
 
+On October 19, main already contained migration 77 for authorization and pending-read indexes (PR #1000). The owner then approved migration 78 for this standalone adoption witness. Both engine migrations retain the same SQL; canonical bindings and the development compatibility manifest have been regenerated against integrated main and checked against fresh SQLite and PostgreSQL 18 catalogs.
+
 The actual authenticated API/CLI lifecycle now passes all eight combinations of
 API/CLI, JSON-object/per-key and SQLite/PostgreSQL. It exercises TLS,
 cookie/CSRF, WebAuthn purpose-bound consent, CLI browser handoff and bearer
@@ -148,7 +206,7 @@ schema at 76, reviewed SQL pins needed the new witness projection, and a source
 loader caught an intermediate test-helper compile error. Those failures are
 preserved. The unsharded isolation package reached the default ten-minute
 alarm; CI already partitions its full inventory into dedicated shards. The
-legacy fixture now enumerates migration 77, refuses stored witness evidence,
+legacy fixture now enumerates the adoption-witness migration, refuses stored witness evidence,
 and reverses only the pristine column before proving the pinned legacy catalog.
 The SQL pins retain the scope guard, with both-engine tests strengthened to
 require an exact witness only while its adoption consent remains pending.
@@ -170,7 +228,7 @@ the strengthened consent/witness predicates and the reviewed SQL guard. Its
 two explicit skips remain the real AWS smoke and replay-child entry points.
 Full service and lint package runs passed 823 and 319 cases respectively;
 lint retained one explicit skip. The app run caught a second legacy-fixture
-omission: migration 77 also had to be removed from the fixture's Goose history.
+omission: the adoption-witness migration also had to be removed from the fixture's Goose history.
 That failure remains preserved. The repaired legacy proof and routing regression
 then passed all 13 focused cases, including both database engines. The full app
 rerun passed 183 top-level tests (394 including subtests) in 356.932 seconds,
@@ -462,9 +520,9 @@ version, another job, replacement ARN, or malformed/missing witness. Unit and
 both-engine service/SQL retry drafts cover definite marker failure and failed
 Finish with crash-window closure, exact-once versions and preserved custody.
 
-Migration `00077_aws_adoption_witness.sql` persists this witness on both engines.
-The owner authorized this standalone number on October 18 in place of the old
-80 reservation. The SQL is unchanged from the reviewed candidate; canonical
+Migration `00078_aws_adoption_witness.sql` persists this witness on both engines.
+The owner replaced the old 80 reservation with 77 on October 18, then approved
+78 on October 19 after main occupied 77. The SQL is unchanged from the reviewed candidate; canonical
 sqlc generation has now run. No unsigned sibling migrations were copied.
 Compilation and database/runtime proof are tracked in the continuation above.
 

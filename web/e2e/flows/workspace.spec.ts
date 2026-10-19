@@ -296,13 +296,10 @@ test.describe('multi-instance', () => {
     const proceed = entry.getByRole('button', { name: /^Continue to / });
     await expect(proceed).toBeVisible({ timeout: 30_000 });
     const popupOpened = context.waitForEvent('page');
-    // The redemption response is where the bearer exists on the wire exactly
-    // once. Capturing it here is what turns the persistence assertion below
-    // from "no string that looks like a bearer is stored" into "THIS bearer is
-    // stored nowhere".
-    const redemption = page.waitForResponse(
-      (r) => r.url().includes('/api/v1/auth/workspace/redeem') && r.ok(),
-    );
+    // Capture the actual bearer on its first liveness request. Reading the
+    // redemption response body later races Chromium's response-body lifetime
+    // as the popup navigates and closes. The outgoing request's headers remain
+    // available and identify the exact bearer used by the workspace transport.
     const liveness = page.waitForRequest((r) => r.url().includes('/api/v1/me/sessions'));
     await proceed.click();
     await expect(entry.getByRole('button', { name: 'Waiting for sign-in…' })).toBeDisabled();
@@ -356,12 +353,13 @@ test.describe('multi-instance', () => {
     await expect(entry.getByText('Workspace open')).toBeVisible({ timeout: 30_000 });
 
     // --- the bearer is in JS MEMORY ONLY, proven against the real value -----
-    const redeemed: unknown = await (await redemption).json();
-    const value =
-      typeof redeemed === 'object' && redeemed !== null && 'value' in redeemed
-        ? String(redeemed.value)
-        : '';
-    expect(value, 'the redemption returned no bearer to check').not.toBe('');
+    const probe = await liveness;
+    const headers = await probe.allHeaders();
+    const authorization = headers['authorization'];
+    if (authorization === undefined || !/^Bearer hik_1_ws_[A-Za-z0-9_-]+$/.test(authorization)) {
+      throw new Error('the liveness probe carries no workspace bearer to check');
+    }
+    const value = authorization.slice('Bearer '.length);
 
     const stored = await page.evaluate(() => ({
       local: Object.entries(globalThis.localStorage),
@@ -395,9 +393,6 @@ test.describe('multi-instance', () => {
 
     // And the transport is what the ADR requires: the bearer rides an
     // Authorization header, and nothing ambient travels with it.
-    const probe = await liveness;
-    const headers = await probe.allHeaders();
-    expect(headers['authorization'], 'the liveness probe carries no bearer').toBe(`Bearer ${value}`);
     expect(headers['cookie'], 'the cross-origin probe carried cookies').toBeUndefined();
 
     // --- kill switch 1: the remote withdraws consent ------------------------
