@@ -1129,6 +1129,8 @@ type Project struct {
 	DefinitionsSource       string
 	MachineReveal           int64
 	MachineRevealGeneration int64
+	KeyLimitOverride        sql.NullInt64
+	KeyLimitRevision        int64
 }
 
 type ProjectSchemaRevision struct {

@@ -167,6 +167,9 @@ type Config struct {
 	// "required" (greenfield strict); an upgrade keeps "optional" via the
 	// runtimeconfig migration so an existing instance's posture is unchanged.
 	SecondFactor string
+	// MaxKeysPerProject is shared owner policy, reloaded through managed config.
+	MaxKeysPerProject     int
+	DefaultKeysPerProject int
 
 	// Root-key source descriptor — never the key material itself; the crypto
 	// package reads and validates it at boot. Only `hikyo server` consults it.
@@ -287,6 +290,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_MCP_ENABLED":                    true,
 	"HIKYO_MCP_WRITE_ENABLED":              true,
 	"HIKYO_SECOND_FACTOR":                  true,
+	"HIKYO_MAX_KEYS_PER_PROJECT":           true,
+	"HIKYO_DEFAULT_KEYS_PER_PROJECT":       true,
 	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
 	"HIKYO_ROOT_KEY_FILE":                  true,
@@ -502,6 +507,22 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 	default:
 		return nil, nil, fmt.Errorf("HIKYO_SECOND_FACTOR: policy must be required or optional, got %q", secondFactor)
 	}
+	keyLimit, err := uintEnv(getenv, "HIKYO_MAX_KEYS_PER_PROJECT", DefaultMaxKeysPerProject)
+	if err != nil {
+		return nil, nil, err
+	}
+	if keyLimit < 1 || keyLimit > MaxKeysPerProjectCeiling {
+		return nil, nil, fmt.Errorf("HIKYO_MAX_KEYS_PER_PROJECT: must be between 1 and %d", MaxKeysPerProjectCeiling)
+	}
+	cfg.MaxKeysPerProject = int(keyLimit)
+	defaultKeys, err := uintEnv(getenv, "HIKYO_DEFAULT_KEYS_PER_PROJECT", DefaultKeysPerProject)
+	if err != nil {
+		return nil, nil, err
+	}
+	if defaultKeys < 1 || defaultKeys > keyLimit {
+		return nil, nil, fmt.Errorf("HIKYO_DEFAULT_KEYS_PER_PROJECT: must be between 1 and HIKYO_MAX_KEYS_PER_PROJECT (%d)", keyLimit)
+	}
+	cfg.DefaultKeysPerProject = int(defaultKeys)
 	if raw := getenv("HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED"); raw != "" {
 		stopped, err := strconv.ParseBool(raw)
 		if err != nil {

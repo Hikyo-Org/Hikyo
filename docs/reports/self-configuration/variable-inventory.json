@@ -121,6 +121,14 @@
     "import": "value"
   },
   {
+    "key": "HIKYO_CLI_SOCKET",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
     "key": "HIKYO_COMPOSE_DOCKER",
     "audience": "client",
     "scope": "node",
@@ -301,6 +309,14 @@
     "audience": "server",
     "scope": "owner",
     "activation": "component",
+    "secret": false,
+    "import": "value"
+  },
+  {
+    "key": "HIKYO_MAX_KEYS_PER_PROJECT",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
     "secret": false,
     "import": "value"
   },

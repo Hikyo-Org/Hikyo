@@ -19,7 +19,7 @@ afterEach(() => {
 
 describe('ProjectSettings', () => {
   it('hides policy and danger controls when the project grants neither capability', async () => {
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const request = input instanceof Request ? input : new Request(input);
       const path = new URL(request.url).pathname;
       if (path === '/api/v1/auth/whoami') return Promise.resolve(Response.json(authenticatedIdentity));
@@ -30,7 +30,8 @@ describe('ProjectSettings', () => {
         can_manage_policy: false, can_delete: false,
       }));
       return Promise.resolve(Response.json(settingsResponse(request.method, path, 'db')));
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
     const { container, unmount } = await renderForm(<AuthProvider><MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}><Routes><Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} /></Routes></MemoryRouter></AuthProvider>);
     await settleTask();
     expect(container.textContent).toContain('Payments');
@@ -38,6 +39,7 @@ describe('ProjectSettings', () => {
     expect(container.querySelector('#project-danger')).toBeNull();
     expect(container.querySelector('a[href="#project-policy"]')).toBeNull();
     expect(container.querySelector('a[href="#project-danger"]')).toBeNull();
+    expect(fetchMock.mock.calls.some(([input]) => new URL(input instanceof Request ? input.url : String(input)).pathname.endsWith('/capacity'))).toBe(false);
     await unmount();
   });
 
@@ -368,6 +370,11 @@ function settingsResponse(
   }
   if (method === 'GET' && path === `${projectPath}/environments`) {
     return { items: [], count: 0 };
+  }
+  if (method === 'GET' && path === `${projectPath}/capacity`) {
+    return { key_limit_override: null, instance_default: 1000, instance_maximum: 10000,
+      effective_limit: 1000, key_count: 0, environment_count: 0, revision: 0,
+      inherited: true, capped: false };
   }
   if (method === 'GET' && path === '/api/v1/orgs/org_1/retention') {
     return { mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: 10 };

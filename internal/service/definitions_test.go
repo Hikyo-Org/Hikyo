@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -40,7 +41,7 @@ func TestSanitizeDefinitionsProvenance(t *testing.T) {
 }
 
 func TestValidateFinalDefinitionsNamesAndCaps(t *testing.T) {
-	keys := make([]definitions.Key, schema.MaxKeysPerProject+1)
+	keys := make([]definitions.Key, config.DefaultKeysPerProject+1)
 	for i := range keys {
 		keys[i].Name = fmt.Sprintf("KEY_%d", i)
 	}
@@ -68,7 +69,7 @@ func TestValidateFinalDefinitionsNamesAndCaps(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateFinalDefinitions(test.cur, test.res)
+			err := validateFinalDefinitions(test.cur, test.res, 0)
 			if !errors.Is(err, test.want) || !strings.Contains(err.Error(), test.text) {
 				t.Fatalf("validation = %v, want %v naming %q", err, test.want, test.text)
 			}

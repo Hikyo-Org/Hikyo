@@ -42,14 +42,8 @@ const MaxEnvironmentsPerProject = 50
 // MaxResolvedCells is the ops-spec § 8 config-time composability budget:
 // environments × declared keys ≤ 100 000, "the operation that would exceed it
 // (creating the env, declaring the key) is refused loud, naming the budget".
-// It is enforced BY CONSTRUCTION rather than by a runtime check nothing can
-// reach: MaxEnvironmentsPerProject × schema.MaxKeysPerProject is 50 000, half
-// the budget, so no legal configuration can exceed it while those two caps
-// hold. That is precisely the spec's "makes the maxima compose by
-// construction" guarantee; TestResolvedCellBudgetComposesByConstruction pins
-// it, so a future loosening of either component cap fails the build here rather
-// than silently voiding the budget. A dead runtime refusal would add reachable-
-// looking code for an unreachable state.
+// Increasing the managed key cap can make this reachable. Key, environment
+// and definitions creation enforce it under the project lock.
 const MaxResolvedCells = 100_000
 
 // Name and path bounds. No ADR fixes a display-name length for org, project,
@@ -793,6 +787,13 @@ func (s *Environments) create(ctx context.Context, actor Actor, scope domain.Sco
 		if n >= MaxEnvironmentsPerProject {
 			return fmt.Errorf("%w: a project holds at most %d environments",
 				domain.ErrLimitExceeded, MaxEnvironmentsPerProject)
+		}
+		keys, err := r.Catalogue().Count(ctx, p)
+		if err != nil {
+			return err
+		}
+		if err := checkResolvedCells(keys, n+1); err != nil {
+			return err
 		}
 		// Surface-2 acknowledged overrides (#74): the block verdict was reached in
 		// the pre-flight above; here the finding_overridden events for an

@@ -116,12 +116,12 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			}
 			return nil
 		}))
-		for _, op := range []authz.Operation{authz.OpOrgDelete, authz.OpProjectDelete, authz.OpEnvDelete, authz.OpKeyCreate, authz.OpDefinitionsApply, authz.OpDefinitionsSettingsSet, authz.OpProjectMachineRevealSet, authz.OpValueCopySource, authz.OpAdapterConfigure} {
+		for _, op := range []authz.Operation{authz.OpOrgDelete, authz.OpProjectDelete, authz.OpEnvDelete, authz.OpKeyCreate, authz.OpDefinitionsApply, authz.OpDefinitionsSettingsSet, authz.OpProjectMachineRevealSet, authz.OpProjectCapacitySet, authz.OpValueCopySource, authz.OpAdapterConfigure} {
 			addressed := scope
 			switch op {
 			case authz.OpOrgDelete:
 				addressed = domain.Scope{Org: scope.Org}
-			case authz.OpProjectDelete, authz.OpKeyCreate, authz.OpDefinitionsApply, authz.OpDefinitionsSettingsSet, authz.OpProjectMachineRevealSet, authz.OpAdapterConfigure:
+			case authz.OpProjectDelete, authz.OpKeyCreate, authz.OpDefinitionsApply, authz.OpDefinitionsSettingsSet, authz.OpProjectMachineRevealSet, authz.OpProjectCapacitySet, authz.OpAdapterConfigure:
 				addressed.Env = ""
 			}
 			err := write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

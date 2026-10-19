@@ -88,6 +88,29 @@ For `HIKYO_MAIL_*` bootstrap inputs, managed mail settings and an explicit
 delivery test, see [signup mail](/docs/signup-mail/). Provider client setup and
 registration admission are covered by [social sign-in](/docs/social-signin/).
 
+## Project key capacity
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HIKYO_DEFAULT_KEYS_PER_PROJECT` | `1000` | Declared-key limit inherited by projects without an override, from `1` to `10000`; cannot exceed the instance maximum. |
+| `HIKYO_MAX_KEYS_PER_PROJECT` | `10000` | Operator-controlled ceiling for every project's effective key limit, from `1` to `10000`. |
+
+On an unmanaged installation, these environment variables supply the initial
+configuration. After adoption, edit the keys in the Hikyo configuration
+project's Matrix, Publish, and Apply the selected revision. An old environment
+variable cannot override the managed settings. In **Project settings > Policy >
+Key capacity**, choose **Inherit instance default** or a custom limit within
+the instance maximum. For example, one project can use `5000` while other
+projects inherit `1000`.
+
+The effective limit is the smaller of the saved override (or inherited default)
+and the instance maximum. Lowering the maximum retains a larger saved override
+and caps its effective limit; raising the maximum can restore it. Lowering a
+limit preserves existing keys and delivery, while refusing additional growth
+above the limit. The separate 100,000-cell project budget still applies. See
+[Change the project key limit](/docs/managed-configuration/#change-the-project-key-limit)
+for the workflow, rationale and behavior when reducing the limit.
+
 ## MCP endpoint
 
 

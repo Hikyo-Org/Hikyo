@@ -10,7 +10,10 @@ export async function expectLeftAlignedPage(inside: Element): Promise<void> {
   const page = inside.closest<HTMLElement>('.page--chrome')
   if (page === null) throw new Error('page column missing')
   await expect(getComputedStyle(page).marginLeft).toBe('0px')
-  const parent = page.parentElement
+  let parent = page.parentElement
+  // Auth/session ownership may add boxless wrappers. Alignment belongs to the
+  // nearest containing box, rather than display:contents' zero bounding rect.
+  while (parent !== null && getComputedStyle(parent).display === 'contents') parent = parent.parentElement
   if (parent === null) throw new Error('page column has no container')
   const style = getComputedStyle(parent)
   const contentLeft = parent.getBoundingClientRect().left + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.paddingLeft)

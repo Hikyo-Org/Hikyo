@@ -3,5 +3,6 @@
   "src/ui/Button.css": 0,
   "src/ui/Combobox.css": 0,
   "src/ui/SidePanel.css": 0,
-  "src/ui/Sep.css": 0
+  "src/ui/Sep.css": 0,
+  "src/routes/ProjectCapacityPolicy.css": 0
 }

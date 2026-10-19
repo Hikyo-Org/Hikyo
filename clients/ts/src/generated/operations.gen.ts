@@ -180,6 +180,7 @@ import {
   getOrgRetention,
   getPkiIssuerCrl,
   getProject,
+  getProjectCapacity,
   getProjectRetention,
   getRetentionHealth,
   getRevealWindow,
@@ -389,6 +390,7 @@ import {
   setMachineReveal,
   setOrgRetention,
   setPassword,
+  setProjectCapacity,
   setProjectRetention,
   settleLease,
   setValue,
@@ -572,6 +574,7 @@ import type {
   GetOrgRegistrationPolicyData,
   GetOrgRetentionData,
   GetPkiIssuerCrlData,
+  GetProjectCapacityData,
   GetProjectData,
   GetProjectRetentionData,
   GetRetentionHealthData,
@@ -782,6 +785,7 @@ import type {
   SetMachineRevealData,
   SetOrgRetentionData,
   SetPasswordData,
+  SetProjectCapacityData,
   SetProjectRetentionData,
   SettleLeaseData,
   SetValueData,
@@ -944,6 +948,7 @@ import {
   zGetOrgResponse,
   zGetOrgRetentionResponse,
   zGetPkiIssuerCrlResponse,
+  zGetProjectCapacityResponse,
   zGetProjectResponse,
   zGetProjectRetentionResponse,
   zGetRetentionHealthResponse,
@@ -1131,6 +1136,7 @@ import {
   zSetMachineRevealResponse,
   zSetOrgRetentionResponse,
   zSetPasswordResponse,
+  zSetProjectCapacityResponse,
   zSetProjectRetentionResponse,
   zSettleLeaseResponse,
   zSetValueResponse,
@@ -1290,6 +1296,7 @@ export const getOrgRegistrationPolicyOp: BodyOperation<GetOrgRegistrationPolicyD
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
 export const getPkiIssuerCrlOp: BodyOperation<GetPkiIssuerCrlData, typeof zGetPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getPkiIssuerCrl, [200], zGetPkiIssuerCrlResponse);
 export const getProjectOp: BodyOperation<GetProjectData, typeof zGetProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProject, [200], zGetProjectResponse);
+export const getProjectCapacityOp: BodyOperation<GetProjectCapacityData, typeof zGetProjectCapacityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectCapacity, [200], zGetProjectCapacityResponse);
 export const getProjectRetentionOp: BodyOperation<GetProjectRetentionData, typeof zGetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectRetention, [200], zGetProjectRetentionResponse);
 export const getRetentionHealthOp: BodyOperation<GetRetentionHealthData, typeof zGetRetentionHealthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRetentionHealth, [200], zGetRetentionHealthResponse);
 export const getRevealWindowOp: BodyOperation<GetRevealWindowData, typeof zGetRevealWindowResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRevealWindow, [200], zGetRevealWindowResponse);
@@ -1476,6 +1483,7 @@ export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupRe
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
 export const setOrgRetentionOp: BodyOperation<SetOrgRetentionData, typeof zSetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgRetention, [200], zSetOrgRetentionResponse);
 export const setPasswordOp: BodyOperation<SetPasswordData, typeof zSetPasswordResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setPassword, [200], zSetPasswordResponse);
+export const setProjectCapacityOp: BodyOperation<SetProjectCapacityData, typeof zSetProjectCapacityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectCapacity, [200], zSetProjectCapacityResponse);
 export const setProjectRetentionOp: BodyOperation<SetProjectRetentionData, typeof zSetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectRetention, [200], zSetProjectRetentionResponse);
 export const settleLeaseOp: BodyOperation<SettleLeaseData, typeof zSettleLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(settleLease, [200], zSettleLeaseResponse);
 export const setValueOp: BodyOperation<SetValueData, typeof zSetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setValue, [200], zSetValueResponse);

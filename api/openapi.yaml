@@ -1786,6 +1786,75 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/capacity:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: getProjectCapacity
+      tags: [hierarchy]
+      summary: Read the project key capacity and current usage.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.capacity.read
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Effective capacity, saved override and current usage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCapacity"}
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+    put:
+      operationId: setProjectCapacity
+      tags: [hierarchy]
+      summary: Set or clear the project key capacity override.
+      x-hikyo-class: tenant
+      x-hikyo-operation: project.capacity.set
+      x-hikyo-formula: [project-settings@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      description: |
+        Null inherits the instance default. An override must not exceed the
+        active instance maximum. Lowering a limit preserves existing keys.
+        Stale project revisions or reviewed instance settings refuse with conflict.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SetProjectCapacityRequest"}
+      responses:
+        "200":
+          description: Effective capacity, saved override and current usage.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectCapacity"}
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}/retention:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -15382,12 +15451,39 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    ProjectCapacity:
+      type: object
+      additionalProperties: false
+      required: [key_limit_override, instance_default, instance_maximum, effective_limit, key_count, environment_count, revision, inherited, capped]
+      properties:
+        key_limit_override: {type: [integer, "null"], minimum: 1, maximum: 10000}
+        instance_default: {type: integer, minimum: 1, maximum: 10000}
+        instance_maximum: {type: integer, minimum: 1, maximum: 10000}
+        effective_limit: {type: integer, minimum: 1, maximum: 10000}
+        key_count: {type: integer, minimum: 0}
+        environment_count: {type: integer, minimum: 0, maximum: 50}
+        revision: {type: integer, format: int64, minimum: 0}
+        inherited: {type: boolean}
+        capped:
+          type: boolean
+          description: The saved override exceeds the active instance maximum and is capped without being removed.
+
+    SetProjectCapacityRequest:
+      type: object
+      additionalProperties: false
+      required: [key_limit_override, expected_revision, expected_instance_default, expected_instance_maximum]
+      properties:
+        key_limit_override: {type: [integer, "null"], minimum: 1, maximum: 10000}
+        expected_revision: {type: integer, format: int64, minimum: 0}
+        expected_instance_default: {type: integer, minimum: 1, maximum: 10000}
+        expected_instance_maximum: {type: integer, minimum: 1, maximum: 10000}
+
     MintDeveloperCredentialRequest:
       type: object
       additionalProperties: false
       required: [consent_current_and_future, key_ids, lifetime_seconds]
       properties:
-        key_ids: {type: array, uniqueItems: true, maxItems: 1000, items: {$ref: "#/components/schemas/ID"}}
+        key_ids: {type: array, uniqueItems: true, maxItems: 10000, items: {$ref: "#/components/schemas/ID"}}
         consent_current_and_future:
           type: boolean
           const: true
@@ -17322,7 +17418,7 @@ components:
       properties:
         purpose: {type: string, const: developer-credential}
         environment_id: {$ref: "#/components/schemas/ID"}
-        key_ids: {type: array, uniqueItems: true, maxItems: 1000, items: {$ref: "#/components/schemas/ID"}}
+        key_ids: {type: array, uniqueItems: true, maxItems: 10000, items: {$ref: "#/components/schemas/ID"}}
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}
         code: {type: string, minLength: 6, maxLength: 10}
 
@@ -17425,7 +17521,7 @@ components:
         key_ids:
           type: array
           uniqueItems: true
-          maxItems: 1000
+          maxItems: 10000
           items: {$ref: "#/components/schemas/ID"}
           description: The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
         pkce_challenge: {type: string, minLength: 43, maxLength: 43, pattern: "^[A-Za-z0-9_-]{43}$"}
@@ -22660,7 +22756,7 @@ components:
       anyOf:
         - properties:
             operation: {enum: [developer-credential]}
-            key_ids: {maxItems: 1000}
+            key_ids: {maxItems: 10000}
         - properties: {operation: {not: {enum: [developer-credential]}}}
       properties:
         developer_credential: {$ref: "#/components/schemas/DeveloperCredentialReauthIntent"}

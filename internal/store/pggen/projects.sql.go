@@ -57,7 +57,7 @@ func (q *Queries) DeleteProject(ctx context.Context, arg DeleteProjectParams) (i
 const getProject = `-- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
 FROM projects
 WHERE org_id = $1 AND id = $2
 `
@@ -80,7 +80,31 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.DefinitionsSource,
 		&i.MachineReveal,
 		&i.MachineRevealGeneration,
+		&i.KeyLimitOverride,
+		&i.KeyLimitRevision,
 	)
+	return i, err
+}
+
+const getProjectCapacity = `-- name: GetProjectCapacity :one
+SELECT key_limit_override, key_limit_revision FROM projects
+WHERE org_id = $1 AND id = $2
+`
+
+type GetProjectCapacityParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+type GetProjectCapacityRow struct {
+	KeyLimitOverride pgtype.Int8
+	KeyLimitRevision int64
+}
+
+func (q *Queries) GetProjectCapacity(ctx context.Context, arg GetProjectCapacityParams) (GetProjectCapacityRow, error) {
+	row := q.db.QueryRow(ctx, getProjectCapacity, arg.ChainOrgID, arg.ChainProjectID)
+	var i GetProjectCapacityRow
+	err := row.Scan(&i.KeyLimitOverride, &i.KeyLimitRevision)
 	return i, err
 }
 
@@ -124,7 +148,7 @@ func (q *Queries) ListAllProjects(ctx context.Context) ([]ListAllProjectsRow, er
 const listProjects = `-- name: ListProjects :many
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
 FROM projects
 WHERE org_id = $1 ORDER BY name
 `
@@ -148,6 +172,8 @@ func (q *Queries) ListProjects(ctx context.Context, chainOrgID string) ([]Projec
 			&i.DefinitionsSource,
 			&i.MachineReveal,
 			&i.MachineRevealGeneration,
+			&i.KeyLimitOverride,
+			&i.KeyLimitRevision,
 		); err != nil {
 			return nil, err
 		}
@@ -193,6 +219,33 @@ type RenameProjectParams struct {
 
 func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (int64, error) {
 	result, err := q.db.Exec(ctx, renameProject, arg.Name, arg.ChainOrgID, arg.ChainProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setProjectCapacity = `-- name: SetProjectCapacity :execrows
+UPDATE projects SET key_limit_override = $1, key_limit_revision = key_limit_revision + 1
+WHERE org_id = $2 AND id = $3 AND key_limit_revision = $4
+`
+
+type SetProjectCapacityParams struct {
+	KeyLimitOverride pgtype.Int8
+	ChainOrgID       string
+	ChainProjectID   string
+	ExpectedRevision int64
+}
+
+// SetProjectCapacity advances the independent policy revision only if the
+// caller still holds the policy version it read under the project lock.
+func (q *Queries) SetProjectCapacity(ctx context.Context, arg SetProjectCapacityParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setProjectCapacity,
+		arg.KeyLimitOverride,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ExpectedRevision,
+	)
 	if err != nil {
 		return 0, err
 	}

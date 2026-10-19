@@ -109,7 +109,11 @@ func (s *Definitions) Plan(ctx context.Context, actor Actor, scope domain.Scope,
 			}
 			return err
 		}
-		if err := validateFinalDefinitions(cur, res); err != nil {
+		keyLimit, err := projectKeyLimit(ctx, r.Projects(), p, s.DefaultKeysPerProject, s.MaxKeysPerProject)
+		if err != nil {
+			return err
+		}
+		if err := validateFinalDefinitions(cur, res, keyLimit); err != nil {
 			return err
 		}
 		// Surface-2 block (#74 SS3, ADR §7 (b)): scan every author-controlled leaf
@@ -138,7 +142,7 @@ func (s *Definitions) Plan(ctx context.Context, actor Actor, scope domain.Scope,
 	return view, err
 }
 
-func validateFinalDefinitions(cur definitions.CurrentState, res definitions.Resolution) error {
+func validateFinalDefinitions(cur definitions.CurrentState, res definitions.Resolution, keyLimit int) error {
 	environments := make(map[string]string, len(cur.Environments)+len(res.EnvCreates))
 	for _, env := range cur.Environments {
 		environments[env.ID] = env.Name
@@ -196,8 +200,11 @@ func validateFinalDefinitions(cur definitions.CurrentState, res definitions.Reso
 	for _, key := range res.KeyCreates {
 		keys["new:"+key.Name] = key.Name
 	}
-	if len(keys) > schema.MaxKeysPerProject {
-		return definitionLimit("final definitions contain %d keys; a project declares at most %d", len(keys), schema.MaxKeysPerProject)
+	if err := checkProjectKeyGrowth(int64(len(cur.Keys)), int64(len(keys)), keyLimit); err != nil {
+		return err
+	}
+	if err := checkResolvedCells(int64(len(keys)), int64(len(environments))); err != nil {
+		return err
 	}
 	for _, name := range keys {
 		if err := schema.CheckKeyName(name); err != nil {

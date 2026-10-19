@@ -35,7 +35,7 @@ func TestDeveloperCredentialCeremoniesSupportFullCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, count := range []int{501, 1000, 1001} {
+	for _, count := range []int{501, 1000, 1001, 10000, 10001} {
 		keys := make([]any, count)
 		for i := range keys {
 			keys[i] = fmt.Sprintf("key_01989abc-def0-7123-8123-%012d", i)
@@ -48,7 +48,7 @@ func TestDeveloperCredentialCeremoniesSupportFullCatalogue(t *testing.T) {
 			"WebauthnReauthStartRequest":           {"operation": "developer-credential", "environment_id": "env_01989abc-def0-7123-8123-000000000001", "key_ids": keys, "developer_credential": target},
 		} {
 			err := doc.Components.Schemas[schema].Value.VisitJSON(body, openapi3.EnableJSONSchema2020())
-			if (err == nil) != (count <= 1000) {
+			if (err == nil) != (count <= 10000) {
 				t.Errorf("%s count=%d validation=%v", schema, count, err)
 			}
 			if schema == "CLIReauthStartRequest" && count == 501 {

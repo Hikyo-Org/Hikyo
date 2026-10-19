@@ -183,3 +183,15 @@ test('developer mint and reauthentication require the same concrete positive lif
     assert.equal(schema.parse({ ...consent, lifetime_seconds: 3600n }).lifetime_seconds, 3600n);
   }
 });
+
+test('developer consent covers the largest configured project catalogue', () => {
+  const key_ids = Array.from({ length: 10000 }, (_, i) =>
+    `key_01989abc-def0-7123-8123-${String(i).padStart(12, '0')}`,
+  );
+  const consent = { key_ids, consent_current_and_future: true, lifetime_seconds: 3600n };
+  assert.doesNotThrow(() => zMintDeveloperCredentialRequest.parse(consent));
+  assert.throws(() => zMintDeveloperCredentialRequest.parse({
+    ...consent,
+    key_ids: [...key_ids, 'key_01989abc-def0-7123-8123-000000010000'],
+  }));
+});

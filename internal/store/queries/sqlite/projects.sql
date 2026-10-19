@@ -9,14 +9,14 @@ VALUES (?, ?, ?, ?);
 -- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
 FROM projects
 WHERE org_id = ? AND id = ?;
 
 -- name: ListProjects :many
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
-       machine_reveal, machine_reveal_generation
+       machine_reveal, machine_reveal_generation, key_limit_override, key_limit_revision
 FROM projects
 WHERE org_id = ? ORDER BY name;
 
@@ -70,3 +70,13 @@ DELETE FROM projects WHERE org_id = ? AND id = ?;
 -- check requires the same query names.
 -- name: LockProject :one
 SELECT id FROM projects WHERE org_id = ? AND id = ?;
+
+-- name: GetProjectCapacity :one
+SELECT key_limit_override, key_limit_revision FROM projects
+WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id);
+
+-- SetProjectCapacity advances the independent policy revision only if the
+-- caller still holds the policy version it read under the project lock.
+-- name: SetProjectCapacity :execrows
+UPDATE projects SET key_limit_override = sqlc.narg(key_limit_override), key_limit_revision = key_limit_revision + 1
+WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id) AND key_limit_revision = sqlc.arg(expected_revision);

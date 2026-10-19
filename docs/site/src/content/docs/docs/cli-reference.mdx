@@ -116,6 +116,35 @@ stored locally and are never printed as a login receipt.
 Most list and show commands accept `-o table|json`. JSON shapes may gain fields;
 automation must ignore unknown fields.
 
+### Project key capacity
+
+```sh
+hikyo project capacity get --org example --project backend
+hikyo project capacity set --org example --project backend --max-keys 5000
+hikyo project capacity set --org example --project backend --inherit
+```
+
+These human-session commands require `project-settings` authority. `get` shows
+the saved override, instance default and maximum, effective limit, and current
+key and environment counts. Both commands accept `-o table|json`.
+
+`set` requires exactly one of `--max-keys N` or `--inherit`. A custom limit must
+be between `1` and the current instance maximum, whose own ceiling is `10000`.
+`--inherit` clears the override and follows `HIKYO_DEFAULT_KEYS_PER_PROJECT`
+(default `1000`). `HIKYO_MAX_KEYS_PER_PROJECT` is the instance ceiling (default
+`10000`), so one project can use `5000` while other projects inherit `1000`.
+
+Lowering the ceiling preserves a larger saved override and caps the effective
+limit. Existing keys and delivery are preserved. Further key growth must fit
+the effective limit and the separate 100,000-cell project budget. See
+[managed configuration](/docs/managed-configuration/#change-the-project-key-limit)
+for the full policy.
+
+Updates read the current policy first and send its revision, instance default
+and maximum with the write. A concurrent policy change is refused as a
+conflict; the CLI does not retry the update automatically. Read the policy
+again and review it before rerunning the intended change.
+
 ### Deployment adapters
 
 `adapter create` atomically creates an adapter, its write-only credential, and

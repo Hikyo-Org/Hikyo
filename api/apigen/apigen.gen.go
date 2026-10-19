@@ -9052,6 +9052,20 @@ type Project struct {
 	OrgId ID `json:"org_id"`
 }
 
+// ProjectCapacity defines model for ProjectCapacity.
+type ProjectCapacity struct {
+	// Capped The saved override exceeds the active instance maximum and is capped without being removed.
+	Capped           bool  `json:"capped"`
+	EffectiveLimit   int   `json:"effective_limit"`
+	EnvironmentCount int   `json:"environment_count"`
+	Inherited        bool  `json:"inherited"`
+	InstanceDefault  int   `json:"instance_default"`
+	InstanceMaximum  int   `json:"instance_maximum"`
+	KeyCount         int   `json:"key_count"`
+	KeyLimitOverride *int  `json:"key_limit_override"`
+	Revision         int64 `json:"revision"`
+}
+
 // ProjectList defines model for ProjectList.
 type ProjectList struct {
 	// Count Total rows matching, which for an unpaged list equals `items` length.
@@ -10877,6 +10891,14 @@ type SetPasswordRequest struct {
 
 	// Proof Account-security proof; may be omitted with a live establish stamp.
 	Proof *string `json:"proof,omitempty"`
+}
+
+// SetProjectCapacityRequest defines model for SetProjectCapacityRequest.
+type SetProjectCapacityRequest struct {
+	ExpectedInstanceDefault int   `json:"expected_instance_default"`
+	ExpectedInstanceMaximum int   `json:"expected_instance_maximum"`
+	ExpectedRevision        int64 `json:"expected_revision"`
+	KeyLimitOverride        *int  `json:"key_limit_override"`
 }
 
 // SetProjectRetentionRequest defines model for SetProjectRetentionRequest.
@@ -13059,6 +13081,9 @@ type CreateApprovalPolicyJSONRequestBody = ApprovalPolicyInput
 // UpdateApprovalPolicyJSONRequestBody defines body for UpdateApprovalPolicy for application/json ContentType.
 type UpdateApprovalPolicyJSONRequestBody = ApprovalPolicyInput
 
+// SetProjectCapacityJSONRequestBody defines body for SetProjectCapacity for application/json ContentType.
+type SetProjectCapacityJSONRequestBody = SetProjectCapacityRequest
+
 // CheckDefinitionsJSONRequestBody defines body for CheckDefinitions for application/json ContentType.
 type CheckDefinitionsJSONRequestBody = DefinitionsBundle
 
@@ -14907,6 +14932,12 @@ type ServerInterface interface {
 	// ExportProjectAudit Stream the project's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
 	ExportProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params ExportProjectAuditParams)
+	// GetProjectCapacity Read the project key capacity and current usage.
+	// (GET /api/v1/orgs/{org}/projects/{project}/capacity)
+	GetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// SetProjectCapacity Set or clear the project key capacity override.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/capacity)
+	SetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// CheckDefinitions Compare a definitions bundle with current project state.
 	// (POST /api/v1/orgs/{org}/projects/{project}/definitions/check)
 	CheckDefinitions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -16671,6 +16702,18 @@ func (_ Unimplemented) QueryProjectAudit(w http.ResponseWriter, r *http.Request,
 // ExportProjectAudit Stream the project's audit trail as JSONL.
 // (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
 func (_ Unimplemented) ExportProjectAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params ExportProjectAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetProjectCapacity Read the project key capacity and current usage.
+// (GET /api/v1/orgs/{org}/projects/{project}/capacity)
+func (_ Unimplemented) GetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetProjectCapacity Set or clear the project key capacity override.
+// (PUT /api/v1/orgs/{org}/projects/{project}/capacity)
+func (_ Unimplemented) SetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -23181,6 +23224,76 @@ func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportProjectAudit(w, r, org, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectCapacity operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectCapacity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectCapacity(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectCapacity operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectCapacity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectCapacity(w, r, org, project)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -32797,6 +32910,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}", wrapper.RenameEnvironment)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.GetProjectCapacity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/capacity", wrapper.SetProjectCapacity)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/retention", wrapper.GetProjectRetention)
@@ -55801,6 +55920,225 @@ func (response ExportProjectAudit500JSONResponse) VisitExportProjectAuditRespons
 type ExportProjectAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ExportProjectAudit503JSONResponse) VisitExportProjectAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacityRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type GetProjectCapacityResponseObject interface {
+	VisitGetProjectCapacityResponse(w http.ResponseWriter) error
+}
+
+type GetProjectCapacity200JSONResponse ProjectCapacity
+
+func (response GetProjectCapacity200JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetProjectCapacity401JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProjectCapacity404JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetProjectCapacity429JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacity500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetProjectCapacity500JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectCapacity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetProjectCapacity503JSONResponse) VisitGetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacityRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *SetProjectCapacityJSONRequestBody
+}
+
+type SetProjectCapacityResponseObject interface {
+	VisitSetProjectCapacityResponse(w http.ResponseWriter) error
+}
+
+type SetProjectCapacity200JSONResponse ProjectCapacity
+
+func (response SetProjectCapacity200JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectCapacity400JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetProjectCapacity401JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProjectCapacity404JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity409JSONResponse struct{ ConflictJSONResponse }
+
+func (response SetProjectCapacity409JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetProjectCapacity429JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetProjectCapacity500JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectCapacity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectCapacity503JSONResponse) VisitSetProjectCapacityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -79007,6 +79345,12 @@ type StrictServerInterface interface {
 	// ExportProjectAudit Stream the project's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/projects/{project}/audit/export)
 	ExportProjectAudit(ctx context.Context, request ExportProjectAuditRequestObject) (ExportProjectAuditResponseObject, error)
+	// GetProjectCapacity Read the project key capacity and current usage.
+	// (GET /api/v1/orgs/{org}/projects/{project}/capacity)
+	GetProjectCapacity(ctx context.Context, request GetProjectCapacityRequestObject) (GetProjectCapacityResponseObject, error)
+	// SetProjectCapacity Set or clear the project key capacity override.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/capacity)
+	SetProjectCapacity(ctx context.Context, request SetProjectCapacityRequestObject) (SetProjectCapacityResponseObject, error)
 	// CheckDefinitions Compare a definitions bundle with current project state.
 	// (POST /api/v1/orgs/{org}/projects/{project}/definitions/check)
 	CheckDefinitions(ctx context.Context, request CheckDefinitionsRequestObject) (CheckDefinitionsResponseObject, error)
@@ -85167,6 +85511,67 @@ func (sh *strictHandler) ExportProjectAudit(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ExportProjectAuditResponseObject); ok {
 		if err := validResponse.VisitExportProjectAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectCapacity operation middleware
+func (sh *strictHandler) GetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request GetProjectCapacityRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectCapacity(ctx, request.(GetProjectCapacityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectCapacity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectCapacityResponseObject); ok {
+		if err := validResponse.VisitGetProjectCapacityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectCapacity operation middleware
+func (sh *strictHandler) SetProjectCapacity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request SetProjectCapacityRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body SetProjectCapacityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectCapacity(ctx, request.(SetProjectCapacityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectCapacity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectCapacityResponseObject); ok {
+		if err := validResponse.VisitSetProjectCapacityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

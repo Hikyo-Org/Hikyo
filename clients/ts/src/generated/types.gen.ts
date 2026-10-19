@@ -4,6 +4,28 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type ProjectCapacity = {
+    key_limit_override: number | null;
+    instance_default: number;
+    instance_maximum: number;
+    effective_limit: number;
+    key_count: number;
+    environment_count: number;
+    revision: number;
+    inherited: boolean;
+    /**
+     * The saved override exceeds the active instance maximum and is capped without being removed.
+     */
+    capped: boolean;
+};
+
+export type SetProjectCapacityRequest = {
+    key_limit_override: number | null;
+    expected_revision: number;
+    expected_instance_default: number;
+    expected_instance_maximum: number;
+};
+
 export type MintDeveloperCredentialRequest = {
     key_ids: Array<Id>;
     /**
@@ -9684,6 +9706,136 @@ export type RenameEnvironmentResponses = {
 };
 
 export type RenameEnvironmentResponse = RenameEnvironmentResponses[keyof RenameEnvironmentResponses];
+
+export type GetProjectCapacityData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/capacity';
+};
+
+export type GetProjectCapacityErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetProjectCapacityError = GetProjectCapacityErrors[keyof GetProjectCapacityErrors];
+
+export type GetProjectCapacityResponses = {
+    /**
+     * Effective capacity, saved override and current usage.
+     */
+    200: ProjectCapacity;
+};
+
+export type GetProjectCapacityResponse = GetProjectCapacityResponses[keyof GetProjectCapacityResponses];
+
+export type SetProjectCapacityData = {
+    body: SetProjectCapacityRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/capacity';
+};
+
+export type SetProjectCapacityErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetProjectCapacityError = SetProjectCapacityErrors[keyof SetProjectCapacityErrors];
+
+export type SetProjectCapacityResponses = {
+    /**
+     * Effective capacity, saved override and current usage.
+     */
+    200: ProjectCapacity;
+};
+
+export type SetProjectCapacityResponse = SetProjectCapacityResponses[keyof SetProjectCapacityResponses];
 
 export type GetProjectRetentionData = {
     body?: never;

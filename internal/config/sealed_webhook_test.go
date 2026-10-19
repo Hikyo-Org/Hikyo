@@ -71,6 +71,11 @@ func TestSigningKeyFileRefusesLooseModes(t *testing.T) {
 	if err := os.WriteFile(path, []byte("PEM"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// WriteFile applies the caller's umask. Set the deliberately unsafe fixture
+	// mode explicitly so a restrictive runner still exercises the refusal.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := readSigningKeyFile(path); err == nil || !strings.Contains(err.Error(), "chmod 600") {
 		t.Fatalf("loose mode accepted: %v", err)
 	}

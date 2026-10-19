@@ -61,6 +61,7 @@
     "cli:whoami": "client transport for GET /api/v1/auth/whoami, which is itself exempt (it reports the session the caller already holds and writes nothing)",
     "http:GET /api/v1/auth/identities": "reports the caller's own linked identities and writes nothing; a self read whose subjects are already recorded at link/unlink time (auth.identity_linked / auth.identity_unlinked), so an event here would duplicate that once per poll, exactly like whoami",
     "http:GET /api/v1/auth/methods": "unauthenticated public discovery: the enabled provider slugs and whether local login is on, instance-level and never per-account; no principal, no tenant data, no state change, same class as GET /api/v1/meta",
+    "http:GET /api/v1/orgs/{org}/projects/{project}/capacity": "reads project key capacity policy and usage under project-settings authority, writes no state, and returns no values; actual policy changes emit project.capacity_changed. The non-read capability requires this explicit exemption under the default-deny audit rule.",
     "http:GET /api/v1/orgs/{org}/projects/{project}/definitions/plans/{plan}": "reads an immutable definitions plan under definitions-edit authority and changes no state; plan creation and apply carry the auditable acts, so polling the plan would only duplicate those records",
     "http:GET /api/v1/auth/saml/{provider}/metadata": "unauthenticated documentation-class SP metadata: public entityID, ACS, certificate and request-signing policy; no principal, tenant data or state change, and the SAML ADR declares no read event",
     "http:GET /api/v1/auth/totp": "reports the caller's OWN TOTP factor state (whether a confirmed factor stands and whether an enrolment is mid-flight) and writes nothing; the factor's lifecycle is already recorded at enrol/remove time (auth.* factor events), so an event here would duplicate that once per poll, exactly like the passkey and identities reads",
@@ -90,6 +91,7 @@
     "mcp:tools/list": "unauthenticated static MCP tool metadata: one compiled tenant-free catalogue, no principal, tenant data, or state change"
   },
   "operations": {
+    "project.capacity.read": "reads project key capacity policy and usage under project-settings authority, writes no state, and returns no values; actual policy changes emit project.capacity_changed. The non-read capability requires this explicit exemption under the default-deny audit rule.",
     "definitions.plan.get": "reads an immutable definitions plan under definitions-edit authority and changes no state; plan creation and apply carry the auditable acts, so polling the plan would only duplicate those records",
     "scim-discovery.read": "SCIM discovery (#73 ADR \u00a710): the three static documents carry no tenant data, so no event type is declared. It cannot take `audited: none` under the default-deny permit rule (that rule admits only bare-`read`, non-mutating, tenant-class operations; this one authenticates a provisioning credential and records last-contact), so the ADR's demanded explicit annotation on the probe class is this pinned entry."
   }
