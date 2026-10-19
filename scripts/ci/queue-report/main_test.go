@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/russross/blackfriday/v2"
 )
@@ -195,6 +196,12 @@ func TestFailureReportSurvivesDequeueWithoutPullRequestsArray(t *testing.T) {
 		if !strings.Contains(output["summary"].(string), fragment) {
 			t.Errorf("missing %q in summary", fragment)
 		}
+	}
+	if title := output["title"].(string); title != "PR #7: 1 failed, 0 done (first failure: validation / go)" {
+		t.Errorf("title: %q", title)
+	}
+	if text := output["text"].(string); !strings.Contains(text, "/actions/runs/50/job/99#step:4:1") {
+		t.Errorf("text lacks the failing step link: %q", text)
 	}
 	for _, path := range f.requests {
 		if strings.Contains(path, "git/ref") || strings.Contains(path, "merge_queue") {
@@ -540,30 +547,307 @@ func TestMaliciousLabelsCannotInjectReportLinksHTMLOrLines(t *testing.T) {
 		"<script>alert(1)</script><img src=x onerror=alert(1)>",
 		"`code` **bold** _emphasis_\r\n- [injected](https://attacker.example)",
 		"&#91;forged&#93;(https://attacker.example) &lt;script&gt;alert(1)&lt;/script&gt;",
+		strings.Repeat("<", 400),
 	} {
 		t.Run(malicious, func(t *testing.T) {
 			f.jobs[0].Name = malicious
 			f.jobs[0].Steps[0].Name = malicious
-			summary := render(f.r, 7, f.parents[0]["sha"], f.prHead, runURL, f.jobs, false)
-			if strings.Count(summary, "\n") != strings.Count(baseline, "\n") || strings.Contains(summary, "\r") {
-				t.Fatal("label injected new report lines")
+			got := render(f.r, 7, f.parents[0]["sha"], f.prHead, runURL, f.jobs, false)
+			if strings.ContainsAny(got.title, "<>\r\n") || len([]rune(got.title)) >= 200 {
+				t.Fatalf("unsafe or oversized title (%d runes): %q", len([]rune(got.title)), got.title)
 			}
-			// Parse the report as Markdown: source escaping alone would not prove
+			// Parse each body as Markdown: source escaping alone would not prove
 			// that a malicious label cannot become a live link or HTML element.
-			html := string(blackfriday.Run([]byte(summary)))
-			for _, forbidden := range []string{`href="https://attacker.example`, "<script", "<img", "<strong>", "<em>", "<code>code</code>"} {
-				if strings.Contains(html, forbidden) {
-					t.Errorf("label introduced active markup %q: %s", forbidden, html)
+			for _, part := range []struct {
+				name, body, baseline string
+				links                []string
+			}{
+				{"summary", got.summary, baseline.summary, []string{runURL, "https://github.com/owner/repo/actions/runs/50#artifacts", "https://github.com/owner/repo/actions/runs/50/job/99", "https://github.com/owner/repo/actions/runs/50/job/99#step:4:1"}},
+				{"text", got.text, baseline.text, []string{"https://github.com/owner/repo/actions/runs/50/job/99", "https://github.com/owner/repo/actions/runs/50/job/99#step:4:1"}},
+			} {
+				if strings.Count(part.body, "\n") != strings.Count(part.baseline, "\n") || strings.Contains(part.body, "\r") {
+					t.Fatalf("label injected new %s lines", part.name)
 				}
-			}
-			if strings.Count(html, "<a ") != 4 {
-				t.Fatalf("expected only run, artifact, job and step links: %s", html)
-			}
-			for _, trusted := range []string{runURL, "https://github.com/owner/repo/actions/runs/50#artifacts", "https://github.com/owner/repo/actions/runs/50/job/99", "https://github.com/owner/repo/actions/runs/50/job/99#step:4:1"} {
-				if !strings.Contains(html, `href="`+trusted+`"`) {
-					t.Errorf("trusted report link lost: %s", trusted)
+				html := string(blackfriday.Run([]byte(part.body)))
+				for _, forbidden := range []string{`href="https://attacker.example`, "<script", "<img", "<strong>", "<em>", "<code>code</code>"} {
+					if strings.Contains(html, forbidden) {
+						t.Errorf("label introduced active markup %q in %s: %s", forbidden, part.name, html)
+					}
+				}
+				if strings.Count(html, "<a ") != len(part.links) {
+					t.Fatalf("expected only trusted links in %s: %s", part.name, html)
+				}
+				for _, trusted := range part.links {
+					if !strings.Contains(html, `href="`+trusted+`"`) {
+						t.Errorf("trusted report link lost from %s: %s", part.name, trusted)
+					}
 				}
 			}
 		})
+	}
+}
+
+// fixedClock pins the Updated stamp and returns its expected UTC rendering.
+func fixedClock(t *testing.T) string {
+	t.Helper()
+	previous := now
+	now = func() time.Time { return time.Date(2026, 10, 19, 14, 5, 9, 0, time.FixedZone("test", 2*3600)) }
+	t.Cleanup(func() { now = previous })
+	return "2026-10-19T12:05:09Z"
+}
+
+func testJob(id int64, name, status, conclusion string) job {
+	return job{ID: id, RunID: 50, Attempt: 1, HeadSHA: strings.Repeat("d", 40), Name: name, Status: status, Conclusion: conclusion}
+}
+
+func withStep(j job, name string, number int, conclusion string) job {
+	j.Steps = append(j.Steps, struct {
+		Name       string `json:"name"`
+		Number     int    `json:"number"`
+		Conclusion string `json:"conclusion"`
+	}{name, number, conclusion})
+	return j
+}
+
+func renderJobs(r run, jobs ...job) rendered {
+	r.HeadSHA = strings.Repeat("d", 40)
+	return render(r, 995, strings.Repeat("b", 40), strings.Repeat("c", 40), "https://github.com/owner/repo/actions/runs/50/attempts/1", jobs, false)
+}
+
+func TestTitleLeadsWithProgressAndFirstFailure(t *testing.T) {
+	inProgress := run{ID: 50, Attempt: 1, Status: "in_progress"}
+	succeeded := run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "success"}
+	failedRun := run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "failure"}
+	cancelledRun := run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "cancelled"}
+	var partial []job
+	for i := 0; i < 12; i++ {
+		partial = append(partial, testJob(int64(100+i), fmt.Sprintf("web (desktop, %d)", i), "in_progress", ""))
+	}
+	for i := 0; i < 5; i++ {
+		partial = append(partial, testJob(int64(200+i), fmt.Sprintf("lint %d", i), "completed", "success"))
+	}
+	tests := []struct {
+		name string
+		run  run
+		jobs []job
+		want string
+	}{
+		{"no jobs yet", run{ID: 50, Attempt: 1, Status: "queued"}, nil, "PR #995: no jobs reported yet"},
+		{"partial reporting never claims a total", inProgress, partial, "PR #995: 17 reported, 0 failed, 12 running"},
+		{"queued jobs are counted", inProgress, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "queued", ""), testJob(3, "c", "waiting", "")}, "PR #995: 3 reported, 0 failed, 0 running, 2 queued"},
+		{"reported jobs done but run still going", inProgress, []job{testJob(1, "a", "completed", "success")}, "PR #995: 1 reported, 0 failed, 0 running"},
+		{"failure names the first failed job in API order", inProgress, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "web (desktop, 3)", "completed", "failure"),
+			testJob(3, "api", "completed", "timed_out"),
+			testJob(4, "docs", "completed", "skipped"),
+			testJob(5, "e2e", "in_progress", ""),
+			testJob(6, "bench", "queued", ""),
+		}, "PR #995: 2 failed, 2 done, 1 running, 1 queued (first failure: web (desktop, 3))"},
+		{"cancelled-only run is not reported as a failure", cancelledRun, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "web", "completed", "cancelled"),
+			testJob(3, "api", "completed", "cancelled"),
+		}, "PR #995: 2 cancelled, 1 done"},
+		{"cancelled-only run keeps unfinished counts", inProgress, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "web", "completed", "cancelled"),
+			testJob(3, "e2e", "in_progress", ""),
+			testJob(4, "bench", "queued", ""),
+		}, "PR #995: 1 cancelled, 1 done, 1 running, 1 queued"},
+		{"first failure skips an earlier cancelled job", failedRun, []job{
+			testJob(1, "plan", "completed", "success"),
+			testJob(2, "web", "completed", "cancelled"),
+			testJob(3, "api", "completed", "failure"),
+			testJob(4, "e2e", "completed", "cancelled"),
+			testJob(5, "docs", "completed", "skipped"),
+		}, "PR #995: 1 failed, 2 cancelled, 2 done (first failure: api)"},
+		{"failure plus cancelled keeps unfinished counts", inProgress, []job{
+			testJob(1, "web", "completed", "cancelled"),
+			testJob(2, "api", "completed", "timed_out"),
+			testJob(3, "e2e", "in_progress", ""),
+			testJob(4, "bench", "queued", ""),
+		}, "PR #995: 1 failed, 1 cancelled, 0 done, 1 running, 1 queued (first failure: api)"},
+		{"action_required job is a failure", failedRun, []job{testJob(1, "a", "completed", "success"), testJob(2, "deploy", "completed", "action_required")}, "PR #995: 1 failed, 1 done (first failure: deploy)"},
+		{"stale job is a failure", failedRun, []job{testJob(1, "a", "completed", "success"), testJob(2, "old", "completed", "stale")}, "PR #995: 1 failed, 1 done (first failure: old)"},
+		{"completed job without a conclusion is a failure", failedRun, []job{testJob(1, "a", "completed", "success"), testJob(2, "odd", "completed", "")}, "PR #995: 1 failed, 1 done (first failure: odd)"},
+		{"action_required job never reads as all passed", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "deploy", "completed", "action_required")}, "PR #995: 1 failed, 1 done (first failure: deploy)"},
+		{"neutral counts as passed", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "completed", "neutral")}, "PR #995: all 2 jobs passed"},
+		{"completed run without jobs reports the run conclusion", failedRun, nil, "PR #995: run failure, no jobs reported"},
+		{"completed cancelled run without jobs", cancelledRun, nil, "PR #995: run cancelled, no jobs reported"},
+		{"all passed", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "completed", "success")}, "PR #995: all 2 jobs passed"},
+		{"all passed with one job is singular", succeeded, []job{testJob(1, "a", "completed", "success")}, "PR #995: 1 job passed"},
+		{"all passed with skipped jobs", succeeded, []job{testJob(1, "a", "completed", "success"), testJob(2, "b", "completed", "skipped")}, "PR #995: 1 passed, 1 skipped, 0 failed"},
+		{"failed run without a failed job is not reported as passed", failedRun, []job{testJob(1, "a", "completed", "success")}, "PR #995: run failure, 1 reported, 0 failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := renderJobs(tt.run, tt.jobs...).title; got != tt.want {
+				t.Fatalf("title %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTitleBoundsHostileFirstFailureName(t *testing.T) {
+	hostile := "<b>\n" + strings.Repeat("x_", 300)
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(1, hostile, "completed", "failure")).title
+	if len([]rune(got)) >= 200 || strings.ContainsAny(got, "<>\r\n") || !strings.Contains(got, "(first failure: b x_x_") {
+		t.Fatalf("title not sanitized and bounded (%d runes): %q", len([]rune(got)), got)
+	}
+}
+
+func TestTitleFallsBackToJobIDWhenNameSanitizesToNothing(t *testing.T) {
+	for _, name := range []string{"", "<>", " \n\t\x00<<>> ", "\u200b\u2060"} {
+		got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(42, name, "completed", "failure")).title
+		if want := "PR #995: 1 failed, 0 done (first failure: job 42)"; got != want {
+			t.Errorf("name %q: title %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestTitleKeepsPlainJobNamesVerbatim(t *testing.T) {
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(1, "test_core", "completed", "timed_out")).title
+	if want := "PR #995: 1 failed, 0 done (first failure: test_core)"; got != want {
+		t.Fatalf("title %q, want %q", got, want)
+	}
+}
+
+func TestTextListsFailedFirstThenUnfinishedPassedSkipped(t *testing.T) {
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"},
+		testJob(1, "pass-a", "completed", "success"),
+		testJob(2, "skip-b", "completed", "skipped"),
+		testJob(3, "run-c", "in_progress", ""),
+		testJob(4, "fail-d", "completed", "failure"),
+		testJob(5, "queue-e", "queued", ""),
+		testJob(6, "cancel-f", "completed", "cancelled"),
+		testJob(7, "pass-g", "completed", "neutral"),
+		testJob(8, "fail-h", "completed", "timed_out"),
+	).text
+	last := -1
+	for _, id := range []int{4, 6, 8, 3, 5, 1, 7, 2} {
+		at := strings.Index(got, fmt.Sprintf("/job/%d)", id))
+		if at < 0 || at < last {
+			t.Fatalf("job %d out of order or missing in:\n%s", id, got)
+		}
+		last = at
+	}
+	for _, line := range []string{
+		"[fail-d](https://github.com/owner/repo/actions/runs/50/job/4): completed failure\n",
+		"[queue-e](https://github.com/owner/repo/actions/runs/50/job/5): queued\n",
+		"[skip-b](https://github.com/owner/repo/actions/runs/50/job/2): completed skipped\n",
+	} {
+		if !strings.Contains(got, line) {
+			t.Errorf("missing %q in text:\n%s", line, got)
+		}
+	}
+}
+
+func TestSummaryLeadsWithRunLinkThenCountsThenUpdated(t *testing.T) {
+	stamp := fixedClock(t)
+	failing := withStep(withStep(testJob(2, "web (desktop, 3)", "completed", "failure"), "Run tests", 6, "failure"), "Set up job", 1, "success")
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(1, "plan", "completed", "success"), failing, testJob(3, "e2e", "in_progress", "")).summary
+	blocks := strings.Split(got, "\n\n")
+	if want := "[Run 50, attempt 1](https://github.com/owner/repo/actions/runs/50/attempts/1): in\\_progress"; blocks[0] != want {
+		t.Fatalf("run link is not first: %q", blocks[0])
+	}
+	if want := "3 jobs reported so far (more may appear as their dependencies finish): 1 failed or cancelled, 1 running, 0 queued, 1 passed, 0 skipped."; blocks[1] != want {
+		t.Fatalf("counts line %q, want %q", blocks[1], want)
+	}
+	if blocks[2] != "Updated: "+stamp {
+		t.Fatalf("updated line %q, want stamp %q", blocks[2], stamp)
+	}
+	for _, want := range []string{
+		"### Failed or cancelled jobs",
+		"- [web (desktop, 3)](https://github.com/owner/repo/actions/runs/50/job/2): completed failure\n  - [Run tests](https://github.com/owner/repo/actions/runs/50/job/2#step:6:1): failure\n",
+		"not reusable merge approval",
+		"- PR head: `" + strings.Repeat("c", 40) + "`",
+		"- Tested base: `" + strings.Repeat("b", 40) + "`",
+		"- Tested merge: `" + strings.Repeat("d", 40) + "`",
+		"#artifacts",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"plan", "e2e", "Set up job"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("summary lists non-failing %q:\n%s", unwanted, got)
+		}
+	}
+}
+
+func TestCompletedRunCountsAreFinal(t *testing.T) {
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "success"}, testJob(1, "plan", "completed", "success")).summary
+	if !strings.Contains(got, "\n\n1 job: 0 failed or cancelled, 0 running, 0 queued, 1 passed, 0 skipped.\n\n") || strings.Contains(got, "so far") {
+		t.Errorf("completed run counts hedged or not singular:\n%s", got)
+	}
+}
+
+func TestSummaryUsesSingularJobWhileRunning(t *testing.T) {
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(1, "plan", "completed", "success")).summary
+	if want := "\n\n1 job reported so far (more may appear as their dependencies finish): 0 failed or cancelled, 0 running, 0 queued, 1 passed, 0 skipped.\n\n"; !strings.Contains(got, want) {
+		t.Errorf("summary lacks singular running counts:\n%s", got)
+	}
+}
+
+func TestSummaryListsCancelledJobsWithFailures(t *testing.T) {
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "cancelled"},
+		testJob(1, "plan", "completed", "success"),
+		testJob(2, "web", "completed", "cancelled"),
+		testJob(3, "api", "completed", "action_required"),
+	).summary
+	for _, want := range []string{
+		"2 failed or cancelled",
+		"### Failed or cancelled jobs",
+		"- [web](https://github.com/owner/repo/actions/runs/50/job/2): completed cancelled\n",
+		"- [api](https://github.com/owner/repo/actions/runs/50/job/3): completed action\\_required\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestSummaryStatesWhenNothingFailed(t *testing.T) {
+	fixedClock(t)
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "in_progress"}, testJob(1, "plan", "completed", "success")).summary
+	if !strings.Contains(got, "\nNo failed or cancelled jobs reported.\n") || strings.Contains(got, "### Failed or cancelled jobs") {
+		t.Errorf("nothing-failed state not stated in one line:\n%s", got)
+	}
+}
+
+func TestSummaryOfRunWithoutJobsDoesNotClaimNoFailures(t *testing.T) {
+	fixedClock(t)
+	for _, r := range []run{{ID: 50, Attempt: 1, Status: "in_progress"}, {ID: 50, Attempt: 1, Status: "completed", Conclusion: "failure"}} {
+		got := renderJobs(r).summary
+		if strings.Contains(got, "No failed or cancelled jobs reported.") || strings.Contains(got, "### Failed or cancelled jobs") || strings.Contains(got, "The full job list follows") {
+			t.Errorf("zero-job summary makes a per-job claim:\n%s", got)
+		}
+	}
+}
+
+func TestSummaryAndTextStayUnderCapWithManyJobs(t *testing.T) {
+	var jobs []job
+	for i := 0; i < 1000; i++ {
+		name := fmt.Sprintf("%04d %s", i, strings.Repeat("n", 150))
+		jobs = append(jobs, withStep(testJob(int64(1000+i), name, "completed", "failure"), strings.Repeat("s", 150), 3, "failure"))
+	}
+	got := renderJobs(run{ID: 50, Attempt: 1, Status: "completed", Conclusion: "failure"}, jobs...)
+	const omitted = "Additional jobs omitted; open the source run for the complete list."
+	for name, body := range map[string]string{"summary": got.summary, "text": got.text} {
+		// The cap is checked before each entry, so one entry may overshoot it.
+		if len(body) > reportCap+1000 {
+			t.Errorf("%s is %d bytes", name, len(body))
+		}
+		if !strings.Contains(body, omitted) {
+			t.Errorf("%s does not say jobs were omitted", name)
+		}
+	}
+	if !strings.Contains(got.summary, "not reusable merge approval") || !strings.Contains(got.summary, "#artifacts") {
+		t.Error("summary footer lost after the cap")
+	}
+	if !strings.Contains(got.text, "/job/1000)") || strings.Contains(got.text, "/job/1999)") {
+		t.Error("text cap did not truncate the tail")
 	}
 }

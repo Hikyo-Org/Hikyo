@@ -14,9 +14,11 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const checkName = "Merge queue validation"
@@ -238,10 +240,10 @@ func (c client) publishReport(ctx context.Context, e event, repair *reportWork) 
 	if err != nil {
 		return err
 	}
-	summary := render(r, prNumber, base, head, runURL, jobs, pr.Head.SHA != head)
+	out := render(r, prNumber, base, head, runURL, jobs, pr.Head.SHA != head)
 	body := map[string]any{
 		"name": name, "details_url": runURL, "external_id": external,
-		"status": status, "output": map[string]string{"title": fmt.Sprintf("PR #%d: queue run %d, attempt %d (%s)", prNumber, r.ID, r.Attempt, status), "summary": summary},
+		"status": status, "output": map[string]string{"title": out.title, "summary": out.summary, "text": out.text},
 	}
 	if conclusion != "" {
 		body["conclusion"] = conclusion
@@ -408,35 +410,208 @@ func label(s string) string {
 	}
 	return strings.NewReplacer("\\", "\\\\", "`", "\\`", "[", "\\[", "]", "\\]", "<", "&lt;", ">", "&gt;", "\n", " ", "\r", " ", "*", "\\*", "_", "\\_").Replace(s)
 }
-func render(r run, pr int, base, head, runURL string, jobs []job, superseded bool) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Informational queue result for PR #%d. This describes only the tested base and merge commit below; it is not reusable merge approval.\n\n", pr)
-	if superseded {
-		b.WriteString("The PR has a newer head. This report is retained on the original tested head.\n\n")
+
+// now stamps "Updated" in the summary; tests replace it.
+var now = time.Now
+
+const reportCap = 50000
+
+type rendered struct{ title, summary, text string }
+
+// Job groups in display order: failures first, then unfinished, passed, skipped.
+// groupFailed also holds cancelled jobs so they list together, in API order.
+const (
+	groupFailed = iota
+	groupActive
+	groupPassed
+	groupSkipped
+)
+
+// jobGroup treats only success and neutral as passed: a completed job with
+// action_required, stale or an empty conclusion must never read as green.
+func jobGroup(j job) int {
+	switch {
+	case j.Status != "completed":
+		return groupActive
+	case j.Conclusion == "success" || j.Conclusion == "neutral":
+		return groupPassed
+	case j.Conclusion == "skipped":
+		return groupSkipped
 	}
-	fmt.Fprintf(&b, "- PR head: `%s`\n- Tested base: `%s`\n- Tested merge: `%s`\n- [Run %d, attempt %d](%s): %s %s\n- [Run artifacts](https://github.com/%s/actions/runs/%d#artifacts) (shared across attempts)\n\n", head, base, r.HeadSHA, r.ID, r.Attempt, runURL, label(r.Status), label(r.Conclusion), strings.Split(strings.TrimPrefix(runURL, "https://github.com/"), "/actions/")[0], r.ID)
-	b.WriteString("Job results (skipped jobs were not executed; selection reasons are in the planning job):\n\n")
-	if len(jobs) == 0 {
-		b.WriteString("No jobs have been reported yet.\n")
+	return groupFailed
+}
+
+// titleName keeps a hostile or very long job name from crowding the title.
+// GitHub shows output.title as plain text, so Markdown escaping would print
+// literally; drop control characters and angle brackets, collapse whitespace.
+func titleName(s string) string {
+	s = strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '<' || r == '>' {
+			return ' '
+		}
+		return r
+	}, s)), " ")
+	if r := []rune(s); len(r) > 40 {
+		s = string(r[:40]) + "..."
 	}
+	return s
+}
+
+func titleJobName(j job) string {
+	if name := titleName(j.Name); name != "" {
+		return name
+	}
+	return fmt.Sprintf("job %d", j.ID)
+}
+
+type tally struct{ total, failed, cancelled, running, queued, passed, skipped int }
+
+func plural(n int, singular, pluralForm string) string {
+	if n == 1 {
+		return singular
+	}
+	return pluralForm
+}
+
+func unfinishedTail(t tally) string {
+	var tail string
+	if t.running > 0 {
+		tail += fmt.Sprintf(", %d running", t.running)
+	}
+	if t.queued > 0 {
+		tail += fmt.Sprintf(", %d queued", t.queued)
+	}
+	return tail
+}
+
+func jobTitle(r run, pr int, t tally, firstFailed string) string {
+	switch {
+	case t.total == 0 && r.Status == "completed":
+		return fmt.Sprintf("PR #%d: run %s, no jobs reported", pr, titleName(r.Conclusion))
+	case t.total == 0:
+		return fmt.Sprintf("PR #%d: no jobs reported yet", pr)
+	case t.failed > 0:
+		title := fmt.Sprintf("PR #%d: %d failed", pr, t.failed)
+		if t.cancelled > 0 {
+			title += fmt.Sprintf(", %d cancelled", t.cancelled)
+		}
+		title += fmt.Sprintf(", %d done", t.passed+t.skipped) + unfinishedTail(t)
+		return title + fmt.Sprintf(" (first failure: %s)", firstFailed)
+	case t.cancelled > 0:
+		return fmt.Sprintf("PR #%d: %d cancelled, %d done", pr, t.cancelled, t.passed+t.skipped) + unfinishedTail(t)
+	case r.Status == "completed" && r.Conclusion != "success":
+		return fmt.Sprintf("PR #%d: run %s, %d reported, 0 failed", pr, titleName(r.Conclusion), t.total)
+	case r.Status == "completed" && t.skipped == 0 && t.total == 1:
+		return fmt.Sprintf("PR #%d: 1 job passed", pr)
+	case r.Status == "completed" && t.skipped == 0:
+		return fmt.Sprintf("PR #%d: all %d jobs passed", pr, t.total)
+	case r.Status == "completed":
+		return fmt.Sprintf("PR #%d: %d passed, %d skipped, 0 failed", pr, t.passed, t.skipped)
+	}
+	title := fmt.Sprintf("PR #%d: %d reported, 0 failed, %d running", pr, t.total, t.running)
+	if t.queued > 0 {
+		title += fmt.Sprintf(", %d queued", t.queued)
+	}
+	return title
+}
+
+func writeJobs(b *strings.Builder, runURL string, jobs []job) {
 	for _, j := range jobs {
-		if b.Len() > 50000 {
+		if b.Len() > reportCap {
 			b.WriteString("\nAdditional jobs omitted; open the source run for the complete list.\n")
-			break
+			return
 		}
 		jobURL := fmt.Sprintf("%s/job/%d", strings.Split(runURL, "/attempts/")[0], j.ID)
-		fmt.Fprintf(&b, "- [%s](%s): %s %s\n", label(j.Name), jobURL, label(j.Status), label(j.Conclusion))
+		fmt.Fprintf(b, "- [%s](%s): %s\n", label(j.Name), jobURL, strings.TrimSpace(label(j.Status)+" "+label(j.Conclusion)))
 		for _, step := range j.Steps {
 			if step.Conclusion != "failure" && step.Conclusion != "timed_out" && step.Conclusion != "cancelled" {
 				continue
 			}
-			if b.Len() > 50000 {
+			if b.Len() > reportCap {
 				break
 			}
-			fmt.Fprintf(&b, "  - [%s](%s#step:%d:1): %s\n", label(step.Name), jobURL, step.Number, label(step.Conclusion))
+			fmt.Fprintf(b, "  - [%s](%s#step:%d:1): %s\n", label(step.Name), jobURL, step.Number, label(step.Conclusion))
 		}
 	}
-	return b.String()
+}
+
+func render(r run, pr int, base, head, runURL string, jobs []job, superseded bool) rendered {
+	// Stable sort on group only: API order is kept within each group, so the
+	// first failure is the first non-cancelled job the API listed as failed.
+	ordered := slices.Clone(jobs)
+	slices.SortStableFunc(ordered, func(a, b job) int { return jobGroup(a) - jobGroup(b) })
+	t := tally{total: len(jobs)}
+	firstFailed := ""
+	for _, j := range ordered {
+		switch jobGroup(j) {
+		case groupFailed:
+			if j.Conclusion == "cancelled" {
+				t.cancelled++
+			} else {
+				if t.failed == 0 {
+					firstFailed = titleJobName(j)
+				}
+				t.failed++
+			}
+		case groupActive:
+			if j.Status == "in_progress" {
+				t.running++
+			} else {
+				t.queued++
+			}
+		case groupPassed:
+			t.passed++
+		case groupSkipped:
+			t.skipped++
+		}
+	}
+	failed := ordered[:t.failed+t.cancelled]
+	out := rendered{title: jobTitle(r, pr, t, firstFailed)}
+
+	noJobs := "No jobs have been reported yet."
+	if r.Status == "completed" {
+		noJobs = "The run reported no jobs."
+	}
+	var b strings.Builder
+	repoPath := strings.Split(strings.TrimPrefix(runURL, "https://github.com/"), "/actions/")[0]
+	fmt.Fprintf(&b, "[Run %d, attempt %d](%s): %s\n\n", r.ID, r.Attempt, runURL, strings.TrimSpace(label(r.Status)+" "+label(r.Conclusion)))
+	if len(jobs) == 0 {
+		b.WriteString(noJobs + "\n\n")
+	} else {
+		scope := plural(t.total, "job", "jobs")
+		if r.Status != "completed" {
+			scope += " reported so far (more may appear as their dependencies finish)"
+		}
+		fmt.Fprintf(&b, "%d %s: %d failed or cancelled, %d running, %d queued, %d passed, %d skipped.\n\n", t.total, scope, len(failed), t.running, t.queued, t.passed, t.skipped)
+	}
+	fmt.Fprintf(&b, "Updated: %s\n\n", now().UTC().Format(time.RFC3339))
+	if len(failed) == 0 {
+		if len(jobs) > 0 {
+			b.WriteString("No failed or cancelled jobs reported.\n\n")
+		}
+	} else {
+		b.WriteString("### Failed or cancelled jobs\n\n")
+		writeJobs(&b, runURL, failed)
+		b.WriteString("\n")
+	}
+	if len(jobs) > 0 {
+		b.WriteString("The full job list follows this summary.\n\n")
+	}
+	fmt.Fprintf(&b, "Informational queue result for PR #%d. This describes only the tested base and merge commit below; it is not reusable merge approval.\n\n", pr)
+	if superseded {
+		b.WriteString("The PR has a newer head. This report is retained on the original tested head.\n\n")
+	}
+	fmt.Fprintf(&b, "- PR head: `%s`\n- Tested base: `%s`\n- Tested merge: `%s`\n- [Run artifacts](https://github.com/%s/actions/runs/%d#artifacts) (shared across attempts)\n", head, base, r.HeadSHA, repoPath, r.ID)
+	out.summary = b.String()
+
+	b.Reset()
+	b.WriteString("Job results, failed or cancelled first, then running and queued, then passed, then skipped (skipped jobs were not executed; selection reasons are in the planning job):\n\n")
+	if len(jobs) == 0 {
+		b.WriteString(noJobs + "\n")
+	}
+	writeJobs(&b, runURL, ordered)
+	out.text = b.String()
+	return out
 }
 
 func main() {
