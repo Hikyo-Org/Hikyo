@@ -167,3 +167,49 @@ and `-p 2`. These controls are not a hard memory guarantee.
 
 Agents remain prohibited from merge, auto-merge, enqueue, release and deployment.
 Human-controlled queue entries and merges are left intact.
+
+## Merge follow-through, 2026-10-19
+
+The subsequent request authorizes CI repairs and merge babysitting for #995,
+#996 and #1002. The original source-only authorization above no longer describes
+this phase. Release and deployment remain outside the request; queued #1002 is
+left intact.
+
+The current #996 publisher failure was reproduced in
+[run 39212605951](https://github.com/Hikyo-Org/Hikyo/actions/runs/39212605951/job/117929158448)
+and with real blob-filtered metadata locally. Canonical DCO author extraction
+used `git show -s`, which still runs rename detection and tried to read the
+deleted settings route barrel's absent blob. The error is not a missing DCO
+trailer. The checker failed before conflict checking.
+
+[CI dependency #1003](https://github.com/Hikyo-Org/Hikyo/pull/1003) changes both
+author and trailer reads to metadata-only `git log -1 --no-patch`. Its strengthened
+real-Git fixture reproduces missing-blob failure for all five existing sign-off
+policy cases before repair. The fixed canonical script checks the same real
+metadata successfully. This must reach trusted `main` before it can authorize
+#996; PR-controlled code cannot repair its own privileged publisher.
+
+The two original #996 commits were rebased with signing and DCO onto merged #995
+at main `eb991c991bcad853590cb0ab2c09367052a92c02`. `git range-diff` reports both
+feature patches unchanged. Local typecheck, lint, all 212 unit files / 1,965
+tests with at most two workers, and the production build passed on that rebased
+checkout. These are not new browser measurements; the original hash-bound
+bundle and runtime evidence above remains separate. The prior independent
+Standards and Spec source reviews found no actionable issues in the feature.
+
+The stale legacy candidate failures in `validation / changes`, `ci-required`
+and `candidate-proof` used an old main parent. They do not supply current queue
+proof and are not rerun against the same invalidated parent pair.
+
+PR #1002 merged as `911efa1e7eb85e43f5ab681625383911ccaaf93d` and #1003 as
+`ce7326696aa9414381f0add082785e39da514a6c`. The repaired trusted publisher then
+[passed admission on original #996 head](https://github.com/Hikyo-Org/Hikyo/runs/117962469178)
+`81a82f1c0e5d5912e5557c7fc6ce72d3a5138dbb`. This is hosted evidence that the
+canonical DCO repair removed the observed admission failure.
+
+The prepared branch was subsequently rebased with signing and DCO onto current
+main `ce7326696aa9414381f0add082785e39da514a6c`. Both the complete `web/` and
+`clients/ts/` Git tree identities match the previously validated rebased checkout;
+the feature patches remain unchanged. Only CI and handoff changes landed in the
+intervening main range. Fresh exact-head feedback, admission and complete
+protected merge-group validation remain required after publishing this refresh.
