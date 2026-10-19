@@ -176,9 +176,13 @@ grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache rea
 for file in "$@"; do
 	feedback_cache=false
 	[ "$(basename "$file")" != ci-feedback.yml ] || feedback_cache=true
+	compact_cache=false
+	case $(basename "$file") in
+		ci-feedback.yml | ci-feedback-backend-cache.yml) compact_cache=true ;;
+	esac
 	main_validation=false
 	[ "$(basename "$file")" != ci.yml ] || main_validation=true
-	awk -v feedback_cache="$feedback_cache" -v main_validation="$main_validation" '
+	awk -v feedback_cache="$feedback_cache" -v main_validation="$main_validation" -v compact_cache="$compact_cache" '
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
@@ -203,11 +207,17 @@ for file in "$@"; do
 					index(block, "restore-keys:") == 0) bad = 1
 			}
             if (index(block, "path: .ci-cache/go-feedback") > 0) {
+                prefix = "go-feedback-v1-"
+                expected_path = "path: .ci-cache/go-feedback"
+                if (compact_cache == "true") {
+                    prefix = "go-feedback-v2-"
+                    expected_path = "path: .ci-cache/go-feedback-compact"
+                }
                 build_hash = "hashFiles(\047source/go.mod\047, \047source/go.sum\047, \047source/scripts/ci/go-tool-modules.txt\047)"
                 mode = "lookup-only: true"
                 if (feedback_cache == "true") {
                     build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047)"
-                    mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+                    mode = "restore-keys: " prefix "${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 }
                 if (main_validation == "true") {
                     # The source-artifact consumer uses the same bounded seed
@@ -215,7 +225,7 @@ for file in "$@"; do
                     build_hash = "hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047)"
                     mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 }
-                if (index(block, "key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
+                if (index(block, expected_path) == 0 || index(block, "key: " prefix "${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
                     index(block, build_hash) == 0 || index(block, mode) == 0) bad = 1
             }
 		}

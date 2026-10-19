@@ -42,6 +42,10 @@ Changed Go packages compile together in one build graph, including packages
 with the same basename. Compiling them can be expensive from a cold cache; it checks
 buildability, and does not establish that any test assertion passed. Database
 fixtures and `TestMain` are never executed by this compile-only check.
+Test binaries are still linked, so unresolved targets fail feedback. DWARF
+debug data is omitted from compiler exports and the discarded binaries. Vet is
+omitted in this lane because dependency vet results cannot be pre-seeded; the
+full suite still runs `go vet ./...`.
 
 Install matching tools and frozen dependencies before invoking feedback:
 
@@ -58,25 +62,36 @@ never auto-fixes source. Go compilation and pinned Actionlint can download
 modules/toolchains and populate normal Go caches, so prepare
 its dependencies before measuring a warm run.
 
-CI starts one 220-second cumulative deadline before checkout and setup, within
-its unchanged four-minute job limit. The isolated Go lane restores the existing
-Go build cache read-only, keyed by OS, architecture, runner image and pinned
+Each CI runner starts a 220-second cumulative deadline before checkout and setup,
+within its unchanged four-minute job limit. The application and tooling Go
+runners restore the bounded compiler seed read-only, keyed by OS, architecture, runner image and pinned
 module/tool manifests. Compatible fallback entries are revalidated by Go's
 content-addressed build algorithm; every selected package still compiles on a
-hit or miss. The 43-second build restore measured in run 38150465028 now serves
-only that lane. Feedback skips the 824 MB module archive and fetches modules
+hit or miss. Feedback skips the bulk module archive and fetches modules
 as needed. Cache misses can still exhaust the budget; successful cold hosted
 completion is not guaranteed. The immutable integration merge supplies the
-comparison base. CI runs Go/tooling and frontend checks on separate runners, each with the
-same cumulative budget, so cold compilation cannot starve frontend workers.
-Both lane jobs must pass for a successful workflow conclusion. Client checks
+comparison base. Application Go, tooling Go and frontend checks run on separate
+runners, each with the same cumulative budget. All three jobs must pass for a
+successful workflow conclusion. Client checks
 still finish before web checks. Every selected check must finish successfully.
 An expired budget fails explicitly. Failed checks terminate remaining
-descendants in their own runner; the other lane job continues independently. CI supervision requires Bash 5.1 and GNU timeout, both present on the
+descendants in their own runner; the other jobs continue independently. CI supervision requires Bash 5.1 and GNU timeout, both present on the
 hosted Linux runner. Without `FAST_FEEDBACK_DEADLINE`, local use retains its
 existing tools and sequential lanes with no imposed deadline. The default
-`--lane=all` runs every selected check; `--lane=go` and `--lane=frontend`
-select the exact two CI lanes. Unknown lane names fail. The mandatory
+`--lane=all` runs every selected check; unscoped `--lane=go` retains the complete
+Go/tooling graph. Reproduce the three hosted selections with:
+
+```sh
+scripts/ci/fast-feedback.sh --lane=go --go-scope=application
+scripts/ci/fast-feedback.sh --lane=go --go-scope=tooling
+scripts/ci/fast-feedback.sh --lane=frontend
+```
+
+The application scope owns Go packages outside `scripts/` and module verification.
+The tooling scope owns Go packages under `scripts/`, ShellCheck, Actionlint and
+read-only documentation validation. Their package and check unions match the
+unscoped Go lane. Unknown lanes/scopes fail, and frontend refuses Go scopes.
+The mandatory
 full-candidate lint job runs every refusal and deadline supervisor fixture;
 per-commit feedback spends its budget on the selected source checks.
 
@@ -87,6 +102,22 @@ required before merge. Runtime depends on scope, dependency readiness, and cold
 compiler caches; the remote workflow owns its deadline. A five-minute local
 completion guarantee is not claimed. Keep the existing signature pre-push hook;
 this command is optional, with no additional mandatory expensive hooks.
+
+Feedback uses the separate `go-feedback-v2` compact cache, prepared from trusted
+main by `ci-feedback-backend-cache.yml`. Its application, CLI and tooling exports
+use the same `-gcflags=all=-dwarf=false` compiler ABI as feedback. The existing
+version-1 cache and its production-fixture consumers retain their compiler
+defaults. Both publishers enforce the existing expanded size and file bounds.
+PR jobs cannot publish either main cache. After merging a cache bootstrap, a
+maintainer can prepare the new seed with:
+
+```sh
+gh workflow run ci-feedback-backend-cache.yml --repo Hikyo-Org/Hikyo --ref main
+```
+
+Verify the main-only seed job succeeds and publishes its exact revision key
+before relying on a subsequent feedback cache restore. Publication and a warm
+local run do not establish hosted feedback acceptance or merge.
 
 ## `preflight.sh` — pre-push gate
 

@@ -1,4 +1,7 @@
 # Compile-only seed for the short PR feedback lane. No PR can publish here.
+# This version-1 seed stays beside the version-2 seed: source-artifact-security in ci.yml
+# restores go-feedback-v1 and builds with default compiler flags including DWARF, so the
+# DWARF-free version-2 exports cannot serve it.
 name: ci-feedback-cache
 
 on:

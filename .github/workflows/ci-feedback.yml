@@ -25,18 +25,20 @@ jobs:
     if: github.event.action != 'edited' || github.event.changes.base.ref.from != ''
     runs-on: ubuntu-latest
     timeout-minutes: 4
-    # Both complete lanes are required for a successful workflow conclusion.
-    # Separate runners avoid cold Go compilation starving frontend workers.
+    # All three complete lanes are required for a successful workflow conclusion.
+    # Application and tooling compilation have independent runner budgets;
+    # neither can starve frontend workers or consume the other's link budget.
     strategy:
       fail-fast: false
       matrix:
-        lane: [go, frontend]
+        lane: [go, tooling, frontend]
     defaults:
       run:
         working-directory: source
     env:
       FAST_FEEDBACK_TOOLS_DIR: ${{ github.workspace }}/feedback-tools/scripts/ci
-      GOCACHE: ${{ github.workspace }}/.ci-cache/go-feedback
+      GOFLAGS: '-gcflags=all=-dwarf=false'
+      GOCACHE: ${{ github.workspace }}/.ci-cache/go-feedback-compact
       FAST_FEEDBACK_HEAD: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Start the cumulative feedback budget
@@ -71,11 +73,11 @@ jobs:
           plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)
           echo "plan=$plan" >> "$GITHUB_OUTPUT"
       - name: Check budget before runtime setup
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
+        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         timeout-minutes: 1
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
+        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
@@ -84,25 +86,25 @@ jobs:
       # toolchain, source and dependency identities for every selected package.
       - name: Select Go build cache runner ABI
         id: runner-cache-abi
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"
       - name: Check budget before Go build cache restore
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - name: Restore bounded feedback Go cache
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         with:
-          path: .ci-cache/go-feedback
-          key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
-          restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          path: .ci-cache/go-feedback-compact
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
+          restore-keys: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Check budget before runtime setup
-        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)
+        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         timeout-minutes: 1
-        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)
+        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)
         with:
           node-version-file: source/.nvmrc
       - name: Install pinned Corepack
@@ -134,7 +136,7 @@ jobs:
         working-directory: source/web
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install verified pinned ShellCheck
-        if: matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)
+        if: matrix.lane == 'tooling' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)
         env:
           SHELLCHECK_VERSION: v0.11.0
           SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -148,4 +150,4 @@ jobs:
           echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
           INSTALL_SHELLCHECK
       - name: Run fast feedback
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane }}
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane == 'tooling' && 'go' || matrix.lane }} --go-scope=${{ matrix.lane == 'go' && 'application' || matrix.lane == 'tooling' && 'tooling' || 'all' }}

@@ -18,7 +18,8 @@ route when operators restore strict legacy policy.
 | What you need | Actions workflow | What it does |
 | --- | --- | --- |
 | Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
-| Refresh the bounded feedback compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Compiles the CLI/CI dependency seed in a fresh dedicated directory, checks its size and file count, then publishes it for read-only feedback reuse. |
+| Refresh the bounded feedback compiler cache | `ci-feedback-backend-cache` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
+| Refresh the production-fixture compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
 | Refresh the shared race compiler cache | `ci-race-cache` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
 | Run repository invariants before queueing | `repository-invariants` | Advisory, per PR push touching Go code, workflows, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Prove queued changes | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
@@ -54,7 +55,7 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 33 YAML workflow files. GitHub's sidebar also contains
+The source contains 34 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
@@ -69,7 +70,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Queue diagnostics | `ci-queue-report.yml`, `ci-impact-shadow.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run), and observe backend impact selection. Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
-| Compiler cache seeds | `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
+| Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml`, `aws-acceptance.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
 | Publication | `nightly.yml`, `nightly-manual.yml`, `release.yml`, `security-release.yml`, `docs.yml` | Nightly, stable tags, and Pages retain separate credentials and gates. |
 
