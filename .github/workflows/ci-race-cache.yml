@@ -1,0 +1,73 @@
+# Single writer for the shared race build cache read by the merge-gate race
+# shards (ci.yml) and reliability race isolation. Twelve per-shard caches could
+# not fit the 10 GB Actions budget next to go-test-v2, so most shards missed.
+# One compile-only cache of every race-instrumented dependency serves them all;
+# tests then compile only their generated test mains. The key intentionally
+# matches reliability.yml and refreshes when go.mod or go.sum change, the same
+# staleness model as go-test-v2. No PR can publish here.
+name: ci-race-cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-race-cache-main
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        env:
+          GOCACHE: ${{ runner.temp }}/race-bootstrap
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      # The cache policy fixture requires restore-keys on every go-build
+      # reader; lookup-only never restores, so cache-hit stays exact-key only.
+      - name: Look up this race seed without restoring old entries
+        id: race-seed
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+          lookup-only: true
+      - name: Compile a fresh race seed without running tests
+        if: steps.race-seed.outputs.cache-hit != 'true'
+        run: |
+          cache="$HOME/.cache/go-build"
+          test ! -e "$cache"
+          test "$(go env GOCACHE)" = "$cache"
+          go list -deps -test -export -race ./... >/dev/null
+          du -sh "$cache"
+      - name: Save race seed from trusted main only
+        if: >-
+          success() && steps.race-seed.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: ${{ steps.race-seed.outputs.cache-primary-key }}

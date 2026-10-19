@@ -41,8 +41,9 @@ successful build from the same run and commit.
   pull request base SHA, then plans against the exact checked-out head.
 - A new package or fuzz target is deterministically assigned with FNV-1a.
   Explicit assignments keep the currently slow packages balanced.
-- Each race shard has its own PostgreSQL service and race build cache. Each
-  fuzz shard has its own weekly rotating build/fuzz cache.
+- Each race shard has its own PostgreSQL service. All race shards restore one
+  shared race build cache that only `ci-race-cache.yml` writes. Each fuzz shard
+  has its own weekly rotating build/fuzz cache.
 
 ## Failure reporting
 

@@ -116,6 +116,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeDynamicRenewalFixture(workflow.Jobs["isolation_shard"]); err != nil {
 		return err
 	}
+	if err := normalizeSharedRaceCache(workflow.Jobs["race_shard"]); err != nil {
+		return err
+	}
 	// The feedback fixtures execute the real documentation checker. Pin its
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
@@ -208,6 +211,74 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 			return fmt.Errorf("%s no longer conserves baseline execution configuration and checks", name)
 		}
 	}
+	return nil
+}
+
+// The race build cache moved from one restore/save pair per shard to a single
+// shared cache that only ci-race-cache.yml writes. Require exactly the shared
+// restore step and no cache writer in race_shard, then rewrite the job to the
+// frozen per-shard shape so any other race_shard change still moves its digest.
+func normalizeSharedRaceCache(job map[string]any) error {
+	steps, ok := job["steps"].([]any)
+	if !ok {
+		return fmt.Errorf("race_shard lost its steps")
+	}
+	sharedRestore := map[string]any{
+		"name": "Restore race Go cache",
+		"uses": cacheRestoreAction,
+		"with": map[string]any{
+			"path":         "~/.cache/go-build",
+			"key":          sharedRaceCacheKey,
+			"restore-keys": sharedRaceCacheRestoreKeys,
+		},
+	}
+	frozenRestore := map[string]any{
+		"name": "Restore race Go cache",
+		"id":   "race-go-cache",
+		"uses": cacheRestoreAction,
+		"with": map[string]any{
+			"path":         "~/.cache/go-build",
+			"key":          "go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ hashFiles('scripts/ci/analysis-shards-go/main.go') }}",
+			"restore-keys": "go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+		},
+	}
+	frozenSave := map[string]any{
+		"name": "Save race Go cache (trusted main validation only)",
+		"if":   "success() && steps.race-go-cache.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'",
+		"uses": cacheSaveAction,
+		"with": map[string]any{
+			"path": "~/.cache/go-build",
+			"key":  "${{ steps.race-go-cache.outputs.cache-primary-key }}",
+		},
+	}
+	restored, anchored := 0, 0
+	normalized := make([]any, 0, len(steps)+1)
+	for _, value := range steps {
+		step, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("race_shard has malformed step configuration")
+		}
+		if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/cache/save@") || strings.HasPrefix(uses, "actions/cache@") {
+			return fmt.Errorf("race_shard must not write the race cache; ci-race-cache.yml is its only writer")
+		}
+		if step["name"] == "Restore race Go cache" {
+			if !reflect.DeepEqual(step, sharedRestore) {
+				return fmt.Errorf("race_shard must restore exactly the shared race cache")
+			}
+			restored++
+			normalized = append(normalized, frozenRestore)
+			continue
+		}
+		normalized = append(normalized, step)
+		if step["name"] == "Upload race target timings" {
+			anchored++
+			normalized = append(normalized, frozenSave)
+		}
+	}
+	if restored != 1 || anchored != 1 {
+		return fmt.Errorf("race_shard requires exactly one shared cache restore after one timings upload, got %d and %d", restored, anchored)
+	}
+	job["steps"] = normalized
 	return nil
 }
 
@@ -374,6 +445,65 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				}
 			}
 		},
+		"race cache restore reads a per-shard key": func(j map[string]map[string]any) {
+			mutateRaceCacheRestore(j, "key", "go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}")
+		},
+		"race cache restore ignores go.sum": func(j map[string]map[string]any) {
+			mutateRaceCacheRestore(j, "key", strings.Replace(sharedRaceCacheKey, "'go.mod', 'go.sum'", "'go.mod'", 1))
+		},
+		"race cache restore prefix widens": func(j map[string]map[string]any) {
+			mutateRaceCacheRestore(j, "restore-keys", "go-race-v2-")
+		},
+		"race cache restore reads another path": func(j map[string]map[string]any) {
+			mutateRaceCacheRestore(j, "path", "~/go/pkg/mod")
+		},
+		"race cache restore is removed": func(j map[string]map[string]any) {
+			steps := j["race_shard"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Restore race Go cache" {
+					j["race_shard"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"race cache restore is skipped": func(j map[string]map[string]any) {
+			for _, value := range j["race_shard"]["steps"].([]any) {
+				if step := value.(map[string]any); step["name"] == "Restore race Go cache" {
+					step["if"] = "false"
+				}
+			}
+		},
+		"race shard re-adds a cache save": func(j map[string]map[string]any) {
+			steps := j["race_shard"]["steps"].([]any)
+			j["race_shard"]["steps"] = append(steps, map[string]any{
+				"name": "Save race Go cache (trusted main validation only)",
+				"uses": cacheSaveAction,
+				"with": map[string]any{"path": "~/.cache/go-build", "key": sharedRaceCacheKey},
+			})
+		},
+		"race shard writes the cache with the combined action": func(j map[string]map[string]any) {
+			steps := j["race_shard"]["steps"].([]any)
+			j["race_shard"]["steps"] = append(steps, map[string]any{
+				"uses": "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+				"with": map[string]any{"path": "~/.cache/go-build", "key": sharedRaceCacheKey},
+			})
+		},
+		"remove race detector": func(j map[string]map[string]any) {
+			steps := j["race_shard"]["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Race detector (all packages except the isolation suite)" {
+					j["race_shard"]["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
+		"skip race detector": func(j map[string]map[string]any) {
+			for _, value := range j["race_shard"]["steps"].([]any) {
+				if step := value.(map[string]any); step["name"] == "Race detector (all packages except the isolation suite)" {
+					step["if"] = "false"
+				}
+			}
+		},
 		"step fail open": func(j map[string]map[string]any) {
 			j["test_core"]["steps"].([]any)[1].(map[string]any)["continue-on-error"] = true
 		},
@@ -472,6 +602,16 @@ func mutateBenchmarkStep(jobs map[string]map[string]any, key string, value any) 
 			return
 		}
 	}
+}
+
+func mutateRaceCacheRestore(jobs map[string]map[string]any, key string, value any) {
+	for _, step := range jobs["race_shard"]["steps"].([]any) {
+		if s := step.(map[string]any); s["name"] == "Restore race Go cache" {
+			s["with"].(map[string]any)[key] = value
+			return
+		}
+	}
+	panic("race cache restore step not found")
 }
 
 func mutateFeedbackFixtureStep(jobs map[string]map[string]any, key string, value any) {
