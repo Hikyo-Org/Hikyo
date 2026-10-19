@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -901,70 +902,70 @@ func TestGroupRereadExpiryWriteHasItsOwnReserve(t *testing.T) {
 		hardStop time.Duration // zero keeps the production cap
 	}{
 		{"reserve of a minute", 0},
-		{"capped by the hard stop", 3 * time.Second},
+		{"capped by the hard stop", groupRereadFence + time.Second},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			oldFence, oldStop := groupRereadFence, groupRereadHardStop
-			t.Cleanup(func() { groupRereadFence, groupRereadHardStop = oldFence, oldStop })
-			// Long enough that a slow machine reaches the hanging jobs read first.
-			groupRereadFence = 2 * time.Second
-			if tc.hardStop != 0 {
-				groupRereadHardStop = tc.hardStop
-			}
-			f := newQueueFixture(t)
-			f.pendingGroup(t)
-			f.staleGroup()
-			probe := f.probe()
-			// The jobs read hangs until the fence cuts the pass, as a stalled gh would.
-			probe.fault = func(ctx context.Context, path string, _ int) error {
-				if path == f.groupJobsPath() {
-					<-ctx.Done()
-					return &githubReadError{path: path, cause: ctx.Err()}
+			synctest.Test(t, func(t *testing.T) {
+				oldStop := groupRereadHardStop
+				t.Cleanup(func() { groupRereadHardStop = oldStop })
+				if tc.hardStop != 0 {
+					groupRereadHardStop = tc.hardStop
 				}
-				return nil
-			}
-			type seen struct {
-				deadline time.Time
-				ok       bool
-				err      error
-			}
-			var writes []seen
-			probe.onWrite = func(ctx context.Context, _, _ string) {
-				deadline, ok := ctx.Deadline()
-				writes = append(writes, seen{deadline, ok, ctx.Err()})
-			}
-			clock := newGroupClock(t)
-			start := time.Now()
-			err := f.group()
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("the fence cause was lost: %v", err)
-			}
-			if len(clock.waits) != 0 {
-				t.Fatalf("a fenced pass waited again: %v", clock.waits)
-			}
-			f.assertNewest(t, "failure", metadataExpiredTitle, metadataExpiredSummary)
-			if len(writes) == 0 {
-				t.Fatal("no terminal write observed")
-			}
-			for _, w := range writes {
-				if w.err != nil || !w.ok {
-					t.Fatalf("write context unusable or unbounded: %+v", w)
+				f := newQueueFixture(t)
+				f.pendingGroup(t)
+				f.staleGroup()
+				probe := f.probe()
+				// The jobs read hangs until the fence cuts the pass, as a stalled gh would.
+				probe.fault = func(ctx context.Context, path string, _ int) error {
+					if path == f.groupJobsPath() {
+						<-ctx.Done()
+						return &githubReadError{path: path, cause: ctx.Err()}
+					}
+					return nil
 				}
-				if !w.deadline.After(start.Add(groupRereadFence)) {
-					t.Fatalf("write deadline %s is inside the fence", w.deadline.Sub(start))
+				type seen struct {
+					deadline time.Time
+					ok       bool
+					err      error
 				}
-				if tc.hardStop != 0 && w.deadline.After(start.Add(tc.hardStop+100*time.Millisecond)) {
-					t.Fatalf("write deadline %s passes the hard stop %s", w.deadline.Sub(start), tc.hardStop)
+				var writes []seen
+				probe.onWrite = func(ctx context.Context, _, _ string) {
+					deadline, ok := ctx.Deadline()
+					writes = append(writes, seen{deadline, ok, ctx.Err()})
 				}
-				if left := time.Until(w.deadline); left > groupRereadReserve {
-					t.Fatalf("write may run %s, more than the %s reserve", left, groupRereadReserve)
+				clock := newGroupClock(t)
+				start := time.Now()
+				err := f.group()
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("the fence cause was lost: %v", err)
 				}
-			}
-			if tc.hardStop == 0 {
-				if left := writes[0].deadline.Sub(start); left < groupRereadReserve-5*time.Second {
-					t.Fatalf("first write got only %s of the %s reserve", left, groupRereadReserve)
+				if len(clock.waits) != 0 {
+					t.Fatalf("a fenced pass waited again: %v", clock.waits)
 				}
-			}
+				f.assertNewest(t, "failure", metadataExpiredTitle, metadataExpiredSummary)
+				if len(writes) == 0 {
+					t.Fatal("no terminal write observed")
+				}
+				for _, w := range writes {
+					if w.err != nil || !w.ok {
+						t.Fatalf("write context unusable or unbounded: %+v", w)
+					}
+					if !w.deadline.After(start.Add(groupRereadFence)) {
+						t.Fatalf("write deadline %s is inside the fence", w.deadline.Sub(start))
+					}
+					if tc.hardStop != 0 && w.deadline.After(start.Add(tc.hardStop)) {
+						t.Fatalf("write deadline %s passes the hard stop %s", w.deadline.Sub(start), tc.hardStop)
+					}
+					if left := time.Until(w.deadline); left > groupRereadReserve {
+						t.Fatalf("write may run %s, more than the %s reserve", left, groupRereadReserve)
+					}
+				}
+				if tc.hardStop == 0 {
+					if left := time.Until(writes[0].deadline); left != groupRereadReserve {
+						t.Fatalf("first write got only %s of the %s reserve", left, groupRereadReserve)
+					}
+				}
+			})
 		})
 	}
 }
