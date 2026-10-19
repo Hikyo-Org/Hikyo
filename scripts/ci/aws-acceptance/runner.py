@@ -27,10 +27,12 @@ import time
 import urllib.parse
 import urllib.request
 
+import historical_cleanup
+
 
 ACCOUNT = "099256073061"
 REGION = "eu-central-1"
-PREFIX = "hikyo-e2e-20261018b/"
+RUN_PREFIX = re.compile(r"hikyo-e2e-[a-z0-9]{8,32}/")
 REPOSITORY = "Hikyo-Org/Hikyo"
 SUBJECT = (
     "repo:Hikyo-Org@316726515/Hikyo@1316165429:"
@@ -164,6 +166,10 @@ class Approval:
         require(env.get("GITHUB_WORKFLOW_REF") == REPOSITORY + "/.github/workflows/aws-acceptance.yml@refs/heads/main")
         self.authorization = env.get("AWS_ACCEPTANCE_AUTHORIZATION_ID", "")
         require(re.fullmatch(r"[A-Za-z0-9._:/-]{1,128}", self.authorization))
+        self.prefix = env.get("AWS_ACCEPTANCE_RUN_PREFIX", "")
+        require(RUN_PREFIX.fullmatch(self.prefix))
+        self.historical_cleanup_arn = env.get("AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN", "")
+        require(self.historical_cleanup_arn in ("", historical_cleanup.ARN))
         self.auth_expiry_raw = env.get("AWS_ACCEPTANCE_AUTH_EXPIRES_AT", "")
         self.auth_expiry = timestamp(self.auth_expiry_raw)
         self.cleanup_expiry = timestamp(env.get("AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT", ""))
@@ -187,6 +193,8 @@ class Projection:
         self.stop = threading.Event()
         self.failed = threading.Event()
         self.child_stopped = True
+        self.cleanup_credentials: dict | None = None
+        self.cleanup_session_expiry = 0.0
         self.thread: threading.Thread | None = None
         self.env = clean_environment()
         empty = custody / "empty-config"
@@ -271,6 +279,9 @@ class Projection:
         expected = f"arn:aws:sts::{ACCOUNT}:assumed-role/{ROLE_NAMES[actor]}/"
         arn = identity.get("Arn", "")
         require(isinstance(arn, str) and arn.startswith(expected) and "/" not in arn[len(expected):] and len(arn) > len(expected))
+        if actor == "cleanup":
+            self.cleanup_credentials = credentials.copy()
+            self.cleanup_session_expiry = expiry
         descriptor = {"mode": "static", "region": REGION,
                       "access_key_id": credentials["AccessKeyId"],
                       "secret_access_key": credentials["SecretAccessKey"],
@@ -332,7 +343,7 @@ class Projection:
                     entry["workload_role_arn"] = role(actor)
             writers[actor] = entry
         manifest = {
-            "account": ACCOUNT, "region": REGION, "prefix": PREFIX, "budget_usd": 1,
+            "account": ACCOUNT, "region": REGION, "prefix": self.approval.prefix, "budget_usd": 1,
             "authorization_id": self.approval.authorization, "kms_key_arn": self.approval.kms,
             "expires_at": self.approval.auth_expiry_raw, "writers": writers,
             "oracle": {"credential_file": "oracle.json", "principal_arn": role("oracle")},
@@ -343,6 +354,29 @@ class Projection:
     def refresh_tokens(self) -> None:
         for actor in ("ambient", "web-identity"):
             self.token(actor + ".jwt")
+
+    def cleanup_historical(self, evidence: Evidence) -> None:
+        if not self.approval.historical_cleanup_arn:
+            return
+        require(self.cleanup_credentials is not None
+                and self.cleanup_session_expiry > self.approval.cleanup_expiry)
+        env = self.env.copy()
+        env.update({"AWS_ACCESS_KEY_ID": self.cleanup_credentials["AccessKeyId"],
+                    "AWS_SECRET_ACCESS_KEY": self.cleanup_credentials["SecretAccessKey"],
+                    "AWS_SESSION_TOKEN": self.cleanup_credentials["SessionToken"]})
+        def persist(state):
+            evidence.data["historical_cleanup"] = state
+            evidence.save()
+        evidence.data["stage"] = "historical-cleanup"
+        evidence.save()
+        cleanup = historical_cleanup.Cleanup(
+            env, min(self.approval.auth_expiry, self.approval.cleanup_expiry),
+            evidence.path.with_name("historical-cleanup-intent.json"), self.approval.run_id,
+            persist, self.stop.is_set, wait=self.stop.wait)
+        try:
+            cleanup.execute(self.approval.historical_cleanup_arn)
+        except historical_cleanup.Refused:
+            raise Refused() from None
 
     def start_refresh(self) -> None:
         def project():
@@ -359,10 +393,12 @@ class Projection:
 class Evidence:
     def __init__(self, path: Path, approval: Approval):
         self.path = path
+        self.prefix = approval.prefix
         self.data = {"schema": "hikyo.aws-acceptance/v1", "candidate_sha": approval.candidate,
                      "workflow_sha": approval.workflow, "run_id": approval.run_id,
-                     "status": "preparing", "stage": "compile", "account": ACCOUNT, "region": REGION, "prefix": PREFIX,
+                     "status": "preparing", "stage": "compile", "account": ACCOUNT, "region": REGION, "prefix": self.prefix,
                      "recorded_arns": [], "verified_absent_arns": [], "unresolved_names": [],
+                     "historical_cleanup": historical_cleanup.state_for(approval.historical_cleanup_arn),
                      "tests": {}, "maximum_create_reservations": 32,
                      "creation_reservations": [], "complete_creation_ledger": False,
                      "diagnostics": [], "diagnostics_truncated": False}
@@ -370,6 +406,11 @@ class Evidence:
 
     def save(self) -> None:
         private_json(self.path, self.data)
+        directory = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
     def event(self, event: dict) -> None:
         action, test = event.get("Action"), event.get("Test", "")
@@ -390,18 +431,18 @@ class Evidence:
                     self.data["diagnostics_truncated"] = True
         # Only exact known fixture diagnostics are accepted, never general
         # provider messages, raw JSON, panic text or arbitrary test output.
-        arn_pattern = re.escape(f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:{PREFIX}") + r"[A-Za-z0-9/_+=.@-]{1,450}-[A-Za-z0-9]{6}"
+        arn_pattern = re.escape(f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:{self.prefix}") + r"[A-Za-z0-9/_+=.@-]{1,450}-[A-Za-z0-9]{6}"
         for label, key in (("recorded synthetic AWS resource: ", "recorded_arns"),
                            ("verified synthetic AWS resource absent: ", "verified_absent_arns")):
             match = re.fullmatch(r"\s+aws_real_fixture_test.go:[0-9]+: " + re.escape(label) + "(" + arn_pattern + r")\n?", output)
             if match and match[1] not in self.data[key]:
                 require(len(self.data[key]) < 32)
                 self.data[key].append(match[1])
-        match = re.fullmatch(r"\s+aws_real_fixture_test.go:[0-9]+: reserved synthetic AWS create: ([0-9]+) (" + re.escape(PREFIX) + r"[A-Za-z0-9/_+=.@-]{1,450})\n?", output)
+        match = re.fullmatch(r"\s+aws_real_fixture_test.go:[0-9]+: reserved synthetic AWS create: ([0-9]+) (" + re.escape(self.prefix) + r"[A-Za-z0-9/_+=.@-]{1,450})\n?", output)
         if match:
             require(int(match[1]) == len(self.data["creation_reservations"]) + 1 <= 32)
             self.data["creation_reservations"].append(match[2])
-        match = re.fullmatch(r"\s+aws_real_fixture_test.go:[0-9]+: unresolved synthetic AWS create; reconcile name (" + re.escape(PREFIX) + r"[A-Za-z0-9/_+=.@-]{1,450}) before rerunning\n?", output)
+        match = re.fullmatch(r"\s+aws_real_fixture_test.go:[0-9]+: unresolved synthetic AWS create; reconcile name (" + re.escape(self.prefix) + r"[A-Za-z0-9/_+=.@-]{1,450}) before rerunning\n?", output)
         if match and match[1] not in self.data["unresolved_names"]:
             require(len(self.data["unresolved_names"]) < 32)
             self.data["unresolved_names"].append(match[1])
@@ -414,6 +455,8 @@ class Evidence:
         passed = passed and not any(status in ("skip", "fail") for status in tests.values())
         passed = passed and bool(self.data["recorded_arns"]) and not self.data["unresolved_names"]
         passed = passed and set(self.data["recorded_arns"]) == set(self.data["verified_absent_arns"])
+        historical = self.data["historical_cleanup"]
+        passed = passed and (historical["status"] == "not-requested" or historical["verified_absent"] is True)
         reservations = self.data["creation_reservations"]
         arn_prefix = f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:"
         passed = passed and bool(reservations) and all(arn[len(arn_prefix):-7] in reservations for arn in self.data["recorded_arns"])
@@ -552,6 +595,8 @@ def main() -> int:
         evidence.data["stage"] = "private-auth-projection"
         evidence.save()
         projection.prepare()
+        projection.cleanup_historical(evidence)
+        require(time.time() + 30 * 60 <= approval.auth_expiry)
         projection.start_refresh()
         print("Running real AWS acceptance with private projection; raw output is discarded.", flush=True)
         require(run_suite(binary, candidate, projection, evidence))
