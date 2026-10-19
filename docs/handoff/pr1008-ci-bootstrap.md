@@ -8,7 +8,7 @@ PR #1008 remains unmerged. Two independent CI problems blocked it:
   `ci-queue-required` verdict.
 
 This PR repairs the feedback lane only. The queue proof repair is a separate
-publisher-only PR, because it changes trusted default-branch code and must land
+publisher-only PR, [#1011](https://github.com/Hikyo-Org/Hikyo/pull/1011), because it changes trusted default-branch code and must land
 first.
 
 ## Feedback: cause
@@ -89,7 +89,7 @@ The two refused merge groups had different causes:
   still listed nine finished jobs as running, including `merge-group-proof`,
   for 7 to 16 minutes after the run completed.
 
-The separate publisher PR retries transient reads. It also re-reads a completed
+[#1011](https://github.com/Hikyo-Org/Hikyo/pull/1011) retries transient reads. It also re-reads a completed
 group's proof in place for a bounded window. If the proof is still not readable
 after that window, it refuses with a distinct, re-queue-able reason. An earlier
 draft of this PR added a waiting job inside the merge-group workflow; it was
@@ -98,7 +98,7 @@ failed the validation run instead.
 
 ## Required delivery sequence
 
-1. Merge the publisher-only queue proof PR through the protected merge queue.
+1. Merge the publisher-only queue proof PR, [#1011](https://github.com/Hikyo-Org/Hikyo/pull/1011), through the protected merge queue.
 2. Merge this PR through the queue.
 3. Run `gh workflow run ci-feedback-backend-cache.yml --repo Hikyo-Org/Hikyo --ref main`,
    and verify that the seed job publishes the bounded version-2 cache.
