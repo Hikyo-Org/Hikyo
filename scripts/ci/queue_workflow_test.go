@@ -360,32 +360,6 @@ func queueMarkerContract(raw []byte) error {
 	if s.If != "" || s.Continue.Kind != 0 || s.Uses != "" || s.Shell != "" || s.Directory != "" || s.Run != `test "$VALIDATION_RESULT" = success` || !reflect.DeepEqual(s.Env, map[string]string{"VALIDATION_RESULT": "${{ needs.validation.result }}"}) {
 		return fmt.Errorf("group evidence must reject all unsuccessful validation results")
 	}
-	return queueMetadataContract(w)
-}
-
-func queueMetadataContract(w queueWorkflowContract) error {
-	j, ok := w.Jobs["merge-group-metadata-ready"]
-	if !ok || j.Uses != "" || j.If != "" || j.Needs.Kind != yaml.ScalarNode || j.Needs.Value != "merge-group-proof" || j.Continue.Kind != 0 || j.Env.Kind != 0 || j.Defaults.Kind != 0 || j.Container.Kind != 0 || j.Services.Kind != 0 || j.Strategy.Kind != 0 || j.RunsOn != "ubuntu-latest" || j.Timeout.Value != "10" || len(j.Steps) != 3 {
-		return fmt.Errorf("metadata readiness must remain a bounded mandatory successor to successful proof")
-	}
-	if !reflect.DeepEqual(j.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
-		return fmt.Errorf("metadata readiness cannot hold write authority")
-	}
-	for _, s := range j.Steps {
-		if s.If != "" || s.Continue.Kind != 0 || s.Shell != "" || s.Directory != "" {
-			return fmt.Errorf("metadata readiness cannot skip, mask or override execution")
-		}
-	}
-	checkout, setup, wait := j.Steps[0], j.Steps[1], j.Steps[2]
-	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.Run != "" || len(checkout.Env) != 0 || !reflect.DeepEqual(checkout.With, map[string]string{"ref": "${{ github.sha }}", "persist-credentials": "false"}) {
-		return fmt.Errorf("metadata readiness must check out its exact merge source without retained credentials")
-	}
-	if setup.Uses != "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e" || setup.Run != "" || len(setup.Env) != 0 || !reflect.DeepEqual(setup.With, map[string]string{"go-version-file": "go.mod", "cache": "false"}) {
-		return fmt.Errorf("metadata readiness must use pinned setup")
-	}
-	if wait.Uses != "" || len(wait.With) != 0 || wait.Run != "go run ./scripts/ci/wait-merge-group-jobs" || !reflect.DeepEqual(wait.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GOTOOLCHAIN": "local"}) {
-		return fmt.Errorf("metadata readiness must execute exact-attempt verification")
-	}
 	return nil
 }
 
@@ -523,44 +497,6 @@ func TestQueuePublisherRejectsUnsafeWorkflowMutations(t *testing.T) {
 			})
 			if err := queueNativeContextContract(changed); err == nil {
 				t.Fatal("native shadow of trusted queue context was accepted")
-			}
-		})
-	}
-}
-
-func TestQueueMetadataRejectsFailOpenWorkflowMutations(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci-merge-group.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := queueMarkerContract(raw); err != nil {
-		t.Fatal(err)
-	}
-	for name, mutate := range map[string]func(map[string]any){
-		"missing proof dependency": func(j map[string]any) { delete(j, "needs") },
-		"skipped readiness":        func(j map[string]any) { j["if"] = "false" },
-		"masked readiness":         func(j map[string]any) { j["continue-on-error"] = true },
-		"write authority": func(j map[string]any) {
-			j["permissions"] = map[string]any{"checks": "write", "actions": "read", "contents": "read"}
-		},
-		"unbounded readiness":      func(j map[string]any) { delete(j, "timeout-minutes") },
-		"untrusted initialization": func(j map[string]any) { j["env"] = map[string]any{"BASH_ENV": "./untrusted.sh"} },
-		"step skipped":             func(j map[string]any) { j["steps"].([]any)[2].(map[string]any)["if"] = "false" },
-		"step masked":              func(j map[string]any) { j["steps"].([]any)[2].(map[string]any)["continue-on-error"] = true },
-		"verification removed":     func(j map[string]any) { j["steps"].([]any)[2].(map[string]any)["run"] = "true" },
-		"different source": func(j map[string]any) {
-			j["steps"].([]any)[0].(map[string]any)["with"].(map[string]any)["ref"] = "main"
-		},
-		"retained credentials": func(j map[string]any) {
-			j["steps"].([]any)[0].(map[string]any)["with"].(map[string]any)["persist-credentials"] = true
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			changed := queueMutatedWorkflow(t, raw, func(w map[string]any) {
-				mutate(w["jobs"].(map[string]any)["merge-group-metadata-ready"].(map[string]any))
-			})
-			if err := queueMarkerContract(changed); err == nil {
-				t.Fatal("accepted unsafe readiness mutation")
 			}
 		})
 	}

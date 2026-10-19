@@ -27,8 +27,6 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 		} `yaml:"concurrency"`
 		Jobs map[string]struct {
 			Uses        string               `yaml:"uses"`
-			RunsOn      string               `yaml:"runs-on"`
-			Timeout     int                  `yaml:"timeout-minutes"`
 			With        map[string]string    `yaml:"with"`
 			If          string               `yaml:"if"`
 			Needs       string               `yaml:"needs"`
@@ -41,7 +39,7 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 	}
 	_, isMergeGroup := workflow.On["merge_group"]
 	readOnly := map[string]string{"actions": "read", "contents": "read"}
-	if workflow.Name != "trusted-merge-ci" || !isMergeGroup || len(workflow.On) != 1 || !reflect.DeepEqual(workflow.Permissions, readOnly) || len(workflow.Jobs) != 3 {
+	if workflow.Name != "trusted-merge-ci" || !isMergeGroup || len(workflow.On) != 1 || !reflect.DeepEqual(workflow.Permissions, readOnly) || len(workflow.Jobs) != 2 {
 		t.Fatal("merge-queue validation must have one isolated read-only event and its required gate")
 	}
 	// GitHub exposes run-name as workflow_run.name and the Actions run name.
@@ -70,17 +68,6 @@ func TestMergeGroupWorkflowRetainsRequiredValidation(t *testing.T) {
 		if (cmd.Run() == nil) != (result == "success") {
 			t.Fatalf("merge-queue proof accepted invalid validation %q", result)
 		}
-	}
-	ready, exists := workflow.Jobs["merge-group-metadata-ready"]
-	if !exists || ready.If != "" || ready.Needs != "merge-group-proof" || ready.RunsOn != "ubuntu-latest" || ready.Timeout != 10 || !reflect.DeepEqual(ready.Permissions, readOnly) || len(ready.Steps) != 3 {
-		t.Fatal("job metadata barrier must follow successful proof under bounded read-only authority")
-	}
-	checkout, setup, wait := ready.Steps[0], ready.Steps[1], ready.Steps[2]
-	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || !reflect.DeepEqual(checkout.With, map[string]string{"ref": "${{ github.sha }}", "persist-credentials": "false"}) || setup.Uses != "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e" || !reflect.DeepEqual(setup.With, map[string]string{"go-version-file": "go.mod", "cache": "false"}) {
-		t.Fatal("job metadata barrier must execute its exact source with pinned setup and no retained credentials")
-	}
-	if wait.If != "" || wait.Run != "go run ./scripts/ci/wait-merge-group-jobs" || !reflect.DeepEqual(wait.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GOTOOLCHAIN": "local"}) {
-		t.Fatal("job metadata barrier cannot skip or replace exact-attempt verification")
 	}
 }
 

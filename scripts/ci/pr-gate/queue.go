@@ -1027,39 +1027,17 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	}
 	counts := make(map[string]int)
 	ok := true
-	failedProof := false
-	var waitingProofs []string
 	for _, j := range jobs {
 		if j.Name == "validation / ci-required" || j.Name == "merge-group-proof" {
 			counts[j.Name]++
-			passed := j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
-			ok = ok && passed
-			if !passed {
-				waiting := false
-				if j.HeadSHA == r.HeadSHA && j.Conclusion == "" {
-					switch j.Status {
-					case "queued", "in_progress", "waiting", "pending", "requested":
-						waiting = true
-					}
-				}
-				if waiting {
-					waitingProofs = append(waitingProofs, j.Name)
-				} else {
-					failedProof = true
-				}
-			}
+			ok = ok && j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
 		}
 	}
 	if counts["validation / ci-required"] != 1 || counts["merge-group-proof"] != 1 {
 		return errors.New("missing or duplicated full merge-group proof")
 	}
 	result := refused("Required merge-group validation failed; queue merge remains blocked.")
-	if r.Conclusion == "success" && !failedProof && len(waitingProofs) > 0 {
-		// GitHub can complete the workflow before its jobs endpoint exposes the
-		// aggregate's terminal result. Keep the same blocking record pending;
-		// normal completion callbacks and group repair repeat the entire proof.
-		result = pending("GitHub reports a successful workflow, but required job metadata is still pending: " + strings.Join(waitingProofs, ", ") + ". Merging remains blocked until the complete proof is available.")
-	} else if ok && r.Conclusion == "success" && authorityPending {
+	if ok && r.Conclusion == "success" && authorityPending {
 		result = refused("Validation finished but exact-head group member authority could not be established; retry after resolving the policy failure.")
 	} else if ok && r.Conclusion == "success" {
 		result = outcome{Status: "completed", Conclusion: "success", Title: "Merge group validated", Summary: fmt.Sprintf("All domains required by the trusted plan passed on %s; authenticated queue membership, current base, source run %d attempt %d and authority verified.", r.HeadSHA, r.ID, r.Attempt)}

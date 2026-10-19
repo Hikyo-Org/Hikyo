@@ -42,28 +42,3 @@ jobs:
         env:
           VALIDATION_RESULT: ${{ needs.validation.result }}
         run: test "$VALIDATION_RESULT" = success
-
-  # GitHub can deliver workflow completion while the jobs endpoint still has
-  # the proof marker in progress. Let the trusted publisher see coherent proof
-  # metadata, including while its default-branch pending-state fix is landing.
-  merge-group-metadata-ready:
-    needs: merge-group-proof
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Wait for exact-attempt proof job metadata
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GOTOOLCHAIN: local
-        run: go run ./scripts/ci/wait-merge-group-jobs
