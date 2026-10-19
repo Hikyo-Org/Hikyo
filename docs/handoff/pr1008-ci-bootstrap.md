@@ -23,7 +23,8 @@ Two further costs sat inside the deadline:
 
 - `go test -c` vets every dependency, and a `go list -export` seed stores no
   vet results.
-- `-p 2` serialized builds and links without any recorded memory pressure.
+- `-p 2` capped build and link concurrency at two, without any recorded
+  memory pressure.
 
 Module download was minor: 13 to 15 seconds in three runs and 33 seconds in
 one. The passing head `f743c2f3` used 159 of 187 seconds. Heads `96c66697` and
@@ -38,7 +39,9 @@ left to build.
   compiler flags and a separate cache directory.
 - The feedback compile is now `go test -c -vet=off`, at the default
   parallelism. Full validation still runs `go vet ./...` in `test_core`, so the
-  fast lane gives up only early vet findings on changed packages.
+  fast lane gives up only early vet findings on changed packages. The seed
+  publisher keeps `go list -p 2`: it has a 15-minute budget and no feedback
+  deadline, so bounding its memory costs nothing that matters.
 - Application Go, tooling Go and frontend run as three mandatory lanes, each
   with its own runner and the unchanged 220-second deadline. Whole-workflow
   success remains required for queue admission.
