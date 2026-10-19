@@ -1200,6 +1200,92 @@ func TestQueueForkRecomputationDoesNotHideActualFailures(t *testing.T) {
 	}
 }
 
+func TestQueueGroupWaitsForCompletedRunJobMetadata(t *testing.T) {
+	for _, name := range []string{"validation / ci-required", "merge-group-proof"} {
+		for _, status := range []string{"queued", "in_progress"} {
+			t.Run(name+"/"+status, func(t *testing.T) {
+				f := newQueueFixture(t)
+				path := f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", f.groupRun.ID, f.groupRun.Attempt))
+				jobs := []job{
+					{ID: 203, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "validation / ci-required", Status: "completed", Conclusion: "success"},
+					{ID: 204, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "merge-group-proof", Status: "completed", Conclusion: "success"},
+				}
+				for i := range jobs {
+					if jobs[i].Name == name {
+						jobs[i].Status, jobs[i].Conclusion = status, ""
+					}
+				}
+				f.api.responses[path] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+				if err := f.group(); err != nil {
+					t.Fatal(err)
+				}
+				latest := newestQueueCheck(f.api.checks)
+				if latest == nil || latest.Status != "queued" || latest.Conclusion != "" {
+					t.Fatalf("incomplete job metadata must keep the successful run blocked and pending: %+v", latest)
+				}
+				f.assertNoSuccess(t)
+				pendingID := latest.ID
+				count := len(f.api.checks)
+				if err := f.group(); err != nil {
+					t.Fatal(err)
+				}
+				if len(f.api.checks) != count || newestQueueCheck(f.api.checks).ID != pendingID {
+					t.Fatal("unchanged pending metadata created another check")
+				}
+				for i := range jobs {
+					jobs[i].Status, jobs[i].Conclusion = "completed", "success"
+				}
+				f.api.responses[path] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+				if err := f.group(); err != nil {
+					t.Fatal(err)
+				}
+				latest = newestQueueCheck(f.api.checks)
+				if latest == nil || latest.ID != pendingID || latest.Status != "completed" || latest.Conclusion != "success" {
+					t.Fatalf("fresh complete proof did not finalize the same pending record: %+v", latest)
+				}
+			})
+		}
+	}
+}
+
+func TestQueueGroupPendingMetadataRetainsTerminalFailures(t *testing.T) {
+	for _, scenario := range []string{"failed-run", "failed-other-proof", "foreign-other-proof", "foreign-pending-proof", "contradictory-conclusion", "unknown-status"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newQueueFixture(t)
+			if scenario == "failed-run" {
+				f.groupRun.Conclusion = "failure"
+				f.groupRefresh()
+			}
+			jobs := []job{
+				{ID: 203, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "validation / ci-required", Status: "completed", Conclusion: "success"},
+				{ID: 204, RunID: f.groupRun.ID, Attempt: 1, HeadSHA: f.groupRun.HeadSHA, Name: "merge-group-proof", Status: "in_progress"},
+			}
+			switch scenario {
+			case "failed-other-proof":
+				jobs[0].Conclusion = "failure"
+			case "foreign-other-proof":
+				jobs[0].HeadSHA = strings.Repeat("f", 40)
+			case "foreign-pending-proof":
+				jobs[1].HeadSHA = strings.Repeat("f", 40)
+			case "contradictory-conclusion":
+				jobs[1].Conclusion = "success"
+			case "unknown-status":
+				jobs[1].Status = "unknown"
+			}
+			path := f.c.endpoint(fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=1", f.groupRun.ID, f.groupRun.Attempt))
+			f.api.responses[path] = map[string]any{"total_count": len(jobs), "jobs": jobs}
+			if err := f.group(); err != nil {
+				t.Fatal(err)
+			}
+			latest := newestQueueCheck(f.api.checks)
+			if latest == nil || latest.Status != "completed" || latest.Conclusion != "failure" {
+				t.Fatalf("pending metadata masked a real refusal: %+v", latest)
+			}
+			f.assertNoSuccess(t)
+		})
+	}
+}
+
 func TestQueueGroupPendingAuthorityKeepsTerminalValidationTruth(t *testing.T) {
 	for _, tc := range []struct {
 		name                  string

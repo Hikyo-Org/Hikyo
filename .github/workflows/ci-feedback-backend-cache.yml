@@ -1,0 +1,65 @@
+# Backend-inclusive compact seed for short PR feedback. No PR can publish here.
+name: ci-feedback-backend-cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '32 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-feedback-backend-cache-main
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+    env:
+      GOFLAGS: '-gcflags=all=-dwarf=false'
+      GOCACHE: ${{ github.workspace }}/.ci-cache/go-feedback-compact
+    steps:
+      - name: Check out immutable trusted main without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        env:
+          GOCACHE: ${{ runner.temp }}/feedback-bootstrap
+        with:
+          go-version-file: source/go.mod
+          cache: false
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Look up this main seed without restoring old entries
+        id: feedback-reuse
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/go-feedback-compact
+          key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ github.sha }}
+          lookup-only: true
+      - name: Compile a fresh feedback seed without running tests
+        if: steps.feedback-reuse.outputs.cache-hit != 'true'
+        run: |
+          test ! -e "$GOCACHE"
+          mkdir -p "$GOCACHE"
+          go list -p 2 -deps -test -export ./internal/app ./internal/cli ./scripts/ci >/dev/null
+          ./scripts/ci/run-go-tool.sh actionlint -version
+          go run ./scripts/ci/feedback-reuse-size "$GOCACHE"
+      - name: Save bounded feedback seed from trusted main only
+        if: >-
+          success() && steps.feedback-reuse.outputs.cache-hit != 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci-cache/go-feedback-compact
+          key: ${{ steps.feedback-reuse.outputs.cache-primary-key }}

@@ -7,12 +7,14 @@ set -euo pipefail
 working_tree=false
 plan_only=false
 lane=all
+go_scope=all
 for argument in "$@"; do
 	case "$argument" in
 		--working-tree) working_tree=true ;;
 		--plan) plan_only=true ;;
 		--lane=*) lane=${argument#--lane=} ;;
-		*) printf 'usage: %s [--working-tree] [--plan] [--lane=all|go|frontend]\n' "$0" >&2; exit 2 ;;
+		--go-scope=*) go_scope=${argument#--go-scope=} ;;
+		*) printf 'usage: %s [--working-tree] [--plan] [--lane=all|go|frontend] [--go-scope=all|application|tooling]\n' "$0" >&2; exit 2 ;;
 	esac
 done
 
@@ -22,6 +24,19 @@ case "$lane" in
 	all | go | frontend) ;;
 	*) fail 'invalid lane; expected all, go or frontend' ;;
 esac
+case "$go_scope" in
+	all | application | tooling) ;;
+	*) fail 'invalid Go scope; expected all, application or tooling' ;;
+esac
+[ "$lane" != frontend ] || [ "$go_scope" = all ] || fail 'frontend lane cannot select a Go scope'
+selected_go_path() {
+	case "$go_scope:$1" in
+		all:* | tooling:scripts/*) return 0 ;;
+		application:scripts/*) return 1 ;;
+		application:*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
 
 # CI supplies one absolute deadline before setup. Local feedback without that
 # timestamp keeps its existing tool requirements and has no imposed deadline.
@@ -123,6 +138,7 @@ while IFS= read -r -d '' path; do
 	esac
 	case "$path" in
 		*.go)
+			selected_go_path "$path" || continue
 			package="./$(dirname "$path")"
 			remaining_go=("$package"/*.go)
 			if [ -f "${remaining_go[0]}" ] && ! printf '%s\n' "${go_packages[@]:-}" | grep -Fx -- "$package" >/dev/null; then go_packages+=("$package"); fi
@@ -189,9 +205,9 @@ if [ "${#go_files[@]}" -gt 0 ]; then
 	[ -z "$unformatted" ] || { printf '%s\n' "$unformatted" >&2; fail 'changed Go files need gofmt'; }
 	printf 'fast-feedback: Go formatting passed (%s files)\n' "${#go_files[@]}"
 fi
-if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
+if [ "${#go_packages[@]}" -gt 0 ] || { [ "$all_go" = true ] && [ "$go_scope" != tooling ]; }; then
 	need go
-	if [ "$all_go" = true ]; then
+	if [ "$all_go" = true ] && [ "$go_scope" != tooling ]; then
 		# Full unchanged-consumer compilation belongs to the separately timed
 		# dependency-compatibility workflow, rather than this 220-second lane.
 		run go mod verify
@@ -200,9 +216,13 @@ if [ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ]; then
 		# One build graph shares compilation and linking across every owner.
 		# Null output also supports distinct packages with the same basename;
 		# no test/init/TestMain executes and no binaries dirty the checkout.
-		run go test -c -o /dev/null "${go_packages[@]}"
+		# Compiler exports and discarded binaries need no DWARF. Keep link checks while
+		# avoiding debug generation/compression across all selected packages.
+		# Bound simultaneous compiler/linker heaps on small hosted runners.
+		run go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null "${go_packages[@]}"
 	fi
 fi
+if [ "$go_scope" = application ]; then return 0; fi
 if [ "${#shell_files[@]}" -gt 0 ] || [ "$workflows" = true ]; then
 	need shellcheck
 	shellcheck --version | grep -Fx 'version: 0.11.0' >/dev/null || fail 'ShellCheck 0.11.0 is required, matching CI'
