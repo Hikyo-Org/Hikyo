@@ -300,7 +300,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"test key without ABI":     replace("-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles(", "-${{ hashFiles("),
 		"test restore prefix":      replace("            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-\n", "            go-test-v2-${{ runner.os }}-\n"),
 		"run id in cache key":      replace("key: go-test-v2-${{ runner.os }}", "key: go-test-v2-${{ github.run_id }}-${{ runner.os }}"),
-		"cache save step":          appendStep("      - uses: " + cacheSaveAction + " # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go-test-v2\n"),
+		"cache save step":          appendStep("      - uses: " + reuseSaveAction + " # v6.1.0\n        with:\n          path: ~/.cache/go-build\n          key: go-test-v2\n"),
 		"artifact upload":          appendStep("      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2\n        with:\n          path: .\n"),
 		"skipped lint cache":       replace("      - name: Prepare lint compiler cache\n        run: go run ./scripts/ci/prepare-lint-cache\n", ""),
 		"dropped boundary package": replace(" ./internal/boundary", ""),

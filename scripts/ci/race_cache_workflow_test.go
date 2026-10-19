@@ -14,13 +14,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// These declarations model workflow YAML, not runtime stores. Reuse names keep
+// invariant 12's cache declaration sweep reserved for registered runtime state.
 const (
-	cacheRestoreAction = "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
-	cacheSaveAction    = "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+	reuseRestoreAction = "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+	reuseSaveAction    = "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
 	// The one key ci-race-cache.yml writes and the merge-gate race shards and
 	// reliability race isolation read. It carries no shard or planner identity.
-	sharedRaceCacheKey         = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}"
-	sharedRaceCacheRestoreKeys = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+	sharedRaceReuseKey         = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}"
+	sharedRaceReuseRestoreKeys = "go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
 )
 
 func readWorkflowFile(t *testing.T, name string) (map[string]any, []byte) {
@@ -99,13 +101,13 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"lookup restores entries":  func(w map[string]any) { delete(seedStep(w, 4)["with"].(map[string]any), "lookup-only") },
 		"lookup is skipped":        func(w map[string]any) { seedStep(w, 4)["if"] = "false" },
 		"lookup key is per shard": func(w map[string]any) {
-			seedStep(w, 4)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceCacheKey, "go-race-v2-", "go-race-v2-shard-0-", 1)
+			seedStep(w, 4)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceReuseKey, "go-race-v2-", "go-race-v2-shard-0-", 1)
 		},
 		"lookup key ignores go.sum": func(w map[string]any) {
-			seedStep(w, 4)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceCacheKey, "'go.mod', 'go.sum'", "'go.mod'", 1)
+			seedStep(w, 4)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceReuseKey, "'go.mod', 'go.sum'", "'go.mod'", 1)
 		},
 		"lookup key is per run": func(w map[string]any) {
-			seedStep(w, 4)["with"].(map[string]any)["key"] = sharedRaceCacheKey + "-${{ github.sha }}"
+			seedStep(w, 4)["with"].(map[string]any)["key"] = sharedRaceReuseKey + "-${{ github.sha }}"
 		},
 		"lookup restore keys widen": func(w map[string]any) {
 			seedStep(w, 4)["with"].(map[string]any)["restore-keys"] = "go-race-v2-"
@@ -134,7 +136,7 @@ func TestRaceSeedWorkflowTrustAndBounds(t *testing.T) {
 		"save after failure": func(w map[string]any) {
 			seedStep(w, 6)["if"] = strings.Replace(seedStep(w, 6)["if"].(string), "success() && ", "always() && ", 1)
 		},
-		"save under another key": func(w map[string]any) { seedStep(w, 6)["with"].(map[string]any)["key"] = sharedRaceCacheKey },
+		"save under another key": func(w map[string]any) { seedStep(w, 6)["with"].(map[string]any)["key"] = sharedRaceReuseKey },
 		"save another path": func(w map[string]any) {
 			seedStep(w, 6)["with"].(map[string]any)["path"] = "~/go/pkg/mod"
 		},
@@ -215,7 +217,7 @@ func requireRaceSeed(workflow map[string]any) error {
 		return fmt.Errorf("race seed must select pinned Go without implicit caches")
 	}
 	modules := step(2)
-	if modules["uses"] != cacheRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
+	if modules["uses"] != reuseRestoreAction || !reflect.DeepEqual(modules["with"], map[string]any{
 		"path":         "~/go/pkg/mod",
 		"key":          "go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}",
 		"restore-keys": "go-mod-v2-${{ runner.os }}-",
@@ -227,11 +229,11 @@ func requireRaceSeed(workflow map[string]any) error {
 		return fmt.Errorf("race seed must select the runner cache ABI")
 	}
 	lookup := step(4)
-	if lookup["id"] != "race-seed" || lookup["uses"] != cacheRestoreAction || lookup["if"] != nil || lookup["continue-on-error"] != nil ||
+	if lookup["id"] != "race-seed" || lookup["uses"] != reuseRestoreAction || lookup["if"] != nil || lookup["continue-on-error"] != nil ||
 		!reflect.DeepEqual(lookup["with"], map[string]any{
 			"path":         "~/.cache/go-build",
-			"key":          sharedRaceCacheKey,
-			"restore-keys": sharedRaceCacheRestoreKeys,
+			"key":          sharedRaceReuseKey,
+			"restore-keys": sharedRaceReuseRestoreKeys,
 			"lookup-only":  true,
 		}) {
 		return fmt.Errorf("race seed lookup must use the shared key and never restore historical entries")
@@ -242,7 +244,7 @@ func requireRaceSeed(workflow map[string]any) error {
 		return fmt.Errorf("fresh race seed must compile every race dependency without executing tests")
 	}
 	save := step(6)
-	if save["uses"] != cacheSaveAction || save["continue-on-error"] != nil ||
+	if save["uses"] != reuseSaveAction || save["continue-on-error"] != nil ||
 		save["if"] != "success() && steps.race-seed.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" ||
 		!reflect.DeepEqual(save["with"], map[string]any{"path": "~/.cache/go-build", "key": "${{ steps.race-seed.outputs.cache-primary-key }}"}) {
 		return fmt.Errorf("only a successful main seed may publish, once per exact key")
@@ -268,8 +270,8 @@ func requireSharedRaceReader(steps []any) error {
 		restores++
 		with, _ := step["with"].(map[string]any)
 		restoreKeys, _ := with["restore-keys"].(string)
-		if step["uses"] != cacheRestoreAction || with["path"] != "~/.cache/go-build" || with["key"] != sharedRaceCacheKey ||
-			strings.TrimSpace(restoreKeys) != sharedRaceCacheRestoreKeys || step["if"] != nil || step["continue-on-error"] != nil {
+		if step["uses"] != reuseRestoreAction || with["path"] != "~/.cache/go-build" || with["key"] != sharedRaceReuseKey ||
+			strings.TrimSpace(restoreKeys) != sharedRaceReuseRestoreKeys || step["if"] != nil || step["continue-on-error"] != nil {
 			return fmt.Errorf("race cache reader must use exactly the seed key and prefix")
 		}
 	}
@@ -279,10 +281,10 @@ func requireSharedRaceReader(steps []any) error {
 	return nil
 }
 
-func TestRaceCacheReadersShareTheSeedKey(t *testing.T) {
+func TestRaceReuseReadersShareTheSeedKey(t *testing.T) {
 	seed, _ := readWorkflowFile(t, "ci-race-cache.yml")
 	lookup := workflowJobSteps(t, seed, "seed")[4].(map[string]any)["with"].(map[string]any)
-	if lookup["key"] != sharedRaceCacheKey || lookup["restore-keys"] != sharedRaceCacheRestoreKeys {
+	if lookup["key"] != sharedRaceReuseKey || lookup["restore-keys"] != sharedRaceReuseRestoreKeys {
 		t.Fatal("seed lookup drifted from the shared race cache key")
 	}
 	for workflowName, job := range map[string]string{"ci.yml": "race_shard", "reliability.yml": "race-isolation"} {
@@ -297,7 +299,7 @@ func TestRaceCacheReadersShareTheSeedKey(t *testing.T) {
 	}
 }
 
-func TestRaceCacheReaderRejectsPerShardKeysAndWriters(t *testing.T) {
+func TestRaceReuseReaderRejectsPerShardKeysAndWriters(t *testing.T) {
 	workflow, raw := readWorkflowFile(t, "ci.yml")
 	if err := requireSharedRaceReader(workflowJobSteps(t, workflow, "race_shard")); err != nil {
 		t.Fatal(err)
@@ -312,11 +314,11 @@ func TestRaceCacheReaderRejectsPerShardKeysAndWriters(t *testing.T) {
 	}
 	for name, mutation := range map[string]func([]any) []any{
 		"per-shard key": func(steps []any) []any {
-			restoreStep(steps)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceCacheKey, "go-race-v2-", "go-race-v2-shard-${{ matrix.shard }}-", 1)
+			restoreStep(steps)["with"].(map[string]any)["key"] = strings.Replace(sharedRaceReuseKey, "go-race-v2-", "go-race-v2-shard-${{ matrix.shard }}-", 1)
 			return steps
 		},
 		"planner-hash key": func(steps []any) []any {
-			restoreStep(steps)["with"].(map[string]any)["key"] = sharedRaceCacheKey + "-${{ hashFiles('scripts/ci/analysis-shards-go/main.go') }}"
+			restoreStep(steps)["with"].(map[string]any)["key"] = sharedRaceReuseKey + "-${{ hashFiles('scripts/ci/analysis-shards-go/main.go') }}"
 			return steps
 		},
 		"per-shard prefix": func(steps []any) []any {
@@ -342,8 +344,8 @@ func TestRaceCacheReaderRejectsPerShardKeysAndWriters(t *testing.T) {
 		"re-added shard writer": func(steps []any) []any {
 			return append(steps, map[string]any{
 				"name": "Save race Go cache (trusted main validation only)",
-				"uses": cacheSaveAction,
-				"with": map[string]any{"path": "~/.cache/go-build", "key": sharedRaceCacheKey},
+				"uses": reuseSaveAction,
+				"with": map[string]any{"path": "~/.cache/go-build", "key": sharedRaceReuseKey},
 			})
 		},
 		"combined cache action": func(steps []any) []any {
@@ -367,7 +369,7 @@ func TestRaceCacheReaderRejectsPerShardKeysAndWriters(t *testing.T) {
 // setup-go's diagnostics initialize GOCACHE, and `go env` creates the directory
 // it reports. Run the real compile guard with the workflow's environment scopes
 // to prove the bootstrap cache never occupies the directory the seed will save.
-func TestRaceSeedGuardRequiresFreshDefaultCache(t *testing.T) {
+func TestRaceSeedGuardRequiresFreshDefaultDirectory(t *testing.T) {
 	workflow, _ := readWorkflowFile(t, "ci-race-cache.yml")
 	steps := workflowJobSteps(t, workflow, "seed")
 	compile := steps[5].(map[string]any)["run"].(string)

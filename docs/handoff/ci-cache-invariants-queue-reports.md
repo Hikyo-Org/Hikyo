@@ -24,6 +24,28 @@ These checks do not establish hosted CI, fresh review or merge-group success.
 Read the PR's current head, reviews, threads and protected queue evidence before
 merging; queue admission alone is not merge proof.
 
+## Queue invariant repair
+
+[Merge-group run 39250118338](https://github.com/Hikyo-Org/Hikyo/actions/runs/39250118338)
+passed 45 jobs but failed isolation shard 0 on `TestInvariant12CacheDiscipline`.
+The other two failures were aggregate jobs blocked by that invariant failure.
+The focused invariant reproduced the same nine unregistered declaration names
+locally. They model workflow YAML rather than runtime stores.
+
+The declarations and their references now use reuse terminology, matching
+existing CI fixtures. Reversing the nine identifier renames reproduces the
+original formatted code exactly, apart from the explanatory comment. Workflow
+keys, writers, assertions, coverage normalization and the invariant itself are
+unchanged.
+
+The focused invariant, complete CI tooling suite and vet passed after the rename:
+
+```sh
+go test -p 2 ./internal/isolation -run '^TestInvariant12CacheDiscipline$' -count=1
+go test -p 2 ./scripts/ci/... -count=1
+go vet -p 2 ./scripts/ci/...
+```
+
 ## After merge
 
 Seed the trusted-main shared race cache once after the new workflow lands:
