@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 )
@@ -589,29 +590,47 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	}
 	if plan.promote && plan.previousCurrent == "" {
 		// AWS makes the first value AWSCURRENT even when PutSecretValue asks
-		// only for HIKYO_PENDING. Do not depend on an empty-predecessor
-		// promotion accepting an already-current version. Prove this job's
-		// version is current before skipping that redundant write, and never
-		// rebase the promotion onto a concurrently written foreign version.
-		if err := beforeRequest(); err != nil {
-			return mutated, err
+		// only for HIKYO_PENDING, but that metadata can lag behind the write.
+		// Refresh a bounded number of times instead of sending a blind move
+		// without a predecessor. Only this job's observed current version can
+		// skip promotion; never rebase onto a concurrently written version.
+		for attempt := range 3 {
+			if attempt > 0 {
+				timer := time.NewTimer(time.Duration(attempt) * 100 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return mutated, ctx.Err()
+				case <-timer.C:
+				}
+			}
+			if err := beforeRequest(); err != nil {
+				return mutated, err
+			}
+			meta, found, err := m.describeResource(ctx, req.Target.Destination, row.EffectiveName, plan.resourceID)
+			if err != nil {
+				return mutated, err
+			}
+			if !found {
+				return mutated, fmt.Errorf("%w: secret %s disappeared after staging", adapter.ErrConflict, row.EffectiveName)
+			}
+			fresh := decide(meta, true, state, adoptionPending, req.Target.ID, token)
+			if fresh.conflict != "" {
+				return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, fresh.conflict)
+			}
+			if fresh.previousCurrent == token && !fresh.put && !fresh.promote {
+				plan.promote = false
+				plan.markCurrent = fresh.markCurrent
+				plan.previousHikyo = fresh.previousHikyo
+				plan.versionTag = fresh.versionTag
+				break
+			}
+			if fresh.previousCurrent != "" {
+				return mutated, fmt.Errorf("%w: secret %s changed current version after staging", adapter.ErrConflict, row.EffectiveName)
+			}
 		}
-		meta, found, err := m.describeResource(ctx, req.Target.Destination, row.EffectiveName, plan.resourceID)
-		if err != nil {
-			return mutated, err
-		}
-		if !found {
-			return mutated, fmt.Errorf("%w: secret %s disappeared after staging", adapter.ErrConflict, row.EffectiveName)
-		}
-		fresh := decide(meta, true, state, adoptionPending, req.Target.ID, token)
-		if fresh.conflict != "" {
-			return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, fresh.conflict)
-		}
-		if !fresh.put && !fresh.promote {
-			plan.promote = false
-			plan.markCurrent = fresh.markCurrent
-			plan.previousHikyo = fresh.previousHikyo
-			plan.versionTag = fresh.versionTag
+		if plan.promote {
+			return mutated, fmt.Errorf("%w: secret %s current version is not visible after staging", adapter.ErrConflict, row.EffectiveName)
 		}
 	}
 	if plan.promote {

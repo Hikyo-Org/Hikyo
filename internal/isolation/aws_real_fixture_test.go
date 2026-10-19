@@ -547,13 +547,39 @@ func (s *realAWSSandbox) arn(t *testing.T, name string) string {
 
 func (s *realAWSSandbox) value(t *testing.T, name string) string {
 	t.Helper()
-	var out struct {
-		SecretString string `json:"SecretString"`
-	}
-	if err := s.call(t.Context(), true, "GetSecretValue", s.arn(t, name), map[string]any{"VersionStage": "AWSCURRENT"}, &out); err != nil {
+	value, err := s.currentValue(t.Context(), s.arn(t, name))
+	if err != nil {
 		t.Fatal("synthetic-value oracle failed")
 	}
-	return out.SecretString
+	return value
+}
+
+// A just-written AWSCURRENT can be visible to metadata before the independent
+// oracle can read it. Retry only ResourceNotFound for AWSCURRENT on this fixed
+// recorded ARN. Other refusals and the first visible value reach the caller
+// unchanged, so denial, decryption failure and a wrong value cannot look converged.
+func (s *realAWSSandbox) currentValue(ctx context.Context, arn string) (string, error) {
+	var last error
+	for attempt := range 3 {
+		if attempt > 0 {
+			timer := time.NewTimer(time.Duration(attempt) * 100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return "", ctx.Err()
+			case <-timer.C:
+			}
+		}
+		var out struct {
+			SecretString string `json:"SecretString"`
+		}
+		err := s.call(ctx, true, "GetSecretValue", arn, map[string]any{"VersionStage": "AWSCURRENT"}, &out)
+		if err == nil || !realAWSCode(err, "ResourceNotFoundException") {
+			return out.SecretString, err
+		}
+		last = err
+	}
+	return "", last
 }
 
 func (s *realAWSSandbox) clean(t *testing.T) {
