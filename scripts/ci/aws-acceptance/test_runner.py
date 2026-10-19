@@ -11,10 +11,13 @@ import time
 import unittest
 from unittest import mock
 
+import historical_cleanup
+
 
 SPEC = importlib.util.spec_from_file_location("aws_acceptance_runner", Path(__file__).with_name("runner.py"))
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
+OFFLINE_PREFIXES = ("hikyo-e2e-offline01/", "hikyo-e2e-offline02/")
 
 
 def approved_environment(now):
@@ -28,6 +31,7 @@ def approved_environment(now):
         "GITHUB_EVENT_NAME": "workflow_dispatch", "RUNNER_ENVIRONMENT": "github-hosted",
         "GITHUB_WORKFLOW_REF": runner.REPOSITORY + "/.github/workflows/aws-acceptance.yml@refs/heads/main",
         "AWS_ACCEPTANCE_AUTHORIZATION_ID": "approved-offline-fixture",
+        "AWS_ACCEPTANCE_RUN_PREFIX": OFFLINE_PREFIXES[0],
         "AWS_ACCEPTANCE_AUTH_EXPIRES_AT": expiry, "AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT": cleanup,
         "AWS_ACCEPTANCE_KMS_KEY_ARN": f"arn:aws:kms:{runner.REGION}:{runner.ACCOUNT}:key/11111111-2222-3333-4444-555555555555",
         "AWS_ACCEPTANCE_EXTERNAL_ID": "offline-fixture",
@@ -97,6 +101,39 @@ class ApprovalTests(unittest.TestCase):
         }, clear=True):
             self.assertEqual(runner.clean_environment(), {"PATH": "/usr/bin"})
 
+    def test_run_prefix_is_required_and_has_no_fallback_or_path_reuse_format(self):
+        now = time.time()
+        env = approved_environment(now)
+        del env["AWS_ACCEPTANCE_RUN_PREFIX"]
+        with self.assertRaises(runner.Refused):
+            runner.Approval(env, now)
+        for prefix in ("", "hikyo-e2e-short/", "hikyo-e2e-" + "a" * 33 + "/",
+                       "hikyo-e2e-UPPERCASE/", "other-e2e-offline01/",
+                       "hikyo-e2e-offline01", "hikyo-e2e-offline01//",
+                       "hikyo-e2e-offline01/again/", "hikyo-e2e-offline01/../",
+                       "hikyo-e2e-offline01/\n", " hikyo-e2e-offline01/"):
+            with self.subTest(prefix=prefix), self.assertRaises(runner.Refused):
+                runner.Approval({**env, "AWS_ACCEPTANCE_RUN_PREFIX": prefix}, now)
+        for prefix in (*OFFLINE_PREFIXES, "hikyo-e2e-" + "a" * 8 + "/",
+                       "hikyo-e2e-" + "z" * 32 + "/"):
+            with self.subTest(prefix=prefix):
+                self.assertEqual(runner.Approval({**env, "AWS_ACCEPTANCE_RUN_PREFIX": prefix}, now).prefix, prefix)
+        with self.assertRaises(runner.Refused):
+            runner.Approval({**env, "AWS_ACCEPTANCE_RUN_PREFIX": OFFLINE_PREFIXES[1],
+                             "GITHUB_RUN_ATTEMPT": "2"}, now)
+
+    def test_optional_historical_cleanup_is_empty_or_the_one_exact_full_arn(self):
+        now = time.time()
+        env = approved_environment(now)
+        self.assertEqual(runner.Approval(env, now).historical_cleanup_arn, "")
+        self.assertEqual(runner.Approval({**env, "AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN": historical_cleanup.ARN}, now).historical_cleanup_arn,
+                         historical_cleanup.ARN)
+        for arn in (historical_cleanup.ARN + "other", historical_cleanup.NAME, "*",
+                    historical_cleanup.ARN.replace("099256073061", "111122223333"),
+                    historical_cleanup.ARN + "\n"):
+            with self.subTest(arn=arn), self.assertRaises(runner.Refused):
+                runner.Approval({**env, "AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN": arn}, now)
+
     def test_private_file_replace_refuses_symlinks_and_preserves_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "descriptor"
@@ -115,8 +152,9 @@ class EvidenceTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / "evidence.json"
-        self.evidence = runner.Evidence(self.path, runner.Approval(approved_environment(time.time()), time.time()))
-        self.name = runner.PREFIX + "static/sqlite/document"
+        self.approval = runner.Approval(approved_environment(time.time()), time.time())
+        self.evidence = runner.Evidence(self.path, self.approval)
+        self.name = self.approval.prefix + "static/sqlite/document"
         self.arn = f"arn:aws:secretsmanager:{runner.REGION}:{runner.ACCOUNT}:secret:{self.name}-Ab0123"
 
     def output(self, output):
@@ -125,12 +163,45 @@ class EvidenceTests(unittest.TestCase):
     def emit_metadata(self, label, value):
         self.output("    aws_real_fixture_test.go:42: " + label + value + "\n")
 
-    def test_fixed_namespace_and_expected_suite_cases_remain_bounded(self):
-        self.assertEqual(runner.PREFIX, "hikyo-e2e-20261018b/")
+    def test_approved_namespace_and_expected_suite_cases_remain_bounded(self):
+        self.assertEqual(self.evidence.data["prefix"], self.approval.prefix)
         self.assertEqual(len(runner.TEST_NAMES), 46)
         self.assertEqual(self.evidence.data["maximum_create_reservations"], 32)
-        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.PREFIX, "hikyo-e2e-20261018a/"))
+        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(self.approval.prefix, OFFLINE_PREFIXES[1]))
         self.assertEqual(self.evidence.data["recorded_arns"], [])
+
+    def test_distinct_run_prefixes_isolate_all_creation_and_cleanup_metadata(self):
+        for index, prefix in enumerate(OFFLINE_PREFIXES):
+            with self.subTest(prefix=prefix):
+                now = time.time()
+                approval = runner.Approval({**approved_environment(now), "AWS_ACCEPTANCE_RUN_PREFIX": prefix}, now)
+                evidence = runner.Evidence(Path(self.directory.name) / f"isolated-{index}.json", approval)
+                name = prefix + "static/sqlite/document"
+                arn = f"arn:aws:secretsmanager:{runner.REGION}:{runner.ACCOUNT}:secret:{name}-Ab0123"
+                foreign_name = OFFLINE_PREFIXES[1-index] + "static/sqlite/document"
+                foreign_arn = arn.replace(name, foreign_name)
+                def emit(text):
+                    evidence.event({"Action": "output", "Test": runner.SUITE,
+                                    "Output": "    aws_real_fixture_test.go:42: " + text + "\n"})
+                emit("reserved synthetic AWS create: 1 " + foreign_name)
+                emit("recorded synthetic AWS resource: " + foreign_arn)
+                emit("verified synthetic AWS resource absent: " + foreign_arn)
+                emit("unresolved synthetic AWS create; reconcile name " + foreign_name + " before rerunning")
+                self.assertTrue(all(not evidence.data[key] for key in (
+                    "creation_reservations", "recorded_arns", "verified_absent_arns", "unresolved_names")))
+                emit("reserved synthetic AWS create: 1 " + name)
+                emit("recorded synthetic AWS resource: " + arn)
+                for test in runner.TEST_NAMES:
+                    evidence.event({"Action": "pass", "Test": test})
+                emit("verified synthetic AWS resource absent: " + foreign_arn)
+                self.assertFalse(evidence.finish(0, True))
+                emit("verified synthetic AWS resource absent: " + arn)
+                self.assertTrue(evidence.finish(0, True))
+                self.assertEqual(evidence.data["prefix"], prefix)
+                self.assertEqual(evidence.data["creation_reservations"], [name])
+                emit("unresolved synthetic AWS create; reconcile name " + name + " before rerunning")
+                self.assertEqual(evidence.data["unresolved_names"], [name])
+                self.assertFalse(evidence.finish(0, True))
 
     def test_diagnostic_token_error_keeps_only_structured_enums(self):
         self.output("    aws_real_diagnostics_test.go:42: synthetic AWS diagnostic: CreateSecret InvalidRequestException\n")
@@ -195,7 +266,8 @@ class EvidenceTests(unittest.TestCase):
     def test_metadata_allowlist_drops_raw_secrets_foreign_arns_and_unknown_test_names(self):
         self.output('synthetic-private {"secret_access_key":"synthetic-private"}\n')
         self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.ACCOUNT, "111122223333"))
-        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.PREFIX, "unapproved/"))
+        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(self.approval.prefix, "unapproved/"))
+        self.emit_metadata("recorded synthetic AWS resource: ", self.arn.replace(runner.REGION, "us-east-1"))
         self.evidence.event({"Action": "pass", "Test": runner.SUITE + "/synthetic-private"})
         raw = self.path.read_text()
         self.assertNotIn("synthetic-private", raw)
@@ -206,6 +278,8 @@ class EvidenceTests(unittest.TestCase):
     def test_create_reservations_preserve_retries_without_refunds(self):
         for count in range(1, 33):
             self.emit_metadata("reserved synthetic AWS create: ", f"{count} {self.name}")
+        self.assertEqual(len(self.evidence.data["creation_reservations"]), 32)
+        self.emit_metadata("reserved synthetic AWS create: ", f"1 {OFFLINE_PREFIXES[1]}static/sqlite/document")
         self.assertEqual(len(self.evidence.data["creation_reservations"]), 32)
         with self.assertRaises(runner.Refused):
             self.emit_metadata("reserved synthetic AWS create: ", f"33 {self.name}")
@@ -225,6 +299,19 @@ class EvidenceTests(unittest.TestCase):
         self.evidence.event({"Action": "skip", "Test": runner.SUITE + "/lifecycle/postgres"})
         self.assertFalse(self.evidence.finish(0, True))
 
+    def test_requested_historical_cleanup_cannot_be_hidden_by_new_suite_success(self):
+        for name in runner.TEST_NAMES:
+            self.evidence.event({"Action": "pass", "Test": name})
+        self.emit_metadata("reserved synthetic AWS create: ", f"1 {self.name}")
+        self.emit_metadata("recorded synthetic AWS resource: ", self.arn)
+        self.emit_metadata("verified synthetic AWS resource absent: ", self.arn)
+        self.evidence.data["historical_cleanup"] = historical_cleanup.state_for(historical_cleanup.ARN)
+        self.assertFalse(self.evidence.finish(0, True))
+        self.evidence.data["historical_cleanup"].update(status="already-absent", verified_absent=True)
+        self.assertTrue(self.evidence.finish(0, True))
+        self.assertEqual(self.evidence.data["recorded_arns"], [self.arn])
+        self.assertEqual(self.evidence.data["creation_reservations"], [self.name])
+
     def test_resource_registry_is_persisted_before_later_failure(self):
         self.emit_metadata("reserved synthetic AWS create: ", f"1 {self.name}")
         self.emit_metadata("recorded synthetic AWS resource: ", self.arn)
@@ -240,6 +327,97 @@ class EvidenceTests(unittest.TestCase):
 
 
 class SessionTests(unittest.TestCase):
+    def test_historical_delete_observes_durable_separate_runner_evidence_before_call(self):
+        now = time.time()
+        env = {**approved_environment(now), "AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN": historical_cleanup.ARN}
+        with tempfile.TemporaryDirectory() as directory:
+            approval = runner.Approval(env, now)
+            projection = runner.Projection(approval, Path(directory))
+            projection.cleanup_credentials = {"AccessKeyId": "synthetic-access", "SecretAccessKey": "synthetic-private-key",
+                                              "SessionToken": "synthetic-private-session"}
+            projection.cleanup_session_expiry = now + 14400
+            evidence = runner.Evidence(Path(directory) / "evidence.json", approval)
+            operations = []
+            def command(arguments, **options):
+                operation = arguments[arguments.index("secretsmanager") + 1]
+                operations.append(operation)
+                if operation == "delete-secret":
+                    persisted = json.loads(evidence.path.read_text())
+                    self.assertEqual(persisted["historical_cleanup"]["status"], "delete-intent-recorded")
+                    self.assertEqual(persisted["historical_cleanup"]["delete_attempts"], 1)
+                    intent = json.loads((evidence.path.parent / "historical-cleanup-intent.json").read_text())
+                    self.assertEqual(intent["run_id"], approval.run_id)
+                    return runner.subprocess.CompletedProcess([], 0, json.dumps({"ARN": historical_cleanup.ARN}).encode(), b"")
+                if len(operations) == 1:
+                    value = {"ARN": historical_cleanup.ARN, "Name": historical_cleanup.NAME,
+                             "KmsKeyId": historical_cleanup.KEY_ID, "DeletedDate": now + 86400}
+                    return runner.subprocess.CompletedProcess([], 0, json.dumps(value).encode(), b"")
+                return runner.subprocess.CompletedProcess([], 254, b"", b"An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: absent\n")
+            with mock.patch.object(runner.subprocess, "run", side_effect=command), \
+                 mock.patch.object(runner.os, "fsync", wraps=runner.os.fsync) as fsync:
+                projection.cleanup_historical(evidence)
+                self.assertGreaterEqual(fsync.call_count, 8)
+            self.assertEqual(operations, ["describe-secret", "delete-secret", "describe-secret"])
+            self.assertTrue(evidence.data["historical_cleanup"]["verified_absent"])
+            self.assertEqual(evidence.data["creation_reservations"], [])
+            self.assertEqual(evidence.data["recorded_arns"], [])
+            self.assertNotIn("synthetic-private", evidence.path.read_text())
+
+    def test_historical_cleanup_requires_a_verified_active_cleanup_role_session(self):
+        now = time.time()
+        env = {**approved_environment(now), "AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN": historical_cleanup.ARN}
+        with tempfile.TemporaryDirectory() as directory:
+            approval = runner.Approval(env, now)
+            projection = runner.Projection(approval, Path(directory))
+            evidence = runner.Evidence(Path(directory) / "evidence.json", approval)
+            with mock.patch.object(runner.historical_cleanup, "Cleanup") as helper:
+                with self.assertRaises(runner.Refused):
+                    projection.cleanup_historical(evidence)
+                helper.assert_not_called()
+            expiration = runner.dt.datetime.fromtimestamp(now + 14400, runner.dt.timezone.utc).isoformat()
+            credentials = {"AccessKeyId": "synthetic-access", "SecretAccessKey": "synthetic-private-key",
+                           "SessionToken": "synthetic-private-session", "Expiration": expiration}
+            foreign = {"Account": runner.ACCOUNT, "Arn": f"arn:aws:sts::{runner.ACCOUNT}:assumed-role/hikyo-158-static/session"}
+            with mock.patch.object(projection, "aws", side_effect=[{"Credentials": credentials}, foreign]), self.assertRaises(runner.Refused):
+                projection.session("cleanup", Path(directory) / "unused.jwt", 14400)
+            self.assertIsNone(projection.cleanup_credentials)
+            exact = {"Account": runner.ACCOUNT, "Arn": f"arn:aws:sts::{runner.ACCOUNT}:assumed-role/hikyo-158-cleanup/session"}
+            with mock.patch.object(projection, "aws", side_effect=[{"Credentials": credentials}, exact]):
+                projection.session("cleanup", Path(directory) / "unused.jwt", 14400)
+            with mock.patch.object(runner.historical_cleanup, "Cleanup") as helper:
+                projection.cleanup_historical(evidence)
+                helper.return_value.execute.assert_called_once_with(historical_cleanup.ARN)
+                self.assertEqual(helper.call_args.args[0]["AWS_ACCESS_KEY_ID"], "synthetic-access")
+                self.assertEqual(helper.call_args.args[3], approval.run_id)
+            projection.cleanup_session_expiry = now - 1
+            with self.assertRaises(runner.Refused):
+                projection.cleanup_historical(evidence)
+
+    def test_private_manifests_use_each_exact_approved_prefix_with_unchanged_scope(self):
+        for prefix in OFFLINE_PREFIXES:
+            with self.subTest(prefix=prefix), tempfile.TemporaryDirectory() as directory:
+                clock = [time.time()]
+                approval = runner.Approval({**approved_environment(clock[0]), "AWS_ACCEPTANCE_RUN_PREFIX": prefix}, clock[0])
+                projection = runner.Projection(approval, Path(directory))
+                def wait(seconds):
+                    clock[0] += seconds
+                    return False
+                def session(actor, token, duration):
+                    return {"mode": "static", "region": runner.REGION}, clock[0] + duration
+                with mock.patch.object(runner.time, "time", side_effect=lambda: clock[0]), \
+                     mock.patch.object(projection.stop, "wait", side_effect=wait), \
+                     mock.patch.object(projection, "token", side_effect=lambda name: (Path(directory) / name, clock[0] + 600)), \
+                     mock.patch.object(projection, "session", side_effect=session):
+                    projection.prepare()
+                manifest = json.loads((Path(directory) / "manifest.json").read_text())
+                self.assertEqual(manifest["prefix"], prefix)
+                self.assertEqual(manifest["account"], runner.ACCOUNT)
+                self.assertEqual(manifest["region"], runner.REGION)
+                self.assertEqual(manifest["budget_usd"], 1)
+                self.assertEqual(manifest["authorization_id"], approval.authorization)
+                self.assertEqual(manifest["kms_key_arn"], approval.kms)
+                self.assertEqual(set(manifest["writers"]), set(runner.MODES))
+
     def test_projection_refuses_any_nonapproved_subject_without_sts_or_secret_output(self):
         now = time.time()
         approval = runner.Approval(approved_environment(now), now)
@@ -298,6 +476,43 @@ class SessionTests(unittest.TestCase):
 
 
 class ChildOwnershipTests(unittest.TestCase):
+    def test_historical_refusal_holds_main_before_refresh_or_suite_process_creation(self):
+        now = time.time()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runner_temp = root / "runner-temp"
+            runner_temp.mkdir()
+            workspace = root / "workspace"
+            (workspace / "acceptance-candidate").mkdir(parents=True)
+            env = {**approved_environment(now), "AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN": historical_cleanup.ARN,
+                   "RUNNER_TEMP": str(runner_temp), "GITHUB_WORKSPACE": str(workspace)}
+            def prepare(projection):
+                projection.cleanup_credentials = {"AccessKeyId": "synthetic-access", "SecretAccessKey": "synthetic-private-key",
+                                                  "SessionToken": "synthetic-private-session"}
+                projection.cleanup_session_expiry = now + 14400
+            responses = [runner.subprocess.CompletedProcess([], 0, b"a" * 40 + b"\n"),
+                         runner.subprocess.CompletedProcess([], 0),
+                         runner.subprocess.CompletedProcess([], 254, b"", b"AccessDenied synthetic-private-canary")]
+            with mock.patch.dict(os.environ, env, clear=True), \
+                 mock.patch.object(sys, "argv", ["runner.py", "run"]), \
+                 mock.patch.object(runner.os, "geteuid", return_value=1000), \
+                 mock.patch.object(runner.signal, "signal"), \
+                 mock.patch.object(runner.subprocess, "run", side_effect=responses) as commands, \
+                 mock.patch.object(runner.subprocess, "Popen") as spawn, \
+                 mock.patch.object(runner.Projection, "prepare", prepare), \
+                 mock.patch.object(runner.Projection, "start_refresh") as refresh, \
+                 self.assertRaises(runner.Refused):
+                runner.main()
+            spawn.assert_not_called()
+            refresh.assert_not_called()
+            self.assertEqual(len(commands.call_args_list), 3)
+            raw = (runner_temp / "aws-acceptance-evidence/evidence.json").read_text()
+            evidence = json.loads(raw)
+            self.assertEqual(evidence["historical_cleanup"]["status"], "held-reconcile-before-new-suite")
+            self.assertEqual(evidence["creation_reservations"], [])
+            self.assertEqual(evidence["tests"], {})
+            self.assertNotIn("synthetic-private", raw)
+
     def test_post_spawn_faults_terminate_wait_and_close_the_real_child(self):
         # This is a harmless local sleeping process, never Go acceptance or a
         # provider client. Native process/pipe state verifies actual cleanup.
