@@ -817,9 +817,18 @@ func (q *queueController) readQueueSnapshot(ctx context.Context) (*queueData, er
 		} else if live.ID != part.ID {
 			return nil, &queueSnapshotChanged{reason: "merge queue identity changed between pages"}
 		}
+		pageEntries, pagePRs, pagePositions := make(map[string]bool), make(map[int]bool), make(map[int]bool)
 		for _, entry := range part.Entries.Nodes {
-			if entry.ID == "" || entry.PR.Number <= 0 || entry.Position <= 0 || seenEntries[entry.ID] || seenPRs[entry.PR.Number] || seenPositions[entry.Position] {
+			if entry.ID == "" || entry.PR.Number <= 0 || entry.Position <= 0 || pageEntries[entry.ID] || pagePRs[entry.PR.Number] || pagePositions[entry.Position] {
 				return nil, errors.New("duplicate or invalid paginated queue entry")
+			}
+			pageEntries[entry.ID], pagePRs[entry.PR.Number], pagePositions[entry.Position] = true, true, true
+		}
+		// A malformed page stays fatal even if an earlier entry also repeated
+		// across pages. Only movement between otherwise valid pages is retried.
+		for _, entry := range part.Entries.Nodes {
+			if seenEntries[entry.ID] || seenPRs[entry.PR.Number] || seenPositions[entry.Position] {
+				return nil, &queueSnapshotChanged{reason: fmt.Sprintf("queue entry repeated across pages: page=%d position=%d PR=%d", page, entry.Position, entry.PR.Number)}
 			}
 			seenEntries[entry.ID], seenPRs[entry.PR.Number], seenPositions[entry.Position] = true, true, true
 		}
@@ -925,18 +934,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 			err = errors.Join(writeErr, q.retiredGroup(ctx))
 			return
 		}
-		var moved *queueSnapshotChanged
-		if errors.As(err, &moved) {
-			// A merge or dequeue may have made this callback obsolete. Renew
-			// complete roles and retirement proof before creating a new blocker.
-			if retireErr := q.retiredGroup(ctx); retireErr != nil {
-				err = errors.Join(err, retireErr)
-				return
-			}
-			if q.queueRefresh != nil && q.queueRefresh.verifiedRetired {
-				_, err = fmt.Fprintln(q.output, "Merge group retired after queue movement:", moved.reason)
-			}
-		}
+		err = q.retireMovedGroup(ctx, err)
 	}()
 
 	// A valid callback establishes held-head identity. Final proof adds queue

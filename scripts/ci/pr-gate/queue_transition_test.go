@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,77 @@ func TestQueueSnapshotRecoveryHonorsDeadline(t *testing.T) {
 	}
 }
 
+func TestQueueSnapshotRestartsAfterCrossPageRepeat(t *testing.T) {
+	for _, field := range []string{"entry", "PR", "position"} {
+		for _, state := range []string{"settles", "persists"} {
+			t.Run(field+"/"+state, func(t *testing.T) {
+				f := newQueueFixture(t)
+				second, entries := f.paginatedQueue()
+				repeated := entries[100]
+				switch field {
+				case "entry":
+					repeated.ID = entries[99].ID
+				case "PR":
+					repeated.PR.Number = entries[99].PR.Number
+				case "position":
+					repeated.Position = entries[99].Position
+				}
+				f.api.responses[second] = queuePageResponse("QUEUE_MAIN", []queueEntry{repeated}, false, nil)
+				f.api.readHook = func(path string, n int) {
+					if state == "settles" && path == f.query && n == 2 {
+						f.api.responses[second] = queuePageResponse("QUEUE_MAIN", entries[100:], false, nil)
+					}
+				}
+				live, err := f.q.liveQueue(context.Background())
+				attempts := queueSnapshotAttempts
+				if state == "settles" {
+					attempts = 2
+					if err != nil || live == nil || len(live.Entries.Nodes) != len(entries) {
+						t.Fatalf("cross-page movement did not recover a complete snapshot: %v", err)
+					}
+				} else {
+					var moved *queueSnapshotChanged
+					if live != nil || !errors.As(err, &moved) {
+						t.Fatalf("persistent repetition did not remain a refused moving snapshot: %v", err)
+					}
+				}
+				if f.api.reads[f.query] != attempts || f.api.reads[second] != attempts || len(f.api.writes) != 0 {
+					t.Fatal("cross-page recovery did not restart the complete traversal within its read-only bound")
+				}
+			})
+		}
+	}
+}
+
+func TestQueueSnapshotDoesNotRetrySamePageDuplicates(t *testing.T) {
+	for _, field := range []string{"entry", "PR", "position"} {
+		t.Run(field, func(t *testing.T) {
+			f := newQueueFixture(t)
+			second, entries := f.paginatedQueue()
+			duplicate := entries[100]
+			switch field {
+			case "entry":
+				duplicate.ID = entries[99].ID
+			case "PR":
+				duplicate.PR.Number = entries[99].PR.Number
+			case "position":
+				duplicate.Position = entries[99].Position
+			}
+			// The first entry also repeats across pages. A later malformed
+			// entry in the same page must still fail before any retry.
+			f.api.responses[second] = queuePageResponse("QUEUE_MAIN", []queueEntry{entries[99], duplicate}, false, nil)
+			live, err := f.q.liveQueue(context.Background())
+			var moved *queueSnapshotChanged
+			if live != nil || err == nil || errors.As(err, &moved) || !strings.Contains(err.Error(), "duplicate or invalid") {
+				t.Fatalf("same-page duplicate was not rejected as malformed membership: %v", err)
+			}
+			if f.api.reads[f.query] != 1 || f.api.reads[second] != 1 || len(f.api.writes) != 0 {
+				t.Fatal("malformed membership was retried or wrote a check")
+			}
+		})
+	}
+}
+
 func TestQueuePersistentSnapshotGapRemainsBlocking(t *testing.T) {
 	f := newQueueFixture(t)
 	f.entry.Position = 2
@@ -98,12 +170,20 @@ func TestQueueSnapshotRecoveryDoesNotRetryInvalidIdentityOrTransport(t *testing.
 func TestQueueGroupGapAfterMergePreservesTerminalVerdict(t *testing.T) {
 	for _, gapReads := range []int{1, 3} {
 		t.Run(map[int]string{1: "settles during snapshot recovery", 3: "settles during retirement"}[gapReads], func(t *testing.T) {
-			testQueueGroupGapAfterMerge(t, gapReads)
+			testQueueGroupGapAfterMerge(t, gapReads, false, false)
 		})
 	}
 }
 
-func testQueueGroupGapAfterMerge(t *testing.T, gapReads int) {
+func TestQueueGroupWorkerGapAfterMergePreservesTerminalVerdict(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		t.Run(map[bool]string{false: "retired group", true: "active same-head PR"}[active], func(t *testing.T) {
+			testQueueGroupGapAfterMerge(t, queueSnapshotAttempts, true, active)
+		})
+	}
+}
+
+func testQueueGroupGapAfterMerge(t *testing.T, gapReads int, worker, active bool) {
 	t.Helper()
 	f := newQueueFixture(t)
 	if err := f.group(); err != nil {
@@ -111,6 +191,13 @@ func testQueueGroupGapAfterMerge(t *testing.T, gapReads int) {
 	}
 	prior := append([]check(nil), f.api.checks...)
 	writes := len(f.api.writes)
+	livePulls := []pull{}
+	if active {
+		p := f.pr
+		p.Number, p.Head.SHA = 8, f.groupRun.HeadSHA
+		livePulls = append(livePulls, p)
+	}
+	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = livePulls
 	nextRead := f.api.reads[f.query] + 1
 	f.api.readHook = func(path string, n int) {
 		if path != f.query {
@@ -120,13 +207,28 @@ func testQueueGroupGapAfterMerge(t *testing.T, gapReads int) {
 			moved := f.entry
 			moved.Position = 2
 			f.api.responses[f.query] = queuePageResponse("QUEUE_MAIN", []queueEntry{moved}, false, nil)
-			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{}
 		}
 		if n == nextRead+gapReads {
 			noRetirementRoles(f)
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = livePulls
 		}
 	}
-	if err := f.group(); err != nil {
+	var err error
+	if worker {
+		e := f.event
+		e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"group"}]`, f.groupRun.HeadSHA)
+		err = f.q.runHead(context.Background(), "workflow_dispatch", e, "group")
+	} else {
+		err = f.group()
+	}
+	if active {
+		latest := newestQueueCheck(f.api.checks)
+		if err == nil || !blockingQueueCheck(latest) || latest.Conclusion == "cancelled" {
+			t.Fatalf("movement retired or accepted an active same-head PR: %v %+v", err, latest)
+		}
+		return
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	if len(f.api.writes) != writes || len(f.api.checks) != len(prior) {

@@ -42,3 +42,37 @@ Heavy validation used the shared agent queue. Hosted CI and a live callback
 after publication have not been run. The original response bodies were not
 logged; regression coverage reproduces the observed controller behavior without
 claiming GitHub's internal update sequence is known.
+
+## PR #1002 review follow-through, 2026-10-19
+
+The merge babysitting request also covers review responses and CI repairs.
+Two source findings were confirmed with failing regressions before repair:
+
+- A repeated entry ID, PR number or position from an earlier page returned an
+  ordinary error, bypassing snapshot recovery. Six regression cases reproduced
+  this behavior for transient and persistent repetition. The reader now validates
+  the whole current page first, then classifies inter-page repetition as queue
+  movement. Malformed identities and duplicates within a single page remain
+  fatal, including a malformed page whose first entry also repeats across pages.
+  Persistent repetition still exhausts the same three-attempt read bound and
+  cannot supply a partial snapshot or mutate checks.
+- A group head worker could exhaust its initial role-read retries before reaching
+  `groupProof`, bypassing that callback's retirement recovery. A regression through
+  the production `runHead` entry point created a prior success, observed three
+  position gaps, then removed the obsolete group on the fourth queue read. It
+  failed before repair. The callback and the worker now share `retireMovedGroup`;
+  only fresh verified retirement clears the movement error. A companion active
+  same-head PR case continues to require a blocking verdict.
+
+The focused regression batch passes after repair. Independent Standards and
+Spec source reviews found no remaining actionable findings in the repair diff.
+The CodeRabbit 80% docstring warning is not an established repository rule;
+the new recovery logic includes explanatory comments. No check was disabled.
+Qodo remained billing-blocked and is not counted as a completed review.
+
+The full `scripts/ci/...` test suite, race checks for `pr-gate` and `queue-report`,
+and scoped vet all passed again after repair, using the same commands above.
+Structural graph refresh completed with the existing seventeen Astro parser
+warnings; documentation semantics were not regenerated. Hosted acceptance and
+live callback behavior still require protected merge-group evidence after
+publication. No release or deployment is part of the babysitting request.
