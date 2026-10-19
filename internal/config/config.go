@@ -519,7 +519,7 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 	if err != nil {
 		return nil, nil, err
 	}
-	if defaultKeys < 1 || defaultKeys > keyLimit {
+	if defaultKeys < 1 || defaultKeys > MaxKeysPerProjectCeiling || defaultKeys > keyLimit {
 		return nil, nil, fmt.Errorf("HIKYO_DEFAULT_KEYS_PER_PROJECT: must be between 1 and HIKYO_MAX_KEYS_PER_PROJECT (%d)", keyLimit)
 	}
 	cfg.DefaultKeysPerProject = int(defaultKeys)

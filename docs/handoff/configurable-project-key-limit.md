@@ -146,6 +146,20 @@ in an unrelated disposable-database negative fixture. Its full result is not
 claimed as passing. The timeout was not raised and no assertion was removed.
 The full negative-fixture architecture suite remains unverified locally.
 
+## CodeQL conversion follow-up
+
+CodeQL flagged the default-key count's uint32-to-int conversion because its
+ceiling was expressed only through the already bounded instance maximum.
+The parser now checks the absolute 10,000-key ceiling directly before the
+conversion, while retaining the separate default-versus-maximum check. Accepted
+values and error behavior are unchanged.
+
+Regression coverage includes large signed and unsigned 32-bit boundary inputs
+for both settings and successful parsing at the 10,000-key edge. The complete
+configuration and runtime-configuration test suites pass after this repair.
+Hosted CodeQL confirmation is pending at repair delivery; local parsing tests
+do not establish that the remote diagnostic has cleared.
+
 ## UI consistency pass
 
 The capacity section now uses the same stacked settings-row composition as the

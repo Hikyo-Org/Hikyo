@@ -13,6 +13,7 @@ func TestProjectKeyLimitConfiguration(t *testing.T) {
 	}{
 		{"", 10000}, {"1", 1}, {"2500", 2500}, {"10000", 10000},
 		{"0", 0}, {"-1", 0}, {"1.5", 0}, {"10001", 0}, {"unlimited", 0},
+		{"2147483647", 0}, {"2147483648", 0}, {"4294967295", 0}, {"4294967296", 0},
 	} {
 		t.Run("value="+tc.raw, func(t *testing.T) {
 			cfg, _, err := Load("server", []string{"--dev"}, env("HIKYO_MAX_KEYS_PER_PROJECT", tc.raw, "HIKYO_DEFAULT_KEYS_PER_PROJECT", "1"), nil)
@@ -47,6 +48,10 @@ func TestProjectKeyDefaultCannotExceedInstanceMaximum(t *testing.T) {
 	for _, values := range []map[string]string{
 		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "0"},
 		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "10001"},
+		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "2147483647"},
+		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "2147483648"},
+		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "4294967295"},
+		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "4294967296"},
 		{"HIKYO_DEFAULT_KEYS_PER_PROJECT": "2500", "HIKYO_MAX_KEYS_PER_PROJECT": "2000"},
 	} {
 		if err := ValidateManagedOwnerValues(values); err == nil {
@@ -66,5 +71,18 @@ func TestProjectKeyDefaultCannotExceedInstanceMaximum(t *testing.T) {
 	}
 	if updated.DefaultKeysPerProject != 2000 || updated.MaxKeysPerProject != 5000 {
 		t.Fatal("managed policy was not captured")
+	}
+}
+
+func TestProjectKeyDefaultAtAbsoluteCeiling(t *testing.T) {
+	cfg, _, err := Load("server", []string{"--dev"}, env(
+		"HIKYO_DEFAULT_KEYS_PER_PROJECT", "10000",
+		"HIKYO_MAX_KEYS_PER_PROJECT", "10000",
+	), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DefaultKeysPerProject != 10000 || cfg.MaxKeysPerProject != 10000 {
+		t.Fatalf("absolute ceiling did not round trip: default=%d maximum=%d", cfg.DefaultKeysPerProject, cfg.MaxKeysPerProject)
 	}
 }
