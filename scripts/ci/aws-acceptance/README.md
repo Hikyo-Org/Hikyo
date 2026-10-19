@@ -36,24 +36,34 @@ The environment approval controls are documented in
 ## Verify the bounded AWS fixture
 
 Use only the separately approved sandbox account `099256073061`, region
-`eu-central-1`, prefix `hikyo-e2e-20261018b/`, one customer KMS key and the eight
-exact fixture roles. Effective role grants and absolute policy deadlines must
-match the approved policy templates. No root or setup identity enters the
-runner or tests. The complete suite shares one ceiling of 32 CreateSecret
+`eu-central-1`, a separately approved fresh run prefix, one customer KMS key and
+the eight exact fixture roles. Set `AWS_ACCEPTANCE_RUN_PREFIX` on the protected
+environment to a whole value matching `hikyo-e2e-[a-z0-9]{8,32}/`. There is no
+default or fallback namespace. Effective role grants and absolute policy
+deadlines must match that exact prefix and the approved policy templates.
+No root or setup identity enters the runner or tests. The complete suite shares
+one ceiling of 32 CreateSecret
 reservations, including retries and failed attempts, and the approved gross
 usage target is USD 1. The recorded budget is not an instantaneous billing cap.
 
-The owner approved exactly one additional manual fixture and run in this fresh
-namespace. The prior `hikyo-e2e-20261018a/` attempt consumed 21 cumulative
-creation reservations. The approved combined ceiling is 53, with at most 32
-additional reservations; changing namespace does not reset or refund the prior
-21. This approval includes one replacement KMS key, the same eight roles, at
-most one OIDC provider, the protected environment and MFA-gated setup identity,
-followed by exact cleanup and seven-day key deletion. The old key remains
-scheduled for deletion. No recurring run, automatic retry or paid upgrade is
-authorized. The exact pending job still requires the owner's environment
-approval after candidate and effective-policy verification. The combined gross
-usage target remains USD 1 across attempts; actual billing is still unverified.
+The earlier two runs consumed 21 and 27 conservative creation reservations,
+48 combined. Their additional one-run authorization is consumed; unused room
+under its historical ceiling of 53 does not authorize another run. The
+`hikyo-e2e-20261018b/` namespace still has a secret PendingDeletion and must not
+be reused. A configurable prefix is a runner capability, not new numeric,
+resource, billing or execution authority. Every future run requires the owner's
+explicit additional allowance, a new unused namespace, matching effective
+policies and approval of its exact protected job. No recurring run, automatic
+retry or paid upgrade is authorized. Actual gross billing remains unverified.
+
+Keep the cumulative creation ledger across all namespaces. Changing the prefix
+never resets or refunds earlier reservations. The runner enforces 32 reservations
+within one run; the operator ledger enforces the separately approved lifetime
+allowance. Verify that a prefix has never been consumed before provisioning or
+approval, including failed, interrupted and ambiguous attempts. The candidate
+keys its exclusive single-use marker by account, region and the approved prefix;
+the runner preserves that marker after its suite exits. A fresh hosted runner
+does not replace the operator's cross-run namespace and cumulative-ledger checks.
 
 Use GitHub issuer `https://token.actions.githubusercontent.com`, audience
 `sts.amazonaws.com` and only this approved immutable subject:
@@ -88,9 +98,10 @@ and [AWS STS WebIdentity sessions](https://docs.aws.amazon.com/STS/latest/APIRef
 
 ## Set exact nonsecret environment variables
 
-Configure these eight variables on the protected environment. They must match
-the reviewed candidate and effective AWS policies. Never store credentials,
-JWTs or private descriptors in them.
+Configure these nine required variables and the optional historical-cleanup
+variable on the protected environment. They must match the reviewed candidate
+and effective AWS policies. Never store credentials, JWTs or private descriptors
+in them.
 
 | Variable | Required value |
 | --- | --- |
@@ -98,15 +109,67 @@ JWTs or private descriptors in them.
 | `AWS_ACCEPTANCE_APPROVED_SHA` | Full independently reviewed candidate commit. |
 | `AWS_ACCEPTANCE_APPROVED_RUN_ID` | Exact pending workflow run ID, set before human environment approval. |
 | `AWS_ACCEPTANCE_AUTHORIZATION_ID` | Approved scope reference, 1 to 128 characters from letters, digits and `._:/-`. |
+| `AWS_ACCEPTANCE_RUN_PREFIX` | Exact fresh namespace matching `hikyo-e2e-[a-z0-9]{8,32}/`, also bound in the effective policies and cumulative operator ledger. Required, with no default. |
 | `AWS_ACCEPTANCE_AUTH_EXPIRES_AT` | UTC ISO timestamp matching mutation policies; 55 to 120 minutes after startup. |
 | `AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT` | UTC ISO timestamp matching cleanup policies, from mutation expiry to at most two hours later. |
 | `AWS_ACCEPTANCE_KMS_KEY_ARN` | Exact approved single-region customer key ARN in the sandbox account and region. |
 | `AWS_ACCEPTANCE_EXTERNAL_ID` | Exact external ID shared by the source policy, AssumeRole trust and descriptor. |
+| `AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN` | Optional. Empty skips historical cleanup. A nonempty value must be the one exact ARN in the historical-cleanup section below. |
 
 Choose imminent activation times with room for candidate compilation, genuine
 session expiry preparation and the 30-minute test deadline. Recheck the exact
 policy deadlines and matching variables immediately before approval. An
 exhausted window is a refusal, not a reason to extend authority automatically.
+
+## Optional exact historical-secret cleanup
+
+This local capability does not grant live execution or additional creation
+allowance. The proposed first future protected job may, only after explicit
+owner approval and matching cleanup-role permissions, reconcile this one
+historical secret before the new suite can create anything:
+
+```text
+arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-20261018b/web-identity/postgres/role-document-vmN1Vj
+```
+
+Set the optional protected variable only for that exact approved run. The
+operator must durably claim the historical operation in the parent ledger,
+bind it to the exact pending GitHub run ID before human approval, and clear the
+variable for subsequent runs. The runner does not enforce a global once token
+across different hosted runners. There are no arbitrary ARN/prefix inputs or
+cleanup CLI arguments.
+
+After fresh authentication and genuine expiry preparation, this phase uses only
+the already verified `hikyo-158-cleanup` role session. DescribeSecret must return
+the exact ARN and name, a scheduled-deletion timestamp, and KMS key
+`10908b8d-fe54-40e3-9210-a3eefea709b6` as that exact ID or its full regional/account
+ARN. Strict ResourceNotFound from this exact read instead proves already absent,
+with zero DeleteSecret calls. AccessDenied, unknown error formats, malformed
+metadata and foreign resource/key fields all refuse.
+
+If the scheduled object exists, an exclusive nonsecret intent tied to the run ID
+and the separate evidence state are both fsynced, including their directories,
+before one DeleteSecret with ForceDeleteWithoutRecovery. AWS CLI maximum
+attempts is one. The delete response must return the exact ARN. Only then may
+up to six read-only DescribeSecret calls, separated by two-second waits, verify
+strict ResourceNotFound. Each call has at most a ten-second timeout and respects
+cancellation and the earlier of the fresh mutation/cleanup deadlines. A timeout,
+ambiguous delete, mismatched response or other refusal holds immediately,
+without delete retransmission or post-ambiguity polling. The new suite never
+starts on incomplete historical cleanup.
+
+Known plain and `aws: [ERROR]:` CLI service-error formats are accepted only with
+return code 254, empty stdout, the exact ResourceNotFoundException and
+DescribeSecret operation, and at most the literal zero-retry suffix. Other
+formats refuse; raw stderr, response bodies and credential values are withheld.
+The helper has no GetSecretValue, restore or KMS operation.
+
+Evidence records this phase under `historical_cleanup`, separate from all 46
+new-suite results, new reservations and new ARNs. `delete_attempts` is a durable
+claim count, not proof that AWS accepted a request; `verified_absent` is required
+before the new suite can pass. The earlier failed artifact remains immutable.
+Neither historical deletion nor a fresh prefix refunds previous reservations.
+The owner still reconciles the cumulative ledger and billing independently.
 
 ## Human approval is the final execution step
 
@@ -114,8 +177,9 @@ After local validation, independent security review and effective fixture
 policy verification pass, dispatch `aws-acceptance` on `main` with its required
 `reviewed_sha` input set to the exact reviewed candidate commit. The job must
 wait for its environment reviewer. Inspect the pending run, set its exact
-`AWS_ACCEPTANCE_APPROVED_RUN_ID`, and verify the two SHA pins, fixture scope,
-deadlines and environment protections. The human owner then approves that
+`AWS_ACCEPTANCE_APPROVED_RUN_ID`, and verify the two SHA pins, fresh run prefix,
+matching effective resource scope, cumulative reservations, deadlines and
+environment protections. The human owner then approves that
 concrete pending job. Dispatching alone is not approval to execute the fixture.
 
 The job starts isolated PostgreSQL 18 and compiles the candidate with private
@@ -156,11 +220,14 @@ ID authorization or remove the single-use marker to reset the creation budget.
 The runner never performs a prefix force-delete sweep. A provider write accepted
 before its exact ARN was recorded requires independent provenance checks.
 
-After reconciliation, the owner verifies exact synthetic secret absence,
-retires the fixture IAM roles/trusts, removes the dedicated CI access and the
-created OIDC provider, and schedules the dedicated KMS key's deletion with a
-seven-day waiting period. Pending KMS deletion must be reported as pending.
-These operator tasks are outside this runner.
+After each run, the owner reconciles exact synthetic secret absence and the
+cumulative ledger. Retaining fixture access while #158 remains open must follow
+the separately approved lifecycle and absolute deadlines; this runner cannot
+extend them. Final retirement removes the fixture IAM roles/trusts, dedicated
+CI access and created OIDC provider, and schedules the dedicated KMS key's
+deletion with a seven-day waiting period. Pending deletion remains pending;
+already scheduled keys are not restored by changing namespaces. These operator
+tasks are outside this runner.
 
 ## Offline checks
 

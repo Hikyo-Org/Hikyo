@@ -131,6 +131,11 @@ type realAWSDurable struct {
 func newRealAWSDurable(t *testing.T, db *store.DB, s *realAWSSandbox, mode string) *realAWSDurable {
 	t.Helper()
 	raw, _ := s.writer(t, mode) // identity proof precedes every mutation
+	return newRealAWSDurableFixture(t, db, s, mode, raw)
+}
+
+func newRealAWSDurableFixture(t *testing.T, db *store.DB, s *realAWSSandbox, mode, raw string) *realAWSDurable {
+	t.Helper()
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_real_aws_manage','usr_alice','manage-adapters','org_a','prj_a1',NULL,`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_real_aws_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
 	// Fixture declarations only; values and publication go through services.
@@ -224,6 +229,13 @@ func (h *realAWSDurable) publishVersions(versions []string) {
 
 func (h *realAWSDurable) drain() {
 	h.t.Helper()
+	h.drainWithFinishLoss(nil)
+}
+
+// Only the deliberate Finish-loss checkpoint may stop at its unresolved fence.
+// Every other worker error remains fatal, including marker-refusal and replay.
+func (h *realAWSDurable) drainWithFinishLoss(interrupted *bool) {
+	h.t.Helper()
 	for range 24 {
 		// Services enqueue against wall time, which can overtake the fixture
 		// clock during real provider calls. Preserve deliberate replay advances.
@@ -233,13 +245,20 @@ func (h *realAWSDurable) drain() {
 		h.clock = h.clock.Add(time.Second)
 		worked, err := h.worker.RunOnce(h.t.Context())
 		if err != nil {
+			if worked && interrupted != nil && realAWSFinishLossRefusal(err, *interrupted) {
+				return
+			}
 			h.t.Fatal("real AWS durable worker failed")
 		}
-		if !worked {
+		if !worked || (interrupted != nil && *interrupted) {
 			return
 		}
 	}
 	h.t.Fatal("real AWS worker did not drain within its bounded attempts")
+}
+
+func realAWSFinishLossRefusal(err error, interrupted bool) bool {
+	return interrupted && errors.Is(err, adapter.ErrSuperseded)
 }
 
 func (h *realAWSDurable) inspect(id string) store.AdapterTarget {
@@ -380,11 +399,11 @@ func (h *realAWSDurable) lifecycle() {
 	// A child exits immediately after the real provider accepts PutSecretValue,
 	// before any journal outcome. A second fresh process reopens the admitted
 	// SQL store and key hierarchy and resumes the same durable job.
-	before := len(h.metadata(jsonName).Stages)
+	before := h.metadata(jsonName)
 	jobID := h.resync(jsonTarget.ID)
-	h.processReplay(jsonTarget.ID, jsonName, jobID)
+	puts := h.processReplay(jsonTarget.ID, jsonName, jobID)
 	h.converged(jsonTarget.ID)
-	if len(h.metadata(jsonName).Stages) != before+1 {
+	if !realAWSAddedVersion(before, h.metadata(jsonName), jsonTarget.ID, puts) {
 		t.Fatal("process replay created a duplicate AWS version")
 	}
 	h.credentialFences(jsonTarget.ID, jsonName)
@@ -467,6 +486,8 @@ func (h *realAWSDurable) adoption() {
 	if _, err := h.svc.Adopt(t.Context(), service.LocalPrincipal(alice), domain.Scope{Org: orgA, Project: prjA1}, service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: plan.ArtifactID, ExpectedGeneration: target.Generation, ExpectedDestinationID: target.DestinationID, Entries: []store.AdapterConflictEntry{{Surface: string(adapter.Secret), EffectiveName: name}}}); err != nil {
 		t.Fatal("version-bound AWS adoption failed")
 	}
+	before := h.metadata(name)
+	putsBefore := len(h.s.recordedPutTokens(before.ARN))
 	h.losePut = true
 	h.drain()
 	if h.losePut || h.s.value(t, name) != "legacy synthetic" {
@@ -476,7 +497,8 @@ func (h *realAWSDurable) adoption() {
 	h.clock = h.clock.Add(adapter.RetryCap + time.Second)
 	h.drain()
 	h.converged(target.ID)
-	if len(h.metadata(name).Stages) != 2 || h.s.value(t, name) != `{"ALPHA":"sibling alpha","SHARED_KEY":"sibling synthetic"}` {
+	puts := h.s.recordedPutTokens(before.ARN)
+	if !realAWSAddedVersion(before, h.metadata(name), target.ID, puts[putsBefore:]) || h.s.value(t, name) != `{"ALPHA":"sibling alpha","SHARED_KEY":"sibling synthetic"}` {
 		t.Fatal("adoption replay did not converge exactly once")
 	}
 	h.remove(target.ID, false)

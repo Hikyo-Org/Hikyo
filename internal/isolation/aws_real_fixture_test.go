@@ -160,11 +160,12 @@ type realAWSSandbox struct {
 	dir             string
 	oracle, cleanup externalAWS
 	mu              sync.Mutex
-	owned           map[string]string // exact ARN -> name; never delete by a reusable name
-	current         map[string]string // name -> most recently recorded ARN; historical ARNs stay owned
-	creations       []string          // cumulative reservations, including failed/ambiguous creates; never refunded
-	replayOnly      bool              // child replay cannot create or reset the parent budget
-	ops             []string          // operation names only, no headers, descriptors, or values
+	owned           map[string]string   // exact ARN -> name; never delete by a reusable name
+	current         map[string]string   // name -> most recently recorded ARN; historical ARNs stay owned
+	creations       []string            // cumulative reservations, including failed/ambiguous creates; never refunded
+	replayOnly      bool                // child replay cannot create or reset the parent budget
+	ops             []string            // operation names only, no headers, descriptors, or values
+	putAttempts     map[string][]string // exact ARN -> sent version tokens; never values or credentials
 }
 
 func loadRealAWSSandbox(t *testing.T) *realAWSSandbox {
@@ -670,24 +671,74 @@ func (a *realAWSWriter) CreateSecret(ctx context.Context, in awssm.CreateSecretI
 	if _, err := a.DescribeSecret(ctx, in.Name); !awssm.IsNotFound(err) {
 		return errors.New("sandbox name is not provably unused")
 	}
-	err := a.API.CreateSecret(ctx, in)
+	creator, ok := a.API.(interface {
+		CreateSecretIdentity(context.Context, awssm.CreateSecretInput, string) (awssm.CreatedSecret, error)
+	})
+	if !ok {
+		return errors.New("sandbox writer cannot retain creation identity")
+	}
+	created, err := creator.CreateSecretIdentity(ctx, in, a.s.manifest.Account)
 	logRealAWSDiagnostic(a.t, "CreateSecret", err)
-	meta, describeErr := a.DescribeSecret(ctx, in.Name)
-	if describeErr == nil && meta.Tags[adapter.SentinelName] == in.Tags[adapter.SentinelName] && in.Tags[adapter.SentinelName] != "" {
-		if rememberErr := a.s.remember(in.Name, meta.ARN); rememberErr != nil {
+	if err == nil {
+		// The response binds account, region and name before any metadata read.
+		// Even persistent observation failure must leave cleanup custody intact.
+		if rememberErr := a.s.remember(in.Name, created.ARN); rememberErr != nil {
 			return rememberErr
 		}
-	} else if err == nil || !awssm.IsDefinite(err) {
-		// An ambiguous create can outlive this process. Report only its
-		// synthetic name; never force-delete a name without a verified ARN.
+		return a.observeCreated(ctx, created, in.Tags[adapter.SentinelName])
+	}
+	if errors.Is(err, adapter.ErrDestinationID) {
 		if a.s.t != nil {
 			a.s.t.Errorf("unresolved synthetic AWS create; reconcile name %s before rerunning", in.Name)
 		}
-		if err == nil {
-			return errors.New("created resource identity could not be recorded for cleanup")
+		return err
+	}
+	// An uncertain create still needs reconciliation. Never retry a write.
+	meta, describeErr := a.DescribeSecret(ctx, in.Name)
+	if describeErr == nil && meta.Name == in.Name && meta.Tags[adapter.SentinelName] == in.Tags[adapter.SentinelName] && in.Tags[adapter.SentinelName] != "" {
+		if rememberErr := a.s.remember(in.Name, meta.ARN); rememberErr != nil {
+			return rememberErr
 		}
+	} else if !awssm.IsDefinite(err) && a.s.t != nil {
+		a.s.t.Errorf("unresolved synthetic AWS create; reconcile name %s before rerunning", in.Name)
 	}
 	return err
+}
+
+// Only missing metadata or a missing owner tag may lag successful creation.
+// Every observation uses the recorded complete ARN. Foreign identity or a
+// present foreign owner is a hard refusal, never a reason to wait or rewrite.
+func (a *realAWSWriter) observeCreated(ctx context.Context, created awssm.CreatedSecret, owner string) error {
+	if owner == "" {
+		return errors.New("sandbox creation lacks an expected owner")
+	}
+	for attempt := 0; attempt < 3; attempt++ {
+		meta, err := a.DescribeSecret(ctx, created.ARN)
+		if err == nil {
+			if meta.ARN != created.ARN || meta.Name != created.Name || meta.Deleted {
+				return errors.New("created resource metadata identity mismatch")
+			}
+			actualOwner, present := meta.Tags[adapter.SentinelName]
+			if present {
+				if actualOwner != owner {
+					return errors.New("created resource owner mismatch")
+				}
+				return nil
+			}
+		} else if !awssm.IsNotFound(err) {
+			return err
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+	}
+	return errors.New("created resource owner metadata did not become visible")
 }
 
 func (a *realAWSWriter) mutation(id, operation string) error {
@@ -706,6 +757,12 @@ func (a *realAWSWriter) PutSecretValue(ctx context.Context, id, token, value str
 	if err := a.mutation(id, "PutSecretValue"); err != nil {
 		return err
 	}
+	a.s.mu.Lock()
+	if a.s.putAttempts == nil {
+		a.s.putAttempts = make(map[string][]string)
+	}
+	a.s.putAttempts[id] = append(a.s.putAttempts[id], token)
+	a.s.mu.Unlock()
 	if err := a.API.PutSecretValue(ctx, id, token, value); err != nil {
 		logRealAWSDiagnostic(a.t, "PutSecretValue", err)
 		return err
@@ -720,6 +777,12 @@ func (a *realAWSWriter) PutSecretValue(ctx context.Context, id, token, value str
 		return errors.New("test lost response after the real provider accepted the value")
 	}
 	return nil
+}
+
+func (s *realAWSSandbox) recordedPutTokens(arn string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.putAttempts[arn]...)
 }
 func (a *realAWSWriter) UpdateSecretVersionStage(ctx context.Context, id, stage, to, from string) error {
 	if err := a.mutation(id, "UpdateSecretVersionStage"); err != nil {

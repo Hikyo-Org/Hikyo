@@ -15,7 +15,72 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Current continuation, 2026-10-19
+## Revalidation preparation, 2026-10-19
+
+The owner requested continued work until AWS acceptance passes and reuse of
+access while #158 remains open. The previously retired setup identity and
+fixture have not been recreated. The saved owner Playwright session was
+recovered by navigating its blank tab, then verified against account
+`099256073061` in `eu-central-1`. No login cookies or credentials were exported.
+This owner session is for setup and read-only investigation; acceptance still
+uses the dedicated non-root roles. Billing showed USD 0.00 estimated charges
+on the Free plan, which does not establish final gross usage.
+
+The owner approved the reusable numerical/resource package: at most three
+additional manually approved runs, 32 creations each,
+96 additional and 144 lifetime reservations, one new key, the same eight roles,
+at most one OIDC provider and the dedicated protected environment. It also
+includes one cleanup-role-only force deletion of the exact historical pending
+secret below before any new suite creation. The combined USD 1 gross usage
+target, existing key deletion schedules and human deployment approval remain.
+This explicitly raises the former lifetime creation ceiling from 53 to 144;
+the 48 previous reservations remain consumed. Root recorded the decision and
+the previous ledger hash separately. No additional run has executed, and no
+new AWS fixture or effective policy has been deployed. Each exact protected
+job still requires human deployment approval. Retention grants no recurring
+run or automatic retry authority.
+
+Local revalidation replaces labelled-version counts with exact sent-token,
+current/predecessor, owner and completion-marker checks. DescribeSecret omits
+unlabelled versions, so an unchanged map size can still represent one correct
+new delivery, consistent with the [AWS DescribeSecret response contract](https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_DescribeSecret.html#SecretsManager-DescribeSecret-response-VersionIdsToStages).
+A bounded metadata-only child receipt preserves the same proof
+across the existing hard process exit and fresh-process replay. Creation now
+retains the validated response ARN before observing eventually consistent
+owner metadata; it never repeats CreateSecret or refunds a reservation.
+Untrusted successful identities remain explicit unresolved cleanup holds.
+The [CreateSecret response contract](https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_CreateSecret.html#API_CreateSecret_ResponseElements)
+supplies the new ARN and name without a value read.
+
+A controlled SQL/TLS regression also reproduces the deliberate Finish-loss
+fault returning ErrSuperseded during settlement. The real fixture previously
+rejected every drain error. Its narrow exception requires a worked job and
+the confirmed explicit Finish-loss injector; ordinary worker, marker-refusal
+and recovery errors remain refusals. These are local fixture observations,
+not a passing real-provider rerun or an explanation of every old failure.
+
+The repaired provider passes 166 checks in each normal and race execution.
+The final focused fixture race run passes all 60 records with no skips,
+including actual Finish-loss recovery on SQLite and PostgreSQL 18. The normal
+full lint gate passes 377 records, with only the intentional reviewed-pin
+updater test skipped; vet, whitespace checks and the AST graph refresh pass.
+The historical AssumeRole/SQLite failure remains unresolved. These local
+results do not replace real AWS acceptance of the next reviewed candidate.
+
+The trusted runner now requires a fresh protected run prefix with no fallback
+and has an optional, exact-ARN historical cleanup phase. That phase uses only
+verified cleanup-role credentials, durable intent/evidence before at most one
+force-delete transmission, and bounded read-only absence checks. Ambiguity
+holds before the new suite starts. Its 37 offline tests, actionlint and AST
+checks pass, with independent security review finding no remaining material
+source issue. The pure local reuse-policy/admission draft has 16 passing
+offline cases and independent source review; actual durable orchestration,
+proof inputs, effective-policy readbacks and real acceptance remain open.
+The trusted-runner [bootstrap PR #1006](https://github.com/Hikyo-Org/Hikyo/pull/1006)
+must merge separately before main can execute this capability. Source merge
+and approved live execution remain separate gates.
+
+## Earlier continuation and completed retirement, 2026-10-19
 
 This section supersedes the resource and authorization states in the historical
 sections below. Issue #158 remains open and feature PR #969 remains draft.

@@ -37,6 +37,7 @@ type awsReplayInput struct {
 	Current         map[string]string
 	Creations       []string
 	TargetID, JobID string
+	ProofARN        string
 	CrashARN        string
 	Clock           time.Time
 }
@@ -53,7 +54,7 @@ func (l awsReplayLoader) Load(ctx context.Context, job adapter.Job, journal adap
 	return l.awsRealLoader.Load(ctx, job, journal)
 }
 
-func (h *realAWSDurable) processReplay(targetID, name, jobID string) {
+func (h *realAWSDurable) processReplay(targetID, name, jobID string) []string {
 	t := h.t
 	root, err := (probeRootSource{db: h.db}).Current(t.Context())
 	if err != nil {
@@ -100,7 +101,7 @@ func (h *realAWSDurable) processReplay(targetID, name, jobID string) {
 	}
 	creations := append([]string(nil), h.s.creations...)
 	h.s.mu.Unlock()
-	input := awsReplayInput{Store: cfg, Material: material, Root: root, Manifest: h.s.manifest, Owned: owned, Current: current, Creations: creations, TargetID: targetID, JobID: jobID, Clock: h.clock.Add(time.Second), CrashARN: h.s.arn(t, name)}
+	input := awsReplayInput{Store: cfg, Material: material, Root: root, Manifest: h.s.manifest, Owned: owned, Current: current, Creations: creations, TargetID: targetID, JobID: jobID, Clock: h.clock.Add(time.Second), ProofARN: h.s.arn(t, name), CrashARN: h.s.arn(t, name)}
 	// The original worker stops here. Two distinct OS processes perform the
 	// uncertain write and recovery; neither inherits its pointers or keyring.
 	ledgerQuery := fmt.Sprintf(`SELECT id FROM adapter_ledger WHERE target_id='%s' AND surface='secret' AND effective_name='%s' AND state='owned'`, targetID, name)
@@ -109,21 +110,94 @@ func (h *realAWSDurable) processReplay(targetID, name, jobID string) {
 		t.Fatal("process replay requires existing exact owned custody")
 	}
 	h.worker = nil
-	h.runReplayChild(input, awsReplayCrashExit)
+	crashed := h.runReplayChild(input, awsReplayCrashExit)
 	if queryInt(t, h.db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE id='%s' AND target_id='%s' AND surface='secret' AND effective_name='%s' AND state='owned'`, ledgerID, targetID, name)) != 1 || queryInt(t, h.db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE job_id='%s' AND target_id='%s' AND surface='secret' AND effective_name='%s' AND outcome IS NULL`, jobID, targetID, name)) != 1 {
 		t.Fatal("hard process exit did not retain exact owned custody and unfinished intent")
 	}
 	input.CrashARN = ""
 	input.Clock = input.Clock.Add(adapter.LeaseTime + adapter.RetryCap + time.Second)
-	h.runReplayChild(input, 0)
+	recovered := h.runReplayChild(input, 0)
 	if queryInt(t, h.db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE job_id='%s' AND outcome='unknown'`, jobID)) != 1 || queryInt(t, h.db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE job_id='%s' AND outcome='success'`, jobID)) != 1 {
 		t.Fatal("fresh process failed to close the crash window and finish the same job")
 	}
 	h.clock = input.Clock.Add(time.Minute)
 	h.restartWorker()
+	tokens := append(append([]string(nil), crashed.PutTokens...), recovered.PutTokens...)
+	if len(crashed.PutTokens) != 1 || !realAWSOneToken(tokens) {
+		t.Fatal("process replay did not retain exactly one distinct write token")
+	}
+	return tokens
 }
 
-func (h *realAWSDurable) runReplayChild(input awsReplayInput, expectedExit int) {
+// Only this allowlist crosses the child's output pipe. Values, credentials and
+// other test output remain discarded, including on a failing child process.
+type awsReplayReceipt struct {
+	JobID     string
+	ARN       string
+	PutTokens []string
+}
+
+const awsReplayReceiptLimit = 4096
+
+func decodeAWSReplayReceipt(raw []byte, jobID, arn string) (awsReplayReceipt, error) {
+	var receipt awsReplayReceipt
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if len(raw) > awsReplayReceiptLimit || decoder.Decode(&receipt) != nil || decoder.Decode(new(any)) != io.EOF || receipt.JobID != jobID || receipt.ARN != arn || len(receipt.PutTokens) > 32 {
+		return awsReplayReceipt{}, errors.New("invalid bounded process replay receipt")
+	}
+	for _, token := range receipt.PutTokens {
+		if len(token) != 64 || strings.Trim(token, "0123456789abcdef") != "" {
+			return awsReplayReceipt{}, errors.New("invalid process replay write token")
+		}
+	}
+	if len(receipt.PutTokens) != 0 && !realAWSOneToken(receipt.PutTokens) {
+		return awsReplayReceipt{}, errors.New("process replay wrote distinct tokens")
+	}
+	return receipt, nil
+}
+
+func realAWSOneToken(tokens []string) bool {
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, token := range tokens {
+		if token != tokens[0] {
+			return false
+		}
+	}
+	return true
+}
+
+func writeAWSReplayReceipt(t *testing.T, input awsReplayInput, s *realAWSSandbox) {
+	t.Helper()
+	pipe := os.NewFile(3, "aws-replay-metadata")
+	if pipe == nil {
+		t.Fatal("missing replay metadata pipe")
+	}
+	s.mu.Lock()
+	for arn, tokens := range s.putAttempts {
+		if arn != input.ProofARN && len(tokens) != 0 {
+			s.mu.Unlock()
+			pipe.Close()
+			t.Fatal("replay child attempted a write outside its proof resource")
+		}
+	}
+	s.mu.Unlock()
+	receipt := awsReplayReceipt{JobID: input.JobID, ARN: input.ProofARN, PutTokens: s.recordedPutTokens(input.ProofARN)}
+	raw, err := json.Marshal(receipt)
+	if err != nil || len(raw) > awsReplayReceiptLimit {
+		pipe.Close()
+		t.Fatal("invalid replay metadata receipt")
+	}
+	_, writeErr := pipe.Write(raw)
+	closeErr := pipe.Close()
+	if writeErr != nil || closeErr != nil {
+		t.Fatal("cannot return replay metadata receipt")
+	}
+}
+
+func (h *realAWSDurable) runReplayChild(input awsReplayInput, expectedExit int) awsReplayReceipt {
 	t := h.t
 	raw, err := json.Marshal(input)
 	if err != nil || len(raw) > 128<<10 {
@@ -145,10 +219,34 @@ func (h *realAWSDurable) runReplayChild(input awsReplayInput, expectedExit int) 
 		}
 	}
 	cmd.Env = append(cmd.Env, awsReplayChildEnv+"=approved")
+	reader, writer, pipeErr := os.Pipe()
+	if pipeErr != nil {
+		t.Fatal("cannot create replay metadata pipe")
+	}
+	defer reader.Close()
+	defer writer.Close()
+	cmd.ExtraFiles = []*os.File{writer}
+	type pipeResult struct {
+		raw []byte
+		err error
+	}
+	result := make(chan pipeResult, 1)
+	go func() {
+		defer reader.Close()
+		out, readErr := io.ReadAll(io.LimitReader(reader, awsReplayReceiptLimit+1))
+		result <- pipeResult{raw: out, err: readErr}
+	}()
 	cmd.Stdin = bytes.NewReader(raw)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	cmd.WaitDelay = 3 * time.Second
-	err = cmd.Run()
+	if err = cmd.Start(); err != nil {
+		writer.Close()
+		reader.Close()
+		<-result
+		t.Fatal("replay process did not start")
+	}
+	writer.Close() // only the child retains the write end
+	err = cmd.Wait()
 	exitCode := 0
 	if err != nil {
 		var exited *exec.ExitError
@@ -159,6 +257,17 @@ func (h *realAWSDurable) runReplayChild(input awsReplayInput, expectedExit int) 
 	}
 	if ctx.Err() != nil || exitCode != expectedExit {
 		t.Fatalf("replay process exit=%d; expected=%d", exitCode, expectedExit)
+	}
+	select {
+	case out := <-result:
+		receipt, receiptErr := decodeAWSReplayReceipt(out.raw, input.JobID, input.ProofARN)
+		if out.err != nil || receiptErr != nil {
+			t.Fatal("replay child returned invalid metadata evidence")
+		}
+		return receipt
+	case <-ctx.Done():
+		t.Fatal("replay metadata pipe did not close within process deadline")
+		return awsReplayReceipt{}
 	}
 }
 
@@ -189,7 +298,10 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 		t.Fatal("invalid original replay custody reservations")
 	}
 	s.t = t
-	if input.CrashARN != "" && (!strings.HasPrefix(s.owned[input.CrashARN], input.Manifest.Prefix+"static/") || input.Current[s.owned[input.CrashARN]] != input.CrashARN) {
+	if !strings.HasPrefix(s.owned[input.ProofARN], input.Manifest.Prefix+"static/") || input.Current[s.owned[input.ProofARN]] != input.ProofARN {
+		t.Fatal("invalid replay proof resource identity")
+	}
+	if input.CrashARN != "" && (input.CrashARN != input.ProofARN || !strings.HasPrefix(s.owned[input.CrashARN], input.Manifest.Prefix+"static/") || input.Current[s.owned[input.CrashARN]] != input.CrashARN) {
 		t.Fatal("invalid replay crash resource identity")
 	}
 	admission, err := upgradegate.RunDevelopment(t.Context(), upgradegate.Request{
@@ -217,7 +329,8 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 	if input.CrashARN != "" {
 		h.afterPut = func(_ context.Context, arn string) error {
 			if arn == input.CrashARN {
-				// Deliberately bypass every defer, including journal Finish.
+				// Retain exact write metadata, then bypass every defer, including journal Finish.
+				writeAWSReplayReceipt(t, input, s)
 				os.Exit(awsReplayCrashExit)
 			}
 			return errors.New("unexpected replay write identity")
@@ -225,6 +338,7 @@ func TestAWSSecretsManagerReplayProcess(t *testing.T) {
 	}
 	h.drain()
 	h.converged(input.TargetID)
+	writeAWSReplayReceipt(t, input, s)
 }
 
 // Import original reservations without allocating a fresh budget. Historical
@@ -312,5 +426,48 @@ func TestAWSRealReplayCustodyImport(t *testing.T) {
 				t.Fatal("invalid custody import accepted")
 			}
 		})
+	}
+}
+
+func TestAWSRealReplayReceiptGuards(t *testing.T) {
+	jobID, arn, token := "offline-replay-job", "arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-offline123/static/document-AbCd12", strings.Repeat("a", 64)
+	encode := func(receipt awsReplayReceipt) []byte {
+		raw, err := json.Marshal(receipt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	valid := awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: []string{token}}
+	for _, scenario := range []struct {
+		name string
+		raw  []byte
+		want bool
+	}{
+		{"one write", encode(valid), true},
+		{"metadata-only recovery", encode(awsReplayReceipt{JobID: jobID, ARN: arn}), true},
+		{"idempotent retry", encode(awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: []string{token, token}}), true},
+		{"different job", encode(awsReplayReceipt{JobID: "other", ARN: arn, PutTokens: []string{token}}), false},
+		{"different ARN", encode(awsReplayReceipt{JobID: jobID, ARN: arn + "foreign", PutTokens: []string{token}}), false},
+		{"different version", encode(awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: []string{token, strings.Repeat("b", 64)}}), false},
+		{"invalid token", encode(awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: []string{"not-a-version"}}), false},
+		{"nonhex token", encode(awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: []string{strings.Repeat("z", 64)}}), false},
+		{"too many writes", encode(awsReplayReceipt{JobID: jobID, ARN: arn, PutTokens: strings.Fields(strings.Repeat(token+" ", 33))}), false},
+		{"extra data", append(encode(valid), []byte(` {}`)...), false},
+		{"nonallowlisted field", []byte(`{"JobID":"` + jobID + `","ARN":"` + arn + `","PutTokens":[],"SecretString":"synthetic-forbidden"}`), false},
+		{"oversized", []byte(strings.Repeat(" ", awsReplayReceiptLimit+1)), false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			receipt, err := decodeAWSReplayReceipt(scenario.raw, jobID, arn)
+			if (err == nil) != scenario.want {
+				t.Fatal("bounded receipt acceptance differed from exact metadata contract")
+			}
+			if err == nil && (receipt.JobID != jobID || receipt.ARN != arn) {
+				t.Fatal("receipt lost job/resource binding")
+			}
+		})
+	}
+	if realAWSOneToken(nil) || realAWSOneToken([]string{token, strings.Repeat("b", 64)}) || !realAWSOneToken([]string{token, token}) {
+		t.Fatal("cross-process aggregation lost distinct-version proof")
 	}
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -122,10 +124,13 @@ func runRealAWSAdoptionWitness(t *testing.T, s *realAWSSandbox) {
 				if scenario != "version-before-adopt" {
 					mutate()
 				}
-				before, versions := s.value(t, name), len(h.metadata(name).Stages)
+				beforeMetadata := h.metadata(name)
+				before := s.value(t, name)
+				putsBefore := len(s.recordedPutTokens(beforeMetadata.ARN))
 				h.drain()
 				state := h.inspect(target.ID)
-				if state.Health() == adapter.HealthConverged || state.LastErrorClass != adapter.ErrorClassConflict || s.value(t, name) != before || len(h.metadata(name).Stages) != versions {
+				refused := h.metadata(name)
+				if state.Health() == adapter.HealthConverged || state.LastErrorClass != adapter.ErrorClassConflict || s.value(t, name) != before || !realAWSSameCurrent(beforeMetadata, refused) || len(s.recordedPutTokens(beforeMetadata.ARN)) != putsBefore {
 					t.Fatal("stale adoption consent overwrote an unreviewed AWS resource/version")
 				}
 				if queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'`, target.ID)) != 1 {
@@ -135,7 +140,8 @@ func runRealAWSAdoptionWitness(t *testing.T, s *realAWSSandbox) {
 				h.adoptPlan(state, fresh.ArtifactID, name)
 				h.drain()
 				h.converged(target.ID)
-				if len(h.metadata(name).Stages) != versions+1 || s.value(t, name) != `{"ALPHA":"witness alpha","SHARED_KEY":"witness source"}` {
+				puts := s.recordedPutTokens(beforeMetadata.ARN)
+				if !realAWSAddedVersion(beforeMetadata, h.metadata(name), target.ID, puts[putsBefore:]) || s.value(t, name) != `{"ALPHA":"witness alpha","SHARED_KEY":"witness source"}` {
 					t.Fatal("fresh real adoption did not recover exactly once")
 				}
 				h.remove(target.ID, false)
@@ -144,6 +150,64 @@ func runRealAWSAdoptionWitness(t *testing.T, s *realAWSSandbox) {
 			})
 		})
 	}
+}
+
+// DescribeSecret omits unlabelled versions. Observe the exact write token and
+// current/previous identities instead of treating labelled entries as a count
+// of all versions. Repeating one token is idempotent; a second distinct token
+// proves an additional version and must fail.
+func realAWSPromotedVersion(before, after awssm.SecretMetadata, targetID string, puts []string) bool {
+	if len(puts) == 0 || len(puts[0]) != 64 || before.ARN != after.ARN || before.Name != after.Name || after.Tags[adapter.SentinelName] != targetID || targetID == "" {
+		return false
+	}
+	token, predecessor := puts[0], realAWSCurrentVersion(before)
+	for _, attempt := range puts {
+		if attempt != token {
+			return false
+		}
+	}
+	return predecessor != "" && predecessor != token &&
+		realAWSCurrentVersion(after) == token &&
+		slices.Contains(after.Stages[predecessor], "AWSPREVIOUS")
+}
+
+func realAWSAddedVersion(before, after awssm.SecretMetadata, targetID string, puts []string) bool {
+	marker, unique := realAWSStageVersion(after, awssm.CurrentStage)
+	return realAWSPromotedVersion(before, after, targetID, puts) && unique && marker == puts[0] && after.Tags[awssm.VersionTag] == puts[0]
+}
+
+func realAWSMarkerRefused(before, after awssm.SecretMetadata, targetID string, puts []string) bool {
+	oldMarker, oldUnique := realAWSStageVersion(before, awssm.CurrentStage)
+	marker, unique := realAWSStageVersion(after, awssm.CurrentStage)
+	return realAWSPromotedVersion(before, after, targetID, puts) && oldUnique && unique && marker == oldMarker && marker != puts[0] && after.Tags[awssm.VersionTag] == realAWSCurrentVersion(before)
+}
+
+func realAWSStageVersion(meta awssm.SecretMetadata, stage string) (string, bool) {
+	found := ""
+	for version, stages := range meta.Stages {
+		if slices.Contains(stages, stage) {
+			if found != "" {
+				return "", false
+			}
+			found = version
+		}
+	}
+	return found, true
+}
+
+func realAWSCurrentVersion(meta awssm.SecretMetadata) string {
+	current, unique := realAWSStageVersion(meta, "AWSCURRENT")
+	if !unique {
+		return ""
+	}
+	return current
+}
+
+func realAWSSameCurrent(before, after awssm.SecretMetadata) bool {
+	current := realAWSCurrentVersion(before)
+	marker, unique := realAWSStageVersion(before, awssm.CurrentStage)
+	afterMarker, afterUnique := realAWSStageVersion(after, awssm.CurrentStage)
+	return unique && afterUnique && marker == afterMarker && current != "" && before.ARN == after.ARN && before.Name == after.Name && realAWSCurrentVersion(after) == current && before.Tags[adapter.SentinelName] == after.Tags[adapter.SentinelName] && before.Tags[awssm.VersionTag] == after.Tags[awssm.VersionTag]
 }
 
 func runRealAWSPromotedReplay(t *testing.T, s *realAWSSandbox) {
@@ -157,6 +221,7 @@ func runRealAWSPromotedReplay(t *testing.T, s *realAWSSandbox) {
 				target := h.create(name, adapter.JSONObject)
 				plan := h.planAdoption(target)
 				h.adoptPlan(target, plan.ArtifactID, name)
+				before := h.metadata(name)
 				observer := &awsAdoptionReplayLoader{Loader: h.worker.Loader, t: t, targetID: target.ID}
 				h.worker.Loader = observer
 				interrupted := false
@@ -171,12 +236,21 @@ func runRealAWSPromotedReplay(t *testing.T, s *realAWSSandbox) {
 				} else {
 					h.failCurrentMarker = true
 				}
-				h.drain()
+				if fault == "finish-loss" {
+					h.drainWithFinishLoss(&interrupted)
+				} else {
+					h.drain()
+				}
 				h.finishAdoption = nil
 				if fault == "marker-refusal" {
 					interrupted = !h.failCurrentMarker
 				}
-				if !interrupted || len(h.metadata(name).Stages) != 2 || s.value(t, name) != `{"ALPHA":"promoted alpha","SHARED_KEY":"promoted source"}` || h.inspect(target.ID).Health() == adapter.HealthConverged {
+				promoted := h.metadata(name)
+				valid := realAWSAddedVersion(before, promoted, target.ID, s.recordedPutTokens(before.ARN))
+				if fault == "marker-refusal" {
+					valid = realAWSMarkerRefused(before, promoted, target.ID, s.recordedPutTokens(before.ARN))
+				}
+				if !interrupted || !valid || s.value(t, name) != `{"ALPHA":"promoted alpha","SHARED_KEY":"promoted source"}` || h.inspect(target.ID).Health() == adapter.HealthConverged {
 					t.Fatal("real promotion did not precede the injected local interruption")
 				}
 				if queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'`, target.ID)) != 1 {
@@ -188,7 +262,7 @@ func runRealAWSPromotedReplay(t *testing.T, s *realAWSSandbox) {
 				h.clock = h.clock.Add(adapter.LeaseTime + adapter.RetryCap + time.Second)
 				h.drain()
 				h.converged(target.ID)
-				if observer.loads != 2 || len(h.metadata(name).Stages) != 2 {
+				if observer.loads != 2 || !realAWSAddedVersion(before, h.metadata(name), target.ID, s.recordedPutTokens(before.ARN)) {
 					t.Fatal("real promoted replay changed job/witness or duplicated a version")
 				}
 				if fault == "finish-loss" && queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE target_id='%s' AND outcome='unknown'`, target.ID)) != 1 {

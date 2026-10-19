@@ -112,9 +112,14 @@ func (s *realAWSSandbox) checkWriterDenials(t *testing.T, mode, ownName, foreign
 func (h *realAWSDurable) partialConflict(targetID, prefix string) {
 	t := h.t
 	name := prefix + "ALPHA"
-	alphaBefore, sharedBefore := len(h.metadata(name).Stages), len(h.metadata(prefix+"SHARED_KEY").Stages)
+	alphaBefore, sharedBefore := h.metadata(name), h.metadata(prefix+"SHARED_KEY")
+	alphaPuts, sharedPuts := len(h.s.recordedPutTokens(alphaBefore.ARN)), len(h.s.recordedPutTokens(sharedBefore.ARN))
 	if err := h.s.call(t.Context(), false, "PutSecretValue", h.s.arn(t, name), map[string]any{"SecretString": "partial external synthetic", "ClientRequestToken": strings.Repeat("b", 64)}, nil); err != nil {
 		t.Fatal("partial conflict seed failed")
+	}
+	external := h.metadata(name)
+	if !realAWSPromotedVersion(alphaBefore, external, targetID, []string{strings.Repeat("b", 64)}) || external.Tags[awssm.VersionTag] != alphaBefore.Tags[awssm.VersionTag] {
+		t.Fatal("external conflict seed changed identity or approved version consent")
 	}
 	h.publish("partial sibling synthetic", "partial desired alpha")
 	h.drain()
@@ -122,20 +127,15 @@ func (h *realAWSDurable) partialConflict(targetID, prefix string) {
 	if state.Health() == adapter.HealthConverged || state.LastErrorClass != adapter.ErrorClassConflict || h.s.value(t, name) != "partial external synthetic" || h.s.value(t, prefix+"SHARED_KEY") != "partial sibling synthetic" {
 		t.Fatal("same-target partial failure hid conflict or blocked its sibling")
 	}
-	if len(h.metadata(name).Stages) != alphaBefore+1 || len(h.metadata(prefix+"SHARED_KEY").Stages) != sharedBefore+1 {
+	refused, sharedDelivered := h.metadata(name), h.metadata(prefix+"SHARED_KEY")
+	sharedAttempts := h.s.recordedPutTokens(sharedBefore.ARN)
+	if !realAWSSameCurrent(external, refused) || len(h.s.recordedPutTokens(alphaBefore.ARN)) != alphaPuts || !realAWSAddedVersion(sharedBefore, sharedDelivered, targetID, sharedAttempts[sharedPuts:]) {
 		t.Fatal("partial conflict wrote an unapproved or duplicate version")
 	}
 	// Explicit metadata consent names the actual external version. This is
 	// the documented manual drift-consent path, not a new Plan adoption.
 	meta := h.metadata(name)
-	current := ""
-	for version, stages := range meta.Stages {
-		for _, stage := range stages {
-			if stage == "AWSCURRENT" {
-				current = version
-			}
-		}
-	}
+	current := realAWSCurrentVersion(meta)
 	if current == "" {
 		t.Fatal("external current version unavailable")
 	}
@@ -156,7 +156,8 @@ func (h *realAWSDurable) partialConflict(targetID, prefix string) {
 	h.clock = h.clock.Add(adapter.RetryCap + time.Second)
 	h.drain()
 	h.converged(targetID)
-	if h.s.value(t, name) != "partial desired alpha" || len(h.metadata(name).Stages) != alphaBefore+2 || len(h.metadata(prefix+"SHARED_KEY").Stages) != sharedBefore+1 {
+	alphaAttempts := h.s.recordedPutTokens(alphaBefore.ARN)
+	if h.s.value(t, name) != "partial desired alpha" || !realAWSAddedVersion(refused, h.metadata(name), targetID, alphaAttempts[alphaPuts:]) || !realAWSSameCurrent(sharedDelivered, h.metadata(prefix+"SHARED_KEY")) || len(h.s.recordedPutTokens(sharedBefore.ARN)) != len(sharedAttempts) {
 		t.Fatal("partial retry duplicated the successful sibling or failed the consented key")
 	}
 }
