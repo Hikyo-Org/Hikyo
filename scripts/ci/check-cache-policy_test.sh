@@ -242,6 +242,26 @@ grep -F 'key: go-release-snapshot-v2-' "$workflow" |
 	fail 'release-snapshot cache does not include GoReleaser configuration'
 require_line "$repo_root/.github/workflows/reliability.yml" 'name: Restore race Go cache'
 
+# One shared race build cache has a single trusted writer, ci-race-cache.yml.
+# The merge-gate race shards and reliability race isolation read its exact key;
+# no race shard writes or keys a cache of its own.
+race_cache_workflow="$workflows_dir/ci-race-cache.yml"
+race_prefix='go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
+race_key=$(printf 'key: %s${{ hashFiles(\047go.mod\047, \047go.sum\047) }}' "$race_prefix")
+require_line "$race_cache_workflow" "$race_key"
+require_line "$race_cache_workflow" "restore-keys: $race_prefix"
+require_line "$race_cache_workflow" 'lookup-only: true'
+require_line "$race_cache_workflow" 'key: ${{ steps.race-seed.outputs.cache-primary-key }}'
+require_line "$workflow" "$race_key"
+require_line "$workflow" "restore-keys: $race_prefix"
+require_line "$workflows_dir/reliability.yml" "$race_key"
+if grep -F -e 'name: Save race Go cache' -e 'go-race-v2-shard-' "$@" >/dev/null; then
+	fail 'a per-shard race cache writer or key remains'
+fi
+if workflow_job_block "$workflow" race_shard | grep -F 'actions/cache/save' >/dev/null; then
+	fail 'race_shard must not write a cache'
+fi
+
 # Browser jobs run inside the exact Playwright image matching both lockfiles.
 # No live apt mirror belongs on the critical path.
 web_playwright=$(jq -r '.devDependencies["@playwright/test"]' "$repo_root/web/package.json")
