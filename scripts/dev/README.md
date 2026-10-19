@@ -43,8 +43,9 @@ with the same basename. Compiling them can be expensive from a cold cache; it ch
 buildability, and does not establish that any test assertion passed. Database
 fixtures and `TestMain` are never executed by this compile-only check.
 Test binaries are still linked, so unresolved targets fail feedback. DWARF
-debug data is omitted from compiler exports and the discarded binaries. At most
-two package builds or links run at once to bound their simultaneous heaps.
+debug data is omitted from compiler exports and the discarded binaries. Vet is
+omitted in this lane because dependency vet results cannot be pre-seeded; the
+full suite still runs `go vet ./...`.
 
 Install matching tools and frozen dependencies before invoking feedback:
 

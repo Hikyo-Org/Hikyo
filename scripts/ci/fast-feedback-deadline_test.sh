@@ -106,7 +106,7 @@ run_case() {
 	if [ "$1" = pass ]; then
 		[ "$status" -eq 0 ] || { cat "$work/output" >&2; exit 1; }
 		[ -e "$work/go.finished" ] && [ -e "$work/frontend.finished" ]
-		grep -Fx 'test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./first/common ./second/common' "$work/go.command"
+		grep -Fx 'test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./first/common ./second/common' "$work/go.command"
 		diff -u <(printf '%s\n' '--dir clients/ts run typecheck' '--dir clients/ts run test' '--dir web run typecheck' '--dir web run lint' '--dir web run test') "$work/frontend.commands"
 	else
 		[ "$status" -ne 0 ]

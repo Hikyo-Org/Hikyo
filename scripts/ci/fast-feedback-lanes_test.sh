@@ -91,7 +91,7 @@ FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=go >"$work/go"
 FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=frontend >"$work/frontend"
 cat "$work/go" "$work/frontend" | sort >"$work/union"
 cmp "$work/all" "$work/union"
-diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' | sort) "$work/go"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' | sort) "$work/go"
 diff -u <(printf '%s\n' 'pnpm --dir clients/ts run typecheck' 'pnpm --dir clients/ts run test' 'pnpm --dir web run typecheck' 'pnpm --dir web run lint' 'pnpm --dir web run test' | sort) "$work/frontend"
 # The hosted Go scopes partition package owners and read-only tooling. Local
 # unscoped Go feedback retains its complete single build graph.
@@ -102,9 +102,9 @@ commit_fixture
 run_lane --lane=go >"$work/scope-all"
 run_lane --lane=go --go-scope=application >"$work/application"
 run_lane --lane=go --go-scope=tooling >"$work/tooling"
-diff -u <(printf '%s\n' 'go mod verify' 'go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
-diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' | sort) "$work/tooling"
-compile_prefix='go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
+diff -u <(printf '%s\n' 'go mod verify' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' | sort) "$work/tooling"
+compile_prefix='go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
 sed -n "s|^$compile_prefix||p" "$work/scope-all" | tr ' ' '\n' | sort >"$work/all-owners"
 cat "$work/application" "$work/tooling" | sed -n "s|^$compile_prefix||p" | tr ' ' '\n' | sort >"$work/split-owners"
 cmp "$work/all-owners" "$work/split-owners"

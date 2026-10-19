@@ -218,8 +218,8 @@ if [ "${#go_packages[@]}" -gt 0 ] || { [ "$all_go" = true ] && [ "$go_scope" != 
 		# no test/init/TestMain executes and no binaries dirty the checkout.
 		# Compiler exports and discarded binaries need no DWARF. Keep link checks while
 		# avoiding debug generation/compression across all selected packages.
-		# Bound simultaneous compiler/linker heaps on small hosted runners.
-		run go test -p 2 -c -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null "${go_packages[@]}"
+		# -vet=off: dependency vet cannot be seeded; full validation runs go vet ./...
+		run go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null "${go_packages[@]}"
 	fi
 fi
 if [ "$go_scope" = application ]; then return 0; fi
