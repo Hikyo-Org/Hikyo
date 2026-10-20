@@ -273,6 +273,7 @@ const (
 	// history, while tightening makes payload loss imminent and unrestorable.
 	EventOrgRetentionChanged     EventType = "settings.org_retention_changed"
 	EventProjectRetentionChanged EventType = "settings.project_retention_changed"
+	EventProjectCapacityChanged  EventType = "project.capacity_changed"
 	// retention.health_read is the audited instance-level operational read.
 	// retention.payload_gc records each irreversible tenant payload collection;
 	// retention.prune_run records the scheduler sweep outcome.
@@ -1685,6 +1686,16 @@ var registry = map[EventType]TypeSpec{
 	EventSettingsDefinitionsSourceChanged: hierarchyEvent(Schema{
 		"previous_source": {Kind: KindString, Required: true},
 		"source":          {Kind: KindString, Required: true},
+	}),
+	EventProjectCapacityChanged: hierarchyEvent(Schema{
+		"previous_mode":            {Kind: KindString, Required: true},
+		"previous_override":        {Kind: KindInt, Required: true},
+		"mode":                     {Kind: KindString, Required: true},
+		"override":                 {Kind: KindInt, Required: true},
+		"previous_effective_limit": {Kind: KindInt, Required: true},
+		"effective_limit":          {Kind: KindInt, Required: true},
+		"instance_default":         {Kind: KindInt, Required: true},
+		"instance_maximum":         {Kind: KindInt, Required: true},
 	}),
 	EventSettingsMachineRevealChanged: hierarchyEvent(Schema{
 		"previous_enabled": {Kind: KindBool, Required: true},

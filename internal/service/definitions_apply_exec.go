@@ -105,7 +105,11 @@ func (s *Definitions) Apply(ctx context.Context, actor Actor, scope domain.Scope
 			return err
 		}
 		topologyChanged = len(res.EnvCreates)+len(res.EnvRenames)+len(res.EnvDeletes) > 0
-		if err := validateFinalDefinitions(cur, res); err != nil {
+		keyLimit, err := projectKeyLimit(ctx, r.Projects(), p, s.DefaultKeysPerProject, s.MaxKeysPerProject)
+		if err != nil {
+			return err
+		}
+		if err := validateFinalDefinitions(cur, res, keyLimit); err != nil {
 			return err
 		}
 		if res.Empty() {

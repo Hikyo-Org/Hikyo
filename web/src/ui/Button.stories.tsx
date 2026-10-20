@@ -276,3 +276,26 @@ export const ActionRow: Story = {
     await expect(footer.lastElementChild).toHaveClass('btn--primary');
   },
 };
+
+/** A longer label may wrap on a phone; controls in that row still share a height. */
+export const ActionRowPhoneMixedLabels: Story = {
+  parameters: { controls: { disable: true } },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  render: () => <div className="actions">
+    <Button>Edit</Button>
+    <Button>Refresh current capacity policy</Button>
+  </div>,
+  play: async ({ canvas }) => {
+    const edit = canvas.getByRole('button', { name: 'Edit' });
+    const refresh = canvas.getByRole('button', { name: 'Refresh current capacity policy' });
+    const editBox = edit.getBoundingClientRect();
+    const refreshBox = refresh.getBoundingClientRect();
+    await expect(editBox.width).toBe(refreshBox.width);
+    await expect(editBox.height).toBe(refreshBox.height);
+    await expect(editBox.top).toBe(refreshBox.top);
+    for (const control of [edit, refresh]) {
+      await expect(getComputedStyle(control).alignItems).toBe('center');
+      await expect(getComputedStyle(control).justifyContent).toBe('center');
+    }
+  },
+};

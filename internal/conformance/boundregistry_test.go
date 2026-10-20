@@ -30,6 +30,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 	"github.com/Hikyo-Org/hikyo/internal/mail"
@@ -151,13 +152,14 @@ var Registry = []Bound{
 	// §8 structural bounds.
 	bound("environments-per-project", "Environments per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxEnvironmentsPerProject)", "conformance scenarioDeleteRefusesChildren / env cap", StatusEnforced,
 		goHelper("internal/conformance", "scenarioEnvironmentCap")),
-	bound("resolved-cell-budget", "Resolved-cell budget", "ops-spec §8", "envs × keys ≤ MaxResolvedCells", "service.TestResolvedCellBudgetComposesByConstruction", StatusByConstruction,
-		goTest("internal/service", "TestResolvedCellBudgetComposesByConstruction")),
+	bound("resolved-cell-budget", "Resolved-cell budget", "ops-spec §8", "envs × keys ≤ MaxResolvedCells", "service.TestResolvedCellBudgetComposesByConstruction plus transactional admission", StatusEnforced,
+		goTest("internal/service", "TestResolvedCellBudgetComposesByConstruction"),
+		goTest("internal/isolation", "TestConfiguredCatalogueLimits")),
 	bound("value-size", "Value size", "ops-spec §8", "schema value bound (MaxValueBytes)", "schema validate_test / conformance values_test", StatusEnforced,
 		goTest("internal/schema", "TestInstanceByteBudget")),
 	bound("key-name-length", "Key name length", "ops-catalogue §Key-name", "schema key-name bound (MaxKeyNameBytes)", "schema declare_test", StatusEnforced,
 		goTest("internal/schema", "TestKeyNameGrammar")),
-	bound("keys-per-project", "Keys per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxKeysPerProject)", "service definitions_test", StatusEnforced,
+	bound("keys-per-project", "Keys per project", "ops-spec §8", "domain.ErrLimitExceeded (effective project key capacity)", "service definitions_test", StatusEnforced,
 		goTest("internal/service", "TestValidateFinalDefinitionsNamesAndCaps")),
 	bound("key-groups-per-project", "Key groups per project", "ops-spec §8", "domain.ErrLimitExceeded (MaxKeyGroupsPerProject)", "service definitions_test", StatusEnforced,
 		goHelper("internal/isolation", "runDefinitions")),
@@ -367,7 +369,9 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		{"service.SignupLifetime", int(service.SignupLifetime / time.Second), 86400},
 		{"service.CredentialEstablishLifetime", int(service.CredentialEstablishLifetime / time.Second), 300},
 		// Already-conformant bounds, pinned so they cannot drift unnoticed.
-		{"schema.MaxKeysPerProject", schema.MaxKeysPerProject, 1000},
+		{"config.DefaultKeysPerProject", config.DefaultKeysPerProject, 1000},
+		{"config.DefaultMaxKeysPerProject", config.DefaultMaxKeysPerProject, 10000},
+		{"config.MaxKeysPerProjectCeiling", config.MaxKeysPerProjectCeiling, 10000},
 		{"schema.MaxKeyGroupsPerProject", schema.MaxKeyGroupsPerProject, 100},
 		{"schema.MaxKeyNameBytes", schema.MaxKeyNameBytes, 128},
 		{"schema.MaxValueBytes", schema.MaxValueBytes, 65536},

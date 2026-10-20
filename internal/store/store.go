@@ -187,6 +187,8 @@ type OrgRepo interface {
 
 // ProjectReader is the read side of the projects aggregate.
 type ProjectReader interface {
+	// GetCapacity reads the project policy addressed by the resolved proof chain.
+	GetCapacity(ctx context.Context, p authz.Proof) (ProjectCapacity, error)
 	// Get returns the project addressed by the proof's resolved chain.
 	Get(ctx context.Context, p authz.Proof) (Project, error)
 	// List returns every project in the org the proof addresses.
@@ -200,6 +202,13 @@ type ProjectReader interface {
 	ListAll(ctx context.Context, p authz.Proof) ([]ProjectName, error)
 }
 
+// ProjectCapacity is the persisted project key-limit policy, independent of
+// the instance owner policy that the service resolves.
+type ProjectCapacity struct {
+	KeyLimitOverride *int
+	Revision         int64
+}
+
 // ProjectName is the directory listing's project row: the two fields the
 // served listing may carry, and nothing more. A full Project would hand the
 // caller an id and a creation time the directory has no licence to publish.
@@ -211,6 +220,9 @@ type ProjectName struct {
 // ProjectRepo is the full projects aggregate.
 type ProjectRepo interface {
 	ProjectReader
+	// SetCapacity replaces the nullable override and advances its independent
+	// revision only if expectedRevision still matches.
+	SetCapacity(ctx context.Context, p authz.Proof, override *int, expectedRevision int64) error
 	Create(ctx context.Context, p authz.Proof, proj NewProject) error
 	Rename(ctx context.Context, p authz.Proof, name string) error
 	SetRetention(ctx context.Context, p authz.Proof, policy *RetentionPolicy) error

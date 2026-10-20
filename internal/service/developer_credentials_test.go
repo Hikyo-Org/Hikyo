@@ -170,7 +170,7 @@ func TestDeveloperMintBusinessRefusalsRemainAuditedAfterRollback(t *testing.T) {
 }
 
 func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
-	keys := make([]string, 1000)
+	keys := make([]string, 10000)
 	for i := range keys {
 		keys[i] = fmt.Sprintf("key_%04d", i)
 	}
@@ -179,14 +179,14 @@ func TestDeveloperReauthFullCatalogueBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	parsed, err := parseDeveloperCredentialBinding(intent.developerBinding)
-	if err != nil || len(parsed.KeyIDs()) != 1000 || parsed.keySet != intent.keySet {
+	if err != nil || len(parsed.KeyIDs()) != 10000 || parsed.keySet != intent.keySet {
 		t.Fatalf("full catalogue binding did not round trip: %v", err)
 	}
 	changed := append([]string(nil), keys...)
-	changed[999] = "key_changed"
+	changed[9999] = "key_changed"
 	other, err := NewDeveloperCredentialReauthIntent("env_catalogue", changed, time.Hour, true)
 	if err != nil || other.keySet == intent.keySet {
-		t.Fatal("1000th key was omitted from exact ceremony binding")
+		t.Fatal("10000th key was omitted from exact ceremony binding")
 	}
 	if _, err := NewDeveloperCredentialReauthIntent("env_catalogue", append(keys, "key_overflow"), time.Hour, true); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("catalogue overflow admitted: %v", err)

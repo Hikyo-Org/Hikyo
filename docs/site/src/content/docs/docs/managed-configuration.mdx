@@ -72,9 +72,66 @@ The catalogue includes the nine values above, shared owner settings,
 | --- | --- |
 | Argon2 memory, time and parallelism; reauthentication window | Replace authentication policy after checking production floors and each node's available admission capacity. |
 | `HIKYO_SECOND_FACTOR` | `required` sends password sign-in without an enrolled factor through enrollment; `optional` preserves the local factor floor. |
+| `HIKYO_DEFAULT_KEYS_PER_PROJECT` | Declared-key limit inherited by projects without an override. Integer from `1` to `10000`; default `1000`; must not exceed the instance maximum. |
+| `HIKYO_MAX_KEYS_PER_PROJECT` | Operator-controlled ceiling on every project's effective limit. Integer from `1` to `10000`; default `10000`. Applies live and preserves existing keys and saved overrides when lowered. |
 | External origin, directory proxy, MCP enabled, write enabled and allowed origins | Replace the dependent HTTP, authentication, federation and outbound clients. Enabling MCP write tools grants no edit or publish authority. |
 | Backup interval, recipients, retention count/days, RPO and RTO target | Replace backup policy and scheduled work. |
 | Audit access and security retention days | Apply the retention policy to subsequent work. Increasing the retention period cannot restore already deleted records. |
+
+### Change the project key limit
+
+1. Open **Instance settings → Manage Hikyo configuration → Edit configuration project**.
+2. In the configuration project's Matrix, set `HIKYO_DEFAULT_KEYS_PER_PROJECT` to the desired inherited limit, for example `1000`, and `HIKYO_MAX_KEYS_PER_PROJECT` to the maximum project administrators may choose, for example `10000`. The default must not exceed the maximum.
+3. Publish, return to **Hikyo configuration**, select that revision and choose **Apply selected revision** with fresh administrator authentication.
+4. Check that every admitted node acknowledges the applied revision. Subsequent key creation and definitions plan/apply use the new limit.
+
+These settings apply to every project owned by this logical instance. They count
+declared keys once, regardless of how many environments contain their values.
+The `1000` default is a conservative starting point for small installations;
+it is not a measured Raspberry Pi capacity threshold. Larger values increase
+catalogue, Matrix, validation and publish work. Choose a value appropriate to
+your hardware and verify your workload before relying on the extra capacity.
+
+Projects also have a **100,000-cell budget: declared keys × environments**.
+For example, `2500` keys fit in `40` environments; adding a key or a 41st
+environment at that point is refused. At `10000` keys the budget permits at
+most `10` environments. The setting leaves value sizes, publish deadlines,
+render-size limits, storage limits and operation-specific batch limits intact.
+Definitions bundles retain their separate limit of 10,000 entries counting
+keys, environments and groups together, plus their 1 MiB size limit.
+
+To give one project more capacity, open **Project settings > Policy > Key
+capacity**, select a custom limit such as `5000`, and save. Other projects can
+continue inheriting `1000`. This requires `project-settings` authority and actual
+policy changes are audited. Select **Inherit instance default** to clear the
+override. The panel shows current key and environment counts, instance default
+and maximum, and the effective project limit.
+
+The effective limit is `min(saved override or instance default, instance
+maximum)`. Lowering the instance maximum retains a larger saved override and
+caps the effective limit. Raising the maximum restores the saved override up to
+the new maximum. A project administrator cannot save a new override above the
+active maximum. If project or instance policy changes while settings are open,
+review the refreshed policy before saving again; stale writes are refused.
+
+Lowering either policy preserves existing keys and delivery. Existing keys remain
+editable and deletable, and definitions plans can keep or reduce the current
+count. Adding keys above the new limit is refused. A plan created before a
+limit reduction is checked against the active setting again when applied.
+Removing either managed value restores its catalogue default after Publish and
+Apply, provided the default/maximum pair remains valid.
+
+The same project policy is available through the CLI:
+
+```sh
+hikyo project capacity get --org example --project backend
+hikyo project capacity set --org example --project backend --max-keys 5000
+hikyo project capacity set --org example --project backend --inherit
+```
+
+Use `-o json` for the full policy and usage response. A CLI update reads the
+current policy and submits its revision and instance bounds with the write;
+conflicts are reported without automatically retrying the change.
 
 `HIKYO_NODE_OVERRIDES` is an encrypted secret JSON document. Its version-1
 `nodes` map keys are the stable IDs shown in status. Each admitted node needs its

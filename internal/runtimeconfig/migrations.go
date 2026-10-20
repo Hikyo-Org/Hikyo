@@ -9,16 +9,20 @@ type Migration struct {
 	Default *string
 }
 
-const MigrationVersion int64 = 2
+const MigrationVersion int64 = 4
 
 func Migrations() []Migration {
 	disabled := "false"
 	optional := "optional"
+	keyLimit := "10000"
+	defaultKeys := "1000"
 	return []Migration{
 		{Version: 1, Name: "HIKYO_MCP_WRITE_ENABLED", Default: &disabled},
 		// #760: an upgraded instance keeps today's posture — a password login on
 		// an unenrolled account still mints a session — until an operator opts in.
 		// Fresh installs default to `required` in config parsing (greenfield strict).
 		{Version: 2, Name: "HIKYO_SECOND_FACTOR", Default: &optional},
+		{Version: 3, Name: "HIKYO_MAX_KEYS_PER_PROJECT", Default: &keyLimit},
+		{Version: 4, Name: "HIKYO_DEFAULT_KEYS_PER_PROJECT", Default: &defaultKeys},
 	}
 }

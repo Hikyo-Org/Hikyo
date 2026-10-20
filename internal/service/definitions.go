@@ -36,9 +36,12 @@ const MaxProvenanceBytes = 256
 // publish.go — and stitches them to the store under one authorized transaction
 // each.
 type Definitions struct {
-	DB       *store.DB
-	Keyring  *crypto.Keyring
-	Advisory *Advisory
+	// Owner policy bounds project overrides; zero uses documented defaults.
+	DefaultKeysPerProject int
+	MaxKeysPerProject     int
+	DB                    *store.DB
+	Keyring               *crypto.Keyring
+	Advisory              *Advisory
 	// Budget applies the § 151 schema-revision rate limit (60/h per project) to
 	// the definitions-apply path, via prepareSchemaPublish. Nil disables it.
 	Budget *Budget

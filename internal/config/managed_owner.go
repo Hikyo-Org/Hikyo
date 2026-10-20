@@ -27,6 +27,8 @@ func ManagedOwnerKeys() []string {
 // included. A disabled backup policy omits schedule knobs that require a policy.
 func (c *Config) ManagedOwnerValues() map[string]string {
 	values := map[string]string{
+		"HIKYO_DEFAULT_KEYS_PER_PROJECT":   strconv.Itoa(EffectiveDefaultKeysPerProject(c.DefaultKeysPerProject)),
+		"HIKYO_MAX_KEYS_PER_PROJECT":       strconv.Itoa(EffectiveMaxKeysPerProject(c.MaxKeysPerProject)),
 		"HIKYO_ARGON2_MEMORY_KIB":          strconv.FormatUint(uint64(c.Argon2MemoryKiB), 10),
 		"HIKYO_ARGON2_TIME":                strconv.FormatUint(uint64(c.Argon2Time), 10),
 		"HIKYO_ARGON2_PARALLELISM":         strconv.FormatUint(uint64(c.Argon2Parallelism), 10),
@@ -194,6 +196,8 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.SecondFactor = parsed.SecondFactor
+	result.MaxKeysPerProject = parsed.MaxKeysPerProject
+	result.DefaultKeysPerProject = parsed.DefaultKeysPerProject
 	result.BackupRecipients = slices.Clone(parsed.BackupRecipients)
 	result.BackupInterval, result.BackupRPO = parsed.BackupInterval, parsed.BackupRPO
 	result.BackupRetainCount, result.BackupRetainDays = parsed.BackupRetainCount, parsed.BackupRetainDays

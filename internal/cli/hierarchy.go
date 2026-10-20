@@ -33,6 +33,9 @@ import (
 
 // runProject is the project family.
 func runProject(ctx context.Context, ios IO, args []string) error {
+	if len(args) > 0 && args[0] == "capacity" {
+		return runProjectCapacity(ctx, ios, args[1:])
+	}
 	if len(args) > 0 && args[0] == "retention" {
 		return runProjectRetention(ctx, ios, args[1:])
 	}

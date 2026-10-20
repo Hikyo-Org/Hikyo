@@ -3,6 +3,7 @@ import {
   zDefinitionsSettings,
   zEnvironmentList,
   zProject,
+  zProjectCapacity,
   zProjectRetentionPolicy,
   zRetentionPolicy,
 } from '@hikyo/zod';
@@ -18,11 +19,12 @@ import { openTab } from '../../.storybook/openTab.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
 // The project-settings surface reads `useParams({ org, project })` and fires
-// five load-time GETs on mount, every one independent of the granted
+// five load-time GETs on mount, each independent of the granted
 // capabilities (the Policy/Danger panels are gated on the project body, but the
 // retention and definitions queries run regardless): the project itself,
 // its environments, the org retention cap, the project retention policy, and
-// the definitions source. Each needs a `responses` row or the fetch stub 404s.
+// the definitions source. Authorized policy holders additionally read capacity.
+// Each needs a `responses` row or the fetch stub 404s.
 // Its mutations (rename, delete, DEK rotation, definitions/environment writes)
 // have no story route and would 404 or navigate away, so the plays only assert
 // read-only state. The screen calls `useAuth` through those mutation hooks, so
@@ -51,6 +53,9 @@ const projectRetention = {
   last_revisions: 10,
 } satisfies z.input<typeof zProjectRetentionPolicy>;
 const definitions = { definitions_source: 'db' } satisfies z.input<typeof zDefinitionsSettings>;
+const capacity = { key_limit_override: null, instance_default: 1000,
+  instance_maximum: 10000, effective_limit: 1000, key_count: 0, environment_count: 0,
+  revision: 0, inherited: true, capped: false } satisfies z.input<typeof zProjectCapacity>;
 
 const noEnvironments = { count: 0, items: [] } satisfies z.input<typeof zEnvironmentList>;
 const environment: z.input<typeof zEnvironmentList>['items'][number] = {
@@ -83,13 +88,14 @@ const memberProject = {
   can_delete: false,
 } satisfies z.input<typeof zProject>;
 
-// The four capability-independent rows every story needs, over the empty
-// environment list unless a story replaces it.
+// Shared responses, including the capacity read made only for policy holders,
+// over the empty environment list unless a story replaces it.
 const commonResponses = [
   { url: ENVIRONMENTS_URL, body: noEnvironments },
   { url: ORG_RETENTION_URL, body: orgRetention },
   { url: PROJECT_RETENTION_URL, body: projectRetention },
   { url: DEFINITIONS_URL, body: definitions },
+  { url: `${PROJECT_URL}/capacity`, body: capacity },
 ];
 
 const meta = {
@@ -153,6 +159,7 @@ export const ActionRows: Story = {
     { url: ORG_RETENTION_URL, body: orgRetention },
     { url: PROJECT_RETENTION_URL, body: projectRetention },
     { url: DEFINITIONS_URL, body: definitions },
+    { url: `${PROJECT_URL}/capacity`, body: capacity },
   ] } },
   play: async ({ canvas }) => {
     const bundle = (await canvas.findByText('Definitions bundle')).closest<HTMLElement>('.settings-row');
@@ -169,6 +176,31 @@ export const ActionRows: Story = {
     if (order === null || order === undefined) throw new Error('order row missing');
     await expectStackedRow(order, 2);
   },
+};
+
+/** Capacity uses the same title/detail/action-row composition as sibling policy settings. */
+export const CapacityPolicy: Story = {
+  parameters: { app: { auth: true, path: `${PATH}?tab=policy`, routePath: ROUTE,
+    responses: [{ url: PROJECT_URL, body: administrableProject }, ...commonResponses] } },
+  play: async ({ canvas, canvasElement }) => {
+    await expect(await canvas.findByText('0 keys used / 1,000 key limit')).toBeVisible();
+    const row = canvas.getByText('Key capacity').closest<HTMLElement>('.settings-row');
+    if (row === null) throw new Error('capacity settings row missing');
+    await expectStackedRow(row, 2);
+    const editBox = canvas.getByRole('button', { name: 'Edit key capacity' }).getBoundingClientRect();
+    const refreshBox = canvas.getByRole('button', { name: 'Refresh key capacity' }).getBoundingClientRect();
+    await expect(editBox.height).toBe(refreshBox.height);
+    await expect(editBox.top).toBe(refreshBox.top);
+    await expect(canvas.getByRole('heading', { name: 'Policy', level: 2 })).toBeVisible();
+    await expect(canvas.getByLabelText('Definitions source')).toBeVisible();
+    await expect(canvas.getByText('Revision retention')).toBeVisible();
+    await expect(canvasElement.scrollWidth).toBeLessThanOrEqual(canvasElement.clientWidth);
+    await expectLeftAlignedPage(canvas.getByRole('heading', { level: 1 }));
+  },
+};
+export const CapacityPolicyPhone: Story = {
+  ...CapacityPolicy,
+  globals: { viewport: { value: 'phone', isRotated: false } },
 };
 
 // At a phone width a row's 2+ buttons become an equal-width two-column grid.

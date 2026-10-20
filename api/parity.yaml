@@ -130,6 +130,8 @@ operations:
   getEnvironment:              {webui: project-settings, via: [listEnvironments]}
   renameEnvironment:           {webui: project-settings}
   deleteEnvironment:           {webui: project-settings}
+  getProjectCapacity:          {webui: project-settings}
+  setProjectCapacity:          {webui: project-settings}
   getProjectRetention:         {webui: project-settings}
   setProjectRetention:         {webui: project-settings}
   listFolders:                 {webui: matrix}

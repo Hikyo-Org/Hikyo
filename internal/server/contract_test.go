@@ -1831,6 +1831,14 @@ func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
 
 type stubSettings struct{ stubHierarchy }
 
+func (s stubSettings) GetCapacity(context.Context, service.Actor, domain.Scope) (service.ProjectCapacity, error) {
+	return service.ProjectCapacity{InstanceDefault: 1000, InstanceMaximum: 10000, EffectiveLimit: 1000, Inherited: true}, s.outcome()
+}
+
+func (s stubSettings) SetCapacity(context.Context, service.Actor, domain.Scope, service.CapacityUpdate) (service.ProjectCapacity, error) {
+	return service.ProjectCapacity{InstanceDefault: 1000, InstanceMaximum: 10000, EffectiveLimit: 1000, Inherited: true}, s.outcome()
+}
+
 func (s stubSettings) GetEnvironment(context.Context, service.Actor, domain.Scope) (service.EnvironmentSettings, error) {
 	return service.EnvironmentSettings{}, s.outcome()
 }
@@ -2171,6 +2179,9 @@ func TestConflictAndLimitRenderUniformly(t *testing.T) {
 			}
 			if tc.code == apigen.ErrorCodeLimitExceeded && !strings.Contains(body.Error.Message, "50 environments") {
 				t.Errorf("the limit refusal does not name its bound: %q", body.Error.Message)
+			}
+			if tc.code == apigen.ErrorCodeLimitExceeded && strings.Contains(body.Error.Message, "instance default") {
+				t.Errorf("the limit refusal claims a fixed configurable default: %q", body.Error.Message)
 			}
 		})
 	}

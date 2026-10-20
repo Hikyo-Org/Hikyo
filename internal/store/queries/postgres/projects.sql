@@ -6,6 +6,8 @@
 INSERT INTO projects (id, org_id, name, created_at)
 VALUES (sqlc.arg(id), sqlc.arg(chain_org_id), sqlc.arg(name), sqlc.arg(created_at));
 
+-- Keep ordinary metadata reads compatible with pre-capacity recovery schemas.
+-- Capacity policy is read through its separate proof-gated query below.
 -- name: GetProject :one
 SELECT id, org_id, name, created_at,
        retention_revision_count, retention_age_seconds, definitions_source,
@@ -64,3 +66,13 @@ DELETE FROM projects WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(cha
 -- explicit row lock; sqlite serializes writes by construction (see its copy).
 -- name: LockProject :one
 SELECT id FROM projects WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id) FOR UPDATE;
+
+-- name: GetProjectCapacity :one
+SELECT key_limit_override, key_limit_revision FROM projects
+WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id);
+
+-- SetProjectCapacity advances the independent policy revision only if the
+-- caller still holds the policy version it read under the project lock.
+-- name: SetProjectCapacity :execrows
+UPDATE projects SET key_limit_override = sqlc.narg(key_limit_override), key_limit_revision = key_limit_revision + 1
+WHERE org_id = sqlc.arg(chain_org_id) AND id = sqlc.arg(chain_project_id) AND key_limit_revision = sqlc.arg(expected_revision);

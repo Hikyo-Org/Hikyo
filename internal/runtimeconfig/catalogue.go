@@ -42,6 +42,8 @@ func Catalogue() []Key {
 		choice("HIKYO_UPDATE_CHANNEL", "Release notification channel. Defaults to stable; does not install updates.", "stable", "nightly", "off"),
 	}
 	descriptions := map[string]string{
+		"HIKYO_DEFAULT_KEYS_PER_PROJECT":   "Inherited project key limit, from 1 to the instance maximum. Defaults to 1000. Project settings can override it.",
+		"HIKYO_MAX_KEYS_PER_PROJECT":       "Instance ceiling for project key limits, from 1 to 10000. Defaults to 10000. Lowering it caps retained overrides without deleting keys; the 100000-cell project budget also applies.",
 		"HIKYO_ARGON2_MEMORY_KIB":          "Argon2id memory in KiB. Must meet the authentication floor and each node's admission budget.",
 		"HIKYO_ARGON2_TIME":                "Argon2id time cost. Minimum 3.",
 		"HIKYO_ARGON2_PARALLELISM":         "Argon2id parallelism. Minimum 2, maximum 255.",
@@ -64,6 +66,10 @@ func Catalogue() []Key {
 	for _, name := range config.ManagedOwnerKeys() {
 		key := text(name, descriptions[name], name == "HIKYO_DIRECTORY_PROXY")
 		switch name {
+		case "HIKYO_DEFAULT_KEYS_PER_PROJECT", "HIKYO_MAX_KEYS_PER_PROJECT":
+			minimum, maximum := int64(1), int64(config.MaxKeysPerProjectCeiling)
+			key.Declaration.Rule.Type = schema.TypeInteger
+			key.Declaration.Rule.Min, key.Declaration.Rule.Max = &minimum, &maximum
 		case "HIKYO_ARGON2_MEMORY_KIB", "HIKYO_ARGON2_TIME", "HIKYO_ARGON2_PARALLELISM", "HIKYO_AUDIT_ACCESS_RETAIN_DAYS", "HIKYO_AUDIT_SECURITY_RETAIN_DAYS", "HIKYO_BACKUP_RETAIN_COUNT", "HIKYO_BACKUP_RETAIN_DAYS", "HIKYO_REAUTH_WINDOW_SECONDS":
 			key.Declaration.Rule.Type = schema.TypeInteger
 		case "HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED":

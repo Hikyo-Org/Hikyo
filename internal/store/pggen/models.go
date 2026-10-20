@@ -1131,6 +1131,8 @@ type Project struct {
 	DefinitionsSource       string
 	MachineReveal           bool
 	MachineRevealGeneration int64
+	KeyLimitOverride        pgtype.Int8
+	KeyLimitRevision        int64
 }
 
 type ProjectSchemaRevision struct {

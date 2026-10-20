@@ -450,7 +450,7 @@ func (r sqliteProjects) List(ctx context.Context, p authz.Proof) ([]Project, err
 	}
 	out := make([]Project, 0, len(rows))
 	for _, row := range rows {
-		proj, err := projectFromSQLite(row)
+		proj, err := projectFromSQLite(sqlitegen.GetProjectRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -572,7 +572,7 @@ func (r sqliteProjects) SetMachineReveal(ctx context.Context, p authz.Proof, ena
 	}))
 }
 
-func projectFromSQLite(row sqlitegen.Project) (Project, error) {
+func projectFromSQLite(row sqlitegen.GetProjectRow) (Project, error) {
 	created, err := parseTime("project", row.ID, row.CreatedAt)
 	if err != nil {
 		return Project{}, err
@@ -1134,7 +1134,7 @@ func (r pgProjects) List(ctx context.Context, p authz.Proof) ([]Project, error) 
 	}
 	out := make([]Project, 0, len(rows))
 	for _, row := range rows {
-		proj, err := projectFromPG(row)
+		proj, err := projectFromPG(pggen.GetProjectRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -1249,7 +1249,7 @@ func (r pgProjects) SetMachineReveal(ctx context.Context, p authz.Proof, enabled
 	}))
 }
 
-func projectFromPG(row pggen.Project) (Project, error) {
+func projectFromPG(row pggen.GetProjectRow) (Project, error) {
 	if !row.CreatedAt.Valid {
 		return Project{}, fmt.Errorf("store: project %s: null created_at", row.ID)
 	}

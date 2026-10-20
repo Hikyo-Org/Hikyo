@@ -116,6 +116,9 @@ type KeyGroupView struct {
 // declared once per project, and the scope lattice has no key level.
 type Keys struct {
 	DB *store.DB
+	// Owner policy bounds project overrides; zero uses documented defaults.
+	DefaultKeysPerProject int
+	MaxKeysPerProject     int
 	// Keyring materializes the semantic schema fan-out's snapshots. Nil
 	// refuses any semantic change in a project that has environments, which is
 	// the fail-closed answer: a schema change that cannot materialize is a
@@ -650,9 +653,19 @@ func (s *Keys) Create(ctx context.Context, actor Actor, scope domain.Scope, spec
 		if err != nil {
 			return err
 		}
-		if n >= schema.MaxKeysPerProject {
-			return fmt.Errorf("%w: a project declares at most %d keys",
-				domain.ErrLimitExceeded, schema.MaxKeysPerProject)
+		keyLimit, err := projectKeyLimit(ctx, r.Projects(), p, s.DefaultKeysPerProject, s.MaxKeysPerProject)
+		if err != nil {
+			return err
+		}
+		if err := checkProjectKeyGrowth(n, n+1, keyLimit); err != nil {
+			return err
+		}
+		envs, err := r.Environments().Count(ctx, p)
+		if err != nil {
+			return err
+		}
+		if err := checkResolvedCells(n+1, envs); err != nil {
+			return err
 		}
 		if err := publisher.authorizeKeyFanOut(ctx, r, az, caller, p, scope, keyTarget, true, spec.GroupID != ""); err != nil {
 			return err
