@@ -124,6 +124,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_OIDC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_OPERATIONAL_LISTEN", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ORG", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_PAIRING_SPKI_PIN", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_PG_POOL_MAX", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_PG_STORAGE_KUBELET_URL", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_PG_STORAGE_NAMESPACE", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},

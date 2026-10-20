@@ -1141,18 +1141,18 @@
   {
     "operation": "mail.get",
     "class": "instance",
+    "level": "instance",
     "formula": [
       "instance-config@instance"
-    ],
-    "level": "instance"
+    ]
   },
   {
     "operation": "mail.test",
     "class": "instance",
+    "level": "instance",
     "formula": [
       "instance-config@instance"
-    ],
-    "level": "instance"
+    ]
   },
   {
     "operation": "member.invite-instance",
@@ -1567,6 +1567,46 @@
   },
   {
     "operation": "remote-credential.show",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "remote-pairing.complete",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "remote-pairing.create",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "remote-pairing.list",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "remote-pairing.prepare",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "remote-pairing.revoke",
     "class": "instance",
     "level": "instance",
     "formula": [

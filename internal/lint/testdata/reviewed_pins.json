@@ -956,6 +956,16 @@
       "hash": "7d2788ff12d92a4e142665b0da8fc1995223129d35d8687bfd8166de7fa26b89",
       "reason": "Driver DBTX adapter forwards caller-owned SQL and arguments; runtime/recovery wrappers preserve admitted custody, while authn wrappers observe generated queries for tests. It owns no literal data statement."
     },
+    "internal/store/authn/remote_pairing.go:Resolver.restorePairingNextEpoch": {
+      "hash": "c9eaba5ed98f8f97ca1762ba4f0b7319d78ef6c8a78b6ab869a71f6a1d8f7e26",
+      "reason": "Historical authenticated-archive catalog probe checks only the two fixed remote_pairing_invites and remote_pairing_exchanges table names introduced together in migration 00079 before a generated credential-epoch maximum. Both absent remains supported, partial schema is refused, and no tenant rows, request-selected identifiers, PAKE records or capability verifiers are read by handwritten SQL. nextEpoch preserves the sane-range and overflow guard.",
+      "callers": {
+        "internal/store/authn/restore.go:Resolver.restoreDeveloperNextEpoch": "349e28128c9942ebb49d971b5c7632e04b7de760eb8dc883b425483e6bbc45e6"
+      },
+      "dependencies": [
+        "internal/store/authn/restore.go:nextEpoch"
+      ]
+    },
     "internal/store/authn/restore.go:Resolver.HoldRestoredPKIIssuers": {
       "hash": "f5ec9c16a1d8252354e2deb4832e4dd0849ff3d33932abde80ca0eff063642a3",
       "reason": "Historical authenticated-archive catalog probe accepts pre-migration-00064 archives without pki_issuers; existing issuer data update remains a generated query."
@@ -968,7 +978,7 @@
       }
     },
     "internal/store/authn/restore.go:Resolver.restoreDeveloperNextEpoch": {
-      "hash": "740bce1e76b9bd0ff3bd0c94b69b51e5b82ec86bb34ff16ac81a2e099850f7a3",
+      "hash": "349e28128c9942ebb49d971b5c7632e04b7de760eb8dc883b425483e6bbc45e6",
       "reason": "Historical authenticated-archive catalog probe checks only the fixed developer_credentials table introduced in migration 00074 before selecting the generated credential-epoch maximum. Older archive absence must not abort PostgreSQL restore transactions. Reads schema metadata only, never tenant rows, request-selected identifiers, or verifiers; nextEpoch retains the sane-range and overflow guard.",
       "callers": {
         "internal/store/authn/restore.go:Resolver.restoreNextEpoch": "e42f1f0336abd0454755e02234745bcfcf887b0880a299e3dd6d78b8f36643d9"
@@ -1597,7 +1607,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.MigrateConfiguration": {
-      "hash": "3d0533f9b92c1915d737c9e9df23dc1fa09e7378b877621a456a0d8f559a260f",
+      "hash": "dc501a6c98b9e5923a3adacbbf55fbace46eba6f1b399d839c7d1e71bde09d64",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/audit/audit.go:NewEventID",
@@ -1714,7 +1724,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.configurationVersionCAS": {
-      "hash": "1269edd7bd9fd16549e81d290f2ae8b27c272bace5d1da32ec501ee30fb150e5",
+      "hash": "020b2f411b1a7205da260cbad2a7d8bb6dbd9ae9a2d7a7cfae2ef0a497ac230f",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/store/upgrade/configuration_migrate.go:configurationOneRow"
@@ -2765,8 +2775,8 @@
     "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
     "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
     "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
-    "internal/runtimeconfig/catalogue.go:Catalogue": "72fab0d0c4fbaf77f845858f0069c8b4cf29d16c1bec382b1ae06c940eb4a0e0",
-    "internal/runtimeconfig/migrations.go:Migrations": "311a75d54a7f24e8e8cac12584386cc8e02e9288b0088134bb707e6062b605c4",
+    "internal/runtimeconfig/catalogue.go:Catalogue": "cbd385933b9dc884f7fbf5366ba60d892c83545e90252e23f93bb7a45c192857",
+    "internal/runtimeconfig/migrations.go:Migrations": "9bf5c9ee50894956c32c65aeb080fb769a4c5739bd754977f85becf62136bdbb",
     "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
     "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
     "internal/schema/declare.go:CompileClassified": "57dfbfeec95d5e83910b312aae3f90c9e94a9ada8e454068c3fb74260ccb0aa4",
@@ -2869,7 +2879,7 @@
     "internal/store/upgrade/configuration_migrate.go:configurationID": "de8c3eacfbd8e674bd079ac773feaad59d96ede8ff7c83809f324bc345ef0f51",
     "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50",
     "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrations": "04042a7e2c360acbaae2197943e3b9aef61de5fe5c4c8143be624a00bc3e79ff",
-    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "43aadc6aeb92b21bf92883ae76ec67c01f00d6d9c5ed8cbc98df7b3b274a5c00",
+    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "24ca33f4d4c1a631f1d1d44078dc4736c4e8014493d0e589c23d37fd70a31f8c",
     "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
     "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
     "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",

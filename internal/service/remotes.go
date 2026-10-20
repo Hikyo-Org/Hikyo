@@ -133,6 +133,10 @@ type RemoteOrg struct {
 // stored state are re-done inside the transaction, so the window between the
 // two cannot produce a self-connected or duplicated entry.
 func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin, credential string) (RemoteView, error) {
+	return s.addRemote(ctx, actor, name, rawURL, pin, credential, authz.OpRemoteAdd, nil)
+}
+
+func (s *Remotes) addRemote(ctx context.Context, actor Actor, name, rawURL, pin, credential string, op authz.Operation, beforeCommit func(context.Context, *authz.TxAuthorizer) error) (RemoteView, error) {
 	if err := checkName("remote name", name); err != nil {
 		return RemoteView{}, err
 	}
@@ -168,7 +172,7 @@ func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin,
 		known        map[string]string // remote identity -> entry name
 	)
 	if err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, p, err := authorize(ctx, az, actor, authz.OpRemoteAdd, domain.Scope{}, now)
+		_, p, err := authorize(ctx, az, actor, op, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -208,15 +212,22 @@ func (s *Remotes) AddRemote(ctx context.Context, actor Actor, name, rawURL, pin,
 	// transaction sees, so a concurrent add of the same instance cannot slip
 	// between phases 1 and 3.
 	sealer := s.Keyring.ForInstance()
-	sealed, err := sealer.SealField(remoteCredentialAAD(id), []byte(credential))
+	plainCredential := []byte(credential)
+	sealed, err := sealer.SealField(remoteCredentialAAD(id), plainCredential)
+	crypto.Zero(plainCredential)
 	if err != nil {
 		return RemoteView{}, err
 	}
 	var out RemoteView
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpRemoteAdd, domain.Scope{}, now)
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, s.now())
 		if err != nil {
 			return err
+		}
+		if beforeCommit != nil {
+			if err := beforeCommit(ctx, az); err != nil {
+				return err
+			}
 		}
 		// THE CENSUS LOCK. Everything below is a read-then-write decision about
 		// the instance as a whole — how many remotes it holds, and which
@@ -349,7 +360,7 @@ func (s *Remotes) loadForFetch(ctx context.Context, actor Actor, now time.Time, 
 		snaps   = map[string]store.RemoteSnapshot{}
 	)
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, now)
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -401,6 +412,7 @@ func (s *Remotes) loadForFetch(ctx context.Context, actor Actor, now time.Time, 
 			targets = append(targets, remotefetch.Target{
 				ID: e.ID, Origin: e.URL, Pin: e.SPKIPin, Credential: string(plain),
 			})
+			crypto.Zero(plain)
 		}
 		return nil
 	})
@@ -485,7 +497,7 @@ func (s *Remotes) settle(
 	// inferring it would put the wrong operation name on the audit trail.
 	var views []RemoteView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, now)
+		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}

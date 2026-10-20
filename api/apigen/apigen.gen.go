@@ -6214,6 +6214,14 @@ type CreateProjectRequest struct {
 	Name EntityName `json:"name"`
 }
 
+// CreateRemotePairingInviteRequest defines model for CreateRemotePairingInviteRequest.
+type CreateRemotePairingInviteRequest struct {
+	CredentialLifetimeSeconds int    `json:"credential_lifetime_seconds"`
+	InviteLifetimeSeconds     int    `json:"invite_lifetime_seconds"`
+	Label                     string `json:"label"`
+	Phrase                    string `json:"phrase"`
+}
+
 // CreateRuleRequest defines model for CreateRuleRequest.
 type CreateRuleRequest struct {
 	// Capability The capabilities a member access rule may carry (member-access-rules
@@ -7396,6 +7404,13 @@ type FileTargetReportRequest struct {
 // local policy refused; `failed` kept the last generation after a
 // filesystem failure.
 type FileTargetState string
+
+// FinishRemotePairingRequest defines model for FinishRemotePairingRequest.
+type FinishRemotePairingRequest struct {
+	ClientMessage string `json:"client_message"`
+	Exchange      string `json:"exchange"`
+	Proof         string `json:"proof"`
+}
 
 // Folder defines model for Folder.
 type Folder struct {
@@ -8688,6 +8703,13 @@ type OrgList struct {
 	Items []Org `json:"items"`
 }
 
+// PairRemoteRequest defines model for PairRemoteRequest.
+type PairRemoteRequest struct {
+	InviteBundle   string `json:"invite_bundle"`
+	Name           string `json:"name"`
+	RequesterState string `json:"requester_state"`
+}
+
 // Passkey defines model for Passkey.
 type Passkey struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
@@ -9007,6 +9029,15 @@ type PkiProfileUpdateRequest struct {
 
 	// RowVersion The version the operator reviewed; a concurrent edit is refused.
 	RowVersion *int64 `json:"row_version,omitempty"`
+}
+
+// PrepareRemotePairingRequest Omit the body or both fields to generate six random words. Choose
+// either an explicit nonempty custom password/phrase, preserved exactly,
+// or a generated word count. Case and whitespace are significant.
+// Custom secrets are bounded to 4096 UTF-8 bytes by the service.
+type PrepareRemotePairingRequest struct {
+	Phrase    *string `json:"phrase,omitempty"`
+	WordCount *int    `json:"word_count,omitempty"`
 }
 
 // Principal defines model for Principal.
@@ -9437,6 +9468,56 @@ type RemoteState string
 type RemoteList struct {
 	Count int      `json:"count"`
 	Items []Remote `json:"items"`
+}
+
+// RemotePairingFinished defines model for RemotePairingFinished.
+type RemotePairingFinished struct {
+	Connection    InstanceConnection `json:"connection"`
+	Credential    string             `json:"credential"`
+	ServerMessage string             `json:"server_message"`
+}
+
+// RemotePairingInvite defines model for RemotePairingInvite.
+type RemotePairingInvite struct {
+	ConsumedAt          *time.Time `json:"consumed_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	CredentialExpiresAt time.Time  `json:"credential_expires_at"`
+	ExpiresAt           time.Time  `json:"expires_at"`
+	Id                  string     `json:"id"`
+	Label               string     `json:"label"`
+	Origin              string     `json:"origin"`
+	RevokedAt           *time.Time `json:"revoked_at,omitempty"`
+	SpkiPin             string     `json:"spki_pin"`
+}
+
+// RemotePairingInviteCreated defines model for RemotePairingInviteCreated.
+type RemotePairingInviteCreated struct {
+	Invite       RemotePairingInvite `json:"invite"`
+	InviteBundle string              `json:"invite_bundle"`
+}
+
+// RemotePairingInviteList defines model for RemotePairingInviteList.
+type RemotePairingInviteList struct {
+	// ConfigurationError Instance configuration must be corrected before an invitation can be created. Does not perform certificate discovery.
+	ConfigurationError *string               `json:"configuration_error,omitempty"`
+	Count              int                   `json:"count"`
+	Items              []RemotePairingInvite `json:"items"`
+
+	// Origin Configured public origin used for new invitations; never inferred from request headers.
+	Origin string `json:"origin"`
+}
+
+// RemotePairingPrepared defines model for RemotePairingPrepared.
+type RemotePairingPrepared struct {
+	ExpiresAt      time.Time `json:"expires_at"`
+	Phrase         string    `json:"phrase"`
+	RequesterState string    `json:"requester_state"`
+}
+
+// RemotePairingStarted defines model for RemotePairingStarted.
+type RemotePairingStarted struct {
+	Exchange      string `json:"exchange"`
+	ServerMessage string `json:"server_message"`
 }
 
 // RenameFolderRequest defines model for RenameFolderRequest.
@@ -10968,6 +11049,12 @@ type SnapshotKey struct {
 
 	// Sensitive True when this value occurrence is secret-classified or carries sticky historical secrecy.
 	Sensitive bool `json:"sensitive"`
+}
+
+// StartRemotePairingRequest defines model for StartRemotePairingRequest.
+type StartRemotePairingRequest struct {
+	InviteCapability string `json:"invite_capability"`
+	PublicJwk        string `json:"public_jwk"`
 }
 
 // StartWorkspaceHandoffRequest defines model for StartWorkspaceHandoffRequest.
@@ -12862,6 +12949,12 @@ type Oauth2StartJSONRequestBody = Oauth2StartRequest
 // OidcStartJSONRequestBody defines body for OidcStart for application/json ContentType.
 type OidcStartJSONRequestBody = OidcStartRequest
 
+// FinishRemotePairingJSONRequestBody defines body for FinishRemotePairing for application/json ContentType.
+type FinishRemotePairingJSONRequestBody = FinishRemotePairingRequest
+
+// StartRemotePairingJSONRequestBody defines body for StartRemotePairing for application/json ContentType.
+type StartRemotePairingJSONRequestBody = StartRemotePairingRequest
+
 // SetPasswordJSONRequestBody defines body for SetPassword for application/json ContentType.
 type SetPasswordJSONRequestBody = SetPasswordRequest
 
@@ -12970,6 +13063,12 @@ type PutOauth2ProviderJSONRequestBody = Oauth2ProviderInput
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
+// CreateRemotePairingInviteJSONRequestBody defines body for CreateRemotePairingInvite for application/json ContentType.
+type CreateRemotePairingInviteJSONRequestBody = CreateRemotePairingInviteRequest
+
+// PrepareRemotePairingJSONRequestBody defines body for PrepareRemotePairing for application/json ContentType.
+type PrepareRemotePairingJSONRequestBody = PrepareRemotePairingRequest
+
 // CreatePkiIssuerJSONRequestBody defines body for CreatePkiIssuer for application/json ContentType.
 type CreatePkiIssuerJSONRequestBody = PkiIssuerCreateRequest
 
@@ -12996,6 +13095,9 @@ type PutInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
 
 // AddRemoteJSONRequestBody defines body for AddRemote for application/json ContentType.
 type AddRemoteJSONRequestBody = AddRemoteRequest
+
+// PairRemoteJSONRequestBody defines body for PairRemote for application/json ContentType.
+type PairRemoteJSONRequestBody = PairRemoteRequest
 
 // RenameRemoteJSONRequestBody defines body for RenameRemote for application/json ContentType.
 type RenameRemoteJSONRequestBody = RenameRemoteRequest
@@ -14440,6 +14542,12 @@ type ServerInterface interface {
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(w http.ResponseWriter, r *http.Request, provider ProviderSlug)
+	// FinishRemotePairing finishRemotePairing.
+	// (POST /api/v1/auth/pairing/finish)
+	FinishRemotePairing(w http.ResponseWriter, r *http.Request)
+	// StartRemotePairing startRemotePairing.
+	// (POST /api/v1/auth/pairing/start)
+	StartRemotePairing(w http.ResponseWriter, r *http.Request)
 	// SetPassword Set or change the caller's password; reissues the session.
 	// (PUT /api/v1/auth/password)
 	SetPassword(w http.ResponseWriter, r *http.Request)
@@ -14626,6 +14734,18 @@ type ServerInterface interface {
 	// PutOidcProvider Create or reconfigure an OIDC provider.
 	// (PUT /api/v1/instance/oidc-providers/{slug})
 	PutOidcProvider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath)
+	// ListRemotePairingInvites listRemotePairingInvites.
+	// (GET /api/v1/instance/pairing-invites)
+	ListRemotePairingInvites(w http.ResponseWriter, r *http.Request)
+	// CreateRemotePairingInvite createRemotePairingInvite.
+	// (POST /api/v1/instance/pairing-invites)
+	CreateRemotePairingInvite(w http.ResponseWriter, r *http.Request)
+	// RevokeRemotePairingInvite revokeRemotePairingInvite.
+	// (DELETE /api/v1/instance/pairing-invites/{invite})
+	RevokeRemotePairingInvite(w http.ResponseWriter, r *http.Request, invite string)
+	// PrepareRemotePairing prepareRemotePairing.
+	// (POST /api/v1/instance/pairing-requests)
+	PrepareRemotePairing(w http.ResponseWriter, r *http.Request)
 	// ListPkiIssuers List every CA issuer version; public material only.
 	// (GET /api/v1/instance/pki/issuers)
 	ListPkiIssuers(w http.ResponseWriter, r *http.Request)
@@ -14695,6 +14815,9 @@ type ServerInterface interface {
 	// AddRemote Add a connection entry, verified by one authenticated fetch.
 	// (POST /api/v1/instance/remotes)
 	AddRemote(w http.ResponseWriter, r *http.Request)
+	// PairRemote pairRemote.
+	// (POST /api/v1/instance/remotes/pair)
+	PairRemote(w http.ResponseWriter, r *http.Request)
 	// RemoveRemote Destroy an entry, its stored credential and its snapshot.
 	// (DELETE /api/v1/instance/remotes/{remote})
 	RemoveRemote(w http.ResponseWriter, r *http.Request, remote RemoteName)
@@ -15721,6 +15844,18 @@ func (_ Unimplemented) OidcStart(w http.ResponseWriter, r *http.Request, provide
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// FinishRemotePairing finishRemotePairing.
+// (POST /api/v1/auth/pairing/finish)
+func (_ Unimplemented) FinishRemotePairing(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartRemotePairing startRemotePairing.
+// (POST /api/v1/auth/pairing/start)
+func (_ Unimplemented) StartRemotePairing(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // SetPassword Set or change the caller's password; reissues the session.
 // (PUT /api/v1/auth/password)
 func (_ Unimplemented) SetPassword(w http.ResponseWriter, r *http.Request) {
@@ -16093,6 +16228,30 @@ func (_ Unimplemented) PutOidcProvider(w http.ResponseWriter, r *http.Request, s
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListRemotePairingInvites listRemotePairingInvites.
+// (GET /api/v1/instance/pairing-invites)
+func (_ Unimplemented) ListRemotePairingInvites(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateRemotePairingInvite createRemotePairingInvite.
+// (POST /api/v1/instance/pairing-invites)
+func (_ Unimplemented) CreateRemotePairingInvite(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeRemotePairingInvite revokeRemotePairingInvite.
+// (DELETE /api/v1/instance/pairing-invites/{invite})
+func (_ Unimplemented) RevokeRemotePairingInvite(w http.ResponseWriter, r *http.Request, invite string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PrepareRemotePairing prepareRemotePairing.
+// (POST /api/v1/instance/pairing-requests)
+func (_ Unimplemented) PrepareRemotePairing(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListPkiIssuers List every CA issuer version; public material only.
 // (GET /api/v1/instance/pki/issuers)
 func (_ Unimplemented) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
@@ -16228,6 +16387,12 @@ func (_ Unimplemented) ListRemotes(w http.ResponseWriter, r *http.Request) {
 // AddRemote Add a connection entry, verified by one authenticated fetch.
 // (POST /api/v1/instance/remotes)
 func (_ Unimplemented) AddRemote(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PairRemote pairRemote.
+// (POST /api/v1/instance/remotes/pair)
+func (_ Unimplemented) PairRemote(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18609,6 +18774,34 @@ func (siw *ServerInterfaceWrapper) OidcStart(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// FinishRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) FinishRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishRemotePairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) StartRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartRemotePairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetPassword operation middleware
 func (siw *ServerInterfaceWrapper) SetPassword(w http.ResponseWriter, r *http.Request) {
 
@@ -19689,6 +19882,74 @@ func (siw *ServerInterfaceWrapper) PutOidcProvider(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListRemotePairingInvites operation middleware
+func (siw *ServerInterfaceWrapper) ListRemotePairingInvites(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRemotePairingInvites(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRemotePairingInvite operation middleware
+func (siw *ServerInterfaceWrapper) CreateRemotePairingInvite(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRemotePairingInvite(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeRemotePairingInvite operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRemotePairingInvite(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "invite" -------------
+	var invite string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "invite", chi.URLParam(r, "invite"), &invite, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "invite", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRemotePairingInvite(w, r, invite)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PrepareRemotePairing operation middleware
+func (siw *ServerInterfaceWrapper) PrepareRemotePairing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PrepareRemotePairing(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListPkiIssuers operation middleware
 func (siw *ServerInterfaceWrapper) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
 
@@ -20203,6 +20464,20 @@ func (siw *ServerInterfaceWrapper) AddRemote(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddRemote(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PairRemote operation middleware
+func (siw *ServerInterfaceWrapper) PairRemote(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PairRemote(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -33467,6 +33742,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/scim/v2/{binding}/Groups/.search", wrapper.ScimSearchGroups)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pairing-requests", wrapper.PrepareRemotePairing)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pairing-invites", wrapper.ListRemotePairingInvites)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pairing-invites", wrapper.CreateRemotePairingInvite)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/pairing-invites/{invite}", wrapper.RevokeRemotePairingInvite)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/remotes/pair", wrapper.PairRemote)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/pairing/start", wrapper.StartRemotePairing)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/pairing/finish", wrapper.FinishRemotePairing)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/directory", wrapper.ServeDirectory)
 	})
 	r.Group(func(r chi.Router) {
@@ -37060,6 +37356,278 @@ func (response OidcStart500JSONResponse) VisitOidcStartResponse(w http.ResponseW
 type OidcStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response OidcStart503JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairingRequestObject struct {
+	Body *FinishRemotePairingJSONRequestBody
+}
+
+type FinishRemotePairingResponseObject interface {
+	VisitFinishRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type FinishRemotePairing201JSONResponse RemotePairingFinished
+
+func (response FinishRemotePairing201JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response FinishRemotePairing400JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response FinishRemotePairing401JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response FinishRemotePairing403JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response FinishRemotePairing404JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing409JSONResponse struct{ ConflictJSONResponse }
+
+func (response FinishRemotePairing409JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response FinishRemotePairing429JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing500JSONResponse struct{ InternalJSONResponse }
+
+func (response FinishRemotePairing500JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishRemotePairing503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response FinishRemotePairing503JSONResponse) VisitFinishRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairingRequestObject struct {
+	Body *StartRemotePairingJSONRequestBody
+}
+
+type StartRemotePairingResponseObject interface {
+	VisitStartRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type StartRemotePairing201JSONResponse RemotePairingStarted
+
+func (response StartRemotePairing201JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response StartRemotePairing400JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response StartRemotePairing401JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response StartRemotePairing403JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response StartRemotePairing404JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing409JSONResponse struct{ ConflictJSONResponse }
+
+func (response StartRemotePairing409JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response StartRemotePairing429JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing500JSONResponse struct{ InternalJSONResponse }
+
+func (response StartRemotePairing500JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemotePairing503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartRemotePairing503JSONResponse) VisitStartRemotePairingResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -44185,6 +44753,543 @@ func (response PutOidcProvider503JSONResponse) VisitPutOidcProviderResponse(w ht
 	return err
 }
 
+type ListRemotePairingInvitesRequestObject struct {
+}
+
+type ListRemotePairingInvitesResponseObject interface {
+	VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error
+}
+
+type ListRemotePairingInvites200JSONResponse RemotePairingInviteList
+
+func (response ListRemotePairingInvites200JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListRemotePairingInvites400JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListRemotePairingInvites401JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListRemotePairingInvites403JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListRemotePairingInvites404JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ListRemotePairingInvites409JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListRemotePairingInvites429JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListRemotePairingInvites500JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRemotePairingInvites503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListRemotePairingInvites503JSONResponse) VisitListRemotePairingInvitesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInviteRequestObject struct {
+	Body *CreateRemotePairingInviteJSONRequestBody
+}
+
+type CreateRemotePairingInviteResponseObject interface {
+	VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error
+}
+
+type CreateRemotePairingInvite201JSONResponse RemotePairingInviteCreated
+
+func (response CreateRemotePairingInvite201JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRemotePairingInvite400JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateRemotePairingInvite401JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateRemotePairingInvite403JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateRemotePairingInvite404JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateRemotePairingInvite409JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateRemotePairingInvite429JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateRemotePairingInvite500JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemotePairingInvite503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRemotePairingInvite503JSONResponse) VisitCreateRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInviteRequestObject struct {
+	Invite string `json:"invite"`
+}
+
+type RevokeRemotePairingInviteResponseObject interface {
+	VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error
+}
+
+type RevokeRemotePairingInvite204Response struct {
+}
+
+func (response RevokeRemotePairingInvite204Response) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeRemotePairingInvite400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeRemotePairingInvite400JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeRemotePairingInvite401JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeRemotePairingInvite403JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeRemotePairingInvite404JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeRemotePairingInvite409JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeRemotePairingInvite429JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeRemotePairingInvite500JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRemotePairingInvite503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeRemotePairingInvite503JSONResponse) VisitRevokeRemotePairingInviteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairingRequestObject struct {
+	Body *PrepareRemotePairingJSONRequestBody
+}
+
+type PrepareRemotePairingResponseObject interface {
+	VisitPrepareRemotePairingResponse(w http.ResponseWriter) error
+}
+
+type PrepareRemotePairing201JSONResponse RemotePairingPrepared
+
+func (response PrepareRemotePairing201JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PrepareRemotePairing400JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PrepareRemotePairing401JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PrepareRemotePairing403JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PrepareRemotePairing404JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PrepareRemotePairing409JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PrepareRemotePairing429JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing500JSONResponse struct{ InternalJSONResponse }
+
+func (response PrepareRemotePairing500JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrepareRemotePairing503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PrepareRemotePairing503JSONResponse) VisitPrepareRemotePairingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPkiIssuersRequestObject struct {
 }
 
@@ -47069,6 +48174,142 @@ func (response AddRemote500JSONResponse) VisitAddRemoteResponse(w http.ResponseW
 type AddRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response AddRemote503JSONResponse) VisitAddRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemoteRequestObject struct {
+	Body *PairRemoteJSONRequestBody
+}
+
+type PairRemoteResponseObject interface {
+	VisitPairRemoteResponse(w http.ResponseWriter) error
+}
+
+type PairRemote201JSONResponse Remote
+
+func (response PairRemote201JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PairRemote400JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PairRemote401JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PairRemote403JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PairRemote404JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PairRemote409JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PairRemote429JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote500JSONResponse struct{ InternalJSONResponse }
+
+func (response PairRemote500JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PairRemote503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PairRemote503JSONResponse) VisitPairRemoteResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -78853,6 +80094,12 @@ type StrictServerInterface interface {
 	// OidcStart Begin an OIDC transaction (login, link, reauth or claim).
 	// (POST /api/v1/auth/oidc/{provider}/start)
 	OidcStart(ctx context.Context, request OidcStartRequestObject) (OidcStartResponseObject, error)
+	// FinishRemotePairing finishRemotePairing.
+	// (POST /api/v1/auth/pairing/finish)
+	FinishRemotePairing(ctx context.Context, request FinishRemotePairingRequestObject) (FinishRemotePairingResponseObject, error)
+	// StartRemotePairing startRemotePairing.
+	// (POST /api/v1/auth/pairing/start)
+	StartRemotePairing(ctx context.Context, request StartRemotePairingRequestObject) (StartRemotePairingResponseObject, error)
 	// SetPassword Set or change the caller's password; reissues the session.
 	// (PUT /api/v1/auth/password)
 	SetPassword(ctx context.Context, request SetPasswordRequestObject) (SetPasswordResponseObject, error)
@@ -79039,6 +80286,18 @@ type StrictServerInterface interface {
 	// PutOidcProvider Create or reconfigure an OIDC provider.
 	// (PUT /api/v1/instance/oidc-providers/{slug})
 	PutOidcProvider(ctx context.Context, request PutOidcProviderRequestObject) (PutOidcProviderResponseObject, error)
+	// ListRemotePairingInvites listRemotePairingInvites.
+	// (GET /api/v1/instance/pairing-invites)
+	ListRemotePairingInvites(ctx context.Context, request ListRemotePairingInvitesRequestObject) (ListRemotePairingInvitesResponseObject, error)
+	// CreateRemotePairingInvite createRemotePairingInvite.
+	// (POST /api/v1/instance/pairing-invites)
+	CreateRemotePairingInvite(ctx context.Context, request CreateRemotePairingInviteRequestObject) (CreateRemotePairingInviteResponseObject, error)
+	// RevokeRemotePairingInvite revokeRemotePairingInvite.
+	// (DELETE /api/v1/instance/pairing-invites/{invite})
+	RevokeRemotePairingInvite(ctx context.Context, request RevokeRemotePairingInviteRequestObject) (RevokeRemotePairingInviteResponseObject, error)
+	// PrepareRemotePairing prepareRemotePairing.
+	// (POST /api/v1/instance/pairing-requests)
+	PrepareRemotePairing(ctx context.Context, request PrepareRemotePairingRequestObject) (PrepareRemotePairingResponseObject, error)
 	// ListPkiIssuers List every CA issuer version; public material only.
 	// (GET /api/v1/instance/pki/issuers)
 	ListPkiIssuers(ctx context.Context, request ListPkiIssuersRequestObject) (ListPkiIssuersResponseObject, error)
@@ -79108,6 +80367,9 @@ type StrictServerInterface interface {
 	// AddRemote Add a connection entry, verified by one authenticated fetch.
 	// (POST /api/v1/instance/remotes)
 	AddRemote(ctx context.Context, request AddRemoteRequestObject) (AddRemoteResponseObject, error)
+	// PairRemote pairRemote.
+	// (POST /api/v1/instance/remotes/pair)
+	PairRemote(ctx context.Context, request PairRemoteRequestObject) (PairRemoteResponseObject, error)
 	// RemoveRemote Destroy an entry, its stored credential and its snapshot.
 	// (DELETE /api/v1/instance/remotes/{remote})
 	RemoveRemote(ctx context.Context, request RemoveRemoteRequestObject) (RemoveRemoteResponseObject, error)
@@ -80814,6 +82076,68 @@ func (sh *strictHandler) OidcStart(w http.ResponseWriter, r *http.Request, provi
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OidcStartResponseObject); ok {
 		if err := validResponse.VisitOidcStartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishRemotePairing operation middleware
+func (sh *strictHandler) FinishRemotePairing(w http.ResponseWriter, r *http.Request) {
+	var request FinishRemotePairingRequestObject
+
+	var body FinishRemotePairingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishRemotePairing(ctx, request.(FinishRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishRemotePairingResponseObject); ok {
+		if err := validResponse.VisitFinishRemotePairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartRemotePairing operation middleware
+func (sh *strictHandler) StartRemotePairing(w http.ResponseWriter, r *http.Request) {
+	var request StartRemotePairingRequestObject
+
+	var body StartRemotePairingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartRemotePairing(ctx, request.(StartRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartRemotePairingResponseObject); ok {
+		if err := validResponse.VisitStartRemotePairingResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -82597,6 +83921,121 @@ func (sh *strictHandler) PutOidcProvider(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListRemotePairingInvites operation middleware
+func (sh *strictHandler) ListRemotePairingInvites(w http.ResponseWriter, r *http.Request) {
+	var request ListRemotePairingInvitesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRemotePairingInvites(ctx, request.(ListRemotePairingInvitesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRemotePairingInvites")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRemotePairingInvitesResponseObject); ok {
+		if err := validResponse.VisitListRemotePairingInvitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRemotePairingInvite operation middleware
+func (sh *strictHandler) CreateRemotePairingInvite(w http.ResponseWriter, r *http.Request) {
+	var request CreateRemotePairingInviteRequestObject
+
+	var body CreateRemotePairingInviteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRemotePairingInvite(ctx, request.(CreateRemotePairingInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRemotePairingInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRemotePairingInviteResponseObject); ok {
+		if err := validResponse.VisitCreateRemotePairingInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRemotePairingInvite operation middleware
+func (sh *strictHandler) RevokeRemotePairingInvite(w http.ResponseWriter, r *http.Request, invite string) {
+	var request RevokeRemotePairingInviteRequestObject
+
+	request.Invite = invite
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRemotePairingInvite(ctx, request.(RevokeRemotePairingInviteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRemotePairingInvite")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRemotePairingInviteResponseObject); ok {
+		if err := validResponse.VisitRevokeRemotePairingInviteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PrepareRemotePairing operation middleware
+func (sh *strictHandler) PrepareRemotePairing(w http.ResponseWriter, r *http.Request) {
+	var request PrepareRemotePairingRequestObject
+
+	var body PrepareRemotePairingJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PrepareRemotePairing(ctx, request.(PrepareRemotePairingRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrepareRemotePairing")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PrepareRemotePairingResponseObject); ok {
+		if err := validResponse.VisitPrepareRemotePairingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListPkiIssuers operation middleware
 func (sh *strictHandler) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
 	var request ListPkiIssuersRequestObject
@@ -83236,6 +84675,37 @@ func (sh *strictHandler) AddRemote(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AddRemoteResponseObject); ok {
 		if err := validResponse.VisitAddRemoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PairRemote operation middleware
+func (sh *strictHandler) PairRemote(w http.ResponseWriter, r *http.Request) {
+	var request PairRemoteRequestObject
+
+	var body PairRemoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PairRemote(ctx, request.(PairRemoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PairRemote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PairRemoteResponseObject); ok {
+		if err := validResponse.VisitPairRemoteResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

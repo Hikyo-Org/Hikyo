@@ -416,14 +416,14 @@ The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek
 
 ### Revision and enum baseline
 
-**Source inventory, 2026-10-16 at
-`6769ee55dcd4087eeaf42547e9abde01c4f0818c`; final freeze baseline pending.**
-The earlier revision-2 inventory is historical. `api/spec.go` now advertises
-**API revision 11** and `api/openapi.yaml` contains 395 operations:
+**Source inventory, 2026-10-20, including manual remote pairing; final freeze
+baseline pending.** The earlier revision-2 inventory is historical.
+`api/spec.go` advertises **API revision 12** and `api/openapi.yaml` contains
+404 operations:
 
 | Minimum revision | Operation count |
 | --- | ---: |
-| 1 | 301 |
+| 1 | 303 |
 | 2 | 9 |
 | 3 | 2 |
 | 4 | 1 |
@@ -434,6 +434,13 @@ The earlier revision-2 inventory is historical. `api/spec.go` now advertises
 | 9 | 2 |
 | 10 | 8 |
 | 11 | 3 |
+| 12 | 7 |
+
+Revision 12 introduces only the seven manual pairing operations: authenticated
+request preparation, invitation creation/list/revocation, local completion,
+and the two capability-gated PAKE redemption endpoints. Existing operations
+keep their original minimum revisions. New clients refuse these pairing
+operations against a server advertising an earlier API revision.
 
 These are source counts, not a candidate test result. Refresh them after
 outstanding API changes, including #805, land. Retain published minima rather

@@ -118,6 +118,8 @@ var authRuleRows = []authRuleRow{
 		"scim user list", "scim group list",
 		"remote add", "remote list", "remote show", "remote remove",
 		"remote-credential create", "remote-credential list", "remote-credential show", "remote-credential revoke",
+		"remote-pairing prepare", "remote-pairing accept",
+		"remote-invite create", "remote-invite list", "remote-invite revoke",
 		"import",
 		"adapter create", "adapter list", "adapter show", "adapter update", "adapter delete",
 		"adapter credential set", "adapter credential revoke",

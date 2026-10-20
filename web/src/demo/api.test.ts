@@ -11,7 +11,7 @@ import {
   zAccessPolicyList, zAccessQueue, zAccountProfile, zAdapterList, zAdapterTargetDetail, zApprovalPolicyList,
   zApprovalRequestList, zAuditPage, zCertificateList, zDeliveryTargetList, zDeveloperCredentialList,
   zDirectoryListing, zDynamicLeaseList, zDynamicProviderList, zFileTarget, zFileTargetList, zIdentityList,
-  zInstanceConnectionList, zMachineCredentialList, zPasskeyList, zRemoteList, zScimBindingList,
+  zInstanceConnectionList, zMachineCredentialList, zPasskeyList, zRemoteList, zRemotePairingInviteList, zScimBindingList,
   zScimCredentialList, zScimDirectoryGroupList, zScimDirectoryUserList, zScimMappingList, zServiceAccountList,
   zSessionList, zSshcaList, zSshCertificateList, zSshProfileList, zWorkspaceOriginList,
 } from '@hikyo/zod';
@@ -115,6 +115,7 @@ describe('browser demo API', () => {
       { path: `${org}/audit`, schema: zAuditPage },
       { path: `${project}/audit`, schema: zAuditPage },
       { path: '/api/v1/instance/remotes', schema: zRemoteList },
+      { path: '/api/v1/instance/pairing-invites', schema: zRemotePairingInviteList },
       { path: '/api/v1/instance/directory', schema: zDirectoryListing },
       { path: '/api/v1/instance/connections', schema: zInstanceConnectionList },
       { path: '/api/v1/instance/workspace-origins', schema: zWorkspaceOriginList },
@@ -149,6 +150,27 @@ describe('browser demo API', () => {
     expect(credentials.items.filter((item) => item.revoked_at !== undefined)).toHaveLength(1);
     const requests = zAccessQueue.parse(await (await fetch(`${env()}/access-requests`)).json());
     expect(requests.items[0]?.reason).toContain('Sample request');
+  });
+
+  it.each(DEMO_ACCOUNTS)('shows pairing metadata for $label without enabling pairing', async ({ id }) => {
+    const fetch = createDemoFetch(id, { origin });
+    const path = '/api/v1/instance/pairing-invites';
+    const response = await fetch(path);
+    expect(response.status).toBe(200);
+    const invitations = zRemotePairingInviteList.parse(await response.json());
+    expect(invitations).toEqual({ items: [], count: 0, origin: 'https://demo.hikyo.example.test' });
+    const mutations = [
+      { path: '/api/v1/instance/pairing-requests', method: 'POST' },
+      { path, method: 'POST' },
+      { path: `${path}/sample-invitation`, method: 'DELETE' },
+      { path: '/api/v1/instance/remotes/pair', method: 'POST' },
+    ];
+    for (const mutation of mutations) {
+      const refused = await fetch(mutation.path, { method: mutation.method, body: '{}' });
+      expect(refused.status, `${mutation.method} ${mutation.path}`).toBe(404);
+      expect(zError.safeParse(await refused.json()).success).toBe(true);
+    }
+    expect(zRemotePairingInviteList.parse(await (await fetch(path)).json())).toEqual(invitations);
   });
 
   it('filters sample audit rows and never accepts mutations on the expanded read-only surfaces', async () => {

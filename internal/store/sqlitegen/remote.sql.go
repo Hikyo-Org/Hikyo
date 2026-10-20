@@ -416,10 +416,28 @@ const instanceConnectionByVerifier = `-- name: InstanceConnectionByVerifier :one
 
 SELECT id, principal_id, label, kind, verifier, prefix_hint, lifetime,
        expires_at, credential_epoch, created_at, created_by, revoked_at,
-       last_used_at
+       last_used_at,
+       EXISTS (SELECT 1 FROM remote_paired_connections AS paired WHERE paired.connection_id=instance_connections.id) AS proof_bound
 FROM instance_connections
 WHERE verifier = ?
 `
+
+type InstanceConnectionByVerifierRow struct {
+	ID              string
+	PrincipalID     string
+	Label           string
+	Kind            string
+	Verifier        []byte
+	PrefixHint      string
+	Lifetime        string
+	ExpiresAt       sql.NullString
+	CredentialEpoch int64
+	CreatedAt       string
+	CreatedBy       string
+	RevokedAt       sql.NullString
+	LastUsedAt      sql.NullString
+	ProofBound      bool
+}
 
 // Multi-instance (#71, multi-instance ADR). The serving side's instance
 // connections live here; the viewing side's remotes and snapshots land with
@@ -439,9 +457,9 @@ WHERE verifier = ?
 // clause. Filtering here would make an unknown credential cost one row and a
 // revoked one zero, which is a query-count oracle for which credentials exist.
 // hikyo:authn-resolution
-func (q *Queries) InstanceConnectionByVerifier(ctx context.Context, verifier []byte) (InstanceConnection, error) {
+func (q *Queries) InstanceConnectionByVerifier(ctx context.Context, verifier []byte) (InstanceConnectionByVerifierRow, error) {
 	row := q.db.QueryRowContext(ctx, instanceConnectionByVerifier, verifier)
-	var i InstanceConnection
+	var i InstanceConnectionByVerifierRow
 	err := row.Scan(
 		&i.ID,
 		&i.PrincipalID,
@@ -456,6 +474,7 @@ func (q *Queries) InstanceConnectionByVerifier(ctx context.Context, verifier []b
 		&i.CreatedBy,
 		&i.RevokedAt,
 		&i.LastUsedAt,
+		&i.ProofBound,
 	)
 	return i, err
 }

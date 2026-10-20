@@ -140,6 +140,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	if err != nil {
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
+	pairingConfigurationError, pairingSPKIPin := newPairingIdentity(cfg, certificate, fetcher)
 	diagnostics := &service.Diagnostics{Passwords: &kdf}
 	var postgresStorage *storagehealth.Kubernetes
 	if cfg.Store.Engine == config.EngineSQLite {
@@ -338,10 +339,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		SCIMWire: scimSvc,
 		// Multi-instance (#71). The outbound client is built from the
 		// owner-ratified bounds table (2026-08-13) and is the ONLY door to a
-		// foreign instance: with zero configured remotes it originates zero
-		// connections, which is what leaves the air-gap posture unchanged.
+		// foreign directory instance. Creating a pairing invitation can also
+		// explicitly probe this instance's configured public TLS identity;
+		// startup, listing and local preparation never trigger that probe.
 		Remotes:        &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher},
 		Workspace:      workspaceSvc,
+		Pairings:       &service.RemotePairings{DB: db, Keyring: kr, Remotes: &service.Remotes{DB: db, Keyring: kr, Fetch: fetcher}, Origin: cfg.ExternalOrigin, ResolveSPKIPin: pairingSPKIPin, ConfigurationError: pairingConfigurationError},
 		Admission:      limiter,
 		RequestBudget:  budget,
 		Metrics:        metrics,

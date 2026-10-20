@@ -153,6 +153,14 @@
     "import": "external"
   },
   {
+    "key": "HIKYO_DEFAULT_KEYS_PER_PROJECT",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
     "key": "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
     "audience": "server",
     "scope": "node",
@@ -386,6 +394,14 @@
     "activation": "none",
     "secret": false,
     "import": "external"
+  },
+  {
+    "key": "HIKYO_PAIRING_SPKI_PIN",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
   },
   {
     "key": "HIKYO_PG_POOL_MAX",

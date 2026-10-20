@@ -141,6 +141,13 @@
   },
   {
     "engine": "postgres",
+    "name": "BindRemotePairedConnection",
+    "annotation": "authn-resolution",
+    "hash": "ae948c4073f10b4cb9e67880901e18b9035687eb1c8f3e11a3b156c5c6a5634c",
+    "reason": "Enrollment permanently marks this connection proof-bound; ordinary bearer resolution must reject it."
+  },
+  {
+    "engine": "postgres",
     "name": "BindSessionToOAuth2Provider",
     "annotation": "authn-resolution",
     "hash": "a3eb72494921cb995462a5cfd74e67021f2f45b17098660765cea730a79b2796",
@@ -197,6 +204,20 @@
     "name": "ClaimOfflineRecord",
     "annotation": "authn-resolution",
     "hash": "2fb742b62db4102003c6622b2ffe62e0764bb4d63a0d2a6ca9d83219a4ea2b58"
+  },
+  {
+    "engine": "postgres",
+    "name": "ClaimRemotePairingAttempt",
+    "annotation": "authn-resolution",
+    "hash": "791b9c8419061eb08cd51c34d7885c555ab3c76764da904987942233616341d9",
+    "reason": "Each valid capability admits at most eight expensive PAKE attempts across all nodes."
+  },
+  {
+    "engine": "postgres",
+    "name": "ClaimRemotePairingReplay",
+    "annotation": "authn-resolution",
+    "hash": "b72cffaad0a854e5f9795aa55783cfb13c70ba30c3dd9142006c09bd7c0f85bd",
+    "reason": "Persist DPoP replay admission across nodes in the same transaction as directory authorization."
   },
   {
     "engine": "postgres",
@@ -285,6 +306,20 @@
     "annotation": "authn-resolution",
     "hash": "fa06314989b112a991ef6fb1d21667a7d6c354fa07bdde2e1afc941c097e74a5",
     "reason": "A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "ConsumeRemotePairingExchange",
+    "annotation": "authn-resolution",
+    "hash": "fcb239e1b5c70d96cc8d828dad3fb63e22c43d7995bde26adf570dd76ca263a6",
+    "reason": "Exchanges can be consumed once even when two nodes receive the same finish concurrently."
+  },
+  {
+    "engine": "postgres",
+    "name": "ConsumeRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "cc9951d035f5b560cdb562968a5d2e8b47c9e7845f82102be0b43d603725f9ac",
+    "reason": "Single-use consumption is part of the same transaction as connection principal, grant and key enrollment."
   },
   {
     "engine": "postgres",
@@ -575,6 +610,20 @@
   },
   {
     "engine": "postgres",
+    "name": "CountLiveRemotePairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
+    "reason": "Bound outstanding PAKE sessions per invitation before expensive server state creation."
+  },
+  {
+    "engine": "postgres",
+    "name": "CountLiveRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "2797e5a0f1a4413e5c157aa184a942781d035802b274c2c4dbad56345182007f",
+    "reason": "Serialize finite invitation admission and bound storage under the instance census lock."
+  },
+  {
+    "engine": "postgres",
     "name": "CountOpenAccessRequests",
     "annotation": "instance-scoped",
     "hash": "2b96375a746a217e2661dc52cbdb3130964d59a36b95fd7b5078eaebbbaa6bdf"
@@ -596,6 +645,20 @@
     "name": "CountRegistrationPolicyOrgs",
     "annotation": "authn-resolution",
     "hash": "018a36bad45e957cd9930702110b890a8a4f58b1aa03ddab29ea7ee7cf14665e"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountRemotePairingReplays",
+    "annotation": "authn-resolution",
+    "hash": "898c210954d07d7ab7291bee03a6b02c41ea5d105eaf3e83c78eb11d5a3359cb",
+    "reason": "Fail closed at the live replay cap rather than evicting proofs still replayable."
+  },
+  {
+    "engine": "postgres",
+    "name": "CountRemotePairingReplaysForKey",
+    "annotation": "authn-resolution",
+    "hash": "3a8ef1842fe169979d9927169c02f4d9ebe1c9d6c18b278d8a9835b261b2e31e",
+    "reason": "Bound one enrolled key's replay share before it can exhaust installation-wide admission for other peers."
   },
   {
     "engine": "postgres",
@@ -663,6 +726,20 @@
     "name": "CreateRemote",
     "annotation": "instance-scoped",
     "hash": "1a1b8110c33878fac6d1d02b3259d4696c4083380d4eb58c1cf4df9be4bb3ea1"
+  },
+  {
+    "engine": "postgres",
+    "name": "CreateRemotePairingExchange",
+    "annotation": "authn-resolution",
+    "hash": "b027cde468768aab2b3dceca6103b89090f4b1614f203c63720c98eeb11b32fc",
+    "reason": "Persist sealed PAKE exchange state so continuation works across server nodes."
+  },
+  {
+    "engine": "postgres",
+    "name": "CreateRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "3ea6a262994e3c344b12ba18b75467cf6b922d0be53de7567369fb5d4b1718dc",
+    "reason": "Resolve and administer finite manual invitations only after capability or instance-config authorization."
   },
   {
     "engine": "postgres",
@@ -1746,7 +1823,7 @@
     "engine": "postgres",
     "name": "InstanceConnectionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "259e6266d208fec0ebf448b04e93d2632adf9df1b404138c756ad123ea51fff6"
+    "hash": "aa95fe270ea09a09313d87475ec3ff706710dd687ea4577df526fdee991ddeab"
   },
   {
     "engine": "postgres",
@@ -1965,6 +2042,20 @@
   },
   {
     "engine": "postgres",
+    "name": "ListPairingExchangesForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "7b44a3c1f2f2d8db47df476c5f8a899513309b86a72b55e3bf627f0e84b05ff5",
+    "reason": "Instance reencrypt authorization precedes this bounded ciphertext scan; the proof-gated repository verifies the exact transaction and operation."
+  },
+  {
+    "engine": "postgres",
+    "name": "ListPairingInvitesForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "1cc1404ddeb32e5ef8cc7775bdef154a4b2c94ea9a4f2ca8f12ca4bd183ad2f2",
+    "reason": "Instance reencrypt authorization precedes this bounded ciphertext scan; the proof-gated repository verifies the exact transaction and operation."
+  },
+  {
+    "engine": "postgres",
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "e7a15ddf11fb2cec3d152f62218af861cfa158a0b575faf6b010b89e52396c7d"
@@ -2004,6 +2095,13 @@
     "name": "ListRegistrationSignupsForPolicy",
     "annotation": "authn-resolution",
     "hash": "34c056512e15669c5253265fe7107850a4c483e9c2c87871f9304076f3881564"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "874125882105fab9c9aed392536543949642f5e2a6540ea3b83054da1bfd2048",
+    "reason": "Authorized instance custody listing returns metadata through its caller, never capability or PAKE records."
   },
   {
     "engine": "postgres",
@@ -2658,6 +2756,27 @@
   },
   {
     "engine": "postgres",
+    "name": "PruneRemotePairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "5bdd6037c85c73fdceba737adff805202f7d1134245f43404d707a8dd4e1995e",
+    "reason": "Remove expired exchange secrets in bounded control-plane lifecycle work."
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "6a5e5fec22d9ba06ec826dccdf2b0fc5a998433162e7b98a4534a28b8c0c9695",
+    "reason": "Remove expired finite invitation state after retaining its audit trail separately."
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneRemotePairingReplays",
+    "annotation": "authn-resolution",
+    "hash": "bd38c752c51c35366af2fcb97dfed5585ff10910b72aaf11af29db66404a8a23",
+    "reason": "Remove only expired replay records before bounded admission."
+  },
+  {
+    "engine": "postgres",
     "name": "PruneTenantAuditRetention",
     "annotation": "instance-scoped",
     "hash": "375a9eeddf60d58e04f87a7075cd3d7841497104287d5fd9189886192e692e1a"
@@ -2748,6 +2867,20 @@
   },
   {
     "engine": "postgres",
+    "name": "ReencryptPairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "99f56384c951eceba6e6e75c506b55158056746fc5e8f22eeaa0c9784dd0f71a",
+    "reason": "Instance reencrypt authorization precedes ciphertext replacement guarded by the old blob; no pairing consent or credential authority is widened."
+  },
+  {
+    "engine": "postgres",
+    "name": "ReencryptPairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "712d7ac4ad9a4c6a7f763bd68d652e991c566ef086daf4870a8bb6ec0ba83d39",
+    "reason": "Instance reencrypt authorization precedes ciphertext replacement guarded by the old blob; no pairing consent or credential authority is widened."
+  },
+  {
+    "engine": "postgres",
     "name": "ReencryptPasswordCred",
     "annotation": "authn-resolution",
     "hash": "a52ab6c3f463b2287608749032f766d8e7f02cac5790dc73f099ad7eb24475bf"
@@ -2788,6 +2921,41 @@
     "annotation": "authn-resolution",
     "hash": "3ab16c2081fee4b12cff80933355342497ba495879dbd196d6d94709ad577a12",
     "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
+  },
+  {
+    "engine": "postgres",
+    "name": "RemotePairedConnectionByID",
+    "annotation": "authn-resolution",
+    "hash": "135b52f02809647894499d127d87fcb7860e955ac7b1b194d1cbff3337aecdc8",
+    "reason": "Authentication rechecks the enrolled public key inside every directory serve transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RemotePairingExchangeByID",
+    "annotation": "authn-resolution",
+    "hash": "ec1966b5ae8a64b3bf1e00b64a31b2e34c0f8017599bb348ee23534de62cb57e",
+    "reason": "Resolve bounded exchange state before atomic invitation consumption."
+  },
+  {
+    "engine": "postgres",
+    "name": "RemotePairingInviteByCapability",
+    "annotation": "authn-resolution",
+    "hash": "c9dc14d7b8078ce65e77a394d5060391eea81bbf2f130cf3e7de9fadf4da076a",
+    "reason": "Resolve the unguessable invitation capability before invoking PAKE."
+  },
+  {
+    "engine": "postgres",
+    "name": "RemotePairingInviteByID",
+    "annotation": "authn-resolution",
+    "hash": "f3fe60c681859909c437cd5818960c21744d45c95a1f422d02ff2cc31c244fb5",
+    "reason": "Exchange continuation resolves its recorded invitation inside the consuming transaction."
+  },
+  {
+    "engine": "postgres",
+    "name": "RemotePairingMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "c0a5b387bb7a3f4f24245ac7cbe517f2cf7e00942dd0c06268ccb6c05bccbb6a",
+    "reason": "A restored archive cannot choose an epoch that reactivates a future-stamped pairing artifact."
   },
   {
     "engine": "postgres",
@@ -2877,6 +3045,13 @@
     "name": "RevokeMachineCredential",
     "annotation": "authn-resolution",
     "hash": "b1673318627ac1ec92feaedbe7791e5116c1b150f3854e4642cb5c1e04dee012"
+  },
+  {
+    "engine": "postgres",
+    "name": "RevokeRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "c484b0aeed4675d43952e468336a58f98bbe65866521e6f232d84787d882e830",
+    "reason": "Revoke the invitation atomically with its administrative audit record."
   },
   {
     "engine": "postgres",
@@ -3434,6 +3609,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "BindRemotePairedConnection",
+    "annotation": "authn-resolution",
+    "hash": "ae948c4073f10b4cb9e67880901e18b9035687eb1c8f3e11a3b156c5c6a5634c",
+    "reason": "Enrollment permanently marks this connection proof-bound; ordinary bearer resolution must reject it."
+  },
+  {
+    "engine": "sqlite",
     "name": "BindSessionToOAuth2Provider",
     "annotation": "authn-resolution",
     "hash": "d2cc2460958e1db75ae528b90681a43678847d33bbe3a6f51ce9dcb9ad7868d5",
@@ -3490,6 +3672,20 @@
     "name": "ClaimOfflineRecord",
     "annotation": "authn-resolution",
     "hash": "65e2c44df6d8fbed9a33afa32477dc59c30a799d159c79bc8a4822393a89b600"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClaimRemotePairingAttempt",
+    "annotation": "authn-resolution",
+    "hash": "791b9c8419061eb08cd51c34d7885c555ab3c76764da904987942233616341d9",
+    "reason": "Each valid capability admits at most eight expensive PAKE attempts across all nodes."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ClaimRemotePairingReplay",
+    "annotation": "authn-resolution",
+    "hash": "b72cffaad0a854e5f9795aa55783cfb13c70ba30c3dd9142006c09bd7c0f85bd",
+    "reason": "Persist DPoP replay admission across nodes in the same transaction as directory authorization."
   },
   {
     "engine": "sqlite",
@@ -3578,6 +3774,20 @@
     "annotation": "authn-resolution",
     "hash": "fe3b6b0081aeec032b0d163cfd12c2f231223e9d162857b4e570381a80b7512a",
     "reason": "A verified signup bearer is CAS-consumed by its row id and verifier inside the account-creation transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeRemotePairingExchange",
+    "annotation": "authn-resolution",
+    "hash": "fcb239e1b5c70d96cc8d828dad3fb63e22c43d7995bde26adf570dd76ca263a6",
+    "reason": "Exchanges can be consumed once even when two nodes receive the same finish concurrently."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "cc9951d035f5b560cdb562968a5d2e8b47c9e7845f82102be0b43d603725f9ac",
+    "reason": "Single-use consumption is part of the same transaction as connection principal, grant and key enrollment."
   },
   {
     "engine": "sqlite",
@@ -3840,6 +4050,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountLiveRemotePairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "23f6b6b0afefb41caa48a640f309546cc05c82f3de4bb804301aa7b87f4874fb",
+    "reason": "Bound outstanding PAKE sessions per invitation before expensive server state creation."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountLiveRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "2797e5a0f1a4413e5c157aa184a942781d035802b274c2c4dbad56345182007f",
+    "reason": "Serialize finite invitation admission and bound storage under the instance census lock."
+  },
+  {
+    "engine": "sqlite",
     "name": "CountOpenAccessRequests",
     "annotation": "instance-scoped",
     "hash": "2b96375a746a217e2661dc52cbdb3130964d59a36b95fd7b5078eaebbbaa6bdf"
@@ -3861,6 +4085,20 @@
     "name": "CountRegistrationPolicyOrgs",
     "annotation": "authn-resolution",
     "hash": "9f2ae5d2c8f270d4788623e3012b1367fe79bbfcfcd9ed297619b9632c9d9bfe"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountRemotePairingReplays",
+    "annotation": "authn-resolution",
+    "hash": "898c210954d07d7ab7291bee03a6b02c41ea5d105eaf3e83c78eb11d5a3359cb",
+    "reason": "Fail closed at the live replay cap rather than evicting proofs still replayable."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountRemotePairingReplaysForKey",
+    "annotation": "authn-resolution",
+    "hash": "3a8ef1842fe169979d9927169c02f4d9ebe1c9d6c18b278d8a9835b261b2e31e",
+    "reason": "Bound one enrolled key's replay share before it can exhaust installation-wide admission for other peers."
   },
   {
     "engine": "sqlite",
@@ -3928,6 +4166,20 @@
     "name": "CreateRemote",
     "annotation": "instance-scoped",
     "hash": "b49c203a3c38607420b2ec4dc18592cd9f172ab7863f56c08a6ff6b90d898dae"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CreateRemotePairingExchange",
+    "annotation": "authn-resolution",
+    "hash": "b027cde468768aab2b3dceca6103b89090f4b1614f203c63720c98eeb11b32fc",
+    "reason": "Persist sealed PAKE exchange state so continuation works across server nodes."
+  },
+  {
+    "engine": "sqlite",
+    "name": "CreateRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "3ea6a262994e3c344b12ba18b75467cf6b922d0be53de7567369fb5d4b1718dc",
+    "reason": "Resolve and administer finite manual invitations only after capability or instance-config authorization."
   },
   {
     "engine": "sqlite",
@@ -5011,7 +5263,7 @@
     "engine": "sqlite",
     "name": "InstanceConnectionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "01d44851f7ea14e8eccc3d80fc8a828b03aa5c42f7ddddc7847cc54a1b25af9f"
+    "hash": "71626cbd9ecdf9b13073b6ba7bd0d2e22c71992db9c6c8ffdb63dba10f998071"
   },
   {
     "engine": "sqlite",
@@ -5230,6 +5482,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListPairingExchangesForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "7b44a3c1f2f2d8db47df476c5f8a899513309b86a72b55e3bf627f0e84b05ff5",
+    "reason": "Instance reencrypt authorization precedes this bounded ciphertext scan; the proof-gated repository verifies the exact transaction and operation."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPairingInvitesForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "1cc1404ddeb32e5ef8cc7775bdef154a4b2c94ea9a4f2ca8f12ca4bd183ad2f2",
+    "reason": "Instance reencrypt authorization precedes this bounded ciphertext scan; the proof-gated repository verifies the exact transaction and operation."
+  },
+  {
+    "engine": "sqlite",
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "d05b767efd734b08508c8612835cc67d775d786fad8ccef6c6cd4b4cecd1afc6"
@@ -5269,6 +5535,13 @@
     "name": "ListRegistrationSignupsForPolicy",
     "annotation": "authn-resolution",
     "hash": "44209503b1feac0ade57c457479955c766870aa35b7b6efcd3e52005a3257aa3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "874125882105fab9c9aed392536543949642f5e2a6540ea3b83054da1bfd2048",
+    "reason": "Authorized instance custody listing returns metadata through its caller, never capability or PAKE records."
   },
   {
     "engine": "sqlite",
@@ -5923,6 +6196,27 @@
   },
   {
     "engine": "sqlite",
+    "name": "PruneRemotePairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "5bdd6037c85c73fdceba737adff805202f7d1134245f43404d707a8dd4e1995e",
+    "reason": "Remove expired exchange secrets in bounded control-plane lifecycle work."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneRemotePairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "6a5e5fec22d9ba06ec826dccdf2b0fc5a998433162e7b98a4534a28b8c0c9695",
+    "reason": "Remove expired finite invitation state after retaining its audit trail separately."
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneRemotePairingReplays",
+    "annotation": "authn-resolution",
+    "hash": "bd38c752c51c35366af2fcb97dfed5585ff10910b72aaf11af29db66404a8a23",
+    "reason": "Remove only expired replay records before bounded admission."
+  },
+  {
+    "engine": "sqlite",
     "name": "PruneTenantAuditRetention",
     "annotation": "instance-scoped",
     "hash": "83cbaf696b02d8d6290e5a7707449c45c1c6c4bdbb95cc75b77339806fe5489e"
@@ -6013,6 +6307,20 @@
   },
   {
     "engine": "sqlite",
+    "name": "ReencryptPairingExchanges",
+    "annotation": "authn-resolution",
+    "hash": "99f56384c951eceba6e6e75c506b55158056746fc5e8f22eeaa0c9784dd0f71a",
+    "reason": "Instance reencrypt authorization precedes ciphertext replacement guarded by the old blob; no pairing consent or credential authority is widened."
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReencryptPairingInvites",
+    "annotation": "authn-resolution",
+    "hash": "712d7ac4ad9a4c6a7f763bd68d652e991c566ef086daf4870a8bb6ec0ba83d39",
+    "reason": "Instance reencrypt authorization precedes ciphertext replacement guarded by the old blob; no pairing consent or credential authority is widened."
+  },
+  {
+    "engine": "sqlite",
     "name": "ReencryptPasswordCred",
     "annotation": "authn-resolution",
     "hash": "a52ab6c3f463b2287608749032f766d8e7f02cac5790dc73f099ad7eb24475bf"
@@ -6053,6 +6361,41 @@
     "annotation": "authn-resolution",
     "hash": "c3b26dae41ae35514e13e4837aa49298d42fcccd5b3b799b6f5c9f37c628b60f",
     "reason": "The admitted local signup request rotates only the matched pending signup row under the live registration policy."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RemotePairedConnectionByID",
+    "annotation": "authn-resolution",
+    "hash": "135b52f02809647894499d127d87fcb7860e955ac7b1b194d1cbff3337aecdc8",
+    "reason": "Authentication rechecks the enrolled public key inside every directory serve transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RemotePairingExchangeByID",
+    "annotation": "authn-resolution",
+    "hash": "ec1966b5ae8a64b3bf1e00b64a31b2e34c0f8017599bb348ee23534de62cb57e",
+    "reason": "Resolve bounded exchange state before atomic invitation consumption."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RemotePairingInviteByCapability",
+    "annotation": "authn-resolution",
+    "hash": "c9dc14d7b8078ce65e77a394d5060391eea81bbf2f130cf3e7de9fadf4da076a",
+    "reason": "Resolve the unguessable invitation capability before invoking PAKE."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RemotePairingInviteByID",
+    "annotation": "authn-resolution",
+    "hash": "f3fe60c681859909c437cd5818960c21744d45c95a1f422d02ff2cc31c244fb5",
+    "reason": "Exchange continuation resolves its recorded invitation inside the consuming transaction."
+  },
+  {
+    "engine": "sqlite",
+    "name": "RemotePairingMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "c0a5b387bb7a3f4f24245ac7cbe517f2cf7e00942dd0c06268ccb6c05bccbb6a",
+    "reason": "A restored archive cannot choose an epoch that reactivates a future-stamped pairing artifact."
   },
   {
     "engine": "sqlite",
@@ -6135,6 +6478,13 @@
     "name": "RevokeMachineCredential",
     "annotation": "authn-resolution",
     "hash": "e241d508da945618875de9d91585e484d1658f07cc3745a529411b96e4775198"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RevokeRemotePairingInvite",
+    "annotation": "authn-resolution",
+    "hash": "c484b0aeed4675d43952e468336a58f98bbe65866521e6f232d84787d882e830",
+    "reason": "Revoke the invitation atomically with its administrative audit record."
   },
   {
     "engine": "sqlite",

@@ -65,6 +65,8 @@ func CheckReencryptCoverage(sqliteMigrationsDir string) []string {
 // Keep this in lockstep with that walk: a column here that the walk does not
 // cover, or vice versa, is the exact gap this gate exists to prevent.
 var reencryptCovered = map[string]string{
+	"remote_pairing_invites.pake_sealed":    "remote_pairing_invites",
+	"remote_pairing_exchanges.state_sealed": "remote_pairing_exchanges",
 	// project scope (8)
 	"value_entries.ciphertext":                          "value",
 	"snapshot_entries.ciphertext":                       "snapshot",
@@ -89,6 +91,8 @@ var reencryptCovered = map[string]string{
 
 // reencryptExemptBlobs is every other BLOB column, each a reviewed non-target.
 var reencryptExemptBlobs = map[string]string{
+	"remote_pairing_invites.capability_verifier": "SHA256 verifier of random 256-bit invitation capability",
+	"remote_pairing_replays.jti_verifier":        "SHA256 verifier of proof replay identifier, never decryptable",
 	// Transit (#156): an Ed25519 public key is public metadata, never sealed.
 	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
 	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,

@@ -111,6 +111,10 @@ func (a *TxAuthorizer) AuthorityByValue(ctx context.Context, verifier []byte) (C
 	return a.r.CredentialAuthorityByVerifier(ctx, verifier)
 }
 
+func (a *TxAuthorizer) BindRemotePairedConnection(ctx context.Context, c RemotePairedConnection) error {
+	return a.r.BindRemotePairedConnection(ctx, c)
+}
+
 func (a *TxAuthorizer) BindSessionToOAuth2Provider(ctx context.Context, sessionID, providerID string) (bool, error) {
 	return a.r.BindSessionToOAuth2Provider(ctx, sessionID, providerID)
 }
@@ -150,6 +154,14 @@ func (a *TxAuthorizer) CLIReauthHandoffByState(ctx context.Context, verifier []b
 
 func (a *TxAuthorizer) ClaimFederatedAuthority(ctx context.Context, id, kind string, at time.Time) (bool, error) {
 	return a.r.ClaimFederatedAuthority(ctx, id, kind, at)
+}
+
+func (a *TxAuthorizer) ClaimRemotePairingAttempt(ctx context.Context, id string, now time.Time) (bool, error) {
+	return a.r.ClaimRemotePairingAttempt(ctx, id, now)
+}
+
+func (a *TxAuthorizer) ClaimRemotePairingReplay(ctx context.Context, thumbprint string, v []byte, expires time.Time) (bool, error) {
+	return a.r.ClaimRemotePairingReplay(ctx, thumbprint, v, expires)
 }
 
 // ClaimSAMLReplay atomically records an assertion ID. False means replay.
@@ -220,6 +232,14 @@ func (a *TxAuthorizer) ConsumeRegistrationSignup(ctx context.Context, id string,
 	return a.r.ConsumeRegistrationSignup(ctx, id, verifier)
 }
 
+func (a *TxAuthorizer) ConsumeRemotePairingExchange(ctx context.Context, id string, now time.Time, epoch int64) (bool, error) {
+	return a.r.ConsumeRemotePairingExchange(ctx, id, now, epoch)
+}
+
+func (a *TxAuthorizer) ConsumeRemotePairingInvite(ctx context.Context, id string, now time.Time, epoch int64) (bool, error) {
+	return a.r.ConsumeRemotePairingInvite(ctx, id, now, epoch)
+}
+
 // ConsumeSAMLTransaction spends a transaction on first presentation, success
 // or failure.
 func (a *TxAuthorizer) ConsumeSAMLTransaction(ctx context.Context, id string, at time.Time) (bool, error) {
@@ -257,9 +277,25 @@ func (a *TxAuthorizer) CountGrantsInOrg(ctx context.Context, org string) (int64,
 	return a.r.CountGrantsInOrg(ctx, org)
 }
 
+func (a *TxAuthorizer) CountLiveRemotePairingExchanges(ctx context.Context, id string, now time.Time) (int64, error) {
+	return a.r.CountLiveRemotePairingExchanges(ctx, id, now)
+}
+
+func (a *TxAuthorizer) CountLiveRemotePairingInvites(ctx context.Context, now time.Time) (int64, error) {
+	return a.r.CountLiveRemotePairingInvites(ctx, now)
+}
+
 // CountRegistrationPolicyOrgs counts the live orgs a policy minted.
 func (a *TxAuthorizer) CountRegistrationPolicyOrgs(ctx context.Context, policyID string) (int64, error) {
 	return a.r.CountRegistrationPolicyOrgs(ctx, policyID)
+}
+
+func (a *TxAuthorizer) CountRemotePairingReplays(ctx context.Context) (int64, error) {
+	return a.r.CountRemotePairingReplays(ctx)
+}
+
+func (a *TxAuthorizer) CountRemotePairingReplaysForKey(ctx context.Context, thumbprint string) (int64, error) {
+	return a.r.CountRemotePairingReplaysForKey(ctx, thumbprint)
 }
 
 // CreateAccessGrant writes one environment-scoped temporary grant row.
@@ -343,6 +379,14 @@ func (a *TxAuthorizer) CreateRegistrationPolicy(ctx context.Context, p Registrat
 // CreateRegistrationSignup inserts a pending local sign-up row.
 func (a *TxAuthorizer) CreateRegistrationSignup(ctx context.Context, n NewRegistrationSignup) error {
 	return a.r.CreateRegistrationSignup(ctx, n)
+}
+
+func (a *TxAuthorizer) CreateRemotePairingExchange(ctx context.Context, e RemotePairingExchange) error {
+	return a.r.CreateRemotePairingExchange(ctx, e)
+}
+
+func (a *TxAuthorizer) CreateRemotePairingInvite(ctx context.Context, i RemotePairingInvite) error {
+	return a.r.CreateRemotePairingInvite(ctx, i)
 }
 
 func (a *TxAuthorizer) CreateRule(ctx context.Context, rule domain.Rule, createdBy domain.PrincipalID, at time.Time, newItemID func() (string, error)) error {
@@ -679,6 +723,10 @@ func (a *TxAuthorizer) ListProviders(ctx context.Context) ([]OIDCProvider, error
 	return a.r.ListProviders(ctx)
 }
 
+func (a *TxAuthorizer) ListRemotePairingInvites(ctx context.Context) ([]RemotePairingInvite, error) {
+	return a.r.ListRemotePairingInvites(ctx)
+}
+
 // ListSAMLProviders lists all configured SAML providers.
 func (a *TxAuthorizer) ListSAMLProviders(ctx context.Context) ([]SAMLProvider, error) {
 	return a.r.ListSAMLProviders(ctx)
@@ -879,6 +927,10 @@ func (a *TxAuthorizer) PruneExpiredRegistrationSignup(ctx context.Context, id st
 	return a.r.PruneExpiredRegistrationSignup(ctx, id, at)
 }
 
+func (a *TxAuthorizer) PruneRemotePairingState(ctx context.Context, now time.Time) error {
+	return a.r.PruneRemotePairingState(ctx, now)
+}
+
 // ReactivateBinding records a restore-time re-validation (§ Restore). #76 owns
 // the operator ceremony; the write exists here because the refusal it drives
 // exists now.
@@ -934,6 +986,22 @@ func (a *TxAuthorizer) ReissueRegistrationSignup(ctx context.Context, n NewRegis
 // ReleaseGrantOrigin releases one origin, reporting whether it held the row.
 func (a *TxAuthorizer) ReleaseGrantOrigin(ctx context.Context, grantID string, p domain.PrincipalID, o Origin) (bool, error) {
 	return a.r.ReleaseGrantOrigin(ctx, grantID, p, o)
+}
+
+func (a *TxAuthorizer) RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error) {
+	return a.r.RemotePairedConnectionByID(ctx, id)
+}
+
+func (a *TxAuthorizer) RemotePairingExchangeByID(ctx context.Context, id string) (RemotePairingExchange, error) {
+	return a.r.RemotePairingExchangeByID(ctx, id)
+}
+
+func (a *TxAuthorizer) RemotePairingInviteByCapability(ctx context.Context, v []byte) (RemotePairingInvite, error) {
+	return a.r.RemotePairingInviteByCapability(ctx, v)
+}
+
+func (a *TxAuthorizer) RemotePairingInviteByID(ctx context.Context, id string) (RemotePairingInvite, error) {
+	return a.r.RemotePairingInviteByID(ctx, id)
 }
 
 // RemoveExternalIdentity removes a link (unlink).
@@ -1004,6 +1072,10 @@ func (a *TxAuthorizer) RevokeInstanceConnection(ctx context.Context, id string, 
 
 func (a *TxAuthorizer) RevokeMachineCredential(ctx context.Context, serviceAccountID, id string, at time.Time) (bool, error) {
 	return a.r.RevokeMachineCredential(ctx, serviceAccountID, id, at)
+}
+
+func (a *TxAuthorizer) RevokeRemotePairingInvite(ctx context.Context, id string, now time.Time) (bool, error) {
+	return a.r.RevokeRemotePairingInvite(ctx, id, now)
 }
 
 // RevokeSession deletes one session in this transaction.

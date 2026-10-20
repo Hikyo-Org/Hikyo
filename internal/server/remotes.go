@@ -51,7 +51,11 @@ type WorkspaceService interface {
 // ---------------------------------------------------------------------------
 
 func (a *API) ServeDirectory(ctx context.Context, _ apigen.ServeDirectoryRequestObject) (apigen.ServeDirectoryResponseObject, error) {
-	l, err := a.Workspace.Serve(ctx, service.Bearer(bearer(ctx)))
+	actor := service.Bearer(bearer(ctx))
+	if proof, ok := ctx.Value(pairingProofContextKey{}).(string); ok {
+		actor = service.PairedConnectionActor(bearer(ctx), proof)
+	}
+	l, err := a.Workspace.Serve(ctx, actor)
 	if err != nil {
 		return nil, err
 	}

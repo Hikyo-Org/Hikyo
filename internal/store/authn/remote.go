@@ -31,7 +31,9 @@ import (
 
 // InstanceConnection is one connection principal and its credential.
 type InstanceConnection struct {
-	ID string
+	// ProofBound is resolved with the credential row, never from the wire token.
+	ProofBound bool
+	ID         string
 	// PrincipalID is the grant-table subject. The connection's authority is
 	// the union of the grants on it and nothing else — there is no
 	// per-credential scope column here, and adding one would be the second
@@ -107,12 +109,14 @@ func (r *Resolver) InstanceConnectionByVerifier(ctx context.Context, verifier []
 		if !verifierMatches(row.Verifier, verifier) {
 			return InstanceConnection{}, domain.ErrNotFound
 		}
-		return connectionFromSQLite(sqlitegen.ListInstanceConnectionsRow{
+		c, err := connectionFromSQLite(sqlitegen.ListInstanceConnectionsRow{
 			ID: row.ID, PrincipalID: row.PrincipalID, Label: row.Label, Kind: row.Kind,
 			PrefixHint: row.PrefixHint, Lifetime: row.Lifetime, ExpiresAt: row.ExpiresAt,
 			CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt,
 			CreatedBy: row.CreatedBy, RevokedAt: row.RevokedAt, LastUsedAt: row.LastUsedAt,
 		})
+		c.ProofBound = row.ProofBound
+		return c, err
 	}
 	row, err := r.pg.InstanceConnectionByVerifier(ctx, verifier)
 	if errors.Is(notFoundOr(err), domain.ErrNotFound) {
@@ -124,12 +128,14 @@ func (r *Resolver) InstanceConnectionByVerifier(ctx context.Context, verifier []
 	if !verifierMatches(row.Verifier, verifier) {
 		return InstanceConnection{}, domain.ErrNotFound
 	}
-	return connectionFromPG(pggen.ListInstanceConnectionsRow{
+	c, err := connectionFromPG(pggen.ListInstanceConnectionsRow{
 		ID: row.ID, PrincipalID: row.PrincipalID, Label: row.Label, Kind: row.Kind,
 		PrefixHint: row.PrefixHint, Lifetime: row.Lifetime, ExpiresAt: row.ExpiresAt,
 		CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt,
 		CreatedBy: row.CreatedBy, RevokedAt: row.RevokedAt, LastUsedAt: row.LastUsedAt,
 	})
+	c.ProofBound = row.ProofBound
+	return c, err
 }
 
 // The decoy rows are engine-matched: each miss path decodes through the SAME

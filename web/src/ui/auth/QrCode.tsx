@@ -12,7 +12,7 @@ import { useMemo } from 'react';
  * no longer keeps a copy: AccountSecurity and ui/auth/SecondFactorSetup both
  * render this one.
  */
-export function QrCode({ value, title }: { value: string; title: string }) {
+export function QrCode({ value, title, size = 'default' }: { value: string; title: string; size?: 'default' | 'large' }) {
   const { path, count } = useMemo(() => {
     const qr = qrcode(0, 'M');
     qr.addData(value);
@@ -33,10 +33,10 @@ export function QrCode({ value, title }: { value: string; title: string }) {
   const box = count + quiet * 2;
   return (
     <svg
-      className="totp-qr"
+      className={size === 'large' ? 'totp-qr totp-qr--large' : 'totp-qr'}
       viewBox={`0 0 ${String(box)} ${String(box)}`}
-      width="176"
-      height="176"
+      width={size === 'large' ? 320 : 176}
+      height={size === 'large' ? 320 : 176}
       role="img"
       aria-label={title}
       shapeRendering="crispEdges"
