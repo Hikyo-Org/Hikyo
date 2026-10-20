@@ -81,18 +81,19 @@ The skill covers signing, local validation, and an optional playground.
 
 ## graphify
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+Use `rg`, `rg --files`, and focused source reads by default. Graphify is optional
+for explicit requests or scoped relationship and impact exploration; an existing
+graph does not make graph queries a prerequisite for codebase work.
 
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
-
-Only `graphify-out/README.md` is committed; the graph is generated locally.
-
-Rules:
-- On a fresh clone or worktree, run `python3 scripts/dev/graphify_worktree.py bootstrap`. It copies a cached canonical-main graph and extraction cache into the worktree, then updates its private graph. See `graphify-out/README.md` for installation and T3 setup on older branches.
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- Check `built_at_commit` before treating graph relationships as current. The graph is navigational evidence; verify security-sensitive and runtime claims against source.
-- After modifying application code, run `python3 scripts/dev/graphify_worktree.py bootstrap` to refresh structural relationships through the shared queue (AST-only, no API cost). Documentation and image semantics need a skill-driven `/graphify --update` pass.
-- See [graphify-out/README.md](graphify-out/README.md) for installation and why only the README is tracked in Git.
+- When the user invokes `/graphify`, follow the installed Graphify skill.
+- Use `graphify query "<terms>"`, `graphify path "<A>" "<B>"`, or
+  `graphify explain "<concept>"` when graph navigation helps the task. Respect
+  truncation and verify important relationships against source.
+- Check `built_at_commit` and account for uncommitted changes before relying on
+  graph output. Treat it as navigation, with current source and runtime evidence
+  governing correctness claims.
+- Build or refresh a graph when requested or needed for an active graph task.
+  Ordinary source reads and code edits do not require a graph rebuild. Follow
+  [graphify-out/README.md](graphify-out/README.md) for setup and refresh details.
+- Generated graphs are local; only `graphify-out/README.md` is committed. Read
+  the wiki or `GRAPH_REPORT.md` when useful for the current investigation.
