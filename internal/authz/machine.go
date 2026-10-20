@@ -29,6 +29,9 @@ import (
 // Re-exported so the service layer never names the resolution-surface
 // package.
 type (
+	RemotePairingInvite                = authn.RemotePairingInvite
+	RemotePairingExchange              = authn.RemotePairingExchange
+	RemotePairedConnection             = authn.RemotePairedConnection
 	ServiceAccount                     = authn.ServiceAccount
 	MachineCredential                  = authn.MachineCredential
 	CredentialPolicy                   = authn.CredentialPolicy
@@ -190,6 +193,12 @@ func (a *TxAuthorizer) authenticateInstanceConnection(ctx context.Context, prese
 	}
 
 	if connErr != nil || !conn.Live(now, epoch) {
+		return Identity{}, domain.ErrUnauthenticated
+	}
+
+	// Persisted binding is resolved in the same indexed read as the verifier.
+	// Paired rows cannot authenticate with the ordinary bearer transport.
+	if conn.ProofBound {
 		return Identity{}, domain.ErrUnauthenticated
 	}
 

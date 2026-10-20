@@ -20,6 +20,11 @@ func TestRootKeyRefusalsAreDistinct(t *testing.T) {
 		if err := os.WriteFile(p, []byte(content), mode); err != nil {
 			t.Fatal(err)
 		}
+		// Creation respects the process umask. Establish the exact unsafe
+		// fixture mode even when the validation runner uses a private umask.
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
 		return p
 	}
 

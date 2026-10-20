@@ -132,6 +132,16 @@ func checkNoSyncCommitDowngrade(repoRoot string) []string {
 // build failure behind it. See docs/handoff/47-first-slice.md, which routes
 // the wording to human disposition.
 var ResolutionSurfaceWriters = map[string]bool{
+	"ClaimRemotePairingAttempt":    true,
+	"CreateRemotePairingInvite":    true,
+	"RevokeRemotePairingInvite":    true,
+	"ConsumeRemotePairingInvite":   true,
+	"CreateRemotePairingExchange":  true,
+	"ConsumeRemotePairingExchange": true,
+	"BindRemotePairedConnection":   true,
+	"ClaimRemotePairingReplay":     true,
+	"PruneRemotePairingState":      true,
+
 	"CreateCLILogin": true, "ApproveCLILogin": true, "PollCLILogin": true, "ConsumeCLILogin": true, "PruneCLILogins": true,
 
 	// Audit (#45, audit-model ADR amendment part 4). writeProofFreeEvent is

@@ -66,6 +66,7 @@ import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { PanelForm } from './Sections.tsx';
+import { RemotePairing } from './RemotePairing.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 
@@ -123,7 +124,7 @@ export function Remotes() {
 
         {remotes.isSuccess && remotes.data.items.length === 0 ? (
           <p role="status">
-            No remotes yet. Add one below. You will need its URL, its certificate fingerprint and a
+            No remotes yet. Pair using a phrase below, or add one with its URL, certificate fingerprint and a
             connection credential, which whoever runs that instance mints from the{' '}
             <strong>Connection credentials</strong> section of its own Remotes page.
           </p>
@@ -141,6 +142,7 @@ export function Remotes() {
       </section>
 
       <ThisInstance />
+      <RemotePairing />
       <AddRemoteCard />
       <ConnectionCredentials />
       <OriginAllowlist />

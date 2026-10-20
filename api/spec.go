@@ -67,7 +67,9 @@ var SpecYAML []byte
 // Revision 10 adds bounded online-only developer credentials.
 // Revision 11 adds social-only credential establishment, password mutation,
 // and the authenticated local-credential inventory.
-const Revision = 11
+// Revision 12 adds manual remote invitations, PAKE redemption, and key-bound
+// directory pairing. Existing operations retain their first-appearance minima.
+const Revision = 12
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

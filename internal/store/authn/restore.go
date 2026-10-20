@@ -405,7 +405,7 @@ func (r *Resolver) restoreDeveloperNextEpoch(ctx context.Context, next int64) (i
 		return 0, fmt.Errorf("authn: probe restored developer credentials: %w", err)
 	}
 	if present == 0 {
-		return next, nil
+		return r.restorePairingNextEpoch(ctx, next)
 	}
 	var raw any
 	if r.sq != nil {
@@ -420,7 +420,7 @@ func (r *Resolver) restoreDeveloperNextEpoch(ctx context.Context, next int64) (i
 	if err != nil {
 		return 0, err
 	}
-	return max(next, developerNext), nil
+	return r.restorePairingNextEpoch(ctx, max(next, developerNext))
 }
 
 // postLegacyEpochTables is how many tables PostLegacyMaxCredentialEpoch scans.

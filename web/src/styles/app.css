@@ -4184,6 +4184,93 @@ label.chk:has(input:disabled) {
    active-session list. Same vocabulary as the rest of the shell: hairline
    containers, no shadows, states carried by text with the badge as decoration. */
 
+/* Pairing panels share one spacing owner, including their nested forms. */
+.remote-pairing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  max-width: var(--width-dialog);
+}
+
+.remote-pairing .form,
+.form.remote-pairing {
+  margin: 0;
+  max-width: var(--width-dialog);
+}
+
+.form.remote-pairing {
+  gap: var(--space-5);
+}
+
+.remote-pairing :is(p, h3) {
+  margin: 0;
+}
+
+.remote-pairing__section,
+.remote-pairing__copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.remote-pairing__section {
+  gap: var(--space-3);
+}
+
+.remote-pairing__copy {
+  gap: var(--space-1);
+}
+
+.remote-pairing__destination {
+  overflow-wrap: anywhere;
+}
+
+.remote-pairing__qr-import,
+.remote-pairing__review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.remote-pairing__review {
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+}
+
+.remote-pairing__camera {
+  width: 100%;
+  max-height: 18rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  object-fit: contain;
+}
+
+.remote-pairing__camera[hidden] {
+  display: none;
+}
+
+.remote-pairing__qr-import input[type="file"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* A disclosed custom secret keeps every space and wraps even without spaces. */
+.remote-pairing__phrase {
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+}
+
 .remotes,
 .origins,
 .sessions,

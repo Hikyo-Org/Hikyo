@@ -547,3 +547,11 @@ operations:
   revokeProjectDeveloperCredential: {webui: project-settings}
   getDeveloperCredentialPolicy: {webui: instance-admin}
   setDeveloperCredentialPolicy: {webui: instance-admin}
+  # Manual pairing exposes only local custody state and authentication protocol artifacts.
+  prepareRemotePairing: {webui: remotes}
+  listRemotePairingInvites: {webui: remotes}
+  createRemotePairingInvite: {webui: remotes}
+  revokeRemotePairingInvite: {webui: remotes}
+  pairRemote: {webui: remotes}
+  startRemotePairing: {exception: identity-protocol}
+  finishRemotePairing: {exception: identity-protocol}

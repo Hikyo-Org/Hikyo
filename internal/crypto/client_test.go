@@ -99,6 +99,9 @@ func TestLoadOrCreateLocalKeyRefusesLooseDir(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := LoadOrCreateLocalKey(dir); err == nil {
 		t.Fatal("expected refusal for a group/other-accessible state dir")
 	}
@@ -113,6 +116,9 @@ func TestLoadOrCreateLocalKeyRefusesLooseFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "local.key"), make([]byte, KeySize), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "local.key"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadOrCreateLocalKey(dir); err == nil {

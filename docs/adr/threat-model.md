@@ -1,5 +1,19 @@
 # Hikyo threat model (ADR, locked 2026-07-29)
 
+> **Proposed amendment (2026-10-20, owner-authorized manual remote pairing):**
+> invitation creation adds the instance's configured public HTTPS origin as an
+> enumerated outbound destination for a bounded TLS-only certificate probe.
+> An authenticated `instance-config` administrator must explicitly create the
+> invitation before any connection opens. The probe verifies certificate chains
+> and hostnames using system trust plus an eligible current native certificate;
+> it never accepts an unverified first connection, sends no HTTP request or
+> pairing data to the origin, and honors only the explicitly configured HTTPS
+> CONNECT proxy. An operator-managed external fingerprint skips discovery.
+> Startup, listing, preparation, and background work remain free of probes.
+> This is the explicit exception to the directory's zero-remotes outbound
+> statement. See [remote-instance-pairing.md](./remote-instance-pairing.md) for
+> the control set and outstanding security review; this amendment is not locked.
+
 > **Declared amendment (2026-09-23, [#683](https://github.com/Hikyo-Org/Hikyo/issues/683), owner decision locked; cross-model review waived by the owner on 2026-09-23; operative upon the condition-reporting governance PR merging):** the workload capability "read-only (only v1 workload capability)" becomes **read, plus an explicitly granted value-free status report**. A report carries only closed condition types, statuses and reasons, generations, a lifecycle enum, Kubernetes object names and UIDs, and a closed reporter enum with a SemVer version; it never carries a value, key name, cursor, stamp, credential or free text. The UI labels reports as controller assertions, never independently verified cluster health, and missing or stale reports never read as healthy. This banner is a pointer; the normative contract is [k8s-condition-reporting.md](./k8s-condition-reporting.md). Historical text below is preserved.
 
 > **Declared amendment (2026-09-14, [#742](https://github.com/Hikyo-Org/Hikyo/issues/742), owner decision locked; cross-model review waived by the owner on 2026-09-17; operative upon the write-capability governance PR merging):** the phase-1 MCP amendment's closing clause "a reveal, entry, mutation, resource, prompt, subscription, task, browser, or OAuth path requires a later explicit amendment" is exercised for **mutation only**, and bounded to staging. [mcp-write.md](./mcp-write.md) adds two tools: `hikyo_stage_change` (writes an inert pending draft via the existing `value.stage` op) and `hikyo_validate_change` (net-new non-mutating audited `value.validate` op). Both require `edit@env` and emit audit events; the enforceable boundary is stage-and-validate never publish or deliver, so nothing reaches an adapter or downstream target over MCP. A machine credential may stage into a protected environment (staging carries no post-grant refusal); the protected-environment ceremony and blocked-environment veto bite at publish, which stays out of MCP: no MCP tool exposes it. That absence is the boundary, not a property of machine credentials; an automation holding `publish` can still publish over REST, the existing posture [mcp-write.md](./mcp-write.md) records unchanged. Both tools are gated behind a second default-off operator flag; stage rolls store work back on cancellation. Reveal, publish, any dedicated secret-input path, resource, prompt, subscription, task, browser, and OAuth paths stay out and each need their own later amendment; staging into a secret-classified key is `value.stage` and is in. The machine-credential-only admission, uniform-401, Origin/Host, and bearer-redaction controls are unchanged. This banner is a pointer; the normative contract is [mcp-write.md](./mcp-write.md).

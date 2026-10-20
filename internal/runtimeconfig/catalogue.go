@@ -57,6 +57,7 @@ func Catalogue() []Key {
 		"HIKYO_BACKUP_RTO_TARGET":          "Positive backup recovery time objective, for example 30m.",
 		"HIKYO_DIRECTORY_PROXY":            "Optional HTTPS fleet directory proxy. Credentials are treated as secret.",
 		"HIKYO_EXTERNAL_ORIGIN":            "Exact public HTTP(S) origin, without credentials, path, query or fragment.",
+		"HIKYO_PAIRING_SPKI_PIN":           "Optional base64 SHA-256 public-key fingerprint of this instance's external HTTPS endpoint. Use for a self-signed reverse proxy or when automatic certificate discovery cannot reach the public origin. Applies only to new pairing invitations.",
 		"HIKYO_MCP_ALLOWED_ORIGINS":        "Optional comma-separated exact browser origins such as https://app.example.com, not IPs or CIDRs. Requires MCP enabled.",
 		"HIKYO_MCP_ENABLED":                "Enable the MCP endpoint. Requires an HTTPS public origin outside loopback development.",
 		"HIKYO_MCP_WRITE_ENABLED":          "Install the MCP stage-and-validate write tools. Requires MCP enabled; grants no authority by itself.",

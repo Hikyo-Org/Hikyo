@@ -2,6 +2,77 @@
 
 import * as z from 'zod';
 
+/**
+ * Omit the body or both fields to generate six random words. Choose
+ * either an explicit nonempty custom password/phrase, preserved exactly,
+ * or a generated word count. Case and whitespace are significant.
+ * Custom secrets are bounded to 4096 UTF-8 bytes by the service.
+ *
+ */
+export const zPrepareRemotePairingRequest = z.object({
+    phrase: z.string().min(1).max(4096).optional(),
+    word_count: z.int().gte(1).lte(128).optional()
+});
+
+export const zRemotePairingPrepared = z.object({
+    phrase: z.string().min(1).max(4096),
+    requester_state: z.string().min(1).max(65536),
+    expires_at: z.iso.datetime()
+});
+
+export const zCreateRemotePairingInviteRequest = z.object({
+    phrase: z.string().min(1).max(4096),
+    label: z.string().min(1).max(200),
+    invite_lifetime_seconds: z.int().gte(1).lte(3600),
+    credential_lifetime_seconds: z.int().gte(1).lte(31536000)
+});
+
+export const zRemotePairingInvite = z.object({
+    id: z.string().min(1).max(128),
+    label: z.string().min(1).max(200),
+    origin: z.string().min(1).max(2048),
+    spki_pin: z.string().min(1).max(128),
+    created_at: z.iso.datetime(),
+    expires_at: z.iso.datetime(),
+    credential_expires_at: z.iso.datetime(),
+    revoked_at: z.iso.datetime().optional(),
+    consumed_at: z.iso.datetime().optional()
+});
+
+export const zRemotePairingInviteCreated = z.object({
+    invite: zRemotePairingInvite,
+    invite_bundle: z.string().min(1).max(8192)
+});
+
+export const zPairRemoteRequest = z.object({
+    name: z.string().min(1).max(200),
+    requester_state: z.string().min(1).max(65536),
+    invite_bundle: z.string().min(1).max(8192)
+});
+
+export const zStartRemotePairingRequest = z.object({
+    invite_capability: z.string().min(1).max(256),
+    public_jwk: z.string().min(1).max(2048)
+});
+
+export const zRemotePairingStarted = z.object({
+    exchange: z.string().min(1).max(256),
+    server_message: z.string().min(1).max(16384)
+});
+
+export const zFinishRemotePairingRequest = z.object({
+    exchange: z.string().min(1).max(256),
+    client_message: z.string().min(1).max(16384),
+    proof: z.string().min(1).max(8192)
+});
+
+export const zRemotePairingInviteList = z.object({
+    origin: z.string().max(2048),
+    configuration_error: z.string().max(512).optional(),
+    items: z.array(zRemotePairingInvite).max(100),
+    count: z.int().gte(0)
+});
+
 export const zProjectCapacity = z.object({
     key_limit_override: z.int().gte(1).lte(10000).nullable(),
     instance_default: z.int().gte(1).lte(10000),
@@ -4320,6 +4391,12 @@ export const zInstanceConnection = z.object({
     live: z.boolean()
 });
 
+export const zRemotePairingFinished = z.object({
+    server_message: z.string().min(1).max(16384),
+    credential: z.string().min(1).max(256),
+    connection: zInstanceConnection
+});
+
 export const zInstanceConnectionList = z.object({
     items: z.array(zInstanceConnection),
     count: z.int().gte(0)
@@ -7560,6 +7637,55 @@ export const zScimSearchGroupsPath = z.object({
     org: zId,
     binding: zId
 });
+
+export const zPrepareRemotePairingBody = zPrepareRemotePairingRequest;
+
+/**
+ * Pairing operation completed.
+ */
+export const zPrepareRemotePairingResponse = zRemotePairingPrepared;
+
+/**
+ * Pairing operation completed.
+ */
+export const zListRemotePairingInvitesResponse = zRemotePairingInviteList;
+
+export const zCreateRemotePairingInviteBody = zCreateRemotePairingInviteRequest;
+
+/**
+ * Pairing operation completed.
+ */
+export const zCreateRemotePairingInviteResponse = zRemotePairingInviteCreated;
+
+export const zRevokeRemotePairingInvitePath = z.object({
+    invite: z.string().min(1).max(128)
+});
+
+/**
+ * Pairing operation completed.
+ */
+export const zRevokeRemotePairingInviteResponse = z.void();
+
+export const zPairRemoteBody = zPairRemoteRequest;
+
+/**
+ * Pairing operation completed.
+ */
+export const zPairRemoteResponse = zRemote;
+
+export const zStartRemotePairingBody = zStartRemotePairingRequest;
+
+/**
+ * Pairing operation completed.
+ */
+export const zStartRemotePairingResponse = zRemotePairingStarted;
+
+export const zFinishRemotePairingBody = zFinishRemotePairingRequest;
+
+/**
+ * Pairing operation completed.
+ */
+export const zFinishRemotePairingResponse = zRemotePairingFinished;
 
 /**
  * The served listing.

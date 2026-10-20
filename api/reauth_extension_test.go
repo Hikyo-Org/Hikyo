@@ -99,6 +99,7 @@ var proofMembers = []string{"proof", "password", "code"}
 // factor, redeeming a handoff code). Each is the thing a proof would be
 // checked against, not a mutation gated on one.
 var reauthExempt = map[string]string{
+	"finishRemotePairing":    "the proof authenticates redemption of existing manual invitation consent and possession of its enrolled key",
 	"redeemCLILogin":         "the code and PKCE proof redeem a first-party login transaction, not an account-security mutation",
 	"signupVerify":           "sets the first credential under a single-use signup authority; no existing account session exists",
 	"localLogin":             "the password is the login itself",

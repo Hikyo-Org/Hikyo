@@ -35,6 +35,8 @@ var reviewedWireExtras = wireExtras{
 		// a landing, the org creation and template grants its authority writes.
 		"http:GET /api/v1/auth/oidc/{provider}/callback":       {Events: []string{"EventOIDCLogin", "EventOIDCRefused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthReauthenticated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
 		"http:GET /api/v1/auth/oauth2/{provider}/callback":     {Events: []string{"EventOAuth2Login", "EventOAuth2Refused", "EventIdentityLinked", "EventCredentialEstablish", "EventAuthCredentialEstablished", "EventAuthAuthorityRefused", "EventAuthSessionCreated", "EventAuthThrottleCrossed", "EventRegistrationSignupAdmitted", "EventRegistrationSignupRefused", "EventRegistrationSignupCompleted", "EventOrgCreated", "EventGrantCreated", "EventGrantTemplateApplied"}},
+		"http:POST /api/v1/auth/pairing/start":                 {Events: []string{"EventRemotePairingStarted", "EventRemotePairingFailed"}},
+		"http:POST /api/v1/auth/pairing/finish":                {Events: []string{"EventRemotePairingFinished", "EventRemotePairingFailed", "EventRemoteCredentialMinted"}},
 		"http:GET /api/v1/auth/workspace/transactions/{state}": {Events: []string{"EventRemoteWorkspaceHandoffRead"}},
 		// The audit trail read surface (#45). Query and export at each addressed
 		// depth; the depth is in the path, so one operation per route. Reading is
@@ -384,6 +386,8 @@ var reviewedWireExtras = wireExtras{
 		// instance-config.
 		"cli:remote":            {Class: "ClassInstance"},
 		"cli:remote-credential": {Class: "ClassInstance"},
+		"cli:remote-invite":     {Class: "ClassInstance"},
+		"cli:remote-pairing":    {Class: "ClassInstance"},
 		"cli:restore":           {Class: "ClassSystem", Events: []string{"EventRestoreCompleted", "EventRestorePrincipalReconciled", "EventRestoreDrillCompleted"}},
 		// `revision` reaches the two tenant-scoped history routes (#51). It
 		// discloses no value: history is lineage, and the one verb that reads a

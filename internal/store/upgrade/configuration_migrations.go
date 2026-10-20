@@ -40,6 +40,9 @@ func planConfigurationMigrationsWith(projection *CandidateConfiguration, values 
 	}
 	additions := make(map[string]runtimeconfig.Migration)
 	for _, migration := range migrations {
+		if migration.Optional && migration.Default != nil {
+			return nil, fmt.Errorf("candidate configuration migration %s cannot combine an optional absent value with a default", migration.Name)
+		}
 		if migration.Version > version {
 			additions[migration.Name] = migration
 		}
@@ -78,7 +81,7 @@ func planConfigurationMigrationsWith(projection *CandidateConfiguration, values 
 			return nil, err
 		}
 		value, present := values[target.Name]
-		if !present && migratable {
+		if !present && migratable && !migration.Optional {
 			if migration.Default == nil || !compiled.Validate(*migration.Default).Valid {
 				return nil, fmt.Errorf("candidate configuration setting %s requires operator input: no valid release-defined default", target.Name)
 			}

@@ -20,6 +20,11 @@ type Operation string
 // The registered operations. Service code names operations through these
 // constants; the registry below is keyed by them.
 const (
+	OpRemotePairingPrepare       Operation = "remote-pairing.prepare"
+	OpRemotePairingCreate        Operation = "remote-pairing.create"
+	OpRemotePairingList          Operation = "remote-pairing.list"
+	OpRemotePairingRevoke        Operation = "remote-pairing.revoke"
+	OpRemotePairingComplete      Operation = "remote-pairing.complete"
 	OpMailGet                    Operation = "mail.get"
 	OpMailTest                   Operation = "mail.test"
 	OpSelfConfigPreview          Operation = "self-config.preview"
@@ -1176,6 +1181,10 @@ const (
 	StoreReencryptSelfConfigSeedInput      StoreOp = "reencrypt.ReencryptSelfConfigSeedInput"
 	StoreReencryptListSamlKeys             StoreOp = "reencrypt.ListSamlKeysForReencrypt"
 	StoreReencryptSamlKey                  StoreOp = "reencrypt.ReencryptSamlKey"
+	StoreReencryptListPairingInvites       StoreOp = "reencrypt.ListPairingInvitesForReencrypt"
+	StoreReencryptPairingInvites           StoreOp = "reencrypt.ReencryptPairingInvites"
+	StoreReencryptListPairingExchanges     StoreOp = "reencrypt.ListPairingExchangesForReencrypt"
+	StoreReencryptPairingExchanges         StoreOp = "reencrypt.ReencryptPairingExchanges"
 	StoreReencryptListRemotes              StoreOp = "reencrypt.ListRemotesForReencrypt"
 	StoreReencryptRemote                   StoreOp = "reencrypt.ReencryptRemote"
 	StoreReencryptListPkiIssuers           StoreOp = "reencrypt.ListPkiIssuersForReencrypt"
@@ -1454,6 +1463,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreReencryptListOidcProviders:           true,
 	StoreReencryptListOauth2Providers:         true,
 	StoreReencryptListSamlKeys:                true,
+	StoreReencryptListPairingInvites:          true,
+	StoreReencryptListPairingExchanges:        true,
 	StoreReencryptListRemotes:                 true,
 	StoreReencryptListPkiIssuers:              true,
 	StoreAuditTenantPage:                      true,
@@ -1826,6 +1837,12 @@ var registry = mustNewRegistry(operationTable)
 // invariant 6. The table is never read directly: newRegistry validates it into
 // the immutable registry below, so no lookup can observe an unvalidated row.
 var operationTable = map[Operation]opSpec{
+	OpRemotePairingPrepare:  {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true, StoreKeysAssertActiveDEKVersion: true}, events: []audit.EventType{audit.EventRemotePairingPrepared}},
+	OpRemotePairingCreate:   {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemotePairingInviteCreated}},
+	OpRemotePairingList:     {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemotePairingInvitesListed}},
+	OpRemotePairingRevoke:   {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemotePairingInviteRevoked}},
+	OpRemotePairingComplete: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreRemotesCount: true, StoreRemotesList: true, StoreRemoteSnapshotsList: true, StoreRemotesCreate: true, StoreRemoteSnapshotsWrite: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRemoteAdded}},
+
 	OpMailGet:           {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRegistrationMailStatusRead}},
 	OpMailTest:          {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventRegistrationMailIntent, audit.EventRegistrationMailOutcome}},
 	OpSelfConfigPreview: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigSeedInputs: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventSelfConfigStatusRead}},
@@ -3412,6 +3429,8 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListOauth2Providers: true, StoreReencryptOauth2Provider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
+			StoreReencryptListPairingInvites: true, StoreReencryptPairingInvites: true,
+			StoreReencryptListPairingExchanges: true, StoreReencryptPairingExchanges: true,
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,
 			StoreReencryptListPkiIssuers: true, StoreReencryptPkiIssuer: true,
 			StoreKeysAssertActiveDEKVersion: true,

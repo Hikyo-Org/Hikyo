@@ -410,7 +410,7 @@ func TestCrossOriginIsolationHeadersAreExactOnEveryPublicResponse(t *testing.T) 
 				// popups that navigate cross-origin and then close themselves.
 				"Cross-Origin-Opener-Policy":   "same-origin-allow-popups",
 				"Cross-Origin-Resource-Policy": "same-origin",
-				"Permissions-Policy":           "camera=(), microphone=(), geolocation=()",
+				"Permissions-Policy":           "camera=(self), microphone=(), geolocation=()",
 			} {
 				if got := resp.Header.Get(header); got != want {
 					t.Errorf("%s = %q, want %q", header, got, want)

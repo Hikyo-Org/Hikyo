@@ -757,9 +757,16 @@ const (
 	// trust decision a human made interactively, and an audit trail that
 	// recorded the URL but not the key the operator confirmed would record the
 	// wrong half.
-	EventRemoteAdded   EventType = "remote.added"
-	EventRemoteRemoved EventType = "remote.removed"
-	EventRemoteRenamed EventType = "remote.renamed"
+	EventRemotePairingPrepared      EventType = "remote.pairing_prepared"
+	EventRemotePairingInviteCreated EventType = "remote.pairing_invite_created"
+	EventRemotePairingInvitesListed EventType = "remote.pairing_invites_listed"
+	EventRemotePairingInviteRevoked EventType = "remote.pairing_invite_revoked"
+	EventRemotePairingStarted       EventType = "remote.pairing_started"
+	EventRemotePairingFinished      EventType = "remote.pairing_finished"
+	EventRemotePairingFailed        EventType = "remote.pairing_failed"
+	EventRemoteAdded                EventType = "remote.added"
+	EventRemoteRemoved              EventType = "remote.removed"
+	EventRemoteRenamed              EventType = "remote.renamed"
 	// remote.fetch_failed carries the closed outcome enum, never a raw
 	// transport error: unreachable / credential-rejected / pin-mismatch /
 	// redirect-refused / identity-conflict / self-connected. The operator's fix
@@ -3006,6 +3013,13 @@ var registry = map[EventType]TypeSpec{
 			"stale_count": {Kind: KindInt, Required: true},
 		},
 	},
+	EventRemotePairingPrepared:      {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingInviteCreated: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingInvitesListed: {SchemaVersion: 1, Retention: RetentionAccess, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingInviteRevoked: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingStarted:       {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingFinished:      {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
+	EventRemotePairingFailed:        {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeFailure: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{"invite_id": {Kind: KindString}, "exchange_id": {Kind: KindString}, "row_count": {Kind: KindInt}}},
 	EventRemoteCredentialMinted: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,

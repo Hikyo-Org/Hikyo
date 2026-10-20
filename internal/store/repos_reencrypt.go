@@ -21,6 +21,12 @@ import (
 // the new dek_version. remotes has neither, so its re-seal CASes on the old blob.
 // Temporary self-config inputs also guard the old blob against delete/reinsert.
 type ReencryptRepo interface {
+	ListPairingInvitesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptPairingInvites(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
+
+	ListPairingExchangesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptPairingExchanges(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
+
 	ListSelfConfigSeedInputsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptSelfConfigSeedInput(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListPasswordCredsForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
@@ -622,4 +628,100 @@ func storedReencryptInstanceRow(id string, ciphertext []byte, dekVersion, rowVer
 		return ReencryptInstanceRow{}, err
 	}
 	return ReencryptInstanceRow{ID: id, Ciphertext: ciphertext, DEKVersion: dek, RowVersion: row}, nil
+}
+
+func (r sqliteReencrypt) ListPairingInvitesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPairingInvites, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPairingInvitesForReencrypt(ctx, sqlitegen.ListPairingInvitesForReencryptParams{Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReencryptInstanceRow{ID: row.ID, Ciphertext: row.PakeSealed})
+	}
+	return out, nil
+}
+func (r sqliteReencrypt) ReencryptPairingInvites(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPairingInvites, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPairingInvites(ctx, sqlitegen.ReencryptPairingInvitesParams{NewCt: newCiphertext, OldCt: oldCiphertext, ID: id})
+	return n == 1, err
+}
+
+func (r pgReencrypt) ListPairingInvitesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPairingInvites, r.tok); err != nil {
+		return nil, err
+	}
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPairingInvitesForReencrypt(ctx, pggen.ListPairingInvitesForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReencryptInstanceRow{ID: row.ID, Ciphertext: row.PakeSealed})
+	}
+	return out, nil
+}
+func (r pgReencrypt) ReencryptPairingInvites(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPairingInvites, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPairingInvites(ctx, pggen.ReencryptPairingInvitesParams{NewCt: newCiphertext, OldCt: oldCiphertext, ID: id})
+	return n == 1, err
+}
+
+func (r sqliteReencrypt) ListPairingExchangesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPairingExchanges, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPairingExchangesForReencrypt(ctx, sqlitegen.ListPairingExchangesForReencryptParams{Cursor: cursor, PageLimit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReencryptInstanceRow{ID: row.ID, Ciphertext: row.StateSealed})
+	}
+	return out, nil
+}
+func (r sqliteReencrypt) ReencryptPairingExchanges(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPairingExchanges, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPairingExchanges(ctx, sqlitegen.ReencryptPairingExchangesParams{NewCt: newCiphertext, OldCt: oldCiphertext, ID: id})
+	return n == 1, err
+}
+
+func (r pgReencrypt) ListPairingExchangesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPairingExchanges, r.tok); err != nil {
+		return nil, err
+	}
+	checkedLimit, err := checkedPGInt32(int64(limit))
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPairingExchangesForReencrypt(ctx, pggen.ListPairingExchangesForReencryptParams{Cursor: cursor, PageLimit: checkedLimit})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ReencryptInstanceRow{ID: row.ID, Ciphertext: row.StateSealed})
+	}
+	return out, nil
+}
+func (r pgReencrypt) ReencryptPairingExchanges(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPairingExchanges, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPairingExchanges(ctx, pggen.ReencryptPairingExchangesParams{NewCt: newCiphertext, OldCt: oldCiphertext, ID: id})
+	return n == 1, err
 }

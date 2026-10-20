@@ -77,9 +77,10 @@ func (s *System) Ready(ctx context.Context) error { return s.DB.CheckAdmission(c
 // The zero value resolves to nothing, so a caller that forgets to set one
 // gets a refusal rather than an anonymous success.
 type Actor struct {
-	bearer    string
-	principal domain.PrincipalID
-	federated *FederatedCaller
+	bearer      string
+	pairedProof string
+	principal   domain.PrincipalID
+	federated   *FederatedCaller
 	// scimToken and scimBinding are the SCIM wire's own authentication (#73
 	// §7-8). The credential presented must match the binding IN THE PATH —
 	// mismatch is a named authentication failure, audited, and there is no
@@ -111,6 +112,11 @@ func ResolvedCallerActivity(ctx context.Context) (CallerActivity, bool) {
 // Bearer is the network path: a presented session artifact, resolved at the
 // chokepoint inside whichever transaction the operation opens.
 func Bearer(artifact string) Actor { return Actor{bearer: artifact} }
+
+// PairedConnectionActor requires a fresh request proof at the transaction chokepoint.
+func PairedConnectionActor(token, proof string) Actor {
+	return Actor{bearer: token, pairedProof: proof}
+}
 
 // LocalPrincipal is the below-the-network path: a principal the caller
 // already established by other means — the isolation harness, and local
@@ -171,6 +177,8 @@ func (a Actor) resolve(ctx context.Context, az *authz.TxAuthorizer, now time.Tim
 		} else {
 			identity, err = resolveSCIMCredential(ctx, az, a, now)
 		}
+	} else if a.pairedProof != "" {
+		identity, err = az.AuthenticatePairedConnection(ctx, a.bearer, a.pairedProof, now)
 	} else if a.bearer != "" {
 		identity, err = az.AuthenticateCaller(ctx, a.bearer, now)
 	} else {

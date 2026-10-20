@@ -4,6 +4,89 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+/**
+ * Omit the body or both fields to generate six random words. Choose
+ * either an explicit nonempty custom password/phrase, preserved exactly,
+ * or a generated word count. Case and whitespace are significant.
+ * Custom secrets are bounded to 4096 UTF-8 bytes by the service.
+ *
+ */
+export type PrepareRemotePairingRequest = {
+    phrase?: string;
+    word_count?: number;
+};
+
+export type RemotePairingPrepared = {
+    phrase: string;
+    requester_state: string;
+    expires_at: string;
+};
+
+export type CreateRemotePairingInviteRequest = {
+    phrase: string;
+    label: string;
+    invite_lifetime_seconds: number;
+    credential_lifetime_seconds: number;
+};
+
+export type RemotePairingInvite = {
+    id: string;
+    label: string;
+    origin: string;
+    spki_pin: string;
+    created_at: string;
+    expires_at: string;
+    credential_expires_at: string;
+    revoked_at?: string;
+    consumed_at?: string;
+};
+
+export type RemotePairingInviteCreated = {
+    invite: RemotePairingInvite;
+    invite_bundle: string;
+};
+
+export type PairRemoteRequest = {
+    name: string;
+    requester_state: string;
+    invite_bundle: string;
+};
+
+export type StartRemotePairingRequest = {
+    invite_capability: string;
+    public_jwk: string;
+};
+
+export type RemotePairingStarted = {
+    exchange: string;
+    server_message: string;
+};
+
+export type FinishRemotePairingRequest = {
+    exchange: string;
+    client_message: string;
+    proof: string;
+};
+
+export type RemotePairingFinished = {
+    server_message: string;
+    credential: string;
+    connection: InstanceConnection;
+};
+
+export type RemotePairingInviteList = {
+    /**
+     * Configured public origin used for new invitations; never inferred from request headers.
+     */
+    origin: string;
+    /**
+     * Instance configuration must be corrected before an invitation can be created. Does not perform certificate discovery.
+     */
+    configuration_error?: string;
+    items: Array<RemotePairingInvite>;
+    count: number;
+};
+
 export type ProjectCapacity = {
     key_limit_override: number | null;
     instance_default: number;
@@ -22985,6 +23068,575 @@ export type ScimSearchGroupsErrors = {
 };
 
 export type ScimSearchGroupsError = ScimSearchGroupsErrors[keyof ScimSearchGroupsErrors];
+
+export type PrepareRemotePairingData = {
+    body?: PrepareRemotePairingRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pairing-requests';
+};
+
+export type PrepareRemotePairingErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PrepareRemotePairingError = PrepareRemotePairingErrors[keyof PrepareRemotePairingErrors];
+
+export type PrepareRemotePairingResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    201: RemotePairingPrepared;
+};
+
+export type PrepareRemotePairingResponse = PrepareRemotePairingResponses[keyof PrepareRemotePairingResponses];
+
+export type ListRemotePairingInvitesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pairing-invites';
+};
+
+export type ListRemotePairingInvitesErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListRemotePairingInvitesError = ListRemotePairingInvitesErrors[keyof ListRemotePairingInvitesErrors];
+
+export type ListRemotePairingInvitesResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    200: RemotePairingInviteList;
+};
+
+export type ListRemotePairingInvitesResponse = ListRemotePairingInvitesResponses[keyof ListRemotePairingInvitesResponses];
+
+export type CreateRemotePairingInviteData = {
+    body: CreateRemotePairingInviteRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/pairing-invites';
+};
+
+export type CreateRemotePairingInviteErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateRemotePairingInviteError = CreateRemotePairingInviteErrors[keyof CreateRemotePairingInviteErrors];
+
+export type CreateRemotePairingInviteResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    201: RemotePairingInviteCreated;
+};
+
+export type CreateRemotePairingInviteResponse = CreateRemotePairingInviteResponses[keyof CreateRemotePairingInviteResponses];
+
+export type RevokeRemotePairingInviteData = {
+    body?: never;
+    path: {
+        invite: string;
+    };
+    query?: never;
+    url: '/api/v1/instance/pairing-invites/{invite}';
+};
+
+export type RevokeRemotePairingInviteErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeRemotePairingInviteError = RevokeRemotePairingInviteErrors[keyof RevokeRemotePairingInviteErrors];
+
+export type RevokeRemotePairingInviteResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    204: void;
+};
+
+export type RevokeRemotePairingInviteResponse = RevokeRemotePairingInviteResponses[keyof RevokeRemotePairingInviteResponses];
+
+export type PairRemoteData = {
+    body: PairRemoteRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/remotes/pair';
+};
+
+export type PairRemoteErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PairRemoteError = PairRemoteErrors[keyof PairRemoteErrors];
+
+export type PairRemoteResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    201: Remote;
+};
+
+export type PairRemoteResponse = PairRemoteResponses[keyof PairRemoteResponses];
+
+export type StartRemotePairingData = {
+    body: StartRemotePairingRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/pairing/start';
+};
+
+export type StartRemotePairingErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type StartRemotePairingError = StartRemotePairingErrors[keyof StartRemotePairingErrors];
+
+export type StartRemotePairingResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    201: RemotePairingStarted;
+};
+
+export type StartRemotePairingResponse = StartRemotePairingResponses[keyof StartRemotePairingResponses];
+
+export type FinishRemotePairingData = {
+    body: FinishRemotePairingRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/pairing/finish';
+};
+
+export type FinishRemotePairingErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type FinishRemotePairingError = FinishRemotePairingErrors[keyof FinishRemotePairingErrors];
+
+export type FinishRemotePairingResponses = {
+    /**
+     * Pairing operation completed.
+     */
+    201: RemotePairingFinished;
+};
+
+export type FinishRemotePairingResponse = FinishRemotePairingResponses[keyof FinishRemotePairingResponses];
 
 export type ServeDirectoryData = {
     body?: never;

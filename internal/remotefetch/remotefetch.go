@@ -7,13 +7,16 @@
 // of that set's normative members, and the package exists as its own package
 // so the set is enforced in one place rather than re-derived per caller.
 //
-// The property that makes the air-gap statement survive this feature: an
-// instance with zero configured remotes performs ZERO outbound connections.
-// Nothing here runs on a timer — there is deliberately no background poller
+// Nothing here runs on a timer: there is deliberately no background poller
 // (the system-architecture ADR fixed no generic job framework, and a standing
 // authenticated heartbeat toward every remote for a health dot nobody is
-// looking at is exactly what that rules out). A fetch happens because a holder
-// of `instance-directory` is looking at the directory, and at no other moment.
+// looking at is exactly what that rules out). A directory fetch happens because
+// a holder of instance-directory is looking at the directory. Separately, an
+// authorized administrator creating a pairing invitation can trigger one
+// TLS-only probe of the configured public origin to discover its certificate
+// fingerprint. That probe uses ordinary CA and hostname verification, sends no
+// HTTP request to the origin, and honors the explicit HTTPS CONNECT proxy.
+// Startup, invitation listing and local requester preparation never probe.
 package remotefetch
 
 import (

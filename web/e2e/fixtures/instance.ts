@@ -1045,7 +1045,7 @@ function startTLSFront(dir: string): string {
   run('openssl', [
     'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
     '-keyout', key, '-out', cert, '-days', '1',
-    '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+    '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
   ], { cwd: dir });
 
   const pem = readFileSync(cert, 'utf8');
@@ -1079,6 +1079,28 @@ function startTLSFront(dir: string): string {
 }
 
 const TLS_FRONT_HOST = '127.0.0.1';
+
+/** Public TLS metadata for pairing through the real pinned serving front. */
+export function readPairingPeer(): { origin: string; spki_pin: string } {
+  const certificate = readFileSync(join(dirname(readSeed().dbPath), 'front.crt'), 'utf8');
+  const spki = new X509Certificate(certificate).publicKey.export({ type: 'spki', format: 'der' });
+  return {
+    origin: `https://localhost:${PORT_TLS}`,
+    spki_pin: createHash('sha256').update(spki).digest('base64'),
+  };
+}
+
+/** Restore only the paired fixture entry to the browser workspace origin.
+ * Call after asserting its actual pinned HTTPS directory fetch succeeded. */
+export function repointPairedRemoteAtB(): void {
+  const db = openHarnessDb(readSeed().dbPath);
+  try {
+    db.prepare('UPDATE remotes SET url = ? WHERE name = ? AND url = ?')
+      .run(BASE_URL_B, REMOTE_NAME, readPairingPeer().origin);
+  } finally {
+    db.close();
+  }
+}
 
 /**
  * openHarnessDb opens the instance's sqlite file for a store-level seam while
@@ -1161,7 +1183,14 @@ export async function startInstance(): Promise<void> {
   // deadline. Start the first instance, then reuse its exact binary for B.
   mailSink = await startMailSink();
   const viewing = await startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL, 'flows', process.env.HIKYO_E2E_BINARY, mailSink.environment);
-  const serving = await startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B, 'flows', viewing.binary);
+  // Model a TLS-terminating reverse proxy with a self-signed certificate. The
+  // operator configures its public identity once, before server bootstrap;
+  // invitation creation receives no URL or fingerprint from the browser.
+  const pin = startTLSFront(viewing.dir);
+  const serving = await startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B, 'flows', viewing.binary, {
+    HIKYO_EXTERNAL_ORIGIN: `https://localhost:${PORT_TLS}`,
+    HIKYO_PAIRING_SPKI_PIN: pin,
+  });
 
   // Only the VIEWING instance needs `instance-directory`: it is the one that
   // reads a foreign directory. The serving side's work, minting a connection
@@ -1234,7 +1263,6 @@ export async function startInstance(): Promise<void> {
     throw new Error('the minted credential is not a string');
   }
 
-  const pin = startTLSFront(viewing.dir);
   await api(viewing, 'POST', '/api/v1/instance/remotes', {
     name: REMOTE_NAME,
     url: `https://${TLS_FRONT_HOST}:${PORT_TLS}`,
