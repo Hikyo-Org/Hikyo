@@ -107,6 +107,14 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpCertificateIssue, authz.OpCertificateRenew)
 
 	// ---- EXEMPT ----
+	add(budgetClassExempt, "remote pairing preparation: bounded secret generation, one Ed25519 key and one sealed continuation, no remote call or fan-out; §10 authenticated API admission",
+		authz.OpRemotePairingPrepare)
+	add(budgetClassExempt, "remote pairing invitation: one deadline-bounded configured-origin TLS probe and one finite invitation, analogous to remote.add's bounded peer verification; §10 authenticated API admission and live invitation cap",
+		authz.OpRemotePairingCreate)
+	add(budgetClassExempt, "remote pairing completion: one peer's bounded PAKE exchange and verified directory fetch, not a §179 fan-out; §10 authenticated API admission, with remote preauth admission and durable invitation attempt limits",
+		authz.OpRemotePairingComplete)
+	add(budgetClassExempt, "remote pairing invitation metadata: administrative listing or single-invitation revocation, no remote call or PAKE work; §10 authenticated API admission",
+		authz.OpRemotePairingList, authz.OpRemotePairingRevoke)
 	add(budgetClassExempt, "mail-test: shared instance lease, 5/hour/principal, 15-second send deadline", authz.OpMailTest)
 	add(budgetClassExempt, "static mail predicate: authenticated API admission bounds reads", authz.OpMailGet)
 	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",

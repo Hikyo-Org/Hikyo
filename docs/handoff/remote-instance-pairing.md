@@ -112,3 +112,53 @@ dismissed with the source/test rationale above, and its review thread remained
 resolved. Queue admission passed; admission alone is not candidate validation or
 proof of merge. CodeRabbit skipped review because of its file/usage limits, and
 Qodo skipped review because its trial ended; neither is reported as clean.
+
+## Protected candidate integration repair
+
+The independent diagnosis and acceptance criteria are recorded in
+[#1015](https://github.com/Hikyo-Org/Hikyo/issues/1015).
+
+The first full protected candidate, `12bf5013b14d1611418a05f66811ee300080038c`
+in [run 39492849436](https://github.com/Hikyo-Org/Hikyo/actions/runs/39492849436),
+exposed three integration omissions. Its failed core and race jobs shared the
+same missing budget classifications; the isolation job found a stale epoch
+coverage guard; and the Storybook job's later static-demo step found missing
+invitation metadata. The aggregate validation and proof jobs also failed.
+The 857 Storybook examples themselves passed in each palette, separately from
+the failing demo checks. The candidate did not merge.
+
+The repair explicitly classifies all five administrative pairing operations in
+the budget ledger, consistent with existing bounded remote configuration.
+Authenticated API admission, transport and resource limits, and public exchange
+attempt controls remain enforced. The restore guard now reads pairing's actual
+separately owned census query alongside the three existing queries, in both SQL
+dialects, while preserving schema-derived coverage. Runtime already includes
+pairing epochs; the frozen legacy query must remain compatible with archives
+restored before migration roll-forward. No runtime restore query was changed.
+
+The demo transport now supplies an empty GET-only invitation list with a
+fictional HTTPS origin. A regression first failed with four missing-fixture
+404s, then passed all 16 focused API tests. It checks generated-schema validity,
+all three demo roles, refusal of preparation, creation, revocation and redemption,
+and unchanged metadata after those refused mutations. The alert assertion and
+production transport were retained. Independent GPT 6.1 Sol High reviews of the
+combined repair found no actionable source issues; these are source reviews,
+separate from execution evidence and the PR-only review exception above.
+
+Local repair validation passed: the budget completeness regression normally and
+with the race detector; the full service package; authenticated API wire refusal;
+and the pairing/restore cases on SQLite and PostgreSQL 18, including future epoch
+stamps, historical absent tables, the schema completeness guard, implausible
+epochs, and forged archive epochs. Web validation passed all 2,016 unit tests,
+type checking, lint, design checks, all 82 desktop/mobile static-demo browser
+tests, the demo CSP build, and the production build's demo-isolation check.
+These results validate the repair locally; a fresh protected candidate still
+must pass before merge.
+
+An isolated execution of the compiled schema guard additionally rejected all
+four controlled omissions: either pairing table removed from either dialect's
+census query copy. The untouched query copies passed before and after those
+mutations. The canonical queries were never changed. This establishes that the
+expanded guard still detects genuine omissions, alongside the runtime restore
+checks above. The AST-only graph refresh also completed; no semantic review or
+independent audit is implied by that refresh.

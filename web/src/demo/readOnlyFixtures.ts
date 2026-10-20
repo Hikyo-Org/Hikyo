@@ -152,6 +152,7 @@ export function createReadOnlyFixtures(role: DemoRole, sessionTime: string) {
   }))));
 
   responses.set('/api/v1/instance/directory', { identity: 'hikyo-browser-demo', version: 'browser-demo', orgs: [{ name: org.name, projects: [project.name] }], org_count: 1, project_count: 1 });
+  responses.set('/api/v1/instance/pairing-invites', { ...list([]), origin: 'https://demo.hikyo.example.test' });
   responses.set('/api/v1/instance/remotes', list([{
     id: id('rem', 1), name: 'European production (sample)', url: 'https://eu.hikyo.example.test', spki_pin: 'sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
     created_at: sessionTime, created_by: principalIds.admin, state: 'ok', last_attempt_at: sessionTime, observed_at: sessionTime,
