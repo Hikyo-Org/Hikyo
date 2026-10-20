@@ -59,9 +59,9 @@ explicit connection action.
 
 ## Validation and delivery boundaries
 
-The local web run passed 2,013 tests, TypeScript, lint, design checks, all 29
+The local web run passed 2,013 tests, TypeScript, lint, design checks, all 32
 affected Storybook examples in each palette, and the full Storybook build and
-Docs guard. The guard indexed 856 stories; this does not mean all 856 were
+Docs guard. The guard indexed 857 stories; this does not mean all 857 were
 browser-executed. Source review found and corrected replay-budget starvation
 and a shared form-primitive bypass. The final Standards and Spec passes found
 no remaining actionable source findings; they are not independent crypto audits.
@@ -69,6 +69,26 @@ The replay regression reproduced cross-peer denial before the fix and passes
 after the per-key admission bound. Local browser and database validation, exact
 PR-head CI, review threads, protected queue admission, and actual merge remain
 separate evidence; use the pull request's current checks for delivery state.
+
+The final local two-engine pairing/remote/audit run, backend analyzers, affected
+API/server/CLI/configuration/crypto packages, configuration/store upgrades,
+selected application recovery checks, and pairing/outbound race checks passed.
+The TypeScript client passed type checking and all 41 tests.
+
+Desktop and Pixel 5 mobile each passed the real two-instance flow: scan synthetic
+camera frames through the browser media API, import the administrator's displayed
+QR image, review the destination, and explicitly redeem over pinned HTTPS with
+a five-character secret. Neither scan nor image import automatically redeemed
+the invitation. The workspace popup and both kill switches passed separately.
+The displayed-image test first failed at the compact setup-code size; the
+invitation now uses a responsive 320px design token, retaining the 176px setup
+default and square containment in a 240px host.
+
+CodeQL alert 188 identified the intended user-selected origin. A separate source
+review confirmed human `instance-config` and creator-bound continuation checks
+before outbound work, the existing private/LAN remote policy, and the shared
+pinned transport. The alert was dismissed as a false positive with the rationale
+recorded in PR 1014's review thread. No URL sanitizer or suppression was added.
 
 Camera automation uses Chromium's real media API with synthetic QR frames.
 It does not establish physical camera behavior on every browser or device.
