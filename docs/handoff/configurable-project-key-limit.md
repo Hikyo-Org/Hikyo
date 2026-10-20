@@ -221,6 +221,20 @@ and phone views were also inspected in the collaborative browser.
 
 ## Delivery boundaries
 
+The CI prerequisites are merged: #1011 repairs bounded transient reads and
+lagging merge-group proof publication; #1009 supplies the backend-inclusive
+version-2 feedback compiler seed. The feature branch is rebased onto main
+`367ba24d71326655d9815a40eb8b1c4e9e0d9025`. Its three application commits
+preserve the original feature patches unchanged. The three obsolete CI
+commits were dropped in favour of the merged implementations.
+
+After the rebase, the capacity configuration, runtime reload, service, CLI,
+application and API regressions passed. Frontend typechecking, linting and all
+1,978 unit tests also passed. Every rewritten commit passed cryptographic
+signature and DCO validation. Publish the bounded backend seed from trusted
+main before pushing the replacement head; then verify exact-head hosted
+checks, protected merge-group proof and actual merge to main separately.
+
 Implementation and documentation are prepared for pull-request delivery.
 The validation evidence above is local; hosted CI, merge, release and deployment
 are separate proof boundaries. A deployed application, real
