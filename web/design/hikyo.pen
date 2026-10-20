@@ -500,6 +500,10 @@
       "type": "number",
       "value": 760
     },
+    "--width-qr-large": {
+      "type": "number",
+      "value": 320
+    },
     "--width-side-panel-min": {
       "type": "number",
       "value": 640

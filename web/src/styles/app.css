@@ -5667,6 +5667,13 @@ label.chk:has(input:disabled) {
   forced-color-adjust: none;
 }
 
+.totp-qr--large {
+  width: var(--width-qr-large);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
 .codes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

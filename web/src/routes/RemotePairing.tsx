@@ -309,7 +309,7 @@ export function CreatePairingInviteForm() {
       {disclosure.shown ? <>
         <Input label="Pairing invitation" value={created.invite_bundle} readOnly mono />
         {new TextEncoder().encode(created.invite_bundle).length <= 2_000
-          ? <QrCode value={created.invite_bundle} title="Pairing invitation QR code" />
+          ? <QrCode value={created.invite_bundle} title="Pairing invitation QR code" size="large" />
           : <p>This invitation is too long for a QR code. Copy the invitation instead.</p>}
       </> : <p role="status">Invitation hidden. Reveal it again while this panel remains open.</p>}
       <div className="actions">

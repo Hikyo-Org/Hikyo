@@ -63,6 +63,10 @@ Derived (`color-mix`, not mirrored in the design file): `--accent-soft`, `--dang
 - **Card header.** Title and its badges at the start, the card's action at the end of the same row (`margin-left: auto` on the last `.btn` or `.actions`).
 - **Settings rows.** `.settings-row`: copy at the start, one control at the end. Two or more buttons: `.settings-row--stacked` (copy, badges, then one `.actions` row), never buttons split around the copy.
 
+**QR dimensions.** Authenticator setup codes retain their compact 176px size.
+Dense pairing invitations use `--width-qr-large` (320px), shrink to their
+container width, and remain square. Both sizes preserve scanner contrast.
+
 ## Components
 
 Use a `web/src/ui` atom wherever one exists; a missing generic pattern becomes a new atom with its own story, never a one-off in a route. Each atom's story (`web/src/ui/<Name>.stories.tsx`, `Design system/<Name>`) is its usage reference.
