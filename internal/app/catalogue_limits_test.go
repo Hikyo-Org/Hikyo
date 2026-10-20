@@ -145,6 +145,9 @@ func TestOwnerRuntimeReloadsProjectKeyLimit(t *testing.T) {
 	request.KeyLimitOverride = &override
 	request.ExpectedRevision = policy.Revision
 	policy = callCapacity(http.MethodPut, &request, http.StatusOK)
+	if policy.Inherited || policy.KeyLimitOverride == nil || *policy.KeyLimitOverride != 5 || policy.EffectiveLimit != 5 {
+		t.Fatalf("override of 5 was not activated: %+v", policy)
+	}
 	apply(1, 2)
 	policy = callCapacity(http.MethodGet, nil, http.StatusOK)
 	if !policy.Capped || policy.KeyLimitOverride == nil || *policy.KeyLimitOverride != 5 || policy.EffectiveLimit != 2 {

@@ -90,7 +90,7 @@ function CapacityEditor({ current, busy, failure, conflicted, onClose, onRefresh
   const validProposal = Number.isSafeInteger(proposed) && proposed > 0 && proposed <= base.instance_maximum;
 
   return <SidePanel title="Edit key capacity" onClose={onClose}>
-    <form className="project-capacity__form" onSubmit={(event) => {
+    <form className="project-capacity__form" noValidate onSubmit={(event) => {
       event.preventDefault();
       if (disabled || stale) return;
       if (!inherited && (!/^\d+$/.test(value) || !Number.isSafeInteger(proposed) || proposed < 1 || proposed > base.instance_maximum)) {

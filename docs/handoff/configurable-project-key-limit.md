@@ -235,9 +235,24 @@ signature and DCO validation. Publish the bounded backend seed from trusted
 main before pushing the replacement head; then verify exact-head hosted
 checks, protected merge-group proof and actual merge to main separately.
 
+The trusted-main seed was subsequently published successfully. All three
+feedback lanes, repository invariants and CodeQL passed on `c75fdff`.
+That head's merge-group validation was cancelled after review findings arrived;
+its queue admission is not merge proof.
+
+The review follow-up asserts that an override was activated before testing a
+lowered ceiling, removes the misleading fixed instance default from uniform
+limit-refusal messages, and lets the capacity editor's custom validation handle
+out-of-range submissions. A new browser scenario submits a retained 5,000-key
+override against a 2,000-key ceiling, checks the accessible inline error, then
+corrects it to 1,500 and saves. The same flow was verified at a phone viewport.
+The full server suite, runtime reload regression, frontend typecheck and lint,
+all 1,978 frontend unit tests, and all 15 capacity stories in each palette pass.
+The wire-message regression was observed failing before the message fix.
+
 Implementation and documentation are prepared for pull-request delivery.
-The validation evidence above is local; hosted CI, merge, release and deployment
-are separate proof boundaries. A deployed application, real
+Hosted checks on the review follow-up, actual merge, release and deployment
+remain separate proof boundaries. A deployed application, real
 multi-node HA convergence and performance at the expanded ceiling have not
 been verified. The frontend sensitivity inventory retains its required
 maintainer security review before merge.

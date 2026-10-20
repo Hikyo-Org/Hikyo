@@ -72,6 +72,20 @@ export const ClampedOverride: Story = { parameters: { app: { responses: response
   await expect(await canvas.findByRole('alert')).toHaveTextContent('effective limit is capped at 2,000 keys');
   await expect(canvas.getByText(/Project override: 5,000 keys/)).toBeVisible();
 } };
+export const ValidateClampedOverride: Story = { ...ClampedOverride, play: async ({ canvas }) => {
+  await userEvent.click(await canvas.findByRole('button', { name: 'Edit key capacity' }));
+  const input = canvas.getByRole('spinbutton', { name: 'Project key limit' });
+  await expect(input).toHaveValue(5000);
+  await userEvent.click(canvas.getByRole('button', { name: 'Save key capacity' }));
+  await expect(await canvas.findByText('Enter a whole number from 1 to 2,000.')).toBeVisible();
+  await expect(input).toHaveAttribute('aria-invalid', 'true');
+  const descriptionIds = (input.getAttribute('aria-describedby') ?? '').split(' ');
+  await expect(descriptionIds.map((id) => input.ownerDocument.getElementById(id)?.textContent)).toContain('Enter a whole number from 1 to 2,000.');
+  await userEvent.clear(input);
+  await userEvent.type(input, '1500');
+  await userEvent.click(canvas.getByRole('button', { name: 'Save key capacity' }));
+  await expect(await canvas.findByText('240 keys used / 1,500 key limit')).toBeVisible();
+} };
 export const OverLimit: Story = { parameters: { app: { responses: responses({ ...inherited, key_count: 1200 }) } }, play: async ({ canvas }) => {
   await expect(await canvas.findByText('1,200 keys used / 1,000 key limit')).toBeVisible();
   await expect(canvas.getByRole('alert')).toHaveTextContent('Existing keys are preserved');

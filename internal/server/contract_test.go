@@ -2180,6 +2180,9 @@ func TestConflictAndLimitRenderUniformly(t *testing.T) {
 			if tc.code == apigen.ErrorCodeLimitExceeded && !strings.Contains(body.Error.Message, "50 environments") {
 				t.Errorf("the limit refusal does not name its bound: %q", body.Error.Message)
 			}
+			if tc.code == apigen.ErrorCodeLimitExceeded && strings.Contains(body.Error.Message, "instance default") {
+				t.Errorf("the limit refusal claims a fixed configurable default: %q", body.Error.Message)
+			}
 		})
 	}
 }

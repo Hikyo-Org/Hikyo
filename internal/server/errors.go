@@ -11,7 +11,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
-	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/mail"
@@ -48,9 +47,9 @@ import (
 // it — is recorded as a disposition item rather than smuggled in here.
 var limitExceededMessage = fmt.Sprintf(
 	"a structural bound was reached: a project holds at most %d environments, "+
-		"declares keys within its project capacity (instance default %d), declares at most %d key groups, and stays within %d resolved cells, "+
+		"declares keys within its effective project key capacity, declares at most %d key groups, and stays within %d resolved cells, "+
 		"and a service account reports at most %d delivery targets",
-	service.MaxEnvironmentsPerProject, config.DefaultKeysPerProject, schema.MaxKeyGroupsPerProject, service.MaxResolvedCells,
+	service.MaxEnvironmentsPerProject, schema.MaxKeyGroupsPerProject, service.MaxResolvedCells,
 	deliverytarget.MaxRowsPerPrincipal)
 
 type detailPolicy uint8
