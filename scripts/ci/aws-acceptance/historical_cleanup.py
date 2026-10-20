@@ -22,8 +22,8 @@ CLI_TIMEOUT = 10
 ABSENCE_READS = 6
 ABSENCE_INTERVAL = 2
 NOT_FOUND = re.compile(
-    rb"(?:aws: \[ERROR\]: )?An error occurred \(ResourceNotFoundException\)"
-    rb" when calling the DescribeSecret operation(?: \(reached max retries: 0\))?: [^\r\n]+\n?"
+    rb"(?:\r?\n)*(?:aws: \[ERROR\]: )?An error occurred \(ResourceNotFoundException\)"
+    rb" when calling the DescribeSecret operation(?: \(reached max retries: 0\))?: [^\r\n]+(?:\r?\n)*"
 )
 
 
