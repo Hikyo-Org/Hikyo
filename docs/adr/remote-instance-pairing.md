@@ -1,13 +1,35 @@
 # Manual remote-instance pairing
 
-Status: implementation proposal, owner-authorized 2026-10-20. This document
-does not claim the cross-model review or maintainer security review required
-to lock an amendment under the governance procedure.
+Status: owner decision locked 2026-10-20; operative when
+[PR #1014](https://github.com/Hikyo-Org/Hikyo/pull/1014) merges. The owner approved
+a PR-only exception accepting the completed GPT 6.1 Sol High reviews in place
+of the unavailable cross-provider ADR review. Cross-provider review was skipped,
+not completed. See the decision record below.
 
 Extends [multi-instance](multi-instance.md) and
 [machine-identities](machine-identities.md). Existing manual remote creation,
 instance-connection permissions, and human workspace authentication remain
 available under their existing contracts.
+
+## Decision and amendment record
+
+The owner approved manual remote pairing, arbitrary nonempty custom secrets,
+local QR scanning and image import, and delivery through protected merge in
+PR #1014. On 2026-10-20 the owner explicitly approved the
+[PR-only review exception](https://github.com/Hikyo-Org/Hikyo/pull/1014#issuecomment-6300666440):
+the completed OpenAI GPT 6.1 Sol High Standards and Spec/security source reviews
+replace the required cross-provider ADR review for this PR. Anthropic review is
+unavailable; it remains recorded as skipped. This is not an independent
+cryptographic audit or a general change to governance or future review gates.
+
+The originating [threat-model ticket #8](https://github.com/Hikyo-Org/Hikyo/issues/8)
+and [multi-instance ticket #71](https://github.com/Hikyo-Org/Hikyo/issues/71) were
+reopened to record the amendment. Their ADRs enumerate the administrator-triggered
+TLS identity self-probe as the exception to the zero-remotes outbound baseline.
+The owner decision is locked; these amendments become operative only when
+PR #1014 merges. Signed commits, DCO, CI, resolved review findings, and the
+mandatory merge queue remain required. Release and deployment are outside this
+decision.
 
 ## Outcome
 

@@ -1,6 +1,7 @@
 # Hikyo threat model (ADR, locked 2026-07-29)
 
-> **Proposed amendment (2026-10-20, owner-authorized manual remote pairing):**
+> **Declared amendment (2026-10-20, manual remote pairing, owner decision locked;
+> cross-provider review waived for PR #1014 only; operative when that PR merges):**
 > invitation creation adds the instance's configured public HTTPS origin as an
 > enumerated outbound destination for a bounded TLS-only certificate probe.
 > An authenticated `instance-config` administrator must explicitly create the
@@ -11,8 +12,12 @@
 > CONNECT proxy. An operator-managed external fingerprint skips discovery.
 > Startup, listing, preparation, and background work remain free of probes.
 > This is the explicit exception to the directory's zero-remotes outbound
-> statement. See [remote-instance-pairing.md](./remote-instance-pairing.md) for
-> the control set and outstanding security review; this amendment is not locked.
+> statement. Originating [ticket #8](https://github.com/Hikyo-Org/Hikyo/issues/8)
+> was reopened for the amendment. The owner accepted completed GPT 6.1 Sol High
+> reviews under the [PR-only exception](https://github.com/Hikyo-Org/Hikyo/pull/1014#issuecomment-6300666440);
+> cross-provider review remains skipped. See
+> [remote-instance-pairing.md](./remote-instance-pairing.md) for the control set,
+> decision record, and review limitations.
 
 > **Declared amendment (2026-09-23, [#683](https://github.com/Hikyo-Org/Hikyo/issues/683), owner decision locked; cross-model review waived by the owner on 2026-09-23; operative upon the condition-reporting governance PR merging):** the workload capability "read-only (only v1 workload capability)" becomes **read, plus an explicitly granted value-free status report**. A report carries only closed condition types, statuses and reasons, generations, a lifecycle enum, Kubernetes object names and UIDs, and a closed reporter enum with a SemVer version; it never carries a value, key name, cursor, stamp, credential or free text. The UI labels reports as controller assertions, never independently verified cluster health, and missing or stale reports never read as healthy. This banner is a pointer; the normative contract is [k8s-condition-reporting.md](./k8s-condition-reporting.md). Historical text below is preserved.
 

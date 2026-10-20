@@ -96,8 +96,19 @@ The entire isolation suite previously reproduced a PostgreSQL Unicode/fullwidth
 adapter-origin failure on the unchanged starting commit; selected pairing and
 security suites are recorded separately from that baseline failure.
 
-The pairing ADR records a proposed amendment to the locked outbound contract.
-Cross-provider review is unavailable under the current reviewer policy. The
-proposal is not a locked amendment or an independent cryptographic audit;
-the locked-ADR amendment procedure still requires completion or an explicit
-recorded maintainer decision before merge.
+The owner approved the
+[PR #1014-only review exception](https://github.com/Hikyo-Org/Hikyo/pull/1014#issuecomment-6300666440)
+on 2026-10-20, accepting completed GPT 6.1 Sol High Standards and Spec/security
+source reviews instead of the unavailable cross-provider ADR review. That pass
+remains skipped, not clean, and the source reviews are not an independent
+cryptographic audit. Tickets #8 and #71 were reopened for the amendment record.
+The pairing, multi-instance, and threat-model ADRs record the locked owner
+decision, operative when PR #1014 merges. General governance and future review
+requirements remain in force; CI and the protected merge queue still gate merge.
+
+Before this documentation-only decision record, head `9e3cdad0cbf45` passed all
+four CodeQL language analyses and the aggregate CodeQL check. Alert 188 remained
+dismissed with the source/test rationale above, and its review thread remained
+resolved. Queue admission passed; admission alone is not candidate validation or
+proof of merge. CodeRabbit skipped review because of its file/usage limits, and
+Qodo skipped review because its trial ended; neither is reported as clean.
