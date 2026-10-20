@@ -1,3 +1,6 @@
+// Keep bundle/navigation probes in the settings flow's existing CI shard.
+import '../settings-bundles.ts';
+
 import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import {

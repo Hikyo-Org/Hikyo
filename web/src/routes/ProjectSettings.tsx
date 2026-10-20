@@ -47,6 +47,7 @@ import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ProjectDeveloperCredentials } from './ProjectDeveloperCredentials.tsx';
+import { ProjectCapacityPolicy } from './ProjectCapacityPolicy.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, Panel, SectionTabs, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -183,8 +184,9 @@ export function ProjectSettings() {
             </Panel>
           ) },
 
-          canManagePolicy && { id: 'project-policy', label: 'Policy', anchors: ['project-retention'], content: (
+          canManagePolicy && { id: 'project-policy', label: 'Policy', anchors: ['project-retention', 'project-capacity'], content: (
             <Panel id="project-policy" title="Policy">
+              <ProjectCapacityPolicy key={`capacity/${org}/${project}`} org={org} project={project} />
               {environments.isError ? (
                 <Alert>This project&apos;s environments could not be read.</Alert>
               ) : null}

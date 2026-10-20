@@ -2,6 +2,25 @@
 
 import * as z from 'zod';
 
+export const zProjectCapacity = z.object({
+    key_limit_override: z.int().gte(1).lte(10000).nullable(),
+    instance_default: z.int().gte(1).lte(10000),
+    instance_maximum: z.int().gte(1).lte(10000),
+    effective_limit: z.int().gte(1).lte(10000),
+    key_count: z.int().gte(0),
+    environment_count: z.int().gte(0).lte(50),
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    inherited: z.boolean(),
+    capped: z.boolean()
+});
+
+export const zSetProjectCapacityRequest = z.object({
+    key_limit_override: z.int().gte(1).lte(10000).nullable(),
+    expected_revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    expected_instance_default: z.int().gte(1).lte(10000),
+    expected_instance_maximum: z.int().gte(1).lte(10000)
+});
+
 export const zDeveloperCredentialPolicy = z.object({
     max_lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
@@ -184,7 +203,7 @@ export const zUpdateAccountProfileRequest = z.object({
 export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}$/);
 
 export const zMintDeveloperCredentialRequest = z.object({
-    key_ids: z.array(zId).max(1000),
+    key_ids: z.array(zId).max(10000),
     consent_current_and_future: z.literal(true),
     lifetime_seconds: z.coerce.bigint().gte(BigInt(1)).lte(BigInt(28800))
 });
@@ -1169,7 +1188,7 @@ export const zDeveloperCredentialReauthIntent = z.object({
 export const zTotpDeveloperCredentialReauthRequest = z.object({
     purpose: z.literal('developer-credential'),
     environment_id: zId,
-    key_ids: z.array(zId).max(1000),
+    key_ids: z.array(zId).max(10000),
     developer_credential: zDeveloperCredentialReauthIntent,
     code: z.string().min(6).max(10)
 });
@@ -1246,7 +1265,7 @@ export const zCliReauthStartRequest = z.intersection(z.union([
         'developer-credential.mint'
     ]),
     environment_ids: z.array(zId),
-    key_ids: z.array(zId).max(1000).optional(),
+    key_ids: z.array(zId).max(10000).optional(),
     pkce_challenge: z.string().length(43).regex(/^[A-Za-z0-9_-]{43}$/),
     redirect_uri: z.url().max(256)
 }));
@@ -5656,6 +5675,28 @@ export const zRenameEnvironmentPath = z.object({
  * The renamed environment.
  */
 export const zRenameEnvironmentResponse = zEnvironment;
+
+export const zGetProjectCapacityPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Effective capacity, saved override and current usage.
+ */
+export const zGetProjectCapacityResponse = zProjectCapacity;
+
+export const zSetProjectCapacityBody = zSetProjectCapacityRequest;
+
+export const zSetProjectCapacityPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * Effective capacity, saved override and current usage.
+ */
+export const zSetProjectCapacityResponse = zProjectCapacity;
 
 export const zGetProjectRetentionPath = z.object({
     org: zId,

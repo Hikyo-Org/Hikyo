@@ -66,9 +66,23 @@ type GetProjectParams struct {
 	ID    string
 }
 
-func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project, error) {
+type GetProjectRow struct {
+	ID                      string
+	OrgID                   string
+	Name                    string
+	CreatedAt               string
+	RetentionRevisionCount  sql.NullInt64
+	RetentionAgeSeconds     sql.NullInt64
+	DefinitionsSource       string
+	MachineReveal           int64
+	MachineRevealGeneration int64
+}
+
+// Keep ordinary metadata reads compatible with pre-capacity recovery schemas.
+// Capacity policy is read through its separate proof-gated query below.
+func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (GetProjectRow, error) {
 	row := q.db.QueryRowContext(ctx, getProject, arg.OrgID, arg.ID)
-	var i Project
+	var i GetProjectRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrgID,
@@ -80,6 +94,28 @@ func (q *Queries) GetProject(ctx context.Context, arg GetProjectParams) (Project
 		&i.MachineReveal,
 		&i.MachineRevealGeneration,
 	)
+	return i, err
+}
+
+const getProjectCapacity = `-- name: GetProjectCapacity :one
+SELECT key_limit_override, key_limit_revision FROM projects
+WHERE org_id = ?1 AND id = ?2
+`
+
+type GetProjectCapacityParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+type GetProjectCapacityRow struct {
+	KeyLimitOverride sql.NullInt64
+	KeyLimitRevision int64
+}
+
+func (q *Queries) GetProjectCapacity(ctx context.Context, arg GetProjectCapacityParams) (GetProjectCapacityRow, error) {
+	row := q.db.QueryRowContext(ctx, getProjectCapacity, arg.ChainOrgID, arg.ChainProjectID)
+	var i GetProjectCapacityRow
+	err := row.Scan(&i.KeyLimitOverride, &i.KeyLimitRevision)
 	return i, err
 }
 
@@ -131,15 +167,27 @@ FROM projects
 WHERE org_id = ? ORDER BY name
 `
 
-func (q *Queries) ListProjects(ctx context.Context, orgID string) ([]Project, error) {
+type ListProjectsRow struct {
+	ID                      string
+	OrgID                   string
+	Name                    string
+	CreatedAt               string
+	RetentionRevisionCount  sql.NullInt64
+	RetentionAgeSeconds     sql.NullInt64
+	DefinitionsSource       string
+	MachineReveal           int64
+	MachineRevealGeneration int64
+}
+
+func (q *Queries) ListProjects(ctx context.Context, orgID string) ([]ListProjectsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listProjects, orgID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Project
+	var items []ListProjectsRow
 	for rows.Next() {
-		var i Project
+		var i ListProjectsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -203,6 +251,33 @@ type RenameProjectParams struct {
 
 func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, renameProject, arg.Name, arg.OrgID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setProjectCapacity = `-- name: SetProjectCapacity :execrows
+UPDATE projects SET key_limit_override = ?1, key_limit_revision = key_limit_revision + 1
+WHERE org_id = ?2 AND id = ?3 AND key_limit_revision = ?4
+`
+
+type SetProjectCapacityParams struct {
+	KeyLimitOverride sql.NullInt64
+	ChainOrgID       string
+	ChainProjectID   string
+	ExpectedRevision int64
+}
+
+// SetProjectCapacity advances the independent policy revision only if the
+// caller still holds the policy version it read under the project lock.
+func (q *Queries) SetProjectCapacity(ctx context.Context, arg SetProjectCapacityParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setProjectCapacity,
+		arg.KeyLimitOverride,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ExpectedRevision,
+	)
 	if err != nil {
 		return 0, err
 	}

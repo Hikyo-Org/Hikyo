@@ -91,8 +91,26 @@ FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=go >"$work/go"
 FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=frontend >"$work/frontend"
 cat "$work/go" "$work/frontend" | sort >"$work/union"
 cmp "$work/all" "$work/union"
-diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -o /dev/null ./.' 'shellcheck' | sort) "$work/go"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' 'shellcheck' | sort) "$work/go"
 diff -u <(printf '%s\n' 'pnpm --dir clients/ts run typecheck' 'pnpm --dir clients/ts run test' 'pnpm --dir web run typecheck' 'pnpm --dir web run lint' 'pnpm --dir web run test' | sort) "$work/frontend"
+# The hosted Go scopes partition package owners and read-only tooling. Local
+# unscoped Go feedback retains its complete single build graph.
+mkdir -p scripts/tooling
+printf 'package tooling\n' >scripts/tooling/fixture.go
+printf '\n// Select dependency integrity.\n' >>go.mod
+commit_fixture
+run_lane --lane=go >"$work/scope-all"
+run_lane --lane=go --go-scope=application >"$work/application"
+run_lane --lane=go --go-scope=tooling >"$work/tooling"
+diff -u <(printf '%s\n' 'go mod verify' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
+diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' | sort) "$work/tooling"
+compile_prefix='go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
+sed -n "s|^$compile_prefix||p" "$work/scope-all" | tr ' ' '\n' | sort >"$work/all-owners"
+cat "$work/application" "$work/tooling" | sed -n "s|^$compile_prefix||p" | tr ' ' '\n' | sort >"$work/split-owners"
+cmp "$work/all-owners" "$work/split-owners"
+grep -v '^go test ' "$work/scope-all" >"$work/all-tooling"
+cat "$work/application" "$work/tooling" | grep -v '^go test ' | sort >"$work/split-tooling"
+cmp "$work/all-tooling" "$work/split-tooling"
 refuse() {
 	if bash "$script_dir/fast-feedback.sh" "$@" >"$work/output" 2>&1; then
 		printf 'feedback lane fixture unexpectedly passed: %s\n' "$*" >&2; exit 1
@@ -103,7 +121,15 @@ for lane in '' yes GO frontend,go; do
 	refuse "--lane=$lane"
 	grep -F 'invalid lane' "$work/output" >/dev/null
 done
+for scope in '' unknown APPLICATION application,tooling; do
+	refuse --lane=go "--go-scope=$scope"
+	grep -F 'invalid Go scope' "$work/output" >/dev/null
+done
+refuse --lane=frontend --go-scope=application
+grep -F 'frontend lane cannot select a Go scope' "$work/output" >/dev/null
 FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go
+FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=application
+FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=tooling
 FIXTURE_FAILURE=frontend FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=frontend
 # A frontend-only success cannot conceal invalid Go formatting in the other lane.
 printf 'package lanes\nvar bad=1\n' >fixture.go
@@ -111,4 +137,4 @@ commit_fixture
 run_lane --lane=frontend >/dev/null
 refuse --lane=go
 refuse
-printf 'fast-feedback lane fixtures: complete union, ownership, invalid lanes and independent failure refusal passed\n'
+printf 'fast-feedback lane fixtures: complete lane/scope unions, ownership, invalid selections and independent failure refusal passed\n'

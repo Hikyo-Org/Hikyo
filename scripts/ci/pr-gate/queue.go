@@ -207,7 +207,14 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
 		return errors.New("queue event repository identity mismatch")
 	}
-	return q.reassess(ctx, func(ctx context.Context) error { return q.executeProof(ctx, name, e) })
+	return q.reassessHeld(ctx, q.rereadsGroup(name == "workflow_run" && e.Run.Event == "merge_group"), func(ctx context.Context) error { return q.executeProof(ctx, name, e) })
+}
+
+// The one test for waiting on GitHub metadata, shared by the queue-gate group
+// callback and the group head worker (isGroup). Targeted admission, group-only
+// repair, schedule and every other worker role stay bounded and reassess once.
+func (q *queueController) rereadsGroup(isGroup bool) bool {
+	return isGroup && !q.targeted && !q.repairOnly
 }
 
 func (q *queueController) executeProof(ctx context.Context, name string, e event) error {
@@ -778,7 +785,7 @@ func graphQLDiagnostic(raw []json.RawMessage) error {
 	return fmt.Errorf("merge queue GraphQL errors (%d): message=%q type=%q code=%q path=%q", len(raw), field(first.Message, 256), field(first.Type, 64), field(first.Extensions.Code, 64), field(path, 256))
 }
 
-func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
+func (q *queueController) readQueueSnapshot(ctx context.Context) (*queueData, error) {
 	parts := strings.Split(q.repoName, "/")
 	live := &queueData{}
 	seenCursors := make(map[string]bool)
@@ -815,11 +822,20 @@ func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 		if page == 1 {
 			live.ID = part.ID
 		} else if live.ID != part.ID {
-			return nil, errors.New("merge queue identity changed between pages")
+			return nil, &queueSnapshotChanged{reason: "merge queue identity changed between pages"}
 		}
+		pageEntries, pagePRs, pagePositions := make(map[string]bool), make(map[int]bool), make(map[int]bool)
 		for _, entry := range part.Entries.Nodes {
-			if entry.ID == "" || entry.PR.Number <= 0 || entry.Position <= 0 || seenEntries[entry.ID] || seenPRs[entry.PR.Number] || seenPositions[entry.Position] {
+			if entry.ID == "" || entry.PR.Number <= 0 || entry.Position <= 0 || pageEntries[entry.ID] || pagePRs[entry.PR.Number] || pagePositions[entry.Position] {
 				return nil, errors.New("duplicate or invalid paginated queue entry")
+			}
+			pageEntries[entry.ID], pagePRs[entry.PR.Number], pagePositions[entry.Position] = true, true, true
+		}
+		// A malformed page stays fatal even if an earlier entry also repeated
+		// across pages. Only movement between otherwise valid pages is retried.
+		for _, entry := range part.Entries.Nodes {
+			if seenEntries[entry.ID] || seenPRs[entry.PR.Number] || seenPositions[entry.Position] {
+				return nil, &queueSnapshotChanged{reason: fmt.Sprintf("queue entry repeated across pages: page=%d position=%d PR=%d", page, entry.Position, entry.PR.Number)}
 			}
 			seenEntries[entry.ID], seenPRs[entry.PR.Number], seenPositions[entry.Position] = true, true, true
 		}
@@ -830,7 +846,7 @@ func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 			}
 			for position := 1; position <= len(live.Entries.Nodes); position++ {
 				if !seenPositions[position] {
-					return nil, errors.New("incomplete paginated queue positions")
+					return nil, incompleteQueuePositions(live, page, position)
 				}
 			}
 			return live, nil
@@ -870,7 +886,11 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 		if entry.State != "QUEUED" && entry.State != "AWAITING_CHECKS" && entry.State != "MERGEABLE" && entry.State != "UNMERGEABLE" && entry.State != "LOCKED" {
 			return queueSnapshot{}, errors.New("invalid authenticated queue entry state")
 		}
-		if entry.ID == "" || seen[entry.ID] || seenPR[entry.PR.Number] || entry.Position != i+1 || entry.PR.Number <= 0 || entry.PR.Base != q.repo.DefaultBranch || !shaPattern.MatchString(entry.PR.Head) || !shaPattern.MatchString(entry.Head.OID) || !shaPattern.MatchString(entry.Base.OID) {
+		// An absent group may have a queued successor with no group commit yet.
+		// Still validate all membership identities before reporting absence. A
+		// successor cannot supply the missing commits of an active group prefix.
+		waiting := matching == 0 && entry.State == "QUEUED" && entry.Head.OID == "" && (entry.Base.OID == "" || shaPattern.MatchString(entry.Base.OID))
+		if entry.ID == "" || seen[entry.ID] || seenPR[entry.PR.Number] || entry.Position != i+1 || entry.PR.Number <= 0 || entry.PR.Base != q.repo.DefaultBranch || !shaPattern.MatchString(entry.PR.Head) || !waiting && (!shaPattern.MatchString(entry.Head.OID) || !shaPattern.MatchString(entry.Base.OID)) {
 			return queueSnapshot{}, fmt.Errorf("invalid ordered merge queue entry: position=%d expected=%d PR=%d state=%q id_present=%t duplicate_id=%t duplicate_pr=%t base_ref_matches=%t pr_head_valid=%t group_head_valid=%t base_commit_valid=%t", entry.Position, i+1, entry.PR.Number, entry.State, entry.ID != "", seen[entry.ID], seenPR[entry.PR.Number], entry.PR.Base == q.repo.DefaultBranch, shaPattern.MatchString(entry.PR.Head), shaPattern.MatchString(entry.Head.OID), shaPattern.MatchString(entry.Base.OID))
 		}
 		seen[entry.ID] = true
@@ -919,7 +939,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		if errors.As(err, &stale) {
 			_, writeErr := fmt.Fprintln(q.output, "Merge group pending:", stale.reason)
 			err = errors.Join(writeErr, q.retiredGroup(ctx))
+			return
 		}
+		err = q.retireMovedGroup(ctx, err)
 	}()
 
 	// A valid callback establishes held-head identity. Final proof adds queue
@@ -966,7 +988,9 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	if q.queueRefresh != nil {
-		q.queueRefresh.finishedGroup = &finishedGroupProof{run: r, policy: policy, snapshot: snap}
+		if err := q.queueRefresh.proveGroup(&finishedGroupProof{run: r, policy: policy, snapshot: snap}); err != nil {
+			return err
+		}
 	}
 	p.Number = snap.Entries[len(snap.Entries)-1].PR.Number
 	members, authorized, err := q.groupMembers(ctx, snap)
@@ -1010,14 +1034,11 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if err != nil {
 		return err
 	}
-	counts := make(map[string]int)
-	ok := true
-	for _, j := range jobs {
-		if j.Name == "validation / ci-required" || j.Name == "merge-group-proof" {
-			counts[j.Name]++
-			ok = ok && j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
-		}
+	summary := summarizeProofJobs(jobs, r)
+	if len(summary.unsettled) > 0 {
+		return &groupProofIncomplete{jobs: summary.unsettled, run: r}
 	}
+	counts, ok := summary.counts, summary.ok
 	if counts["validation / ci-required"] != 1 || counts["merge-group-proof"] != 1 {
 		return errors.New("missing or duplicated full merge-group proof")
 	}
@@ -1035,8 +1056,11 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if err != nil {
 		return err
 	}
-	if finalPolicy != policy || final.Digest != snap.Digest {
-		return errors.New("merge queue changed before publication")
+	if finalPolicy != policy {
+		return errors.New("merge queue policy changed before publication")
+	}
+	if final.Digest != snap.Digest {
+		return &queueSnapshotChanged{reason: "merge queue changed before publication"}
 	}
 	finalMembers, finalAuthorized, err := q.groupMembers(ctx, final)
 	_, finalAuthorityPending := err.(*groupAuthorityPending)
@@ -1101,6 +1125,69 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return err
 	}
 	return q.publish(ctx, p, b, newestQueueCheck(own), result)
+}
+
+// groupProofIncomplete means the completed successful run's proof jobs are not
+// yet listed as finished. It never authorizes a verdict; callers may only wait.
+// run is the identity-checked run whose jobs lag, for a jobs-only poll.
+type groupProofIncomplete struct {
+	jobs []string
+	run  run
+}
+
+func (e *groupProofIncomplete) Error() string {
+	return "merge-group proof jobs are not yet final in GitHub job metadata: " + strings.Join(e.jobs, ", ")
+}
+
+type proofJobSummary struct {
+	counts    map[string]int
+	ok        bool     // every listed proof job succeeded on this head
+	unsettled []string // set only for lag: waiting could still change the verdict
+}
+
+// summarizeProofJobs is the one definition of "lagging". A successful run whose
+// proof jobs are still listed as unfinished or are not listed yet is GitHub
+// metadata lag. Only a failed, mismatched or duplicated proof job is a verdict
+// that waiting cannot change.
+func summarizeProofJobs(jobs []job, r run) proofJobSummary {
+	s := proofJobSummary{counts: make(map[string]int), ok: true}
+	definite := false
+	var unsettled []string
+	for _, j := range jobs {
+		if j.Name == "validation / ci-required" || j.Name == "merge-group-proof" {
+			s.counts[j.Name]++
+			good := j.Status == "completed" && j.Conclusion == "success" && j.HeadSHA == r.HeadSHA
+			s.ok = s.ok && good
+			switch {
+			case good:
+			case r.Conclusion == "success" && lagging(j, r.HeadSHA):
+				unsettled = append(unsettled, j.Name+" ("+j.Status+")")
+			default:
+				definite = true
+			}
+		}
+	}
+	if s.counts["validation / ci-required"] <= 1 && s.counts["merge-group-proof"] <= 1 && !definite && r.Conclusion == "success" {
+		for _, name := range []string{"validation / ci-required", "merge-group-proof"} {
+			if s.counts[name] == 0 {
+				unsettled = append(unsettled, name+" (missing)")
+			}
+		}
+		s.unsettled = unsettled
+	}
+	return s
+}
+
+// lagging reports a job of this exact head that GitHub still lists as unfinished.
+func lagging(j job, head string) bool {
+	if j.HeadSHA != head || j.Conclusion != "" {
+		return false
+	}
+	switch j.Status {
+	case "queued", "in_progress", "waiting", "pending", "requested":
+		return true
+	}
+	return false
 }
 
 func (q *queueController) groupChecks(ctx context.Context, p pull) ([]check, error) {

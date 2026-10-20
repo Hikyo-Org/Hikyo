@@ -190,7 +190,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		ID: "adapter-worker-" + uuid.Must(uuid.NewV7()).String(), Poll: time.Second, Log: log,
 	}
 	adapterService := &service.Adapters{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, ModuleFactory: moduleFactory}
-	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
+	definitionsService := &service.Definitions{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject}
 	dynamicRuntime := store.NewDynamicRuntime(db)
 	dynamicService := &service.Dynamic{
 		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
@@ -231,7 +231,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
 	// keyring, one budget, one authorization path.
 	environmentsSvc := &service.Environments{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset}
-	keysSvc := &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
+	keysSvc := &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject}
 	valuesSvc := &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget}
 	// One Delivery across the fetch surface and the delivery-target reports:
 	// they ride the same credential, federation cache and budget.
@@ -309,7 +309,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// service's library; one Auth, so the window the knob writes and the
 		// window the reveal guard reads cannot come from two configurations.
 		Discovery:       &service.Discovery{DB: db},
-		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc},
+		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc, MaxKeysPerProject: cfg.MaxKeysPerProject, DefaultKeysPerProject: cfg.DefaultKeysPerProject},
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,
 		Updates:         updatesService,

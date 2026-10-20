@@ -697,6 +697,12 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/scim/v2/{binding}/Bulk":                                              true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff":        true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal": true,
+
+	// Project capacity reads and updates this instance's own project policy and
+	// usage counts through local repositories. Neither operation fetches,
+	// relays or forwards data on the caller's behalf.
+	"GET /api/v1/orgs/{org}/projects/{project}/capacity": true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/capacity": true,
 }
 
 func TestContractRouteSurfaceIsExhaustivelyPinned(t *testing.T) {

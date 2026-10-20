@@ -21,7 +21,7 @@ var selfConfigOperations = map[Operation]bool{
 	OpRevisionList: true, OpRevisionShow: true, OpRevisionSignals: true, OpRevisionRestore: true, OpRevisionRestoreHistory: true, OpRevisionRestoreCurrent: true,
 	OpPinSet: true, OpPinSetHistory: true, OpPinList: true, OpPinRelease: true,
 	OpApprovalPolicyRead: true, OpApprovalRequestRead: true, OpApprovalVote: true, OpApprovalBypass: true,
-	OpDefinitionsExport: true, OpDefinitionsCheck: true, OpDefinitionsSettingsGet: true, OpProjectMachineRevealGet: true,
+	OpDefinitionsExport: true, OpDefinitionsCheck: true, OpDefinitionsSettingsGet: true, OpProjectMachineRevealGet: true, OpProjectCapacityRead: true,
 	OpEnvSettingsRead: true, OpOrgRetentionRead: true, OpOrgRetentionUpdate: true, OpProjectRetentionRead: true, OpProjectRetentionUpdate: true,
 	OpAuditQueryOrg: true, OpAuditQueryProject: true, OpAuditQueryEnv: true, OpAuditExportOrg: true, OpAuditExportProject: true, OpAuditExportEnv: true,
 	OpGrantCreateOrg: true, OpGrantCreateProject: true, OpGrantCreateEnv: true, OpGrantRevokeOrg: true, OpGrantRevokeProject: true, OpGrantRevokeEnv: true,

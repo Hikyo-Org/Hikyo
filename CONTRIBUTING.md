@@ -225,6 +225,8 @@ useful feedback must pass before queue admission.
 
 Each pushed commit receives fast `ci-feedback` using selected package checks.
 Its four-minute runner timeout includes setup; shared-runner queue time is extra.
+Application Go, tooling Go and frontend checks have independent runners with
+the same deadline. All three lanes must succeed before queue admission.
 This feedback does not authorize merge or replace any full-suite coverage.
 
 When the change is ready, a maintainer adds the reviewed PR to the mandatory

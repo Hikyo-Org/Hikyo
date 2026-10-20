@@ -368,6 +368,9 @@ type githubReadError struct {
 	path   string
 	status int
 	cause  error
+	// GraphQL answered with an error payload. The server decided, so a retry
+	// cannot help even though gh exited nonzero.
+	rejected bool
 }
 
 func (e *githubReadError) Error() string {
@@ -405,6 +408,95 @@ func decode(data []byte, result any) error {
 	}
 	return nil
 }
+
+// Reads are idempotent, so retryingAPI retries brief GitHub 5xx/transport blips
+// rather than letting them become terminal required-check failures. Writes
+// never retry.
+var readRetryBackoff = []time.Duration{time.Second, 3 * time.Second}
+var readRetryWait = waitForReadRetry
+
+func waitForReadRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// 404 and other 4xx stay terminal: callers give them meaning (for example an
+// absent ephemeral ref). Status 0 means gh failed without an HTTP answer.
+func transientGitHubRead(err error) bool {
+	var failure *githubReadError
+	if !errors.As(err, &failure) || failure.rejected {
+		return false
+	}
+	switch failure.status {
+	case 429, 500, 502, 503, 504:
+		return true
+	case 0:
+		// Only a gh process that ran and failed without a status is transport
+		// trouble; a missing or unstartable gh binary will not recover. An
+		// ExitError never wraps a context error, so none needs excluding. gh
+		// documents exit 2 (cancelled) and 4 (authentication required) as final.
+		var exit *exec.ExitError
+		return errors.As(failure.cause, &exit) && exit.ExitCode() != 2 && exit.ExitCode() != 4
+	}
+	return false
+}
+
+// gh prints "gh: <message> (HTTP 502)" for JSON errors and "gh: HTTP 502" when
+// the body is not JSON. Match only a gh-prefixed line ending in a status so a
+// quoted body cannot mask the status gh appended last; the last match wins.
+var ghStderrStatus = regexp.MustCompile(`(?m)^gh: (?:.*\(HTTP ([45][0-9]{2})\)|HTTP ([45][0-9]{2}))[ \t\r]*$`)
+
+func stderrHTTPStatus(stderr []byte) int {
+	matches := ghStderrStatus.FindAllSubmatch(stderr, -1)
+	if len(matches) == 0 {
+		return 0
+	}
+	last := matches[len(matches)-1]
+	code, _ := strconv.Atoi(string(last[1]) + string(last[2]))
+	return code
+}
+
+// retryingAPI retries transient reads. Only the queue publisher opts in, since
+// its group proof has nothing that retriggers it after a blip. Retirement
+// discovery documents "no retries or backoff" and counts one request per read,
+// and the legacy gate and lifecycle probe keep their single attempt.
+type retryingAPI struct{ api api }
+
+func (a retryingAPI) read(ctx context.Context, path string, result any) error {
+	for attempt := 0; ; attempt++ {
+		err := a.api.read(ctx, path, result)
+		if err == nil || attempt >= len(readRetryBackoff) || !transientGitHubRead(err) {
+			return err
+		}
+		delay := readRetryBackoff[attempt]
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= delay {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "trusted PR gate: retrying GitHub read (attempt %d of %d): %v\n", attempt+2, len(readRetryBackoff)+1, err)
+		if waitErr := readRetryWait(ctx, delay); waitErr != nil {
+			return &githubReadError{path: path, cause: waitErr}
+		}
+	}
+}
+
+func (a retryingAPI) write(ctx context.Context, method, path string, payload, result any) error {
+	return a.api.write(ctx, method, path, payload, result)
+}
+
+// Discovery and dispatch are broad inventories and keep single-attempt reads.
+func controllerAPI(queueMode, dispatch bool) api {
+	if queueMode && !dispatch {
+		return retryingAPI{api: ghAPI{}}
+	}
+	return ghAPI{}
+}
+
 func (ghAPI) read(ctx context.Context, path string, result any) error {
 	args := []string{"api", path}
 	if strings.HasPrefix(path, "graphql:") {
@@ -424,7 +516,7 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 				Errors []json.RawMessage `json:"errors"`
 			}
 			if decode(data, &response) == nil && len(response.Errors) > 0 {
-				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err})
+				return fmt.Errorf("%s: %w", graphQLDiagnostic(response.Errors), &githubReadError{path: path, cause: err, rejected: true})
 			}
 		}
 		var failure struct {
@@ -435,6 +527,12 @@ func (ghAPI) read(ctx context.Context, path string, result any) error {
 			if code, parseErr := strconv.Atoi(failure.Status); parseErr == nil && code >= 400 && code <= 599 {
 				status = code
 			}
+		}
+		// Output fills ExitError.Stderr (bounded) because gateCommand leaves
+		// Stderr unset. Only the parsed status is kept, never the text.
+		var exit *exec.ExitError
+		if status == 0 && errors.As(err, &exit) {
+			status = stderrHTTPStatus(exit.Stderr)
 		}
 		return &githubReadError{path: path, status: status, cause: err}
 	}
@@ -1238,7 +1336,8 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 		return err
 	}
 	// Repeat authorization just before publication, including current maintainer
-	// approval. Both reads and checks are intentionally bounded and never sleep.
+	// approval. Both reads and checks are intentionally bounded; this gate has
+	// no read retries (those are queue-only) and never sleeps.
 	var finalPolicy policyDecision
 	if result.Conclusion == "success" {
 		decision, err := c.verify(ctx, number, s.PR.Head.SHA)
@@ -1706,7 +1805,7 @@ func main() {
 		err = decode(data, &e)
 	}
 	if err == nil {
-		c := controller{api: ghAPI{}, verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout, diagnostics: os.Stderr}
+		c := controller{api: controllerAPI(*queueMode, *dispatch), verify: verifyPolicy, repoName: os.Getenv("GH_REPO"), checkName: checkName, expectedHead: *expectedHead, dryRun: *dryRun, output: os.Stdout, diagnostics: os.Stderr}
 		if *discoverRetirement {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()

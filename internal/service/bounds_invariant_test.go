@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
-	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -51,18 +51,22 @@ func TestRenderTotalRefusesAnOversizedTarget(t *testing.T) {
 	}
 }
 
-// TestResolvedCellBudgetComposesByConstruction pins the ops-spec § 8
-// composability guarantee: the per-project resolved-cell budget (environments ×
-// declared keys ≤ MaxResolvedCells) cannot be exceeded by any legal
-// configuration, because the two component caps multiply to less than it. This
-// is why there is no runtime resolved-cell refusal — it would be unreachable.
-// If either component cap is ever raised past the point where the product meets
-// the budget, this fails the build instead of silently voiding the bound.
+// The default fits by construction; larger configured caps require admission.
 func TestResolvedCellBudgetComposesByConstruction(t *testing.T) {
-	product := MaxEnvironmentsPerProject * schema.MaxKeysPerProject
+	product := MaxEnvironmentsPerProject * config.DefaultKeysPerProject
 	if product > MaxResolvedCells {
-		t.Fatalf("environments (%d) × keys (%d) = %d exceeds the resolved-cell budget %d: "+
-			"the maxima no longer compose by construction, so a runtime refusal is now required",
-			MaxEnvironmentsPerProject, schema.MaxKeysPerProject, product, MaxResolvedCells)
+		t.Fatal("default maxima exceed resolved-cell budget")
+	}
+	for _, tc := range []struct {
+		keys, envs int64
+		refused    bool
+	}{
+		{1000, 50, false}, {2000, 50, false}, {2001, 50, true},
+		{10000, 10, false}, {10000, 11, true}, {10000, 0, false},
+	} {
+		err := checkResolvedCells(tc.keys, tc.envs)
+		if errors.Is(err, domain.ErrLimitExceeded) != tc.refused {
+			t.Errorf("keys=%d envs=%d: %v", tc.keys, tc.envs, err)
+		}
 	}
 }

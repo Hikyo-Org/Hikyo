@@ -20,6 +20,21 @@ func TestAbsentManagedValuesUseDocumentedDefaults(t *testing.T) {
 	}
 }
 
+func TestManagedProjectKeyLimit(t *testing.T) {
+	for _, value := range []string{"0", "-1", "10001", "unlimited"} {
+		if _, err := runtimeconfig.Prepare(map[string]string{"HIKYO_MAX_KEYS_PER_PROJECT": value}); err == nil {
+			t.Errorf("invalid managed limit %q accepted", value)
+		}
+	}
+	bundle, err := runtimeconfig.PrepareForConfig(map[string]string{"HIKYO_MAX_KEYS_PER_PROJECT": "2500"}, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.OwnerValues()["HIKYO_MAX_KEYS_PER_PROJECT"] != "2500" {
+		t.Fatal("prepared bundle omitted the project key limit")
+	}
+}
+
 func TestManagedPreparationRejectsUnknownAndInvalidValues(t *testing.T) {
 	for name, values := range map[string]map[string]string{
 		"unknown":         {"HIKYO_ROOT_KEY": "do-not-disclose"},

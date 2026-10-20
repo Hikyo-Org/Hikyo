@@ -77,6 +77,7 @@ var authRuleRows = []authRuleRow{
 		"org retention get", "org retention set",
 		"project list", "project show", "project create", "project rename", "project delete",
 		"project retention get", "project retention set",
+		"project capacity get", "project capacity set",
 		"env rename", "env reorder",
 		"folder list", "folder show", "folder create", "folder rename", "folder delete",
 		"key list", "key show", "key group list", "key group show",

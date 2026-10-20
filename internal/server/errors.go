@@ -47,9 +47,9 @@ import (
 // it — is recorded as a disposition item rather than smuggled in here.
 var limitExceededMessage = fmt.Sprintf(
 	"a structural bound was reached: a project holds at most %d environments, "+
-		"declares at most %d keys, and declares at most %d key groups, "+
+		"declares keys within its effective project key capacity, declares at most %d key groups, and stays within %d resolved cells, "+
 		"and a service account reports at most %d delivery targets",
-	service.MaxEnvironmentsPerProject, schema.MaxKeysPerProject, schema.MaxKeyGroupsPerProject,
+	service.MaxEnvironmentsPerProject, schema.MaxKeyGroupsPerProject, service.MaxResolvedCells,
 	deliverytarget.MaxRowsPerPrincipal)
 
 type detailPolicy uint8

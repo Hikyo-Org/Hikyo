@@ -142,6 +142,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpProjectCreate, authz.OpProjectGet, authz.OpProjectList, authz.OpProjectRename, authz.OpProjectDelete,
 		authz.OpProjectRetentionRead, authz.OpProjectRetentionUpdate,
 		authz.OpProjectMachineRevealGet, authz.OpProjectMachineRevealSet,
+		authz.OpProjectCapacityRead, authz.OpProjectCapacitySet,
 		authz.OpEnvRead, authz.OpEnvList, authz.OpEnvReorder, authz.OpEnvUpdateNote,
 		authz.OpEnvSettingsRead, authz.OpEnvSettingsUpdate,
 		authz.OpFolderCreate, authz.OpFolderGet, authz.OpFolderList, authz.OpFolderRename, authz.OpFolderDelete,

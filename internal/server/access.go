@@ -34,6 +34,8 @@ type GrantService interface {
 
 // SettingsService is the `project-settings` surface.
 type SettingsService interface {
+	GetCapacity(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ProjectCapacity, error)
+	SetCapacity(ctx context.Context, actor service.Actor, scope domain.Scope, want service.CapacityUpdate) (service.ProjectCapacity, error)
 	GetMachineReveal(ctx context.Context, actor service.Actor, scope domain.Scope) (service.MachineRevealSettings, error)
 	SetMachineReveal(ctx context.Context, actor service.Actor, scope domain.Scope, enabled bool) (service.MachineRevealSettings, error)
 	GetEnvironment(ctx context.Context, actor service.Actor, scope domain.Scope) (service.EnvironmentSettings, error)

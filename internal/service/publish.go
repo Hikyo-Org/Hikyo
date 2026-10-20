@@ -1395,7 +1395,7 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 // MaxRenderBytesPerTarget is the ops-spec § 8 per-target render cap: the total
 // delivered bytes for one environment must not exceed the Kubernetes Secret
 // validation limit (1 MiB). A single value is bounded well under it
-// (schema.MaxValueBytes), but a project's key cap (1000) times that is far
+// (schema.MaxValueBytes), but even the default project key cap times that is far
 // above it, so the sum is a genuine reachable bound — refused at publish, where
 // the target is not yet committed, rather than at delivery, where it is.
 const MaxRenderBytesPerTarget = 1 << 20

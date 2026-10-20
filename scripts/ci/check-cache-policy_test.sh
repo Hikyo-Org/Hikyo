@@ -176,9 +176,13 @@ grep -F 'path: ~/.cache/go-build' "$@" >/dev/null || fail 'no Go build cache rea
 for file in "$@"; do
 	feedback_cache=false
 	[ "$(basename "$file")" != ci-feedback.yml ] || feedback_cache=true
+	compact_cache=false
+	case $(basename "$file") in
+		ci-feedback.yml | ci-feedback-backend-cache.yml) compact_cache=true ;;
+	esac
 	main_validation=false
 	[ "$(basename "$file")" != ci.yml ] || main_validation=true
-	awk -v feedback_cache="$feedback_cache" -v main_validation="$main_validation" '
+	awk -v feedback_cache="$feedback_cache" -v main_validation="$main_validation" -v compact_cache="$compact_cache" '
 		function validate() {
 			if (index(block, "actions/cache/restore@") == 0) return
 			if (index(block, "path: ~/go/pkg/mod") > 0) {
@@ -203,11 +207,17 @@ for file in "$@"; do
 					index(block, "restore-keys:") == 0) bad = 1
 			}
             if (index(block, "path: .ci-cache/go-feedback") > 0) {
+                prefix = "go-feedback-v1-"
+                expected_path = "path: .ci-cache/go-feedback"
+                if (compact_cache == "true") {
+                    prefix = "go-feedback-v2-"
+                    expected_path = "path: .ci-cache/go-feedback-compact"
+                }
                 build_hash = "hashFiles(\047source/go.mod\047, \047source/go.sum\047, \047source/scripts/ci/go-tool-modules.txt\047)"
                 mode = "lookup-only: true"
                 if (feedback_cache == "true") {
                     build_hash = "hashFiles(\047feedback-tools/go.mod\047, \047feedback-tools/go.sum\047, \047feedback-tools/scripts/ci/go-tool-modules.txt\047)"
-                    mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
+                    mode = "restore-keys: " prefix "${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 }
                 if (main_validation == "true") {
                     # The source-artifact consumer uses the same bounded seed
@@ -215,7 +225,7 @@ for file in "$@"; do
                     build_hash = "hashFiles(\047go.mod\047, \047go.sum\047, \047scripts/ci/go-tool-modules.txt\047)"
                     mode = "restore-keys: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-"
                 }
-                if (index(block, "key: go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
+                if (index(block, expected_path) == 0 || index(block, "key: " prefix "${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-") == 0 ||
                     index(block, build_hash) == 0 || index(block, mode) == 0) bad = 1
             }
 		}
@@ -241,6 +251,26 @@ grep -F 'key: go-release-snapshot-v2-' "$workflow" |
 	grep -F "hashFiles('go.mod', 'go.sum', '.goreleaser.yaml')" >/dev/null ||
 	fail 'release-snapshot cache does not include GoReleaser configuration'
 require_line "$repo_root/.github/workflows/reliability.yml" 'name: Restore race Go cache'
+
+# One shared race build cache has a single trusted writer, ci-race-cache.yml.
+# The merge-gate race shards and reliability race isolation read its exact key;
+# no race shard writes or keys a cache of its own.
+race_cache_workflow="$workflows_dir/ci-race-cache.yml"
+race_prefix='go-race-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-'
+race_key=$(printf 'key: %s${{ hashFiles(\047go.mod\047, \047go.sum\047) }}' "$race_prefix")
+require_line "$race_cache_workflow" "$race_key"
+require_line "$race_cache_workflow" "restore-keys: $race_prefix"
+require_line "$race_cache_workflow" 'lookup-only: true'
+require_line "$race_cache_workflow" 'key: ${{ steps.race-seed.outputs.cache-primary-key }}'
+require_line "$workflow" "$race_key"
+require_line "$workflow" "restore-keys: $race_prefix"
+require_line "$workflows_dir/reliability.yml" "$race_key"
+if grep -F -e 'name: Save race Go cache' -e 'go-race-v2-shard-' "$@" >/dev/null; then
+	fail 'a per-shard race cache writer or key remains'
+fi
+if workflow_job_block "$workflow" race_shard | grep -F 'actions/cache/save' >/dev/null; then
+	fail 'race_shard must not write a cache'
+fi
 
 # Browser jobs run inside the exact Playwright image matching both lockfiles.
 # No live apt mirror belongs on the critical path.

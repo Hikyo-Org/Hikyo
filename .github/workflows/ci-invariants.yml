@@ -1,0 +1,84 @@
+# Advisory early signal for the repository-invariant suites that otherwise fail
+# only in the serial merge queue: package boundaries, the lint driver over this
+# repository, and the CI policy fixtures. It is not a required context, and the
+# merge queue still runs the complete suite.
+# These suites need neither PostgreSQL nor secrets: they run read-only against
+# the exact PR head commit, with restored caches and no cache writer.
+name: repository-invariants
+
+on:
+  # No `edited`: a base-branch edit cannot change what head-only tests read, and
+  # it would only produce skipped rows with unrendered names.
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**.go'
+      - go.mod
+      - go.sum
+      - '.github/**'
+      - 'scripts/**'
+      - 'release/**'
+      # Non-Go inputs these suites read: the lint driver checks the store's SQL,
+      # migrations and upgrade genesis plus its embedded reviewed pins, and the
+      # CI policy tests read the release configuration and the web e2e inventory.
+      - 'internal/store/**'
+      - 'internal/lint/testdata/**'
+      - .goreleaser.yaml
+      - 'web/e2e/**'
+      - web/playwright.config.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-invariants-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  invariants:
+    name: repository invariants (boundary, lint, CI policy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out the exact PR head without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Verify the checkout is the PR head
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
+          cache: false
+      # Restore only. The trusted main-branch writers in ci.yml own both caches.
+      - name: Restore shared Go module cache
+        id: go-module-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Select runner cache ABI
+        id: runner-cache-abi
+        run: ./scripts/ci/export-runner-cache-abi.sh
+      - name: Restore test Go cache
+        id: test-go-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: |
+            go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      # Compile the lint matrix's export data before the test timeout starts,
+      # exactly as the full suite does.
+      - name: Prepare lint compiler cache
+        run: go run ./scripts/ci/prepare-lint-cache
+      - name: Repository invariant tests
+        run: go test -count=1 ./internal/boundary ./scripts/ci
+      # Alone, as in test-core-packages.sh: the lint driver's cross-platform
+      # compiler loads must not compete with other suites for CPU and memory.
+      - name: Lint driver tests
+        run: go test -count=1 ./internal/lint

@@ -286,6 +286,7 @@ hierarchy:
   hikyo project rename <project> --name <new-name>
   hikyo project delete <project> --confirm <project-name>   irreversible: shreds the key
   hikyo project retention get|set --org <org> --project <project> [--max-age 720h --last-revisions 10 | --inherit]
+  hikyo project capacity get|set --org <org> --project <project> [--max-keys <n> | --inherit]
   hikyo env list|show|create|rename|reorder|delete   --org/--project select the project
   hikyo env param list --env <id>
   hikyo env param add --env <id> --name <NAME> --pattern <RE2>

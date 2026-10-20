@@ -466,6 +466,19 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		if _, err := retention.SetProject(tctx(t), service.LocalPrincipal(orgAdmin), scopeProject(orgA, prjA1), &projectRetention); err != nil {
 			t.Fatalf("emit project retention event: %v", err)
 		}
+		capacity := &service.ProjectSettings{DB: db}
+		capacityScope := scopeProject(orgA, prjA1)
+		currentCapacity, err := capacity.GetCapacity(tctx(t), service.LocalPrincipal(orgAdmin), capacityScope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyLimit := 5000
+		if _, err := capacity.SetCapacity(tctx(t), service.LocalPrincipal(orgAdmin), capacityScope, service.CapacityUpdate{
+			KeyLimitOverride: &keyLimit, ExpectedRevision: currentCapacity.Revision,
+			ExpectedInstanceDefault: currentCapacity.InstanceDefault, ExpectedInstanceMaximum: currentCapacity.InstanceMaximum,
+		}); err != nil {
+			t.Fatal(err)
+		}
 		seedRetentionCorpus(t, db)
 		seedAuditExpiry(t, db, "tenant", "audit-retention-emitter", "grant.denied", "", retentionNow.Add(-91*24*time.Hour))
 		if _, err := retention.Sweep(tctx(t)); err != nil {

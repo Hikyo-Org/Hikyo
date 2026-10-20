@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 type queueFixture struct {
@@ -483,13 +485,31 @@ func TestQueueMalformedEntryDiagnosticIdentifiesMissingFieldWithoutAuthority(t *
 }
 
 func TestQueueGroupRefOperationalFailuresStillFail(t *testing.T) {
-	for _, failure := range []error{&githubReadError{status: 403}, &githubReadError{status: 429}, &githubReadError{status: 500}, errors.New("network unavailable"), errors.New("invalid GitHub JSON")} {
-		t.Run(failure.Error(), func(t *testing.T) {
+	// Permanent failures refuse at once. A 5xx is waited out with growing waits
+	// for the window; a 429 expires at once. Both get the distinct metadata wording.
+	for _, tc := range []struct {
+		failure error
+		waits   []time.Duration
+		title   string
+		summary string
+	}{
+		{&githubReadError{status: 403}, nil, "PR validation refused", unsafeProofSummary},
+		{&githubReadError{status: 429}, nil, metadataExpiredTitle, metadataExpiredSummary},
+		{&githubReadError{status: 500}, persistentFailureWaits, metadataExpiredTitle, metadataExpiredSummary},
+		{errors.New("network unavailable"), nil, "PR validation refused", unsafeProofSummary},
+		{errors.New("invalid GitHub JSON"), nil, "PR validation refused", unsafeProofSummary},
+	} {
+		t.Run(tc.failure.Error(), func(t *testing.T) {
 			f := newQueueFixture(t)
-			f.api.responses[f.c.endpoint("git/ref/heads/gh-readonly-queue%2Fmain%2Fpr-7-abc")] = failure
+			f.api.responses[f.c.endpoint("git/ref/heads/gh-readonly-queue%2Fmain%2Fpr-7-abc")] = tc.failure
+			clock := newGroupClock(t)
 			if err := f.group(); err == nil {
 				t.Fatal("operational error was hidden")
 			}
+			if !slices.Equal(clock.waits, tc.waits) {
+				t.Fatalf("waits = %v, want %v", clock.waits, tc.waits)
+			}
+			f.assertNewest(t, "failure", tc.title, tc.summary)
 			f.assertNoSuccess(t)
 		})
 	}

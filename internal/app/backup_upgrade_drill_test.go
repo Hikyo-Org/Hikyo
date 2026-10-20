@@ -267,14 +267,57 @@ func TestLegacyDrillFixtureRefusesCLILoginEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 78, while the
+func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
+	const childVariable = "HIKYO_TEST_LEGACY_CAPACITY_EVIDENCE"
+	if child := os.Getenv(childVariable); child != "" {
+		engine, evidence, ok := strings.Cut(child, "/")
+		if !ok {
+			t.Fatal("invalid capacity evidence selection")
+		}
+		newUpgradeDrillFixture(t, store.Engine(engine), true, true, func(db *store.DB) {
+			switch evidence {
+			case "override":
+				drillExec(t, db, "UPDATE projects SET key_limit_override=5000 WHERE id='prj_drill'")
+			case "revision":
+				drillExec(t, db, "UPDATE projects SET key_limit_revision=1 WHERE id='prj_drill'")
+			default:
+				t.Fatal("invalid capacity evidence selection")
+			}
+		})
+		t.Fatal("legacy fixture discarded project capacity evidence")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		if engine == store.EnginePostgres && os.Getenv("HIKYO_TEST_POSTGRES_DSN") == "" {
+			if os.Getenv("CI") != "" {
+				t.Fatal("CI requires HIKYO_TEST_POSTGRES_DSN")
+			}
+			continue
+		}
+		for _, evidence := range []string{"override", "revision"} {
+			t.Run(string(engine)+"/"+evidence, func(t *testing.T) {
+				command := exec.CommandContext(t.Context(), executable, "-test.run=^TestLegacyDrillFixtureRefusesProjectCapacityEvidence$")
+				command.Env = append(os.Environ(), childVariable+"="+string(engine)+"/"+evidence)
+				output, err := command.CombinedOutput()
+				if err == nil || !bytes.Contains(output, []byte("legacy drill fixture cannot discard")) || !bytes.Contains(output, []byte("SELECT COUNT(*) FROM projects WHERE key_limit_override IS NOT NULL OR key_limit_revision <> 0")) {
+					t.Fatalf("legacy fixture did not refuse %s evidence: %v\n%s", evidence, err, output)
+				}
+			})
+		}
+	}
+}
+
+// The runtime-created fixture includes migrations 45 through 79, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
-// contact email, issuer CA trust or parameter contract refuses removal. The
-// subsequent pinned catalog inspection proves the exact legacy schema and
-// migration digest;
-// this test-only surgery adds no runtime downgrade capability.
+// contact email, issuer CA trust, parameter contract or project capacity policy
+// refuses removal. The subsequent pinned catalog inspection proves the exact
+// legacy schema and migration digest; this test-only surgery adds no runtime
+// downgrade capability.
 func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	t.Helper()
 	engine := releaseidentity.Engine(db.Engine())
@@ -286,10 +329,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+34 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 78 only")
+	if len(current.Entries) != len(legacy.Entries)+35 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 79 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -329,6 +372,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
 		"SELECT COUNT(*) FROM environments WHERE parameters_json <> '{}'",
 		"SELECT COUNT(*) FROM snapshots WHERE parameter_contract <> '{}'",
+		"SELECT COUNT(*) FROM projects WHERE key_limit_override IS NOT NULL OR key_limit_revision <> 0",
 		// 00057 (social sign-in): nothing registration-shaped may be discarded,
 		// and the sqlite sessions restore below cascades into reauth windows.
 		"SELECT COUNT(*) FROM registration_policies",
@@ -384,8 +428,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target or member-access-rule evidence", query, err)
 		}
 	}
-	// Reverse 00078 only after proving no reviewed AWS resource witness is discarded.
+	// Reverse 00079 only after proving no reviewed AWS resource witness is discarded.
 	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_witness")
+	// Reverse 00078 only after proving no override or policy revision is lost.
+	drillExec(t, db, "ALTER TABLE projects DROP COLUMN key_limit_override")
+	drillExec(t, db, "ALTER TABLE projects DROP COLUMN key_limit_revision")
 	// Reverse 00077: indexes carry no independent data or uniqueness.
 	drillExec(t, db, "DROP INDEX grants_principal")
 	drillExec(t, db, "DROP INDEX pending_changes_owner_key")
@@ -588,7 +635,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79)",
 	} {
 		drillExec(t, db, query)
 	}

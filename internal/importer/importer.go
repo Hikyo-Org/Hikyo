@@ -58,7 +58,7 @@ const (
 	MaxDecodedBytes = 50 << 20
 	// MaxRecords bounds how many leaves one import may carry (ops-catalogue
 	// import § "Record count per run": 50 000). A project's key catalogue is
-	// itself capped at schema.MaxKeysPerProject; this leaves room for a
+	// has its own managed key cap; this leaves room for a
 	// multi-Secret manifest that maps onto fewer keys.
 	MaxRecords = 50000
 	// MaxDepth bounds the source's tree depth — a SOPS map chain, an Infisical

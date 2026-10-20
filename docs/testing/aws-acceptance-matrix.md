@@ -2,11 +2,13 @@
 
 ## Current continuation
 
-The October 19 continuation integrates current main and uses owner-approved
-migration 78 for the adoption witness, preserving main's migration 77 indexes.
+The October 20 continuation integrates current main and moves the unmerged
+adoption witness to migration 79, preserving main's migration 77 authorization
+indexes and migration 78 project capacity policy. This resolves the newly merged
+slot collision without changing the reviewed adoption SQL or AWS behavior.
 Canonical SQL bindings and the development compatibility declaration have been
 regenerated and checked against fresh catalogs. See the current
-[issue handoff](../handoff/158-aws-secrets-manager.md#current-continuation-2026-10-19)
+[issue handoff](../handoff/158-aws-secrets-manager.md#october-20-current-main-integration)
 for results and the separately approved additional bounded AWS run. Provisioning,
 protected inputs, exact human job approval and real-provider execution remain
 separate gates.
@@ -130,7 +132,7 @@ sandbox setup remain external prerequisites as detailed below.
 
 1. Review all current source drafts together, resolve independently confirmed
    findings, format/compile them in an allocated lane, and validate the canonical
-   migration 78 bindings generated after the October 19 owner decision. Do not
+   migration 79 bindings regenerated after the October 20 current-main integration. Do not
    copy unsigned sibling drafts or hand-edit generated SQL bindings.
 2. Run both-engine controlled durable tests and the real sandbox suite. The new
    auth tests cover fresh-client reconstruction after expired inputs, not

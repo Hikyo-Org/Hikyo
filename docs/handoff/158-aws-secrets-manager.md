@@ -684,7 +684,7 @@ version, another job, replacement ARN, or malformed/missing witness. Unit and
 both-engine service/SQL retry drafts cover definite marker failure and failed
 Finish with crash-window closure, exact-once versions and preserved custody.
 
-Migration `00078_aws_adoption_witness.sql` persists this witness on both engines.
+Migration `00079_aws_adoption_witness.sql` persists this witness on both engines.
 The owner replaced the old 80 reservation with 77 on October 18, then approved
 78 on October 19 after main occupied 77. The SQL is unchanged from the reviewed candidate; canonical
 sqlc generation has now run. No unsigned sibling migrations were copied.
@@ -759,3 +759,29 @@ credential expiry/revocation cases, complete dev-only boot/switch boundary and
 secure file-input versus unavailable private-delivery distinction. These additions
 require a new full source review and allocated formatting/compilation/execution.
 The original32 create-attempt cap is unchanged. No cloud writes are authorized.
+
+
+## October 20 current-main integration
+
+Current main `ad65a00d9ba7dd316c7ac9759d1ce433de812f33` includes
+migration 78 (`project_key_capacity`, PR #1008). The standalone, unmerged
+AWS adoption-witness migration therefore moves to the next free slot, 79,
+on both engines. Its SQL bytes and AWS behavior are unchanged. The migration
+77 authorization indexes and migration 78 capacity columns remain intact.
+The legacy drill refuses both recorded adoption witnesses and project capacity
+evidence before reversing 79, 78, and 77 in order. Canonical sqlc generation completed without additional binding drift. Development
+compatibility claims were regenerated and verified from actual fresh SQLite
+and PostgreSQL 18 catalogs for this combined source state.
+
+This source integration does not grant another AWS run or deployment approval.
+Real-provider acceptance, exact cleanup, current-head hosted gates and the
+human merge decision remain separate completion requirements.
+
+Local validation of this integrated source passed: provider 166 records, store
+adoption/capacity 72, migrations 35, offline fixture 51, and authenticated
+isolation/adoption 52, all with zero skips. App upgrade/drill and actual schema
+compatibility passed 46 records; the dedicated cosign CLI test remains skipped
+without its supply-chain lane input. Full lint passed 377 records with its one
+intentional reviewed-pin updater skip. Compatibility unit tests, scoped vet and
+import formatting also passed. These local checks do not establish hosted CI
+or real AWS acceptance for the resulting merge commit.

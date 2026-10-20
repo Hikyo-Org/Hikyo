@@ -394,6 +394,18 @@ The reveal-gated catalogue routes remain `x-hikyo-class: tenant`: an unauthorize
 
 `project-settings get/set --env E` addresses the environment's `protected` and `reauth-window-seconds` settings. This historical family name is retained; omitting `--env` does not create a project-wide mutation. `project-settings machine-reveal get/set --enabled true/false` is the distinct project-level opt-in.
 
+Project key capacity uses the additive project subfamily
+`project capacity get|set --org O --project P [-o table|json]`. Both are
+human-session commands under `project-settings` authority. Set requires
+exactly one of `--max-keys N` or `--inherit`; inheritance sends an explicit
+null override. The REST resource is
+`/api/v1/orgs/{org}/projects/{project}/capacity` with GET and PUT. The response
+includes the saved override, inherited/capped flags, effective limit, instance
+default and maximum, key/environment usage, and policy revision. The PUT
+includes the read revision and instance bounds; a concurrent change conflicts
+without an automatic retry. Actual changes are audited. The structural policy
+and independent budgets are owned by [ops-spec.md](../adr/ops-spec.md#8-structural-bounds).
+
 SCIM mappings are addressed by **binding, group and scope**, with the template as the value that update replaces. `add`, `update` and `remove` require `--group` plus either `--project` (optionally `--env`) or explicit `--org-scope`. They cannot silently choose the widest org scope. The group-only examples in section 1 are shorthand and are superseded by this scope requirement. Credentials retain `scim-credential` artifact eligibility, distinct from workload machine credentials. `scim.binding_updated` remains unregistered while no binding-update emitter exists; a future mutation must register its own complete audit contract.
 
 ### Import, delivery and rotation

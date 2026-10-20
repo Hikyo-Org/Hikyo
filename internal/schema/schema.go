@@ -87,10 +87,6 @@ func TypeExpression(types []Type) string {
 // values are this slice's, chosen for the ops spec's Pi-4 floor and recorded
 // as disposition items — the ops spec owns them once it exists.
 const (
-	// MaxKeysPerProject bounds the catalogue itself. The positioning envelope
-	// is ≤10k entries across an installation (#3); a single project holding a
-	// thousand keys is already past the point where a matrix is readable.
-	MaxKeysPerProject = 1000
 	// MaxKeyGroupsPerProject bounds the coupling vocabulary. A group is a
 	// co-publish unit, not a tag: hundreds of them means something else was
 	// wanted.

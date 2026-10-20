@@ -1,6 +1,6 @@
 # Hikyo API & CLI surface (ADR, locked 2026-08-02)
 
-> **Proposed amendment (2026-10-18, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** HTTPS CLI trust gains an explicit `tls_mode: "system-ca"` alternative to leaf-SPKI pinning. The fixed canonical origin and mode must be established together interactively or provisioned through the credential's protected channel. Ordinary Go certificate-chain, validity and hostname verification replaces key continuity only in this explicit mode; an absent or mismatched pin never selects it. Existing stored entries and provisioned bundles without a mode retain SPKI behavior. Per the owner's 2026-10-18 selection, new interactive HTTPS establishment requires an explicit `--tls-mode spki` or `--tls-mode system-ca` choice before connecting; SPKI inspection is followed by fingerprint confirmation, and the shared SPKI-only remote-add ceremony requires pre-probe consent. Changing an established origin, effective mode, pin or socket requires deliberate deletion and re-establishment. Redirects remain refused, and repository files cannot establish origins or select trust modes. The proposed contract, compatibility rules, refusal cases and release gate are recorded in [CLI TLS trust](../operations/cli-tls-trust.md). The implementation request authorizes preparing this change; it does not establish completed cross-model review, owner approval, merge or publication under the [amendment procedure](../../GOVERNANCE.md#amendment-procedure). Historical requirements below remain authoritative until this amendment is approved and merged.
+> **Proposed amendment (prepared for owner approval 2026-10-19, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** The [explicit HTTPS trust amendment](#proposed-explicit-https-trust-amendment-966) below specifies the exact contract implemented by merged [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967), its narrowly scoped review-waiver proposal, and the remaining approval and publication gates. The owner selected preparation of this amendment and the scoped-waiver route; approval of this exact text remains pending. Historical requirements below remain authoritative until the owner approves the amendment and its documentation PR merges.
 
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** The closed artifact table adds developer-credential only to fetchDelivery. Human-only dev session mint/list/revoke and instance-config developer-credential-policy get/set provide delegation lifecycle. Mint requires controlling-terminal consent, fresh developer-specific TOTP or passkey reauthentication, and private custody outside the repository; bearer output is never printed. The own lifecycle routes have human ArtifactContracts and resolve current owner directly. Project incident routes require manage-identities and policy routes require instance-config. Mint and own lifecycle are an expressly CLI-only surface; project inspection/revocation and instance lifetime policy administration are available in their respective Web UI settings surfaces (#807). The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
@@ -36,6 +36,82 @@ Context: the API's *mechanics* are fixed by the architecture ADR ([#22](https://
 Granularity note: this is the wayfinding-level surface ADR. It fixes the version promise, the freeze semantics, the verb taxonomy with its closed v1 set (one declared join point: #28's adapter verbs), the resolution and output rules, and the split of duties. The endpoint-by-endpoint enumeration is the OpenAPI document itself — produced at implementation, validated against this ADR's rules by the CI layers #22 fixes. Concrete values (rate limits, session lifetimes, pin quotas, handoff and device-code lifetimes) → ops spec ([#32](https://github.com/Hikyo-Org/Hikyo/issues/32)); screen-level parity surfaces → the UI prototypes ([#29](https://github.com/Hikyo-Org/Hikyo/issues/29), [#30](https://github.com/Hikyo-Org/Hikyo/issues/30), [#31](https://github.com/Hikyo-Org/Hikyo/issues/31)); in/out confirmation of named post-v1 items → MVP boundary ([#26](https://github.com/Hikyo-Org/Hikyo/issues/26)); adapter verbs → deployment-module seam ([#28](https://github.com/Hikyo-Org/Hikyo/issues/28)).
 
 > **Amends the machine-identity ADR ([machine-identities.md](./machine-identities.md), [#17](https://github.com/Hikyo-Org/Hikyo/issues/17)), two declared parts.** #17 fixes the token-emission discipline as TTY / `--output-file` (`O_EXCL`, `0600`) / an explicit print flag it spells `--print-token`. **(1)** This ADR generalizes that triad into the universal grammar for *every* plaintext-emitting print path (§ Output grammar) and renames the explicit-print leg uniformly to **`--dangerously-print`** — one flag name across token mint, `values export`, `values get` and every future disclosure verb, so "dangerous" is readable in every CI log and shell history where the flag appears. **(2)** The TTY leg's *mechanism* changes: #17 permitted plaintext to ordinary stdout when stdout is a TTY, but the Compose ADR's own locked finding — a PTY is allocatable by CI runners, `script`, tmux and service managers; `isatty()` proves neither presence nor intent (#18 § Credential separation) — applies to output exactly as it applied to input. Under this ADR, **plaintext never goes to stdout without `--dangerously-print`, TTY or not**; the interactive path writes to the **controlling terminal** (`/dev/tty`; `CONOUT$` on Windows) after an in-terminal confirmation, which a log-capturing pipe does not receive. Refusal behaviour and the no-secret-on-argv rule are unchanged.
+
+## Proposed explicit HTTPS trust amendment (#966)
+
+This proposal amends only remote CLI trust establishment and verification. It
+would supersede the SPKI-only requirements in the context model below within
+the following scope:
+
+1. **Two explicit HTTPS trust modes.** `tls_mode: "system-ca"` uses Go's normal
+   certificate-chain, validity and hostname verification against the host's
+   trusted CA set. A valid renewed certificate may use a different leaf key.
+   This deliberately trusts the CA set and hostname control instead of one
+   leaf key's continuity. No verification bypass or custom-roots field is
+   introduced. An SPKI pin or local CLI socket cannot be combined with
+   `system-ca` trust.
+2. **Compatible SPKI identity.** Existing stored entries and protected bundles
+   with omitted `tls_mode` retain leaf-SPKI verification; explicit `spki` is
+   equivalent. A pin remains required and a changed leaf key is refused.
+   An absent or mismatched pin never enables CA verification. Existing SPKI
+   behavior does not acquire chain, validity or hostname checks.
+3. **Deliberate first contact.** New interactive HTTPS establishment requires
+   `--tls-mode spki` or `--tls-mode system-ca` before any connection and a
+   controlling terminal. System-CA establishment verifies TLS and confirms the
+   canonical origin, mode and key-rotation tradeoff before storing trust.
+   Explicit SPKI selection permits inspection without CA verification, followed
+   by independent fingerprint verification and confirmation before recording
+   trust. The shared SPKI-only `remote add` ceremony separately requires
+   pre-probe consent and fingerprint confirmation before metadata access or
+   a directory-credential prompt. Stored and protected provisioned trust
+   continues to work without a new mode flag.
+4. **Protected origin and mode.** CI receives the fixed canonical origin and
+   verification mode through the paired credential's protected channel.
+   Repository content can reference established trust but cannot introduce an
+   origin, pin or mode. Explicit target or mode inputs must agree with the
+   protected bundle or established reference. Changing an established origin,
+   effective mode, pin or socket requires explicit deletion and re-establishment;
+   repeating the same effective identity is idempotent.
+5. **Fail-closed boundaries.** Unknown, empty or null explicit modes, unknown
+   trust-store/bundle/repository fields, and conflicting mode/pin/socket
+   combinations are refused. System-CA certificate failures stop before an
+   HTTP credential is sent. Redirects, including same-origin redirects, remain
+   refused without forwarding credentials. Existing local-socket policy,
+   authentication-artifact admission, grants, login eligibility, secret-output
+   and reveal policies remain in force.
+
+The [operations contract](../operations/cli-tls-trust.md) specifies the compatible
+bundle schema, interactive and protected provisioning commands, deliberate
+migration and refusal cases, and the signed-release consumer procedure.
+
+### Proposed review disposition and activation
+
+The implementation and this amendment are OpenAI-authored. Cross-provider review
+is **SKIPPED: the configured Anthropic subscription reviewer is unavailable**.
+The proposed owner exception waives only the cross-provider review requirement
+for this #966 amendment. It retains fresh, separate adversarial OpenAI Standards
+and Spec reviews of the amendment and its implemented trust boundary, all
+applicable tests and CodeQL, signed/DCO commits, and ordinary PR/CI protections.
+Same-provider reviews do not constitute cross-provider review. This exception
+does not amend the general [governance procedure](../../GOVERNANCE.md#amendment-procedure)
+or apply to another decision.
+
+The originating ticket [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) must be
+reopened for the amendment record. Final owner approval must explicitly accept
+this contract and its scoped review exception. After that approval, mark this
+section and its banner as an owner-locked declared amendment, operative when
+this amendment PR merges. On merge, re-close #25 with the approval, review
+disposition and merge record. Until owner approval, this section remains
+proposed even though #967's implementation merged as
+`69e32a25a6431426e839cb463aafd78c781ef15d`.
+
+Keep #966 open until a signed CLI containing that implementation has been
+published and verified, the consumer's exact CLI version and protected bundle
+have been updated, and an isolated authenticated consumer check has succeeded.
+A verified signed nightly can satisfy the publication gate without waiting for
+stable 1.0. Approve this amendment before freezing a 1.0 candidate that includes
+the behavior. Release, downstream acceptance and production rollout retain
+their separate authorization and evidence requirements.
 
 ## Version promise — `/api/v1`, additive-only after the freeze
 

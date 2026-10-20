@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -41,7 +42,7 @@ func cataloguePresenceFixture(keyCount, envCount int, dense bool) ([]store.Catal
 func TestPresenceIndexEquivalence(t *testing.T) {
 	for _, dense := range []bool{false, true} {
 		t.Run(fmt.Sprintf("dense=%t", dense), func(t *testing.T) {
-			keys, rows := cataloguePresenceFixture(schema.MaxKeysPerProject, MaxEnvironmentsPerProject, dense)
+			keys, rows := cataloguePresenceFixture(config.DefaultKeysPerProject, MaxEnvironmentsPerProject, dense)
 			index := indexPresenceByKey(rows)
 			for _, key := range keys {
 				want, err := keyOf(key, rows)
@@ -166,7 +167,7 @@ var benchmarkCatalogueKey Key
 // rebuilding the buckets on every immutable read. No database/production latency
 // is measured. Scan retains the pre-#981 algorithm as the comparison baseline.
 func BenchmarkCataloguePresence(b *testing.B) {
-	for _, size := range []struct{ keys, envs int }{{100, 10}, {schema.MaxKeysPerProject, MaxEnvironmentsPerProject}} {
+	for _, size := range []struct{ keys, envs int }{{100, 10}, {config.DefaultKeysPerProject, MaxEnvironmentsPerProject}} {
 		for _, dense := range []bool{false, true} {
 			keys, rows := cataloguePresenceFixture(size.keys, size.envs, dense)
 			for _, indexed := range []bool{false, true} {

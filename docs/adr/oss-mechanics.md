@@ -1,5 +1,7 @@
 # Hikyo OSS project mechanics (ADR, locked 2026-08-05)
 
+> **Live-state note (2026-10-19, not an amendment):** The 2026-10-09 queue removal directly below is no longer in force. Since the October 2026 reactivation that followed bootstrap PR #891, `main` again requires the mandatory merge queue, with `ci-queue-required` as the only required context; see the [merge queue policy handoff](../handoff/merge-queue-policy.md) and the [CI guide](../development/ci.md). The queue requirement in the PR flow section below describes the live policy.
+
 > **Owner-approved merge-policy change (2026-10-09):** Remove the required merge queue and enable strict up-to-date `ci-required` checks. PR #864's queue validation exceeded the 90-minute queue timeout despite green PR validation. A green, current PR can merge directly; if `main` advances, update the PR branch and validate its new head before merging. Required PRs, signatures, review-thread resolution and the empty bypass list remain. Historical queue decisions below are superseded operationally. The formal cross-model ADR amendment review has not been performed.
 
 > **Declared stable-signing amendment (2026-09-08):** The owner selected online keyless stable signing with reviewed draft publication. [Stable workflow signing](stable-workflow-signing.md) supersedes the historical offline stable ceremony after implementation merge and explicit recovery-signed policy activation. The existing root remains; activation and 1.0 publication are pending.

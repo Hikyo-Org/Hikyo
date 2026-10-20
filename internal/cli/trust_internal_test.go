@@ -134,7 +134,12 @@ func TestTrustStoreRejectsUncontrolledFilesystemObjects(t *testing.T) {
 		if err := os.Chmod(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "trust.json"), raw, 0o644); err != nil {
+		path := filepath.Join(dir, "trust.json")
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// Preserve the shared-file fixture under a restrictive runner umask.
+		if err := os.Chmod(path, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := (&TrustStore{dir: dir}).Load(); err == nil || !strings.Contains(err.Error(), "0600") {

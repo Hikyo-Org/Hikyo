@@ -70,20 +70,23 @@ func requireFeedbackWorkflow(raw []byte) error {
 		return fmt.Errorf("push/open/reopen and genuine base edits must run; metadata-only edits must skip")
 	}
 	if len(got.Jobs) != 1 || job.Timeout != 4 {
-		return fmt.Errorf("both feedback runners include setup in their four-minute budgets")
+		return fmt.Errorf("all feedback runners include setup in their four-minute budgets")
 	}
-	expectedStrategy := map[string]any{"fail-fast": false, "matrix": map[string]any{"lane": []any{"go", "frontend"}}}
+	expectedStrategy := map[string]any{"fail-fast": false, "matrix": map[string]any{"lane": []any{"go", "tooling", "frontend"}}}
 	if job.Continue || !reflect.DeepEqual(job.Strategy, expectedStrategy) {
-		return fmt.Errorf("both complete lanes must run independently and succeed; failure must not cancel sibling evidence")
+		return fmt.Errorf("all complete lanes must run independently and succeed; failure must not cancel sibling evidence")
 	}
 	if len(job.Steps) < 4 {
 		return fmt.Errorf("feedback lost its bootstrap or execution steps")
 	}
 	finalStep := job.Steps[len(job.Steps)-1]
-	if finalStep.If != "" || finalStep.Continue || finalStep.Run != `bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane }}` {
+	if finalStep.If != "" || finalStep.Continue || finalStep.Run != `bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane == 'tooling' && 'go' || matrix.lane }} --go-scope=${{ matrix.lane == 'go' && 'application' || matrix.lane == 'tooling' && 'tooling' || 'all' }}` {
 		return fmt.Errorf("each runner must execute its actual selected lane, not rerun all checks or skip a lane")
 	}
-	if job.Env["GOCACHE"] != "${{ github.workspace }}/.ci-cache/go-feedback" {
+	if job.Env["GOFLAGS"] != "-gcflags=all=-dwarf=false" {
+		return fmt.Errorf("feedback must select the compact compiler cache ABI")
+	}
+	if job.Env["GOCACHE"] != "${{ github.workspace }}/.ci-cache/go-feedback-compact" {
 		return fmt.Errorf("feedback must compile using its dedicated bounded cache")
 	}
 	if job.Env["FAST_FEEDBACK_TOOLS_DIR"] != "${{ github.workspace }}/feedback-tools/scripts/ci" || job.Env["FAST_FEEDBACK_HEAD"] != "${{ github.event.pull_request.head.sha }}" {
@@ -105,19 +108,19 @@ func requireFeedbackWorkflow(raw []byte) error {
 			pinnedBase = strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`)
 		}
 		if step.Name == "Select Go build cache runner ABI" {
-			runnerABI = step.ID == "runner-cache-abi" && step.If == "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
+			runnerABI = step.ID == "runner-cache-abi" && step.If == "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
 		}
-		if step.With["path"] == ".ci-cache/go-feedback" && step.Name != "Restore bounded feedback Go cache" {
+		if step.With["path"] == ".ci-cache/go-feedback-compact" && step.Name != "Restore bounded feedback Go cache" {
 			return fmt.Errorf("every build-cache reader must satisfy the exact Go-only compatibility contract")
 		}
 		if step.Name == "Restore bounded feedback Go cache" {
 			buildReaders++
 			buildReader = step.Uses == "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" &&
-				step.If == "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" &&
+				step.If == "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" &&
 				!step.Continue && reflect.DeepEqual(step.With, map[string]string{
-				"path":         ".ci-cache/go-feedback",
-				"key":          "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
-				"restore-keys": "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
+				"path":         ".ci-cache/go-feedback-compact",
+				"key":          "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
+				"restore-keys": "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-",
 			})
 		}
 
@@ -141,15 +144,15 @@ func requireFeedbackWorkflow(raw []byte) error {
 				return fmt.Errorf("external setup must reserve cumulative headroom first")
 			}
 		}
-		if strings.Contains(step.Uses, "setup-go@") && step.If != "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)" {
+		if strings.Contains(step.Uses, "setup-go@") && step.If != "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)" {
 			return fmt.Errorf("only the Go/tooling lane prepares Go")
 		}
-		if strings.Contains(step.Uses, "setup-node@") && step.If != "(matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).docs)" {
+		if strings.Contains(step.Uses, "setup-node@") && step.If != "(matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)" {
 			return fmt.Errorf("frontend and read-only docs must retain their pinned Node runtime")
 		}
 		if step.Name == "Install verified pinned ShellCheck" {
 			shellcheckInstallers++
-			if step.If != "matrix.lane == 'go' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)" || step.Continue ||
+			if step.If != "matrix.lane == 'tooling' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)" || step.Continue ||
 				step.Env["SHELLCHECK_VERSION"] != "v0.11.0" || step.Env["SHELLCHECK_SHA256"] != "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198" ||
 				!strings.Contains(step.Run, "sha256sum --check --strict") {
 				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
@@ -185,6 +188,7 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]func(map[string]any){
+		"missing compact compiler ABI": func(j map[string]any) { delete(j["env"].(map[string]any), "GOFLAGS") },
 		"workflow-only loses shellcheck": func(j map[string]any) {
 			mutateFeedbackShellcheck(j, "if", "matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell")
 		},
@@ -195,19 +199,19 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		"bulk test fallback": func(j map[string]any) {
 			mutateFeedbackReuseWith(j, "restore-keys", "go-test-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-")
 		},
-		"duplicate incompatible reader": func(j map[string]any) { duplicateFeedbackReuse(j, "go-feedback-v1-") },
+		"duplicate incompatible reader": func(j map[string]any) { duplicateFeedbackReuse(j, "go-feedback-v2-") },
 		"duplicate compatible reader":   func(j map[string]any) { duplicateFeedbackReuse(j, "") },
 		"module archive reintroduced":   func(j map[string]any) { mutateFeedbackReuseWith(j, "path", "~/go/pkg/mod") },
 		"wrong runner image fallback": func(j map[string]any) {
-			mutateFeedbackReuseWith(j, "restore-keys", "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu22-")
+			mutateFeedbackReuseWith(j, "restore-keys", "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-ubuntu22-")
 		},
 		"cache write": func(j map[string]any) {
 			mutateFeedbackReuse(j, "uses", "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
 		},
 		"frontend build restore":      func(j map[string]any) { mutateFeedbackReuse(j, "if", "matrix.lane == 'frontend'") },
-		"incompatible cache fallback": func(j map[string]any) { mutateFeedbackReuseWith(j, "restore-keys", "go-feedback-v1-") },
+		"incompatible cache fallback": func(j map[string]any) { mutateFeedbackReuseWith(j, "restore-keys", "go-feedback-v2-") },
 		"missing dependency key": func(j map[string]any) {
-			mutateFeedbackReuseWith(j, "key", "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}")
+			mutateFeedbackReuseWith(j, "key", "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}")
 		},
 		"cache source override": func(j map[string]any) { mutateFeedbackReuseWith(j, "path", "source") },
 		"skip compile on cache hit": func(j map[string]any) {
@@ -224,6 +228,13 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		},
 		"remove go lane": func(j map[string]any) {
 			j["strategy"].(map[string]any)["matrix"].(map[string]any)["lane"] = []any{"frontend"}
+		},
+		"remove tooling lane": func(j map[string]any) {
+			j["strategy"].(map[string]any)["matrix"].(map[string]any)["lane"] = []any{"go", "frontend"}
+		},
+		"drop scope partition": func(j map[string]any) {
+			steps := j["steps"].([]any)
+			steps[len(steps)-1].(map[string]any)["run"] = `bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane }}`
 		},
 		"serialize runners": func(j map[string]any) { j["strategy"].(map[string]any)["max-parallel"] = 1 },
 		"job fail open":     func(j map[string]any) { j["continue-on-error"] = true },
@@ -391,60 +402,100 @@ func TestFeedbackConcurrencyMetadataCannotCancelOrEvictCommitVerdict(t *testing.
 }
 
 func TestFeedbackSeedWorkflowTrustAndBounds(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback-cache.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var workflow map[string]any
-	if err := yaml.Unmarshal(raw, &workflow); err != nil {
-		t.Fatal(err)
-	}
-	if err := requireFeedbackSeed(workflow); err != nil {
-		t.Fatal(err)
-	}
-	for name, mutation := range map[string]func(map[string]any){
-		"PR trigger":    func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
-		"write token":   func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
-		"untrusted ref": func(w map[string]any) { w["jobs"].(map[string]any)["seed"].(map[string]any)["if"] = "true" },
-		"unbounded publisher": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			steps[4].(map[string]any)["run"] = "go test ./..."
-		},
-		"fail open bounds": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			steps[4].(map[string]any)["continue-on-error"] = true
-		},
-		"bootstrap touches seed cache": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			steps[1].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ github.workspace }}/.ci-cache/go-feedback"}
-		},
-		"bootstrap inherits seed cache": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			delete(steps[1].(map[string]any), "env")
-		},
-		"compiler reuses bootstrap cache": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			steps[4].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ runner.temp }}/feedback-bootstrap"}
-		},
-		"reuse oversized archive": func(w map[string]any) {
-			steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
-			delete(steps[3].(map[string]any)["with"].(map[string]any), "lookup-only")
-		},
-	} {
+	for _, name := range []string{"ci-feedback-cache.yml", "ci-feedback-backend-cache.yml"} {
 		t.Run(name, func(t *testing.T) {
-			var changed map[string]any
-			if err := yaml.Unmarshal(raw, &changed); err != nil {
+			compact := name == "ci-feedback-backend-cache.yml"
+			requireFeedbackSeed := func(w map[string]any) error { return requireFeedbackSeedProfile(w, compact) }
+
+			raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows", name))
+			if err != nil {
 				t.Fatal(err)
 			}
-			mutation(changed)
-			if requireFeedbackSeed(changed) == nil {
-				t.Fatal("accepted unsafe seed publisher")
+			var workflow map[string]any
+			if err := yaml.Unmarshal(raw, &workflow); err != nil {
+				t.Fatal(err)
 			}
+			if err := requireFeedbackSeed(workflow); err != nil {
+				t.Fatal(err)
+			}
+			for name, mutation := range map[string]func(map[string]any){
+				"wrong compiler ABI": func(w map[string]any) {
+					w["jobs"].(map[string]any)["seed"].(map[string]any)["env"].(map[string]any)["GOFLAGS"] = "-gcflags=all=-dwarf=true"
+				},
+				"drop required seed root": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					first := "./internal/cli "
+					if compact {
+						first = "./internal/app "
+					}
+					steps[4].(map[string]any)["run"] = strings.Replace(steps[4].(map[string]any)["run"].(string), first, "", 1)
+				},
+				"masked seed job": func(w map[string]any) {
+					w["jobs"].(map[string]any)["seed"].(map[string]any)["continue-on-error"] = true
+				},
+				"job write permission": func(w map[string]any) {
+					w["jobs"].(map[string]any)["seed"].(map[string]any)["permissions"] = map[string]any{"contents": "write"}
+				},
+				"untrusted container": func(w map[string]any) {
+					w["jobs"].(map[string]any)["seed"].(map[string]any)["container"] = "untrusted/image:latest"
+				},
+				"PR trigger":    func(w map[string]any) { w["on"].(map[string]any)["pull_request"] = nil },
+				"write token":   func(w map[string]any) { w["permissions"] = map[string]any{"contents": "write"} },
+				"untrusted ref": func(w map[string]any) { w["jobs"].(map[string]any)["seed"].(map[string]any)["if"] = "true" },
+				"unbounded publisher": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					steps[4].(map[string]any)["run"] = "go test ./..."
+				},
+				"fail open bounds": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					steps[4].(map[string]any)["continue-on-error"] = true
+				},
+				"bootstrap touches seed cache": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					steps[1].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ github.workspace }}/.ci-cache/go-feedback"}
+				},
+				"bootstrap inherits seed cache": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					delete(steps[1].(map[string]any), "env")
+				},
+				"compiler reuses bootstrap cache": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					steps[4].(map[string]any)["env"] = map[string]any{"GOCACHE": "${{ runner.temp }}/feedback-bootstrap"}
+				},
+				"reuse oversized archive": func(w map[string]any) {
+					steps := w["jobs"].(map[string]any)["seed"].(map[string]any)["steps"].([]any)
+					delete(steps[3].(map[string]any)["with"].(map[string]any), "lookup-only")
+				},
+			} {
+				t.Run(name, func(t *testing.T) {
+					var changed map[string]any
+					if err := yaml.Unmarshal(raw, &changed); err != nil {
+						t.Fatal(err)
+					}
+					mutation(changed)
+					if requireFeedbackSeed(changed) == nil {
+						t.Fatal("accepted unsafe seed publisher")
+					}
+				})
+			}
+
 		})
 	}
 }
 
 func requireFeedbackSeed(workflow map[string]any) error {
+	return requireFeedbackSeedProfile(workflow, false)
+}
+
+func requireFeedbackSeedProfile(workflow map[string]any, compact bool) error {
+	cachePath, cachePrefix := ".ci-cache/go-feedback", "go-feedback-v1-"
+	expectedEnv := map[string]any{"GOCACHE": "${{ github.workspace }}/" + cachePath}
+	packages := "go list -deps -test -export ./internal/cli ./scripts/ci"
+	if compact {
+		cachePath, cachePrefix = ".ci-cache/go-feedback-compact", "go-feedback-v2-"
+		expectedEnv = map[string]any{"GOCACHE": "${{ github.workspace }}/" + cachePath, "GOFLAGS": "-gcflags=all=-dwarf=false"}
+		packages = "go list -p 2 -deps -test -export ./internal/app ./internal/cli ./scripts/ci"
+	}
 	triggers := workflow["on"].(map[string]any)
 	if len(triggers) != 2 {
 		return fmt.Errorf("seed must run only daily or manually")
@@ -460,10 +511,13 @@ func requireFeedbackSeed(workflow map[string]any) error {
 	}
 	jobs := workflow["jobs"].(map[string]any)
 	job := jobs["seed"].(map[string]any)
+	if job["runs-on"] != "ubuntu-latest" || job["timeout-minutes"] != 15 || job["continue-on-error"] != nil || job["permissions"] != nil || job["container"] != nil || job["services"] != nil || job["strategy"] != nil || !reflect.DeepEqual(job["defaults"], map[string]any{"run": map[string]any{"working-directory": "source"}}) {
+		return fmt.Errorf("seed must retain bounded native execution without masked or privileged overrides")
+	}
 	if len(jobs) != 1 || job["if"] != "(github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'" {
 		return fmt.Errorf("only trusted main may populate the seed")
 	}
-	if job["env"].(map[string]any)["GOCACHE"] != "${{ github.workspace }}/.ci-cache/go-feedback" {
+	if !reflect.DeepEqual(job["env"], expectedEnv) {
 		return fmt.Errorf("seed must use the consumer directory")
 	}
 	steps := job["steps"].([]any)
@@ -483,19 +537,19 @@ func requireFeedbackSeed(workflow map[string]any) error {
 	}
 	lookup := steps[3].(map[string]any)
 	if lookup["uses"] != "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" || !reflect.DeepEqual(lookup["with"], map[string]any{
-		"path":        ".ci-cache/go-feedback",
-		"key":         "go-feedback-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ github.sha }}",
+		"path":        cachePath,
+		"key":         cachePrefix + "${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('source/go.mod', 'source/go.sum', 'source/scripts/ci/go-tool-modules.txt') }}-${{ github.sha }}",
 		"lookup-only": true,
 	}) {
 		return fmt.Errorf("seed lookup must never restore historical entries or lose compatibility/source identity")
 	}
 	compile := steps[4].(map[string]any)
-	want := "test ! -e \"$GOCACHE\"\nmkdir -p \"$GOCACHE\"\ngo list -deps -test -export ./internal/cli ./scripts/ci >/dev/null\n./scripts/ci/run-go-tool.sh actionlint -version\ngo run ./scripts/ci/feedback-reuse-size \"$GOCACHE\"\n"
+	want := "test ! -e \"$GOCACHE\"\nmkdir -p \"$GOCACHE\"\n" + packages + " >/dev/null\n./scripts/ci/run-go-tool.sh actionlint -version\ngo run ./scripts/ci/feedback-reuse-size \"$GOCACHE\"\n"
 	if compile["run"] != want || compile["if"] != "steps.feedback-reuse.outputs.cache-hit != 'true'" || compile["continue-on-error"] != nil || compile["env"] != nil {
 		return fmt.Errorf("fresh seed must compile without executing tests and pass size bounds")
 	}
 	save := steps[5].(map[string]any)
-	if save["uses"] != "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" || save["if"] != "success() && steps.feedback-reuse.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" || !reflect.DeepEqual(save["with"], map[string]any{"path": ".ci-cache/go-feedback", "key": "${{ steps.feedback-reuse.outputs.cache-primary-key }}"}) {
+	if save["uses"] != "actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" || save["if"] != "success() && steps.feedback-reuse.outputs.cache-hit != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || github.event_name == 'repository_dispatch') && github.ref == 'refs/heads/main'" || !reflect.DeepEqual(save["with"], map[string]any{"path": cachePath, "key": "${{ steps.feedback-reuse.outputs.cache-primary-key }}"}) {
 		return fmt.Errorf("only successful bounded main seed may publish")
 	}
 	return nil
@@ -504,72 +558,81 @@ func requireFeedbackSeed(workflow map[string]any) error {
 // setup-go's actual diagnostic invocation initializes GOCACHE. Exercise the
 // workflow's real environment scopes and unchanged fresh-seed guard with Go.
 func TestFeedbackSeedSetupDiagnosticsKeepSeedFresh(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback-cache.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var workflow map[string]any
-	if err := yaml.Unmarshal(raw, &workflow); err != nil {
-		t.Fatal(err)
-	}
-	job := workflow["jobs"].(map[string]any)["seed"].(map[string]any)
-	steps := job["steps"].([]any)
-	setup := steps[1].(map[string]any)
-	compile := steps[4].(map[string]any)["run"].(string)
-	prefix, _, found := strings.Cut(compile, "go list -deps")
-	if !found {
-		t.Fatal("actual compile guard missing")
-	}
-	for _, existing := range []bool{false, true} {
-		t.Run(fmt.Sprintf("existing-seed-%v", existing), func(t *testing.T) {
-			dir := t.TempDir()
-			runnerTemp := filepath.Join(dir, "runner-temp")
-			workspace := filepath.Join(dir, "workspace")
-			for _, p := range []string{runnerTemp, workspace} {
-				if err := os.MkdirAll(p, 0700); err != nil {
-					t.Fatal(err)
-				}
-			}
-			resolve := func(value string) string {
-				return strings.NewReplacer("${{ runner.temp }}", runnerTemp, "${{ github.workspace }}", workspace).Replace(value)
-			}
-			seed := resolve(job["env"].(map[string]any)["GOCACHE"].(string))
-			bootstrap := seed
-			if env, ok := setup["env"].(map[string]any); ok {
-				bootstrap = resolve(env["GOCACHE"].(string))
-			}
-			sentinel := filepath.Join(seed, "existing-owned-entry")
-			if existing {
-				if err := os.MkdirAll(seed, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(sentinel, []byte("preserve"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			diagnostics := exec.CommandContext(ctx, "go", "env")
-			diagnostics.Dir = workspace
-			diagnostics.Env = append(os.Environ(), "GOCACHE="+bootstrap, "GOENV=off", "GOTOOLCHAIN=local")
-			if err := diagnostics.Run(); err != nil {
+	for _, name := range []string{"ci-feedback-cache.yml", "ci-feedback-backend-cache.yml"} {
+		t.Run(name, func(t *testing.T) {
+
+			raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows", name))
+			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := os.Stat(bootstrap); err != nil {
-				t.Fatalf("real setup diagnostic did not initialize bootstrap cache: %v", err)
+			var workflow map[string]any
+			if err := yaml.Unmarshal(raw, &workflow); err != nil {
+				t.Fatal(err)
 			}
-			guard := exec.CommandContext(ctx, "bash", "-e", "-c", prefix)
-			guard.Env = append(os.Environ(), "GOCACHE="+seed)
-			output, err := guard.CombinedOutput()
-			if (err != nil) != existing {
-				t.Fatalf("fresh guard: existing=%v err=%v output=%s", existing, err, output)
+			job := workflow["jobs"].(map[string]any)["seed"].(map[string]any)
+			steps := job["steps"].([]any)
+			setup := steps[1].(map[string]any)
+			compile := steps[4].(map[string]any)["run"].(string)
+			prefix, _, found := strings.Cut(compile, "go list ")
+			if !found {
+				t.Fatal("actual compile guard missing")
 			}
-			if existing {
-				data, err := os.ReadFile(sentinel)
-				if err != nil || string(data) != "preserve" {
-					t.Fatalf("existing seed modified: %q %v", data, err)
-				}
+			for _, existing := range []bool{false, true} {
+				t.Run(fmt.Sprintf("existing-seed-%v", existing), func(t *testing.T) {
+					dir := t.TempDir()
+					runnerTemp := filepath.Join(dir, "runner-temp")
+					workspace := filepath.Join(dir, "workspace")
+					for _, p := range []string{runnerTemp, workspace} {
+						if err := os.MkdirAll(p, 0700); err != nil {
+							t.Fatal(err)
+						}
+					}
+					resolve := func(value string) string {
+						return strings.NewReplacer("${{ runner.temp }}", runnerTemp, "${{ github.workspace }}", workspace).Replace(value)
+					}
+					seed := resolve(job["env"].(map[string]any)["GOCACHE"].(string))
+					bootstrap := seed
+					if env, ok := setup["env"].(map[string]any); ok {
+						bootstrap = resolve(env["GOCACHE"].(string))
+					}
+					sentinel := filepath.Join(seed, "existing-owned-entry")
+					if existing {
+						if err := os.MkdirAll(seed, 0700); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.WriteFile(sentinel, []byte("preserve"), 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					diagnostics := exec.CommandContext(ctx, "go", "env")
+					diagnostics.Dir = workspace
+					diagnostics.Env = append(os.Environ(), "GOCACHE="+bootstrap, "GOENV=off", "GOTOOLCHAIN=local")
+					if flags, ok := job["env"].(map[string]any)["GOFLAGS"].(string); ok {
+						diagnostics.Env = append(diagnostics.Env, "GOFLAGS="+flags)
+					}
+					if err := diagnostics.Run(); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := os.Stat(bootstrap); err != nil {
+						t.Fatalf("real setup diagnostic did not initialize bootstrap cache: %v", err)
+					}
+					guard := exec.CommandContext(ctx, "bash", "-e", "-c", prefix)
+					guard.Env = append(os.Environ(), "GOCACHE="+seed)
+					output, err := guard.CombinedOutput()
+					if (err != nil) != existing {
+						t.Fatalf("fresh guard: existing=%v err=%v output=%s", existing, err, output)
+					}
+					if existing {
+						data, err := os.ReadFile(sentinel)
+						if err != nil || string(data) != "preserve" {
+							t.Fatalf("existing seed modified: %q %v", data, err)
+						}
+					}
+				})
 			}
+
 		})
 	}
 }

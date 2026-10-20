@@ -137,6 +137,9 @@ details[open] > summary.btn > .glyph[data-glyph='chevron'] {
   .actions:has(> .btn ~ .btn) {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* A wrapped label sets the row height; its sibling fills that same box
+       while each button keeps its own label centered in both axes. */
+    align-items: stretch;
   }
 
   .actions:has(> .btn ~ .btn) > .btn {

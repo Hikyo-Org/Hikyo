@@ -103,6 +103,9 @@ const (
 	OpDefinitionsApply       Operation = "definitions.apply"
 	OpDefinitionsSettingsGet Operation = "definitions.settings.get"
 	OpDefinitionsSettingsSet Operation = "definitions.settings.set"
+	// Project capacity is governed by project-settings authority.
+	OpProjectCapacityRead Operation = "project.capacity.read"
+	OpProjectCapacitySet  Operation = "project.capacity.set"
 	// The per-project machine-reveal opt-in (source-of-truth ADR).
 	OpProjectMachineRevealGet Operation = "project.machine-reveal.get"
 	OpProjectMachineRevealSet Operation = "project.machine-reveal.set"
@@ -763,9 +766,11 @@ const (
 	StoreOrgsSetRetention              StoreOp = "orgs.SetRetention"
 	StoreOrgsDelete                    StoreOp = "orgs.Delete"
 
-	StoreProjectsCreate StoreOp = "projects.Create"
-	StoreProjectsGet    StoreOp = "projects.Get"
-	StoreProjectsList   StoreOp = "projects.List"
+	StoreProjectsCreate      StoreOp = "projects.Create"
+	StoreProjectsGet         StoreOp = "projects.Get"
+	StoreProjectsGetCapacity StoreOp = "projects.GetCapacity"
+	StoreProjectsSetCapacity StoreOp = "projects.SetCapacity"
+	StoreProjectsList        StoreOp = "projects.List"
 	// StoreProjectsListAll is the cross-org enumeration the multi-instance
 	// directory serves (#71). It belongs to instance-scope operations only.
 	StoreProjectsListAll      StoreOp = "projects.ListAll"
@@ -1374,6 +1379,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreTransitVersionsList: true,
 	StoreTransitCallersList:  true,
 	StoreProjectsGet:         true,
+	StoreProjectsGetCapacity: true,
 	StoreProjectsList:        true,
 	StoreProjectsListAll:     true,
 	// Private PKI (#154) public reads. Sealed CA key reads remain excluded:
@@ -1730,7 +1736,7 @@ func validateAuditDisposition(op Operation, spec opSpec) error {
 	if n != 1 {
 		return fmt.Errorf("authz registry: operation %q must carry exactly one audit disposition (events, audited-none, or reviewed exemption), has %d", op, n)
 	}
-	if spec.reviewExempt && op != OpDefinitionsPlanGet && op != OpSCIMDiscovery {
+	if spec.reviewExempt && op != OpDefinitionsPlanGet && op != OpSCIMDiscovery && op != OpProjectCapacityRead {
 		return fmt.Errorf("authz registry: operation %q claims an unreviewed audit exemption", op)
 	}
 	// Each declared event must be a non-empty, registered type, and no type may
@@ -2123,6 +2129,9 @@ var operationTable = map[Operation]opSpec{
 			// the catalogue revision here (StoreCatalogueRevisionBump) — a
 			// revision used as a bundle base must detect a new environment.
 			StoreProjectsGet: true, StoreProjectsLock: true, StoreEnvironmentsCount: true,
+			// Configuration-time resolved-cell admission reads the key count
+			// under the same project lock as environment creation.
+			StoreCatalogueCount:        true,
 			StoreEnvironmentsNextOrder: true, StoreEnvironmentsCreate: true,
 			StoreCatalogueRevisionBump: true, StoreAuditTenantInsert: true,
 		},
@@ -2241,11 +2250,15 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
+			StoreProjectsGetCapacity: true,
 			// The semantic schema fan-out enumerates the project's
 			// environments; each one is then authorized for `publish`
 			// separately, immediately before commit.
 			StoreEnvironmentsList: true,
-			StoreProjectsGet:      true, StoreProjectsLock: true, StoreCatalogueCount: true,
+			// The managed key cap can reach the resolved-cell budget, so
+			// admission counts environments under the project write lock.
+			StoreEnvironmentsCount: true,
+			StoreProjectsGet:       true, StoreProjectsLock: true, StoreCatalogueCount: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
 			StoreCatalogueGroupGet: true, StoreCatalogueCreate: true,
 			StoreCataloguePresenceReplace: true, StoreCatalogueRevisionBump: true,
@@ -2473,7 +2486,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreProjectsGet: true,
+			StoreProjectsGetCapacity: true,
+			StoreProjectsLock:        true, StoreProjectsGet: true,
 			StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
 			StoreCatalogueList: true, StoreCataloguePresenceList: true,
 			StoreCatalogueGroupList: true, StoreCatalogueRevisionGet: true,
@@ -2513,7 +2527,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelProject,
 		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreProjectsGet: true,
+			StoreProjectsGetCapacity: true,
+			StoreProjectsLock:        true, StoreProjectsGet: true,
 			StoreEnvironmentsList: true, StoreEnvironmentsListProtection: true,
 			StoreEnvironmentsCount: true, StoreEnvironmentsNextOrder: true,
 			StoreEnvironmentsCreate: true, StoreEnvironmentsRename: true,
@@ -2574,6 +2589,21 @@ var operationTable = map[Operation]opSpec{
 			StoreAuditTenantInsert:            true,
 		},
 		events: []audit.EventType{audit.EventSettingsDefinitionsSourceChanged},
+	},
+
+	OpProjectCapacityRead: {
+		class:        ClassTenant,
+		level:        domain.LevelProject,
+		formula:      Formula{{Cap: domain.CapProjectSettings, At: domain.LevelProject}},
+		storeOps:     map[StoreOp]bool{StoreProjectsGetCapacity: true, StoreCatalogueCount: true, StoreEnvironmentsCount: true},
+		reviewExempt: true, // Project-settings read is pinned in audited_exemptions.json.
+	},
+	OpProjectCapacitySet: {
+		class:    ClassTenant,
+		level:    domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapProjectSettings, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreProjectsLock: true, StoreProjectsGetCapacity: true, StoreProjectsSetCapacity: true, StoreCatalogueCount: true, StoreEnvironmentsCount: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventProjectCapacityChanged},
 	},
 
 	// The per-project machine-reveal opt-in (source-of-truth ADR: "an explicit,

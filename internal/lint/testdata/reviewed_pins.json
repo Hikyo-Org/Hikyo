@@ -1597,7 +1597,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.MigrateConfiguration": {
-      "hash": "3c2254790fd8980bb54411e75e2bf4e63d67913cd97ac44c96ab0363bc335b5a",
+      "hash": "3d0533f9b92c1915d737c9e9df23dc1fa09e7378b877621a456a0d8f559a260f",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/audit/audit.go:NewEventID",
@@ -1714,7 +1714,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.configurationVersionCAS": {
-      "hash": "28b14458e9231561ef55c4af3440b1340a7a8a59462997448acc7e166efe5e9d",
+      "hash": "1269edd7bd9fd16549e81d290f2ae8b27c272bace5d1da32ec501ee30fb150e5",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/store/upgrade/configuration_migrate.go:configurationOneRow"
@@ -2765,8 +2765,8 @@
     "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
     "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
     "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
-    "internal/runtimeconfig/catalogue.go:Catalogue": "f82b66d00058f06bc193c0d3db1871fbf978c94d5ca4c4653b2f1d6afbea76e8",
-    "internal/runtimeconfig/migrations.go:Migrations": "a221405f8522855529c4f9b73eeb27730491a506903d089f41d399f115c5b91d",
+    "internal/runtimeconfig/catalogue.go:Catalogue": "72fab0d0c4fbaf77f845858f0069c8b4cf29d16c1bec382b1ae06c940eb4a0e0",
+    "internal/runtimeconfig/migrations.go:Migrations": "311a75d54a7f24e8e8cac12584386cc8e02e9288b0088134bb707e6062b605c4",
     "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
     "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
     "internal/schema/declare.go:CompileClassified": "57dfbfeec95d5e83910b312aae3f90c9e94a9ada8e454068c3fb74260ccb0aa4",
@@ -2869,7 +2869,7 @@
     "internal/store/upgrade/configuration_migrate.go:configurationID": "de8c3eacfbd8e674bd079ac773feaad59d96ede8ff7c83809f324bc345ef0f51",
     "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50",
     "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrations": "04042a7e2c360acbaae2197943e3b9aef61de5fe5c4c8143be624a00bc3e79ff",
-    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "5505210b0c779cfed2161aef848e22705761aa1613b2cc6906c3c8c5204718d1",
+    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "43aadc6aeb92b21bf92883ae76ec67c01f00d6d9c5ed8cbc98df7b3b274a5c00",
     "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
     "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
     "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",

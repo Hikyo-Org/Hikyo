@@ -26,7 +26,6 @@ function surfaceElement(id: SurfaceId): ReactElement {
 
 const loadAuthRoutes = () => import('./route-groups/auth.ts');
 const loadWorkspaceRoutes = () => import('./route-groups/workspace.ts');
-const loadSettingsRoutes = () => import('./route-groups/settings.ts');
 
 const SignupVerify = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.SignupVerify })));
 const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Login })));
@@ -49,19 +48,21 @@ const Remotes = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: ro
 const Values = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.Values })));
 const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ default: routes.WorkspaceScope })));
 
-const AccountSecurity = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.AccountSecurity })));
-const Audit = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Audit })));
-const ChangeApprovals = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ChangeApprovals })));
-const TemporaryAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.TemporaryAccess })));
-const InstanceConfig = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceConfig })));
-const InstanceAdmin = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.InstanceAdmin })));
-const MachineAccess = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.MachineAccess })));
-const Adapters = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Adapters })));
+// Settings screens have independent lazy boundaries; shared dependencies remain
+// shared chunks without making every administration screen load together.
+const AccountSecurity = lazy(() => import('../routes/AccountSecurity.tsx').then((routes) => ({ default: routes.AccountSecurity })));
+const Audit = lazy(() => import('../routes/Audit.tsx').then((routes) => ({ default: routes.Audit })));
+const ChangeApprovals = lazy(() => import('../routes/ChangeApprovals.tsx').then((routes) => ({ default: routes.ChangeApprovals })));
+const TemporaryAccess = lazy(() => import('../routes/TemporaryAccess.tsx').then((routes) => ({ default: routes.TemporaryAccess })));
+const InstanceConfig = lazy(() => import('../routes/InstanceConfig.tsx').then((routes) => ({ default: routes.InstanceConfig })));
+const InstanceAdmin = lazy(() => import('../routes/InstanceAdmin.tsx').then((routes) => ({ default: routes.InstanceAdmin })));
+const MachineAccess = lazy(() => import('../routes/MachineAccess.tsx').then((routes) => ({ default: routes.MachineAccess })));
+const Adapters = lazy(() => import('../routes/Adapters.tsx').then((routes) => ({ default: routes.Adapters })));
 const TransitKeys = lazy(() => import('../routes/TransitKeys.tsx').then((routes) => ({ default: routes.TransitKeys })));
-const Members = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.Members })));
-const OrgSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.OrgSettings })));
-const ProjectSettings = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ProjectSettings })));
-const ScimProvisioning = lazy(() => loadSettingsRoutes().then((routes) => ({ default: routes.ScimProvisioning })));
+const Members = lazy(() => import('../routes/Members.tsx').then((routes) => ({ default: routes.Members })));
+const OrgSettings = lazy(() => import('../routes/OrgSettings.tsx').then((routes) => ({ default: routes.OrgSettings })));
+const ProjectSettings = lazy(() => import('../routes/ProjectSettings.tsx').then((routes) => ({ default: routes.ProjectSettings })));
+const ScimProvisioning = lazy(() => import('../routes/ScimProvisioning.tsx').then((routes) => ({ default: routes.ScimProvisioning })));
 
 const withRouteFallback = (element: ReactElement) => (
   <Suspense fallback={<p className="login" role="status">Loading…</p>}>

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -288,8 +289,8 @@ func BenchmarkDeliveryPoll(b *testing.B) {
 				name        string
 				keys, bytes int
 			}{
-				{"typical", 100, 100 * 64}, {"key-limit", schema.MaxKeysPerProject, schema.MaxKeysPerProject * 64},
-				{"render-limit", schema.MaxKeysPerProject, MaxRenderBytesPerTarget},
+				{"typical", 100, 100 * 64}, {"key-limit", config.DefaultKeysPerProject, config.DefaultKeysPerProject * 64},
+				{"render-limit", config.DefaultKeysPerProject, MaxRenderBytesPerTarget},
 			} {
 				b.Run(size.name, func(b *testing.B) {
 					cfg := store.Config{Engine: engine, Path: filepath.Join(b.TempDir(), "poll.db")}

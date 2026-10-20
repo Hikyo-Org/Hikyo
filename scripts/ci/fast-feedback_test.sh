@@ -82,6 +82,27 @@ rm compile_test.go
 commit_fixture
 run_feedback
 
+# Archive export can accept unresolved external targets. Feedback must still
+# link every selected test binary, even when discarded debug data is omitted.
+cat >link_test.go <<'EOF'
+package fixture
+
+import (
+	"testing"
+	_ "unsafe"
+)
+
+//go:linkname missingLinkTarget example.invalid/missing.linkTarget
+func missingLinkTarget()
+
+func TestLinkerProof(t *testing.T) { missingLinkTarget() }
+EOF
+commit_fixture
+refuse 'relocation target example.invalid/missing.linkTarget not defined'
+rm link_test.go
+commit_fixture
+run_feedback
+
 # An unchanged file moved between packages can break the old package. Both
 # rename owners must be compiled, even when the destination compiles cleanly.
 mkdir old new

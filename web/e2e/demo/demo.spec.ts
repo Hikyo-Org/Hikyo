@@ -209,7 +209,17 @@ test('settings and members are read-only, remote connections stay disabled, and 
   await page.getByRole('tab', { name: 'Policy' }).click();
   await expect(page.getByRole('button', { name: 'Download definitions bundle', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Download portable bundle', exact: true })).toBeDisabled();
-  for (const control of await page.locator('#project-policy input, #project-policy select, #project-policy textarea, #project-policy button').all()) {
+  await expect(page.getByText('6 keys used / 1,000 key limit', { exact: true })).toBeVisible();
+  const capacityRefresh = page.getByRole('button', { name: 'Refresh key capacity', exact: true });
+  await expect(capacityRefresh).toBeEnabled();
+  await capacityRefresh.click();
+  await expect(page.getByText('6 keys used / 1,000 key limit', { exact: true })).toBeVisible();
+  await expect(page.locator('#project-policy .alert')).toHaveCount(0);
+  for (const control of await page.locator('#project-policy input, #project-policy select, #project-policy textarea').all()) {
+    await expect(control).toBeDisabled();
+  }
+  // Refresh is inspection. Every policy mutation stays disabled in the demo.
+  for (const control of await page.locator('#project-policy').getByRole('button').filter({ hasNotText: /^Refresh key capacity$/ }).all()) {
     await expect(control).toBeDisabled();
   }
   await page.getByRole('tab', { name: 'Identity' }).click();

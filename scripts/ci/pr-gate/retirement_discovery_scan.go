@@ -90,7 +90,12 @@ func (a retirementDiscoveryReadAPI) read(ctx context.Context, path string, out a
 	if inventory {
 		a.scan.restRequests.Add(1)
 	}
-	err := a.api.read(ctx, path, out)
+	// Each counted request must be exactly one attempt, whatever API was wired.
+	reader := a.api
+	if retrying, ok := reader.(retryingAPI); ok {
+		reader = retrying.api
+	}
+	err := reader.read(ctx, path, out)
 	if inventory && err == nil {
 		a.scan.restPages.Add(1)
 	}

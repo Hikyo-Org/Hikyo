@@ -171,7 +171,7 @@ func (q *queueController) runHead(ctx context.Context, name string, e event, kin
 	if !matched {
 		return errors.New("worker head and role do not match its typed discovery record")
 	}
-	return q.reassess(ctx, func(ctx context.Context) error { return q.runHeadProof(ctx, name, e, kind) })
+	return q.reassessHeld(ctx, q.rereadsGroup(kind == "group"), func(ctx context.Context) error { return q.runHeadProof(ctx, name, e, kind) })
 }
 
 func (q *queueController) runHeadProof(ctx context.Context, name string, e event, kind string) error {
@@ -184,6 +184,9 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 	}
 	roles, err := q.roles(ctx, q.expectedHead)
 	if err != nil {
+		if kind == "group" {
+			return q.retireMovedGroup(ctx, err)
+		}
 		return err
 	}
 	if roles.Group && len(roles.Pulls) > 0 {

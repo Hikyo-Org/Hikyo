@@ -73,9 +73,11 @@ type EnvironmentSettings struct {
 // transition strands and audits the transition — the library #54 shipped for
 // exactly this caller.
 type ProjectSettings struct {
-	DB   *store.DB
-	Auth *Auth
-	Now  func() time.Time
+	DefaultKeysPerProject int
+	MaxKeysPerProject     int
+	DB                    *store.DB
+	Auth                  *Auth
+	Now                   func() time.Time
 }
 
 func (s *ProjectSettings) now() time.Time {

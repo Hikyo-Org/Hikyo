@@ -1,80 +1,115 @@
 # Repository knowledge graph
 
-Only this README is tracked in Git. The graph itself (`graph.json`,
-`graph.html`, `GRAPH_REPORT.md`, community labels, coverage, health, benchmark)
-is a large, non-reproducible derived artifact and is **not** committed —
-`graph.json` alone is ~53 MB and a clean rebuild never reproduces the same
-community numbering, so pinning it in history bought unreviewable 50 MB+ diffs
-with no stable source of truth. Regenerate it locally instead:
+Only this README is tracked in Git. Graphify's graph, cache, manifest, reports,
+and visualizations are ignored local artifacts. The graph is large and community
+numbering can change between builds, so generated snapshots do not belong in
+code review.
+
+## Install and bootstrap
+
+Install Graphify with the SQL extractor and make it available on PATH:
 
 ```sh
-graphify update .
+uv tool install 'graphifyy[sql]==0.9.92'
+python3 scripts/dev/graphify_worktree.py install
+python3 scripts/dev/graphify_worktree.py bootstrap
 ```
 
-This is AST-only and free (no LLM). It works from a fresh checkout with no
-graph present. Community names come out as mechanical hub names (e.g.
-`Checkbox.stories.tsx`); run `graphify label` (LLM, needs an API key) if you
-want prose names — they do not survive a rebuild, so there is nothing to
-commit. The HTML is a community overview; individual nodes and source
-locations remain in `graph.json`. Serve the directory locally to explore it:
+Python 3.10+, Git, and a POSIX host are required. The helper uses `agent-heavy` when installed
+and runs directly when that queue is unavailable, with an explicit notice.
+It does not nest queue jobs. Graphify runs with two AST workers, automatic
+integration rewriting disabled, and all LLM backends disabled.
+
+## Reuse the canonical-main graph
+
+The helper builds a seed from the committed `hikyo-upstream/main` revision in
+a temporary detached worktree. It leaves the main checkout, its uncommitted
+files, and its branch untouched. Refresh the tracking ref when you want a newer
+base:
 
 ```sh
-python3 -m http.server 8766 --bind 127.0.0.1 --directory graphify-out
+git fetch hikyo-upstream main
+python3 scripts/dev/graphify_worktree.py refresh-base
 ```
 
-Open `http://127.0.0.1:8766/graph.html`. Search for a community, such as
-`Authorization Proof Verification`, then select the result. The checkboxes
-control visible communities.
+The main checkout has no private graph. Running `bootstrap` on branch `main`
+refreshes only the shared seed. Generated graphs and caches stay outside tracked
+files. The next new worktree checks the fetched canonical-main revision and
+automatically builds a new seed if needed, reusing compatible extraction caches.
+Existing worktrees continue updating their own graphs. The helper does not fetch
+the remote itself; refresh the tracking ref through normal Git fetching.
 
-## Agent setup
+`--base-ref` selects another existing ref explicitly when the clone uses a
+different remote name. A missing ref is an error; the helper does not fetch or
+silently substitute another branch.
 
-Install Graphify and make its executable available on the agent process's PATH:
+The reusable seed lives inside the repository's common Git directory under
+`hikyo-graphify/`. Seed identity includes the base commit, Graphify version,
+AST cache schema, and parser versions. A lock serializes seed publication and
+copies. A changed base reuses compatible extraction caches; a changed Graphify
+or parser version gets a new cache. Failed builds do not publish a partial seed.
+After a successful build or reuse, only the selected seed and newest predecessor
+are retained. Superseded helper-owned snapshots are removed under the same lock.
+
+On a new worktree's first bootstrap, the helper copies the seed's graph,
+extraction cache, manifest, and relevant sidecars into `graphify-out/`, resets
+its saved scan root, then updates the worktree's graph. Copies are independent;
+macOS uses filesystem clones when available, with ordinary copies otherwise.
+Worktrees never share writable files with the seed or one another. Process
+locks, pending requests, and session memory are not copied.
+
+Run bootstrap again after source changes, pulls, rebases, or branch switches.
+An existing graph is updated in place rather than replaced by the seed, so its
+local semantic extraction is retained. Graphify reuses cached extraction for
+unchanged files and handles additions, edits, and deletions. It still scans
+files, resolves relationships, clusters, and writes a complete resulting graph;
+this is not a base-plus-diff graph storage format.
+
+Graphify 0.9.92 deliberately bypasses its AST cache for JavaScript, TypeScript,
+and related component files. Those files are reparsed even when unchanged;
+Go and other cacheable languages still benefit from the copied cache.
+
+## T3 worktree setup
+
+The `install` command copies the helper into the common Git directory so it is
+available even on branches that predate this script. Re-run it after changing
+the helper. Configure this command as a synchronous T3 project script with
+**Run on worktree create** enabled:
 
 ```sh
-uv tool install 'graphifyy[sql]==0.9.61'
-graphify --help
+python3 "$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-graphify/bootstrap.py" bootstrap
 ```
 
-Install the Graphify skill separately for your agent. `AGENTS.md` and `CLAUDE.md`
-describe query-first navigation. `.claude/settings.json` registers the native
-search/read guards. OpenCode automatically discovers
-`.opencode/plugins/graphify.js`; no additional plugin registration is needed.
+Worktree setup completes after the private graph has been refreshed. No Git
+hooks are installed, and signature verification hooks remain in place.
+
+SIGTERM and SIGHUP unwind the helper and let Graphify stop its workers before
+temporary-checkout cleanup. Catchable interruptions roll back partially installed
+worktree sidecars. SIGKILL cannot run cleanup. If it leaves a helper-owned
+`hikyo-graphify/build-*/checkout` registered in `git worktree list`, verify that
+the build is no longer running before removing that specific abandoned checkout
+with `git worktree remove --force <checkout>`.
+
+## Query and refresh
 
 ```sh
 graphify query "authorization proof" --budget 1500
 graphify path "Proof" "DB"
 graphify explain "OrgID"
+python3 scripts/dev/graphify_worktree.py bootstrap
 ```
 
-The CLI prints truncation notices when the budget omits results. Narrow the
-question or raise the budget before drawing conclusions from an incomplete result.
+`AGENTS.md` and `CLAUDE.md` guide agents toward graph queries. Claude's
+`.claude/settings.json` search/read guards and OpenCode's
+`.opencode/plugins/graphify.js` add reminders. These reminders query the current
+worktree's `graphify-out/graph.json`; they do not build the seed themselves.
 
-## Generating and updating
+Code extraction is local and does not call an LLM. Document and image semantics
+need a separate skill-driven `/graphify . --update` pass. Community labels from
+code-only builds are mechanical names; optional `graphify label` uses an LLM.
 
-Run `graphify update .` after application-code changes for an AST-only refresh.
-For changed document/image semantics, use the installed skill's
-`/graphify . --update` workflow. A fresh clone has no extraction cache or local
-manifest, so its first update processes every file and takes longer.
-
-Nothing here is committed except this README, so there is no snapshot to keep
-in sync and no diff to review — `.gitignore` allowlists only
-`graphify-out/README.md`; everything else the tool writes (graph, HTML, report,
-labels, coverage, health, benchmark, caches, manifests, session evidence) is
-ignored. Do not force-add any of it.
-
-Graphify can regenerate the HTML with `graphify export html`. It disables
-vis-network's improved-layout pass because it could not position the large
-community graph; force-directed physics still positions the graph.
-
-## Limits
-
-The graph is undirected. Documentary citations and shared test references do
-not establish runtime calls. Seventeen Astro files have parser recovery gaps;
-five sensitive-name matches and 62 unsupported files were not extracted.
-Document semantics cover selected substantive passages, not every clause.
-See [health diagnostics](GRAPH_HEALTH.txt) for unresolved endpoints and collapsed
-parallel relationships.
-
-[BENCHMARK.json](BENCHMARK.json) records a heuristic context-size comparison
-using the detector's word count. It does not measure billing, latency, or answer
-quality. Host-agent token usage was not measured.
+Check `built_at_commit` before treating graph relationships as current. That
+stamp alone does not establish freshness for uncommitted edits. Check truncation
+notices and narrow queries before drawing conclusions from omitted results.
+Verify important relationships against source: the graph is navigation evidence,
+not runtime proof.
