@@ -58,6 +58,11 @@ const pages = [
     title: 'Online stable release guide',
   },
   {
+    source: 'docs/release/apple-signing.md',
+    target: 'release/apple-signing.mdx',
+    title: 'Apple signing and notarization',
+  },
+  {
     source: 'docs/release/legacy-offline-signing.md',
     target: 'release/legacy-offline-signing.mdx',
     title: 'Legacy offline release reference',
@@ -69,6 +74,9 @@ const siteLinks = new Map([
   ['online-signing.md', '/release/online-signing/'],
   ['online-signing.md#one-time-setup', '/release/online-signing/#one-time-setup'],
   ['online-signing.md#custody-and-recovery', '/release/online-signing/#custody-and-recovery'],
+  ['apple-signing.md', '/release/apple-signing/'],
+  ['apple-signing.md#one-time-credential-setup', '/release/apple-signing/#one-time-credential-setup'],
+  ['../handoff/apple-signing.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/apple-signing.md'],
   ['legacy-offline-signing.md', '/release/legacy-offline-signing/'],
   ['../adr/stable-workflow-signing.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/stable-workflow-signing.md'],
   ['../research/release-signing-ceremonies.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/research/release-signing-ceremonies.md'],

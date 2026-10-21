@@ -42,6 +42,8 @@ jobs:
       skip: ${{ steps.identity.outputs.skip }}
       tag_exists: ${{ steps.identity.outputs.tag_exists }}
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      non_darwin_sha256: ${{ steps.retained-integrity.outputs.non_darwin_sha256 }}
+      compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
     permissions:
       actions: read
       contents: read
@@ -271,6 +273,22 @@ jobs:
             .version == $version and .commit == $commit
           ' dist/metadata.json >/dev/null
           ./scripts/release/snapshot-manifest_test.sh
+      - name: Bind untouched nightly archive bytes
+        id: retained-integrity
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -o pipefail
+          for os in Linux Windows; do
+            extension=tar.gz
+            if [ "$os" = Windows ]; then extension=zip; fi
+            for arch in arm64 x86_64; do
+              sha256sum "dist/hikyo_${VERSION}_${os}_${arch}.$extension" || exit 1
+            done
+          done | LC_ALL=C sort >"$RUNNER_TEMP/non-darwin-checksums.txt"
+          non_darwin_sha256=$(sha256sum "$RUNNER_TEMP/non-darwin-checksums.txt" | awk '{print $1}')
+          printf 'non_darwin_sha256=%s\n' "$non_darwin_sha256" >>"$GITHUB_OUTPUT"
       - name: Retain canonical nightly artifacts and authenticated predecessor identity
         if: steps.identity.outputs.skip != 'true'
         run: |
@@ -291,6 +309,7 @@ jobs:
         run: docker container rm --force hikyo-ci-postgres
 
   apple-sign:
+    environment: apple-signing
     needs: build-artifacts
     if: github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'
     runs-on: macos-15
@@ -397,6 +416,29 @@ jobs:
           for arch in arm64 x86_64; do
             test -s "dist/hikyo_${VERSION}_Darwin_$arch.dmg"
           done
+      - name: Verify untouched nightly archives and compatibility
+        if: needs.build-artifacts.outputs.skip != 'true'
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          NON_DARWIN_SHA256: ${{ needs.build-artifacts.outputs.non_darwin_sha256 }}
+          COMPATIBILITY_SHA256: ${{ needs.build-artifacts.outputs.compatibility_sha256 }}
+        run: |
+          set -o pipefail
+          for os in Linux Windows; do
+            extension=tar.gz
+            if [ "$os" = Windows ]; then extension=zip; fi
+            for arch in arm64 x86_64; do
+              sha256sum "dist/hikyo_${VERSION}_${os}_${arch}.$extension" || exit 1
+            done
+          done | LC_ALL=C sort >"$RUNNER_TEMP/non-darwin-checksums.txt"
+          non_darwin_sha256=$(sha256sum "$RUNNER_TEMP/non-darwin-checksums.txt" | awk '{print $1}')
+          test "$non_darwin_sha256" = "$NON_DARWIN_SHA256"
+          test "$(sha256sum nightly-context/upgrade-compatibility.json | awk '{print $1}')" = "$COMPATIBILITY_SHA256"
+      - name: Prepare canonical nightly image inputs
+        if: needs.build-artifacts.outputs.skip != 'true'
+        env:
+          COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+        run: |
           cp nightly-context/upgrade-compatibility.json "$RUNNER_TEMP/upgrade-compatibility.json"
           go run ./scripts/release/nightly preflight
           ./scripts/release/prepare-image-root.sh \
@@ -565,7 +607,7 @@ jobs:
 
   container:
     needs: publish
-    if: github.ref == 'refs/heads/main'
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

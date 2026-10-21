@@ -19,11 +19,15 @@ generated. Local development snapshots keep their existing signing profile.
    Retain its `.p8` private key, key ID, and issuer ID. This pipeline uses team
    API keys, including the issuer ID, rather than individual keys or an Apple
    Account password.
-3. In the Hikyo repository's GitHub Actions settings, configure these secrets:
+3. In the Hikyo repository's Environments settings, create `apple-signing`.
+   Choose custom deployment branch policies with exactly branch `main` and tag
+   pattern `v*`. Both Apple jobs use this environment. Configure these secrets
+   there, then remove any repository-scoped copies after verifying the new
+   environment's secret metadata:
    - `APPLE_DEVELOPER_ID_P12_BASE64`: base64 encoding of the exported identity.
    - `APPLE_DEVELOPER_ID_P12_PASSWORD`: the export password.
    - `APPLE_NOTARY_KEY_P8`: the complete private key, preserving its PEM lines.
-4. Configure these repository variables:
+4. Configure these non-secret repository variables:
    - `APPLE_SIGNING_IDENTITY`: the full Developer ID Application identity name.
    - `APPLE_TEAM_ID`: the identity's ten-character team ID.
    - `APPLE_NOTARY_KEY_ID`: the team API key ID.
@@ -59,7 +63,9 @@ Temporary certificate files, private API keys, and the Keychain are removed on
 success and failure. Only public artifacts are transferred to the final job.
 
 The final Linux job consumes these finalized artifacts, rechecks candidate and
-archive hashes, builds the image and chart from the unchanged canonical Linux
+archive hashes and independently compares Linux/Windows archive bytes with the
+original build digest. Nightly compatibility is also bound to its original
+build digest. The stable job builds the image and chart from canonical Linux
 binaries, and creates provenance and the release manifest. Both disk images
 are covered by the authenticated release manifest as `installer` assets,
 using the existing artifact type accepted by deployed nightly readers. Stable
@@ -112,7 +118,8 @@ checks. A fixture test or successful build is not Apple notarization or clean-Ma
 installation evidence.
 
 The maintainer completed certificate and API-key provisioning on 2026-10-21.
-GitHub credentials and local signing have been verified, and a harmless test
+The protected GitHub environment, secret relocation, and local signing have
+been verified, and a harmless test
 disk image has been submitted to Apple. See the [configuration handoff](../handoff/apple-signing.md)
 for its processing and acceptance status. No Hikyo release or live tap was
 published or changed during setup.

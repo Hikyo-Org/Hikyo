@@ -63,6 +63,7 @@ jobs:
       commit: ${{ steps.candidate.outputs.commit }}
       image: ${{ steps.identity.outputs.image }}
       compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
+      non_darwin_sha256: ${{ steps.input-digests.outputs.non_darwin_sha256 }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -216,6 +217,12 @@ jobs:
             .commit == $candidate[0].commit
           ' dist/metadata.json >/dev/null
 
+      - name: Bind unchanged Linux and Windows archive bytes
+        id: input-digests
+        run: |
+          digest=$( (cd dist && sha256sum hikyo_*_Linux_*.tar.gz hikyo_*_Windows_*.zip | LC_ALL=C sort) | sha256sum | awk '{print $1}')
+          printf 'non_darwin_sha256=%s\n' "$digest" >>"$GITHUB_OUTPUT"
+
       - name: Source dependency SBOM (Go and frontend)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
@@ -249,6 +256,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
     needs: build-artifacts
+    environment: apple-signing
     runs-on: macos-15
     permissions:
       contents: read
@@ -327,6 +335,13 @@ jobs:
           for arch in arm64 x86_64; do
             test -s "dist/hikyo_${TAG#v}_Darwin_$arch.dmg"
           done
+
+      - name: Verify unchanged Linux and Windows archive bytes
+        env:
+          NON_DARWIN_SHA256: ${{ needs.build-artifacts.outputs.non_darwin_sha256 }}
+        run: |
+          digest=$( (cd dist && sha256sum hikyo_*_Linux_*.tar.gz hikyo_*_Windows_*.zip | LC_ALL=C sort) | sha256sum | awk '{print $1}')
+          test "$digest" = "$NON_DARWIN_SHA256"
 
       - name: Verify every native package payload
         run: go run ./scripts/release/verify-native-packages.go dist "${{ needs.build-artifacts.outputs.version }}"

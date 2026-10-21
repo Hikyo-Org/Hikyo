@@ -26,14 +26,20 @@ signatures. Transfers use tar archives to preserve executable permissions.
 Source validation, docs, the floor benchmark, signed-tag verification, trust
 preflight, and PostgreSQL-backed source tests remain required.
 
-Apple credentials are confined to the signing step. The helper uses a disposable
+Apple credentials are confined to the signing step and the `apple-signing`
+environment, restricted to branch `main` and tag pattern `v*`. The environment
+contains all three secrets; repository-scoped copies were removed after their
+environment metadata was verified. The four non-secret variables remain at
+repository scope. The helper uses a disposable
 Keychain and removes temporary certificate and API-key files on success and
 failure. The candidate hash, source commit, tag, input checksums, executable
 architectures, certificate type, and team are checked. Nightly signing checks
 main, exact workflow SHA, resolved nightly version, and GoReleaser metadata
 instead of a stable candidate. Published nightly runs skip signing without
 replacing their original artifacts. The six-archive checksum
-contract and Linux/Windows payloads are preserved.
+contract and Linux/Windows payloads are preserved. An independent original-build
+digest checks the four Linux/Windows archive bytes after the Apple stage, and
+nightly compatibility is checked against its original build digest.
 
 ## Validation
 
@@ -51,6 +57,14 @@ contract and Linux/Windows payloads are preserved.
   the existing package/refusal cases. Stable round-trip tests now include DMGs
   and reject changed DMG bytes.
 - Passed ShellCheck, Actionlint, and `git diff --check`.
+- The uncached full CI-script suite passed after the installer compatibility
+  correction. Focused stable/nightly workflow tests then passed for protected
+  environment binding, container retries across skipped signing ancestors,
+  independent Linux/Windows integrity, and original nightly compatibility.
+  Changed archive bytes are refused even with regenerated valid checksums.
+- The docs site now maps the Apple guide and its links. Content preparation,
+  generator regression tests, generation, and the owning docs package check
+  passed on pinned Node 26.7.0 with zero errors, warnings, or hints.
 - Review caught a rollout blocker: deployed nightly readers reject unknown
   artifact kinds. DMGs now use the existing `installer` kind. A signed-fixture
   regression ran against all nine production release-trust source files from
@@ -86,7 +100,8 @@ rotation was performed.
 Created a Developer ID Application certificate after the maintainer signed in to
 Apple. Verified that it matches the locally generated encrypted private key and
 chains to Apple's trusted root. Installed the identity in Keychain and configured
-Hikyo's GitHub repository with all three required secrets and four variables.
+Hikyo's protected `apple-signing` environment with all three required secrets
+and the repository with four non-secret variables.
 The certificate expires on 2027-11-20.
 
 Created a team notarization API key with the Developer role, verified actual
