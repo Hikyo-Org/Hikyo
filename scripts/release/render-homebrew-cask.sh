@@ -32,27 +32,27 @@ jq -e '
 version=$(jq -r '.version' "$manifest")
 is_semver "$version" || fail 'invalid release version'
 
-archive_record() {
+image_record() {
 	architecture=$1
-	expected="hikyo_${version}_Darwin_${architecture}.tar.gz"
+	expected="hikyo_${version}_Darwin_${architecture}.dmg"
 	count=$(jq -r --arg name "$expected" \
-		'[.artifacts[] | select(.kind == "binary" and .name == $name and (.sha256 | test("^[0-9a-f]{64}$")))] | length' \
+		'[.artifacts[] | select(.kind == "installer" and .name == $name and (.sha256 | test("^[0-9a-f]{64}$")))] | length' \
 		"$manifest")
-	[ "$count" -eq 1 ] || fail "expected one signed Darwin $architecture archive"
+	[ "$count" -eq 1 ] || fail "expected one signed Darwin $architecture disk image"
 	printf '%s\n' "$expected"
 }
 
-arm_archive=$(archive_record arm64)
-intel_archive=$(archive_record x86_64)
-arm_sha=$(jq -r --arg name "$arm_archive" '.artifacts[] | select(.name == $name) | .sha256' "$manifest")
-intel_sha=$(jq -r --arg name "$intel_archive" '.artifacts[] | select(.name == $name) | .sha256' "$manifest")
+arm_image=$(image_record arm64)
+intel_image=$(image_record x86_64)
+arm_sha=$(jq -r --arg name "$arm_image" '.artifacts[] | select(.name == $name) | .sha256' "$manifest")
+intel_sha=$(jq -r --arg name "$intel_image" '.artifacts[] | select(.name == $name) | .sha256' "$manifest")
 
-for archive in "$arm_archive" "$intel_archive"; do
-	safe_release_name "$archive" || fail "unsafe archive name $archive"
-	[ -f "$bundle/$archive" ] && [ ! -L "$bundle/$archive" ] || fail "missing regular archive $archive"
+for image in "$arm_image" "$intel_image"; do
+	safe_release_name "$image" || fail "unsafe disk image name $image"
+	[ -f "$bundle/$image" ] && [ ! -L "$bundle/$image" ] || fail "missing regular disk image $image"
 done
-[ "$(sha256_file "$bundle/$arm_archive")" = "$arm_sha" ] || fail "archive hash mismatch: $arm_archive"
-[ "$(sha256_file "$bundle/$intel_archive")" = "$intel_sha" ] || fail "archive hash mismatch: $intel_archive"
+[ "$(sha256_file "$bundle/$arm_image")" = "$arm_sha" ] || fail "disk image hash mismatch: $arm_image"
+[ "$(sha256_file "$bundle/$intel_image")" = "$intel_sha" ] || fail "disk image hash mismatch: $intel_image"
 
 tmp=$(mktemp "$output.tmp.XXXXXX")
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
@@ -64,7 +64,7 @@ cask "hikyo" do
   sha256 arm:   "$arm_sha",
          intel: "$intel_sha"
 
-  url "https://github.com/$repository/releases/download/v#{version}/hikyo_#{version}_Darwin_#{arch}.tar.gz"
+  url "https://github.com/$repository/releases/download/v#{version}/hikyo_#{version}_Darwin_#{arch}.dmg"
   name "Hikyo"
   desc "Self-hosted control plane for secrets and configuration"
   homepage "https://hikyo.app/"

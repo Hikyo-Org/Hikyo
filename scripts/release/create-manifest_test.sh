@@ -24,6 +24,8 @@ for package in \
 do
 	printf 'native package\n' >"$dist/$package"
 done
+printf 'arm64 image\n' >"$dist/hikyo_0.1.0_Darwin_arm64.dmg"
+printf 'intel image\n' >"$dist/hikyo_0.1.0_Darwin_x86_64.dmg"
 printf 'checksums\n' >"$dist/checksums.txt"
 jq -n '{
 	schema: "hikyo.dev/release-binaries/v1",
@@ -79,6 +81,7 @@ jq -e '
 	.tag == "v0.1.0" and
 	.release_sequence == 7 and
 	([.artifacts[] | select(.kind == "binary")] | length) == 2 and
+	([.artifacts[] | select(.kind == "installer" and (.name | endswith(".dmg")))] | length) == 2 and
 	([.artifacts[] | select(.kind == "package")] | length) == 8 and
 	([.artifacts[] | select(.kind == "package") | .format] | sort ==
 		["apk", "apk", "archlinux", "archlinux", "deb", "deb", "rpm", "rpm"]) and
@@ -94,7 +97,8 @@ jq -e '
 	([.artifacts[] | select(.kind == "image")][0].tag == "0.1.0") and
 	([.artifacts[] | select(.kind == "chart")] | length) == 1 and
 	([.artifacts[] | select(.kind == "chart-digest")] | length) == 1 and
-	([.artifacts[] | select(.kind == "installer")] | length) == 1 and
+	([.artifacts[] | select(.kind == "installer")] | length) == 3 and
+	([.artifacts[] | select(.kind == "installer" and .name == "install.sh")] | length) == 1 and
 	([.artifacts[] | select(.kind == "release-candidate")] | length) == 1 and
 	([.artifacts[] | select(.kind == "oci-payload")] | length) == 2 and
 	([.artifacts[] | select(.kind == "chart")][0] |

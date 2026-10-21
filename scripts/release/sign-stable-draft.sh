@@ -1,5 +1,5 @@
 #!/bin/sh
-# Called only by the tag build job. No persistent private key is required.
+# Called only by the tag build job. No persistent Cosign private key is required.
 set -eu
 [ "$#" -eq 2 ] || { printf 'usage: %s TRUST DIRECTORY\n' "$0" >&2; exit 2; }
 trust=$1 directory=$2

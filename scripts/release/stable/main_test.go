@@ -28,9 +28,12 @@ func TestStableDraftRoundTripAndTamperRejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, mode := range []string{"payload", "signature", "unexpected file", "symlink"} {
+	for _, mode := range []string{"payload", "signature", "disk image", "unexpected file", "symlink"} {
 		t.Run(mode, func(t *testing.T) {
 			name := filepath.Join(directory, "hikyo_1.0.0_Linux_x86_64.tar.gz")
+			if mode == "disk image" {
+				name = filepath.Join(directory, "hikyo_1.0.0_Darwin_arm64.dmg")
+			}
 			if mode == "signature" {
 				name += ".sigstore.json"
 			}
@@ -170,6 +173,9 @@ func fullDraftFixture(t *testing.T) (string, string, *testfixture.Fixture, func(
 			}
 			add(releasetrust.Artifact{Name: name, Kind: "package", Format: format, Arch: arch}, []byte("synthetic package "+format+arch))
 		}
+	}
+	for _, arch := range []string{"arm64", "x86_64"} {
+		add(releasetrust.Artifact{Name: "hikyo_1.0.0_Darwin_" + arch + ".dmg", Kind: "installer"}, []byte("synthetic disk image "+arch))
 	}
 	var checksums strings.Builder
 	for _, a := range manifest.Artifacts {

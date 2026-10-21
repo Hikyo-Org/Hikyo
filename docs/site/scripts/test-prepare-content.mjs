@@ -9,6 +9,7 @@ const checker = await readFile(new URL('./prepare-content.mjs', import.meta.url)
 const inputs = [
   'SECURITY.md', 'SUPPORT.md', 'GOVERNANCE.md', 'TRADEMARK.md', 'CONTRIBUTING.md',
   'docs/status/README.md', 'docs/release/signing.md', 'docs/release/online-signing.md',
+  'docs/release/apple-signing.md',
   'docs/release/legacy-offline-signing.md', 'LICENSE', 'install/upgrade-nightly.sh',
 ];
 async function put(root, path, content) {

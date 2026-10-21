@@ -5,24 +5,29 @@ is not a secret boundary: a branch writer can modify its workflow. The app
 private key must therefore be an environment secret protected by a main-only
 deployment branch policy, not a repository secret.
 
-## Read-only configuration evidence
+## Configuration verified on 2026-10-21
 
-Checked on 2026-10-01 at 13:20 UTC using repository environment and Actions
-secret metadata APIs. The repository lists only `copilot` and `github-pages`
-environments; `nightly-release` is absent. The repository-scoped secret
-`NIGHTLY_RELEASE_APP_PRIVATE_KEY` is still present (metadata created and last
-updated 2026-08-24). No secret value was read and no external setting changed.
-This is an unresolved operator gate, not a clean security result. Recheck before
-publication because external settings can change independently of this branch.
+The earlier 2026-10-01 audit found the app private key at repository scope and
+no protected publication environment. While configuring stable and nightly
+Apple distribution, the maintainer's existing local app key was authenticated
+against GitHub's app endpoint. The returned app was `hikyo-nightly-release`
+with the expected `contents: write` permission. No key material was printed.
 
-## Required operator configuration
+The `nightly-release` environment now uses custom deployment branch policies
+with exactly `main` of type `branch` and no tag rule. The existing private key
+was installed as `NIGHTLY_RELEASE_APP_PRIVATE_KEY` in that environment. After
+verifying its metadata there, the repository-scoped secret was removed and its
+absence verified. The app client-ID variable was preserved.
 
-No credential or repository-setting mutation is authorized or performed by the
-remediation agent. Until the operator completes these steps, the existing
-repository-scoped key remains exposed to branch-selected workflows. Merely
-adding `environment: nightly-release` does not fix that exposure; a missing
-environment can be created without protection by GitHub, and secret lookup can
-fall back to the repository secret.
+This closes the documented GitHub credential-location and branch-policy gate.
+It does not prove that the previous repository-scoped credential was never
+used by a branch workflow. The key was relocated without rotation; historical
+exposure assessment and any resulting rotation remain operator decisions.
+
+## Repeatable operator configuration
+
+These steps describe the verified configuration and can be used when restoring
+or replacing credentials. Keep private material out of chat and Git.
 
 1. Open [repository environments](https://github.com/Hikyo-Org/Hikyo/settings/environments)
    and create `nightly-release`. Set deployment branches and tags to selected

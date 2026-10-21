@@ -17,6 +17,9 @@ the setup or release commands below have been run as part of implementation.
 1. Use a clean checkout of merged `main`. Install the pinned tools listed in
    `.github/workflows/release.yml`: Go, Cosign, GitHub CLI, jq and Git with
    cryptographic signing enabled. Authenticate `gh` as the release maintainer.
+   Configure the [Apple Developer ID and notarization credentials](apple-signing.md#one-time-credential-setup)
+   before a stable build. macOS signing is required for both the downloadable
+   DMGs and the Homebrew cask; enrollment alone does not configure credentials.
    The repository must retain protected main, immutable version tags and
    immutable public releases. Publication checks immutable-release settings,
    signed tags and exact-commit CI; the build probes tag immutability. These
@@ -118,6 +121,7 @@ revocation checks.
 Homebrew remains a downstream convenience channel. After public verification,
 run `scripts/release/ceremony.sh homebrew VERSION`, confirm the proposed tap
 PR, and review its protected PR separately. The online ceremony does not automatically merge the tap PR.
+The cask consumes the same signed, notarized, stapled DMGs as direct downloads.
 
 ## Custody and recovery
 

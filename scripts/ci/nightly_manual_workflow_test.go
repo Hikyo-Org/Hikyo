@@ -53,11 +53,13 @@ func TestMainValidationWorkflowPolicyNightlyManual(t *testing.T) {
 		t.Fatal("publication must accept ordinary manual requests and deliberate chain restarts")
 	}
 	predecessorGuards := 0
-	for _, step := range nightly.Jobs["publish"].Steps {
-		if guard, ok := step.Env["ALLOW_MISSING_PREDECESSOR"]; ok {
-			predecessorGuards++
-			if guard != "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}" {
-				t.Fatal("only the explicit chain-restart event may waive the predecessor requirement")
+	for _, name := range []string{"build-artifacts", "publish"} {
+		for _, step := range nightly.Jobs[name].Steps {
+			if guard, ok := step.Env["ALLOW_MISSING_PREDECESSOR"]; ok {
+				predecessorGuards++
+				if guard != "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}" {
+					t.Fatal("only the explicit chain-restart event may waive the predecessor requirement")
+				}
 			}
 		}
 	}

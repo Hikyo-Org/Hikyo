@@ -142,11 +142,11 @@ func TestReleaseTagsRequireFullValidationAndNativePostgres(t *testing.T) {
 	if release.Jobs["validation"].Uses != "./.github/workflows/ci.yml" || release.Jobs["validation"].With["revision"] != "${{ github.sha }}" {
 		t.Fatal("release source is not exact full CI")
 	}
-	needs, err := workflowNeeds(w.Jobs["build-signed-draft"].Needs)
+	needs, err := workflowNeeds(w.Jobs["build-artifacts"].Needs)
 	if err != nil || !contains(needs, "validation") {
 		t.Fatal("signing may run before full validation")
 	}
-	for _, s := range w.Jobs["build-signed-draft"].Steps {
+	for _, s := range w.Jobs["build-artifacts"].Steps {
 		if s.Name == "Test release source" {
 			if s.Env["RELEASE_SCHEMA_CONTAINER"] != "hikyo-ci-postgres" {
 				t.Fatal("release uses undeclared PostgreSQL service")

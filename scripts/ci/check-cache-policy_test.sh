@@ -38,8 +38,8 @@ for candidate in "$workflows_dir"/*.yml "$workflows_dir"/*.yaml; do
 done
 [ "$#" -gt 0 ] || fail 'no GitHub workflow files found'
 
-# Ordinary CI uses the free GitHub-hosted pool. Explicit measurement lanes
-# below have closed runner policies, so third-party labels cannot slip in.
+# Ordinary CI uses the free GitHub-hosted pool. Explicit measurement and Apple
+# signing lanes have closed runner policies, so other labels cannot slip in.
 for file in "$@"; do
 	if grep -iE 'blacksmith|buildjet|self-hosted' "$file" >/dev/null; then
 		fail "non-GitHub runner reference in $(basename "$file")"
@@ -83,6 +83,46 @@ for file in "$@"; do
 			;;
 	esac
 	runner_source=$file
+	case $(basename "$file") in
+		nightly.yml | release.yml)
+			# Only the credential-isolated Apple signing job requires macOS.
+			# Every other job in either release workflow remains Ubuntu-only.
+			[ "$(grep -c '^  apple-sign:$' "$file")" = 1 ] ||
+				fail 'release workflows must declare exactly one apple-sign job'
+			apple=$(workflow_job_block "$file" apple-sign)
+			printf '%s\n' "$apple" | grep -Fx '    runs-on: macos-15' >/dev/null ||
+				fail 'Apple signing must use the approved macos-15 runner'
+			[ "$(printf '%s\n' "$apple" | grep -c 'runs-on:')" = 1 ] ||
+				fail 'Apple signing must declare exactly one runner'
+			printf '%s\n' "$apple" | grep -Fx '    environment: apple-signing' >/dev/null ||
+				fail 'Apple signing must bind its protected credential environment'
+			[ "$(printf '%s\n' "$apple" | grep -c 'environment:')" = 1 ] ||
+				fail 'Apple signing must declare exactly one environment'
+			if printf '%s\n' "$apple" | grep -E 'actions/cache(@|/)' >/dev/null; then
+				fail 'Apple signing must not use shared caches'
+			fi
+			printf '%s\n' "$apple" | awk '
+				function validate() {
+					if (index(step, "actions/setup-go@") > 0 && !go_cache_disabled) bad = 1
+					if (index(step, "actions/setup-node@") > 0 && !node_cache_disabled) bad = 1
+				}
+				/^      - / { validate(); step = ""; go_cache_disabled = 0; node_cache_disabled = 0; with = 0 }
+				/^        [^ ]/ { with = 0 }
+				/^        with:$/ { with = 1 }
+				with && /^          cache: false$/ { go_cache_disabled = 1 }
+				with && /^          package-manager-cache: false$/ { node_cache_disabled = 1 }
+				/^[[:space:]]+(cache|package-manager-cache):/ && $2 != "false" { bad = 1 }
+				{ step = step $0 "\n" }
+				END { validate(); if (bad) exit 1 }
+			' || fail 'Apple signing must disable setup action caches'
+			runner_source=$(mktemp)
+			awk '
+				$0 == "  apple-sign:" { skip = 1; next }
+				skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+				!skip { print }
+			' "$file" >"$runner_source"
+			;;
+	esac
 	if [ "$(basename "$file")" = release-acceptance.yml ]; then
 		# Routing uses an ordinary runner; measured acceptance stays native ARM.
 		route=$(workflow_job_block "$file" route)

@@ -920,3 +920,19 @@ at most two workers. Incoming dependency and handoff files match canonical
 main byte-for-byte. The Go application, migrations and trusted AWS sources
 remain unchanged from the preceding candidate. These checks do not replace
 full hosted validation of the new head/base pair.
+
+## October 21 Apple-signing main integration
+
+Full candidate run `39575036694` completed successfully at
+`8705128d6dedb0c885e49cd3e510599a29062b24`, against the recorded main base
+`da6c622749cb6ef8cf9a984e9f4e4d9e4f4473f7`. Canonical main subsequently
+advanced to `352c3d380841013afa03a02b63246d8892ebc78f` with PR #1018's
+Apple-signing, release/nightly custody and associated documentation/tests.
+
+That main integration merged without conflicts or custom resolution edits.
+All 38 incoming paths match canonical main byte-for-byte. The AWS provider,
+migrations, trusted acceptance workflow and runner sources are unchanged by
+this integration. Focused source-equality and whitespace checks passed; the
+already delegated broad suite was not repeated locally. The new commit pair
+requires fresh hosted validation. PR #969 remains draft and outside the merge
+queue; no feature merge, AWS fixture or deployment approval is implied.
