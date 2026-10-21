@@ -68,8 +68,8 @@ func (m realAWSManifest) validate(now time.Time) error {
 	if !realAWSAccount.MatchString(m.Account) || m.Account == "000000000000" || !realAWSRegion.MatchString(m.Region) || strings.HasPrefix(m.Region, "cn-") || strings.HasPrefix(m.Region, "us-gov-") {
 		return errors.New("real AWS fixture requires an explicit commercial AWS account and region")
 	}
-	if m.AuthorizationID == "" || len(m.AuthorizationID) > 128 || m.BudgetUSD <= 0 || m.BudgetUSD > 1 {
-		return errors.New("real AWS fixture requires a scope approval reference and a positive budget at most one USD")
+	if m.AuthorizationID == "" || len(m.AuthorizationID) > 128 || !(m.BudgetUSD > 0 && m.BudgetUSD <= realAWSMaxBudgetUSD) {
+		return errors.New("real AWS fixture requires a scope approval reference and a positive finite budget at most ten USD")
 	}
 	if !realAWSPrefix.MatchString(m.Prefix) || !m.ExpiresAt.After(now) || m.ExpiresAt.After(now.Add(2*time.Hour)) {
 		return errors.New("real AWS fixture requires a unique run prefix and authorization expiring within two hours")
@@ -153,6 +153,10 @@ func decodeAWSManifest(raw []byte) (realAWSManifest, error) {
 }
 
 const realAWSMaxCreations = 32
+
+// The owner-approved absolute ceiling does not replace the separately reviewed
+// combined gross admission or a stricter per-fixture budget.
+const realAWSMaxBudgetUSD = 10
 
 type realAWSSandbox struct {
 	t               *testing.T

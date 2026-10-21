@@ -1,17 +1,22 @@
 # AWS sandbox account and fixture provisioning plan
 
-Provisioning and execution contract for #158. On October 18 the operator
-verified the dedicated Free account and root MFA, selected `eu-central-1`, and
-approved the bounded fixture proposal: one KMS key, eight fixture roles, at most
-one OIDC provider, a protected execution environment and non-root setup
-identity as needed, 32 cumulative secret-create attempts, USD 1 gross usage,
-exact synthetic cleanup and a seven-day KMS deletion window. Paid upgrades
-and unrelated resources remain excluded. Concrete account and billing metadata
-belong in private run inputs and evidence.
+Provisioning and execution contract for #158. The dedicated account and MFA
+were verified and `eu-central-1` selected. The latest approved proposal permits
+one additional manual fixture: one new KMS key, the same eight roles, one
+temporary boundary, at most one OIDC provider, and at most 32 new synthetic
+creations, reaching 144 conservative lifetime reservations. Retain the existing
+setup identity/MFA and protected environment, preserve all three old key-deletion
+schedules, and perform exact cleanup with seven-day new-key deletion. The gross
+target is below USD 5 where possible, absolute maximum USD 10 before credits;
+fresh preparation admits a conservative combined estimate at most USD 3.
+No paid upgrade, unrelated resources, recurring run or automatic retry is
+authorized. Concrete account and billing metadata belong in private run inputs
+and evidence. The [current handoff](../handoff/158-aws-secrets-manager.md#current-status-2026-10-21)
+supersedes the older dated setup records.
 
 Provisioning and execution follow successful local checks and source review.
-No resource ARN, credential delivery or successful fixture execution is asserted
-here. The runtime contract and policy templates are in
+This plan does not assert that a fresh fixture is active or successful.
+The runtime contract and policy templates are in
 [aws-sandbox.md](aws-sandbox.md).
 
 ## Account requirements
@@ -72,33 +77,35 @@ and [IAM temporary-credential guidance](https://docs.aws.amazon.com/IAM/latest/U
 
 ## Approved resource bill of materials
 
-The October 18 authorization covers these bounds, including the non-root setup
-identity and protected execution route. The two setup managed policies below
-implement that authorized identity safely; they do not add fixture roles, keys
-or workloads. Review the exact substituted change set before use.
+The latest approved single-run proposal covers these bounds and retains the
+non-root setup identity and protected execution route. The existing setup policy
+and new temporary boundary implement that approved route; their exact versions
+and lifecycle are specified below. Review the substituted change set before use.
 
 | Resource | Approved bound and name | Purpose / end state |
 |---|---|---|
-| Customer KMS key and alias | One symmetric encrypt/decrypt, single-region key; alias `alias/hikyo-158-sandbox` | Owner MFA console creates the key and alias with the sole account-root IAM-delegation key-policy statement. No extra key administrators/users, rotation, replica or custom key store. After exact synthetic cleanup, remove the alias and schedule the approved seven-day deletion. |
+| Customer KMS key | One new symmetric encrypt/decrypt, single-region key; no alias | Owner MFA console creates the key with the sole account-root IAM-delegation key-policy statement. No extra administrators/users, aliases, rotation, replica or custom key store. After exact cleanup, schedule seven-day deletion and preserve all three old schedules. |
 | Fixture IAM roles | Eight: `hikyo-158-static`, `hikyo-158-ambient`, `hikyo-158-assume`, `hikyo-158-web`, `hikyo-158-kms-denied`, `hikyo-158-source`, `hikyo-158-oracle`, `hikyo-158-cleanup` | Five writers, separate AssumeRole source, separate synthetic reader and separate cleanup. No broad shared test admin. Remove fixture-specific policies/trusts after evidence/cleanup. |
 | OIDC provider | At most one `token.actions.githubusercontent.com` provider | Seven fixture roles trust the exact approved immutable GitHub repository/environment subject and `sts.amazonaws.com` audience. The eighth, `hikyo-158-assume`, trusts only the source role and exact external ID. No wildcard subject or human setup-user trust. |
-| Setup identity | One `hikyo-158-setup` IAM user, console login and its own MFA device | No access keys, groups or additional policies. Official same-device CLI sign-in supplies temporary setup credentials privately. Retire the login, MFA and user after cleanup. |
-| Setup managed policies | One setup-user policy and one immutable fixture-role permissions boundary | Owner creates both before enabling setup. Attach the setup policy only to the setup user; require the exact boundary on all eight fixture roles. Setup cannot version, replace, detach or delete either policy. Remove the unused policies only after their principals are retired. |
+| Setup identity | Retained `hikyo-158-setup` IAM user, console login and sole named MFA device | No access keys, groups or additional policies. Official same-device CLI sign-in supplies temporary setup credentials privately. Preserve this identity and MFA until #158 is complete and satisfied, as requested. |
+| Setup managed policies | Existing setup-user policy and one new immutable fixture-role permissions boundary | Delete only obsolete nondefault setup v1, activate bounded v6, then restore existing self-service v5 after retirement, preserving v2-v6. Require the exact new boundary on all eight roles. Setup cannot administer either policy. Remove only the unused temporary boundary after role cleanup. |
 | Secret namespace | One random `hikyo-e2e-<run-id>/` prefix | 31 nominal creation attempts before replacement retries; 32 total attempts per approved run, including failures and retries. The compiled suite shares a cumulative reservation counter and single-use marker; controlled guard tests passed, while real AWS proof remains pending. |
 | Compute/network/storage | Zero AWS compute, VPC endpoints, NAT gateways, clusters, buckets or deployments | Run Hikyo and both databases on the allocated existing local/runner resources. |
-| Billing observation | Free-plan balance/expiry and existing billing views | Approved USD 1 gross-usage ceiling, including credit-funded usage; monitor separately. No claim of an instantaneous billing hard cap. |
+| Billing observation | Existing plan, credits/expiry and gross billing views | Combined target below USD 5 where possible, absolute USD 10 before credits; fresh admission estimate at most USD 3. Monitor separately. No claim of an instantaneous billing hard cap. |
 
 The suite uses one entry point and a shared 32-attempt creation
 counter, including failed calls, retries, replacements, and cleanup seeding.
 A persistent single-use namespace marker prevents a fresh process in the same
 protected fixture directory from resetting that budget. This is not a
 cross-directory or AWS-enforced cap. Independently verify the local guards and
-reconcile the inventory before real execution. Account signup alone grants no fixture authority; use the separately approved
-October 18 bounds.
+reconcile the inventory before real execution. Account signup alone grants no fixture authority; use the latest separately
+approved single-run bounds recorded in the current handoff.
 
-Tag supported resources with `Project=Hikyo`, `Purpose=AdapterAcceptance`,
-`Issue=158`, `Environment=Nonprod` and the approved run/reference. Names and tags
-are metadata only. Keep all synthetic payloads and actor credentials out of them.
+Create the new key and temporary boundary with no tags. Tag each new role and
+the run-created OIDC provider with exactly `HikyoIssue=158` and
+`Authorization=<bound authorizationId>` from the reviewed run. Do not add
+generic tags or alter existing resources. Names and tags are metadata only;
+keep all synthetic payloads and actor credentials out of them.
 
 ## Ordered provisioning and retirement
 
@@ -107,21 +114,23 @@ are metadata only. Keep all synthetic payloads and actor credentials out of them
    cleanup windows, cost and protected execution route to the approved bounds.
    Stop on an account mismatch, unexpected existing resource or expanded scope.
 2. The owner uses the authenticated MFA console to create exactly one
-   `SYMMETRIC_DEFAULT`, `ENCRYPT_DECRYPT`, `AWS_KMS`, single-region key and the
-   approved alias. Keep only the default account-root IAM-delegation statement;
+   `SYMMETRIC_DEFAULT`, `ENCRYPT_DECRYPT`, `AWS_KMS`, single-region key with no
+   alias. Keep only the default account-root IAM-delegation statement;
    add no key administrators, users or grants. Preserve lockout safety checks.
    Record the key ARN and compare the returned policy to the reviewed default.
    No root credentials or access keys enter local tools or the fixture.
 3. Resolve that exact key ARN, account, region, external ID, immutable OIDC
    subject and absolute UTC expiries in the reviewed setup and boundary
    policies. Check final hashes, no unresolved placeholders and managed-policy
-   size limits. Owner installs the immutable boundary and setup managed policy,
-   then creates the setup user with only its exact policy and console password.
+   size limits. Verify the retained setup identity, MFA, existing PolicyId and
+   full v1-v5 history with default v5. Owner deletes only obsolete nondefault
+   v1, activates exact bounded v6, and creates the fresh immutable boundary.
+   Preserve the retained user, MFA, existing v2-v5 documents and old key schedules.
    Do not give the non-root setup user `CreateKey`, `PutKeyPolicy`, alias writes,
    role assumption or policy/boundary administration.
-4. Enroll setup MFA through the exact self-enrollment permissions or the owner
-   console, keeping password and MFA material private. Sign in freshly with MFA
-   and use the official same-device `aws login` flow. Verify the resolved user,
+4. Reuse the existing MFA-backed setup access. If it expires, sign in privately
+   and use the official same-device `aws login` flow without recreating the
+   identity or MFA. Keep passwords and codes private. Verify the resolved user,
    account and an MFA-gated read-only IAM inventory request before any mutation.
    Missing MFA context must fail closed; do not relax the condition or create
    access keys to bypass a failed probe.
@@ -138,10 +147,12 @@ are metadata only. Keep all synthetic payloads and actor credentials out of them
    descriptor. Inspect all eight effective identities and scopes before release
    of the real-write hold; local checks and final review must already pass.
 7. Verify exact-ARN synthetic cleanup and reconcile ambiguous creates, then
-   revoke fixture trusts and retire roles, dedicated CI access and any provider
-   created by this run. Schedule deletion of the exact key for seven days under
-   the approved cleanup authority. Owner removes the alias, setup login/MFA/user
-   and unused managed policies; never remove a boundary still attached to a role.
+   retire the exact fixture role policies/roles and any provider created by this
+   run. Schedule deletion of the exact new key for seven days under approved
+   cleanup authority. Owner removes only the unused new boundary and restores
+   existing self-service v5, preserving setup v2-v6. Retain the setup login/MFA/user,
+   account and protected environment. Remove only the consumed execution settings;
+   never remove a boundary still attached to a role or cancel an old key schedule.
    Record pending KMS deletion and its date, not immediate key removal.
 
 The runtime JSON templates do not grant setup authority. Owner-console bootstrap
@@ -221,13 +232,13 @@ formal-review obligations remain unchanged; #79 does not duplicate AWS tests.
 |---|---|
 | Signup/account | The operator verified the existing dedicated sandbox account. Recover that account; do not sign up again. Keep its concrete account ID in private run inputs. |
 | Root MFA/session | Owner reports signup and MFA complete on October 18; parent read-only browser verification confirmed root MFA enabled and no active root access keys. No root access keys are requested. |
-| Account plan | The operator verified a Free plan. Current credits, expiry and restrictions belong in private setup evidence; that observation alone is not resource or spend authorization; the separate October 18 proposal supplies the bounded authority. |
+| Account plan | A Free plan was verified in the recorded snapshot. Current plan, credits, expiry and restrictions require fresh private evidence. The latest one-run proposal supplies bounded resource/spend authority; account credit does not expand it. |
 | Region | Owner explicitly selected eu-central-1 for all AWS connections on October 18. Resource/spend/deletion authority remains separate. |
-| Setup authority | A scoped non-root setup identity is still absent. Keep the concrete IAM inventory in private setup evidence. Do not put administrator or root credentials into any test descriptor. |
-| Fixture scope | One KMS key, eight isolated principals, at most one OIDC provider, zero AWS compute/network/storage; 31 nominal secret creations with the unchanged 32-attempt ceiling. Approved on October 18; execution still requires the local-check and review gates. |
-| Credential custody | The separately reviewed trusted runner provides private OIDC projection and temporary sessions. Protected environment/issuer setup and actual execution remain pending. There is no local fixture-injection fallback; browser signup does not populate test credentials. |
-| Destructive cases | The October 18 scope includes exact-ARN synthetic replacement and final force deletion, retained and scheduled-delete canaries, failed/ambiguous create reconciliation and the bounded cleanup window. No prefix-wide sweep. |
-| Runtime | Provider checks passed 57 top-level tests; focused backend checks passed 37 top-level tests with PostgreSQL 18 and TLS Moto. Canonical witness migration 78 bindings and compatibility metadata were regenerated against October 19 integrated main, preserving its migration 77 indexes. See the issue handoff for current broader checks; local evidence does not establish real AWS acceptance. |
+| Setup authority | The existing non-root setup identity and sole named MFA are retained. Official CLI identity/MFA were independently verified on October 21; obtain fresh identity, full policy and MFA-context proof before activation. Do not put administrator or root credentials into any test descriptor. |
+| Fixture scope | One additional manual run, one new key, eight roles, one temporary boundary, at most one provider and no unrelated compute/network/storage resources. At most 32 new creations, retaining all 112 prior reservations and reaching 144 lifetime. Fresh effective-policy, inventory, cost, CI and review gates remain. |
+| Credential custody | The separately reviewed trusted runner supplies private OIDC projection and temporary sessions. The protected environment is retained; new issuer/role provisioning, private projection and execution remain pending. There is no local fixture-injection fallback; browser sign-in does not populate test credentials. |
+| Destructive cases | The latest approved single-run scope includes exact-ARN synthetic replacement and final force deletion, retained and scheduled-delete canaries, failed/ambiguous create reconciliation and the bounded cleanup window. No prefix-wide sweep. |
+| Runtime | The October 21 integration uses witness migration 80, preserving main's 77 authorization indexes, 78 capacity and 79 pairing. Canonical bindings and fresh SQLite/PostgreSQL compatibility claims pass, with recorded provider, store, offline fixture and authenticated lifecycle checks. Earlier 57/37-test runs remain historical evidence. See current handoff for exact candidate/counts; successful real AWS acceptance remains unproven. |
 
 Setup remains assigned to the parent operator, not the #158 feature test owner. Parent and #79 consume the recorded reservation and conditional
 release status; neither the migration rename nor source review promotes the
@@ -239,19 +250,19 @@ The earlier proposal permitting non-root KMS creation/policy editing, human
 fixture-role assumption and optional permissions boundaries is superseded and
 must not be executed. It was rejected during setup-policy review. The operative
 route is the owner-created key/default policy, immutable fixture boundary and
-constrained setup managed policy described above. The October 18 authorization
-for non-root setup covers these controls; no insecure manual fallback remains.
+constrained setup managed policy described above. The latest approved
+single-run proposal covers the exact sequence; no insecure manual fallback remains.
 
 | Principal and phase | Exact authority | Required constraint |
 |---|---|---|
-| Owner MFA console bootstrap | Create one key/alias, two managed policies and one setup user/login | Review the default key policy, final policy JSON and exact resource inventory before creation; no root programmatic credentials. |
+| Owner MFA console bootstrap | One new key without alias and one new boundary; exact retained-setup v1 deletion/v6 activation/v5 restoration | Verify the retained user/MFA and PolicyId, full preserved version history, default key policy and exact new inventory. Do not recreate the setup identity or use root programmatic credentials. |
 | Setup self-service | Own password change, own virtual MFA creation/enrollment/resync and MFA inventory; official same-device sign-in | Exact setup user/device ARNs where supported, absolute setup expiry; these grants do not authorize fixture mutations without MFA. |
 | Setup inventory | Read the eight exact roles and their inline/attached policy metadata; list roles/providers; inspect exact key | Fresh MFA and successful MFA-gated read-only probe; inspect effective grants and boundaries, not only inline policies. |
 | Setup role creation/configuration | Create and configure only the eight exact fixture roles | CreateRole requires the owner-installed exact boundary ARN. No PassRole, managed-policy attachment, user/key creation or boundary/policy-version modification. |
 | Setup issuer | Create/read/tag the exact GitHub OIDC provider; delete only if owned by this run | Exact approved audience and immutable subject in all seven workload trusts; independently compare returned trust documents because the boundary cannot constrain their JSON text. |
 | Setup KMS | DescribeKey, GetKeyPolicy, GetKeyRotationStatus; ScheduleKeyDeletion | Exact owner-created key in eu-central-1, MFA, setup expiry, deletion window exactly seven days. No CreateKey, PutKeyPolicy, aliases, grants or cryptographic use. |
 | Runtime session issuance | Seven OIDC roles; source assumes only the eighth writer role | Exact provider/audience/immutable subject and expiry; source-to-writer external ID. Setup is explicitly denied role assumption. |
-| Retirement | Delete the exact fixture role policies/roles and run-created issuer; owner retires setup identity and unused policies/alias | Only after reconciled synthetic cleanup, within approved expiry; do not delete pre-existing resources or detach the boundary from a live role. |
+| Retirement | Delete exact fixture role policies/roles and run-created issuer; seven-day new-key deletion; owner deletes unused new boundary and restores existing v5 | Retain setup identity/MFA/account and protected environment. Only after reconciled exact cleanup within approved expiry; do not delete pre-existing resources or detach a live role's boundary. |
 
 The boundary permits only the approved namespace, exact KMS key and
 source-to-writer role transition. Per-role policies narrow that ceiling; only
@@ -263,15 +274,17 @@ and [default key policy](https://docs.aws.amazon.com/kms/latest/developerguide/k
 
 Resolve and validate every final JSON artifact before activation. Setup expiry
 is at most four hours from activation; runtime mutation lasts at most two hours,
-with cleanup at most two hours beyond that mutation deadline. Check all eight
-role names are absent or already match the approved ownership, boundary, policy
-and trust; inspect the key policy and alias separately. Record final hashes and
+with cleanup at most two hours beyond that mutation deadline. Require all eight
+role names and the provider to be absent before initial provisioning. After
+creation, verify only the actual new immutable IDs against this run's custody,
+boundary, policy and trust; never adopt a matching pre-existing object. Inspect
+the key policy and verify no aliases separately. Record final hashes and
 returned nonsecret metadata. The repository's runtime templates are insufficient
 to reconstruct missing private setup grants: if the reviewed concrete setup
 artifacts are unavailable, stop and recover them instead of inventing grants.
 
-The reviewed setup policy supports own-user MFA enrollment, but actual enrollment
-and the resulting CLI MFA context remain execution checks. A successful
+Verify the existing sole MFA device and fresh MFA-backed setup CLI context;
+do not reenroll, reset or recreate the retained device or user. A successful
 GetCallerIdentity alone does not prove `aws:MultiFactorAuthPresent`. The mutation
 and inventory guard uses `Bool true`; do not replace it with an absent-key
 allowance. Diagnose a failed probe before provisioning. No setup or fixture

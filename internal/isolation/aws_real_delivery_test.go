@@ -118,7 +118,8 @@ func TestAWSRealLabeledVersionDelivery(t *testing.T) {
 	if err := writer.PutSecretValue(t.Context(), before.ARN, current, "synthetic delivery"); err != nil {
 		t.Fatal(err)
 	}
-	if remote.Versions(name) != 3 || !realAWSAddedVersion(before, replayed, "offline-target", sandbox.recordedPutTokens(before.ARN)) {
+	retried, err := client.DescribeSecret(t.Context(), before.ARN)
+	if err != nil || remote.Versions(name) != 3 || !realAWSAddedVersion(before, retried, "offline-target", sandbox.recordedPutTokens(before.ARN)) {
 		t.Fatal("retrying the same token created or falsely reported another version")
 	}
 }

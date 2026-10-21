@@ -29,7 +29,7 @@ func TestCreateSecretIdentityPreservesLegacyContract(t *testing.T) {
 			t.Error("metadata create added a value")
 		}
 		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 	roots := x509.NewCertPool()

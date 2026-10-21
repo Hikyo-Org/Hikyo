@@ -109,6 +109,13 @@ type Cache struct {
 
 // caches is the closed cache registry.
 var caches = map[string]Cache{
+	"awssm.credential-refresh-test": {
+		// Only this test declaration owns the synthetic SDK cache. Each
+		// subtest constructs a separate client and cache; none is shared
+		// across tenants or used to memoize an authorization decision.
+		KeyConstructor: "internal/adapter/awssm.TestClientRefreshesExpiredCachedCredentials: fresh aws.NewCredentialsCache per client/subtest, containing only expiringTestCredentials synthetic inputs",
+		ProofGatedAt:   "test-only synthetic credentials and stub HTTP transport; no tenant material or proof-free production access; production requests retain their module-lease and journal authority gates",
+	},
 	"store.audit-actor-kind": {
 		// Principals are instance-owned. The exact actor id is compared inside
 		// one transaction-owned slot, with no tenant chain or concatenation.

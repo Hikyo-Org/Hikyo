@@ -619,7 +619,8 @@ with the same (empty) prefix in one account are allowed.
   One real entry point shares a cumulative 32-creation-attempt guard across
   both engines, auth modes and cleanup seeding. A persistent local single-use
   marker refuses same-namespace reruns in the protected fixture directory.
-  These drafts have not been compiled or executed. See the full
+  Local guard and offline fixture tests compile and pass, as recorded in the
+  October 21 section; successful real AWS execution remains outstanding. See the full
   [sandbox acceptance procedure](../testing/aws-sandbox.md), exact policy
   templates, secure-input prerequisites, and explicitly uncovered real cases.
 
@@ -787,15 +788,16 @@ was independently resolved as recorded above. No source review or local provider
 
 ## Post-R5 authenticated surface and fixture source
 
-R5 SOURCE_SOUND remains bound to its original50-file inventory. The later
-provider57 run includes controlled same-client cache refresh/refusal, with zero
+R5 SOURCE_SOUND remains bound to its original 50-file inventory. The later
+57-test provider run includes controlled same-client cache refresh/refusal, with zero
 failures/skips; it does not execute later application/isolation/browser drafts.
 See `docs/testing/aws-acceptance-matrix.md` for the new authenticated API/CLI
 matrix, actual AWS-module development peer and browser adoption, durable real
 credential expiry/revocation cases, complete dev-only boot/switch boundary and
 secure file-input versus unavailable private-delivery distinction. These additions
 require a new full source review and allocated formatting/compilation/execution.
-The original32 create-attempt cap is unchanged. No cloud writes are authorized.
+The original 32 create-attempt cap is unchanged. At that source checkpoint,
+cloud writes were not authorized; the current status records the later approval.
 
 
 ## October 20 current-main integration
@@ -858,3 +860,38 @@ The already approved single bounded AWS run remains unused; integration does
 not launch a fixture or satisfy the separate human deployment gate. Real AWS
 acceptance, exact cleanup, final feature review and human merge approval remain
 outstanding. The setup identity and MFA remain retained as instructed.
+
+## October 21 review repairs and full-CI cache inventory
+
+The full candidate run `39563506604` at
+`e2363eeee2e6058889e8c4ed45bc497a4bddbcfe` failed its isolation shard in
+`TestInvariant12CacheDiscipline`: the new controlled credential-refresh test
+was missing from the closed cache registry. Its registry entry now names the
+fresh SDK cache constructor, synthetic per-client/subtest scope and authority
+boundary. Only that exact declaration is registered; the detector and package
+coverage remain unchanged. The focused invariant regression passes locally.
+All required hosted gates must run again for the resulting commit.
+
+The reviewed increment also fixes unchecked test Write/Close results and reads
+fresh metadata after the same-token delivery retry. Fixture manifests accept
+only positive finite supported budgets through USD 10; this follows the latest
+owner ceiling and does not replace actual scope approval, the stricter trusted
+runner's per-fixture budget, or the fresh conservative combined admission of
+at most USD 3. Boundary tests reject nonfinite, malformed, zero, negative and
+over-ceiling budgets. The production raw HTTP creation token remains present:
+the cited tokenless development helper seeds its private in-memory map directly,
+while the production module supplies its stable journal token.
+
+The documentation now distinguishes historical source holds from recorded
+local validation, uses migration 80, and records the retained setup identity,
+MFA and protected environment. Current operator instructions require absent
+fixture names before creation, new immutable-ID custody, the exact reviewed
+tags, and the latest single-run resource, cleanup and spending limits.
+
+The finite local review-fix batch passed with Go 1.27.3: provider 166 records,
+all offline fixture helpers 132, and development AWS peer 31, with no failures
+or skips. Scoped vet and whitespace checks also pass. These include subtests
+and controlled provider seams; they are not real AWS cases. The new fixture
+remains unprepared and the approved single run unused. Successful real AWS
+acceptance, exact cleanup, fresh hosted validation and final human merge
+approval remain outstanding.

@@ -199,7 +199,7 @@ func (p *firstCurrentVisibilityTransport) RoundTrip(req *http.Request) (*http.Re
 	}
 	p.hiddenReads--
 	raw, err := io.ReadAll(response.Body)
-	response.Body.Close()
+	_ = response.Body.Close()
 	if err != nil {
 		return nil, err
 	}

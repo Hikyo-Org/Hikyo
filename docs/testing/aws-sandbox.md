@@ -1,17 +1,23 @@
 # AWS adapter sandbox acceptance
 
-Status: local acceptance is executing; real AWS execution and effective IAM
-validation remain outstanding. See the [current handoff](../handoff/158-aws-secrets-manager.md#current-continuation-2026-10-19)
+Status: recorded local checks passed; successful real AWS acceptance and current
+effective IAM validation remain outstanding. See the [current handoff](../handoff/158-aws-secrets-manager.md#current-status-2026-10-21)
 for exact results. The owner-approved B review route covers both AWS amendments;
-historical formal SKIP remains. Final integrated review, non-root setup and
-protected credential delivery precede real execution. Do not use an existing
+historical formal SKIP remains. Current-head CI, fresh verification of retained
+non-root setup and protected credential delivery precede real execution. Do not use an existing
 production identity or an unrelated S3-compatible profile.
 
 ## Approved scope and concrete fixture binding
 
-On October 18 the operator verified root MFA and the dedicated Free account,
-selected `eu-central-1`, and approved the bounded resource, USD 1 gross usage
-and exact cleanup proposal. Parent owns non-root setup and protected execution.
+The operator verified the dedicated account and MFA and selected `eu-central-1`.
+The latest approved scope is one additional manual fixture: at most 32 new
+creations and 144 conservative lifetime reservations, one new KMS key, the same
+eight roles, one temporary boundary and at most one OIDC provider. Retain the
+setup identity/MFA and protected environment, preserve all three older KMS
+deletion schedules, and perform exact cleanup with seven-day new-key deletion.
+The gross target is below USD 5 where possible, absolute maximum USD 10 before
+credits. No recurring run, automatic retry or paid upgrade is authorized.
+Parent owns non-root setup and protected execution.
 See the [account and provisioning plan](aws-sandbox-provisioning.md) for the
 resource bounds. Account details remain in private run inputs.
 
@@ -22,12 +28,17 @@ the account owner's authorized sandbox; STS identity alone proves neither
 ownership nor authorization. No test provisions an account, role, OIDC provider,
 KMS key, network, deployment, or policy.
 
-Approve a run window of at most two hours, a positive budget at most USD 1, and
+Approve a run window of at most two hours, a positive finite budget no greater
+than the owner's approved amount or the absolute USD 10 ceiling, and
 force deletion of this run's synthetic secrets, including intentionally retained
 and scheduled-for-deletion secrets. The budget field records approval; it is
 not an AWS billing cap. Obtain a current cost estimate and a monitoring/stop
-plan before authorizing the run. The October 18 approval supplies that bounded authority; this document alone
-cannot expand it.
+plan before authorizing the run. The current preparation admits a conservative
+combined estimate at most USD 3; the USD 5 target and USD 10 maximum apply across
+all approved runs before credits. The trusted runner's current manifest records
+a stricter USD 1 amount for its individual fixture; that does not increase the
+combined allowance. The example manifest is illustrative, and no budget field
+or document supplies approval or an instantaneous billing cap.
 One suite entry point shares one cumulative ceiling of 32 CreateSecret
 reservations across both engines, every auth mode, and cleanup seeding. Reserve
 before sending and emit the nonsecret count/name reservation metadata; failed
@@ -172,9 +183,10 @@ HIKYO_TEST_AWS_REAL_REQUIRED=1 HIKYO_TEST_AWS_REAL_MUTATIONS=approved \
 ```
 
 `AWS_SANDBOX_MANIFEST` is a nonsecret path supplied by the secure delivery step.
-This real-suite command has not run. A separate offline provider-package run
-passed 56 top-level tests at its pinned input set; it does not compile or execute
-this isolation suite or its new source additions.
+The real-suite invocation has not succeeded on the current candidate. Local
+guard, offline fixture and authenticated lifecycle tests compile and pass, as
+recorded in the current handoff. Earlier provider-only runs remain historical
+evidence at their pinned inputs and are not real-provider acceptance.
 Do not use `-v` or publish raw test logs without checking them for sensitive
 material. A missing manifest skips locally, but fails with the required switch;
 a present manifest without the explicit mutation switch fails before AWS use.
@@ -231,7 +243,7 @@ and provider-side inventory for independent reconciliation.
    Do not manufacture throttling by flooding AWS; use controlled local failure
    injection for deterministic retry and label it separately from live service
    behavior.
-3. Execute the real suite within the October 18 approved sandbox/spend bounds,
+3. Execute the real suite within the latest approved single-run sandbox/spend bounds,
    after final local checks/review and protected input availability. Preserve sanitized exact-head metadata: run ID,
    scope reference, account/region, principal matches, engine/mode/test outcome,
    recorded ARNs, unknown outcomes, replay version counts, cleanup results and
@@ -276,9 +288,12 @@ or failures; the current handoff supersedes the historical execution limits.
 The owner authorized migration 77 for the exact AWS witness column on October
 18, superseding the previous 80 reservation and prerequisite sequence. After
 main occupied 77, the owner approved moving only the witness to 78 on October
-19. Both SQL files are byte-identical to the reviewed candidate; canonical SQL
-generation and fresh compatibility catalog checks have run against integrated
-main. Database validation is tracked in the issue handoff. No unsigned
+19. Main subsequently occupied 78 and 79. The October 21 integration therefore
+moves the unmerged witness to 80, preserving main's authorization indexes (77),
+project capacity (78) and remote pairing (79). Both AWS SQL files are
+byte-identical to the reviewed candidate; canonical SQL generation and fresh
+SQLite/PostgreSQL compatibility catalog checks passed against integrated main.
+Database validation is tracked in the issue handoff. No unsigned
 prerequisite migrations were copied from sibling trees.
 
 The browser source in `web/e2e/flows/aws-adapters.flows.ts` is registered from

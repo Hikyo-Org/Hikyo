@@ -9,8 +9,9 @@ framing repair and Go 1.27.3. The unmerged adoption witness moves to migration
 policy, and 79 remote pairing. Its SQL bytes and AWS behavior are unchanged.
 Canonical SQL generation passed; development compatibility claims were
 regenerated from fresh SQLite and PostgreSQL 18.6 catalogs and reproduced
-against a second fresh PostgreSQL database. Current-candidate tests, review,
-and hosted gates remain pending. See the current
+against a second fresh PostgreSQL database. Local validation and independent
+source review passed at `e2363eeee2e6058889e8c4ed45bc497a4bddbcfe`;
+hosted gates and real AWS acceptance remain pending. See the current
 [issue handoff](../handoff/158-aws-secrets-manager.md#october-21-merged-main-integration)
 for recorded validation and remaining gates. The previously frozen candidate
 and its historical results do not establish this new candidate's hosted or
@@ -21,21 +22,22 @@ The historical source matrix below retains its original evidence boundaries.
 ## Historical evidence and subsequent source reconciliation
 
 R5 completed independent Sol-high SOURCE_SOUND plus Astra owner verification on
-its exact50-path inventory `b8c28d1880be2521dc52423eb65889961d131ea753245071f346736e196e756e`.
-A later granted provider run passed3 narrow tests and57 full-package tests with
-zero failures/skips at63 source inputs, manifest
+its exact 50-path inventory `b8c28d1880be2521dc52423eb65889961d131ea753245071f346736e196e756e`.
+A later granted provider run passed 3 narrow tests and 57 full-package tests with
+zero failures/skips at 63 source inputs, manifest
 `1a24f483191de01a122de50481003f2f67021617dbbbf2b4da2be8320f9c6471`.
 That includes the controlled same-client cache refresh/refusal test. Original
-provider56 and both first failures remain historical evidence. No result proves
+provider run with 56 tests and both first failures remain historical evidence. No result proves
 real STS/projected-token refresh, effective IAM or database revocation fences.
 
 The source-completeness pass after R5 identified additional surface/integration
-work. Its new drafts are outside R5's verdict and outside provider57 execution:
+work. Its new drafts are outside R5's verdict and outside the 57-test provider run:
 real authenticated API/CLI adapter ceremonies, missing CLI plan/adopt/revoke
 cases, AWS-specific development-fake metadata needed for successful browser
 adoption, and durable real-provider expired-input/current-credential fences.
 Their final source inventory and independent review must be recorded separately.
-Do not broaden R5 to these edits. All new source compilation/execution is held.
+Do not broaden R5 to these edits. Compilation and execution were held at that
+checkpoint; the later local results are recorded in the current issue handoff.
 
 The existing browser destination editor deliberately locks routing and directs
 moves to the CLI ceremony. This is the current product contract, not a missing
@@ -59,23 +61,23 @@ promoted-replay regression and their R3 source repairs remain part of review.
 
 | Accepted behavior | Current production/source and acceptance draft | Evidence boundary / remaining work |
 |---|---|---|
-| Browser, CLI and API configuration | Existing provider registration, AWS fields, CLI adapters and API handlers; authenticated `aws_authenticated_surface_test.go`, CLI/server seam tests and registered `aws-adapters.flows.ts` | Authenticated integration and rendered browser drafts remain uncompiled/unexecuted. Browser uses the actual AWS module with dev-only simulated auth/API; API/CLI fixture uses controlled AWS HTTP. Both-engine full product runs remain mandatory. |
-| Four auth modes, opt-in, bounded role duration and protected static input | `awssm/auth.go`, client constructor tests; real role/auth-boundary tests; CLI stdin and browser password-state tests | Provider57 covers the controlled local cache/refusal tests; original provider56 remains separate. Real STS expiry/negative/fresh-client recovery sources are new; four authentic expired sidecars and secure projection are missing. |
+| Browser, CLI and API configuration | Existing provider registration, AWS fields, CLI adapters and API handlers; authenticated `aws_authenticated_surface_test.go`, CLI/server seam tests and registered `aws-adapters.flows.ts` | Local authenticated API/CLI lifecycle passed all eight combinations; the handoff records earlier desktop/mobile runs with five AWS flows each. Browser uses the actual AWS module with dev-only simulated auth/API; API/CLI uses controlled AWS HTTP. Current-head hosted browser checks and successful real AWS execution remain outstanding. |
+| Four auth modes, opt-in, bounded role duration and protected static input | `awssm/auth.go`, client constructor tests; real role/auth-boundary tests; CLI stdin and browser password-state tests | The provider run with 57 tests covers the controlled local cache/refusal tests; original provider run with 56 tests remains separate. Real STS expiry/negative/fresh-client recovery sources are new; four authentic expired sidecars and secure projection are missing. |
 | No production secret-value reads | Closed awssm API/operation/source pins; metadata-only module; separate synthetic oracle | Existing provider closure tests passed. Real effective IAM deny/positive reader controls remain unrun. Oracle credentials never enter product writer or process-replay child. |
 | Create/update/staging and per-key outcomes | `awssm/module.go`, real SQL-backed lifecycle, partial-conflict case and sibling convergence | Real suite must verify deterministic JSON, UTF-8/newlines, atomic per-key outcomes and failed target state on both engines. |
-| Concurrency and consent | Conditional AWSCURRENT promotion; canonical complete-ARN/current-version witness persisted by migration80 and both query sources | Provider race/adoption cases passed at earlier input set. Both-engine/real version-before-Adopt, version-after-Adopt and replacement-after-Adopt sources remain uncompiled. |
+| Concurrency and consent | Conditional AWSCURRENT promotion; canonical complete-ARN/current-version witness persisted by migration 80 and both query sources | Local provider and both-engine adoption/store cases compile and pass at the recorded candidate. Real AWS version-before-Adopt, version-after-Adopt and replacement-after-Adopt success remains unproven. |
 | Durable replay and custody | Stable job token, pre-Prepare witness check, exact-job current-marker repair; real promoted-replay and cold-process lifecycle sources | New process fixture exits after accepted PutSecretValue before Finish, then reopens original signed store/root in a second process. Exact job, unfinished intent, unknown closure and one new AWS version must be verified. |
 | Destination move and retain/prune | Existing service route-move protocol; new real activation loader and per-key-to-JSON move; retained two-target adapter teardown | Both engines must prove old-name scrub before generation/destination activation, source delivery at new name, no remote delete on retain, and released custody. Role/adoption/source-unset cases retain prune coverage. |
 | Pause/resume, source deletion/restore and teardown | Existing provider behavior; real lifecycle; browser persisted pause and retain/prune request choice | Real AWS recovery window, restore and exact-ARN asynchronous final cleanup remain unrun. Browser request acceptance is not remote cleanup. |
 | KMS, throttling, expired auth and identity movement | Existing failure classes/retry tests; real KMS-negative actor, STS expiry and configured identity refusal drafts | Provider-local failure classification passed. Controlled throttling is labeled injected, never manufactured by flooding AWS. KMS/IAM effective permissions remain unverified. |
-| Least-privilege and cleanup | Separate five writers/source/oracle/cleanup; expiring exact namespace/KMS templates; expanded setup/retirement plan | Root MFA, account plan, non-root setup identity, region, secure injection, resource/spend/destructive grants and final effective policies are still missing. No cloud execution authorized. |
-| Resource bound | Shared32 cumulative create reservations, persistent single-use marker, child create refusal | Now31 nominal creates:10 lifecycle,6 role,2 KMS,1 IAM canary,8 witness,4 promoted. Failed/retried calls consume the one remaining allowance. These local guards remain unrun. |
+| Least-privilege and cleanup | Separate five writers/source/oracle/cleanup; expiring exact namespace/KMS templates; expanded setup/retirement plan | Existing setup identity/MFA and protected environment are retained. One bounded additional fixture is approved but unused. Fresh effective policies, identity/inventory/cost readbacks and human protected-deployment review remain required; see current handoff. |
+| Resource bound | Shared 32 cumulative create reservations, persistent single-use marker, child create refusal | Now 31 nominal creates: 10 lifecycle, 6 role, 2 KMS, 1 IAM canary, 8 witness, 4 promoted. Failed/retried calls consume the one remaining allowance. Local guard tests pass; real AWS enforcement and accounting remain unproven. |
 
-The first provider-only validation was exact and narrow: direct Go1.27.2,
-bounded/offline, repaired plan and full awssm package passed with56 top-level
-passes and zero failures/skips. The later63-input provider run passed57, including
+The first provider-only validation was exact and narrow: direct Go 1.27.2,
+bounded/offline, repaired plan and full awssm package passed with 56 top-level
+passes and zero failures/skips. The later 63-input provider run passed 57, including
 the new controlled cache test; these are separate recorded source identities. Preserve the first launcher checksum-selection failure and
-the subsequent55-pass/one-stale-expectation failure. No result applies to later
+the subsequent 55-pass/one-stale-expectation failure. No result applies to later
 source files unless rerun at their pinned candidate.
 
 ## Post-R5 source completion and development boundary
@@ -123,7 +125,7 @@ provider fence before fresh-credential recovery. An independent narrow review
 found and repaired the initial incorrect generic-drain expectation and weak
 custody/version assertion. This does not claim AWS revocation of an issued STS
 session. These cases reuse an existing resource and add zero create reservations:
-the original31 nominal creates and32 cumulative cap remain unchanged.
+the original 31 nominal creates and 32 cumulative cap remain unchanged.
 
 No remaining named product surface or real-provider acceptance case is knowingly
 left as an undrafted plan after this source pass. This is an implementation
@@ -202,10 +204,12 @@ failure, and reconstruction with approved fresh inputs resolves the same
 identity. They do not prove automatic same-client role-cache refresh, immediate
 AWS STS-session revocation, or current-authority fences against a real database.
 The existing provider `TestRevocationStopsEverySubsequentAWSRequest` passed at
-the recorded provider56 source identity using controlled gates. The both-engine
+the recorded 56-test provider source identity using controlled gates. The both-engine
 `TestAdapterAWSSecretsManagerLifecycle/revocation-after-create-stops-plaintext`
-uses actual database grant removal; it and credential-retirement integration
-coverage still await execution. Same-client long-lived refresh is an explicit
+uses actual database grant removal and passed locally on both engines in the
+recorded October 21 validation. That controlled provider seam does not prove
+real AWS behavior or separately establish credential-retirement integration.
+Same-client long-lived refresh is an explicit
 coverage limitation, not an additional accepted requirement or a waiver of the
 revocation/expiry requirements above.
 
@@ -232,13 +236,13 @@ same-client boundary without waiting for real STS expiry: the actual SDK cache
 uses a controlled early-expiry window, and one client must obtain new synthetic
 signing credentials or refuse before its next HTTP request when refresh fails.
 HTTP is replaced in memory; it cannot establish real STS issuance, projection,
-IAM revocation or cloud behavior. This test passed in the later provider57 run and is not part of the earlier56 pass.
+IAM revocation or cloud behavior. This test passed in the later 57-test provider run and is not part of the earlier 56-test pass.
 
-## Secure input implementation versus unavailable delivery capability
+## Historical protected-input delivery assessment and current route
 
 `internal/isolation/aws_real_fixture_test.go` implements the file intake:
 `readAWSProtectedFile` refuses Windows, symlinks/nonregular files, group/world
-permissions, changed inode during open and inputs over32KiB. Strict manifest
+permissions, changed inode during open and inputs over 32 KiB. Strict manifest
 and descriptor decoding, exact actor/account/region checks, synthetic namespace
 and explicit mutation approval run before mutations. `writer` resets ambient
 credential variables, isolates shared config, disables IMDS/container sources
@@ -247,21 +251,19 @@ sidecars are shape/provenance preconditions, followed by actual STS expiry check
 `aws_real_scope_test.go` drafts protected-input and scope failures. Parent
 directories must be operator-trusted; none of this creates a secret store.
 
-The available T3 request_secret tool returns an opaque one-use reference, never
+At this earlier assessment, the T3 request_secret tool returned an opaque one-use reference, never
 plaintext. Its exposed consumers are webhook signature configuration; no callable
 local-file projection/export or fixture credential consumer is available. A
 repository script cannot resolve that app-owned reference, and inventing a bridge
 or requesting a secret first would not solve this boundary. No such request was
-made. This is an external delivery capability/authorization gap, not a missing
+made. That was an external delivery capability/authorization gap, not a missing
 implementation of the existing protected-file loader.
 
-An operator-projected protected file remains a supported fixture input form, but
-its actual approved source, host path/custodian, token renewal, authentic expired
-material and delivery session are not established. The proposed GitHub OIDC job
-is an unselected setup option, not a deployed workflow or implemented projection.
-It would require separately approved runner/environment/issuer/trust scope and
-reviewed delivery code. Do not describe that option as ready or infer those
-permissions from account signup. The owner reports account MFA complete and selected eu-central-1. Verified
-account plan, non-root identity,
-role/key resource grants and secure delivery must be resolved through the parent
-before any real credential request or test write.
+The later reviewed trusted GitHub OIDC workflow and protected-file projection
+are implemented and merged. The protected environment, setup identity/MFA and
+bounded fixture authority are retained as recorded in the current handoff.
+The historical request_secret bridge limitation does not make that trusted
+route unavailable. Fresh run-specific projection, token renewal and authentic
+expired sidecars still require actual execution, with fresh identity, effective
+policy, inventory and cost readbacks and separate human deployment approval.
+No current fixture or successful real AWS result is established by these sources.

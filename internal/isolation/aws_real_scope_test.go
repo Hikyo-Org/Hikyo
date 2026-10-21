@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -92,7 +93,7 @@ func TestAWSRealFixtureScope(t *testing.T) {
 		"unbounded-prefix": func(m *realAWSManifest) { m.Prefix = "*" },
 		"missing-approval": func(m *realAWSManifest) { m.AuthorizationID = "" },
 		"missing-budget":   func(m *realAWSManifest) { m.BudgetUSD = 0 },
-		"excess-budget":    func(m *realAWSManifest) { m.BudgetUSD = 2 },
+		"excess-budget":    func(m *realAWSManifest) { m.BudgetUSD = 10.01 },
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -111,6 +112,46 @@ func TestAWSRealFixtureScope(t *testing.T) {
 		if _, err := decodeAWSManifest(bad); err == nil || strings.Contains(err.Error(), "do not echo") {
 			t.Fatal("manifest decoder accepted or disclosed invalid input")
 		}
+	}
+}
+
+func TestAWSRealFixtureBudgetBound(t *testing.T) {
+	now := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	for _, scenario := range []struct {
+		name   string
+		budget float64
+		valid  bool
+	}{
+		{"stricter fixture budget", 1, true},
+		{"approved completion estimate", 2.29, true},
+		{"gross target", 5, true},
+		{"absolute maximum", 10, true},
+		{"above maximum", math.Nextafter(10, math.Inf(1)), false},
+		{"zero", 0, false},
+		{"negative", -1, false},
+		{"not a number", math.NaN(), false},
+		{"positive infinity", math.Inf(1), false},
+		{"negative infinity", math.Inf(-1), false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			manifest := realAWSManifestFixture(now)
+			manifest.BudgetUSD = scenario.budget
+			if err := manifest.validate(now); (err == nil) != scenario.valid {
+				t.Fatalf("budget validity = %t, want %t", err == nil, scenario.valid)
+			}
+		})
+	}
+	raw, err := json.Marshal(realAWSManifestFixture(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{"NaN", "Infinity", "-Infinity", "1e999", `"10"`} {
+		t.Run("invalid JSON budget/"+invalid, func(t *testing.T) {
+			body := strings.Replace(string(raw), `"budget_usd":1`, `"budget_usd":`+invalid, 1)
+			if _, err := decodeAWSManifest([]byte(body)); err == nil {
+				t.Fatal("invalid JSON budget accepted")
+			}
+		})
 	}
 }
 
