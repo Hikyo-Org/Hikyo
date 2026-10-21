@@ -160,7 +160,12 @@ starts on incomplete historical cleanup.
 
 Known plain and `aws: [ERROR]:` CLI service-error formats are accepted only with
 return code 254, empty stdout, the exact ResourceNotFoundException and
-DescribeSecret operation, and at most the literal zero-retry suffix. Other
+DescribeSecret operation, at most the literal zero-retry suffix, and at most
+one LF or CRLF before and after the diagnostic. AWS CLI 2.38.1
+[`write_error`](https://github.com/aws/aws-cli/blob/10b7b71c678dd01942a88071be7cddb683daa802/awscli/errorformat.py#L37-L41)
+emits this framing; offline execution of its official `ClientErrorHandler`
+confirmed exit 254, empty stdout and the framed exact diagnostic without an
+AWS client/session or provider call. Repeated framing lines and other
 formats refuse; raw stderr, response bodies and credential values are withheld.
 The helper has no GetSecretValue, restore or KMS operation.
 

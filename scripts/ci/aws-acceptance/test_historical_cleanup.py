@@ -94,6 +94,38 @@ class HistoricalCleanupTests(unittest.TestCase):
                     self.assertFalse(self.intent.exists())
         self.assertEqual(self.calls, ["describe-secret"] * 4)
 
+    def test_known_cli_error_blank_line_framing_is_accepted_without_delete(self):
+        for leading, trailing in ((b"\n", b"\n"), (b"\r\n", b"\r\n"),
+                                  (b"", b"\n"), (b"", b"\r\n")):
+            for prefix in (b"", b"aws: [ERROR]: "):
+                for retry in (b"", b" (reached max retries: 0)"):
+                    with self.subTest(leading=leading, trailing=trailing, prefix=prefix, retry=retry):
+                        original = not_found(prefix, retry)
+                        self.responses = [subprocess.CompletedProcess([], 254, b"", leading + original.stderr[:-1] + trailing)]
+                        self.helper().execute(cleanup.ARN)
+                        self.assertEqual(self.states[-1]["status"], "already-absent")
+                        self.assertTrue(self.states[-1]["verified_absent"])
+                        self.assertEqual(self.states[-1]["delete_attempts"], 0)
+                        self.assertFalse(self.intent.exists())
+        self.assertNotIn("delete-secret", self.calls)
+
+    def test_official_cli_2381_formatted_diagnostic_is_accepted_without_delete(self):
+        # Captured offline from AWS CLI 2.38.1 ClientErrorHandler, with a
+        # synthetic DescribeSecret ClientError, no AWS client/session/network.
+        # Source: aws/aws-cli 2.38.1, awscli/errorformat.py:write_error.
+        diagnostic = (b"\naws: [ERROR]: An error occurred (ResourceNotFoundException)"
+                      b" when calling the DescribeSecret operation:"
+                      b" Secrets Manager cannot find the specified secret.\n")
+        for stderr in (diagnostic, diagnostic.replace(b"\n", b"\r\n")):
+            with self.subTest(stderr=stderr):
+                self.responses = [subprocess.CompletedProcess([], 254, b"", stderr)]
+                self.helper().execute(cleanup.ARN)
+                self.assertEqual(self.states[-1]["status"], "already-absent")
+                self.assertTrue(self.states[-1]["verified_absent"])
+                self.assertEqual(self.states[-1]["delete_attempts"], 0)
+                self.assertFalse(self.intent.exists())
+        self.assertNotIn("delete-secret", self.calls)
+
     def test_exact_scheduled_metadata_allows_one_durable_delete_then_fresh_absence(self):
         self.responses = [response(metadata()), response({"ARN": cleanup.ARN}),
                           response(metadata(KmsKeyId=cleanup.KEY_ID)), not_found()]
@@ -142,11 +174,18 @@ class HistoricalCleanupTests(unittest.TestCase):
 
     def test_error_classifier_refuses_other_codes_operations_exit_status_and_extra_text(self):
         original = not_found()
-        cases = [not_found(operation=b"DeleteSecret"), not_found(retry=b" (reached max retries: 1)"),
+        cases = [subprocess.CompletedProcess([], 254, b"", b"\n\n" + original.stderr),
+                 subprocess.CompletedProcess([], 254, b"", original.stderr + b"\n"),
+                 subprocess.CompletedProcess([], 254, b"", b"\r" + original.stderr),
+                 not_found(operation=b"DeleteSecret"), not_found(retry=b" (reached max retries: 1)"),
                  subprocess.CompletedProcess([], 254, b"", original.stderr.replace(b"ResourceNotFoundException)", b"ResourceNotFoundException) (reached max retries: 0)")),
                  subprocess.CompletedProcess([], 255, b"", original.stderr),
                  subprocess.CompletedProcess([], 254, b"unexpected", original.stderr),
                  subprocess.CompletedProcess([], 254, b"", original.stderr + b"extra\n"),
+                 subprocess.CompletedProcess([], 254, b"", b"\n" + original.stderr + b"\nsynthetic-private-canary\n"),
+                 subprocess.CompletedProcess([], 254, b"", b"synthetic-private-canary\n" + original.stderr),
+                 subprocess.CompletedProcess([], 254, b"", b" \n" + original.stderr),
+                 subprocess.CompletedProcess([], 254, b"", original.stderr + b"\t\n"),
                  subprocess.CompletedProcess([], 254, b"", original.stderr.replace(b"ResourceNotFoundException", b"AccessDeniedException")),
                  subprocess.CompletedProcess([], 254, b"", b'{"Code":"ResourceNotFoundException"}')]
         for result in cases:
