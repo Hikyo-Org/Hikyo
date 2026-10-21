@@ -130,8 +130,9 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	return release, nil
 }
 
-// Older nightlies omitted disk images. When present, require the canonical pair
-// for this version; each remains part of complete offline payload verification.
+// Disk images use the existing installer kind so earlier nightly readers can
+// verify their complete signed inventory. Other installers retain their existing
+// semantics. When DMGs are present, require the canonical pair for this version.
 func validateNightlyDiskImages(artifacts []Artifact, version string) error {
 	expected := map[string]string{
 		"hikyo_" + version + "_Darwin_x86_64.dmg": "darwin/amd64",
@@ -139,7 +140,7 @@ func validateNightlyDiskImages(artifacts []Artifact, version string) error {
 	}
 	count := 0
 	for _, artifact := range artifacts {
-		if artifact.Kind != "macos-dmg" {
+		if artifact.Kind != "installer" || !strings.HasSuffix(artifact.Name, ".dmg") {
 			continue
 		}
 		if platform, ok := expected[artifact.Name]; !ok || artifact.Platform != platform {

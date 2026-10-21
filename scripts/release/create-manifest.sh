@@ -78,7 +78,7 @@ while IFS= read -r path; do
 		hikyo_*.tar.gz | hikyo_*.zip) kind=binary ;;
 		hikyo_*.dmg)
 			case "$name" in
-				"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") kind=macos-dmg ;;
+				"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") kind=installer ;;
 				*) printf 'manifest: disk image differs from release identity: %s\n' "$name" >&2; exit 1 ;;
 			esac
 			;;

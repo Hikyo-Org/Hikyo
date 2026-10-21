@@ -55,7 +55,7 @@ mv "$scratch/arm64.dmg" "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg"
 "$script_dir/create-nightly-manifest.sh" "$version" "$commit" 24 "$scratch/payloads"
 jq -e --arg sha "$(sha256_file "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg")" '
  (.artifacts | length) == 22 and
- ([.artifacts[] | select(.kind == "macos-dmg")] | length) == 2 and
- ([.artifacts[] | select(.kind == "macos-dmg" and .platform == "darwin/arm64" and .sha256 == $sha)] | length) == 1
+ ([.artifacts[] | select(.kind == "installer")] | length) == 2 and
+ ([.artifacts[] | select(.kind == "installer" and .platform == "darwin/arm64" and .sha256 == $sha)] | length) == 1
 ' "$scratch/payloads/release-manifest.json" >/dev/null
 printf 'nightly manifest: historical inventory and canonical disk image pair bound; extra, missing, symlink, partial pair and overwrite refused\n'

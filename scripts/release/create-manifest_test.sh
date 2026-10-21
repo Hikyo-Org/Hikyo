@@ -81,7 +81,7 @@ jq -e '
 	.tag == "v0.1.0" and
 	.release_sequence == 7 and
 	([.artifacts[] | select(.kind == "binary")] | length) == 2 and
-	([.artifacts[] | select(.kind == "macos-dmg")] | length) == 2 and
+	([.artifacts[] | select(.kind == "installer" and (.name | endswith(".dmg")))] | length) == 2 and
 	([.artifacts[] | select(.kind == "package")] | length) == 8 and
 	([.artifacts[] | select(.kind == "package") | .format] | sort ==
 		["apk", "apk", "archlinux", "archlinux", "deb", "deb", "rpm", "rpm"]) and

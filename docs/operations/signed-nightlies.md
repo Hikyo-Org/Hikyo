@@ -105,9 +105,11 @@ Publication consumes the finalized artifacts by immutable artifact ID, rechecks
 their checksums and source identity, and reauthenticates the exact predecessors
 used to build compatibility. The signed manifest binds all twenty-two payloads:
 those fourteen archives/packages, two macOS disk images, checksums, binary
-provenance, compatibility, policy, Sigstore roots and release notes. Historical
-nightlies with twenty payloads remain verifiable. Only the manifest and its
-signature envelope are excluded from their own inventory.
+provenance, compatibility, policy, Sigstore roots and release notes. The DMGs
+use the existing `installer` artifact kind, so previous nightly verifiers can authenticate the expanded inventory and continue to select the
+canonical binary archive for self-updates. Historical nightlies with twenty
+payloads remain verifiable. Only the manifest and its signature envelope are
+excluded from their own inventory.
 
 The runtime verifier checks the full inventory, certificate identity, signed
 integrated time, SCT and log inclusion/checkpoint. CI then assembles a runtime

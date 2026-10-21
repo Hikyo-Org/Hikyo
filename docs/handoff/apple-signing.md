@@ -11,7 +11,9 @@ be signed with Cosign. macOS tarballs contain the same signed executables.
 The Homebrew cask now consumes these DMGs, with hashes taken from the verified
 release manifest. It refuses missing, modified, or symlinked images and adds no
 quarantine-removal hook. Historical manifests without DMGs remain verifiable;
-new builds require both architecture images. Nightlies retain their predecessor,
+new builds require both architecture images. DMGs use the existing `installer`
+artifact type so deployed nightly readers can authenticate the new inventory.
+Nightlies retain their predecessor,
 compatibility, startup, upgrade, and scoped publication gates. Stable human
 review, publication, and tap PR approval remain separate steps.
 
@@ -35,7 +37,7 @@ contract and Linux/Windows payloads are preserved.
 
 ## Validation
 
-- Passed `go test -p 2 ./scripts/ci ./scripts/release/stable ./internal/releasetrust`
+- Passed `go test -p 2 ./scripts/ci ./scripts/release/stable ./scripts/release/nightly ./internal/releasetrust`
   through the shared heavy-command queue, including workflow dependency and
   credential-isolation checks.
 - Passed mock Apple-tool fixtures for successful stable/nightly runs and 19 refusal paths,
@@ -49,10 +51,20 @@ contract and Linux/Windows payloads are preserved.
   the existing package/refusal cases. Stable round-trip tests now include DMGs
   and reject changed DMG bytes.
 - Passed ShellCheck, Actionlint, and `git diff --check`.
+- Review caught a rollout blocker: deployed nightly readers reject unknown
+  artifact kinds. DMGs now use the existing `installer` kind. A signed-fixture
+  regression ran against all nine production release-trust source files from
+  base commit `da6c622749cb6ef8cf9a984e9f4e4d9e4f4473f7` using Go's source
+  overlay. That actual previous reader accepted complete and Darwin platform
+  verification, excluded DMGs from self-update selection, and rejected the new
+  artifact kind as a negative control. Pair, identity, and tampering refusals
+  also pass against the current reader.
 
-Delivery is in progress under explicit commit, push, PR, and merge authorization.
-Remote CI, a public Hikyo release, and clean-Mac installation have not yet been
-verified. Configuration checks below use a harmless
+Delivery PR: [#1018](https://github.com/Hikyo-Org/Hikyo/pull/1018). Commits and
+pushes are signed and DCO signed-off, with GitHub verification confirmed.
+The maintainer explicitly authorized merge after review and CI.
+Remote CI remains pending. A public Hikyo release and clean-Mac installation
+have not been verified. Configuration checks below use a harmless
 test executable, separate from Hikyo release acceptance.
 
 ## Nightly publication credential custody

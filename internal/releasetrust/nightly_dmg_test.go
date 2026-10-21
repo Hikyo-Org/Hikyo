@@ -10,7 +10,7 @@ import (
 )
 
 func TestNightlyDiskImagesBindCanonicalPairAndCompletePayloads(t *testing.T) {
-	for _, mutation := range []string{"none", "partial pair", "wrong version", "wrong platform", "missing payload", "tampered payload"} {
+	for _, mutation := range []string{"none", "partial pair", "wrong version", "wrong platform", "new kind", "missing payload", "tampered payload"} {
 		t.Run(mutation, func(t *testing.T) {
 			compatibility := []byte("signed compatibility fixture")
 			payloads := map[string][]byte{"upgrade-compatibility.json": compatibility, "binary-provenance.json": []byte("{}"), "checksums.txt": []byte("checksums"), "native.archive": []byte("native binary")}
@@ -31,7 +31,11 @@ func TestNightlyDiskImagesBindCanonicalPairAndCompletePayloads(t *testing.T) {
 					platform = "linux/arm64"
 				}
 				payloads[name] = []byte("signed disk image " + arch)
-				artifacts = append(artifacts, releasetrust.Artifact{Name: name, Kind: "macos-dmg", Platform: platform})
+				kind := "installer"
+				if mutation == "new kind" {
+					kind = "macos-dmg"
+				}
+				artifacts = append(artifacts, releasetrust.Artifact{Name: name, Kind: kind, Platform: platform})
 			}
 			fixture, material, _ := testfixture.NightlyWithPayloads(t, compatibility, false, payloads, artifacts)
 			snapshot := fixture.Snapshot(t)
@@ -60,7 +64,7 @@ func TestNightlyDiskImagesBindCanonicalPairAndCompletePayloads(t *testing.T) {
 			material.Platform = "darwin/arm64"
 			clear(material.Artifacts)
 			for _, artifact := range selected {
-				if artifact.Kind == "macos-dmg" {
+				if artifact.Kind == "installer" {
 					t.Fatal("self-updater selected a disk image instead of its canonical archive")
 				}
 				material.Artifacts[artifact.Name] = bytes.NewReader(payloads[artifact.Name])

@@ -36,7 +36,7 @@ image_record() {
 	architecture=$1
 	expected="hikyo_${version}_Darwin_${architecture}.dmg"
 	count=$(jq -r --arg name "$expected" \
-		'[.artifacts[] | select(.kind == "macos-dmg" and .name == $name and (.sha256 | test("^[0-9a-f]{64}$")))] | length' \
+		'[.artifacts[] | select(.kind == "installer" and .name == $name and (.sha256 | test("^[0-9a-f]{64}$")))] | length' \
 		"$manifest")
 	[ "$count" -eq 1 ] || fail "expected one signed Darwin $architecture disk image"
 	printf '%s\n' "$expected"

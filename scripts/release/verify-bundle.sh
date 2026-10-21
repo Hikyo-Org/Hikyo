@@ -209,7 +209,7 @@ jq -e '
 	([.artifacts[].name] | unique | length) == (.artifacts | length) and
 	all(.artifacts[]; . as $artifact |
 		($artifact.name | type == "string" and length > 0) and
-		($artifact.kind as $kind | ["binary", "macos-dmg", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate", "upgrade-compatibility"] | index($kind) != null) and
+		($artifact.kind as $kind | ["binary", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate", "upgrade-compatibility"] | index($kind) != null) and
 		($artifact.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
 			(if $artifact.kind == "package" then
 				($artifact.format as $format | ["apk", "archlinux", "deb", "rpm"] | index($format) != null) and
@@ -306,12 +306,16 @@ while [ "$i" -lt "$artifact_count" ]; do
 	safe_release_name "$name" || fail "unsafe artifact path $name"
 	case "$kind" in
 		binary) binary_count=$((binary_count + 1)) ;;
-		macos-dmg)
-			macos_dmg_count=$((macos_dmg_count + 1))
-			case "$name" in
-				"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") ;;
-				*) fail 'macOS disk image differs from release identity' ;;
-			esac
+		installer)
+			if [ "$name" = install.sh ]; then
+				installer_count=$((installer_count + 1))
+			else
+				macos_dmg_count=$((macos_dmg_count + 1))
+				case "$name" in
+					"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") ;;
+					*) fail 'macOS disk image differs from release identity' ;;
+				esac
+			fi
 			;;
 		package)
 			package_count=$((package_count + 1))
@@ -321,7 +325,6 @@ while [ "$i" -lt "$artifact_count" ]; do
 		image) image_count=$((image_count + 1)) ;;
 		chart) chart_count=$((chart_count + 1)) ;;
 		chart-digest) chart_digest_count=$((chart_digest_count + 1)) ;;
-		installer) installer_count=$((installer_count + 1)) ;;
 		oci-payload) oci_payload_count=$((oci_payload_count + 1)) ;;
 		release-candidate) candidate_count=$((candidate_count + 1)) ;;
 		upgrade-compatibility)

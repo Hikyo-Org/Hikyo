@@ -61,8 +61,9 @@ success and failure. Only public artifacts are transferred to the final job.
 The final Linux job consumes these finalized artifacts, rechecks candidate and
 archive hashes, builds the image and chart from the unchanged canonical Linux
 binaries, and creates provenance and the release manifest. Both disk images
-are covered by the authenticated release manifest. Stable releases also sign
-each asset with Cosign. Checksums retain their
+are covered by the authenticated release manifest as `installer` assets,
+using the existing artifact type accepted by deployed nightly readers. Stable
+releases also sign each asset with Cosign. Checksums retain their
 existing contract of exactly six platform archives. Apple failures or missing
 credentials stop the release before manifest signing; there is no unsigned fallback.
 

@@ -15,8 +15,8 @@ jq -n --arg arm_sha "$arm_sha" --arg intel_sha "$intel_sha" '{
 	version: "1.2.3",
 	tag: "v1.2.3",
 	artifacts: [
-		{name: "hikyo_1.2.3_Darwin_arm64.dmg", kind: "macos-dmg", sha256: $arm_sha},
-		{name: "hikyo_1.2.3_Darwin_x86_64.dmg", kind: "macos-dmg", sha256: $intel_sha}
+		{name: "hikyo_1.2.3_Darwin_arm64.dmg", kind: "installer", sha256: $arm_sha},
+		{name: "hikyo_1.2.3_Darwin_x86_64.dmg", kind: "installer", sha256: $intel_sha}
 	]
 }' >"$bundle/release-manifest.json"
 

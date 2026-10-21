@@ -175,7 +175,7 @@ func fullDraftFixture(t *testing.T) (string, string, *testfixture.Fixture, func(
 		}
 	}
 	for _, arch := range []string{"arm64", "x86_64"} {
-		add(releasetrust.Artifact{Name: "hikyo_1.0.0_Darwin_" + arch + ".dmg", Kind: "macos-dmg"}, []byte("synthetic disk image "+arch))
+		add(releasetrust.Artifact{Name: "hikyo_1.0.0_Darwin_" + arch + ".dmg", Kind: "installer"}, []byte("synthetic disk image "+arch))
 	}
 	var checksums strings.Builder
 	for _, a := range manifest.Artifacts {

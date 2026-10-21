@@ -46,7 +46,7 @@ for arch in amd64 arm64; do
  [ "$arch" != amd64 ] || name_arch=x86_64
  name="hikyo_${version}_Darwin_${name_arch}.dmg"
  if [ -e "$directory/$name" ] || [ -L "$directory/$name" ]; then
-  record "$name" macos-dmg "darwin/$arch" '' ''
+  record "$name" installer "darwin/$arch" '' ''
   dmg_count=$((dmg_count + 1))
  fi
 done
