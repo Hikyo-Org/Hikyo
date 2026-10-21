@@ -652,8 +652,12 @@ with the same (empty) prefix in one account are allowed.
 - A secure delivery path for local descriptor/token files must exist before
   requesting secrets. Runtime, cloud writes, account/policy provisioning, and
   spend remain held. The manifest documents scope; it does not grant it.
-- The dev fake provider (`internal/app/adapter_fake_dev.go`) treats AWS kinds
-  generically; AWS browser drafts are registered through machine-access.spec.ts; no AWS-specific pinned-surface claim or runtime proof exists.
+- The dev fake provider delegates AWS kinds to the production AWS module over
+  the metadata-aware peer in `internal/app/adapter_fake_aws_dev.go`; other
+  providers retain the generic fake. Authentication and the remote API remain
+  simulated, with no SDK client, STS call or network transport. AWS browser
+  drafts are registered through `machine-access.spec.ts`; this dev peer does
+  not establish AWS-specific pinned-surface or real-provider runtime proof.
 - `ListSecrets` cannot be resource-scoped in IAM; per-key planning and
   connection tests need it.
 

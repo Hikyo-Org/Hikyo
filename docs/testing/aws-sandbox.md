@@ -302,9 +302,12 @@ AWS module with controlled metadata and simulated credentials. It exercises
 forms, consent ceremonies, ordinary-response redaction, persisted routing and
 pause/resume, adoption, and retain/prune request choices. This remains controlled
 browser evidence, not real remote teardown. The authenticated API/CLI fixture
-passed all eight engine, surface and destination-mode combinations. Web
-typecheck, lint and 1,915 unit tests passed; see the handoff for rendered-browser
-results and current source review status.
+passed all eight engine, surface and destination-mode combinations. Historical
+October 18 web validation passed typecheck, lint and 209 unit-test files (1,915
+tests). The October 21 integrated dependency checks passed typecheck, lint and
+217 unit-test files (2,016 tests); see the
+[handoff](../handoff/158-aws-secrets-manager.md#october-21-candidate-base-refresh)
+for that evidence, rendered-browser results and current source review status.
 
 ## Child-process replay custody
 

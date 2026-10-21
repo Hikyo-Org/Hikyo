@@ -47,8 +47,8 @@ must use real module-produced witnesses over a controlled AWS metadata peer;
 a nonempty invented witness is not a substitute.
 
 
-This is the whole-owner source candidate, not final feature acceptance. Live
-#158 still has its original acceptance body and v1.1 milestone. Owner comment
+This is the whole-owner source candidate, not final feature acceptance.
+Issue #158 retains its original acceptance body and v1.1 milestone. Owner comment
 [6220607066](https://github.com/Hikyo-Org/Hikyo/issues/158#issuecomment-6220607066)
 records conditional 1.0 relevance; it is not a release or cloud-write grant.
 
@@ -140,11 +140,12 @@ sandbox setup remain external prerequisites as detailed below.
    findings, format/compile them in an allocated lane, and validate the canonical
    migration 80 bindings for the October 21 merged-main integration. Do not
    copy unsigned sibling drafts or hand-edit generated SQL bindings.
-2. Run both-engine controlled durable tests and the real sandbox suite. The new
-   auth tests cover fresh-client reconstruction after expired inputs, not
-   automatic refresh of the same client's cached role session. That additional
-   refresh case needs a bounded long-lived session/projection design and remains
-   uncovered; it is not silently counted as demonstrated auth recovery.
+2. Run both-engine controlled durable tests and the real sandbox suite. Auth
+   tests cover fresh-client reconstruction after expired inputs, and
+   `TestClientRefreshesExpiredCachedCredentials` covers same-client SDK cache
+   refresh or refusal with controlled synthetic credentials. Real STS issuance,
+   projected-token renewal and long-lived role-session refresh remain unproven;
+   the controlled test is not real-provider auth recovery.
 3. Execute actual authenticated API/CLI and desktop/mobile flows: create,
    inspection, credential replacement, plan/adopt, pause/resume, move,
    retain/prune, error paths and response/audit secrecy. Prebuild OIDC only in
