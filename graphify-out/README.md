@@ -5,6 +5,16 @@ and visualizations are ignored local artifacts. The graph is large and community
 numbering can change between builds, so generated snapshots do not belong in
 code review.
 
+## Optional navigation
+
+Use `rg`, `rg --files`, and focused source reads by default. Graphify is optional
+for explicit requests or scoped relationship and impact exploration. The policy
+lives in [AGENTS.md](../AGENTS.md#graphify); `CLAUDE.md` points there.
+
+Build or refresh a graph when requested or needed for an active graph task.
+Ordinary source reads and code edits do not require graph generation. The
+bootstrap and canonical-main cache workflow below remain available when needed.
+
 ## Install and bootstrap
 
 Install Graphify with the SQL extractor and make it available on PATH:
@@ -58,7 +68,8 @@ macOS uses filesystem clones when available, with ordinary copies otherwise.
 Worktrees never share writable files with the seed or one another. Process
 locks, pending requests, and session memory are not copied.
 
-Run bootstrap again after source changes, pulls, rebases, or branch switches.
+When using graph navigation after source changes, pulls, rebases, or branch
+switches, run bootstrap again to refresh the graph.
 An existing graph is updated in place rather than replaced by the seed, so its
 local semantic extraction is retained. Graphify reuses cached extraction for
 unchanged files and handles additions, edits, and deletions. It still scans
@@ -73,8 +84,9 @@ Go and other cacheable languages still benefit from the copied cache.
 
 The `install` command copies the helper into the common Git directory so it is
 available even on branches that predate this script. Re-run it after changing
-the helper. Configure this command as a synchronous T3 project script with
-**Run on worktree create** enabled:
+the helper. For worktrees that should automatically maintain a graph, configure
+this command as a synchronous T3 project script with **Run on worktree create** enabled. Leave
+that option disabled for source-search-only worktrees:
 
 ```sh
 python3 "$(git rev-parse --path-format=absolute --git-common-dir)/hikyo-graphify/bootstrap.py" bootstrap
@@ -99,10 +111,11 @@ graphify explain "OrgID"
 python3 scripts/dev/graphify_worktree.py bootstrap
 ```
 
-`AGENTS.md` and `CLAUDE.md` guide agents toward graph queries. Claude's
-`.claude/settings.json` search/read guards and OpenCode's
-`.opencode/plugins/graphify.js` add reminders. These reminders query the current
-worktree's `graphify-out/graph.json`; they do not build the seed themselves.
+[AGENTS.md](../AGENTS.md#graphify) defines source search as the default and
+Graphify as optional. Claude's `.claude/settings.json` search/read guards and
+OpenCode's `.opencode/plugins/graphify.js` remain installed and may add reminders.
+Those reminders do not make graph lookup a prerequisite under this policy and
+do not build the seed themselves.
 
 Code extraction is local and does not call an LLM. Document and image semantics
 need a separate skill-driven `/graphify . --update` pass. Community labels from

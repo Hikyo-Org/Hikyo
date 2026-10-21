@@ -25,7 +25,7 @@ import (
 
 // The multi-instance service surface, end to end (#71).
 //
-// This is the seam test for both tiers, and it is what makes the thirteen
+// This is the seam test for both tiers, and it is what makes the
 // registered `remote.*` audit types real rather than declared: every one of
 // them is emitted here by the code that owns it, against a real database, with
 // a real pinned TLS peer standing in for the serving instance.
@@ -366,6 +366,10 @@ func runRemoteLifecycle(t *testing.T, db *store.DB) {
 	if err := workspace.RevokeConnection(ctx, admin, minted.Connection.ID); err != nil {
 		t.Fatalf("remote.credential_revoked: %v", err)
 	}
+
+	// Manual pairing extends the same remote audit namespace. Exercise its
+	// actual owners before the canonical all-registered-events sweep below.
+	runRemotePairingAuditLifecycle(t, db, remotes, workspace, peer.server.URL, peer.pin)
 }
 
 // resetFetchGate clears the coalescing window so a test can observe two

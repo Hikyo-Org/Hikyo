@@ -1,5 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import qrcode from 'qrcode-generator';
 import type { WorkspaceHandoffEstablishment, WorkspaceHandoffStepUp } from '@hikyo/client';
+import { zRemote } from '@hikyo/zod';
 
 import { expectNoSeriousAxeViolations, expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
@@ -10,6 +15,8 @@ import {
   completeSecondFactor,
   nextServingCode,
   readServing,
+  readPairingPeer,
+  repointPairedRemoteAtB,
   REMOTE_NAME,
   refreshServingSession,
   STORAGE_STATE,
@@ -44,6 +51,65 @@ import { fetchPeerDirectory } from '../fixtures/instance-fetch.ts';
  */
 
 const VIEWING_ORIGIN = BASE_URL;
+
+// Artifact settings are worker options, so derive a dedicated test type at the
+// file boundary. Existing workspace flows retain their configured diagnostics.
+const pairingTest = test.extend<object, { pairingCameraFile: string }>({
+  pairingCameraFile: [async ({ browserName }, use) => {
+    if (browserName !== 'chromium') throw new Error('The pairing camera fixture requires Chromium');
+    const directory = mkdtempSync(join(tmpdir(), 'hikyo-pairing-camera-'));
+    try { await use(join(directory, 'invitation.y4m')); }
+    finally { rmSync(directory, { recursive: true, force: true }); }
+  }, { scope: 'worker' }],
+  browser: [async ({ playwright, pairingCameraFile }, use) => {
+    const browser = await playwright.chromium.launch({ args: [
+      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+      `--use-file-for-fake-video-capture=${pairingCameraFile}`,
+    ] });
+    try { await use(browser); }
+    finally { await browser.close(); }
+  }, { scope: 'worker' }],
+  trace: 'off', screenshot: 'off', video: 'off',
+});
+
+/** Private synthetic camera frames exercise getUserMedia under the real policy. */
+function writeInvitationCamera(file: string, invitation: string): void {
+  const qr = qrcode(0, 'M');
+  qr.addData(invitation);
+  qr.make();
+  const width = 640;
+  const height = 480;
+  const quiet = 4;
+  const modules = qr.getModuleCount();
+  const scale = Math.floor(height / (modules + quiet * 2));
+  const left = Math.floor((width - modules * scale) / 2);
+  const top = Math.floor((height - modules * scale) / 2);
+  const frame = Buffer.alloc(width * height * 3 / 2, 128);
+  frame.fill(235, 0, width * height);
+  for (let row = 0; row < modules; row += 1) {
+    for (let col = 0; col < modules; col += 1) {
+      if (!qr.isDark(row, col)) continue;
+      for (let y = 0; y < scale; y += 1) {
+        const offset = (top + row * scale + y) * width + left + col * scale;
+        frame.fill(16, offset, offset + scale);
+      }
+    }
+  }
+  writeFileSync(file, Buffer.concat([
+    Buffer.from(`YUV4MPEG2 W${width} H${height} F15:1 Ip A1:1 C420jpeg\nFRAME\n`), frame,
+  ]), { mode: 0o600 });
+}
+
+/** Exercise the native React input path without secret-valued fill call logs. */
+async function setPrivatePairingInput(input: Locator, value: string): Promise<void> {
+  await input.evaluate((element, secret) => {
+    if (!(element instanceof HTMLInputElement)) throw new Error('Missing pairing input');
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setter === undefined) throw new Error('Input value setter unavailable');
+    setter.call(element, secret);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
 
 /** onB opens a page against the serving instance in the same context. */
 async function onB(page: Page, path: string): Promise<void> {
@@ -725,6 +791,127 @@ test.describe('multi-instance', () => {
       });
     }
   }
+});
+
+pairingTest.describe('manual remote pairing', () => {
+  // A trace contains request bodies and DOM snapshots. This flow intentionally
+  // carries a live phrase and invitation, so retain only a final public screen.
+  pairingTest.use({ storageState: STORAGE_STATE });
+
+  pairingTest.beforeAll(async () => {
+    pairingTest.setTimeout(120_000);
+    await refreshServingSession();
+  });
+
+  pairingTest('manual phrase pairing scans camera and image QR with a short secret over pinned TLS', async ({ page, context, pairingCameraFile }, testInfo) => {
+    const peer = readPairingPeer();
+    const administrator = await context.newPage();
+    try {
+      await page.goto('/remotes');
+      // The pre-existing fixture names B already; remove it before the actual
+      // pairing ceremony so duplicate-identity protection remains in force.
+      await card(page).getByRole('button', { name: 'Remove', exact: true }).click();
+      await expect(card(page)).toHaveCount(0);
+      await page.getByRole('button', { name: 'Pair a remote', exact: true }).click();
+      const requester = page.getByRole('complementary', { name: 'Pair a remote', exact: true });
+      const customSecret = ' A4b ';
+      await requester.getByRole('radio', { name: 'Use my own password or phrase' }).check();
+      await setPrivatePairingInput(requester.getByLabel('Your password or phrase'), customSecret);
+      await requester.getByRole('button', { name: 'Prepare with my password or phrase' }).click();
+      const phraseElement = requester.getByLabel('Pairing phrase', { exact: true });
+      await phraseElement.waitFor({ state: 'visible' });
+      const phrase = (await phraseElement.textContent()) ?? '';
+      // Boolean assertions keep secret values out of failure diagnostics.
+      expect(phrase === customSecret && phrase.length === 5, 'the five-character custom secret preserves case and spaces').toBe(true);
+      await requester.getByRole('button', { name: 'Hide pairing phrase' }).click();
+      await expect(phraseElement).toHaveCount(0);
+      await expect(requester.getByText(/Your local continuation is still held/)).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+      // Only the phrase crosses from the requester to this independent admin
+      // tab. No request is submitted to B before the admin manually approves it.
+      await onB(administrator, '/remotes');
+      await administrator.bringToFront();
+      await administrator.getByRole('button', { name: 'Create pairing invitation', exact: true }).click();
+      const approval = administrator.getByRole('complementary', { name: 'Create pairing invitation', exact: true });
+      // Set a password input without a fill action that could print its value in
+      // a Playwright call log. Input events still take the real React form path.
+      await setPrivatePairingInput(approval.getByLabel('Phrase received privately'), phrase);
+      await approval.getByLabel('Invitation label').fill('Manual browser pairing');
+      await expect(approval.getByText(`Connects to ${peer.origin}`, { exact: true })).toBeVisible();
+      await approval.getByRole('button', { name: 'Approve and create invitation' }).click();
+      const invitationElement = approval.getByLabel('Pairing invitation', { exact: true });
+      await invitationElement.waitFor({ state: 'visible' });
+      const invitation = await invitationElement.inputValue();
+      expect(invitation.length > 0, 'the approved invitation is available').toBe(true);
+      // Keep this live invitation image in memory, never in retained artifacts.
+      const invitationImage = await approval.getByRole('img', { name: 'Pairing invitation QR code' }).screenshot();
+      writeInvitationCamera(pairingCameraFile, invitation);
+      await approval.getByRole('button', { name: 'Hide invitation', exact: true }).click();
+      await expect(invitationElement).toHaveCount(0);
+      expect(await administrator.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await administrator.close();
+
+      await page.bringToFront();
+      await expect(requester.getByText(/Your local continuation is still held/)).toBeVisible();
+      await requester.getByLabel('Remote name').fill(REMOTE_NAME);
+      let automaticPairRequests = 0;
+      page.on('request', (request) => {
+        if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/instance/remotes/pair') automaticPairRequests += 1;
+      });
+      await requester.getByRole('button', { name: 'Scan QR with camera', exact: true }).click();
+      const destination = requester.getByRole('region', { name: 'Invitation destination review' });
+      await expect(destination).toContainText(peer.origin);
+      await expect(requester.getByRole('button', { name: 'Stop camera', exact: true })).toHaveCount(0);
+      expect(automaticPairRequests, 'scanning does not redeem the invitation').toBe(0);
+      expect(await requester.getByLabel('Invitation from the administrator').inputValue() === invitation).toBe(true);
+      await setPrivatePairingInput(requester.getByLabel('Invitation from the administrator'), '');
+      await requester.getByLabel('Import QR image', { exact: true }).setInputFiles({
+        name: 'invitation.png', mimeType: 'image/png', buffer: invitationImage,
+      });
+      await expect(destination).toContainText(peer.origin);
+      expect(automaticPairRequests, 'image import does not redeem the invitation').toBe(0);
+      expect(await requester.getByLabel('Invitation from the administrator').inputValue() === invitation).toBe(true);
+      const pairedResponse = page.waitForResponse((response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/instance/remotes/pair');
+      await requester.getByRole('button', { name: 'Connect remote', exact: true }).click();
+      const response = await pairedResponse;
+      expect(response.status()).toBe(201);
+      const paired = zRemote.parse(await response.json());
+      // The success result follows the real SRP+DPoP exchange and authenticated
+      // HTTPS directory fetch. A seeded or cached listing cannot create it.
+      expect(paired.state).toBe('ok');
+      expect(paired.url).toBe(peer.origin);
+      expect(paired.spki_pin).toBe(peer.spki_pin);
+      await expect(requester).toHaveCount(0);
+      const entry = card(page);
+      await expect(entry.getByText('Reachable', { exact: true })).toBeVisible();
+      await expect(entry).toContainText(peer.origin);
+      await expect(entry.getByText('Identity', { exact: true })).toBeVisible();
+      await expect(entry).toContainText('serving-co');
+
+      const storedSecret = await page.evaluate((values) => {
+        const stored = JSON.stringify({
+          local: Object.entries(localStorage), session: Object.entries(sessionStorage),
+          cookie: document.cookie,
+        });
+        return values.some((value) => stored.includes(value));
+      }, [phrase, invitation]);
+      expect(storedSecret, 'pairing secrets remain absent from browser storage').toBe(false);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expectNoSeriousAxeViolations(page);
+      // Both disclosure panels are gone before any retained screenshot.
+      await entry.screenshot({ path: testInfo.outputPath('manual-pairing-card.png') });
+      await page.screenshot({ path: testInfo.outputPath('manual-pairing-directory.png'), fullPage: true });
+    } finally {
+      rmSync(pairingCameraFile, { force: true });
+      if (!administrator.isClosed()) await administrator.close();
+      // Preserve the browser workspace fixture after proving the genuine
+      // pinned HTTPS exchange. This does not change its credential or binding.
+      repointPairedRemoteAtB();
+      if (!page.isClosed()) await page.goto('/remotes');
+    }
+  });
 });
 
 // The live application and authenticated session render the real consent

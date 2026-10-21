@@ -93,7 +93,9 @@ func (c *Client) Directory(ctx context.Context, origin, pin, credential string) 
 	}
 	// The credential leaves the process only here, inside TLS to the pinned
 	// remote, and only after VerifyPeerCertificate has accepted the key.
-	req.Header.Set("Authorization", "Bearer "+credential)
+	if err := applyDirectoryCredential(req, credential); err != nil {
+		return Listing{}, OutcomeCredentialRejected, err
+	}
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient(pin).Do(req)

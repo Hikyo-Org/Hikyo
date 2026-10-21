@@ -15,7 +15,44 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Revalidation preparation, 2026-10-19
+## Current status, 2026-10-21
+
+Trusted bootstrap PR #1017 merged at
+`fdbf911632e3143d76080bb6b1523133fa99cfce` after successful full candidate
+and protected merge-group validation. It includes the exact CLI not-found
+framing repair and Go 1.27.3 security patch. The current source integration
+and validation are recorded in the final section below. PR #969 stays draft
+and outside the merge queue until real AWS acceptance and exact cleanup pass.
+
+The latest owner-approved fixture is one unused additional manual run in
+account `099256073061`, `eu-central-1`, with at most 32 new synthetic creations,
+144 conservative lifetime reservations, one new KMS key, the same eight roles,
+one temporary boundary and at most one OIDC provider. All 112 previous
+reservations stay charged. The preceding run `39495071346` failed before its
+real suite; its exact historical secret and fixture were subsequently verified
+cleaned up. All three prior KMS deletion schedules remain unchanged. No
+historical secret deletion may be repeated; only exact DescribeSecret is
+retained for that already absent resource.
+
+Keep the existing setup user, its sole named MFA device, account and protected
+GitHub environment. The approved setup-policy sequence deletes only obsolete
+nondefault v1, activates bounded v6, and restores the existing self-service v5
+after exact retirement. The unchanged authorization horizon is
+`2026-10-26T12:22:56Z`, with leases no longer than 24 hours. The gross target is
+below USD 5 where possible, absolute maximum USD 10 before credits. Fresh
+identity, policy, inventory, gross-cost and protected-job readbacks remain
+required before activation. There is no automatic retry, recurring run or paid
+upgrade. Human deployment review remains a separate gate.
+
+The retained official CLI independently confirmed the exact non-root setup
+identity and sole attached MFA on October 21. This is a timestamped access
+snapshot, not fixture readiness. Source-only preparation helpers and their
+reviews are operator artifacts outside Git. They create no execution authority,
+and consumed plans, namespaces, leases or claims must never be replayed.
+The dated preparation sections below preserve historical evidence and limits;
+this section records the latest owner-approved scope.
+
+## Historical revalidation preparation, 2026-10-19
 
 The owner requested continued work until AWS acceptance passes and reuse of
 access while #158 remains open. The previously retired setup identity and
@@ -684,7 +721,7 @@ version, another job, replacement ARN, or malformed/missing witness. Unit and
 both-engine service/SQL retry drafts cover definite marker failure and failed
 Finish with crash-window closure, exact-once versions and preserved custody.
 
-Migration `00079_aws_adoption_witness.sql` persists this witness on both engines.
+Migration `00080_aws_adoption_witness.sql` persists this witness on both engines.
 The owner replaced the old 80 reservation with 77 on October 18, then approved
 78 on October 19 after main occupied 77. The SQL is unchanged from the reviewed candidate; canonical
 sqlc generation has now run. No unsigned sibling migrations were copied.
@@ -785,3 +822,39 @@ without its supply-chain lane input. Full lint passed 377 records with its one
 intentional reviewed-pin updater skip. Compatibility unit tests, scoped vet and
 import formatting also passed. These local checks do not establish hosted CI
 or real AWS acceptance for the resulting merge commit.
+
+
+## October 21 merged-main integration
+
+Merged main `fdbf911632e3143d76080bb6b1523133fa99cfce` includes the
+trusted CLI framing repair from PR #1017, the Go 1.27.3 security patch, and
+remote pairing at migration 79. The standalone, unmerged AWS adoption witness
+therefore moves from 79 to the next free slot, 80, on both engines. Its SQL
+bytes and AWS behavior are unchanged. Main's migration 77 authorization indexes,
+78 project capacity policy, and 79 remote-pairing history remain intact.
+The legacy drill preserves AWS witness, capacity, and manual-pairing evidence
+checks, then reverses pristine 80, 79, 78, and 77 additions in order, including
+their Goose history.
+
+This integration changes the candidate source beyond the previously frozen
+`391c4b053661e4d84569a304bafa8bbb521b7fc2` snapshot. Prior local validation
+and hosted results apply to their recorded commits. Canonical sqlc generation passed without additional binding drift beyond the
+combined merge. The development compatibility declaration was regenerated from
+fresh SQLite and PostgreSQL 18.6 catalogs and reproduced byte-for-byte against
+a second fresh PostgreSQL database. Independent review of the merge increment
+found no remaining functional, security, Standards or Spec findings. Its one
+stale migration-range comment was corrected to match the through-80 fixture.
+
+Current local validation passed with Go 1.27.3: provider 166 records, adoption
+store 34, migrations 35, offline fixture 41, authenticated lifecycle 58,
+upgrade/drill and actual schema compatibility 46, and compatibility unit 11,
+all with zero failures or skips. Full lint passed 377 records, with only its
+intentional `TestUpdateReviewedPins` skip. Scoped vet and staged/unstaged
+whitespace checks passed. The PostgreSQL 18.6 validation cluster was isolated
+and stopped after the finite batch. These are local test records, including
+subtests, not counts of real AWS cases. Exact-head hosted gates and actual
+provider execution remain unproven for this integrated candidate.
+The already approved single bounded AWS run remains unused; integration does
+not launch a fixture or satisfy the separate human deployment gate. Real AWS
+acceptance, exact cleanup, final feature review and human merge approval remain
+outstanding. The setup identity and MFA remain retained as instructed.

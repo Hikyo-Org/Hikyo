@@ -387,6 +387,18 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 				return crypto.InstanceFieldAAD{OwnerTable: "saml_sp_keys", OwnerRowID: id, FieldTag: "private_key"}
 			},
 			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptSamlKey)},
+		{table: "remote_pairing_invites", list: store.ReencryptRepo.ListPairingInvitesForReencrypt, versionOf: func(row store.ReencryptInstanceRow) (uint32, error) { return crypto.RecordKeyVersion(row.Ciphertext) }, aad: func(id string) crypto.InstanceFieldAAD {
+			return crypto.InstanceFieldAAD{OwnerTable: "remote_pairing_invites", OwnerRowID: id, FieldTag: "pake"}
+		}, reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
+			return r.ReencryptPairingInvites(ctx, p, row.ID, ciphertext, row.Ciphertext)
+		}},
+
+		{table: "remote_pairing_exchanges", list: store.ReencryptRepo.ListPairingExchangesForReencrypt, versionOf: func(row store.ReencryptInstanceRow) (uint32, error) { return crypto.RecordKeyVersion(row.Ciphertext) }, aad: func(id string) crypto.InstanceFieldAAD {
+			return crypto.InstanceFieldAAD{OwnerTable: "remote_pairing_exchanges", OwnerRowID: id, FieldTag: "state"}
+		}, reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
+			return r.ReencryptPairingExchanges(ctx, p, row.ID, ciphertext, row.Ciphertext)
+		}},
+
 		{table: "remotes",
 			list: store.ReencryptRepo.ListRemotesForReencrypt,
 			versionOf: func(row store.ReencryptInstanceRow) (uint32, error) {

@@ -119,7 +119,19 @@ func TestNoServerSideProxyEndpointExists(t *testing.T) {
 //
 // Anything added here later must earn the same sentence.
 var pinnedRemoteSurface = map[string]bool{
-	"GET /api/v1/instance/directory": true,
+	// Preparation issues only this instance's local sealed continuation.
+	// Administrative lifecycle returns this instance's consent metadata or
+	// invitation. Exchange returns its own proof and locally minted directory
+	// credential; pairRemote fetches only directory metadata and stores a local
+	// entry. No route carries another instance's secret values.
+	"POST /api/v1/instance/pairing-requests":           true,
+	"POST /api/v1/instance/pairing-invites":            true,
+	"GET /api/v1/instance/pairing-invites":             true,
+	"DELETE /api/v1/instance/pairing-invites/{invite}": true,
+	"POST /api/v1/auth/pairing/start":                  true,
+	"POST /api/v1/auth/pairing/finish":                 true,
+	"POST /api/v1/instance/remotes/pair":               true,
+	"GET /api/v1/instance/directory":                   true,
 
 	"GET /api/v1/instance/remotes":             true,
 	"POST /api/v1/instance/remotes":            true,
@@ -163,7 +175,7 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 		if strings.Contains(lower, "/scim") {
 			continue
 		}
-		if !strings.Contains(lower, "remote") && !strings.Contains(lower, "workspace") &&
+		if !strings.Contains(lower, "remote") && !strings.Contains(lower, "workspace") && !strings.Contains(lower, "pairing") &&
 			!strings.Contains(lower, "directory") {
 			continue
 		}
@@ -208,6 +220,15 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 // THIS instance's own data — its configuration, its metadata, a snapshot it
 // stored — and never fetches, relays or forwards on behalf of the caller.
 var pinnedContractSurface = map[string]bool{
+	// Manual pairing owns local configuration, consent and directory-only
+	// credentials. The public exchange requires existing admin-created consent.
+	"POST /api/v1/instance/pairing-requests":           true,
+	"POST /api/v1/instance/pairing-invites":            true,
+	"GET /api/v1/instance/pairing-invites":             true,
+	"DELETE /api/v1/instance/pairing-invites/{invite}": true,
+	"POST /api/v1/auth/pairing/start":                  true,
+	"POST /api/v1/auth/pairing/finish":                 true,
+	"POST /api/v1/instance/remotes/pair":               true,
 	// First-party CLI authentication transactions and sessions; no outbound forwarding.
 	"POST /api/v1/auth/cli-login/start":                   true,
 	"GET /api/v1/auth/cli-login/transactions/{reference}": true,

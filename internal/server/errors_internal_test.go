@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/api"
@@ -138,6 +139,16 @@ func TestWirePolicyRedactsDetailUnlessExplicitlyAllowed(t *testing.T) {
 				t.Fatalf("detail = %q, want redacted", *body.Error.Detail)
 			}
 		})
+	}
+}
+
+func TestPairingConfigurationRefusalsCarryOnlySafeOperatorRemedies(t *testing.T) {
+	for _, err := range []error{service.ErrPairingOriginConfiguration, service.ErrPairingTLSConfiguration} {
+		policy := wireErrorFor(err)
+		body := policy.body(err)
+		if policy.status != http.StatusBadRequest || body.Error.Detail == nil || !strings.Contains(*body.Error.Detail, "instance settings") {
+			t.Fatal("pairing configuration refusal omitted its safe operator remedy")
+		}
 	}
 }
 

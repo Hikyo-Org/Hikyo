@@ -192,6 +192,8 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"scim":                runSCIM,
 	"remote":              runRemote,
 	"remote-credential":   runRemoteCredential,
+	"remote-pairing":      runRemotePairing,
+	"remote-invite":       runRemoteInvite,
 	"import":              runImport,
 	"definitions":         runDefinitions,
 	"adapter":             runAdapter,
@@ -765,6 +767,12 @@ multi-instance:
   hikyo remote-credential create --label <peer> [--lifetime 720h | --indefinite]
       [--output-file PATH | --dangerously-print]
   hikyo remote-credential list|show|revoke [--id <connection-id>]
+  hikyo remote-pairing prepare [--custom-secret | --words N] [--output-file PATH | --dangerously-print]
+  hikyo remote-pairing accept <name> [--request-file PATH] [--invite-file PATH]
+  hikyo remote-invite create --label <peer>
+      [--lifetime 10m] [--credential-lifetime 720h] [--output-file PATH | --dangerously-print]
+  hikyo remote-invite list [-o table|json]
+  hikyo remote-invite revoke --id <invitation-id>
 
   a remote's URL and pinned key are IMMUTABLE: re-pointing is remove + add,
   which re-runs the fingerprint confirmation. 'remote remove' destroys the

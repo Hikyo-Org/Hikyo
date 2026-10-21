@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -106,6 +107,9 @@ type Config struct {
 	// traffic. https only — the CONNECT request names the remote host, so a
 	// plaintext proxy publishes the fleet topology to the path.
 	DirectoryProxy string
+	// PairingSPKIPin optionally states the externally served TLS public key.
+	// Managed owner configuration is its authority after adoption.
+	PairingSPKIPin string
 
 	// AdapterEgressPolicy is loaded once at startup from the operator-owned
 	// policy file. Entries are keyed by an exact canonical HTTPS origin; a
@@ -308,6 +312,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED": true,
 	"HIKYO_NEW_ROOT_KEY_FILE":              true,
 	"HIKYO_DIRECTORY_PROXY":                true,
+	"HIKYO_PAIRING_SPKI_PIN":               true,
 	"HIKYO_ARGON2_MEMORY_KIB":              true,
 	"HIKYO_ARGON2_TIME":                    true,
 	"HIKYO_ARGON2_PARALLELISM":             true,
@@ -621,6 +626,13 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 					"forward proxy publishes which installations this one talks to", raw)
 			}
 			cfg.DirectoryProxy = raw
+		}
+		if raw := getenv("HIKYO_PAIRING_SPKI_PIN"); raw != "" {
+			decoded, err := base64.StdEncoding.Strict().DecodeString(raw)
+			if err != nil || len(decoded) != 32 || base64.StdEncoding.EncodeToString(decoded) != raw {
+				return nil, nil, errors.New("HIKYO_PAIRING_SPKI_PIN must be a canonical base64 SHA-256 public-key fingerprint")
+			}
+			cfg.PairingSPKIPin = raw
 		}
 		policy, err := loadAdapterEgressPolicy(getenv("HIKYO_ADAPTER_EGRESS_POLICY_FILE"))
 		if err != nil {

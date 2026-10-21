@@ -1121,7 +1121,8 @@ func runBackupLifecycle(t *testing.T, engine store.Engine) *store.DB {
 // let a forged archive plant a credential the restore's bump never clears.
 // This pins the list to the SCHEMA — every table carrying a credential_epoch
 // column, discovered by introspection on a freshly migrated database, must be
-// named in BOTH engines' query text.
+// named in BOTH engines' restore census queries, including the separately owned
+// optional-table queries used before migration roll-forward.
 func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 	cfg := store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "epoch.db")}
 	db, err := openIsolationFixture(t, cfg)
@@ -1136,24 +1137,30 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 		t.Fatalf("schema introspection found only %d epoch-stamped tables: the guard is not reading the schema", len(tables))
 	}
 	for _, engine := range []string{"sqlite", "postgres"} {
-		src, err := os.ReadFile(filepath.Join("..", "store", "queries", engine, "authn.sql"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		// The frozen legacy set plus the post-legacy set restore scans when the
-		// restored schema carries it (authn.restoreNextEpoch).
+		// Preserve the frozen legacy query: restore scans an archive before
+		// rolling its schema forward. Later tables belong to presence-gated
+		// queries, including pairing's census in its own query file.
 		var block string
-		for _, name := range []string{"MaxKnownCredentialEpoch", "PostLegacyMaxCredentialEpoch", "DeveloperMaxCredentialEpoch"} {
-			_, after, found := strings.Cut(string(src), "name: "+name+" ")
+		for _, census := range []struct{ file, name string }{
+			{"authn.sql", "MaxKnownCredentialEpoch"},
+			{"authn.sql", "PostLegacyMaxCredentialEpoch"},
+			{"authn.sql", "DeveloperMaxCredentialEpoch"},
+			{"remote_pairing.sql", "RemotePairingMaxCredentialEpoch"},
+		} {
+			src, err := os.ReadFile(filepath.Join("..", "store", "queries", engine, census.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, after, found := strings.Cut(strings.ReplaceAll(string(src), "\r\n", "\n"), "-- name: "+census.name+" :one\n")
 			if !found {
-				t.Fatalf("%s/authn.sql has no %s query", engine, name)
+				t.Fatalf("%s/%s has no %s query", engine, census.file, census.name)
 			}
 			query, _, _ := strings.Cut(after, "-- name:")
 			block += query
 		}
 		for _, table := range tables {
 			if !strings.Contains(block, " FROM "+table) {
-				t.Errorf("%s MaxKnownCredentialEpoch does not scan %s: a forged epoch stamp there would survive a restore", engine, table)
+				t.Errorf("%s restore epoch census does not scan %s: a forged epoch stamp there would survive a restore", engine, table)
 			}
 		}
 	}

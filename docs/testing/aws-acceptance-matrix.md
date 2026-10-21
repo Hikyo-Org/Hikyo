@@ -2,16 +2,20 @@
 
 ## Current continuation
 
-The October 20 continuation integrates current main and moves the unmerged
-adoption witness to migration 79, preserving main's migration 77 authorization
-indexes and migration 78 project capacity policy. This resolves the newly merged
-slot collision without changing the reviewed adoption SQL or AWS behavior.
-Canonical SQL bindings and the development compatibility declaration have been
-regenerated and checked against fresh catalogs. See the current
-[issue handoff](../handoff/158-aws-secrets-manager.md#october-20-current-main-integration)
-for results and the separately approved additional bounded AWS run. Provisioning,
-protected inputs, exact human job approval and real-provider execution remain
-separate gates.
+The October 21 continuation integrates merged main
+`fdbf911632e3143d76080bb6b1523133fa99cfce`, including PR #1017's trusted CLI
+framing repair and Go 1.27.3. The unmerged adoption witness moves to migration
+80, preserving main's migration 77 authorization indexes, 78 project capacity
+policy, and 79 remote pairing. Its SQL bytes and AWS behavior are unchanged.
+Canonical SQL generation passed; development compatibility claims were
+regenerated from fresh SQLite and PostgreSQL 18.6 catalogs and reproduced
+against a second fresh PostgreSQL database. Current-candidate tests, review,
+and hosted gates remain pending. See the current
+[issue handoff](../handoff/158-aws-secrets-manager.md#october-21-merged-main-integration)
+for recorded validation and remaining gates. The previously frozen candidate
+and its historical results do not establish this new candidate's hosted or
+real-provider acceptance. Provisioning, protected inputs, exact human job
+approval and real-provider execution remain separate gates.
 The historical source matrix below retains its original evidence boundaries.
 
 ## Historical evidence and subsequent source reconciliation
@@ -59,7 +63,7 @@ promoted-replay regression and their R3 source repairs remain part of review.
 | Four auth modes, opt-in, bounded role duration and protected static input | `awssm/auth.go`, client constructor tests; real role/auth-boundary tests; CLI stdin and browser password-state tests | Provider57 covers the controlled local cache/refusal tests; original provider56 remains separate. Real STS expiry/negative/fresh-client recovery sources are new; four authentic expired sidecars and secure projection are missing. |
 | No production secret-value reads | Closed awssm API/operation/source pins; metadata-only module; separate synthetic oracle | Existing provider closure tests passed. Real effective IAM deny/positive reader controls remain unrun. Oracle credentials never enter product writer or process-replay child. |
 | Create/update/staging and per-key outcomes | `awssm/module.go`, real SQL-backed lifecycle, partial-conflict case and sibling convergence | Real suite must verify deterministic JSON, UTF-8/newlines, atomic per-key outcomes and failed target state on both engines. |
-| Concurrency and consent | Conditional AWSCURRENT promotion; canonical complete-ARN/current-version witness persisted by migration77 and both query sources | Provider race/adoption cases passed at earlier input set. Both-engine/real version-before-Adopt, version-after-Adopt and replacement-after-Adopt sources remain uncompiled. |
+| Concurrency and consent | Conditional AWSCURRENT promotion; canonical complete-ARN/current-version witness persisted by migration80 and both query sources | Provider race/adoption cases passed at earlier input set. Both-engine/real version-before-Adopt, version-after-Adopt and replacement-after-Adopt sources remain uncompiled. |
 | Durable replay and custody | Stable job token, pre-Prepare witness check, exact-job current-marker repair; real promoted-replay and cold-process lifecycle sources | New process fixture exits after accepted PutSecretValue before Finish, then reopens original signed store/root in a second process. Exact job, unfinished intent, unknown closure and one new AWS version must be verified. |
 | Destination move and retain/prune | Existing service route-move protocol; new real activation loader and per-key-to-JSON move; retained two-target adapter teardown | Both engines must prove old-name scrub before generation/destination activation, source delivery at new name, no remote delete on retain, and released custody. Role/adoption/source-unset cases retain prune coverage. |
 | Pause/resume, source deletion/restore and teardown | Existing provider behavior; real lifecycle; browser persisted pause and retain/prune request choice | Real AWS recovery window, restore and exact-ARN asynchronous final cleanup remain unrun. Browser request acceptance is not remote cleanup. |
@@ -132,7 +136,7 @@ sandbox setup remain external prerequisites as detailed below.
 
 1. Review all current source drafts together, resolve independently confirmed
    findings, format/compile them in an allocated lane, and validate the canonical
-   migration 79 bindings regenerated after the October 20 current-main integration. Do not
+   migration 80 bindings for the October 21 merged-main integration. Do not
    copy unsigned sibling drafts or hand-edit generated SQL bindings.
 2. Run both-engine controlled durable tests and the real sandbox suite. The new
    auth tests cover fresh-client reconstruction after expired inputs, not

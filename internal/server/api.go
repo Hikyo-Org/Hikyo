@@ -229,6 +229,7 @@ type API struct {
 	// side's connections, allowlist, handoff and session surface.
 	Remotes   RemoteService
 	Workspace WorkspaceService
+	Pairings  RemotePairingService
 	// Admission bounds the unauthenticated discovery endpoint. The expensive
 	// pre-auth paths take their own slot inside the service, where the cost
 	// they bound actually lives; /meta is cheap and only needs a per-IP
@@ -794,6 +795,16 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 		var headerVal string
 		if value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
 			headerVal = strings.TrimSpace(value)
+		}
+		if value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "DPoP "); ok {
+			if r.Method != http.MethodGet || r.URL.Path != "/api/v1/instance/directory" || len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("DPoP")) != 1 || strings.TrimSpace(r.Header.Get("DPoP")) == "" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
+				return
+			}
+			headerVal = strings.TrimSpace(value)
+			r = r.WithContext(context.WithValue(r.Context(), pairingProofContextKey{}, r.Header.Get("DPoP")))
 		}
 		var cookieVal string
 		if c, err := r.Cookie(browserSessionCookie); err == nil {

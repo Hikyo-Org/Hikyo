@@ -119,6 +119,7 @@ export const TOKEN_FAMILIES: readonly TokenFamily[] = [
     tokens: [
       { name: '--width-dialog', role: 'decision dialogs' },
       { name: '--width-dialog-wide', role: 'editor dialogs' },
+      { name: '--width-qr-large', role: 'dense pairing invitations' },
       { name: '--width-side-panel-min', role: 'side panel floor before it drops its gutter' },
       { name: '--measure', role: 'ledes, hints, errors' },
       { name: '--chip-id-max', role: 'an identifier chip ellipsises past it' },

@@ -49,6 +49,7 @@ func (c *Config) ManagedOwnerValues() map[string]string {
 	for key, value := range map[string]string{
 		"HIKYO_EXTERNAL_ORIGIN":     origin,
 		"HIKYO_DIRECTORY_PROXY":     c.DirectoryProxy,
+		"HIKYO_PAIRING_SPKI_PIN":    c.PairingSPKIPin,
 		"HIKYO_MCP_ALLOWED_ORIGINS": strings.Join(c.MCPAllowedOrigins, ","),
 		"HIKYO_BACKUP_RECIPIENTS":   strings.Join(c.BackupRecipients, ","),
 		// Omitted when a config path did not set it (e.g. the CLI compose paths):
@@ -192,6 +193,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	// Load received this candidate's listener and TLS settings above, so an
 	// inferred origin follows them instead of retaining a bootstrap default.
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
+	result.PairingSPKIPin = parsed.PairingSPKIPin
 	result.ExternalOriginExplicit = parsed.ExternalOriginExplicit
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled

@@ -9559,6 +9559,272 @@ paths:
   # api/noproxy_test.go is what keeps it rejected.
   # ---------------------------------------------------------------------------
 
+  /api/v1/instance/pairing-requests:
+    post:
+      operationId: prepareRemotePairing
+      tags: [instance]
+      summary: prepareRemotePairing.
+      x-hikyo-class: instance
+      x-hikyo-operation: remote-pairing.prepare
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 12
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareRemotePairingRequest"
+      responses:
+        "201":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemotePairingPrepared"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/instance/pairing-invites:
+    get:
+      operationId: listRemotePairingInvites
+      tags: [instance]
+      summary: listRemotePairingInvites.
+      x-hikyo-class: instance
+      x-hikyo-operation: remote-pairing.list
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 12
+      responses:
+        "200":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemotePairingInviteList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+    post:
+      operationId: createRemotePairingInvite
+      tags: [instance]
+      summary: createRemotePairingInvite.
+      x-hikyo-class: instance
+      x-hikyo-operation: remote-pairing.create
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 12
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRemotePairingInviteRequest"
+      responses:
+        "201":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemotePairingInviteCreated"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/instance/pairing-invites/{invite}:
+    parameters:
+      - name: invite
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 128}
+    delete:
+      operationId: revokeRemotePairingInvite
+      tags: [instance]
+      summary: revokeRemotePairingInvite.
+      x-hikyo-class: instance
+      x-hikyo-operation: remote-pairing.revoke
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 12
+      responses:
+        "204":
+          description: Pairing operation completed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/instance/remotes/pair:
+    post:
+      operationId: pairRemote
+      tags: [instance]
+      summary: pairRemote.
+      x-hikyo-class: instance
+      x-hikyo-operation: remote-pairing.complete
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 12
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PairRemoteRequest"
+      responses:
+        "201":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Remote"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/auth/pairing/start:
+    post:
+      operationId: startRemotePairing
+      tags: [instance]
+      summary: startRemotePairing.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 12
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartRemotePairingRequest"
+      responses:
+        "201":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemotePairingStarted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /api/v1/auth/pairing/finish:
+    post:
+      operationId: finishRemotePairing
+      tags: [instance]
+      summary: finishRemotePairing.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 12
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishRemotePairingRequest"
+      responses:
+        "201":
+          description: Pairing operation completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemotePairingFinished"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/instance/directory:
     get:
       operationId: serveDirectory
@@ -15451,6 +15717,216 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    PrepareRemotePairingRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Omit the body or both fields to generate six random words. Choose
+        either an explicit nonempty custom password/phrase, preserved exactly,
+        or a generated word count. Case and whitespace are significant.
+        Custom secrets are bounded to 4096 UTF-8 bytes by the service.
+      not:
+        required: [phrase, word_count]
+      properties:
+        phrase:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        word_count:
+          type: integer
+          minimum: 1
+          maximum: 128
+
+    RemotePairingPrepared:
+      type: object
+      additionalProperties: false
+      required: [phrase, requester_state, expires_at]
+      properties:
+        phrase:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        requester_state:
+          type: string
+          minLength: 1
+          maxLength: 65536
+        expires_at:
+          type: string
+          format: date-time
+
+    CreateRemotePairingInviteRequest:
+      type: object
+      additionalProperties: false
+      required: [phrase, label, invite_lifetime_seconds, credential_lifetime_seconds]
+      properties:
+        phrase:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        invite_lifetime_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        credential_lifetime_seconds:
+          type: integer
+          minimum: 1
+          maximum: 31536000
+
+    RemotePairingInvite:
+      type: object
+      additionalProperties: false
+      required: [id, label, origin, spki_pin, created_at, expires_at, credential_expires_at]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+        origin:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        spki_pin:
+          type: string
+          minLength: 1
+          maxLength: 128
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        credential_expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        consumed_at:
+          type: string
+          format: date-time
+
+    RemotePairingInviteCreated:
+      type: object
+      additionalProperties: false
+      required: [invite, invite_bundle]
+      properties:
+        invite:
+          $ref: "#/components/schemas/RemotePairingInvite"
+        invite_bundle:
+          type: string
+          minLength: 1
+          maxLength: 8192
+
+    PairRemoteRequest:
+      type: object
+      additionalProperties: false
+      required: [name, requester_state, invite_bundle]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        requester_state:
+          type: string
+          minLength: 1
+          maxLength: 65536
+        invite_bundle:
+          type: string
+          minLength: 1
+          maxLength: 8192
+
+    StartRemotePairingRequest:
+      type: object
+      additionalProperties: false
+      required: [invite_capability, public_jwk]
+      properties:
+        invite_capability:
+          type: string
+          minLength: 1
+          maxLength: 256
+        public_jwk:
+          type: string
+          minLength: 1
+          maxLength: 2048
+
+    RemotePairingStarted:
+      type: object
+      additionalProperties: false
+      required: [exchange, server_message]
+      properties:
+        exchange:
+          type: string
+          minLength: 1
+          maxLength: 256
+        server_message:
+          type: string
+          minLength: 1
+          maxLength: 16384
+
+    FinishRemotePairingRequest:
+      type: object
+      additionalProperties: false
+      required: [exchange, client_message, proof]
+      properties:
+        exchange:
+          type: string
+          minLength: 1
+          maxLength: 256
+        client_message:
+          type: string
+          minLength: 1
+          maxLength: 16384
+        proof:
+          type: string
+          minLength: 1
+          maxLength: 8192
+
+    RemotePairingFinished:
+      type: object
+      additionalProperties: false
+      required: [server_message, credential, connection]
+      properties:
+        server_message:
+          type: string
+          minLength: 1
+          maxLength: 16384
+        credential:
+          type: string
+          minLength: 1
+          maxLength: 256
+        connection:
+          $ref: "#/components/schemas/InstanceConnection"
+
+    RemotePairingInviteList:
+      type: object
+      additionalProperties: false
+      required: [items, count, origin]
+      properties:
+        origin:
+          type: string
+          maxLength: 2048
+          description: Configured public origin used for new invitations; never inferred from request headers.
+        configuration_error:
+          type: string
+          maxLength: 512
+          description: Instance configuration must be corrected before an invitation can be created. Does not perform certificate discovery.
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/RemotePairingInvite"
+        count:
+          type: integer
+          minimum: 0
+
     ProjectCapacity:
       type: object
       additionalProperties: false

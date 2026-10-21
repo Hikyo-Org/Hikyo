@@ -34,11 +34,18 @@ func migrationCatalogue(t *testing.T) *CandidateConfiguration {
 }
 
 func TestConfigurationMigrationPreview(t *testing.T) {
-	for _, scenario := range []string{"old-catalogue", "missing-value", "true", "false", "zero-and-empty", "unexpected", "incompatible", "invalid", "missing-unregistered"} {
+	for _, scenario := range []string{"old-catalogue", "old-pairing-catalogue", "missing-value", "true", "false", "zero-and-empty", "unexpected", "incompatible", "invalid", "missing-unregistered"} {
 		t.Run(scenario, func(t *testing.T) {
 			p := migrationCatalogue(t)
 			values := map[string]string{"HIKYO_REAUTH_WINDOW_SECONDS": "0", "HIKYO_MAIL_PASSWORD": ""}
 			switch scenario {
+			case "old-pairing-catalogue":
+				for i, key := range p.Catalogue {
+					if key.Name == "HIKYO_PAIRING_SPKI_PIN" {
+						p.Catalogue = append(p.Catalogue[:i], p.Catalogue[i+1:]...)
+						break
+					}
+				}
 			case "old-catalogue":
 				for i, k := range p.Catalogue {
 					if k.Name == "HIKYO_MCP_WRITE_ENABLED" {
@@ -79,6 +86,9 @@ func TestConfigurationMigrationPreview(t *testing.T) {
 			}
 			if len(got.Catalogue) != len(runtimeconfig.Catalogue()) {
 				t.Fatal("declaration not migrated")
+			}
+			if _, present := next["HIKYO_PAIRING_SPKI_PIN"]; present {
+				t.Fatal("optional pairing pin received a fabricated default")
 			}
 		})
 	}
@@ -185,6 +195,18 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 		t.Fatal(err)
 	}
 	values := map[string]string{"HIKYO_REAUTH_WINDOW_SECONDS": "0", "HIKYO_MAIL_PASSWORD": "  preserve\nbytes  ", "HIKYO_MCP_ENABLED": "false"}
+	if scenario == "old-pairing-catalogue" || scenario == "existing-pairing-pin" {
+		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
+		values["HIKYO_SECOND_FACTOR"] = "optional"
+		values["HIKYO_MAX_KEYS_PER_PROJECT"] = "10000"
+		values["HIKYO_DEFAULT_KEYS_PER_PROJECT"] = "1000"
+		if scenario == "existing-pairing-pin" {
+			values["HIKYO_PAIRING_SPKI_PIN"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+		}
+		if _, err := s.conn.ExecContext(ctx, "UPDATE self_config_binding SET migration_version=4"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if scenario == "old-key-limit-catalogue" {
 		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
 		values["HIKYO_SECOND_FACTOR"] = "optional"
@@ -209,10 +231,13 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 		values["HIKYO_MCP_ENABLED"] = "invalid"
 	}
 	for _, key := range migrationCatalogue(t).Catalogue {
+		if key.Name == "HIKYO_PAIRING_SPKI_PIN" && scenario == "old-pairing-catalogue" {
+			continue
+		}
 		if (key.Name == "HIKYO_MAX_KEYS_PER_PROJECT" || key.Name == "HIKYO_DEFAULT_KEYS_PER_PROJECT") && scenario == "old-key-limit-catalogue" {
 			continue
 		}
-		if key.Name == "HIKYO_MCP_WRITE_ENABLED" && scenario != "missing-value" && scenario != "existing-true" && scenario != "existing-false" && scenario != "old-key-limit-catalogue" {
+		if key.Name == "HIKYO_MCP_WRITE_ENABLED" && scenario != "missing-value" && scenario != "existing-true" && scenario != "existing-false" && scenario != "old-key-limit-catalogue" && scenario != "old-pairing-catalogue" && scenario != "existing-pairing-pin" {
 			continue
 		}
 		if _, err := s.conn.ExecContext(ctx, "INSERT INTO keys(id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES($1,'org','project',$1,'',$2,'',FALSE,'',$3,'none','none','2026-09-19T00:00:00Z')", key.Name, key.Classification, key.Declaration); err != nil {
@@ -243,7 +268,7 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 }
 
 func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
-	for _, scenario := range []string{"old-catalogue", "old-key-limit-catalogue", "missing-value", "existing-true", "existing-false", "invalid-value", "catalogue-drift", "foreign-owner", "rollback", "stale-generation", "suspended", "restored", "retiring-only"} {
+	for _, scenario := range []string{"old-catalogue", "old-key-limit-catalogue", "old-pairing-catalogue", "missing-value", "existing-true", "existing-false", "existing-pairing-pin", "invalid-value", "catalogue-drift", "foreign-owner", "rollback", "stale-generation", "suspended", "restored", "retiring-only"} {
 		t.Run(scenario, func(t *testing.T) {
 			both(t, func(t *testing.T, cfg Config) {
 				err := WithLock(t.Context(), cfg, func(s *Session) error {
@@ -344,7 +369,7 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if err := s.conn.QueryRowContext(ctx, "SELECT generation,desired_revision,migration_version FROM self_config_binding").Scan(&generation, &revision, &version); err != nil {
 						return err
 					}
-					changed := scenario != "existing-true" && scenario != "existing-false"
+					changed := scenario != "existing-true" && scenario != "existing-false" && scenario != "existing-pairing-pin"
 					wantRevision := 1
 					if changed {
 						wantRevision = 2
@@ -363,8 +388,33 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if scenario == "old-key-limit-catalogue" {
 						expectedSchema = 28
 					}
+					if scenario == "old-pairing-catalogue" {
+						expectedSchema = 28
+					}
 					if schemaRevision != expectedSchema {
 						return fmt.Errorf("schema revision %d want %d", schemaRevision, expectedSchema)
+					}
+					if scenario == "old-pairing-catalogue" {
+						var classification, declaration, required, forbidden string
+						if err := s.conn.QueryRowContext(ctx, "SELECT classification,declaration,required_mode,forbidden_mode FROM keys WHERE org_id='org' AND project_id='project' AND name='HIKYO_PAIRING_SPKI_PIN'").Scan(&classification, &declaration, &required, &forbidden); err != nil {
+							return err
+						}
+						for _, expected := range migrationCatalogue(t).Catalogue {
+							if expected.Name == "HIKYO_PAIRING_SPKI_PIN" && (classification != expected.Classification || declaration != expected.Declaration || required != "none" || forbidden != "none") {
+								return errors.New("pairing declaration changed classification or presence policy")
+							}
+						}
+						for _, query := range []string{
+							"SELECT count(*) FROM value_entries WHERE key_id IN (SELECT id FROM keys WHERE name='HIKYO_PAIRING_SPKI_PIN')",
+							"SELECT count(*) FROM snapshot_entries WHERE key_id IN (SELECT id FROM keys WHERE name='HIKYO_PAIRING_SPKI_PIN')",
+						} {
+							if err := s.conn.QueryRowContext(ctx, query).Scan(&count); err != nil {
+								return err
+							}
+							if count != 0 {
+								return errors.New("optional pairing pin acquired a stored value")
+							}
+						}
 					}
 					if changed {
 						var previous, desired string

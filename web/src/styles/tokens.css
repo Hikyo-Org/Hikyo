@@ -105,9 +105,11 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  /* Measures: dialog widths and the prose line length. */
+  /* Measures: dialog and QR widths, and the prose line length. */
   --width-dialog: 520px;
   --width-dialog-wide: 760px;
+  /* Dense invitations need more pixels than an authenticator setup code. */
+  --width-qr-large: 320px;
   /* The narrowest the side panel may get before it gives up its gutter. */
   --width-side-panel-min: 640px;
   --measure: 68ch;

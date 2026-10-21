@@ -72,7 +72,8 @@ const crossOriginOpenerPolicy = "same-origin-allow-popups"
 // gate (that is workspaceCORS's job, and it stays a closed allowlist).
 const crossOriginResourcePolicy = "same-origin"
 
-// permissionsPolicy denies the powerful features this application never uses.
+// permissionsPolicy permits same-origin camera use for invitation QR scanning
+// and denies the other powerful features this application never uses.
 // Deliberately SHORT: every named feature is one an operator would have to
 // audit, and a long list of denials for features the browser does not grant
 // without a prompt anyway buys nothing.
@@ -81,7 +82,8 @@ const crossOriginResourcePolicy = "same-origin"
 // and `publickey-credentials-create` default to `self`, which is precisely
 // what the passkey ceremonies need, and naming them at all risks writing an
 // allowlist that a future edit narrows to `()`.
-const permissionsPolicy = "camera=(), microphone=(), geolocation=()"
+// Camera access still requires a secure context and an explicit browser prompt.
+const permissionsPolicy = "camera=(self), microphone=(), geolocation=()"
 
 // connectSrcSelf is the token the remote origins extend (#71). It is spelled
 // once so the extension below cannot drift from the baseline above.

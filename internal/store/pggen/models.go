@@ -1223,6 +1223,46 @@ type Remote struct {
 	CreatedBy        string
 }
 
+type RemotePairedConnection struct {
+	ConnectionID string
+	PublicJwk    string
+	Thumbprint   string
+	Origin       string
+}
+
+type RemotePairingExchange struct {
+	ID              string
+	InviteID        string
+	StateSealed     []byte
+	CredentialEpoch int64
+	CreatedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	ConsumedAt      pgtype.Timestamptz
+}
+
+type RemotePairingInvite struct {
+	ID                  string
+	Label               string
+	Origin              string
+	SpkiPin             string
+	CapabilityVerifier  []byte
+	PakeSealed          []byte
+	Attempts            int64
+	CredentialEpoch     int64
+	CreatedBy           string
+	CreatedAt           pgtype.Timestamptz
+	ExpiresAt           pgtype.Timestamptz
+	CredentialExpiresAt pgtype.Timestamptz
+	RevokedAt           pgtype.Timestamptz
+	ConsumedAt          pgtype.Timestamptz
+}
+
+type RemotePairingReplay struct {
+	Thumbprint  string
+	JtiVerifier []byte
+	ExpiresAt   pgtype.Timestamptz
+}
+
 type RemoteSnapshot struct {
 	RemoteID         string
 	LastAttemptAt    pgtype.Timestamptz

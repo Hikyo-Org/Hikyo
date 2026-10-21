@@ -12,6 +12,25 @@ import (
 // txForwarded is the explicitly permitted resolver surface.
 // Additions require review of the transaction authority boundary.
 type txForwarded interface {
+	ClaimRemotePairingAttempt(ctx context.Context, id string, now time.Time) (bool, error)
+	CreateRemotePairingInvite(ctx context.Context, i RemotePairingInvite) error
+	RemotePairingInviteByCapability(ctx context.Context, v []byte) (RemotePairingInvite, error)
+	RemotePairingInviteByID(ctx context.Context, id string) (RemotePairingInvite, error)
+	ListRemotePairingInvites(ctx context.Context) ([]RemotePairingInvite, error)
+	CountLiveRemotePairingInvites(ctx context.Context, now time.Time) (int64, error)
+	RevokeRemotePairingInvite(ctx context.Context, id string, now time.Time) (bool, error)
+	ConsumeRemotePairingInvite(ctx context.Context, id string, now time.Time, epoch int64) (bool, error)
+	CreateRemotePairingExchange(ctx context.Context, e RemotePairingExchange) error
+	RemotePairingExchangeByID(ctx context.Context, id string) (RemotePairingExchange, error)
+	CountLiveRemotePairingExchanges(ctx context.Context, id string, now time.Time) (int64, error)
+	ConsumeRemotePairingExchange(ctx context.Context, id string, now time.Time, epoch int64) (bool, error)
+	BindRemotePairedConnection(ctx context.Context, c RemotePairedConnection) error
+	RemotePairedConnectionByID(ctx context.Context, id string) (RemotePairedConnection, error)
+	ClaimRemotePairingReplay(ctx context.Context, thumbprint string, v []byte, expires time.Time) (bool, error)
+	CountRemotePairingReplays(ctx context.Context) (int64, error)
+	CountRemotePairingReplaysForKey(ctx context.Context, thumbprint string) (int64, error)
+	PruneRemotePairingState(ctx context.Context, now time.Time) error
+
 	PruneCLILogins(ctx context.Context, at time.Time) error
 	CreateCLILogin(ctx context.Context, h CLILogin) error
 	CLILoginByState(ctx context.Context, verifier []byte) (CLILogin, error)

@@ -20,7 +20,8 @@
 -- name: InstanceConnectionByVerifier :one
 SELECT id, principal_id, label, kind, verifier, prefix_hint, lifetime,
        expires_at, credential_epoch, created_at, created_by, revoked_at,
-       last_used_at
+       last_used_at,
+       EXISTS (SELECT 1 FROM remote_paired_connections AS paired WHERE paired.connection_id=instance_connections.id) AS proof_bound
 FROM instance_connections
 WHERE verifier = sqlc.arg(verifier);
 

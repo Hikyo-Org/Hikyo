@@ -75,6 +75,24 @@ The directory fetches **when a holder of `instance-directory` views it** — car
 
 The snapshot is **foreign structure at rest on the viewing instance**: instance-scope rows (identity, names and counts, no values — there is nothing value-bearing for it to hold), readable only through proofs evaluated on `instance-directory`, deleted with the entry. It is not encrypted beyond the database's own posture: its contents are exactly what the credential may read anyway, and pretending it is secret material would misstate the boundary.
 
+### Declared pairing identity discovery amendment
+
+The owner-locked [manual pairing decision](remote-instance-pairing.md)
+adds one explicit exception to the zero-remotes outbound statement: an
+authenticated `instance-config` administrator creating an invitation can trigger
+a bounded TLS-only probe of this instance's configured public HTTPS origin.
+The probe verifies the certificate chain and hostname, optionally trusting the
+currently loaded native certificate, and sends no HTTP request to that origin.
+An operator-managed external fingerprint skips discovery. Startup, invitation
+listing, local preparation, and background work do not probe. The existing
+directory and workspace data boundaries remain in force. The owner approved the
+[PR #1014-only review exception](https://github.com/Hikyo-Org/Hikyo/pull/1014#issuecomment-6300666440)
+on 2026-10-20, accepting completed GPT 6.1 Sol High reviews in place of the
+unavailable cross-provider review, which remains skipped. Originating
+[ticket #71](https://github.com/Hikyo-Org/Hikyo/issues/71) was reopened for this
+record. This amendment becomes operative when PR #1014 merges; the pairing ADR
+records the review scope and limitations.
+
 ## The workspace tier
 
 The workspace lets a human read and edit a remote's actual data — matrices, values, publishes, reveals — inside the viewing instance's UI. Its one structural rule, from which everything else follows: **the browser talks to the remote directly; no server in the middle.** The viewing instance's server contributes the shell, the directory, and the deep links, and never touches the session, the calls, or the values.

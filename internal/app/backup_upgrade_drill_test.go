@@ -310,11 +310,12 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 79, while the
+// The runtime-created fixture includes migrations 45 through 80, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
-// contact email, issuer CA trust, parameter contract or project capacity policy
+// contact email, issuer CA trust, parameter contract, project capacity policy or
+// manual-pairing consent and authentication state
 // refuses removal. The subsequent pinned catalog inspection proves the exact
 // legacy schema and migration digest; this test-only surgery adds no runtime
 // downgrade capability.
@@ -329,10 +330,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+35 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 79 only")
+	if len(current.Entries) != len(legacy.Entries)+36 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 80 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -362,6 +363,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
 		"SELECT COUNT(*) FROM cli_login_handoffs",
 		"SELECT COUNT(*) FROM sessions WHERE cli_handoff_id IS NOT NULL",
+		// 00079: even expired or consumed pairing records are evidence and
+		// must not be silently removed to synthesize a legacy archive.
+		"SELECT COUNT(*) FROM remote_pairing_exchanges",
+		"SELECT COUNT(*) FROM remote_pairing_invites",
+		"SELECT COUNT(*) FROM remote_paired_connections",
+		"SELECT COUNT(*) FROM remote_pairing_replays",
 		"SELECT COUNT(*) FROM developer_credentials",
 		"SELECT COUNT(*) FROM developer_credential_policy WHERE max_lifetime_seconds <> 28800",
 		"SELECT COUNT(*) FROM adapters",
@@ -425,11 +432,15 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target or member-access-rule evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00079 only after proving no reviewed AWS resource witness is discarded.
+	// Reverse 00080 only after proving no reviewed AWS resource witness is discarded.
 	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_witness")
+	// Reverse 00079 only after the evidence checks above; children first.
+	for _, table := range []string{"remote_pairing_exchanges", "remote_pairing_invites", "remote_paired_connections", "remote_pairing_replays"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
 	// Reverse 00078 only after proving no override or policy revision is lost.
 	drillExec(t, db, "ALTER TABLE projects DROP COLUMN key_limit_override")
 	drillExec(t, db, "ALTER TABLE projects DROP COLUMN key_limit_revision")
@@ -635,7 +646,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80)",
 	} {
 		drillExec(t, db, query)
 	}
