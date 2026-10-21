@@ -74,8 +74,9 @@ success and failure. Only public artifacts are transferred to the final job.
 Each submission also produces a JSON receipt binding its ID and status to the
 release version, source commit, architecture, disk-image filename, and SHA-256
 of the submitted image before stapling changes its bytes. Completed submissions
-have their detailed Apple notarization log downloaded and checked against the
-receipt. An accepted submission cannot proceed without a valid matching log.
+(`Accepted`, `Invalid`, or `Rejected`) have their detailed Apple log downloaded
+and checked against the receipt. An accepted submission cannot proceed without
+a valid matching log.
 Warnings are surfaced as counts for review; they do not by themselves change
 Apple's acceptance status.
 

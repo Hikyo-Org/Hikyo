@@ -63,6 +63,7 @@ case "$1 $2" in
     status=Accepted
     case "$APPLE_FIXTURE_MODE:$arch" in
       rejected:* | second-rejected:x86_64) status=Invalid ;;
+      terminal-rejected:*) status=rEjEcTeD ;;
       timeout:*) status='In Progress' ;;
     esac
     jq -n --arg filename "$(basename "$3")" --arg sha "$(shasum -a 256 "$3" | awk '{print $1}')" \
@@ -93,6 +94,7 @@ case "$1 $2" in
       accepted-minimal-log) jq 'del(.archiveFilename) | .status = "accepted"' "$logfile" >"$logfile.new" ;;
       accepted-warnings)
         jq '.issues = [{severity:"WARNING",message:"provider warning ::error title=untrusted::do not execute"}]' "$logfile" >"$logfile.new" ;;
+      terminal-rejected) jq '.issues = [{severity:"error",message:"provider rejection details"}]' "$logfile" >"$logfile.new" ;;
       rejected | second-rejected)
         jq 'if .status == "Invalid" then .issues = [{severity:"error",message:"provider rejection details"}] else . end' "$logfile" >"$logfile.new" ;;
       mismatched-job) jq '.jobId = "cccccccc-1111-2222-3333-444444444444"' "$logfile" >"$logfile.new" ;;
@@ -150,9 +152,24 @@ assert_evidence() {
   [ "$submissions" -eq "$receipts" ] || { printf 'apple fixture: missing receipt for %s\n' "$APPLE_FIXTURE_MODE" >&2; exit 1; }
   case "$APPLE_FIXTURE_MODE" in
     accepted | accepted-warnings | accepted-minimal-log | second-rejected) [ "$submissions" -eq 2 ] ;;
-    rejected | timeout | timeout-no-id | accepted-no-id | log-failure | malformed-log | mismatched-job | mismatched-status | mismatched-filename | mismatched-hash | malformed-issues | staple-failure | invalid-ticket | gatekeeper-failure) [ "$submissions" -eq 1 ] ;;
+    rejected | terminal-rejected | timeout | timeout-no-id | accepted-no-id | log-failure | malformed-log | mismatched-job | mismatched-status | mismatched-filename | mismatched-hash | malformed-issues | staple-failure | invalid-ticket | gatekeeper-failure) [ "$submissions" -eq 1 ] ;;
     *) [ "$submissions" -eq 0 ] ;;
   esac
+  if [ "$APPLE_FIXTURE_MODE" = terminal-rejected ]; then
+    if ! jq -e '.status == "Rejected" and .diagnostics.availability == "available"' \
+      "$fixture/evidence/arm64-receipt.json" >/dev/null || [ "$logs" -ne 1 ]; then
+      printf 'apple fixture: terminal Rejected receipt or detailed log missing\n' >&2
+      jq '{status,diagnostics}' "$fixture/evidence/arm64-receipt.json" >&2
+      exit 1
+    fi
+    if grep -F 'xcrun stapler' "$APPLE_FIXTURE_LOG" >/dev/null; then
+      printf 'apple fixture: rejected submission reached stapling\n' >&2; exit 1
+    fi
+    for unchanged_arch in arm64 x86_64; do
+      cmp "$fixture/original/hikyo_1.2.3_Darwin_$unchanged_arch.tar.gz" \
+        "$fixture/dist/hikyo_1.2.3_Darwin_$unchanged_arch.tar.gz"
+    done
+  fi
   expected_logs=0
   for evidence_arch in arm64 x86_64; do
     receipt=$fixture/evidence/$evidence_arch-receipt.json
@@ -163,6 +180,7 @@ assert_evidence() {
     [ "$evidence_arch" != x86_64 ] || expected_id=bbbbbbbb-1111-2222-3333-444444444444
     case "$APPLE_FIXTURE_MODE:$evidence_arch" in
       rejected:* | second-rejected:x86_64) expected_status=Invalid ;;
+      terminal-rejected:*) expected_status=Rejected ;;
       timeout:*) expected_status='In Progress'; availability=unavailable ;;
       timeout-no-id:*) expected_status=Unknown; availability=unavailable; expected_id= ;;
       accepted-no-id:*) availability=unavailable; expected_id= ;;
@@ -215,7 +233,7 @@ assert_evidence() {
   fi
 }
 
-for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
+for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"

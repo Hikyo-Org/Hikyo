@@ -143,6 +143,7 @@ for arch in arm64 x86_64; do
     (if length == 1 then .[0].status else null end) |
     (if type == "string" then ascii_downcase else "" end) |
     if . == "accepted" then "Accepted" elif . == "invalid" then "Invalid"
+    elif . == "rejected" then "Rejected"
     elif . == "in progress" or . == "inprogress" then "In Progress" else "Unknown" end
   ' "$result" 2>/dev/null) || notary_status=Unknown
   diagnostic_availability=unavailable
@@ -150,7 +151,7 @@ for arch in arm64 x86_64; do
   warning_count=
   write_notary_receipt
   case "$notary_status:$submission_id" in
-    Accepted:?* | Invalid:?*)
+    Accepted:?* | Invalid:?* | Rejected:?*)
       log=$scratch/log-$arch.json
       if xcrun notarytool log "$submission_id" --key "$scratch/notary.p8" \
         --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" "$log" \

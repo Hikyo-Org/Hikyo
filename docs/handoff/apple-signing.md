@@ -206,7 +206,7 @@ invalid or mismatched provider logs are excluded. Retention uses the configured
 Actions artifact policy. This adds evidence to the existing fail-closed release
 flow; it does not establish an accepted real release or clean-Mac installation.
 
-The fixture covers 36 scenarios, including all original 19 refusals, accepted
+The fixture covers 37 scenarios, including all original 19 refusals, accepted
 logs with warnings or optional fields, rejection, timeouts with and without an
 ID, log download/shape/identity failures, stale or overlapping evidence paths,
 pre-staple digest binding, and retained evidence after second-architecture
@@ -214,3 +214,10 @@ failure. Secret values and provider-controlled text are checked for absence from
 workflow output. The original helper fails this regression at its missing
 receipt. Focused workflow guards and ShellCheck passed; independent Standards
 and Spec reviews found no issues.
+
+CodeRabbit identified a missing terminal status: Apple can return `Rejected`
+as well as `Invalid`. The initial normalizer recorded it as `Unknown` and
+skipped its detailed log, although the release remained blocked. A fixture-first
+regression reproduced the missing receipt status and log using mixed-case
+`rEjEcTeD`. The normalizer and completed-status branch now retain `Rejected`
+and retrieve its log while still refusing publication and ticket stapling.
