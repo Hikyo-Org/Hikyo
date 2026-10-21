@@ -149,3 +149,19 @@ first-launch behavior of a copied standalone executable.
 Apple's [Developer ID certificate guide](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/)
 and [notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
 are the primary references.
+
+## Merge-queue fixture repair
+
+The first merge-group validation exposed two stale fixture assumptions: the
+fast-feedback synthetic docs checkouts omitted the newly consumed Apple guide,
+and the manifest fixture still counted only one `installer` after DMGs adopted
+that existing kind. The guide is now included in both fixture setup paths and
+the deletion-selection matrix. The manifest assertion requires all three
+installers and exactly one `install.sh`, alongside its existing two-DMG check.
+No production workflow, refusal, or required check was weakened.
+
+The exact complete fast-feedback fixture passed on Node 26.7.0, including lane,
+deadline, and dependency-compatibility subtests. Fail-fast runs of the manifest,
+Homebrew renderer/publisher, archive-derived image root, release-binary reuse,
+stable workflow/ceremony, nightly manifest, and Apple signing fixtures passed.
+ShellCheck and diff checks passed for the repair.

@@ -97,7 +97,8 @@ jq -e '
 	([.artifacts[] | select(.kind == "image")][0].tag == "0.1.0") and
 	([.artifacts[] | select(.kind == "chart")] | length) == 1 and
 	([.artifacts[] | select(.kind == "chart-digest")] | length) == 1 and
-	([.artifacts[] | select(.kind == "installer")] | length) == 1 and
+	([.artifacts[] | select(.kind == "installer")] | length) == 3 and
+	([.artifacts[] | select(.kind == "installer" and .name == "install.sh")] | length) == 1 and
 	([.artifacts[] | select(.kind == "release-candidate")] | length) == 1 and
 	([.artifacts[] | select(.kind == "oci-payload")] | length) == 2 and
 	([.artifacts[] | select(.kind == "chart")][0] |
