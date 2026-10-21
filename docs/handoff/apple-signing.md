@@ -165,3 +165,16 @@ deadline, and dependency-compatibility subtests. Fail-fast runs of the manifest,
 Homebrew renderer/publisher, archive-derived image root, release-binary reuse,
 stable workflow/ceremony, nightly manifest, and Apple signing fixtures passed.
 ShellCheck and diff checks passed for the repair.
+
+The next merge-group run reached the cache-policy fixture, which still assumed
+that every stable and nightly job used Ubuntu. The Apple signing jobs require
+native macOS tools. The runner policy now admits only `apple-sign` in those two
+workflows on `macos-15`, requires its protected `apple-signing` environment, and
+refuses shared caches. All other jobs in those workflows retain the Ubuntu
+runner requirement. This changes the policy fixture, not the production jobs.
+The baseline and 25 mutation/control cases passed, covering both workflows,
+wrong or duplicate runners, wrong environments, shared caches, setup-action
+cache defaults, explicitly disabled caches, extra macOS jobs, and an unrelated
+workflow using the same job name. The remaining supply-chain shell fixtures and
+uncached queue-controller tests passed. ShellCheck and independent Standards
+and Spec reviews passed for this repair.
