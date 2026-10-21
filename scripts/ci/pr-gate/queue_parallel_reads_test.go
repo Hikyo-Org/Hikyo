@@ -135,6 +135,9 @@ func (a *failingPairedReadAPI) read(ctx context.Context, path string, _ any) err
 	select {
 	case <-a.ready:
 	case <-ctx.Done():
+		// Both channels may be ready after the paired read fails. Count
+		// cancellation even when it is observed at this initial barrier.
+		a.cancelled.Add(1)
 		return ctx.Err()
 	}
 	if path == a.failingPath {
