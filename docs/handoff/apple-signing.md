@@ -187,3 +187,37 @@ those rulesets and distinguishes their creator restrictions from the
 environment's ref-name policy. No live ruleset or environment was changed.
 Content preparation, its regression test, and the owning docs package check
 passed on Node 26.7.0 with zero diagnostics. Both delta review axes are CLEAN.
+
+## Notarization diagnostic retention follow-up
+
+The post-merge audit of PR #1018 found that the helper checked `Accepted` but
+did not retrieve Apple's detailed notarization log. Apple's custom workflow
+guide recommends reviewing logs even after success because they can contain
+warnings. The follow-up retains a receipt for each submission with its version,
+source commit, architecture, submitted disk-image name and pre-staple digest,
+submission ID/status, and diagnostic availability. Completed submissions have
+their detailed logs checked against this identity; accepted results require a
+valid matching log before ticket stapling and publication can continue.
+
+Stable and nightly signing jobs upload only dedicated public JSON diagnostics
+with `always()`, so rejection, timeout, and later-architecture failures preserve
+available evidence. Private Keychain/API-key scratch files, raw errors, and
+invalid or mismatched provider logs are excluded. Retention uses the configured
+Actions artifact policy. This adds evidence to the existing fail-closed release
+flow; it does not establish an accepted real release or clean-Mac installation.
+
+The fixture covers 37 scenarios, including all original 19 refusals, accepted
+logs with warnings or optional fields, rejection, timeouts with and without an
+ID, log download/shape/identity failures, stale or overlapping evidence paths,
+pre-staple digest binding, and retained evidence after second-architecture
+failure. Secret values and provider-controlled text are checked for absence from
+workflow output. The original helper fails this regression at its missing
+receipt. Focused workflow guards and ShellCheck passed; independent Standards
+and Spec reviews found no issues.
+
+CodeRabbit identified a missing terminal status: Apple can return `Rejected`
+as well as `Invalid`. The initial normalizer recorded it as `Unknown` and
+skipped its detailed log, although the release remained blocked. A fixture-first
+regression reproduced the missing receipt status and log using mixed-case
+`rEjEcTeD`. The normalizer and completed-status branch now retain `Rejected`
+and retrieve its log while still refusing publication and ticket stapling.

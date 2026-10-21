@@ -71,6 +71,31 @@ Gatekeeper. The corresponding tarball contains the same signed executable.
 Temporary certificate files, private API keys, and the Keychain are removed on
 success and failure. Only public artifacts are transferred to the final job.
 
+Each submission also produces a JSON receipt binding its ID and status to the
+release version, source commit, architecture, disk-image filename, and SHA-256
+of the submitted image before stapling changes its bytes. Completed submissions
+(`Accepted`, `Invalid`, or `Rejected`) have their detailed Apple log downloaded
+and checked against the receipt. An accepted submission cannot proceed without
+a valid matching log.
+Warnings are surfaced as counts for review; they do not by themselves change
+Apple's acceptance status.
+
+Both signing jobs retain these JSON files as Actions artifacts named
+`apple-notarization-stable-RUN_ID-RUN_ATTEMPT` or
+`apple-notarization-nightly-RUN_ID-RUN_ATTEMPT`, including after a failed signing
+step. Retention follows the repository's Actions artifact policy. A rejected or
+timed-out submission keeps its receipt even if Apple has no log available yet;
+an earlier architecture's completed evidence survives a later failure. Inspect
+the recorded submission before retrying. No receipt is expected when signing
+fails before any submission.
+
+The helper requires an empty `APPLE_NOTARY_EVIDENCE_DIR` for this public diagnostic
+output; it refuses prior evidence instead of mixing attempts.
+CI sets it to a dedicated runner temporary directory outside the private
+credential scratch directory and release payloads. The uploader selects only
+the receipt and validated log JSON files. Credentials, raw submission errors,
+and invalid or mismatched logs are excluded.
+
 The final Linux job consumes these finalized artifacts, rechecks candidate and
 archive hashes and independently compares Linux/Windows archive bytes with the
 original build digest. Nightly compatibility is also bound to its original
