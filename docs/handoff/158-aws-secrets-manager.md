@@ -895,3 +895,28 @@ and controlled provider seams; they are not real AWS cases. The new fixture
 remains unprepared and the approved single run unused. Successful real AWS
 acceptance, exact cleanup, fresh hosted validation and final human merge
 approval remain outstanding.
+
+## October 21 candidate base refresh
+
+At `f295418fcf4453f274cdeb9d67ebb07be90132b2`, full candidate run
+`39568587837` passed its validation jobs but failed the final parent-binding
+proof after main advanced to `da6c622749cb6ef8cf9a984e9f4e4d9e4f4473f7`.
+The tested synthetic merge still had base `fdbf9116`; the proof correctly
+refused to attest it against the newer main. Main's intervening PR #1016 changes
+only dependency manifests/locks and its CI handoff. No SQL migrations, Go
+application code or trusted AWS workflow/runner bytes changed.
+
+The new main merge preserves migration 80 and all AWS changes. Its incoming
+files merge without conflict. Required validation and a fresh full candidate
+run must establish the new commit pair; the prior successful validation jobs
+are historical evidence. CodeRabbit rate-limited the requested review of
+`f295418`; that review is unavailable, not a fresh approval. All twelve prior
+inline findings have concrete resolved dispositions, and the independent
+source reviews remain separately recorded. The approved AWS run remains unused.
+
+The integrated web dependency checks passed locally: frozen install,
+typecheck, configured lint and all 217 unit-test files (2,016 tests), with
+at most two workers. Incoming dependency and handoff files match canonical
+main byte-for-byte. The Go application, migrations and trusted AWS sources
+remain unchanged from the preceding candidate. These checks do not replace
+full hosted validation of the new head/base pair.
