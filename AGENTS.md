@@ -74,8 +74,29 @@ The skill covers signing, local validation, and an optional playground.
 
 ## Before pushing
 
-- Run the relevant checks for what you touched (for `web/`: `node --run
-  typecheck` and `node --run test`).
+- Use the existing shared feedback driver, `scripts/ci/fast-feedback.sh`, for
+  local checks that match `ci-feedback`; use `--working-tree` for local edits.
+  Follow [Local verification](CONTRIBUTING.md#local-verification) for pinned
+  prerequisites and explicit base/head selection. Select checks from the complete
+  PR diff; use `--plan` to inspect that selection before running them.
+- Trace changed inputs through their consumers and existing fixtures. Cache-shaped
+  declarations include test code; artifact changes affect inventory counts and
+  deployed readers; workflow changes affect runner/cache policy; published guides
+  affect site mappings and synthetic docs inputs. Run the affected owner tests and
+  consumer checks from [the CI guide](docs/development/ci.md) and workflow source.
+  Compilation and static analysis establish only the checks they execute.
+- Propagate every required validation failure. Use `set -eu` for POSIX shell,
+  `set -euo pipefail` for Bash, or explicitly collect every exit status. Await
+  every child; an aggregate batch must return nonzero if any required check fails.
+- After the final edit, merge or rebase, rerun affected checks and record the
+  validated revision. Inspect applicable current-head feedback and invariant
+  results; report pending, unavailable and skipped checks. Preserve the distinction
+  between queue admission and complete full-suite proof.
+- Diagnose CI from the run, attempt, tested head/base and first actionable failed
+  step, including failed jobs in cancelled workflows. Distinguish test failures,
+  stale-base refusals and publisher failures. A refreshed candidate needs fresh
+  proof for its exact pair. Publisher changes also need cold-start and lagging-API
+  coverage within the existing setup-inclusive deadline and publication reserve.
 - Keep commit messages in the Conventional Commits style already used in the
   history (`feat(web): …`, `fix(app): …`, `test(web): …`).
 
