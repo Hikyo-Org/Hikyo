@@ -39,7 +39,10 @@ instead of a stable candidate. Published nightly runs skip signing without
 replacing their original artifacts. The six-archive checksum
 contract and Linux/Windows payloads are preserved. An independent original-build
 digest checks the four Linux/Windows archive bytes after the Apple stage, and
-nightly compatibility is checked against its original build digest.
+nightly compatibility is checked against its original build digest. The image
+preparation helper validates both Linux archives before writing any OCI input
+or provenance, compares their members with the loose GoReleaser binaries, and
+copies the executable image inputs from the archives themselves.
 
 ## Validation
 
@@ -62,6 +65,11 @@ nightly compatibility is checked against its original build digest.
   environment binding, container retries across skipped signing ancestors,
   independent Linux/Windows integrity, and original nightly compatibility.
   Changed archive bytes are refused even with regenerated valid checksums.
+- Image-root fixtures prove archive-derived OCI inputs and executable modes,
+  with 14 refusal cases passing under BSD and GNU tar. Altering only a loose
+  Linux binary, including arm64 after valid amd64 input, leaves no partial OCI
+  root or provenance. Missing, linked, duplicated, malformed, non-executable,
+  and mismatched archive content is rejected.
 - The docs site now maps the Apple guide and its links. Content preparation,
   generator regression tests, generation, and the owning docs package check
   passed on pinned Node 26.7.0 with zero errors, warnings, or hints.
