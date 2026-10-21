@@ -63,8 +63,11 @@ contract and Linux/Windows payloads are preserved.
 Delivery PR: [#1018](https://github.com/Hikyo-Org/Hikyo/pull/1018). Commits and
 pushes are signed and DCO signed-off, with GitHub verification confirmed.
 The maintainer explicitly authorized merge after review and CI.
-Remote CI remains pending. A public Hikyo release and clean-Mac installation
-have not been verified. Configuration checks below use a harmless
+Standards and Spec reviews are CLEAN for implementation head
+`f60208d4256cc6880d953b3d6f8a43837ca86f00`, including the corrected rollout
+compatibility. Cross-provider review was skipped because the Anthropic
+subscription is unavailable. Remote CI remains pending at this checkpoint. A
+public Hikyo release and clean-Mac installation have not been verified. Configuration checks below use a harmless
 test executable, separate from Hikyo release acceptance.
 
 ## Nightly publication credential custody
@@ -104,11 +107,11 @@ fixed the required `=` prefix for inline `codesign -R` requirements; regression
 fixtures now refuse the old syntax.
 
 Apple received test submission `a814ad98-8834-490c-a7f3-edef44fdfcfd` for
-`probe.dmg`; the initial five-minute wait expired while Apple still reported
-`In Progress`. That timeout does not cancel the submission. A bounded background
-wait is continuing against the same submission; it will staple and validate the
-ticket and assess the DMG if Apple accepts it. Stapling and Gatekeeper acceptance
-remain unverified until that completes.
+`probe.dmg`; the initial five-minute wait and a subsequent twenty-minute wait
+expired while Apple still reported `In Progress`. Timeouts do not cancel the
+submission. No duplicate was submitted. Acceptance, ticket stapling, and
+Gatekeeper acceptance remain unverified; use the existing submission when
+checking its eventual result.
 
 The repeatable setup procedure and exact credential names are in the
 [Apple signing guide](../release/apple-signing.md). No release or live tap content
