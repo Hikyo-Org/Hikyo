@@ -338,10 +338,18 @@ jobs:
           APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
           APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
           APPLE_RELEASE_CHANNEL: nightly
           APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
           APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
         run: ./scripts/release/sign-apple-artifacts.sh dist
+      - name: Retain Apple notarization diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-notarization-nightly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-notarization/*.json
+          if-no-files-found: warn
       - name: Retain finalized nightly artifacts and predecessor context
         run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-nightly-inputs.tar.gz" dist nightly-context
       - id: upload-inputs
