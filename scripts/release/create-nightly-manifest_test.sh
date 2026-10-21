@@ -39,4 +39,23 @@ jq -e '(.artifacts | length) == 20 and ([.artifacts[] | select(.kind == "binary"
 if "$script_dir/create-nightly-manifest.sh" "$version" "$commit" 24 "$scratch/payloads" >/dev/null 2>&1; then
  printf 'existing manifest overwritten\n' >&2; exit 1
 fi
-printf 'nightly manifest: complete inventory bound; extra, missing and overwrite refused\n'
+rm "$scratch/payloads/release-manifest.json"
+printf 'signed disk image arm64\n' >"$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg"
+if "$script_dir/create-nightly-manifest.sh" "$version" "$commit" 24 "$scratch/payloads" >/dev/null 2>&1; then
+ printf 'partial macOS disk image pair accepted\n' >&2; exit 1
+fi
+printf 'signed disk image x86_64\n' >"$scratch/payloads/hikyo_${version}_Darwin_x86_64.dmg"
+mv "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg" "$scratch/arm64.dmg"
+ln -s "$scratch/arm64.dmg" "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg"
+if "$script_dir/create-nightly-manifest.sh" "$version" "$commit" 24 "$scratch/payloads" >/dev/null 2>&1; then
+ printf 'symlinked macOS disk image accepted\n' >&2; exit 1
+fi
+rm "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg"
+mv "$scratch/arm64.dmg" "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg"
+"$script_dir/create-nightly-manifest.sh" "$version" "$commit" 24 "$scratch/payloads"
+jq -e --arg sha "$(sha256_file "$scratch/payloads/hikyo_${version}_Darwin_arm64.dmg")" '
+ (.artifacts | length) == 22 and
+ ([.artifacts[] | select(.kind == "macos-dmg")] | length) == 2 and
+ ([.artifacts[] | select(.kind == "macos-dmg" and .platform == "darwin/arm64" and .sha256 == $sha)] | length) == 1
+' "$scratch/payloads/release-manifest.json" >/dev/null
+printf 'nightly manifest: historical inventory and canonical disk image pair bound; extra, missing, symlink, partial pair and overwrite refused\n'

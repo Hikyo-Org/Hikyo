@@ -95,10 +95,19 @@ only after the verification and startup gates pass.
 The checkout must equal the workflow's OIDC source SHA and have exact-commit
 green main CI. Both actual database engines produce the compatibility stamp.
 GoReleaser builds all six platform archives and eight native Linux packages with
-that stamp and the same production root. The signed manifest binds all twenty
-payloads: those fourteen executables/packages, checksums, binary provenance,
-compatibility, policy, Sigstore roots and release notes. Only the manifest and
-its signature envelope are excluded from their own inventory.
+that stamp and the same production root. A separate macOS job applies Developer
+ID signatures and notarizes both Darwin binaries inside disk images, staples and
+validates their tickets, and repacks the same signed binaries into the Darwin
+archives. Missing Apple credentials or rejected notarization fails publication.
+See [Apple signing setup](../release/apple-signing.md) for the required settings.
+
+Publication consumes the finalized artifacts by immutable artifact ID, rechecks
+their checksums and source identity, and reauthenticates the exact predecessors
+used to build compatibility. The signed manifest binds all twenty-two payloads:
+those fourteen archives/packages, two macOS disk images, checksums, binary
+provenance, compatibility, policy, Sigstore roots and release notes. Historical
+nightlies with twenty payloads remain verifiable. Only the manifest and its
+signature envelope are excluded from their own inventory.
 
 The runtime verifier checks the full inventory, certificate identity, signed
 integrated time, SCT and log inclusion/checkpoint. CI then assembles a runtime

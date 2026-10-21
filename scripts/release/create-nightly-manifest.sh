@@ -38,6 +38,19 @@ for os in Linux Darwin Windows; do
   record "hikyo_${version}_${os}_${name_arch}.$extension" binary "$(printf '%s' "$os" | tr '[:upper:]' '[:lower:]')/$arch" '' ''
  done
 done
+# Historical signed nightlies have no disk images; new publication requires the
+# complete pair before invoking this builder. A partial pair is never valid.
+dmg_count=0
+for arch in amd64 arm64; do
+ name_arch=$arch
+ [ "$arch" != amd64 ] || name_arch=x86_64
+ name="hikyo_${version}_Darwin_${name_arch}.dmg"
+ if [ -e "$directory/$name" ] || [ -L "$directory/$name" ]; then
+  record "$name" macos-dmg "darwin/$arch" '' ''
+  dmg_count=$((dmg_count + 1))
+ fi
+done
+[ "$dmg_count" -eq 0 ] || [ "$dmg_count" -eq 2 ] || { printf 'nightly: both macOS disk images are required\n' >&2; exit 1; }
 for format in deb rpm apk archlinux; do
  for arch in amd64 arm64; do
   record "$(package_file_name "$version" "$format" "$arch")" package "linux/$arch" "$format" "$arch"
@@ -49,8 +62,8 @@ record upgrade-compatibility.json upgrade-compatibility '' '' ''
 record nightly-policy.json nightly-policy '' '' ''
 record sigstore-trusted-root.json sigstore-trusted-root '' '' ''
 record NIGHTLY-BUILD.txt release-notes '' '' ''
-# Inventory must be exactly these twenty payloads. Never silently omit a file
-# which gh release create would subsequently publish.
+# Inventory must contain exactly the canonical payloads (plus the DMG pair).
+# Never omit a file which gh release create would subsequently publish.
 count=0
 for path in "$directory"/* "$directory"/.[!.]* "$directory"/..?*; do
  [ -e "$path" ] || [ -L "$path" ] || continue
@@ -60,7 +73,7 @@ for path in "$directory"/* "$directory"/.[!.]* "$directory"/..?*; do
  }
  count=$((count + 1))
 done
-[ "$count" -eq 20 ]
+[ "$count" -eq $((20 + dmg_count)) ]
 publication=$(mktemp "$directory/.nightly-manifest.XXXXXX")
 jq -s --arg version "$version" --arg commit "$commit" --argjson sequence "$sequence" '
  {schema:"hikyo.dev/nightly-manifest/v1",profile:"nightly/v1",version:$version,tag:("v"+$version),source_commit:$commit,release_sequence:$sequence,artifacts:sort_by(.name)}

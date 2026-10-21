@@ -14,8 +14,8 @@ func TestPostgresFixturesStartAfterCheckout(t *testing.T) {
 	for workflow, jobs := range map[string][]string{
 		"ci":          {"client", "test_core", "isolation_shard", "race_shard", "headline-guarantee"},
 		"reliability": {"race-isolation", "gitlab-e2e"},
-		"release":     {"build-signed-draft"},
-		"nightly":     {"publish"},
+		"release":     {"build-artifacts"},
+		"nightly":     {"build-artifacts", "publish"},
 	} {
 		raw, err := os.ReadFile("../../.github/workflows/" + workflow + ".yml")
 		if err != nil {

@@ -54,12 +54,17 @@ jobs:
           PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
         run: ./scripts/ci/verify-docs.sh
 
-  build-signed-draft:
+  build-artifacts:
     needs: [validation, docs, floor-bench]
+    outputs:
+      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      candidate_sha256: ${{ steps.candidate.outputs.sha256 }}
+      version: ${{ steps.candidate.outputs.version }}
+      commit: ${{ steps.candidate.outputs.commit }}
+      image: ${{ steps.identity.outputs.image }}
+      compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
     permissions:
       contents: write
-      packages: write
-      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,9 +99,6 @@ jobs:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.3
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v4.2.3
 
       - name: Resolve immutable release identity
         id: identity
@@ -214,22 +216,6 @@ jobs:
             .commit == $candidate[0].commit
           ' dist/metadata.json >/dev/null
 
-      - name: Verify every native package payload
-        run: go run ./scripts/release/verify-native-packages.go dist "${{ steps.candidate.outputs.version }}"
-
-      - name: Prepare canonical image inputs
-        env:
-          CANDIDATE: ${{ steps.candidate.outputs.path }}
-          CANDIDATE_SHA256: ${{ steps.candidate.outputs.sha256 }}
-        run: |
-          ./scripts/release/check-candidate.sh "$CANDIDATE" "$CANDIDATE_SHA256"
-          commit=$(jq -r '.commit' "$CANDIDATE")
-          ./scripts/release/prepare-image-root.sh \
-            dist image-root "$commit" .goreleaser.yaml
-
-      - name: Remove GoReleaser internal metadata
-        run: rm -f dist/artifacts.json dist/config.yaml dist/metadata.json
-
       - name: Source dependency SBOM (Go and frontend)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
@@ -239,6 +225,124 @@ jobs:
           syft-version: v1.50.0
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Retain canonical artifacts for Apple signing
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.path }}
+          COMPATIBILITY: ${{ steps.compatibility.outputs.path }}
+        run: |
+          cp "$CANDIDATE" dist/release-candidate.json
+          cp "$COMPATIBILITY" dist/upgrade-compatibility.json
+          tar -czf "$RUNNER_TEMP/release-inputs.tar.gz" dist
+      - id: upload-inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-inputs-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-inputs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
+
+  apple-sign:
+    outputs:
+      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+    needs: build-artifacts
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.build-artifacts.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/release-inputs
+      - name: Restore canonical release artifacts
+        run: tar -xzf "$RUNNER_TEMP/release-inputs/release-inputs.tar.gz"
+      - name: Sign and notarize macOS binaries and disk images
+        env:
+          APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+        run: ./scripts/release/sign-apple-artifacts.sh dist
+      - name: Retain finalized Apple artifacts
+        run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-release-inputs.tar.gz" dist
+      - id: upload-inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-release-inputs-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-release-inputs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  build-signed-draft:
+    needs: [validation, docs, floor-bench, build-artifacts, apple-sign]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.3
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/apple-release-inputs
+      - name: Restore finalized release artifacts and recheck identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          TAG_SHA: ${{ github.sha }}
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+        run: |
+          tar -xzf "$RUNNER_TEMP/apple-release-inputs/apple-release-inputs.tar.gz"
+          ./scripts/release/check-candidate.sh dist/release-candidate.json "$CANDIDATE_SHA256"
+          ./scripts/release/require-signed-tag.sh "$REPOSITORY" "$TAG" "$TAG_SHA"
+          go run ./scripts/release/stable preflight --trust release/trust
+          (cd dist && sha256sum --check --strict checksums.txt)
+          for arch in arm64 x86_64; do
+            test -s "dist/hikyo_${TAG#v}_Darwin_$arch.dmg"
+          done
+
+      - name: Verify every native package payload
+        run: go run ./scripts/release/verify-native-packages.go dist "${{ needs.build-artifacts.outputs.version }}"
+
+      - name: Prepare canonical image inputs
+        env:
+          CANDIDATE: dist/release-candidate.json
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+        run: |
+          ./scripts/release/check-candidate.sh "$CANDIDATE" "$CANDIDATE_SHA256"
+          commit=$(jq -r '.commit' "$CANDIDATE")
+          ./scripts/release/prepare-image-root.sh \
+            dist image-root "$commit" .goreleaser.yaml
+
+      - name: Remove GoReleaser internal metadata
+        run: rm -f dist/artifacts.json dist/config.yaml dist/metadata.json
 
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
@@ -251,8 +355,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Refuse an already-used image version
         env:
-          IMAGE: ${{ steps.identity.outputs.image }}
-          VERSION: ${{ steps.candidate.outputs.version }}
+          IMAGE: ${{ needs.build-artifacts.outputs.image }}
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
         run: ./scripts/release/check-oci-unused.sh "$IMAGE:$VERSION"
       - name: Publish unsigned multi-arch image
         id: image
@@ -262,24 +366,24 @@ jobs:
           file: Dockerfile.release
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.identity.outputs.image }}:${{ steps.candidate.outputs.version }}
+          tags: ${{ needs.build-artifacts.outputs.image }}:${{ needs.build-artifacts.outputs.version }}
           provenance: false
           sbom: false
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.candidate.outputs.commit }}
-            org.opencontainers.image.version=${{ steps.candidate.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.build-artifacts.outputs.commit }}
+            org.opencontainers.image.version=${{ needs.build-artifacts.outputs.version }}
 
       - name: Smoke the published candidate image
         env:
-          IMAGE: ${{ steps.identity.outputs.image }}
+          IMAGE: ${{ needs.build-artifacts.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: ./scripts/release/smoke-image-ui.sh "$IMAGE@$IMAGE_DIGEST"
 
       - name: Published image SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          image: ${{ steps.identity.outputs.image }}@${{ steps.image.outputs.digest }}
+          image: ${{ needs.build-artifacts.outputs.image }}@${{ steps.image.outputs.digest }}
           registry-username: ${{ github.actor }}
           registry-password: ${{ secrets.GITHUB_TOKEN }}
           format: spdx-json
@@ -291,9 +395,9 @@ jobs:
       - name: Package and publish digest-pinned Helm chart
         id: chart
         env:
-          CANDIDATE: ${{ steps.candidate.outputs.path }}
-          CANDIDATE_SHA256: ${{ steps.candidate.outputs.sha256 }}
-          IMAGE: ${{ steps.identity.outputs.image }}
+          CANDIDATE: dist/release-candidate.json
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+          IMAGE: ${{ needs.build-artifacts.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
@@ -334,7 +438,7 @@ jobs:
 
       - name: Prepare OCI signing payloads
         env:
-          IMAGE: ${{ steps.identity.outputs.image }}
+          IMAGE: ${{ needs.build-artifacts.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           CHART: ${{ steps.chart.outputs.chart }}
           CHART_DIGEST: ${{ steps.chart.outputs.chart_digest }}
@@ -358,8 +462,8 @@ jobs:
 
       - name: Render installer with pinned trust root
         env:
-          CANDIDATE: ${{ steps.candidate.outputs.path }}
-          CANDIDATE_SHA256: ${{ steps.candidate.outputs.sha256 }}
+          CANDIDATE: dist/release-candidate.json
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
         run: |
           ./scripts/release/check-candidate.sh "$CANDIDATE" "$CANDIDATE_SHA256"
           version=$(jq -r '.version' "$CANDIDATE")
@@ -368,19 +472,17 @@ jobs:
 
       - name: Build release manifest
         env:
-          COMPATIBILITY: ${{ steps.compatibility.outputs.path }}
-          COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
-          CANDIDATE: ${{ steps.candidate.outputs.path }}
-          CANDIDATE_SHA256: ${{ steps.candidate.outputs.sha256 }}
-          IMAGE: ${{ steps.identity.outputs.image }}
+          COMPATIBILITY: dist/upgrade-compatibility.json
+          COMPATIBILITY_SHA256: ${{ needs.build-artifacts.outputs.compatibility_sha256 }}
+          CANDIDATE: dist/release-candidate.json
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+          IMAGE: ${{ needs.build-artifacts.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           CHART: ${{ steps.chart.outputs.chart }}
           CHART_DIGEST: ${{ steps.chart.outputs.chart_digest }}
         run: |
           ./scripts/release/check-candidate.sh "$CANDIDATE" "$CANDIDATE_SHA256"
-          cp "$CANDIDATE" dist/release-candidate.json
           test "$(sha256sum "$COMPATIBILITY" | awk '{print $1}')" = "$COMPATIBILITY_SHA256"
-          cp "$COMPATIBILITY" dist/upgrade-compatibility.json
           cp release/trust/stable-policy.json release/trust/stable-policy.sigstore.json \
             release/trust/stable-trusted-root.json dist/
           printf '%s\n' "$IMAGE_DIGEST" >dist/image-index.digest
@@ -423,6 +525,3 @@ jobs:
             printf 'Review manifest SHA-256: %s\n' "$(sha256sum "$downloaded/release-manifest.json" | awk '{print $1}')"
             printf 'Use the local online ceremony publish command from current clean main with this version and digest after review.\n'
           } >>"$GITHUB_STEP_SUMMARY"
-      - name: Remove CI PostgreSQL
-        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
-        run: docker container rm --force hikyo-ci-postgres

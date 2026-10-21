@@ -6,15 +6,15 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 bundle="$fixture_dir/bundle"
 mkdir -p "$bundle"
 
-printf 'arm64 archive\n' >"$bundle/hikyo_1.2.3_Darwin_arm64.tar.gz"
-printf 'intel archive\n' >"$bundle/hikyo_1.2.3_Darwin_x86_64.tar.gz"
-arm_sha=$(shasum -a 256 "$bundle/hikyo_1.2.3_Darwin_arm64.tar.gz" | awk '{print $1}')
-intel_sha=$(shasum -a 256 "$bundle/hikyo_1.2.3_Darwin_x86_64.tar.gz" | awk '{print $1}')
+printf 'arm64 archive\n' >"$bundle/hikyo_1.2.3_Darwin_arm64.dmg"
+printf 'intel archive\n' >"$bundle/hikyo_1.2.3_Darwin_x86_64.dmg"
+arm_sha=$(shasum -a 256 "$bundle/hikyo_1.2.3_Darwin_arm64.dmg" | awk '{print $1}')
+intel_sha=$(shasum -a 256 "$bundle/hikyo_1.2.3_Darwin_x86_64.dmg" | awk '{print $1}')
 jq -n --arg arm_sha "$arm_sha" --arg intel_sha "$intel_sha" '{
 	schema: "hikyo.dev/release-manifest/v1", version: "1.2.3", tag: "v1.2.3",
 	artifacts: [
-		{name: "hikyo_1.2.3_Darwin_arm64.tar.gz", kind: "binary", sha256: $arm_sha},
-		{name: "hikyo_1.2.3_Darwin_x86_64.tar.gz", kind: "binary", sha256: $intel_sha}
+		{name: "hikyo_1.2.3_Darwin_arm64.dmg", kind: "macos-dmg", sha256: $arm_sha},
+		{name: "hikyo_1.2.3_Darwin_x86_64.dmg", kind: "macos-dmg", sha256: $intel_sha}
 	]
 }' >"$bundle/release-manifest.json"
 

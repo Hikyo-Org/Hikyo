@@ -209,7 +209,7 @@ jq -e '
 	([.artifacts[].name] | unique | length) == (.artifacts | length) and
 	all(.artifacts[]; . as $artifact |
 		($artifact.name | type == "string" and length > 0) and
-		($artifact.kind as $kind | ["binary", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate", "upgrade-compatibility"] | index($kind) != null) and
+		($artifact.kind as $kind | ["binary", "macos-dmg", "package", "binary-provenance", "sbom", "image", "checksum", "chart", "chart-digest", "installer", "oci-payload", "release-candidate", "upgrade-compatibility"] | index($kind) != null) and
 		($artifact.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
 			(if $artifact.kind == "package" then
 				($artifact.format as $format | ["apk", "archlinux", "deb", "rpm"] | index($format) != null) and
@@ -275,6 +275,7 @@ primary_key="$root_dir/$primary_name"
 
 artifact_count=$(jq -r '.artifacts | length' "$manifest")
 binary_count=0
+macos_dmg_count=0
 package_count=0
 binary_provenance_count=0
 sbom_count=0
@@ -305,6 +306,13 @@ while [ "$i" -lt "$artifact_count" ]; do
 	safe_release_name "$name" || fail "unsafe artifact path $name"
 	case "$kind" in
 		binary) binary_count=$((binary_count + 1)) ;;
+		macos-dmg)
+			macos_dmg_count=$((macos_dmg_count + 1))
+			case "$name" in
+				"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") ;;
+				*) fail 'macOS disk image differs from release identity' ;;
+			esac
+			;;
 		package)
 			package_count=$((package_count + 1))
 			;;
@@ -412,6 +420,7 @@ while [ "$i" -lt "$artifact_count" ]; do
 done
 
 [ "$binary_count" -gt 0 ] || fail 'manifest contains no binary artifacts'
+[ "$macos_dmg_count" -eq 0 ] || [ "$macos_dmg_count" -eq 2 ] || fail 'macOS disk images must cover both architectures'
 [ "$package_count" -eq 8 ] || fail 'manifest must contain exactly eight native package artifacts'
 jq -e '
 	. as $manifest |

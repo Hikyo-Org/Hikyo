@@ -138,6 +138,12 @@ Operator process peak RSS and cgroup memory charge are different measurements.
 
 ## 3. Complete external and self-hoster evidence
 
+- **Apple distribution:** configure the Developer ID Application identity and
+  team notarization API key using the [Apple signing guide](apple-signing.md).
+  Require accepted notarization, stapled and verified disk images for both
+  architectures, and a quarantined download plus Homebrew install/upgrade on
+  separate Apple Silicon and Intel Macs. Enrollment and local fixtures do not
+  establish publisher signing or clean-Mac installation acceptance.
 - **GitHub:** `TestGitHubDotComContract` requires a dedicated fixture repository,
   organization and protected unattended environment, three minimum-permission
   tokens, three one-permission-less tokens and a distinct harness token.

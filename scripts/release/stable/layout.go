@@ -37,6 +37,11 @@ func verifyReleaseLayout(directory string, release releasetrust.VerifiedRelease,
 			packages[identity] = true
 		case "binary":
 			binaries[a.Name] = true
+		case "macos-dmg":
+			if a.Name != "hikyo_"+release.Identity().Version+"_Darwin_arm64.dmg" &&
+				a.Name != "hikyo_"+release.Identity().Version+"_Darwin_x86_64.dmg" {
+				return errors.New("macOS disk image differs from release identity")
+			}
 		case "release-verifier":
 			verifiers[a.Name] = true
 		case "image":
@@ -51,6 +56,11 @@ func verifyReleaseLayout(directory string, release releasetrust.VerifiedRelease,
 			}
 			payloads[a.SubjectKind] = a
 		}
+	}
+	// Historical releases predate Apple packaging. When present, disk images
+	// must cover both architectures; new builds require them before signing.
+	if counts["macos-dmg"] != 0 && counts["macos-dmg"] != 2 {
+		return errors.New("macOS disk images must cover both architectures")
 	}
 	required := map[string]int{"package": 8, "binary": 6, "binary-provenance": 1,
 		"image": 1, "chart-digest": 1, "chart": 1, "installer": 1, "release-candidate": 1, "upgrade-compatibility": 1, "oci-payload": 2,
