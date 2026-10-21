@@ -1,6 +1,34 @@
-# #158 historical cleanup: AWS CLI error framing
+# #158 trusted runner: CLI framing and Go security patch
 
-Updated 2026-10-21. This is a trusted-runner repair, not AWS acceptance.
+Updated 2026-10-21. This covers the trusted-runner framing repair and a Go
+security pin update, not AWS acceptance.
+
+## Merge-queue security blocker and Go pin
+
+Overnight merge-queue
+[run 39530844704](https://github.com/Hikyo-Org/Hikyo/actions/runs/39530844704)
+failed both core and UI binary vulnerability checks on
+[`GO-2026-6809`](https://pkg.go.dev/vuln/GO-2026-6809), affecting
+`crypto/x509.Certificate.Verify`. The official advisory was published at
+`2026-10-21T00:27:29Z`, after the earlier CI, and identifies Go 1.27.3 as the fix
+within the Go 1.27 line. The canonical `go.mod` pin and the three current
+installation prerequisites now require 1.27.3. Module dependencies, `go.sum`,
+synthetic version fixtures and AWS runtime behavior are unchanged.
+
+Local validation selected Go 1.27.3, passed the Go-patch contract and four
+focused CI compiler-policy tests, built the real SPA and both core/UI
+binaries, verified both compiler metadata records, and passed both binary
+`govulncheck` scans on Darwin arm64. Exact-head remote full CI and protected
+merge-queue validation remain required. The recorded 39 cleanup/runner test
+result below covers the unchanged Python repair and predates this pin update.
+The frozen AWS candidate `391c4b053661e4d84569a304bafa8bbb521b7fc2` still pins
+Go 1.27.2 and must incorporate the reviewed security patch before another
+fixture run.
+
+The owner's banked merge approval applies only to
+`9df4d38529e0ddde1530bc5114f123e1887c8488`. The revised candidate needs a new
+exact-head human merge decision after validation and CI. AWS provisioning,
+dispatch and human deployment review remain separate gates.
 
 ## Problem and resulting behavior
 
