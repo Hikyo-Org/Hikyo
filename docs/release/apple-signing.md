@@ -21,9 +21,18 @@ generated. Local development snapshots keep their existing signing profile.
    Account password.
 3. In the Hikyo repository's Environments settings, create `apple-signing`.
    Choose custom deployment branch policies with exactly branch `main` and tag
-   pattern `v*`. Both Apple jobs use this environment. Configure these secrets
-   there, then remove any repository-scoped copies after verifying the new
-   environment's secret metadata:
+   pattern `v*`. Both Apple jobs use this environment. The environment policy
+   matches ref names; it does not restrict who creates matching tags. Keep these
+   repository rulesets active as the tag-creation and immutability boundaries:
+   - `release tags require admin role`: only repository admins may create `v*`
+     tags, excluding `v*-nightly.*`.
+   - `nightly tags require Hikyo release app`: only the Hikyo release app may
+     create `v*-nightly.*` tags.
+   - `release tags are immutable`: prohibit updates and deletion of every `v*`
+     tag, with no bypass actors.
+
+   Configure these secrets in the environment, then remove any repository-scoped
+   copies after verifying the new environment's secret metadata:
    - `APPLE_DEVELOPER_ID_P12_BASE64`: base64 encoding of the exported identity.
    - `APPLE_DEVELOPER_ID_P12_PASSWORD`: the export password.
    - `APPLE_NOTARY_KEY_P8`: the complete private key, preserving its PEM lines.

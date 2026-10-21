@@ -178,3 +178,12 @@ cache defaults, explicitly disabled caches, extra macOS jobs, and an unrelated
 workflow using the same job name. The remaining supply-chain shell fixtures and
 uncached queue-controller tests passed. ShellCheck and independent Standards
 and Spec reviews passed for this repair.
+
+The final CodeRabbit review requested the tag-creation dependencies in the
+credential setup guide. Live readback confirmed the active admin-only release
+creation rule (excluding nightlies), app-only nightly creation rule, and
+zero-bypass update/deletion prohibition for all `v*` tags. The guide now names
+those rulesets and distinguishes their creator restrictions from the
+environment's ref-name policy. No live ruleset or environment was changed.
+Content preparation, its regression test, and the owning docs package check
+passed on Node 26.7.0 with zero diagnostics. Both delta review axes are CLEAN.
