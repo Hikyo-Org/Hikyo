@@ -2,9 +2,13 @@
 
 Stable releases use GitHub OIDC signing, followed by maintainer review of a
 signed draft and explicit publication of its exact manifest hash. The laptop
-stays online. Routine releases need neither USB media nor private release keys.
+stays online. Routine Cosign signing needs neither USB media nor the long-lived
+primary/recovery keys. macOS distribution separately uses Apple credentials.
 
 The [online release guide](online-signing.md) is the operator entry point.
+The [Apple signing guide](apple-signing.md) covers Developer ID credentials,
+notarized DMGs, and Homebrew tap installation. Stable and nightly macOS artifacts require
+Apple signing before final artifact hashing and Cosign signing.
 The design combines SOPS-style keyless signing and provenance with OpenBao-style
 review before publication. It does not deploy SOPS or an OpenBao server.
 
@@ -40,7 +44,7 @@ and wait for local publication verification before syncing trust. Merge the trus
 and green CI before the next release. The [complete guide](online-signing.md)
 explains each boundary and retry behavior.
 
-The manifest authenticates the six platform archives, eight Linux packages,
+The manifest authenticates the six platform archives, two macOS disk images, eight Linux packages,
 installer, standalone verifiers, image/chart digest evidence, SBOMs, compatibility
 artifacts and first-party build provenance. Metadata and catalog signatures bind
 the release to recovery-authorized policy and monotonic trust state. Hash and

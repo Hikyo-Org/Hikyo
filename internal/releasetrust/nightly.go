@@ -100,6 +100,9 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	if err := validateArtifactVersions(manifest.Artifacts, manifest.Version); err != nil {
 		return VerifiedRelease{}, err
 	}
+	if err := validateNightlyDiskImages(manifest.Artifacts, manifest.Version); err != nil {
+		return VerifiedRelease{}, err
+	}
 	if len(material.Compatibility) == 0 || len(material.Compatibility) > MaxDocumentBytes || !bindsArtifact(manifest.Artifacts, CompatibilityArtifact, "upgrade-compatibility", releaseidentity.Hash(material.Compatibility)) {
 		return VerifiedRelease{}, errors.New("nightly declaration missing or substituted")
 	}
@@ -125,6 +128,30 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 		}
 	}
 	return release, nil
+}
+
+// Disk images use the existing installer kind so earlier nightly readers can
+// verify their complete signed inventory. Other installers retain their existing
+// semantics. When DMGs are present, require the canonical pair for this version.
+func validateNightlyDiskImages(artifacts []Artifact, version string) error {
+	expected := map[string]string{
+		"hikyo_" + version + "_Darwin_x86_64.dmg": "darwin/amd64",
+		"hikyo_" + version + "_Darwin_arm64.dmg":  "darwin/arm64",
+	}
+	count := 0
+	for _, artifact := range artifacts {
+		if artifact.Kind != "installer" || !strings.HasSuffix(artifact.Name, ".dmg") {
+			continue
+		}
+		if platform, ok := expected[artifact.Name]; !ok || artifact.Platform != platform {
+			return errors.New("nightly disk image must bind its exact version and Darwin platform")
+		}
+		count++
+	}
+	if count != 0 && count != 2 {
+		return errors.New("nightly disk image inventory requires both Darwin architectures")
+	}
+	return nil
 }
 
 // VerifyNightly verifies the complete inventory by default. Platform requests

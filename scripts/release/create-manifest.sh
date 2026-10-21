@@ -76,6 +76,12 @@ while IFS= read -r path; do
 		image-index.oci-payload.json) kind='oci-payload'; subject_kind=image ;;
 		chart-index.oci-payload.json) kind='oci-payload'; subject_kind=chart ;;
 		hikyo_*.tar.gz | hikyo_*.zip) kind=binary ;;
+		hikyo_*.dmg)
+			case "$name" in
+				"hikyo_${version}_Darwin_arm64.dmg" | "hikyo_${version}_Darwin_x86_64.dmg") kind=installer ;;
+				*) printf 'manifest: disk image differs from release identity: %s\n' "$name" >&2; exit 1 ;;
+			esac
+			;;
 		*.deb | *.rpm | *.apk | *.pkg.tar.zst)
 			kind=package
 			package_identity=$(package_identity_for_name "$version" "$name") || {

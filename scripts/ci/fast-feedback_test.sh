@@ -221,7 +221,7 @@ rm -rf .github scripts/ci
 cp "$script_dir/../../.nvmrc" .nvmrc
 commit_fixture
 docs_base=$(git rev-parse HEAD)
-for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh; do
 	mkdir -p "$(dirname "$path")"
 	printf '# Fixture\n\nContent\n' >"$path"
 done
@@ -240,7 +240,7 @@ FAST_FEEDBACK_BASE="$docs_base" FAST_FEEDBACK_TOOLS_DIR="$script_dir" refuse 're
 [ ! -e docs/site/public ] && [ ! -e docs/site/src ]
 # Each consumed policy/site/runtime input, including deletions, selects docs.
 selection_base=$(git rev-parse HEAD)
-for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
+for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LICENSE docs/status/README.md docs/release/signing.md docs/release/online-signing.md docs/release/apple-signing.md docs/release/legacy-offline-signing.md install/upgrade-nightly.sh docs/site/scripts/prepare-content.mjs .nvmrc package.json pnpm-lock.yaml pnpm-workspace.yaml; do
 	if [ -f "$path" ]; then
 		mv "$path" "$work/input-backup"
 		FAST_FEEDBACK_BASE="$selection_base" run_feedback --working-tree --plan
