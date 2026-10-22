@@ -9,6 +9,10 @@ Apple-side operation fails after signed inputs are verified; their macOS tarball
 remain signed, with notarization explicitly unverified in the release notes.
 Local development snapshots keep their existing signing profile.
 
+The fallback requires failure of the notarization helper step after input
+verification. A later diagnostics upload, finalized packaging, or artifact
+upload failure after successful notarization blocks publication.
+
 ## One-time credential setup
 
 1. Create a **Developer ID Application** certificate through Xcode or the Apple

@@ -35,12 +35,15 @@ and consumers.
 | Signed-byte handoff or input signature validation failed | Blocked | None published | None published |
 | Notarization succeeded | Existing release gates apply | Both accepted and stapled | Signed and notarized |
 | Apple-side notarization or stapling failed after input verification | Existing release gates apply | Both omitted | Signed; notarization unverified in notes |
+| Diagnostics upload, finalized packaging, or artifact upload failed after successful notarization | Blocked | None published | None published |
 | Notarization cancelled or unexpectedly skipped | Blocked for a new release | None published | None published |
 
 The final job selects the notarization artifact only on success. A failed Apple
-operation permits fallback only after the helper has verified both architectures'
-source metadata and signatures and reported `inputs_verified=true`. The final
-job selects the original signing artifact, independently rechecks its signed
+operation permits fallback only when the notarization helper step itself failed
+after verifying both architectures' source metadata and signatures and reporting
+`inputs_verified=true`. A later packaging or upload failure after successful
+notarization blocks publication. The final job selects the original signing
+artifact, independently rechecks its signed
 macOS digest, and excludes all disk images from staging. A signed-byte handoff
 mismatch or signature failure blocks publication.
 It retains exact-source validation, non-Darwin input hashes, authenticated

@@ -373,6 +373,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
+      notarize_outcome: ${{ steps.notarize.outcome }}
     permissions:
       contents: read
     env:
@@ -439,7 +440,8 @@ jobs:
       needs.validation.result == 'success' && needs.build-artifacts.result == 'success' &&
       (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' &&
       needs.apple-notarize.outputs.inputs_verified == 'true' &&
-      (needs.apple-notarize.result == 'success' || needs.apple-notarize.result == 'failure')))
+      ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') ||
+      (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure'))))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
     # See docs/handoff/nightly-release-custody.md before enabling publication.
