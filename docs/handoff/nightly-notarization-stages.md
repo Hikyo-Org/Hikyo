@@ -54,6 +54,18 @@ trust-policy change is required. A successful release may coexist with a failed
 notarization job and therefore an overall failed Actions run. Published releases
 are immutable; no later job appends disk images to a previously signed inventory.
 
+## CI publisher compatibility
+
+The admission bootstrap accepts authenticated Jobs API metadata in `pending`,
+`queued`, or `in_progress` state while the current setup step is executing.
+It still requires the unique job name, run, attempt, event-specific source head,
+positive job ID, and original start time. This handles the observed lagging
+`pending` status without resetting the setup-inclusive 60-second budget or
+extending its 45-second work cutoff and 15-second publication reserve.
+Cold toolchain download and final policy verification can independently exhaust
+that budget; the compatibility correction does not establish a timing fix or
+authorize success without fresh complete proof.
+
 ## Verification boundary
 
 Regression checks execute the actual workflow publication condition, signed-byte

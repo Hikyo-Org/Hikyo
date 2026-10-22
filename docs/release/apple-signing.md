@@ -4,10 +4,10 @@ Apple Developer Program enrollment makes Developer ID distribution available.
 Enrollment alone does not install a signing identity or configure CI credentials.
 Stable and nightly releases require Apple signing for both macOS architectures
 before their final hashes and Cosign signatures are generated. Stable releases
-also require notarization. Nightlies may publish without disk images when the
-separate notarization job fails; their macOS tarballs remain signed, with
-notarization explicitly unverified in the release notes. Local development
-snapshots keep their existing signing profile.
+also require notarization. Nightlies may publish without disk images when an
+Apple-side operation fails after signed inputs are verified; their macOS tarballs
+remain signed, with notarization explicitly unverified in the release notes.
+Local development snapshots keep their existing signing profile.
 
 ## One-time credential setup
 
