@@ -1,0 +1,48 @@
+{
+  "authorization_id": "REPLACE_WITH_APPROVED_SCOPE_REFERENCE",
+  "budget_usd": 1,
+  "account": "REPLACE_WITH_SANDBOX_ACCOUNT",
+  "region": "REPLACE_WITH_REGION",
+  "prefix": "hikyo-e2e-REPLACE_WITH_UNIQUE_LOWERCASE_SUFFIX/",
+  "kms_key_arn": "REPLACE_WITH_EXISTING_KEY_ARN",
+  "expires_at": "2000-01-01T00:00:00Z",
+  "writers": {
+    "static": {
+      "credential_file": "static.json",
+      "expired_credential_file": "static-expired.json",
+      "principal_arn": "REPLACE_WITH_DISTINCT_STATIC_ROLE_ARN"
+    },
+    "ambient": {
+      "credential_file": "ambient.json",
+      "principal_arn": "REPLACE_WITH_DISTINCT_AMBIENT_ROLE_ARN",
+      "token_file": "ambient.jwt",
+      "expired_token_file": "ambient-expired.jwt",
+      "workload_role_arn": "REPLACE_WITH_DISTINCT_AMBIENT_ROLE_ARN"
+    },
+    "assume-role": {
+      "credential_file": "assume-role.json",
+      "principal_arn": "REPLACE_WITH_DISTINCT_ASSUME_ROLE_ROLE_ARN",
+      "source_file": "source.json",
+      "expired_source_file": "source-expired.json",
+      "source_principal_arn": "REPLACE_WITH_SEPARATE_SOURCE_ROLE_ARN"
+    },
+    "web-identity": {
+      "credential_file": "web-identity.json",
+      "principal_arn": "REPLACE_WITH_DISTINCT_WEB_IDENTITY_ROLE_ARN",
+      "token_file": "web-identity.jwt",
+      "expired_token_file": "web-identity-expired.jwt"
+    },
+    "kms-denied": {
+      "credential_file": "kms-denied.json",
+      "principal_arn": "REPLACE_WITH_DISTINCT_KMS_DENIED_ROLE_ARN"
+    }
+  },
+  "oracle": {
+    "credential_file": "oracle.json",
+    "principal_arn": "REPLACE_WITH_DISTINCT_ORACLE_ROLE_ARN"
+  },
+  "cleanup": {
+    "credential_file": "cleanup.json",
+    "principal_arn": "REPLACE_WITH_DISTINCT_CLEANUP_ROLE_ARN"
+  }
+}

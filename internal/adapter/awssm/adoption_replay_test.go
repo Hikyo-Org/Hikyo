@@ -80,6 +80,7 @@ func TestInterruptedAdoptionRetainsOnlyApprovedPredecessor(t *testing.T) {
 				journal.states["prod/app"] = adapter.Owned
 				req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "adoption"}
 				req.Ledger[0].AdoptionPending = true
+				req.Ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 				var provider API = api
 				if interruption == "lost-put-response" {
 					provider = &lostWriteResponseAPI{fakeAPI: api, operation: "put"}
@@ -128,5 +129,133 @@ func TestLegacyInterruptedAdoptionWithoutApprovedMarkerFailsClosed(t *testing.T)
 	req.Ledger = journal.ledger()
 	if _, err := (&Module{API: api}).Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != 0 {
 		t.Fatalf("missing approved-predecessor marker inferred consent: err=%v writes=%v", err, api.writes())
+	}
+}
+
+func testAdoptionWitness(t *testing.T, api API, name string) string {
+	t.Helper()
+	meta, err := api.DescribeSecret(t.Context(), name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return adoptionWitness(meta)
+}
+
+func TestAdoptionBindsReviewedResourceAndVersion(t *testing.T) {
+	for _, scenario := range []string{"unchanged", "external-edit", "replacement", "missing-witness", "empty-current"} {
+		t.Run(scenario, func(t *testing.T) {
+			api, journal := newFakeAPI(), newFakeJournal()
+			secret := &fakeSecret{tags: map[string]string{}, stages: map[string][]string{"reviewed": {awsCurrent}}, values: map[string]string{"reviewed": "reviewed synthetic"}}
+			if scenario == "empty-current" {
+				secret.stages, secret.values = map[string][]string{}, map[string]string{}
+			}
+			api.secrets["prod/app"] = secret
+			provider := &wrongResourceMetadataAPI{fakeAPI: api, mutate: func(*SecretMetadata) {}}
+			module := &Module{API: provider}
+			plan, err := module.Plan(t.Context(), adapter.PlanRequest{Target: jsonTarget(), Manifest: manifest(), Gate: func(context.Context) error { return nil }})
+			if err != nil || len(plan.Changes) != 1 || plan.Changes[0].Disposition != adapter.Conflict || plan.Changes[0].ObservedProviderWitness == "" {
+				t.Fatalf("plan omitted exact adoption witness: %+v, %v", plan, err)
+			}
+			journal.states["prod/app"] = adapter.Owned
+			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "initial-adoption"}
+			req.Ledger[0].AdoptionPending = true
+			req.Ledger[0].AdoptionWitness = plan.Changes[0].ObservedProviderWitness
+			switch scenario {
+			case "external-edit":
+				api.externalPut("prod/app", "unreviewed", "later synthetic")
+			case "replacement":
+				provider.mutate = func(meta *SecretMetadata) { meta.ARN = strings.TrimSuffix(meta.ARN, "AbCdEf") + "GhIjKl" }
+			case "missing-witness":
+				req.Ledger[0].AdoptionWitness = ""
+			}
+			_, err = module.Sync(t.Context(), req, journal)
+			if scenario == "unchanged" || scenario == "empty-current" {
+				if err != nil || len(api.writes()) == 0 || journal.states["prod/app"] != adapter.Owned {
+					t.Fatalf("unchanged reviewed resource did not converge: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != 0 || journal.states["prod/app"] != adapter.Owned {
+				t.Fatalf("unreviewed resource/version was mutated or custody lost: %v calls=%v", err, api.writes())
+			}
+		})
+	}
+}
+
+// A production Prepare leaves adopted Owned custody intact. A failed Finish
+// therefore exposes the same pending adoption on retry, unlike fakeJournal's
+// default Reserved-to-Dispatched simplification.
+type unfinishedAdoptionJournal struct {
+	*fakeJournal
+	failFinish bool
+}
+
+func (j *unfinishedAdoptionJournal) Prepare(_ context.Context, effect adapter.Effect, _ adapter.LedgerState) error {
+	j.intents = append(j.intents, string(effect.Disposition)+":"+effect.EffectiveName)
+	return nil
+}
+
+func (j *unfinishedAdoptionJournal) Finish(ctx context.Context, effect adapter.Effect, completion adapter.Completion) error {
+	if j.failFinish {
+		j.failFinish = false
+		return errors.New("injected lost journal transaction")
+	}
+	return j.fakeJournal.Finish(ctx, effect, completion)
+}
+
+func TestPromotedAdoptionReplaysOnlyThisJobOnReviewedResource(t *testing.T) {
+	for _, interruption := range []string{"finish-failure", "definite-marker-failure"} {
+		for _, mutation := range []string{"unchanged", "foreign-current", "replacement", "missing-witness", "malformed-witness", "different-job"} {
+			t.Run(interruption+"/"+mutation, func(t *testing.T) {
+				api := newFakeAPI()
+				api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{}, stages: map[string][]string{"reviewed": {awsCurrent}}, values: map[string]string{"reviewed": "reviewed synthetic"}}
+				provider := &wrongResourceMetadataAPI{fakeAPI: api, mutate: func(*SecretMetadata) {}}
+				journal := &unfinishedAdoptionJournal{fakeJournal: newFakeJournal(), failFinish: interruption == "finish-failure"}
+				journal.states["prod/app"] = adapter.Owned
+				req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "promoted-adoption"}
+				req.Ledger[0].AdoptionPending = true
+				req.Ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
+				if interruption == "definite-marker-failure" {
+					api.failOnce["stage-"+CurrentStage+":prod/app"] = &ResponseError{Status: 400}
+				}
+				module := &Module{API: provider}
+				if _, err := module.Sync(t.Context(), req, journal); err == nil {
+					t.Fatal("injected interruption did not fail")
+				}
+				token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+				if !slices.Contains(api.secrets["prod/app"].stages[token], awsCurrent) || len(api.secrets["prod/app"].values) != 2 || journal.states["prod/app"] != adapter.Owned {
+					t.Fatal("fixture did not preserve promoted value with pending Owned custody")
+				}
+				switch mutation {
+				case "foreign-current":
+					api.externalPut("prod/app", "foreign", "later synthetic")
+				case "replacement":
+					provider.mutate = func(meta *SecretMetadata) { meta.ARN = strings.TrimSuffix(meta.ARN, "AbCdEf") + "GhIjKl" }
+				case "missing-witness":
+					req.Ledger[0].AdoptionWitness = ""
+				case "malformed-witness":
+					req.Ledger[0].AdoptionWitness = "[]"
+				case "different-job":
+					req.JobID = "unapproved-next-job"
+				}
+				before := len(api.writes())
+				_, err := module.Sync(t.Context(), req, journal)
+				if mutation != "unchanged" {
+					if !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != before || journal.states["prod/app"] != adapter.Owned {
+						t.Fatalf("unsafe replay accepted or custody lost: %v, %v", err, api.writes()[before:])
+					}
+					return
+				}
+				secret := api.secrets["prod/app"]
+				if err != nil || len(secret.values) != 2 || secret.tags[VersionTag] != token || !slices.Contains(secret.stages[token], CurrentStage) {
+					t.Fatalf("same-job metadata repair failed: %v", err)
+				}
+				for _, call := range api.writes()[before:] {
+					if call != "stage-"+CurrentStage+":prod/app" && call != "tag:prod/app" {
+						t.Fatalf("replay performed more than metadata repair: %s", call)
+					}
+				}
+			})
+		}
 	}
 }

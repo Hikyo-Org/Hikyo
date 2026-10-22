@@ -12,7 +12,7 @@ import (
 )
 
 const adapterAdoptionConflictCount = `-- name: AdapterAdoptionConflictCount :one
-SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id=$1 AND target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND repository_id=$6 AND destination_id=$7 AND target_generation=$8 AND surface=$9 AND effective_name=$10 AND adopted_at IS NULL AND (CAST($11 AS INTEGER)=0 OR observed_provider_version>0)
+SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id=$1 AND target_id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND repository_id=$6 AND destination_id=$7 AND target_generation=$8 AND surface=$9 AND effective_name=$10 AND adopted_at IS NULL AND (CAST($11 AS INTEGER)=0 OR observed_provider_version>0) AND (CAST($12 AS INTEGER)=0 OR observed_provider_witness<>'')
 `
 
 type AdapterAdoptionConflictCountParams struct {
@@ -27,6 +27,7 @@ type AdapterAdoptionConflictCountParams struct {
 	Surface        string
 	EffectiveName  string
 	RequireVersion int32
+	RequireWitness int32
 }
 
 func (q *Queries) AdapterAdoptionConflictCount(ctx context.Context, arg AdapterAdoptionConflictCountParams) (int64, error) {
@@ -42,6 +43,7 @@ func (q *Queries) AdapterAdoptionConflictCount(ctx context.Context, arg AdapterA
 		arg.Surface,
 		arg.EffectiveName,
 		arg.RequireVersion,
+		arg.RequireWitness,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -968,7 +970,7 @@ func (q *Queries) AdapterHealthCounts(ctx context.Context) (AdapterHealthCountsR
 }
 
 const adapterInsertConflict = `-- name: AdapterInsertConflict :execrows
-INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,observed_provider_version,created_at) VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9,$10,$11,$12,$13)
+INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,observed_provider_version,observed_provider_witness,created_at) VALUES ($1,$2,$3,$4,$5,$6,NULL,$7,$8,$9,$10,$11,$12,$13,$14)
 `
 
 type AdapterInsertConflictParams struct {
@@ -984,6 +986,7 @@ type AdapterInsertConflictParams struct {
 	Surface                 string
 	EffectiveName           string
 	ObservedProviderVersion pgtype.Int8
+	ObservedProviderWitness string
 	CreatedAt               pgtype.Timestamptz
 }
 
@@ -1001,6 +1004,7 @@ func (q *Queries) AdapterInsertConflict(ctx context.Context, arg AdapterInsertCo
 		arg.Surface,
 		arg.EffectiveName,
 		arg.ObservedProviderVersion,
+		arg.ObservedProviderWitness,
 		arg.CreatedAt,
 	)
 	if err != nil {
@@ -1600,7 +1604,7 @@ func (q *Queries) AdapterPlanCredential(ctx context.Context, arg AdapterPlanCred
 }
 
 const adapterPlanLedger = `-- name: AdapterPlanLedger :many
-SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at)) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending,(SELECT c.observed_provider_version FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at) AND c.observed_provider_version IS NOT NULL ORDER BY c.adopted_at DESC,c.id DESC LIMIT 1) AS adoption_version FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.generation=$4 WHERE l.target_id=$5 AND l.org_id=$1 AND l.project_id=$2 AND l.environment_id=$3 AND l.state<>'released' ORDER BY l.surface,l.effective_name
+SELECT l.surface,l.effective_name,l.state,l.missing,CAST(CASE WHEN l.state='owned' AND EXISTS (SELECT 1 FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at)) THEN 1 ELSE 0 END AS INTEGER) AS adoption_pending,(SELECT c.observed_provider_version FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at) AND c.observed_provider_version IS NOT NULL ORDER BY c.adopted_at DESC,c.id DESC LIMIT 1) AS adoption_version,CAST(COALESCE((SELECT c.observed_provider_witness FROM adapter_conflicts c WHERE c.target_id=l.target_id AND c.org_id=$1 AND c.project_id=$2 AND c.environment_id=$3 AND c.target_generation=t.generation-1 AND c.destination_id=l.destination_id AND c.repository_id=l.repository_id AND c.surface=l.surface AND UPPER(c.effective_name)=l.normalized_name AND c.adopted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM adapter_effects e WHERE e.target_id=l.target_id AND e.org_id=$1 AND e.project_id=$2 AND e.environment_id=$3 AND e.surface=l.surface AND UPPER(e.effective_name)=l.normalized_name AND e.disposition IN ('create','update') AND e.outcome='success' AND e.finished_at>=c.adopted_at) AND c.observed_provider_witness<>'' ORDER BY c.adopted_at DESC,c.id DESC LIMIT 1),'') AS TEXT) AS adoption_witness FROM adapter_ledger l JOIN adapter_targets t ON t.id=l.target_id AND t.org_id=$1 AND t.project_id=$2 AND t.environment_id=$3 AND t.generation=$4 WHERE l.target_id=$5 AND l.org_id=$1 AND l.project_id=$2 AND l.environment_id=$3 AND l.state<>'released' ORDER BY l.surface,l.effective_name
 `
 
 type AdapterPlanLedgerParams struct {
@@ -1618,6 +1622,7 @@ type AdapterPlanLedgerRow struct {
 	Missing         bool
 	AdoptionPending int32
 	AdoptionVersion pgtype.Int8
+	AdoptionWitness string
 }
 
 func (q *Queries) AdapterPlanLedger(ctx context.Context, arg AdapterPlanLedgerParams) ([]AdapterPlanLedgerRow, error) {
@@ -1642,6 +1647,7 @@ func (q *Queries) AdapterPlanLedger(ctx context.Context, arg AdapterPlanLedgerPa
 			&i.Missing,
 			&i.AdoptionPending,
 			&i.AdoptionVersion,
+			&i.AdoptionWitness,
 		); err != nil {
 			return nil, err
 		}

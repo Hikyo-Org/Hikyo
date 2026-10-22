@@ -1,0 +1,95 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SeedSyntheticAdoption",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret"
+      ],
+      "Resource": "${RUN_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}",
+          "secretsmanager:KmsKeyArn": "${KMS_KEY_ARN}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "ExternalSyntheticEdit",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:PutSecretValue"
+      ],
+      "Resource": "${RUN_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "VerifyRecordedResource",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "${RUN_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${CLEANUP_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "ForceDeleteFixture",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DeleteSecret"
+      ],
+      "Resource": "${RUN_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${CLEANUP_EXPIRES_AT}"
+        },
+        "Bool": {
+          "secretsmanager:ForceDeleteWithoutRecovery": "true"
+        }
+      }
+    },
+    {
+      "Sid": "KeyUseThroughSecretsManager",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "${KMS_KEY_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}",
+          "kms:ViaService": "secretsmanager.${REGION}.amazonaws.com",
+          "kms:CallerAccount": "${ACCOUNT}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        },
+        "StringLike": {
+          "kms:EncryptionContext:SecretARN": "${RUN_SECRET_ARN_PATTERN}"
+        }
+      }
+    }
+  ]
+}

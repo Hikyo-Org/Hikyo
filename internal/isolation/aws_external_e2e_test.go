@@ -41,12 +41,10 @@ import (
 //     HIKYO_TEST_AWS_REGION (default us-east-1),
 //     HIKYO_TEST_AWS_ALLOWED_CIDR for a private address, and
 //     HIKYO_TEST_AWS_CA_FILE for a private certificate.
-//   - TestAWSSecretsManagerRealSmoke runs against a sandbox AWS account:
-//     HIKYO_TEST_AWS_REAL_ACCOUNT, HIKYO_TEST_AWS_REAL_REGION,
-//     HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID, HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY,
-//     optional HIKYO_TEST_AWS_REAL_SESSION_TOKEN. The key needs
-//     secretsmanager:{Describe,List,Create,PutSecretValue,UpdateSecretVersionStage,Tag,Restore,Delete}
-//     and, for the oracle only, GetSecretValue on the hikyo-e2e-* names.
+//   - Real AWS coverage uses a separately authorized sandbox manifest and
+//     protected credential files. See aws_real_fixture_test.go and
+//     docs/testing/aws-sandbox.md. The real path never borrows the emulator's
+//     combined writer/oracle/cleanup identity.
 //
 // The adapter itself never reads a value; only the oracle below does, and it
 // lives in test code outside the production package's closure scan.
@@ -96,18 +94,6 @@ func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
 	runExternalAWSConcurrentWrites(t, env)
 	runExternalAWSReplacementRace(t, env)
 	runExternalAWSAdoptionReplay(t, env)
-}
-
-func TestAWSSecretsManagerRealSmoke(t *testing.T) {
-	account, region := os.Getenv("HIKYO_TEST_AWS_REAL_ACCOUNT"), os.Getenv("HIKYO_TEST_AWS_REAL_REGION")
-	keyID, secret := os.Getenv("HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID"), os.Getenv("HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY")
-	if account == "" || region == "" || keyID == "" || secret == "" {
-		requireExternalAWS(t, "HIKYO_TEST_AWS_REAL_REQUIRED", "HIKYO_TEST_AWS_REAL_ACCOUNT/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY")
-	}
-	runExternalAWSLifecycle(t, externalAWS{
-		origin: "https://secretsmanager." + region + ".amazonaws.com", account: account, region: region,
-		creds: aws.Credentials{AccessKeyID: keyID, SecretAccessKey: secret, SessionToken: os.Getenv("HIKYO_TEST_AWS_REAL_SESSION_TOKEN")},
-	})
 }
 
 func envOr(key, fallback string) string {
@@ -484,6 +470,11 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 				journal.states[forgejoLifecycleEffectKey(adapter.Effect{Surface: adapter.Secret, EffectiveName: name})] = adapter.Owned
 				req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_adoption_" + run, Environment: "external", Generation: 1, Destination: adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, Ledger: journal.ledger(), JobID: "adoption_" + run}
 				req.Ledger[0].AdoptionPending = true
+				planned, err := (&awssm.Module{API: client}).Plan(t.Context(), adapter.PlanRequest{Target: req.Target, Manifest: req.Manifest, Gate: func(context.Context) error { return nil }})
+				if err != nil || len(planned.Changes) != 1 || planned.Changes[0].ObservedProviderWitness == "" {
+					t.Fatal("adoption fixture has no reviewed resource/version witness")
+				}
+				req.Ledger[0].AdoptionWitness = planned.Changes[0].ObservedProviderWitness
 				module := &awssm.Module{API: &externalAWSInterruptedAdoptionAPI{API: client, interruption: interruption}}
 				if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 					t.Fatalf("interrupted adoption = %v, want indeterminate", err)

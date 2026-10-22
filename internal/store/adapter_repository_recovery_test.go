@@ -31,7 +31,7 @@ func recoveryCount(t *testing.T, db *store.DB, query string) int {
 }
 
 func runReleasedAdoptionRecovery(t *testing.T, engine store.Engine) {
-	for _, control := range []string{"current", "vault_current", "stale_artifact", "consumed_artifact", "wrong_destination", "version_missing", "foreign_owner", "held"} {
+	for _, control := range []string{"current", "vault_current", "aws_current", "aws_witness_missing", "stale_artifact", "consumed_artifact", "wrong_destination", "version_missing", "foreign_owner", "held"} {
 		t.Run(control, func(t *testing.T) {
 			db := repositoryRecoveryDB(t, engine)
 			seedAdoptionFixture(t, db)
@@ -63,11 +63,17 @@ func runReleasedAdoptionRecovery(t *testing.T, engine store.Engine) {
 				if err != nil {
 					return err
 				}
-				return repos.Adapters().RecordPlan(ctx, p, "tgt_1", "plan_1", 1, 0, 42, []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN"}}, time.Now().UTC())
+				entry := store.AdapterConflictEntry{Surface: "secret", EffectiveName: "TOKEN"}
+				if control == "aws_current" {
+					entry.ObservedProviderWitness = `["arn:aws:secretsmanager:eu-west-1:123456789012:secret:TOKEN-AbCdEf","reviewed-version"]`
+				}
+				return repos.Adapters().RecordPlan(ctx, p, "tgt_1", "plan_1", 1, 0, 42, []store.AdapterConflictEntry{entry}, time.Now().UTC())
 			}); err != nil {
 				t.Fatal(err)
 			}
 			switch control {
+			case "aws_current", "aws_witness_missing":
+				execAdapter(t, db, `UPDATE adapters SET provider='aws-secrets-manager' WHERE id='adp_1'`)
 			case "stale_artifact":
 				execAdapter(t, db, `UPDATE adapter_conflicts SET target_generation=2 WHERE artifact_id='plan_1'`)
 			case "consumed_artifact":
@@ -86,7 +92,7 @@ func runReleasedAdoptionRecovery(t *testing.T, engine store.Engine) {
 				execAdapter(t, db, `UPDATE adapter_ledger SET state='owned' WHERE id='led_history'`)
 			}
 			err := adoptTOKEN(t, db)
-			if control != "current" && control != "vault_current" {
+			if control != "current" && control != "vault_current" && control != "aws_current" {
 				if !errors.Is(err, store.ErrConflict) {
 					t.Fatalf("invalid adoption = %v; want conflict", err)
 				}
@@ -119,6 +125,9 @@ func runReleasedAdoptionRecovery(t *testing.T, engine store.Engine) {
 			}
 			if control == "vault_current" && (execution.Ledger[0].AdoptionVersion == nil || *execution.Ledger[0].AdoptionVersion != 7) {
 				t.Fatalf("reclaimed Vault witness = %v; want7", execution.Ledger[0].AdoptionVersion)
+			}
+			if control == "aws_current" && execution.Ledger[0].AdoptionWitness != `["arn:aws:secretsmanager:eu-west-1:123456789012:secret:TOKEN-AbCdEf","reviewed-version"]` {
+				t.Fatal("worker lost the exact AWS plan witness")
 			}
 			effect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "TOKEN", Disposition: adapter.Update}
 			effect.RequireExplicitRecovery = control == "vault_current"

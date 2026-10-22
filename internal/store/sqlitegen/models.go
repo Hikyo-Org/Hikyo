@@ -149,6 +149,7 @@ type AdapterConflict struct {
 	AdoptedAt               sql.NullString
 	RepositoryID            int64
 	ObservedProviderVersion sql.NullInt64
+	ObservedProviderWitness string
 }
 
 type AdapterEffect struct {

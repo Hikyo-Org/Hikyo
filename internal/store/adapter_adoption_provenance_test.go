@@ -24,6 +24,8 @@ func runAdapterAdoptionProvenance(t *testing.T, db *store.DB, queries []string) 
 	} else {
 		execAdapter(t, db, `UPDATE adapters SET credential_ciphertext=decode('01','hex') WHERE id='adp_1'`)
 	}
+	const witness = `["arn:aws:secretsmanager:eu-central-1:123456789012:secret:TOKEN-AbCdEf","reviewed-version"]`
+	execAdapter(t, db, `UPDATE adapter_conflicts SET observed_provider_witness='`+witness+`' WHERE target_id='tgt_1'`)
 	runtime := store.NewAdapterRuntime(db, func(context.Context, adapter.Job, adapter.Effect) error { return nil })
 	now := time.Now().UTC()
 	job, ok, err := runtime.ClaimDue(t.Context(), "adoption_worker", now, now.Add(adapter.LeaseTime))
@@ -36,6 +38,13 @@ func runAdapterAdoptionProvenance(t *testing.T, db *store.DB, queries []string) 
 			t.Helper()
 			if len(ledger) != 1 || ledger[0].EffectiveName != "TOKEN" || ledger[0].AdoptionPending != want {
 				t.Fatalf("ledger adoption evidence = %+v; want pending=%v", ledger, want)
+			}
+			wantWitness := ""
+			if want {
+				wantWitness = witness
+			}
+			if ledger[0].AdoptionWitness != wantWitness {
+				t.Fatal("AWS witness escaped the exact pending-adoption provenance")
 			}
 		}
 		for _, query := range queries {
