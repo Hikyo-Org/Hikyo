@@ -30,6 +30,10 @@ for (const placement of ['hero', 'final']) {
     `${placement} demo CTA must identify its placement`,
   );
 }
+const editLink = docsPage.match(/<div\b[^>]*class="docs-edit-link"[^>]*>/)?.[0];
+assert.ok(editLink, 'documentation edit link is missing');
+assert.match(editLink, /data-posthog-event="docs_edit_on_github_clicked"/, 'documentation edit event is missing');
+assert.match(editLink, /data-posthog-placement="docs_edit"/, 'documentation edit link must identify its placement');
 
 if (!postHogBuilt) {
   assert.notEqual(process.env.POSTHOG_REQUIRED, 'true', 'required PostHog build omitted analytics');

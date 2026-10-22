@@ -69,7 +69,11 @@ export function Docs({
           <DocsDescription>{description}</DocsDescription>
           <DocsBody>{children}</DocsBody>
           {editUrl ? (
-            <div className="docs-edit-link">
+            <div
+              className="docs-edit-link"
+              data-posthog-event="docs_edit_on_github_clicked"
+              data-posthog-placement="docs_edit"
+            >
               <EditOnGitHub href={editUrl}>Edit this page on GitHub</EditOnGitHub>
             </div>
           ) : null}
