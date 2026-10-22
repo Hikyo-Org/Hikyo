@@ -2,9 +2,9 @@
 
 ## Current continuation
 
-The October 22 continuation has integrated PR #969 head `44ef873` into main
-`70a34271` locally with `--no-commit`, without conflicts. No PR merge is
-complete. Migration 80 preserves main's migration 77 authorization indexes,
+Signed merge commit `c64a4f9` records the October 22 integration of PR #969 head
+`44ef873` with main `70a34271`, without conflicts, and was pushed to the PR.
+The PR remains unmerged to main. Migration 80 preserves main's migration 77 authorization indexes,
 78 project capacity policy and 79 remote pairing. Earlier local generation,
 compatibility and test results remain historical evidence for their recorded
 candidates. Full candidate run `39653750185` passed 48 jobs at `44ef873` against

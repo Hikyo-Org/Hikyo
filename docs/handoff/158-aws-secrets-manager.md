@@ -71,11 +71,12 @@ never run.
 
 Historical full candidate run `39653750185` passed 48 jobs at PR head
 `44ef87300646ecb0d67370e92c33af44f7056eb8` against base
-`e886fa491f66c3a9fdfc3b0104a8958c04b2f34b`. The parent has integrated that
-head into current main `70a34271ea9415946048866914b325321c5626d5` locally with
-`--no-commit`, without conflicts. This is an uncommitted integration, not a
-completed PR merge. Fresh validation of the final head/base pair is required
-after the documentation changes. All 15 GitHub review threads are resolved,
+`e886fa491f66c3a9fdfc3b0104a8958c04b2f34b`. Signed merge commit
+`c64a4f977e6ea27a2842fff90f506ffeafc24c01` combines main
+`70a34271ea9415946048866914b325321c5626d5` and that PR head, without conflicts,
+and was pushed to PR #969. The PR remains unmerged to main. Fresh validation
+of the final head/base pair is required after the documentation changes.
+All 15 GitHub review threads are resolved,
 but the aggregate review still says changes requested; this is not final review
 approval.
 
