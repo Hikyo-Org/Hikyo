@@ -69,6 +69,20 @@ Cold toolchain download and final policy verification can independently exhaust
 that budget; the compatibility correction does not establish a timing fix or
 authorize success without fresh complete proof.
 
+The publisher also removes redundant API work: policy-only workflow authority
+verification retains its final PR read after permission or approval checks,
+instead of performing two consecutive identical reads at that boundary. Legacy
+polling retains its own checks. Queue admission initializes repository identity
+without fetching the unrelated legacy candidate workflow; legacy validation
+still requires that workflow's authenticated identity. Independent final policy,
+source, feedback, role and check-ownership proof remains required.
+
+These source reductions do not change the trusted-main activation boundary or
+prove hosted cold-start latency. The documented full-only recovery route in the
+CI guide requires operator authorization and fresh complete current-main
+candidate validation. A policy proposal or a `ci:full` label alone cannot
+satisfy the active queue gate.
+
 ## Verification boundary
 
 Regression checks execute the actual workflow publication condition, signed-byte

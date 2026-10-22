@@ -74,7 +74,7 @@ func TestHeadAdmissionReusesInitialSnapshotAndRechecksEveryFinalBoundary(t *test
 	for _, count := range f.api.reads {
 		total += count
 	}
-	if total != 23 || verifications != 2 || dcoChecks != 2 || !finalFeedback {
+	if total != 22 || verifications != 2 || dcoChecks != 2 || !finalFeedback {
 		t.Fatalf("reads=%d, authority=%d, canonical DCO=%d, final feedback=%t", total, verifications, dcoChecks, finalFeedback)
 	}
 	if !reflect.DeepEqual(f.api.checks[0], old) || len(f.api.checks) != 2 || f.api.checks[1].Conclusion != "success" {
@@ -392,7 +392,7 @@ func TestDirectAdmissionInitialInventoryRequiresCurrentIdentityAndUniqueness(t *
 				for _, count := range f.api.reads {
 					total += count
 				}
-				if total != 23 || f.api.reads[list] != 2 {
+				if total != 22 || f.api.reads[list] != 2 {
 					t.Fatalf("direct admission reads=%d, complete inventories=%d", total, f.api.reads[list])
 				}
 			} else {
