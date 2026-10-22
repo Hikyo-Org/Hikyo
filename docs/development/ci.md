@@ -259,9 +259,10 @@ terminal publication. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
-The initial job lookup tolerates GitHub briefly reporting that same running job
-as queued. Up to five reads retain the original job ID, start timestamp and
-absolute deadline; this does not grant another execution budget.
+The initial job lookup tolerates GitHub briefly reporting that same executing
+job as pending, queued or in progress. One complete bounded Jobs API read must
+match its run, attempt, source head, unique job ID and original start timestamp.
+The absolute deadline is retained without polling or another execution budget.
 
 Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 504, or with a `gh` failure that reports no status (except authentication and

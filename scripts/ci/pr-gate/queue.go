@@ -201,7 +201,11 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 		return errors.New("targeted admission cannot execute a group or batch repair")
 	}
 	q.repo = repository{}
-	if err := q.init(ctx); err != nil {
+	initialize := q.init
+	if q.targeted {
+		initialize = q.initRepository
+	}
+	if err := initialize(ctx); err != nil {
 		return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
 	}
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {

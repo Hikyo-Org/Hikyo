@@ -17,6 +17,7 @@ func TestAppleSigningFixtures(t *testing.T) {
 	}
 }
 
+// Stable publication always consumes both accepted notarized disk images.
 func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
@@ -46,7 +47,8 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 	for name, expected := range map[string][]string{
 		"build-artifacts":    {"validation", "docs", "floor-bench"},
 		"apple-sign":         {"build-artifacts"},
-		"build-signed-draft": {"validation", "docs", "floor-bench", "build-artifacts", "apple-sign"},
+		"apple-notarize":     {"build-artifacts", "apple-sign"},
+		"build-signed-draft": {"validation", "docs", "floor-bench", "build-artifacts", "apple-sign", "apple-notarize"},
 	} {
 		needs, err := workflowNeeds(workflow.Jobs[name].Needs)
 		if err != nil {
@@ -58,14 +60,16 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 			}
 		}
 	}
-	apple := workflow.Jobs["apple-sign"]
-	if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
-		t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
+	for _, name := range []string{"apple-sign", "apple-notarize"} {
+		apple := workflow.Jobs[name]
+		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
+			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
+		}
+		if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || len(apple.Permissions) != 1 || apple.Permissions["contents"] != "read" {
+			t.Fatal("Apple signing must use macOS without repository mutation or OIDC permissions")
+		}
 	}
-	if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || len(apple.Permissions) != 1 || apple.Permissions["contents"] != "read" {
-		t.Fatal("Apple signing must use macOS without repository mutation or OIDC permissions")
-	}
-	builds, appleSteps := 0, 0
+	builds, appleSteps, notarySteps := 0, 0, 0
 	for name, job := range workflow.Jobs {
 		for _, step := range job.Steps {
 			if strings.Contains(step.Uses, "goreleaser/goreleaser-action@") {
@@ -75,25 +79,37 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 				}
 			}
 			for key, value := range step.Env {
-				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") && name != "apple-sign" {
-					t.Fatal("Apple credentials escaped the isolated signing job")
+				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") {
+					owner := "apple-sign"
+					if key == "APPLE_NOTARY_KEY_P8" {
+						owner = "apple-notarize"
+					}
+					if name != owner {
+						t.Fatal("Apple credentials escaped their isolated phase")
+					}
 				}
 			}
-			if step.Run == "./scripts/release/sign-apple-artifacts.sh dist" {
+			if step.Run == "./scripts/release/sign-apple-artifacts.sh --sign-only dist" {
 				appleSteps++
 				if name != "apple-sign" || step.If != "" {
 					t.Fatal("Apple signing must be unconditional in the macOS job")
 				}
-				for _, key := range []string{"APPLE_DEVELOPER_ID_P12_BASE64", "APPLE_DEVELOPER_ID_P12_PASSWORD", "APPLE_NOTARY_KEY_P8"} {
+				for _, key := range []string{"APPLE_DEVELOPER_ID_P12_BASE64", "APPLE_DEVELOPER_ID_P12_PASSWORD"} {
 					if step.Env[key] != "${{ secrets."+key+" }}" {
 						t.Fatalf("missing secret %s", key)
 					}
 				}
 			}
+			if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+				notarySteps++
+				if name != "apple-notarize" || step.If != "" || step.Env["APPLE_NOTARY_KEY_P8"] != "${{ secrets.APPLE_NOTARY_KEY_P8 }}" {
+					t.Fatal("stable notarization must be unconditional in its separate credential-isolated job")
+				}
+			}
 		}
 	}
-	if builds != 1 || appleSteps != 1 {
-		t.Fatal("release requires one build and one mandatory Apple signing stage")
+	if builds != 1 || appleSteps != 1 || notarySteps != 1 {
+		t.Fatal("release requires one build and separate mandatory Apple signing and notarization stages")
 	}
 	if workflow.Jobs["build-artifacts"].Outputs["non_darwin_sha256"] != "${{ steps.input-digests.outputs.non_darwin_sha256 }}" {
 		t.Fatal("original Linux/Windows hashes must be bound outside the Apple job")
@@ -109,7 +125,7 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 		}
 		final.WriteString(step.Run)
 		final.WriteByte('\n')
-		if strings.Contains(step.Uses, "actions/download-artifact@") && step.With["artifact-ids"] != "${{ needs.apple-sign.outputs.artifact_id }}" {
+		if strings.Contains(step.Uses, "actions/download-artifact@") && step.With["artifact-ids"] != "${{ needs.apple-notarize.outputs.artifact_id }}" {
 			t.Fatal("final signing may consume only this run's finalized Apple artifacts")
 		}
 	}

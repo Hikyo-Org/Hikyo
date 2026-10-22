@@ -38,8 +38,8 @@ for os in Linux Darwin Windows; do
   record "hikyo_${version}_${os}_${name_arch}.$extension" binary "$(printf '%s' "$os" | tr '[:upper:]' '[:lower:]')/$arch" '' ''
  done
 done
-# Historical signed nightlies have no disk images; new publication requires the
-# complete pair before invoking this builder. A partial pair is never valid.
+# A nightly may omit disk images after a failed notarization job. When present,
+# require the complete accepted pair. A partial pair is never valid.
 dmg_count=0
 for arch in amd64 arm64; do
  name_arch=$arch

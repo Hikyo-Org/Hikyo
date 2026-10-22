@@ -186,7 +186,7 @@ func (a *rejectCreationAPI) write(ctx context.Context, method, path string, payl
 }
 
 func TestImmutableQueueIncompleteExitsSupersedePriorGreen(t *testing.T) {
-	for _, scenario := range []string{"policy read", "inactive policy", "missing useful run", "running useful run", "closed PR with active same-SHA sibling", "PR API", "workflow initialization"} {
+	for _, scenario := range []string{"policy read", "inactive policy", "missing useful run", "running useful run", "closed PR with active same-SHA sibling", "PR API", "repository initialization"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newQueueFixture(t)
 			if err := f.admit(); err != nil {
@@ -213,11 +213,11 @@ func TestImmutableQueueIncompleteExitsSupersedePriorGreen(t *testing.T) {
 				f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{other}
 			case "PR API":
 				f.api.responses[f.c.endpoint("pulls/7")] = errors.New("PR unavailable")
-			case "workflow initialization":
-				f.api.responses[f.c.endpoint("actions/workflows/ci-candidate.yml")] = errors.New("workflow metadata unavailable")
+			case "repository initialization":
+				f.c.api = repositoryReadErrorAPI{api: f.api}
 			}
 			err := f.q.execute(context.Background(), "workflow_dispatch", f.event)
-			if scenario == "policy read" || scenario == "PR API" || scenario == "workflow initialization" {
+			if scenario == "policy read" || scenario == "PR API" || scenario == "repository initialization" {
 				if err == nil {
 					t.Fatal("API failure erased")
 				}

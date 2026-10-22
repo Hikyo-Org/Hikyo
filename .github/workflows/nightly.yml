@@ -315,6 +315,7 @@ jobs:
     runs-on: macos-15
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      darwin_sha256: ${{ steps.signed-digests.outputs.sha256 }}
     permissions:
       contents: read
     env:
@@ -336,10 +337,76 @@ jobs:
           path: ${{ runner.temp }}/nightly-inputs
       - name: Restore canonical nightly artifacts
         run: tar -xzf "$RUNNER_TEMP/nightly-inputs/nightly-inputs.tar.gz"
-      - name: Sign and notarize nightly macOS binaries and disk images
+      - name: Sign nightly macOS binaries and disk images
         env:
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
+          APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+        run: ./scripts/release/sign-apple-artifacts.sh --sign-only dist
+      - name: Bind signed macOS artifact bytes
+        id: signed-digests
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          set -euo pipefail
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          echo "sha256=$darwin_sha256" >>"$GITHUB_OUTPUT"
+      - name: Retain signed nightly artifacts and predecessor context
+        run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-nightly-inputs.tar.gz" dist nightly-context
+      - id: upload-inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-signed-nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-nightly-inputs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  apple-notarize:
+    environment: apple-signing
+    needs: [build-artifacts, apple-sign]
+    if: github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'
+    runs-on: macos-15
+    outputs:
+      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
+      notarize_outcome: ${{ steps.notarize.outcome }}
+      diagnostics_outcome: ${{ steps.notarization-diagnostics.outcome }}
+    permissions:
+      contents: read
+    env:
+      # The macOS 15 default client traps during API-key authentication.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - name: Report selected Apple notarization client
+        run: |
+          xcodebuild -version
+          xcrun notarytool --version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/apple-nightly-inputs
+      - name: Restore signed nightly artifacts
+        run: tar -xzf "$RUNNER_TEMP/apple-nightly-inputs/apple-nightly-inputs.tar.gz"
+      - name: Verify exact signed macOS input bytes
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          SIGNED_DARWIN_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+        run: |
+          set -euo pipefail
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
+      - name: Notarize and staple nightly macOS disk images
+        id: notarize
+        env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
@@ -349,8 +416,9 @@ jobs:
           APPLE_RELEASE_CHANNEL: nightly
           APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
           APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
-        run: ./scripts/release/sign-apple-artifacts.sh dist
+        run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
       - name: Retain Apple notarization diagnostics
+        id: notarization-diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -368,11 +436,15 @@ jobs:
           retention-days: 1
 
   publish:
-    needs: [validation, build-artifacts, apple-sign]
+    needs: [validation, build-artifacts, apple-sign, apple-notarize]
     if: >-
-      always() && github.ref == 'refs/heads/main' &&
+      always() && !cancelled() && github.ref == 'refs/heads/main' &&
       needs.validation.result == 'success' && needs.build-artifacts.result == 'success' &&
-      (needs.build-artifacts.outputs.skip == 'true' || needs.apple-sign.result == 'success')
+      (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' &&
+      needs.apple-notarize.outputs.inputs_verified == 'true' &&
+      ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') ||
+      (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' &&
+      needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
     # See docs/handoff/nightly-release-custody.md before enabling publication.
@@ -410,7 +482,13 @@ jobs:
           go-version-file: go.mod
           cache: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        if: needs.build-artifacts.outputs.skip != 'true'
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'success'
+        with:
+          artifact-ids: ${{ needs.apple-notarize.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/apple-nightly-inputs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.inputs_verified == 'true'
         with:
           artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
           merge-multiple: true
@@ -420,6 +498,7 @@ jobs:
         env:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
           COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+          APPLE_NOTARIZATION_RESULT: ${{ needs.apple-notarize.result }}
         run: |
           test "$(git rev-parse HEAD)" = "$COMMIT"
           test "$COMMIT" = "$GITHUB_SHA"
@@ -428,9 +507,19 @@ jobs:
             .version == $version and .commit == $commit
           ' dist/metadata.json >/dev/null
           (cd dist && sha256sum --check --strict checksums.txt)
-          for arch in arm64 x86_64; do
-            test -s "dist/hikyo_${VERSION}_Darwin_$arch.dmg"
-          done
+          if [ "$APPLE_NOTARIZATION_RESULT" = success ]; then
+            for arch in arm64 x86_64; do
+              test -s "dist/hikyo_${VERSION}_Darwin_$arch.dmg"
+            done
+          fi
+      - name: Verify signed macOS fallback input bytes
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          SIGNED_DARWIN_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+        run: |
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Verify untouched nightly archives and compatibility
         if: needs.build-artifacts.outputs.skip != 'true'
         env:
@@ -481,18 +570,32 @@ jobs:
         env:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
           COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+          APPLE_NOTARIZATION_RESULT: ${{ needs.apple-notarize.result }}
         run: |
           mkdir nightly-payloads
-          cp dist/hikyo_*_Darwin_*.dmg dist/hikyo_*_Darwin_*.tar.gz dist/hikyo_*_Linux_*.tar.gz dist/hikyo_*_Windows_*.zip \
+          cp dist/hikyo_*_Darwin_*.tar.gz dist/hikyo_*_Linux_*.tar.gz dist/hikyo_*_Windows_*.zip \
             dist/hikyo_*.deb dist/hikyo-*.rpm dist/hikyo_*.apk dist/hikyo-*.pkg.tar.zst \
             dist/checksums.txt dist/binary-provenance.json nightly-payloads/
+          case "$APPLE_NOTARIZATION_RESULT" in
+            success)
+              for arch in arm64 x86_64; do
+                test -s "dist/hikyo_${VERSION}_Darwin_$arch.dmg"
+              done
+              cp dist/hikyo_*_Darwin_*.dmg nightly-payloads/
+              apple_notes='macOS: signed and notarized; includes two stapled disk images.'
+              ;;
+            failure)
+              apple_notes='macOS: signed tarballs; notarization was NOT verified for this release. Disk images are omitted because the notarization job failed.'
+              ;;
+            *) echo 'Unexpected Apple notarization result' >&2; exit 1 ;;
+          esac
           cp "$RUNNER_TEMP/upgrade-compatibility.json" nightly-payloads/
           cp release/trust/nightly/policy.json nightly-payloads/nightly-policy.json
           cp release/trust/nightly/trusted-root.json nightly-payloads/sigstore-trusted-root.json
           printf '%s\n' \
             'AUTOMATED SIGNED NIGHTLY - nightly/v1 trust profile' \
             "Version: $VERSION" "Source commit: $COMMIT" \
-            'Includes six archives, two notarized macOS disk images and eight native Linux packages.' \
+            'Includes six archives and eight native Linux packages.' "$apple_notes" \
             'Server installation requires the authenticated offline bundle and upgrade evidence.' \
             >nightly-payloads/NIGHTLY-BUILD.txt
           cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"

@@ -60,6 +60,10 @@ case $url in
 	;;
 */pulls/7)
 	bump pr
+	if [ "${HEAD_MOVES_AFTER_PERMISSION:-false}" = true ] && [ -f "$FIXTURES/permission-calls" ]; then
+		jq -r --arg sha fedcba9876543210fedcba9876543210fedcba98 ".head.sha = \$sha | $filter" "$FIXTURES/pr.json"
+		exit 0
+	fi
 	if [ "$count" -ge "${HEAD_MOVES_AT:-99999}" ]; then
 		jq -r --arg sha fedcba9876543210fedcba9876543210fedcba98 ".head.sha = \$sha | $filter" "$FIXTURES/pr.json"
 		exit 0
@@ -476,6 +480,44 @@ expect_reject 'policy-only verification retains workflow authority'
 expect_policy_silent
 approval
 expect_policy_stdout 'policy-only workflow authority is independent of result publication' '{"workflow_change_authorized":true}'
+# Run the canonical verifier for both authority paths. The retained final read
+# must reject movement after the permission lookup, with no cached authority
+# across the controller's separate verifier invocations.
+for authority in bdfl reviewer; do
+	fixture 1 "$workflow" '{"workflow_runs":[]}' success
+	same_repo
+	if [ "$authority" = bdfl ]; then bdfl_author; else approval; fi
+	expect_policy_stdout "policy-only $authority workflow authority" '{"workflow_change_authorized":true}'
+	[ "$(cat "$work/pr-calls")" -eq 3 ] || {
+		printf 'fork gate fixture failed: policy-only %s must use one final post-authority PR read, got %s PR reads\n' "$authority" "$(cat "$work/pr-calls")" >&2
+		exit 1
+	}
+	( PERMISSION_REMOVED_AT=2 expect_reject "policy-only $authority permission revoked between verifier invocations" )
+	expect_policy_silent
+	fixture 1 "$workflow" '{"workflow_runs":[]}' success
+	same_repo
+	if [ "$authority" = bdfl ]; then bdfl_author; else approval; fi
+	( HEAD_MOVES_AFTER_PERMISSION=true expect_reject "policy-only $authority head moved after authority lookup" )
+	grep -F 'PR head moved' "$work/stderr" >/dev/null
+	[ "$(cat "$work/permission-calls")" -eq 1 ]
+	[ "$(cat "$work/pr-calls")" -eq 3 ]
+	expect_policy_silent
+	# Legacy polling keeps its helper's post-authority reads, including the
+	# second authority proof just before completed validation is accepted.
+	fixture 1 "$workflow" "$done_run" success
+	same_repo
+	if [ "$authority" = bdfl ]; then bdfl_author; else approval; fi
+	( PR_GATE_POLICY_ONLY=0 PR_GATE_ONCE=0 HEAD_MOVES_AT=6 expect_reject "legacy $authority head moved after final authority lookup" )
+	grep -F 'PR head moved' "$work/stderr" >/dev/null
+	[ "$(cat "$work/permission-calls")" -eq 2 ]
+	[ "$(cat "$work/pr-calls")" -eq 6 ]
+done
+fixture 1 "$workflow" '{"workflow_runs":[]}' success
+same_repo
+approval
+expect_policy_stdout 'initial independent policy-only approval' '{"workflow_change_authorized":true}'
+( REVIEWS_CHANGE_AT=2 expect_reject 'policy-only approval dismissed between verifier invocations' )
+expect_policy_silent
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 jq '.mergeable = null' "$work/pr.json" >"$work/pr-new.json"
 mv "$work/pr-new.json" "$work/pr.json"
