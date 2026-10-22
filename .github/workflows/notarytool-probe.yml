@@ -21,20 +21,23 @@ jobs:
           trap 'rm -rf "$scratch"' EXIT
           openssl ecparam -name prime256v1 -genkey -noout |
             openssl pkcs8 -topk8 -nocrypt -out "$scratch/original.p8"
-          printf '%s' "$(cat "$scratch/original.p8")" >"$scratch/no-final-newline.p8"
-          awk '{printf "%s\\n", $0}' "$scratch/original.p8" >"$scratch/literal-newlines.p8"
-          awk '{printf "%s\r\n", $0}' "$scratch/original.p8" >"$scratch/crlf.p8"
+          issuer=$(uuidgen)
+          mkdir "$scratch/payload"
+          printf 'Unregistered-client authentication probe.\n' >"$scratch/payload/README.txt"
+          hdiutil create -srcfolder "$scratch/payload" -fs HFS+ -format UDZO "$scratch/probe.dmg"
           crashes=0
           for toolchain in 16.4 26.3; do
             export DEVELOPER_DIR="/Applications/Xcode_$toolchain.app/Contents/Developer"
             xcodebuild -version
             xcrun notarytool --version
-            for variant in original no-final-newline literal-newlines crlf; do
+            for command in history submit; do
               status=0
-              xcrun notarytool history --key "$scratch/$variant.p8" \
-                --key-id NOTARYPROBE --issuer 00000000-0000-0000-0000-000000000000 \
+              set -- "$command"
+              if [ "$command" = submit ]; then set -- "$@" "$scratch/probe.dmg"; fi
+              xcrun notarytool "$@" --key "$scratch/original.p8" \
+                --key-id DUMMY00001 --issuer "$issuer" \
                 --output-format json >"$scratch/result" 2>"$scratch/error" || status=$?
-              printf 'toolchain=%s encoding=%s exit=%s\n' "$toolchain" "$variant" "$status"
+              printf 'toolchain=%s command=%s exit=%s\n' "$toolchain" "$command" "$status"
               sed '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/d' "$scratch/error" |
                 sed -E 's/[A-Za-z0-9+\/=]{48,}/[redacted]/g' | sed -n '1,60p'
               if [ "$status" -ge 128 ]; then crashes=$((crashes + 1)); fi
