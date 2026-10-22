@@ -142,8 +142,10 @@ for arch in arm64 x86_64; do
   # The tarball and disk image contain the same signed executable. Notarizing
   # the outer disk image also submits its contained code to Apple's service.
   COPYFILE_DISABLE=1 tar -czf "$scratch/archive.tar.gz" -C "$payload" LICENSE hikyo
+  # Keep the filesystem independent of host defaults. HFS+ avoids the APFS
+  # image attachment/preflight failure reproduced with real release payloads.
   hdiutil create -volname "Hikyo $version $arch" -srcfolder "$payload" \
-    -format UDZO "$dmg" >/dev/null
+    -fs HFS+ -format UDZO "$dmg" >/dev/null
   codesign --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain" \
     --identifier app.hikyo.cli.dmg --timestamp "$dmg"
   codesign --verify --strict -R "$requirement" "$dmg"

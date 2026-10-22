@@ -98,7 +98,21 @@ EOF
 cat >"$fixture/bin/hdiutil" <<'EOF'
 #!/bin/sh
 set -eu
-for argument do target=$argument; done
+filesystem=
+format=
+option=
+for argument do
+  case "$option" in
+    -fs) filesystem=$argument ;;
+    -format) format=$argument ;;
+  esac
+  option=$argument
+  target=$argument
+done
+[ "$filesystem" = HFS+ ] && [ "$format" = UDZO ] || {
+  printf 'explicit HFS+ filesystem and compressed UDIF format required\n' >&2
+  exit 1
+}
 printf 'disk image\n' >"$target"
 EOF
 cat >"$fixture/bin/xcrun" <<'EOF'
