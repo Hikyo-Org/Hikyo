@@ -20,6 +20,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 			If          string               `yaml:"if"`
 			RunsOn      string               `yaml:"runs-on"`
 			Environment string               `yaml:"environment"`
+			Env         map[string]string    `yaml:"env"`
 			Permissions map[string]string    `yaml:"permissions"`
 			Outputs     map[string]string    `yaml:"outputs"`
 			Steps       []mainValidationStep `yaml:"steps"`
@@ -44,6 +45,9 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		}
 	}
 	apple := workflow.Jobs["apple-sign"]
+	if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
+		t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
+	}
 	if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
 		t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
 	}

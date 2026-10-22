@@ -317,7 +317,14 @@ jobs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
     permissions:
       contents: read
+    env:
+      # The macOS 15 default client traps during API-key authentication.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
+      - name: Report selected Apple notarization client
+        run: |
+          xcodebuild -version
+          xcrun notarytool --version
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
