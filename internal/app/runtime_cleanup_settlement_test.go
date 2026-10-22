@@ -12,6 +12,15 @@ import (
 )
 
 func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
+	testOwnerRuntimeJoinsCanceledSQLiteSettlement(t, false)
+}
+
+func TestOwnerRuntimeCanceledSQLiteSettlementCleanupWithoutRollbackHook(t *testing.T) {
+	testOwnerRuntimeJoinsCanceledSQLiteSettlement(t, true)
+}
+
+func testOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T, skipRollbackHook bool) {
+	t.Helper()
 	_, srv, _ := deploymentAdapterFixture(t, false)
 	conn, err := srv.db.SQLiteWrite().Conn(t.Context())
 	if err != nil {
@@ -30,7 +39,9 @@ func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
 		if !ok {
 			return errors.New("SQLite connection has no rollback hook")
 		}
-		hooks.RegisterRollbackHook(func() { enterOnce.Do(func() { close(rollbackEntered) }); <-releaseRollback })
+		if !skipRollbackHook {
+			hooks.RegisterRollbackHook(func() { enterOnce.Do(func() { close(rollbackEntered) }); <-releaseRollback })
+		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -39,6 +50,7 @@ func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
 		t.Fatal(err)
 	}
 	started, finalizing, workerReturned := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	abort := make(chan struct{})
 	srv.owner.current.graph.scheduler.Jobs = []ScheduledJob{{Name: "cleanup-settlement", Run: func(ctx context.Context) error {
 		defer close(workerReturned)
 		transaction, err := srv.db.BeginSQLite(ctx, false)
@@ -51,7 +63,12 @@ func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
 		}
 		close(started)
 		<-ctx.Done()
-		<-rollbackEntered
+		select {
+		case <-rollbackEntered:
+		case <-abort:
+			_ = transaction.Rollback()
+			return ctx.Err()
+		}
 		close(finalizing)
 		err = transaction.Rollback()
 		if !errors.Is(err, sql.ErrTxDone) {
@@ -62,9 +79,11 @@ func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	served := make(chan error, 1)
 	go func() { served <- srv.ServeWithReady(ctx, nil) }()
-	// On every path, unblock native rollback before joining the actual server.
+	// On every path, abort the hook wait and unblock native rollback before
+	// joining the actual server.
 	// Fixture cleanup and TempDir removal must run after this join.
 	defer func() {
+		close(abort)
 		cancel()
 		release()
 		if err := <-served; err != nil {
@@ -78,6 +97,11 @@ func TestOwnerRuntimeJoinsCanceledSQLiteSettlement(t *testing.T) {
 	case <-started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not start")
+	}
+	if skipRollbackHook {
+		// Exercise the same deferred teardown as a failed assertion when the
+		// native hook never signals rollbackEntered.
+		return
 	}
 	cancel()
 	select {

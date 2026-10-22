@@ -61,14 +61,25 @@ same close. Acquisition, begin and admission-check failures close resources in
 order. An already-discarded connection does not add a spurious
 `sql.ErrConnDone` to the original transaction result.
 
+The reviewed raw-SQL protocol inventory tracks the changed helper bodies and
+their reachable settlement helpers. The repository's explicit reviewed-pin
+updater refreshed this closure while preserving protocol owners, callers and
+authority declarations. Ordinary lint checks must validate the new inventory.
+
+The shutdown regression has a separate teardown abort channel. If a native
+rollback hook never signals, cleanup aborts the worker's hook wait, releases the
+native gate and joins the server. A missing-hook regression exercises that
+same teardown without weakening the normal automatic-rollback assertion.
+
 The real SQLite rollback and commit gates failed on the original implementation
 and passed after the repair. The regressions also cover concurrent finalizers,
 host lock retention, both pools, cancellation and errors, failure cleanup and
 the actual server shutdown path. The original SQLite live-selection flow and
 affected sibling fixtures passed under the race detector. Store transaction
-consumer and SQLite upgrade admission checks passed. The implementation's
-scoped feedback passed; final parent validation and source review remain
-separate evidence.
+consumer and SQLite upgrade admission checks passed. Final shared feedback and
+boundary checks passed. An initial complete lint run identified stale reviewed
+helper pins; the refreshed raw-SQL protocol and reviewed-pin owner checks
+passed. Independent source review remains separate from execution evidence.
 
 Exact-head protected CI, merge and a newly dispatched nightly remain pending.
 The failed run is immutable and cannot incorporate a source repair. The
