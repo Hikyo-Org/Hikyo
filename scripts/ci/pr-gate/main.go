@@ -617,7 +617,7 @@ func (c *controller) endpoint(path string) string { return "repos/" + c.repoName
 func validWorkflow(w workflow) bool {
 	return w.ID > 0 && w.Path == workflowPath && w.Name == "pr-candidate"
 }
-func (c *controller) init(ctx context.Context) error {
+func (c *controller) initRepository(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
 		return errors.New("invalid GH_REPO")
 	}
@@ -629,6 +629,12 @@ func (c *controller) init(ctx context.Context) error {
 	}
 	if c.repo.ID <= 0 || !strings.EqualFold(c.repo.FullName, c.repoName) {
 		return errors.New("repository identity mismatch")
+	}
+	return nil
+}
+func (c *controller) init(ctx context.Context) error {
+	if err := c.initRepository(ctx); err != nil {
+		return err
 	}
 	if err := c.api.read(ctx, c.endpoint("actions/workflows/ci-candidate.yml"), &c.workflow); err != nil {
 		return err

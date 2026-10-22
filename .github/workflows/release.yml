@@ -255,6 +255,7 @@ jobs:
   apple-sign:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      darwin_sha256: ${{ steps.signed-digests.outputs.sha256 }}
     needs: build-artifacts
     environment: apple-signing
     runs-on: macos-15
@@ -278,10 +279,70 @@ jobs:
           path: ${{ runner.temp }}/release-inputs
       - name: Restore canonical release artifacts
         run: tar -xzf "$RUNNER_TEMP/release-inputs/release-inputs.tar.gz"
-      - name: Sign and notarize macOS binaries and disk images
+      - name: Sign macOS binaries and disk images
         env:
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
+        run: ./scripts/release/sign-apple-artifacts.sh --sign-only dist
+      - name: Bind signed macOS artifact bytes
+        id: signed-digests
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+        run: |
+          set -euo pipefail
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          echo "sha256=$darwin_sha256" >>"$GITHUB_OUTPUT"
+      - name: Retain signed Apple artifacts
+        run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-release-inputs.tar.gz" dist
+      - id: upload-inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apple-signed-release-inputs-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apple-release-inputs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  apple-notarize:
+    outputs:
+      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
+    needs: [build-artifacts, apple-sign]
+    environment: apple-signing
+    runs-on: macos-15
+    permissions:
+      contents: read
+    env:
+      # The macOS 15 default client traps during API-key authentication.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - name: Report selected Apple notarization client
+        run: |
+          xcodebuild -version
+          xcrun notarytool --version
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/apple-release-inputs
+      - name: Restore signed release artifacts
+        run: tar -xzf "$RUNNER_TEMP/apple-release-inputs/apple-release-inputs.tar.gz"
+      - name: Verify exact signed macOS input bytes
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          SIGNED_DARWIN_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+        run: |
+          set -euo pipefail
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
+      - name: Notarize and staple macOS disk images
+        id: notarize
+        env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
@@ -289,7 +350,7 @@ jobs:
           APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
           CANDIDATE_SHA256: ${{ needs.build-artifacts.outputs.candidate_sha256 }}
-        run: ./scripts/release/sign-apple-artifacts.sh dist
+        run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
       - name: Retain Apple notarization diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -308,7 +369,7 @@ jobs:
           retention-days: 1
 
   build-signed-draft:
-    needs: [validation, docs, floor-bench, build-artifacts, apple-sign]
+    needs: [validation, docs, floor-bench, build-artifacts, apple-sign, apple-notarize]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -331,7 +392,7 @@ jobs:
           version: v4.2.3
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
+          artifact-ids: ${{ needs.apple-notarize.outputs.artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/apple-release-inputs
       - name: Restore finalized release artifacts and recheck identity

@@ -242,9 +242,9 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error 
 	return nil
 }
 func queueBootstrapContract(run string, targeted bool) error {
-	want := "8035f5279452ed5df0f126e798a1e2be88f56c92f8872629450ad62d4d343dc7"
+	want := "e59ab2f4f2cb2499dc97168c75ed5b1fd4ee6e7585208ced4f5529293d1ee4db"
 	if targeted {
-		want = "4c6102d39aab61e3ca574bc277f3453214989a2cb505b699bb3aa26a128aa8a6"
+		want = "38b4726421b78e9fcf2d5a48863d15ff9fee8695ee30a3df2e0ed4f7d237b02e"
 	}
 	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != want {
 		return fmt.Errorf("current-attempt exacthead clock bootstrap changed")
@@ -580,6 +580,14 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := workflow.Jobs["publish"].Steps[0].Run
+	workerRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "ci-queue-worker.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var worker queueWorkflowContract
+	if err := yaml.Unmarshal(workerRaw, &worker); err != nil {
+		t.Fatal(err)
+	}
 	head := "8d0fe8559114c4a0d8eb95c17443ef2be1c78071"
 	source := "f1022b9c6a6b95c98a59ac98cb2865b36d4438bb"
 	groupDisplay := strings.ReplaceAll(workflow.Jobs["group"].Name, "${{ github.event.workflow_run.head_sha }}", head)
@@ -589,16 +597,19 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 		"valid with skipped group": func(j map[string]any) any {
 			return map[string]any{"total_count": 2, "jobs": []any{j, map[string]any{"id": 124, "run_id": 456, "run_attempt": 2, "head_sha": head, "name": groupDisplay, "status": "completed", "conclusion": "skipped", "started_at": nil}}}
 		},
-		"wrong run":               func(j map[string]any) any { j["run_id"] = 999; return nil },
-		"wrong attempt":           func(j map[string]any) any { j["run_attempt"] = 1; return nil },
-		"wrong source":            func(j map[string]any) any { j["head_sha"] = strings.Repeat("b", 40); return nil },
-		"wrong job":               func(j map[string]any) any { j["name"] = "maintenance"; return nil },
-		"invalid id type":         func(j map[string]any) any { j["id"] = "not an integer"; return nil },
-		"fractional id":           func(j map[string]any) any { j["id"] = 123.5; return nil },
-		"valid queued status lag": func(j map[string]any) any { j["status"] = "queued"; return nil },
-		"completed status":        func(j map[string]any) any { j["status"] = "completed"; return nil },
-		"missing start":           func(j map[string]any) any { delete(j, "started_at"); return nil },
-		"malformed start":         func(j map[string]any) any { j["started_at"] = "invalid"; return nil },
+		"wrong run":                func(j map[string]any) any { j["run_id"] = 999; return nil },
+		"wrong attempt":            func(j map[string]any) any { j["run_attempt"] = 1; return nil },
+		"wrong source":             func(j map[string]any) any { j["head_sha"] = strings.Repeat("b", 40); return nil },
+		"wrong job":                func(j map[string]any) any { j["name"] = "maintenance"; return nil },
+		"invalid id type":          func(j map[string]any) any { j["id"] = "not an integer"; return nil },
+		"fractional id":            func(j map[string]any) any { j["id"] = 123.5; return nil },
+		"nonpositive id":           func(j map[string]any) any { j["id"] = 0; return nil },
+		"valid queued status lag":  func(j map[string]any) any { j["status"] = "queued"; return nil },
+		"valid pending status lag": func(j map[string]any) any { j["status"] = "pending"; return nil },
+		"completed status":         func(j map[string]any) any { j["status"] = "completed"; return nil },
+		"missing start":            func(j map[string]any) any { delete(j, "started_at"); return nil },
+		"malformed start":          func(j map[string]any) any { j["started_at"] = "invalid"; return nil },
+		"zero start":               func(j map[string]any) any { j["started_at"] = "1970-01-01T00:00:00Z"; return nil },
 		"future start": func(j map[string]any) any {
 			j["started_at"] = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 			return nil
@@ -621,17 +632,25 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 	// These are the distinct source/job identities observed on PR 899. The
 	// target job belongs to the PR head; a feedback callback belongs to main,
 	// while both use the PR head for the same publication lease.
-	for _, route := range []struct{ event, jobHead string }{
-		{"pull_request_target", head},
-		{"workflow_run", source},
+	for _, route := range []struct{ event, jobHead, status, script string }{
+		{"pull_request_target", head, "in_progress", script},
+		{"workflow_run", source, "in_progress", script},
+		{"pull_request_target", head, "pending", script},
+		{"workflow_run", source, "pending", script},
+		{"workflow_dispatch", source, "in_progress", worker.Jobs["publish"].Steps[0].Run},
+		{"workflow_dispatch", source, "pending", worker.Jobs["publish"].Steps[0].Run},
 	} {
 		for name, mutate := range cases {
-			t.Run(route.event+"/"+name, func(t *testing.T) {
+			if route.event == "workflow_dispatch" && name == "unsupported event" {
+				continue // The worker's workflow contract owns its sole dispatch event.
+			}
+			t.Run(route.event+"/"+route.status+"/"+name, func(t *testing.T) {
 				j := make(map[string]any, len(base))
 				for k, v := range base {
 					j[k] = v
 				}
 				j["head_sha"] = route.jobHead
+				j["status"] = route.status
 				response := mutate(j)
 				if response == nil {
 					response = map[string]any{"total_count": 1, "jobs": []any{j}}
@@ -658,7 +677,7 @@ func TestQueuePublisherBootstrapAuthenticatesSetupClock(t *testing.T) {
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, "bash", "-c", script)
+				cmd := exec.CommandContext(ctx, "bash", "-c", route.script)
 				cmd.WaitDelay = time.Second
 				lease, sourceSHA, event := head, source, route.event
 				switch name {

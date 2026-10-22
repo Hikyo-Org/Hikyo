@@ -153,7 +153,8 @@ require_workflow_review() {
 			write | maintain | admin) ;;
 			*) fail 'BDFL workflow exemption requires current maintainer permission' ;;
 		esac
-		check_current_pr
+		# Policy-only mode performs the same final read immediately on return.
+		[ "${PR_GATE_POLICY_ONLY:-0}" = 1 ] || check_current_pr
 		return
 	fi
 	# API review author_association is historical, not current authority. Use
@@ -178,7 +179,7 @@ require_workflow_review() {
 	done
 	[ "$approved" = true ] ||
 		fail 'workflow edits require an independent current maintainer approval on this exact PR head'
-	check_current_pr
+	[ "${PR_GATE_POLICY_ONLY:-0}" = 1 ] || check_current_pr
 }
 
 check_current_pr
