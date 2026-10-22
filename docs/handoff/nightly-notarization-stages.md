@@ -1,5 +1,7 @@
 # Separate Apple signing and notarization
 
+Implementation: [PR #1026](https://github.com/Hikyo-Org/Hikyo/pull/1026).
+
 ## Requested behavior
 
 Keep builds and Apple signing independently visible when Apple's notarization
@@ -21,6 +23,9 @@ any provider request. Notarization consumes the same run's immutable signing
 artifact, verifies the independent digest of its four macOS files and their
 signatures, and performs submission, matching public-log validation, stapling,
 and Gatekeeper checks. It does not import signing credentials or rebuild code.
+The four-file digest inventory is owned once by
+`scripts/release/apple-artifact-digest.sh`, shared by both workflows' producers
+and consumers.
 
 ## Publication outcomes
 

@@ -353,7 +353,7 @@ jobs:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
         run: |
           set -euo pipefail
-          darwin_sha256=$( (cd dist && shasum -a 256 "hikyo_${VERSION}_Darwin_arm64.tar.gz" "hikyo_${VERSION}_Darwin_x86_64.tar.gz" "hikyo_${VERSION}_Darwin_arm64.dmg" "hikyo_${VERSION}_Darwin_x86_64.dmg") | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           echo "sha256=$darwin_sha256" >>"$GITHUB_OUTPUT"
       - name: Retain signed nightly artifacts and predecessor context
         run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-nightly-inputs.tar.gz" dist nightly-context
@@ -399,7 +399,7 @@ jobs:
           SIGNED_DARWIN_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
         run: |
           set -euo pipefail
-          darwin_sha256=$( (cd dist && shasum -a 256 "hikyo_${VERSION}_Darwin_arm64.tar.gz" "hikyo_${VERSION}_Darwin_x86_64.tar.gz" "hikyo_${VERSION}_Darwin_arm64.dmg" "hikyo_${VERSION}_Darwin_x86_64.dmg") | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Notarize and staple nightly macOS disk images
         env:

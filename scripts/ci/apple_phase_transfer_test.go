@@ -87,10 +87,21 @@ func TestAppleSigningPhaseTransferBindsSignedBytes(t *testing.T) {
 			if verify.Env["SIGNED_DARWIN_SHA256"] != "${{ needs.apple-sign.outputs.darwin_sha256 }}" {
 				t.Fatal("notarization must bind the signing job's independent digest")
 			}
-			for _, mutation := range []string{"none", "archive", "DMG", "missing DMG"} {
+			for _, mutation := range []string{"none", "archive", "DMG", "missing DMG", "symlink DMG"} {
 				t.Run(mutation, func(t *testing.T) {
 					dir := t.TempDir()
 					if err := os.Mkdir(filepath.Join(dir, "dist"), 0700); err != nil {
+						t.Fatal(err)
+					}
+					// Use the real digest helper from the workflow, retaining a
+					// separate disposable payload directory for each mutation.
+					if err := os.MkdirAll(filepath.Join(dir, "scripts", "release"), 0700); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(filepath.Join(repositoryRoot(t), "scripts", "release", "apple-artifact-digest.sh"), filepath.Join(dir, "scripts", "release", "apple-artifact-digest.sh")); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(filepath.Join(repositoryRoot(t), "scripts", "lib"), filepath.Join(dir, "scripts", "lib")); err != nil {
 						t.Fatal(err)
 					}
 					version := "1.2.3"
@@ -132,6 +143,13 @@ func TestAppleSigningPhaseTransferBindsSignedBytes(t *testing.T) {
 						}
 					case "missing DMG":
 						if err := os.Remove(name); err != nil {
+							t.Fatal(err)
+						}
+					case "symlink DMG":
+						if err := os.Remove(name); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Symlink("hikyo_1.2.3_Darwin_x86_64.dmg", name); err != nil {
 							t.Fatal(err)
 						}
 					}
