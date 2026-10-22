@@ -21,6 +21,10 @@ printf 'security %s\n' "$1" >>"$APPLE_FIXTURE_LOG"
 case "$1" in
   create-keychain) touch "$4" ;;
   delete-keychain) rm "$2" ;;
+  import)
+    [ "$3" = -k ] || exit 1
+    printf '%s\n' "$4" >"$APPLE_FIXTURE_STATE/imported-keychain"
+    ;;
   list-keychains)
     if [ "$#" -eq 3 ]; then
       [ "$APPLE_FIXTURE_MODE" != search-list-read-failure ] || exit 1
@@ -40,6 +44,10 @@ case "$1" in
     fi
     ;;
   find-identity)
+    [ "$#" -eq 5 ] || exit 1
+    [ "$2" = -v ] && [ "$3" = -p ] && [ "$4" = codesigning ] || exit 1
+    IFS= read -r imported_keychain <"$APPLE_FIXTURE_STATE/imported-keychain"
+    [ "$5" = "$imported_keychain" ] && [ -f "$5" ] || exit 1
     [ "$APPLE_FIXTURE_MODE" != identity-query-failure ] || exit 1
     case "$APPLE_FIXTURE_MODE" in
       invalid-identity) printf '     0 valid identities found\n' ;;
