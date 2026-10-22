@@ -1,0 +1,44 @@
+name: notarytool-client-probe
+
+on:
+  push:
+    branches:
+      - dunky13/diagnose-notarytool-sigtrap
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Compare hosted clients with an unregistered test key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          scratch=$(mktemp -d)
+          trap 'rm -rf "$scratch"' EXIT
+          openssl ecparam -name prime256v1 -genkey -noout |
+            openssl pkcs8 -topk8 -nocrypt -out "$scratch/original.p8"
+          printf '%s' "$(cat "$scratch/original.p8")" >"$scratch/no-final-newline.p8"
+          awk '{printf "%s\\n", $0}' "$scratch/original.p8" >"$scratch/literal-newlines.p8"
+          awk '{printf "%s\r\n", $0}' "$scratch/original.p8" >"$scratch/crlf.p8"
+          crashes=0
+          for toolchain in 16.4 26.3; do
+            export DEVELOPER_DIR="/Applications/Xcode_$toolchain.app/Contents/Developer"
+            xcodebuild -version
+            xcrun notarytool --version
+            for variant in original no-final-newline literal-newlines crlf; do
+              status=0
+              xcrun notarytool history --key "$scratch/$variant.p8" \
+                --key-id NOTARYPROBE --issuer 00000000-0000-0000-0000-000000000000 \
+                --output-format json >"$scratch/result" 2>"$scratch/error" || status=$?
+              printf 'toolchain=%s encoding=%s exit=%s\n' "$toolchain" "$variant" "$status"
+              sed '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/d' "$scratch/error" |
+                sed -E 's/[A-Za-z0-9+\/=]{48,}/[redacted]/g' | sed -n '1,60p'
+              if [ "$status" -ge 128 ]; then crashes=$((crashes + 1)); fi
+              [ "$status" -ne 0 ] || { printf 'unexpected test-key authentication\n' >&2; exit 1; }
+            done
+          done
+          [ "$crashes" -eq 0 ]

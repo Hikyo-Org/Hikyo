@@ -46,6 +46,16 @@ for file in "$@"; do
 	fi
 	expected_runner=ubuntu-latest
 	case $(basename "$file") in
+		notarytool-probe.yml)
+			# A bounded, credential-free client probe uses only installed tools.
+			expected_runner=macos-15
+			require_line "$file" 'permissions: {}'
+			require_line "$file" '    timeout-minutes: 5'
+			require_line "$file" '      - dunky13/diagnose-notarytool-sigtrap'
+			if grep -E 'secrets\.|environment:|uses:' "$file" >/dev/null; then
+				fail 'notarytool client probe must not use credentials, environments or actions'
+			fi
+			;;
 		ops-floor.yml)
 			# The secret-free operations lane measures both native CPU floors.
 			# Keep its matrix closed to these two GitHub-hosted architectures.
