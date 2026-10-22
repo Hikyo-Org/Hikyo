@@ -6,7 +6,10 @@ fixture=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-apple-fixture.XXXXXX")
 trap 'rm -rf "$fixture"' EXIT HUP INT TERM
 mkdir "$fixture/bin" "$fixture/scratch" "$fixture/original" "$fixture/payload"
 export APPLE_FIXTURE_LOG="$fixture/calls" APPLE_FIXTURE_STATE="$fixture/state"
+export APPLE_FIXTURE_SEARCH_LIST="$fixture/search-list"
+export APPLE_FIXTURE_ORIGINAL_SEARCH_LIST="$fixture/original-search-list"
 export APPLE_NOTARY_EVIDENCE_DIR="$fixture/evidence"
+printf '    "%s"\n' "$fixture/login fixture.keychain-db" "$fixture/secondary.keychain-db" >"$fixture/original-search-list"
 cat >"$fixture/bin/uname" <<'EOF'
 #!/bin/sh
 printf 'Darwin\n'
@@ -18,6 +21,40 @@ printf 'security %s\n' "$1" >>"$APPLE_FIXTURE_LOG"
 case "$1" in
   create-keychain) touch "$4" ;;
   delete-keychain) rm "$2" ;;
+  import)
+    [ "$3" = -k ] || exit 1
+    printf '%s\n' "$4" >"$APPLE_FIXTURE_STATE/imported-keychain"
+    ;;
+  list-keychains)
+    if [ "$#" -eq 3 ]; then
+      [ "$APPLE_FIXTURE_MODE" != search-list-read-failure ] || exit 1
+      cat "$APPLE_FIXTURE_SEARCH_LIST"
+    else
+      [ "$2" = -d ] && [ "$3" = user ] && [ "$4" = -s ]
+      shift 4
+      : >"$APPLE_FIXTURE_SEARCH_LIST"
+      for path do printf '    "%s"\n' "$path" >>"$APPLE_FIXTURE_SEARCH_LIST"; done
+      # A failed update can still have changed the list. Cleanup must restore it.
+      case "${1:-}:$APPLE_FIXTURE_MODE" in
+        */signing.keychain-db:search-list-update-failure) exit 1 ;;
+      esac
+      if [ "$APPLE_FIXTURE_MODE" = search-list-restore-failure ]; then
+        case "${1:-}" in */signing.keychain-db) ;; *) exit 1 ;; esac
+      fi
+    fi
+    ;;
+  find-identity)
+    [ "$#" -eq 5 ] || exit 1
+    [ "$2" = -v ] && [ "$3" = -p ] && [ "$4" = codesigning ] || exit 1
+    IFS= read -r imported_keychain <"$APPLE_FIXTURE_STATE/imported-keychain"
+    [ "$5" = "$imported_keychain" ] && [ -f "$5" ] || exit 1
+    [ "$APPLE_FIXTURE_MODE" != identity-query-failure ] || exit 1
+    case "$APPLE_FIXTURE_MODE" in
+      invalid-identity) printf '     0 valid identities found\n' ;;
+      wrong-imported-identity) printf '  1) %s "Developer ID Application: Other (AAAAAAAAAA)"\n     1 valid identities found\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+      *) printf '  1) %s "%s"\n     1 valid identities found\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "$APPLE_SIGNING_IDENTITY" ;;
+    esac
+    ;;
 esac
 EOF
 cat >"$fixture/bin/lipo" <<'EOF'
@@ -32,16 +69,31 @@ printf 'codesign %s\n' "$1" >>"$APPLE_FIXTURE_LOG"
 [ "$APPLE_FIXTURE_MODE" != bad-signature ] || [ "$1" != --verify ] || exit 1
 sign=false
 requirement=false
+keychain_next=false
+keychain=
 for argument do
+  if [ "$keychain_next" = true ]; then keychain=$argument; keychain_next=false; fi
   if [ "$requirement" = true ]; then
     case "$argument" in '=anchor apple generic '*) ;; *) printf 'invalid inline requirement\n' >&2; exit 1 ;; esac
     requirement=false
   fi
   [ "$argument" != -R ] || requirement=true
   [ "$argument" != --sign ] || sign=true
+  [ "$argument" != --keychain ] || keychain_next=true
   target=$argument
 done
-if [ "$sign" = true ]; then printf 'Developer ID signed\n' >>"$target"; fi
+if [ "$sign" = true ]; then
+  if ! grep -F "\"$keychain\"" "$APPLE_FIXTURE_SEARCH_LIST" >/dev/null; then
+    printf 'error: The specified item could not be found in the keychain.\n' >&2
+    exit 1
+  fi
+  while IFS= read -r original_keychain; do
+    grep -Fx "$original_keychain" "$APPLE_FIXTURE_SEARCH_LIST" >/dev/null || {
+      printf 'original Keychain missing during signing\n' >&2; exit 1;
+    }
+  done <"$APPLE_FIXTURE_ORIGINAL_SEARCH_LIST"
+  printf 'Developer ID signed\n' >>"$target"
+fi
 EOF
 cat >"$fixture/bin/hdiutil" <<'EOF'
 #!/bin/sh
@@ -151,7 +203,7 @@ assert_evidence() {
   fi
   [ "$submissions" -eq "$receipts" ] || { printf 'apple fixture: missing receipt for %s\n' "$APPLE_FIXTURE_MODE" >&2; exit 1; }
   case "$APPLE_FIXTURE_MODE" in
-    accepted | accepted-warnings | accepted-minimal-log | second-rejected) [ "$submissions" -eq 2 ] ;;
+    accepted | accepted-warnings | accepted-minimal-log | search-list-restore-failure | second-rejected) [ "$submissions" -eq 2 ] ;;
     rejected | terminal-rejected | timeout | timeout-no-id | accepted-no-id | log-failure | malformed-log | mismatched-job | mismatched-status | mismatched-filename | mismatched-hash | malformed-issues | staple-failure | invalid-ticket | gatekeeper-failure) [ "$submissions" -eq 1 ] ;;
     *) [ "$submissions" -eq 0 ] ;;
   esac
@@ -206,7 +258,7 @@ assert_evidence() {
       cmp "$APPLE_FIXTURE_STATE/$evidence_arch-returned-log.json" "$fixture/evidence/$evidence_arch-notary-log.json"
     fi
     case "$APPLE_FIXTURE_MODE:$evidence_arch" in
-      accepted:* | accepted-warnings:* | accepted-minimal-log:* | invalid-ticket:* | gatekeeper-failure:* | second-rejected:arm64)
+      accepted:* | accepted-warnings:* | accepted-minimal-log:* | search-list-restore-failure:* | invalid-ticket:* | gatekeeper-failure:* | second-rejected:arm64)
         stapled_sha=$(shasum -a 256 "$fixture/dist/hikyo_${evidence_version}_Darwin_$evidence_arch.dmg" | awk '{print $1}')
         [ "$stapled_sha" != "$submitted_fixture_sha256" ] || { printf 'apple fixture: pre-staple digest not distinguished\n' >&2; exit 1; }
         ;;
@@ -233,9 +285,10 @@ assert_evidence() {
   fi
 }
 
-for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
+for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure search-list-restore-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/evidence" "$fixture/state"
   cp -R "$fixture/original" "$fixture/dist"
@@ -271,8 +324,10 @@ for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log missin
     esac
     "$@" "$script_dir/sign-apple-artifacts.sh" "$fixture/dist"
   ) >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
-  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ]; then
-    [ "$result" -eq 0 ] || { cat "$fixture/err"; exit 1; }
+  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ] || [ "$APPLE_FIXTURE_MODE" = search-list-restore-failure ]; then
+    expected_result=0
+    [ "$APPLE_FIXTURE_MODE" != search-list-restore-failure ] || expected_result=1
+    [ "$result" -eq "$expected_result" ] || { cat "$fixture/err"; printf 'apple fixture: unexpected result %s for %s\n' "$result" "$APPLE_FIXTURE_MODE" >&2; exit 1; }
     [ "$(wc -l <"$fixture/dist/checksums.txt" | tr -d ' ')" -eq 6 ]
     (cd "$fixture/dist" && shasum -a 256 -c checksums.txt >/dev/null)
     for arch in arm64 x86_64; do
@@ -291,7 +346,16 @@ for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log missin
   fi
   case "$APPLE_FIXTURE_MODE" in
     missing-evidence-dir | evidence-contains-scratch | stale-evidence | missing-secret | wrong-team | wrong-candidate | wrong-tag | tampered-input) [ ! -s "$APPLE_FIXTURE_LOG" ] ;;
+    search-list-read-failure) ;;
     *) grep -Fx 'security delete-keychain' "$APPLE_FIXTURE_LOG" >/dev/null ;;
+  esac
+  cmp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
+  case "$APPLE_FIXTURE_MODE" in
+    invalid-identity | wrong-imported-identity | identity-query-failure | search-list-read-failure | search-list-update-failure)
+      if grep -F 'codesign ' "$APPLE_FIXTURE_LOG" >/dev/null; then
+        printf 'apple fixture: invalid keychain setup reached signing\n' >&2; exit 1
+      fi
+      ;;
   esac
   assert_evidence 1.2.3
   [ -z "$(find "$fixture/scratch" -mindepth 1 -print)" ] || { printf 'apple fixture: leaked credentials\n' >&2; exit 1; }
@@ -304,6 +368,7 @@ export APPLE_RELEASE_COMMIT=$GITHUB_SHA GITHUB_REF=refs/heads/main
 for APPLE_FIXTURE_MODE in accepted nightly-wrong-ref nightly-wrong-commit nightly-wrong-version nightly-wrong-metadata unknown-channel; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/evidence" "$fixture/state"
   cp -R "$fixture/original" "$fixture/dist"
@@ -337,8 +402,9 @@ for APPLE_FIXTURE_MODE in accepted nightly-wrong-ref nightly-wrong-commit nightl
   else
     [ "$result" -ne 0 ] && [ ! -s "$APPLE_FIXTURE_LOG" ] || { printf 'apple fixture: accepted %s\n' "$APPLE_FIXTURE_MODE" >&2; exit 1; }
   fi
+  cmp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   assert_evidence "$APPLE_RELEASE_VERSION"
   [ -z "$(find "$fixture/scratch" -mindepth 1 -print)" ]
   if grep -E 'fixture-password|fixture-private-key|Zml4dHVyZQ==' "$fixture/out" "$fixture/err"; then exit 1; fi
 done
-printf 'apple fixtures: stable/nightly success, original 19 refusals plus diagnostic/evidence refusals, pre-staple receipts, warnings, cleanup and unchanged Linux/Windows verified\n'
+printf 'apple fixtures: stable/nightly success, keychain registration/restoration and invalid identities, original 19 refusals plus diagnostic/evidence refusals, pre-staple receipts, warnings, cleanup and unchanged Linux/Windows verified\n'

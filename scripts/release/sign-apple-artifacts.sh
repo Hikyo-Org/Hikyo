@@ -53,9 +53,22 @@ existing_evidence=$(find "$evidence" -mindepth 1 -maxdepth 1 -print) || fail 'ca
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-apple.XXXXXX")
 scratch=$(CDPATH='' cd -P -- "$scratch" && pwd)
 keychain=$scratch/signing.keychain-db
+search_list_saved=false
+set_keychain_search_list() {
+  # security prints one quoted path per line. Read paths without eval or word
+  # splitting so existing Keychains with spaces survive setup and cleanup.
+  while IFS= read -r search_keychain; do
+    [ -n "$search_keychain" ] || continue
+    set -- "$@" "$search_keychain"
+  done <"$scratch/keychain-search-list" || return 1
+  security list-keychains -d user -s "$@"
+}
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
+  if [ "$search_list_saved" = true ]; then
+    if ! set_keychain_search_list; then status=1; fi
+  fi
   if [ -f "$keychain" ]; then
     if ! security delete-keychain "$keychain" >/dev/null; then status=1; fi
   fi
@@ -69,12 +82,23 @@ case "$scratch/" in "$evidence/"*) fail 'notarization evidence must not contain 
 printf '%s' "$APPLE_DEVELOPER_ID_P12_BASE64" | base64 --decode >"$scratch/signing.p12"
 printf '%s' "$APPLE_NOTARY_KEY_P8" >"$scratch/notary.p8"
 keychain_password=$(openssl rand -hex 32)
+security list-keychains -d user >"$scratch/keychain-search-list.raw" || fail 'cannot read user Keychain search list'
+sed -e 's/^[[:space:]]*"//' -e 's/"[[:space:]]*$//' \
+  "$scratch/keychain-search-list.raw" >"$scratch/keychain-search-list"
 security create-keychain -p "$keychain_password" "$keychain"
 security set-keychain-settings -lut 21600 "$keychain"
 security unlock-keychain -p "$keychain_password" "$keychain"
 security import "$scratch/signing.p12" -k "$keychain" -P "$APPLE_DEVELOPER_ID_P12_PASSWORD" \
-  -T /usr/bin/codesign >/dev/null
+  -T /usr/bin/codesign >/dev/null || fail 'cannot import Developer ID identity'
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+# codesign --keychain restricts identity selection, but certificate-chain lookup
+# still uses the user search list. A preconfigured login Keychain can mask this.
+search_list_saved=true
+set_keychain_search_list "$keychain" || fail 'cannot register signing Keychain in user search list'
+security find-identity -v -p codesigning "$keychain" >"$scratch/identities" || fail 'cannot inspect imported signing identities'
+grep -F -- "\"$APPLE_SIGNING_IDENTITY\"" "$scratch/identities" >/dev/null || \
+  fail 'configured Developer ID identity is not valid in the imported Keychain'
+printf 'apple signing: imported Developer ID identity is valid and its Keychain is registered\n'
 rm "$scratch/signing.p12"
 unset APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD APPLE_NOTARY_KEY_P8 keychain_password
 requirement="=anchor apple generic and certificate leaf[subject.OU] = \"$APPLE_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
