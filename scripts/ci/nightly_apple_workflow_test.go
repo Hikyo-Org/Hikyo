@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Nightlies require signing but may omit DMGs after a failed notarization job.
 func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
@@ -36,7 +37,8 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	for name, expected := range map[string][]string{
 		"build-artifacts": {"validation"},
 		"apple-sign":      {"build-artifacts"},
-		"publish":         {"validation", "build-artifacts", "apple-sign"},
+		"apple-notarize":  {"build-artifacts", "apple-sign"},
+		"publish":         {"validation", "build-artifacts", "apple-sign", "apple-notarize"},
 		"container":       {"publish"},
 	} {
 		needs, err := workflowNeeds(workflow.Jobs[name].Needs)
@@ -44,12 +46,14 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 			t.Fatalf("%s dependencies = %v, expected %v: %v", name, needs, expected, err)
 		}
 	}
-	apple := workflow.Jobs["apple-sign"]
-	if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
-		t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
-	}
-	if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
-		t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
+	for _, name := range []string{"apple-sign", "apple-notarize"} {
+		apple := workflow.Jobs[name]
+		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
+			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
+		}
+		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
+			t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
+		}
 	}
 	if workflow.Jobs["container"].If != "${{ !cancelled() && github.ref == 'refs/heads/main' && needs.publish.result == 'success' }}" {
 		t.Fatal("container retries require an explicit status predicate so a skipped Apple ancestor cannot skip an already published release")
@@ -64,15 +68,16 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		}
 	}
 	publish := workflow.Jobs["publish"]
-	if publish.Environment != "nightly-release" || publish.If != "always() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || needs.apple-sign.result == 'success')" {
-		t.Fatal("nightly publication must fail closed on validation/build/Apple failure while permitting already-published container retries")
+	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && (needs.apple-notarize.result == 'success' || needs.apple-notarize.result == 'failure')))" {
+		t.Fatal("nightly publication requires validation/build/signing and a finished notarization attempt; only notarization failure may omit DMGs")
 	}
 	for _, key := range []string{"tag", "version", "commit"} {
 		if publish.Outputs[key] != "${{ needs.build-artifacts.outputs."+key+" }}" {
 			t.Fatalf("container retry loses immutable source output %s", key)
 		}
 	}
-	builds, signatures := 0, 0
+	builds, signatures, notarizations := 0, 0, 0
+	publicationSources := make(map[string]int)
 	for name, job := range workflow.Jobs {
 		for _, step := range job.Steps {
 			if strings.Contains(step.Uses, "goreleaser/goreleaser-action@") {
@@ -82,25 +87,48 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 				}
 			}
 			for key, value := range step.Env {
-				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") && name != "apple-sign" {
-					t.Fatal("nightly Apple secrets escaped the signing job")
+				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") {
+					owner := "apple-sign"
+					if key == "APPLE_NOTARY_KEY_P8" {
+						owner = "apple-notarize"
+					}
+					if name != owner {
+						t.Fatal("nightly Apple credentials escaped their isolated phase")
+					}
 				}
 			}
-			if step.Run == "./scripts/release/sign-apple-artifacts.sh dist" {
+			if step.Run == "./scripts/release/sign-apple-artifacts.sh --sign-only dist" {
 				signatures++
 				if name != "apple-sign" || step.If != "" || step.Env["APPLE_RELEASE_CHANNEL"] != "nightly" || step.Env["APPLE_RELEASE_VERSION"] != "${{ needs.build-artifacts.outputs.version }}" || step.Env["APPLE_RELEASE_COMMIT"] != "${{ needs.build-artifacts.outputs.commit }}" {
 					t.Fatal("nightly Apple signing must bind the canonical build identity without an optional step")
 				}
-				for _, key := range []string{"APPLE_DEVELOPER_ID_P12_BASE64", "APPLE_DEVELOPER_ID_P12_PASSWORD", "APPLE_NOTARY_KEY_P8"} {
+				for _, key := range []string{"APPLE_DEVELOPER_ID_P12_BASE64", "APPLE_DEVELOPER_ID_P12_PASSWORD"} {
 					if step.Env[key] != "${{ secrets."+key+" }}" {
 						t.Fatalf("nightly Apple signing lacks %s", key)
 					}
 				}
 			}
-			if strings.Contains(step.Uses, "actions/download-artifact@") && (name == "apple-sign" || name == "publish") {
+			if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+				notarizations++
+				if name != "apple-notarize" || step.If != "" || step.Env["APPLE_NOTARY_KEY_P8"] != "${{ secrets.APPLE_NOTARY_KEY_P8 }}" || step.Env["APPLE_RELEASE_CHANNEL"] != "nightly" || step.Env["APPLE_RELEASE_VERSION"] != "${{ needs.build-artifacts.outputs.version }}" || step.Env["APPLE_RELEASE_COMMIT"] != "${{ needs.build-artifacts.outputs.commit }}" {
+					t.Fatal("nightly notarization must bind the canonical source in its separate job")
+				}
+			}
+			if strings.Contains(step.Uses, "actions/download-artifact@") && (name == "apple-sign" || name == "apple-notarize" || name == "publish") {
 				upstream := "build-artifacts"
-				if name == "publish" {
+				if name == "apple-notarize" {
 					upstream = "apple-sign"
+				}
+				if name == "publish" {
+					switch step.If {
+					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'success'":
+						upstream = "apple-notarize"
+					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'":
+						upstream = "apple-sign"
+					default:
+						t.Fatal("nightly publication requires an explicit artifact source for each notarization outcome")
+					}
+					publicationSources[upstream]++
 				}
 				if step.With["artifact-ids"] != "${{ needs."+upstream+".outputs.artifact_id }}" || step.With["merge-multiple"] != "true" || step.With["name"] != "" {
 					t.Fatalf("%s must consume this run's immutable upstream artifact ID", name)
@@ -108,8 +136,11 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 			}
 		}
 	}
-	if builds != 1 || signatures != 1 {
-		t.Fatal("nightly requires exactly one canonical build and Apple signing stage")
+	if builds != 1 || signatures != 1 || notarizations != 1 {
+		t.Fatal("nightly requires exactly one canonical build and separate Apple signing and notarization stages")
+	}
+	if !reflect.DeepEqual(publicationSources, map[string]int{"apple-sign": 1, "apple-notarize": 1}) {
+		t.Fatal("nightly publication must select exactly one immutable artifact source for each notarization outcome")
 	}
 	var final strings.Builder
 	for _, step := range publish.Steps {

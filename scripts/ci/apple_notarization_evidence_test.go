@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Check the actual jobs: diagnostics must survive signing failure without
+// Check the actual jobs: diagnostics must survive notarization failure without
 // uploading the private Keychain or credential scratch directory.
 func TestAppleNotarizationEvidenceRetainedOnFailure(t *testing.T) {
 	for _, channel := range []string{"stable", "nightly"} {
@@ -37,11 +37,11 @@ func TestAppleNotarizationEvidenceRetainedOnFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			signingIndex, uploadIndex := -1, -1
-			for index, step := range workflow.Jobs["apple-sign"].Steps {
-				if step.Run == "./scripts/release/sign-apple-artifacts.sh dist" {
+			for index, step := range workflow.Jobs["apple-notarize"].Steps {
+				if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 					signingIndex = index
 					if step.Env["APPLE_NOTARY_EVIDENCE_DIR"] != "${{ runner.temp }}/apple-notarization" {
-						t.Fatal("signing must write diagnostics outside credential scratch and release payloads")
+						t.Fatal("notarization must write diagnostics outside credential scratch and release payloads")
 					}
 				}
 				if step.Name != "Retain Apple notarization diagnostics" {
@@ -52,7 +52,7 @@ func TestAppleNotarizationEvidenceRetainedOnFailure(t *testing.T) {
 				}
 				uploadIndex = index
 				if step.If != "${{ always() }}" || step.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" {
-					t.Fatal("diagnostics require the pinned uploader even after signing failure")
+					t.Fatal("diagnostics require the pinned uploader even after notarization failure")
 				}
 				if step.With["path"] != "${{ runner.temp }}/apple-notarization/*.json" || len(step.Env) != 0 {
 					t.Fatal("diagnostics upload must select only public JSON without credential environment")

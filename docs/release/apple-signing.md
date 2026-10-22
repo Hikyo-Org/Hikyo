@@ -2,9 +2,12 @@
 
 Apple Developer Program enrollment makes Developer ID distribution available.
 Enrollment alone does not install a signing identity or configure CI credentials.
-Stable and nightly releases require Apple signing and notarization for both
-macOS architectures before their final hashes and Cosign signatures are
-generated. Local development snapshots keep their existing signing profile.
+Stable and nightly releases require Apple signing for both macOS architectures
+before their final hashes and Cosign signatures are generated. Stable releases
+also require notarization. Nightlies may publish without disk images when the
+separate notarization job fails; their macOS tarballs remain signed, with
+notarization explicitly unverified in the release notes. Local development
+snapshots keep their existing signing profile.
 
 ## One-time credential setup
 
@@ -56,7 +59,7 @@ and the [notarization workflow](https://developer.apple.com/documentation/securi
 Both release workflows build the SPA and all GoReleaser outputs once on Linux.
 Stable builds require source validation, docs, and the floor benchmark; nightly
 builds require exact-head validation and authenticated predecessor compatibility.
-A macOS runner
+A dedicated `apple-sign` job on a macOS runner
 receives those exact outputs from the same workflow run. It imports the identity
 into a disposable Keychain, verifies the candidate hash, tag, commit, and Mach-O
 architecture, and signs each macOS executable with hardened runtime and a secure
@@ -64,7 +67,11 @@ timestamp. Nightly signing instead binds the immutable build outputs and
 GoReleaser metadata to the main workflow SHA and resolved nightly version.
 
 For each architecture it creates and signs
-`hikyo_VERSION_Darwin_ARCH.dmg`, submits it to `notarytool`, requires an
+`hikyo_VERSION_Darwin_ARCH.dmg` and retains the signed tarball. This job receives
+only the Developer ID certificate and password. Its artifact ID and independent
+digest of all four signed macOS files bind the handoff to `apple-notarize`.
+The notarization job receives only the API key, verifies the handed-off bytes
+and signatures, submits each DMG to `notarytool`, requires an
 `Accepted` response, staples the ticket, validates it, verifies the Developer ID
 signature against the configured team, and assesses the disk image with
 Gatekeeper. The corresponding tarball contains the same signed executable.
@@ -80,9 +87,9 @@ a valid matching log.
 Warnings are surfaced as counts for review; they do not by themselves change
 Apple's acceptance status.
 
-Both signing jobs retain these JSON files as Actions artifacts named
+Both workflows' notarization jobs retain these JSON files as Actions artifacts named
 `apple-notarization-stable-RUN_ID-RUN_ATTEMPT` or
-`apple-notarization-nightly-RUN_ID-RUN_ATTEMPT`, including after a failed signing
+`apple-notarization-nightly-RUN_ID-RUN_ATTEMPT`, including after a failed notarization
 step. Retention follows the repository's Actions artifact policy. A rejected or
 timed-out submission keeps its receipt even if Apple has no log available yet;
 an earlier architecture's completed evidence survives a later failure. Inspect
@@ -100,17 +107,32 @@ The final Linux job consumes these finalized artifacts, rechecks candidate and
 archive hashes and independently compares Linux/Windows archive bytes with the
 original build digest. Nightly compatibility is also bound to its original
 build digest. The stable job builds the image and chart from canonical Linux
-binaries, and creates provenance and the release manifest. Both disk images
+binaries, and creates provenance and the release manifest. Accepted disk images
 are covered by the authenticated release manifest as `installer` assets,
 using the existing artifact type accepted by deployed nightly readers. Stable
 releases also sign each asset with Cosign. Checksums retain their
-existing contract of exactly six platform archives. Apple failures or missing
-credentials stop the release before manifest signing; there is no unsigned fallback.
+existing contract of exactly six platform archives. Signing failures or missing
+signing credentials stop every release before manifest signing.
+
+Nightly publication waits for the separate notarization job to finish. Success
+selects its finalized artifact and includes both notarized DMGs. Failure selects
+the original signing job's immutable artifact, publishes the six signed platform
+archives and eight Linux packages, and omits every DMG, including any image that
+was accepted before the other architecture failed. The release notes state that
+macOS notarization was not verified. Linux, Windows, and container publication
+retain their existing validation, signature, startup, and upgrade checks.
+A cancelled or skipped notarization job does not authorize a new publication.
+Stable publication continues to require successful notarization.
+
+The build and signing jobs can pass while notarization fails. GitHub still marks
+the overall workflow as failed when its notarization job fails, even if nightly
+publication and the container job succeed. Published manifests and assets remain
+immutable; a later notarization retry does not append DMGs to an existing release.
 
 The default notarization wait is 30 minutes per submission. The packaging helper
 accepts `APPLE_NOTARY_TIMEOUT` in the duration syntax supported by
 `notarytool --timeout`; workflow use can set that environment variable on the
-Apple signing step. A timeout leaves a submission processing at Apple. Inspect
+Apple notarization step. A timeout leaves a submission processing at Apple. Inspect
 that submission before retrying the original run. An existing version tag must
 never be recreated to bypass a release failure.
 
@@ -118,7 +140,7 @@ Stable human review and publication remain the existing
 [online release ceremony](online-signing.md). Nightlies retain their main-only
 publication environment, scoped app token, startup and populated-upgrade gates,
 and authenticated predecessor chain. Already published runs skip Apple signing
-and retain their original artifacts. The Apple job cannot write to
+and retain their original artifacts. Neither Apple job can write to
 the repository, publish a release, or mint a Cosign OIDC identity.
 
 ## DMG and Homebrew installations

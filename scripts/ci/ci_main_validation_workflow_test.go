@@ -97,7 +97,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		t.Fatal("nightly validation must use the unchanged read-only CI graph on main")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
-	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign"}) {
+	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign", "apple-notarize"}) {
 		t.Fatalf("nightly publication must depend on full validation: %v %v", needs, err)
 	}
 	var proof, classify, gate mainValidationStep

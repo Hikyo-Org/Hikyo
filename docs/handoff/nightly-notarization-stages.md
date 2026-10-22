@@ -1,0 +1,62 @@
+# Separate Apple signing and notarization
+
+## Requested behavior
+
+Keep builds and Apple signing independently visible when Apple's notarization
+service fails. Nightlies may publish everything except DMGs after a failed
+notarization attempt. This includes signed macOS tarballs whose notarization is
+explicitly unverified. Stable releases retain mandatory notarization.
+
+## Artifact and credential flow
+
+Both release workflows have `build-artifacts`, `apple-sign`, and
+`apple-notarize` jobs. Signing receives the Developer ID P12 and password;
+notarization receives the API key. Both use the protected `apple-signing`
+environment with read-only repository permissions and Xcode 26.3.
+
+The helper supports `--sign-only DIST` and `--notarize-only DIST`, retaining the
+existing single-argument entrypoint for local full signing and notarization.
+Signing produces both architectures' signed tarballs and HFS+ UDZO DMGs before
+any provider request. Notarization consumes the same run's immutable signing
+artifact, verifies the independent digest of its four macOS files and their
+signatures, and performs submission, matching public-log validation, stapling,
+and Gatekeeper checks. It does not import signing credentials or rebuild code.
+
+## Publication outcomes
+
+| Outcome | Nightly publication | DMGs | macOS tarballs |
+| --- | --- | --- | --- |
+| Build or signing failed | Blocked | None published | None published |
+| Notarization succeeded | Existing release gates apply | Both accepted and stapled | Signed and notarized |
+| Notarization failed | Existing release gates apply | Both omitted | Signed; notarization unverified in notes |
+| Notarization cancelled or unexpectedly skipped | Blocked for a new release | None published | None published |
+
+The final job selects the notarization artifact only on success. On failure it
+selects the original signing artifact and excludes all disk images from staging.
+It retains exact-source validation, non-Darwin input hashes, authenticated
+predecessors, complete manifest signing and verification, startup and populated
+upgrade checks, and scoped publication credentials. Containers still depend on
+successful publication. Already-published container retries preserve their
+existing skip behavior.
+
+The existing manifest and deployed reader accept zero or two DMGs. No schema or
+trust-policy change is required. A successful release may coexist with a failed
+notarization job and therefore an overall failed Actions run. Published releases
+are immutable; no later job appends disk images to a previously signed inventory.
+
+## Verification boundary
+
+Regression checks execute the actual workflow publication condition, signed-byte
+handoff guards, and staging commands across accepted, failed, cancelled, skipped,
+missing, and substituted inputs. Shell fixtures cover phase-specific credentials,
+signature and architecture checks, keychain cleanup, retained diagnostics, and
+signed archive preservation. Local checks do not establish hosted Apple
+acceptance or publication. Record exact-head CI, merge, and the subsequent
+nightly's actual outcome separately.
+
+Local validation passed: the helper's stable/nightly fixture matrix, shell
+syntax and ShellCheck, executable workflow-condition and staging regressions,
+signed-byte transfer and publication-policy tests, the runner/cache policy,
+nightly release and zero/two-DMG manifest fixtures, native nightly trust-reader
+DMG tests, and action-pin checks. Shared fast feedback passed Go formatting,
+CI-owner compilation, ShellCheck, Actionlint, and documentation preparation.
