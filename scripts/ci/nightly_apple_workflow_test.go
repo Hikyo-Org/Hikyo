@@ -68,8 +68,8 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		}
 	}
 	publish := workflow.Jobs["publish"]
-	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && needs.apple-notarize.outputs.inputs_verified == 'true' && ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') || (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure'))))" {
-		t.Fatal("nightly publication requires validation/build/signing and matching notarization job/helper outcomes; only verified helper failure may omit DMGs")
+	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && needs.apple-notarize.outputs.inputs_verified == 'true' && ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') || (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' && needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))" {
+		t.Fatal("nightly publication requires validation/build/signing and matching notarization job/helper outcomes; only verified helper failure with retained diagnostics may omit DMGs")
 	}
 	if workflow.Jobs["apple-notarize"].Outputs["inputs_verified"] != "${{ steps.notarize.outputs.inputs_verified }}" {
 		t.Fatal("notarization must attest input verification before provider failure permits fallback")

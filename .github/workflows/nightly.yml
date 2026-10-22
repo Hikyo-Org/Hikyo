@@ -374,6 +374,7 @@ jobs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
       notarize_outcome: ${{ steps.notarize.outcome }}
+      diagnostics_outcome: ${{ steps.notarization-diagnostics.outcome }}
     permissions:
       contents: read
     env:
@@ -417,6 +418,7 @@ jobs:
           APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
         run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
       - name: Retain Apple notarization diagnostics
+        id: notarization-diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -441,7 +443,8 @@ jobs:
       (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' &&
       needs.apple-notarize.outputs.inputs_verified == 'true' &&
       ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') ||
-      (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure'))))
+      (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' &&
+      needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
     # See docs/handoff/nightly-release-custody.md before enabling publication.

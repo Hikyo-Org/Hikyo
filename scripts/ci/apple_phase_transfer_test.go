@@ -29,6 +29,8 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				ID   string `yaml:"id"`
 				Name string `yaml:"name"`
 				Run  string `yaml:"run"`
+				Uses string `yaml:"uses"`
+				If   string `yaml:"if"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
@@ -47,6 +49,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 		return -1
 	}
 	helperIndex := findStep(t, "notarize")
+	diagnosticsIndex := findStep(t, "Retain Apple notarization diagnostics")
 	if notary.Steps[helperIndex].Run != "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 		t.Fatal("notarize outcome must belong to the actual notarization helper")
 	}
@@ -55,32 +58,47 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 			t.Fatalf("notarization outcome output = %q, wanted the helper step's raw outcome", got)
 		}
 	})
+	t.Run("diagnostics outcome output binding", func(t *testing.T) {
+		step := notary.Steps[diagnosticsIndex]
+		if diagnosticsIndex <= helperIndex || step.ID == "" || !strings.HasPrefix(step.Uses, "actions/upload-artifact@") || step.If != "${{ always() }}" {
+			t.Fatal("diagnostics outcome must belong to the always-run diagnostics upload after the helper")
+		}
+		if got := notary.Outputs["diagnostics_outcome"]; got != "${{ steps."+step.ID+".outcome }}" {
+			t.Fatalf("diagnostics outcome output = %q, wanted the diagnostics upload step's raw outcome", got)
+		}
+	})
 	for _, tc := range []struct {
-		name, validation, build, sign, notary, helper, skip, ref, verified, failedStep string
-		cancelled, want                                                                bool
+		name, validation, build, sign, notary, helper, skip, ref, verified, failedStep, diagnostics string
+		cancelled, want                                                                             bool
 	}{
-		{"accepted", "success", "success", "success", "success", "success", "false", "refs/heads/main", "true", "", false, true},
-		{"provider helper failure", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", false, true},
-		{"diagnostics upload failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "Retain Apple notarization diagnostics", false, false},
-		{"finalized packaging failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "Retain finalized nightly artifacts and predecessor context", false, false},
-		{"final artifact upload failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "upload-inputs", false, false},
-		{"invalid notarization inputs", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "false", "", false, false},
-		{"missing input verification", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "", "", false, false},
-		{"signing failure", "success", "success", "failure", "skipped", "skipped", "false", "refs/heads/main", "true", "", false, false},
-		{"validation failure", "failure", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"build failure", "success", "failure", "success", "failure", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"notarization cancelled", "success", "success", "success", "cancelled", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"notarization skipped", "success", "success", "success", "skipped", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"notarization unknown", "success", "success", "success", "unknown", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"helper cancelled", "success", "success", "success", "failure", "cancelled", "false", "refs/heads/main", "true", "", false, false},
-		{"helper skipped", "success", "success", "success", "failure", "skipped", "false", "refs/heads/main", "true", "", false, false},
-		{"helper unknown", "success", "success", "success", "failure", "unknown", "false", "refs/heads/main", "true", "", false, false},
-		{"missing helper outcome", "success", "success", "success", "failure", "", "false", "refs/heads/main", "true", "", false, false},
-		{"job success with failed helper", "success", "success", "success", "success", "failure", "false", "refs/heads/main", "true", "", false, false},
-		{"job success with missing helper outcome", "success", "success", "success", "success", "", "false", "refs/heads/main", "true", "", false, false},
-		{"operator cancellation", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", true, false},
-		{"other branch", "success", "success", "success", "failure", "failure", "false", "refs/heads/feature", "true", "", false, false},
-		{"published container retry", "success", "success", "skipped", "skipped", "skipped", "true", "refs/heads/main", "", "", false, true},
+		{"accepted", "success", "success", "success", "success", "success", "false", "refs/heads/main", "true", "", "success", false, true},
+		{"provider helper failure with retained diagnostics", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "success", false, true},
+		{"helper and diagnostics upload failure", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "Retain Apple notarization diagnostics", "success", false, false},
+		{"helper failure with missing diagnostics outcome", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "", false, false},
+		{"helper failure with skipped diagnostics", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "skipped", false, false},
+		{"helper failure with cancelled diagnostics", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "cancelled", false, false},
+		{"helper failure with unknown diagnostics outcome", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "unknown", false, false},
+		{"job success with missing diagnostics outcome", "success", "success", "success", "success", "success", "false", "refs/heads/main", "true", "", "", false, true},
+		{"diagnostics upload failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "Retain Apple notarization diagnostics", "success", false, false},
+		{"finalized packaging failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "Retain finalized nightly artifacts and predecessor context", "success", false, false},
+		{"final artifact upload failure after helper success", "success", "success", "success", "failure", "success", "false", "refs/heads/main", "true", "upload-inputs", "success", false, false},
+		{"invalid notarization inputs", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "false", "", "success", false, false},
+		{"missing input verification", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "", "", "success", false, false},
+		{"signing failure", "success", "success", "failure", "skipped", "skipped", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"validation failure", "failure", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"build failure", "success", "failure", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"notarization cancelled", "success", "success", "success", "cancelled", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"notarization skipped", "success", "success", "success", "skipped", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"notarization unknown", "success", "success", "success", "unknown", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"helper cancelled", "success", "success", "success", "failure", "cancelled", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"helper skipped", "success", "success", "success", "failure", "skipped", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"helper unknown", "success", "success", "success", "failure", "unknown", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"missing helper outcome", "success", "success", "success", "failure", "", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"job success with failed helper", "success", "success", "success", "success", "failure", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"job success with missing helper outcome", "success", "success", "success", "success", "", "false", "refs/heads/main", "true", "", "success", false, false},
+		{"operator cancellation", "success", "success", "success", "failure", "failure", "false", "refs/heads/main", "true", "", "success", true, false},
+		{"other branch", "success", "success", "success", "failure", "failure", "false", "refs/heads/feature", "true", "", "success", false, false},
+		{"published container retry", "success", "success", "skipped", "skipped", "skipped", "true", "refs/heads/main", "", "", "", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stepOutcomes := make([]string, len(notary.Steps))
@@ -88,6 +106,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				stepOutcomes[index] = "success"
 			}
 			stepOutcomes[helperIndex] = tc.helper
+			stepOutcomes[diagnosticsIndex] = tc.diagnostics
 			if tc.failedStep != "" {
 				index := findStep(t, tc.failedStep)
 				if index <= helperIndex {
@@ -96,7 +115,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				stepOutcomes[index] = "failure"
 			}
 			// Resolve the actual job output from actual step IDs and outcomes,
-			// keeping the helper's outcome independent of later job failures.
+			// keeping helper and diagnostics outcomes independent of job failures.
 			outputs := make(map[string]string)
 			for index, step := range notary.Steps {
 				if step.ID != "" {
@@ -104,7 +123,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				}
 			}
 			expression := strings.ReplaceAll(workflow.Jobs["publish"].If, "'", "\"")
-			for name, value := range map[string]string{"github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]]} {
+			for name, value := range map[string]string{"github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]], "needs.apple-notarize.outputs.diagnostics_outcome": outputs[notary.Outputs["diagnostics_outcome"]]} {
 				expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
 			}
 			expression = strings.ReplaceAll(expression, "always()", "true")

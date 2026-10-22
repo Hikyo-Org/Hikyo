@@ -10,7 +10,9 @@ remain signed, with notarization explicitly unverified in the release notes.
 Local development snapshots keep their existing signing profile.
 
 The fallback requires failure of the notarization helper step after input
-verification. A later diagnostics upload, finalized packaging, or artifact
+verification and successful retention of notarization diagnostics. A failed
+diagnostics upload blocks fallback even when the helper also failed.
+A later diagnostics upload, finalized packaging, or artifact
 upload failure after successful notarization blocks publication.
 
 ## One-time credential setup
@@ -143,6 +145,30 @@ accepts `APPLE_NOTARY_TIMEOUT` in the duration syntax supported by
 Apple notarization step. A timeout leaves a submission processing at Apple. Inspect
 that submission before retrying the original run. An existing version tag must
 never be recreated to bypass a release failure.
+
+### Recovering ticket lookup failures
+
+An `Accepted` receipt and matching Apple log do not establish that stapling or
+ticket validation succeeded. `stapler validate` compares the attached ticket
+with the ticketing service. A CloudKit connection-loss diagnostic such as
+`NSURLErrorDomain -1005` after acceptance calls for network investigation;
+exit 68 alone does not distinguish a network failure from missing notarization.
+GitHub's [runner-images investigation](https://github.com/actions/runner-images/issues/14924)
+records matching connection failures and an HTTP/3 transport reproduction.
+That investigation does not establish the transport cause of a Hikyo failure.
+
+Retain the submission receipt, matching log, and original signed DMG. Check its
+pre-stapling SHA-256 against the receipt before recovery. For an accepted
+submission, repeating ticket operations on those verified bytes avoids another
+submission or signing operation. Every signature, stapling, validation and
+Gatekeeper gate must still pass before a DMG can be published.
+
+The current `--notarize-only` helper always submits; it does not resume an
+existing submission. Rerunning the notarization job therefore differs from
+retrying ticket validation alone. Reconcile a pending or unknown submission
+before another upload. A missing submission ID after a client crash remains an
+unknown outcome and must not be treated as an Apple rejection or proof that no
+upload occurred.
 
 Stable human review and publication remain the existing
 [online release ceremony](online-signing.md). Nightlies retain their main-only
