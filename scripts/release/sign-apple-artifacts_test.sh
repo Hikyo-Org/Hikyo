@@ -12,6 +12,7 @@ export APPLE_FIXTURE_LOG="$fixture/calls" APPLE_FIXTURE_STATE="$fixture/state"
 export APPLE_FIXTURE_SEARCH_LIST="$fixture/search-list"
 export APPLE_FIXTURE_ORIGINAL_SEARCH_LIST="$fixture/original-search-list"
 export APPLE_NOTARY_EVIDENCE_DIR="$fixture/evidence"
+export GITHUB_OUTPUT="$fixture/outputs"
 export DEVELOPER_DIR="$fixture/Developer tools"
 printf '    "%s"\n' "$fixture/login fixture.keychain-db" "$fixture/secondary.keychain-db" >"$fixture/original-search-list"
 cat >"$fixture/bin/printenv" <<'EOF'
@@ -274,6 +275,11 @@ assert_signed_outputs() {
 assert_evidence() {
   evidence_version=$1
   submissions=$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG" || true)
+  if [ "$submissions" -gt 0 ]; then
+    grep -Fx 'inputs_verified=true' "$GITHUB_OUTPUT" >/dev/null
+  else
+    [ ! -s "$GITHUB_OUTPUT" ] || { printf 'invalid Apple inputs authorized fallback\n' >&2; exit 1; }
+  fi
   receipts=$(find "$fixture/evidence" -name '*-receipt.json' | wc -l | tr -d ' ')
   logs=$(find "$fixture/evidence" -name '*-notary-log.json' | wc -l | tr -d ' ')
   if [ "$APPLE_FIXTURE_MODE" = stale-evidence ]; then
@@ -366,6 +372,7 @@ assert_evidence() {
 for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure search-list-restore-failure keychain-delete-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
   cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/evidence" "$fixture/state"
@@ -473,6 +480,7 @@ assert_split_cleanup() {
 }
 assert_sign_only_calls() {
   signing_version=${1:-1.2.3}
+  [ ! -s "$GITHUB_OUTPUT" ] || { printf 'signing-only phase authorized a provider failure fallback\n' >&2; exit 1; }
   [ "$(grep -c '^hdiutil create$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
   [ "$(grep -Ec '^codesign --(force|sign)$' "$APPLE_FIXTURE_LOG")" -eq 4 ]
   if grep -E '^xcrun |^spctl$' "$APPLE_FIXTURE_LOG"; then exit 1; fi
@@ -486,6 +494,7 @@ assert_sign_only_calls() {
 for APPLE_FIXTURE_MODE in rejected search-list-restore-failure keychain-delete-failure missing-signing-secret missing-signing-password; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
   cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/state"
@@ -509,6 +518,7 @@ done
 # A supplied stale evidence directory also has no meaning to the signing phase.
 export APPLE_FIXTURE_MODE=rejected
 : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
 rm -rf "$fixture/dist"
 cp -R "$fixture/original" "$fixture/dist"
 mkdir "$fixture/evidence"
@@ -529,6 +539,7 @@ assert_split_cleanup
 for APPLE_FIXTURE_MODE in accepted accepted-warnings rejected terminal-rejected second-rejected timeout timeout-no-id accepted-no-id mismatched-hash stale-evidence missing-evidence-dir evidence-contains-scratch missing-secret wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry unsigned-input wrong-arch second-wrong-arch bad-signature bad-dmg-signature second-bad-signature second-bad-dmg-signature tampered-dmg missing-dmg symlink-dmg wrong-signing-identity noncanonical-checksums; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state" "$fixture/before-notarize"
   mkdir "$fixture/evidence" "$fixture/state"
   cp -R "$fixture/signed" "$fixture/dist"
@@ -599,6 +610,7 @@ prepare_nightly_dist() {
 for APPLE_FIXTURE_MODE in accepted nightly-wrong-ref nightly-wrong-commit nightly-wrong-version nightly-wrong-metadata unknown-channel; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
   cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/evidence" "$fixture/state"
@@ -636,6 +648,7 @@ done
 # candidate. A failed notarization leaves the signed non-DMG release intact.
 export APPLE_FIXTURE_MODE=rejected
 : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
 rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
 mkdir "$fixture/state"
 prepare_nightly_dist
@@ -648,6 +661,7 @@ cp -R "$fixture/dist" "$fixture/nightly-signed"
 for APPLE_FIXTURE_MODE in rejected second-rejected accepted nightly-wrong-ref nightly-wrong-commit nightly-wrong-version nightly-wrong-metadata; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
   rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
   mkdir "$fixture/evidence" "$fixture/state"
   cp -R "$fixture/nightly-signed" "$fixture/dist"

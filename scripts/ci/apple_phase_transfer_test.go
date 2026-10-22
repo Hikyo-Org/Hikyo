@@ -26,24 +26,26 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name, validation, build, sign, notary, skip, ref string
-		cancelled, want                                  bool
+		name, validation, build, sign, notary, skip, ref, verified string
+		cancelled, want                                            bool
 	}{
-		{"accepted", "success", "success", "success", "success", "false", "refs/heads/main", false, true},
-		{"notarization failure", "success", "success", "success", "failure", "false", "refs/heads/main", false, true},
-		{"signing failure", "success", "success", "failure", "skipped", "false", "refs/heads/main", false, false},
-		{"validation failure", "failure", "success", "success", "failure", "false", "refs/heads/main", false, false},
-		{"build failure", "success", "failure", "success", "failure", "false", "refs/heads/main", false, false},
-		{"notarization cancelled", "success", "success", "success", "cancelled", "false", "refs/heads/main", false, false},
-		{"notarization skipped", "success", "success", "success", "skipped", "false", "refs/heads/main", false, false},
-		{"notarization unknown", "success", "success", "success", "unknown", "false", "refs/heads/main", false, false},
-		{"operator cancellation", "success", "success", "success", "failure", "false", "refs/heads/main", true, false},
-		{"other branch", "success", "success", "success", "failure", "false", "refs/heads/feature", false, false},
-		{"published container retry", "success", "success", "skipped", "skipped", "true", "refs/heads/main", false, true},
+		{"accepted", "success", "success", "success", "success", "false", "refs/heads/main", "true", false, true},
+		{"notarization failure", "success", "success", "success", "failure", "false", "refs/heads/main", "true", false, true},
+		{"invalid notarization inputs", "success", "success", "success", "failure", "false", "refs/heads/main", "false", false, false},
+		{"missing input verification", "success", "success", "success", "failure", "false", "refs/heads/main", "", false, false},
+		{"signing failure", "success", "success", "failure", "skipped", "false", "refs/heads/main", "true", false, false},
+		{"validation failure", "failure", "success", "success", "failure", "false", "refs/heads/main", "true", false, false},
+		{"build failure", "success", "failure", "success", "failure", "false", "refs/heads/main", "true", false, false},
+		{"notarization cancelled", "success", "success", "success", "cancelled", "false", "refs/heads/main", "true", false, false},
+		{"notarization skipped", "success", "success", "success", "skipped", "false", "refs/heads/main", "true", false, false},
+		{"notarization unknown", "success", "success", "success", "unknown", "false", "refs/heads/main", "true", false, false},
+		{"operator cancellation", "success", "success", "success", "failure", "false", "refs/heads/main", "true", true, false},
+		{"other branch", "success", "success", "success", "failure", "false", "refs/heads/feature", "true", false, false},
+		{"published container retry", "success", "success", "skipped", "skipped", "true", "refs/heads/main", "true", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expression := strings.ReplaceAll(workflow.Jobs["publish"].If, "'", "\"")
-			for name, value := range map[string]string{"github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip} {
+			for name, value := range map[string]string{"github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified} {
 				expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
 			}
 			expression = strings.ReplaceAll(expression, "always()", "true")
@@ -84,6 +86,13 @@ func TestAppleSigningPhaseTransferBindsSignedBytes(t *testing.T) {
 			}
 			bind := find("apple-sign", "Bind signed macOS artifact bytes")
 			verify := find("apple-notarize", "Verify exact signed macOS input bytes")
+			var fallback mainValidationStep
+			if file == "nightly.yml" {
+				fallback = find("publish", "Verify signed macOS fallback input bytes")
+				if fallback.Env["SIGNED_DARWIN_SHA256"] != "${{ needs.apple-sign.outputs.darwin_sha256 }}" || fallback.If != "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'" {
+					t.Fatal("fallback must independently recheck the original signed macOS digest")
+				}
+			}
 			if verify.Env["SIGNED_DARWIN_SHA256"] != "${{ needs.apple-sign.outputs.darwin_sha256 }}" {
 				t.Fatal("notarization must bind the signing job's independent digest")
 			}
@@ -158,6 +167,11 @@ func TestAppleSigningPhaseTransferBindsSignedBytes(t *testing.T) {
 					}
 					if err := run(verify.Run, "SIGNED_DARWIN_SHA256="+digest); (err == nil) != (mutation == "none") {
 						t.Fatalf("mutation %s: guard returned %v", mutation, err)
+					}
+					if fallback.Run != "" {
+						if err := run(fallback.Run, "SIGNED_DARWIN_SHA256="+digest); (err == nil) != (mutation == "none") {
+							t.Fatalf("fallback mutation %s: guard returned %v", mutation, err)
+						}
 					}
 				})
 			}

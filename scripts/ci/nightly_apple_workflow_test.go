@@ -68,8 +68,11 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		}
 	}
 	publish := workflow.Jobs["publish"]
-	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && (needs.apple-notarize.result == 'success' || needs.apple-notarize.result == 'failure')))" {
+	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && needs.apple-notarize.outputs.inputs_verified == 'true' && (needs.apple-notarize.result == 'success' || needs.apple-notarize.result == 'failure')))" {
 		t.Fatal("nightly publication requires validation/build/signing and a finished notarization attempt; only notarization failure may omit DMGs")
+	}
+	if workflow.Jobs["apple-notarize"].Outputs["inputs_verified"] != "${{ steps.notarize.outputs.inputs_verified }}" {
+		t.Fatal("notarization must attest input verification before provider failure permits fallback")
 	}
 	for _, key := range []string{"tag", "version", "commit"} {
 		if publish.Outputs[key] != "${{ needs.build-artifacts.outputs."+key+" }}" {
@@ -123,7 +126,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 					switch step.If {
 					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'success'":
 						upstream = "apple-notarize"
-					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'":
+					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.inputs_verified == 'true'":
 						upstream = "apple-sign"
 					default:
 						t.Fatal("nightly publication requires an explicit artifact source for each notarization outcome")

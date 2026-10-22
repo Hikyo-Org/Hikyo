@@ -308,6 +308,7 @@ jobs:
   apple-notarize:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
     needs: [build-artifacts, apple-sign]
     environment: apple-signing
     runs-on: macos-15
@@ -340,6 +341,7 @@ jobs:
           darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Notarize and staple macOS disk images
+        id: notarize
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}

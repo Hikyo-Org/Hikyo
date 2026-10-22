@@ -205,6 +205,11 @@ for arch in arm64 x86_64; do
 done
 printf '%s' "$APPLE_NOTARY_KEY_P8" >"$scratch/notary.p8"
 unset APPLE_NOTARY_KEY_P8
+# A failed provider operation may omit DMGs, but invalid source, signatures or
+# handoff bytes must never authorize that publication path.
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  printf 'inputs_verified=true\n' >>"$GITHUB_OUTPUT"
+fi
 
 write_notary_receipt() {
   jq -n --arg version "$version" --arg commit "$GITHUB_SHA" --arg architecture "$arch" \

@@ -93,8 +93,8 @@ Both workflows' notarization jobs retain these JSON files as Actions artifacts n
 step. Retention follows the repository's Actions artifact policy. A rejected or
 timed-out submission keeps its receipt even if Apple has no log available yet;
 an earlier architecture's completed evidence survives a later failure. Inspect
-the recorded submission before retrying. No receipt is expected when signing
-fails before any submission.
+the recorded submission before retrying. No receipt is expected when the
+notarization job fails before any submission.
 
 The helper requires an empty `APPLE_NOTARY_EVIDENCE_DIR` for this public diagnostic
 output; it refuses prior evidence instead of mixing attempts.
@@ -115,13 +115,17 @@ existing contract of exactly six platform archives. Signing failures or missing
 signing credentials stop every release before manifest signing.
 
 Nightly publication waits for the separate notarization job to finish. Success
-selects its finalized artifact and includes both notarized DMGs. Failure selects
-the original signing job's immutable artifact, publishes the six signed platform
+selects its finalized artifact and includes both notarized DMGs. An Apple-side
+failure permits fallback only after source metadata, both signatures and the
+signed-byte handoff have been verified. That path selects
+the original signing job's immutable artifact, independently rechecks the signed
+macOS digest, publishes the six signed platform
 archives and eight Linux packages, and omits every DMG, including any image that
 was accepted before the other architecture failed. The release notes state that
 macOS notarization was not verified. Linux, Windows, and container publication
 retain their existing validation, signature, startup, and upgrade checks.
 A cancelled or skipped notarization job does not authorize a new publication.
+Failed handoff or input signature checks also block publication.
 Stable publication continues to require successful notarization.
 
 The build and signing jobs can pass while notarization fails. GitHub still marks

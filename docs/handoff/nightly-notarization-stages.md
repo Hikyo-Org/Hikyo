@@ -32,12 +32,17 @@ and consumers.
 | Outcome | Nightly publication | DMGs | macOS tarballs |
 | --- | --- | --- | --- |
 | Build or signing failed | Blocked | None published | None published |
+| Signed-byte handoff or input signature validation failed | Blocked | None published | None published |
 | Notarization succeeded | Existing release gates apply | Both accepted and stapled | Signed and notarized |
-| Notarization failed | Existing release gates apply | Both omitted | Signed; notarization unverified in notes |
+| Apple-side notarization or stapling failed after input verification | Existing release gates apply | Both omitted | Signed; notarization unverified in notes |
 | Notarization cancelled or unexpectedly skipped | Blocked for a new release | None published | None published |
 
-The final job selects the notarization artifact only on success. On failure it
-selects the original signing artifact and excludes all disk images from staging.
+The final job selects the notarization artifact only on success. A failed Apple
+operation permits fallback only after the helper has verified both architectures'
+source metadata and signatures and reported `inputs_verified=true`. The final
+job selects the original signing artifact, independently rechecks its signed
+macOS digest, and excludes all disk images from staging. A signed-byte handoff
+mismatch or signature failure blocks publication.
 It retains exact-source validation, non-Darwin input hashes, authenticated
 predecessors, complete manifest signing and verification, startup and populated
 upgrade checks, and scoped publication credentials. Containers still depend on

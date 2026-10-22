@@ -372,6 +372,7 @@ jobs:
     runs-on: macos-15
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
     permissions:
       contents: read
     env:
@@ -402,6 +403,7 @@ jobs:
           darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Notarize and staple nightly macOS disk images
+        id: notarize
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -436,6 +438,7 @@ jobs:
       always() && !cancelled() && github.ref == 'refs/heads/main' &&
       needs.validation.result == 'success' && needs.build-artifacts.result == 'success' &&
       (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' &&
+      needs.apple-notarize.outputs.inputs_verified == 'true' &&
       (needs.apple-notarize.result == 'success' || needs.apple-notarize.result == 'failure')))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
@@ -480,7 +483,7 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/apple-nightly-inputs
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.inputs_verified == 'true'
         with:
           artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
           merge-multiple: true
@@ -504,6 +507,14 @@ jobs:
               test -s "dist/hikyo_${VERSION}_Darwin_$arch.dmg"
             done
           fi
+      - name: Verify signed macOS fallback input bytes
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure'
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          SIGNED_DARWIN_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+        run: |
+          darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
+          test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Verify untouched nightly archives and compatibility
         if: needs.build-artifacts.outputs.skip != 'true'
         env:
