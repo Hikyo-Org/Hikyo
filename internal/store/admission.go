@@ -20,7 +20,10 @@ import (
 type SQLiteTransaction struct {
 	auditActor auditActorCache
 	tx         *sql.Tx
+	conn       *sql.Conn
 	guard      *upgrade.SQLiteGuard
+	settleOnce sync.Once
+	settleErr  error
 	// These two SQL templates contain no tenant results or retained arguments.
 	// They belong to this transaction alone; database/sql closes them when the
 	// transaction settles. Repository proof verification still precedes every
@@ -68,11 +71,35 @@ func (t *SQLiteTransaction) QueryRowContext(ctx context.Context, q string, args 
 }
 func (t *SQLiteTransaction) Commit() error {
 	t.auditActor.disable()
-	return errors.Join(t.tx.Commit(), t.guard.Close())
+	return errors.Join(t.tx.Commit(), t.closeOwner())
 }
 func (t *SQLiteTransaction) Rollback() error {
 	t.auditActor.disable()
-	return errors.Join(t.tx.Rollback(), t.guard.Close())
+	return errors.Join(t.tx.Rollback(), t.closeOwner())
+}
+
+func (t *SQLiteTransaction) closeOwner() error {
+	// ErrTxDone only means a finalizer claimed the transaction. In particular,
+	// database/sql's cancellation goroutine may still be in native rollback.
+	// The private Conn retains the transaction's read lock until SQL settles;
+	// closing it joins that work before host exclusion can be released.
+	// Concurrent Conn.Close calls can return ErrConnDone without waiting, so
+	// all callers must join this single close, including its guard release.
+	t.settleOnce.Do(func() {
+		t.settleErr = errors.Join(closeSQLiteConn(t.conn), t.guard.Close())
+	})
+	return t.settleErr
+}
+
+func closeSQLiteConn(conn *sql.Conn) error {
+	err := conn.Close()
+	// database/sql may already have discarded the connection after native
+	// settlement (for example cancellation on a driver without session reset).
+	// That is not an additional transaction failure.
+	if errors.Is(err, sql.ErrConnDone) {
+		return nil
+	}
+	return err
 }
 
 // BeginSQLite acquires host admission before BEGIN. The write pool retains its
@@ -89,14 +116,19 @@ func (d *DB) BeginSQLite(ctx context.Context, readonly bool) (*SQLiteTransaction
 	if readonly {
 		pool = d.sqRead
 	}
-	tx, err := pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: readonly})
+	conn, err := pool.Conn(ctx)
 	if err != nil {
 		return nil, errors.Join(err, guard.Close())
 	}
-	if err := guard.Check(ctx, tx); err != nil {
-		return nil, errors.Join(err, tx.Rollback(), guard.Close())
+	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: readonly})
+	if err != nil {
+		return nil, errors.Join(err, closeSQLiteConn(conn), guard.Close())
 	}
-	return &SQLiteTransaction{tx: tx, guard: guard}, nil
+	owner := &SQLiteTransaction{tx: tx, conn: conn, guard: guard}
+	if err := guard.Check(ctx, tx); err != nil {
+		return nil, errors.Join(err, owner.Rollback())
+	}
+	return owner, nil
 }
 
 // PostgresTransaction exposes transactional statements, never a pooled/native
