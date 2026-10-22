@@ -32,7 +32,9 @@ restoration. Import and identity failures receive explicit helper messages.
 The shell fixture requires the signing Keychain and original entries to remain
 available during signing. It verifies restoration after successful signing,
 notarization refusals, a partially failed search-list update, and invalid,
-different, or unreadable imported identities.
+different, or unreadable imported identities. A restoration command failure
+after otherwise successful signing returns failure and still deletes the
+disposable Keychain and credential scratch.
 
 ## Validation and limits
 
@@ -61,9 +63,11 @@ explanation of every possible cause of the hosted error.
 
 Validated source baseline is the commit above with local script changes. The
 SHA-256 of the two-script Git diff is
-`2e6cf7a6c4aafdadcd3e82a2db813e374735ce66230e6b60bd7ca40b24452234`.
+`4b48386843fbfe7357d6c15ccc08c884e3b88822a37f3a0b2cbfb5b71eb7cc54`.
 The initial validation above was local. Delivery is authorized through signed
 commit, push, PR, protected merge, and a new nightly. Hosted recovery requires
 a run containing the repair, successful signing and accepted
 notarization for both architectures, validated stapled tickets, and completed
 publication checks.
+
+Delivery PR: [#1022](https://github.com/Hikyo-Org/Hikyo/pull/1022).

@@ -34,6 +34,9 @@ case "$1" in
       case "${1:-}:$APPLE_FIXTURE_MODE" in
         */signing.keychain-db:search-list-update-failure) exit 1 ;;
       esac
+      if [ "$APPLE_FIXTURE_MODE" = search-list-restore-failure ]; then
+        case "${1:-}" in */signing.keychain-db) ;; *) exit 1 ;; esac
+      fi
     fi
     ;;
   find-identity)
@@ -192,7 +195,7 @@ assert_evidence() {
   fi
   [ "$submissions" -eq "$receipts" ] || { printf 'apple fixture: missing receipt for %s\n' "$APPLE_FIXTURE_MODE" >&2; exit 1; }
   case "$APPLE_FIXTURE_MODE" in
-    accepted | accepted-warnings | accepted-minimal-log | second-rejected) [ "$submissions" -eq 2 ] ;;
+    accepted | accepted-warnings | accepted-minimal-log | search-list-restore-failure | second-rejected) [ "$submissions" -eq 2 ] ;;
     rejected | terminal-rejected | timeout | timeout-no-id | accepted-no-id | log-failure | malformed-log | mismatched-job | mismatched-status | mismatched-filename | mismatched-hash | malformed-issues | staple-failure | invalid-ticket | gatekeeper-failure) [ "$submissions" -eq 1 ] ;;
     *) [ "$submissions" -eq 0 ] ;;
   esac
@@ -247,7 +250,7 @@ assert_evidence() {
       cmp "$APPLE_FIXTURE_STATE/$evidence_arch-returned-log.json" "$fixture/evidence/$evidence_arch-notary-log.json"
     fi
     case "$APPLE_FIXTURE_MODE:$evidence_arch" in
-      accepted:* | accepted-warnings:* | accepted-minimal-log:* | invalid-ticket:* | gatekeeper-failure:* | second-rejected:arm64)
+      accepted:* | accepted-warnings:* | accepted-minimal-log:* | search-list-restore-failure:* | invalid-ticket:* | gatekeeper-failure:* | second-rejected:arm64)
         stapled_sha=$(shasum -a 256 "$fixture/dist/hikyo_${evidence_version}_Darwin_$evidence_arch.dmg" | awk '{print $1}')
         [ "$stapled_sha" != "$submitted_fixture_sha256" ] || { printf 'apple fixture: pre-staple digest not distinguished\n' >&2; exit 1; }
         ;;
@@ -274,7 +277,7 @@ assert_evidence() {
   fi
 }
 
-for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
+for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure search-list-restore-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
   cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
@@ -313,8 +316,10 @@ for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search
     esac
     "$@" "$script_dir/sign-apple-artifacts.sh" "$fixture/dist"
   ) >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
-  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ]; then
-    [ "$result" -eq 0 ] || { cat "$fixture/err"; exit 1; }
+  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ] || [ "$APPLE_FIXTURE_MODE" = search-list-restore-failure ]; then
+    expected_result=0
+    [ "$APPLE_FIXTURE_MODE" != search-list-restore-failure ] || expected_result=1
+    [ "$result" -eq "$expected_result" ] || { cat "$fixture/err"; printf 'apple fixture: unexpected result %s for %s\n' "$result" "$APPLE_FIXTURE_MODE" >&2; exit 1; }
     [ "$(wc -l <"$fixture/dist/checksums.txt" | tr -d ' ')" -eq 6 ]
     (cd "$fixture/dist" && shasum -a 256 -c checksums.txt >/dev/null)
     for arch in arm64 x86_64; do
