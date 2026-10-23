@@ -1,0 +1,2211 @@
+{
+  "schema": "hikyo-158/reviewed-owner-scripts/v1",
+  "scripts": [
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home"
+                ]
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-owner-readout-v1.js",
+      "id": "aws-owner-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "owner"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "accountHeaderText": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "capturedAt": {
+                "kind": "pattern",
+                "maxLength": 40,
+                "pattern": "^[0-9T:.Z+-]+$"
+              },
+              "dashboardHeadingText": {
+                "kind": "literal",
+                "value": "IAM Dashboard"
+              },
+              "pageURL": {
+                "kind": "literal",
+                "value": "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home"
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-iam-owner-observation/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "90ef9752faefef5b2176368f36ce192207aa65fe1ddb0e131d036b25521f37e9"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-identity-readout-v1.js",
+      "id": "aws-identity-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "identity"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "kind": "literal",
+            "value": null
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "e2c5fe38bd116c1798922c27febc44e724992ce6fe883e5c3d5dbe29e28c45b7"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-historical-readout-v1.js",
+      "id": "aws-historical-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj&region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?region=eu-central-1&name=arn%3Aaws%3Asecretsmanager%3Aeu-central-1%3A099256073061%3Asecret%3Ahikyo-e2e-20261018b%2Fweb-identity%2Fpostgres%2Frole-document-vmN1Vj"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "historical"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "chunks": {
+                "items": {
+                  "kind": "pattern",
+                  "maxLength": 2048,
+                  "pattern": "^[\\s\\S]*$"
+                },
+                "kind": "array",
+                "maxItems": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "6d9a509038fa629f9ec50afc414df388e537a88ef7b6f61728df69b19d56c245"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-create-readout-v1.js",
+      "id": "aws-create-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "create"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "chunks": {
+                "items": {
+                  "kind": "pattern",
+                  "maxLength": 2048,
+                  "pattern": "^[\\s\\S]*$"
+                },
+                "kind": "array",
+                "maxItems": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "327035e8014c558fa33f88e7816b6f2d48ef3431db0dc10b1db4d1fdb4d5fff7"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "manifest": {
+            "fields": {
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "boundPlanSHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "boundaryPolicyId": {
+                "kind": "literal",
+                "value": null
+              },
+              "creationCustodySHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "newKeyARN": {
+                "kind": "literal",
+                "value": null
+              },
+              "newKeyCustodySHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "ownerContextSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "publicMainSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "publicVendorsSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "reviewedPreparationSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "roleIds": {
+                "kind": "literal",
+                "value": null
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-inventory-observer-manifest/v1"
+              },
+              "service": {
+                "kind": "literal",
+                "value": "iam"
+              },
+              "stage": {
+                "kind": "literal",
+                "value": "baseline"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-iam-readout-v1.js",
+      "id": "aws-iam-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/roles",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/identity_providers",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=security_credentials",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=groups",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/users/details/hikyo-158-setup?section=tags",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=entities",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy/hikyo-158-role-boundary?section=tags"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "iam"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "chunks": {
+                "items": {
+                  "kind": "pattern",
+                  "maxLength": 2048,
+                  "pattern": "^[\\s\\S]*$"
+                },
+                "kind": "array",
+                "maxItems": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "0feb341fb202b06e4ffe5f610f09fd806feda41e6b48d3d54e98a7a194d76527"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "manifest": {
+            "fields": {
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "boundPlanSHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "boundaryPolicyId": {
+                "kind": "literal",
+                "value": null
+              },
+              "creationCustodySHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "newKeyARN": {
+                "kind": "literal",
+                "value": null
+              },
+              "newKeyCustodySHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "ownerContextSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "publicMainSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "publicVendorsSHA256": {
+                "kind": "literal",
+                "value": null
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "reviewedPreparationSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "roleIds": {
+                "kind": "literal",
+                "value": null
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-inventory-observer-manifest/v1"
+              },
+              "service": {
+                "kind": "literal",
+                "value": "kms"
+              },
+              "stage": {
+                "kind": "literal",
+                "value": "baseline"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-kms-readout-v1.js",
+      "id": "aws-kms-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/10908b8d-fe54-40e3-9210-a3eefea709b6/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/990c479f-d673-4bc9-8bca-7b9b86f4b205/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/fa374267-a456-4e79-b5b1-6cdf356b7d0e/keyMaterial",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyPolicy",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/cryptographicConfiguration",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyRotation",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/aliases",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/tags",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/bfa44dc1-ee8a-43b8-aec7-d8a7fbb38db1/keyMaterial"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "kms"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "chunks": {
+                "items": {
+                  "kind": "pattern",
+                  "maxLength": 2048,
+                  "pattern": "^[\\s\\S]*$"
+                },
+                "kind": "array",
+                "maxItems": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "e87de37350f4b7aa69b289009d43429046535bee69a535b15c89f9a711370f41"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "manifest": {
+            "fields": {
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "max": 9007199254740991,
+                "min": 0
+              },
+              "policyARN": {
+                "kind": "literal",
+                "value": "arn:aws:iam::099256073061:policy/hikyo-158-setup-policy"
+              },
+              "policyId": {
+                "kind": "literal",
+                "value": "ANPAROHA7PNSTPQUQEUTR"
+              },
+              "publicMainSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "publicVendorsSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "reviewedPreparationSHA256": {
+                "kind": "pattern",
+                "maxLength": 64,
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-setup-whole-read-manifest/v1"
+              },
+              "stage": {
+                "kind": "literal",
+                "value": "beforeDelete"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-setup-readout-v1.js",
+      "id": "aws-setup-readout-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn:aws:iam::099256073061:policy%2Fhikyo-158-setup-policy?section=permissions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=versions",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies/details/arn%3Aaws%3Aiam%3A%3A099256073061%3Apolicy%2Fhikyo-158-setup-policy?section=permissions"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "setup"
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-readout/v1"
+          },
+          "value": {
+            "fields": {
+              "chunks": {
+                "items": {
+                  "kind": "pattern",
+                  "maxLength": 2048,
+                  "pattern": "^[\\s\\S]*$"
+                },
+                "kind": "array",
+                "maxItems": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              }
+            },
+            "kind": "object"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "fda37b53f59391de16fd097fc31ecbbc95fe0433bd281b0123ebb31e52af1358"
+    },
+    {
+      "arguments": {
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "expected": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "url": {
+            "kind": "enum",
+            "values": [
+              "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+              "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+              "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+            ]
+          }
+        },
+        "kind": "object"
+      },
+      "effect": "read",
+      "file": "reviewed-scripts/aws-navigate-v1.js",
+      "id": "aws-navigate-v1",
+      "result": {
+        "fields": {
+          "after": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "before": {
+            "fields": {
+              "browserContextId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetId": {
+                "kind": "pattern",
+                "maxLength": 256,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "enum",
+                "values": [
+                  "about:blank",
+                  "https://example.com/",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/home",
+                  "https://eu-central-1.console.aws.amazon.com/secretsmanager/listsecrets?region=eu-central-1",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/home",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://us-east-1.console.aws.amazon.com/iam/home?region=eu-central-1#/policies"
+                ]
+              }
+            },
+            "kind": "object"
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "observedAtMS": {
+            "kind": "integer",
+            "max": 9007199254740991,
+            "min": 0
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/chrome-public-navigation/v1"
+          }
+        },
+        "kind": "object"
+      },
+      "sha256": "cb6d0cf9f8944af1256fa268c7c27d2b283d4c42b1929968627879152df9b474"
+    }
+  ]
+}

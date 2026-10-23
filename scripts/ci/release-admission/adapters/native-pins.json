@@ -1,0 +1,8 @@
+{
+  "next_fixture_iam_operations.source-only.mjs": "3ce2f92883d62c4cc9ba46b0d56def2a7a67fd5a063c514ecf58639b5bfcfa0e",
+  "native_next_fixture_iam_guard.source-only.js": "2f79843da8df75977874d1bfdd416f5b3124e875b041c1634ffcb489adae781f",
+  "setup_version_operations.source-only.mjs": "dd64d90d4ba15066fe0716092fe692f3df9dad3838af247f54c73617f33e1ec8",
+  "native_setup_version_operations_guard.source-only.js": "577ed656f42e56072decf6dc58a0c5c35f4b3dff2062a930e022c1a35ec8944f",
+  "native_partial_kms_deletion_guard.source-only.js": "aee32b7cca291edc42a33d78f2cf3831bc281d65a5b2dbd4a407e2ad06ac11be",
+  "native_partial_kms_deletion_prepare.source-only.mjs": "bb806cc3090fdab4f46c4ea0acf72fdb3db324e89583bf03174976a8486411fb"
+}
