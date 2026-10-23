@@ -203,7 +203,7 @@ Production lifetime trace, independently checked by the owner:
   failure path (`awssm/client.go:334`, `:384`; `outbox.go:298`). Neither SDK
   credential caching nor fixture reconstruction replaces Hikyo authorization.
 
-Fresh-client real auth drafts prove only the intended future sequence: genuine
+Fresh-client real auth drafts describe the intended future sequence: genuine
 expired inputs receive expiry-specific STS refusal, the product reports auth
 failure, and reconstruction with approved fresh inputs resolves the same
 identity. They do not prove automatic same-client role-cache refresh, immediate
