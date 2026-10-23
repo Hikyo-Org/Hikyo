@@ -12001,6 +12001,15 @@ paths:
         disconnect. Authorization lost mid-stream stops it at the next page
         boundary — a truncated download whose cause is durable in the trail. No
         value material is ever in the trail, so none can be in the stream.
+
+        A client that sends `receipt=v1` gets the `Hikyo-Audit-Receipt: v1`
+        response header, and the stream ends with one `AuditExportReceiptLine`
+        after the last event line. The receipt names the
+        `audit.export_started` event, the number of event lines written and
+        how the export ended. A stream that ends without a receipt is
+        truncated, for example because the connection dropped. The receipt
+        counts rows; it does not attest that the trail has no sequence gaps.
+        Without the opt-in, the body is plain JSONL with no receipt line.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-org
       x-hikyo-formula: [audit-read@org]
@@ -12017,11 +12026,22 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -12086,8 +12106,9 @@ paths:
       tags: [audit]
       summary: Stream the project's audit trail as JSONL.
       description: |
-        The project-scoped JSONL export. Same shape and INTENT/OUTCOME
-        contract as `exportOrgAudit`, refined to the project chain.
+        The project-scoped JSONL export. Same shape, INTENT/OUTCOME
+        contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+        project chain.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-project
       x-hikyo-formula: [audit-read@project]
@@ -12104,11 +12125,22 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -12175,8 +12207,9 @@ paths:
       tags: [audit]
       summary: Stream the environment's audit trail as JSONL.
       description: |
-        The environment-scoped JSONL export. Same shape and INTENT/OUTCOME
-        contract as `exportOrgAudit`, refined to the environment chain.
+        The environment-scoped JSONL export. Same shape, INTENT/OUTCOME
+        contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+        environment chain.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-env
       x-hikyo-formula: [audit-read@environment]
@@ -12193,11 +12226,22 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -15592,6 +15636,16 @@ components:
       schema:
         type: string
         maxLength: 64
+    AuditReceipt:
+      name: receipt
+      in: query
+      required: false
+      description: |
+        Opt in to the export completion receipt at this version. The stream
+        then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+      schema:
+        type: string
+        enum: [v1]
 
     TransitKeyName:
       name: transit_key
@@ -24533,6 +24587,60 @@ components:
             than the limit). While false, more pages remain even if `items` is
             empty for a sparse filter.
 
+    AuditExportReceiptLine:
+      type: object
+      additionalProperties: false
+      required: [export_receipt]
+      description: |
+        The last line of an export stream when the client sent `receipt=v1`.
+        Event lines never carry the `export_receipt` member, so a reader tells
+        the two apart by that key.
+      properties:
+        export_receipt:
+          $ref: "#/components/schemas/AuditExportReceipt"
+    AuditExportReceipt:
+      type: object
+      additionalProperties: false
+      required: [version, started_event_id, rows_streamed, outcome, outcome_recorded]
+      description: |
+        How one export ended, as the export run saw it. Only `outcome:
+        success` means the stream holds every event the filter selected up to
+        the server's snapshot. The receipt counts rows; it does not attest that
+        the trail has no sequence gaps.
+      properties:
+        version:
+          type: integer
+          enum: [1]
+          x-enum-varnames: [AuditExportReceiptV1]
+        started_event_id:
+          type: string
+          description: |
+            The id of this export's `audit.export_started` event. The
+            `audit.export_completed` event, when recorded, carries it as its
+            correlation id.
+        rows_streamed:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The number of event lines written before this receipt.
+        outcome:
+          type: string
+          enum: [success, failure, disconnected, revoked]
+          description: |
+            `success`: the export read to its snapshot. `failure`: a server
+            fault stopped it, or its terminal audit event did not commit.
+            `disconnected`: a write to the client failed. `revoked`: the
+            caller lost `audit-read` at a page boundary.
+        cause:
+          type: string
+          enum: [page-read-failed, sink-error, writer-barrier-failed, outcome-write-failed]
+          x-enum-varnames: [AuditExportCausePageReadFailed, AuditExportCauseSinkError, AuditExportCauseWriterBarrierFailed, AuditExportCauseOutcomeWriteFailed]
+          description: Why the export did not succeed. Absent on success and on revocation.
+        outcome_recorded:
+          type: boolean
+          description: |
+            True when the matching `audit.export_completed` event is durable in
+            the trail. A revoked export never records one.
 
     AdapterFinding:
       type: object

@@ -4938,6 +4938,15 @@ export const queryOrgAudit = <ThrowOnError extends boolean = false>(options: Opt
  * boundary — a truncated download whose cause is durable in the trail. No
  * value material is ever in the trail, so none can be in the stream.
  *
+ * A client that sends `receipt=v1` gets the `Hikyo-Audit-Receipt: v1`
+ * response header, and the stream ends with one `AuditExportReceiptLine`
+ * after the last event line. The receipt names the
+ * `audit.export_started` event, the number of event lines written and
+ * how the export ended. A stream that ends without a receipt is
+ * truncated, for example because the connection dropped. The receipt
+ * counts rows; it does not attest that the trail has no sequence gaps.
+ * Without the opt-in, the body is plain JSONL with no receipt line.
+ *
  */
 export const exportOrgAudit = <ThrowOnError extends boolean = false>(options: Options<ExportOrgAuditData, ThrowOnError>) => (options.client ?? client).get<ExportOrgAuditResponses, ExportOrgAuditErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4961,8 +4970,9 @@ export const queryProjectAudit = <ThrowOnError extends boolean = false>(options:
 /**
  * Stream the project's audit trail as JSONL.
  *
- * The project-scoped JSONL export. Same shape and INTENT/OUTCOME
- * contract as `exportOrgAudit`, refined to the project chain.
+ * The project-scoped JSONL export. Same shape, INTENT/OUTCOME
+ * contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+ * project chain.
  *
  */
 export const exportProjectAudit = <ThrowOnError extends boolean = false>(options: Options<ExportProjectAuditData, ThrowOnError>) => (options.client ?? client).get<ExportProjectAuditResponses, ExportProjectAuditErrors, ThrowOnError>({
@@ -4987,8 +4997,9 @@ export const queryEnvAudit = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Stream the environment's audit trail as JSONL.
  *
- * The environment-scoped JSONL export. Same shape and INTENT/OUTCOME
- * contract as `exportOrgAudit`, refined to the environment chain.
+ * The environment-scoped JSONL export. Same shape, INTENT/OUTCOME
+ * contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+ * environment chain.
  *
  */
 export const exportEnvAudit = <ThrowOnError extends boolean = false>(options: Options<ExportEnvAuditData, ThrowOnError>) => (options.client ?? client).get<ExportEnvAuditResponses, ExportEnvAuditErrors, ThrowOnError>({
