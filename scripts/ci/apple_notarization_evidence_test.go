@@ -51,7 +51,7 @@ func TestAppleNotarizationEvidenceRetainedOnFailure(t *testing.T) {
 					t.Fatal("duplicate notarization diagnostics uploader")
 				}
 				uploadIndex = index
-				if step.If != "${{ always() }}" || step.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" {
+				if step.If != "${{ always() }}" || step.Uses != "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" {
 					t.Fatal("diagnostics require the pinned uploader even after notarization failure")
 				}
 				if step.With["path"] != "${{ runner.temp }}/apple-notarization/*.json" || len(step.Env) != 0 {

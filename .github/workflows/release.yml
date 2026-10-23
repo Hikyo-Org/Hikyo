@@ -242,7 +242,7 @@ jobs:
           cp "$COMPATIBILITY" dist/upgrade-compatibility.json
           tar -czf "$RUNNER_TEMP/release-inputs.tar.gz" dist
       - id: upload-inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-inputs.tar.gz
@@ -272,7 +272,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-artifacts.outputs.artifact_id }}
           merge-multiple: true
@@ -298,7 +298,7 @@ jobs:
       - name: Retain signed Apple artifacts
         run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-release-inputs.tar.gz" dist
       - id: upload-inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-signed-release-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-release-inputs.tar.gz
@@ -325,7 +325,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.apple-sign.outputs.artifact_id }}
           merge-multiple: true
@@ -353,7 +353,7 @@ jobs:
         run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
       - name: Retain Apple notarization diagnostics
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-notarization-stable-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-notarization/*.json
@@ -361,7 +361,7 @@ jobs:
       - name: Retain finalized Apple artifacts
         run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-release-inputs.tar.gz" dist
       - id: upload-inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-release-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-release-inputs.tar.gz
@@ -390,7 +390,7 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.2.3
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.apple-notarize.outputs.artifact_id }}
           merge-multiple: true
