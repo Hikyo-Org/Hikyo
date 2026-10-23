@@ -16,11 +16,11 @@ import (
 // says exactly that — a rotate-dek on its own protects nothing already written.
 func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 	var format string
-	var confirm, instance bool
+	var confirm, instanceScope bool
 	st, flags, err := parseCommon("rotate-dek", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		fs.BoolVar(&confirm, "yes", false, "proceed without the interactive confirmation")
-		fs.BoolVar(&instance, "instance", false, "rotate the instance DEK instead of a project DEK")
+		fs.BoolVar(&instanceScope, "instance-scope", false, "rotate the instance DEK instead of a project DEK")
 	})
 	if err != nil {
 		return err
@@ -33,22 +33,20 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
 	if err != nil {
 		return err
 	}
-	body := apigen.RotateDEKRequest{}
-	if instance {
-		body.Scope = apigen.RotateDEKRequestScopeInstance
-	} else {
-		org, err := resolved.Require(DimOrg)
-		if err != nil {
-			return err
-		}
-		project, err := resolved.Require(DimProject)
-		if err != nil {
-			return err
-		}
+	org, project, err := dekScope(resolved, flags, instanceScope, "rotate-dek")
+	if err != nil {
+		return err
+	}
+	client, _, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
+	if err != nil {
+		return err
+	}
+	body := apigen.RotateDEKRequest{Scope: apigen.RotateDEKRequestScopeInstance}
+	if !instanceScope {
 		body.Scope = apigen.RotateDEKRequestScopeProject
 		body.Org, body.Project = &org, &project
 	}
@@ -76,6 +74,26 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 		Rows:    [][]string{{scope, target, strconv.FormatInt(out.KeyVersion, 10)}},
 		JSON:    out,
 	})
+}
+
+// dekScope picks the DEK scope for rotate-dek and reencrypt: the instance
+// under --instance-scope, otherwise the resolved org and project. --instance
+// stays the shared instance reference and never selects a scope.
+func dekScope(resolved Resolved, flags commonFlags, instanceScope bool, verb string) (org, project string, err error) {
+	if instanceScope {
+		if flags.Org != "" || flags.Project != "" || flags.Env != "" {
+			return "", "", failf(ExitUsage,
+				"hikyo %s: --instance-scope and --org/--project/--env name two different scopes; choose one", verb)
+		}
+		return "", "", nil
+	}
+	if org, err = resolved.Require(DimOrg); err != nil {
+		return "", "", err
+	}
+	if project, err = resolved.Require(DimProject); err != nil {
+		return "", "", err
+	}
+	return org, project, nil
 }
 
 // runRotateMasterKey is the operator's `rotate-master-key`. It warns that every
