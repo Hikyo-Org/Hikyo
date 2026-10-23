@@ -77,12 +77,19 @@ func TestStalledEventStreamDisconnectsAtWriteDeadline(t *testing.T) {
 		events <- service.AdvisoryEvent{Type: "revision", KeyID: "key", KeyName: name}
 	}
 	close(events)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	accepted := make(chan net.Conn, 1)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		stream := eventStream{ctx: r.Context(), events: events, retry: advisoryRetryBase}
 		_ = stream.VisitWatchProjectEventsResponse(newResponseWriter(w))
 		done <- time.Since(start)
 	}))
+	srv.Config.ConnState = func(conn net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			accepted <- conn
+		}
+	}
+	srv.Start()
 	defer srv.Close()
 	addr, err := net.ResolveTCPAddr("tcp", srv.Listener.Addr().String())
 	if err != nil {
@@ -93,6 +100,15 @@ func TestStalledEventStreamDisconnectsAtWriteDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	serverConn, ok := (<-accepted).(*net.TCPConn)
+	if !ok {
+		t.Fatal("fixture accepted a non-TCP connection")
+	}
+	// Bound the sender as well as the receiver so the first large frame stalls
+	// immediately, independent of the platform's socket-buffer autotuning.
+	if err := serverConn.SetWriteBuffer(1024); err != nil {
+		t.Fatal(err)
+	}
 	if err := conn.SetReadBuffer(1024); err != nil {
 		t.Fatal(err)
 	}
