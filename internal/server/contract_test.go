@@ -1360,7 +1360,9 @@ func TestDefinitionsRoutesSatisfyContractAndPreserveRawBundle(t *testing.T) {
 	var seen []byte
 	srv := definitionsServer(t, stubDefinitions{seenBody: &seen})
 	base := api.PathPrefix + "/orgs/" + testOrgID + "/projects/" + testProjectID + "/definitions"
-	bundle := json.RawMessage(`{"format_version":1,"format_version":1,"environments":[],"key_groups":[],"keys":[]}`)
+	// Escaped member names and non-canonical ordering expose re-encoding while
+	// remaining valid JSON under kin-openapi's duplicate-member rejection.
+	bundle := json.RawMessage(`{"keys":[],"key_groups":[],"environments":[],"\u0066ormat_version":1}`)
 
 	for _, tc := range []struct {
 		method string
@@ -1387,6 +1389,24 @@ func TestDefinitionsRoutesSatisfyContractAndPreserveRawBundle(t *testing.T) {
 	_, exported := call(t, srv, http.MethodGet, base+"/export", "hik_1_cli_x", nil)
 	if bytes.HasSuffix(exported, []byte("\n")) {
 		t.Fatalf("canonical export gained a transport newline: %q", exported)
+	}
+}
+
+func TestDefinitionsRoutesRejectDuplicateBundleMembers(t *testing.T) {
+	for _, operation := range []string{"check", "plans"} {
+		t.Run(operation, func(t *testing.T) {
+			var seen []byte
+			srv := definitionsServer(t, stubDefinitions{seenBody: &seen})
+			path := api.PathPrefix + "/orgs/" + testOrgID + "/projects/" + testProjectID + "/definitions/" + operation
+			bundle := json.RawMessage(`{"format_version":1,"format_version":1,"environments":[],"key_groups":[],"keys":[]}`)
+			resp, payload := call(t, srv, http.MethodPost, path, "hik_1_cli_x", bundle)
+			if resp.StatusCode != http.StatusBadRequest || !bytes.Contains(payload, []byte(`"code":"bad_request"`)) {
+				t.Fatalf("duplicate bundle member: status %d, body %s", resp.StatusCode, payload)
+			}
+			if seen != nil {
+				t.Fatal("duplicate bundle member reached the definitions service")
+			}
+		})
 	}
 }
 
