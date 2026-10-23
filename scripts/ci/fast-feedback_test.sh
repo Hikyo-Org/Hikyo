@@ -28,6 +28,13 @@ printf '# Fixture\n' >README.md
 printf '26.7.0\n' >.nvmrc
 printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
 printf 'module example.invalid/feedback-fixture\n\ngo 1.27.2\n' >go.mod
+# Keep the imported library unchanged relative to base: changed-file linting
+# must follow it even when it is not listed as a changed ShellCheck input.
+mkdir -p scripts/ci
+cat >scripts/ci/source-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+fixture_message() { printf 'source fixture reached\n'; }
+EOF
 commit_fixture
 base=$(git rev-parse HEAD)
 export FAST_FEEDBACK_BASE="$base"
@@ -51,6 +58,16 @@ run_feedback --working-tree
 printf 'untracked whitespace \n' >dirty.txt
 refuse 'untracked file whitespace differs' --working-tree
 rm dirty.txt
+
+cat >scripts/ci/import-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+# shellcheck source=scripts/ci/source-fixture.sh
+source ./scripts/ci/source-fixture.sh
+fixture_message
+EOF
+commit_fixture
+run_feedback
+grep -F 'selected checks passed' "$work/output" >/dev/null
 
 printf 'whitespace \n' >README.md
 commit_fixture

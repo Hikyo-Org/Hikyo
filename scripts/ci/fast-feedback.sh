@@ -228,7 +228,7 @@ if [ "${#shell_files[@]}" -gt 0 ] || [ "$workflows" = true ]; then
 	shellcheck --version | grep -Fx 'version: 0.11.0' >/dev/null || fail 'ShellCheck 0.11.0 is required, matching CI'
 fi
 if [ "${#shell_files[@]}" -gt 0 ]; then
-	run shellcheck -- "${shell_files[@]}"
+	run shellcheck -x -- "${shell_files[@]}"
 fi
 if [ "$workflows" = true ]; then
 	need go
