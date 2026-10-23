@@ -47,17 +47,22 @@ func TestOpsFloorDoctor(t *testing.T) {
 	token := stepUpPasskey(t, auth, t.Context(), artifacts.session, artifacts.passkey)
 	configureSAMLProvider(t, auth, artifacts.adminPrin)
 	target.cfg.Dev = true
-	target.cfg.Listen, target.cfg.OperationalListen = "127.0.0.1:0", "127.0.0.1:0"
+	target.cfg.Listen, target.cfg.OperationalListen = "127.0.0.1:0", "localhost:0"
+	target.cfg.CLISocket = localCLISocketPath(t)
 	target.cfg.ExternalOrigin = waOrigin
 	target.cfg.Argon2MemoryKiB, target.cfg.Argon2Time, target.cfg.Argon2Parallelism = crypto.PasswordFloor.MemoryKiB, crypto.PasswordFloor.Time, crypto.PasswordFloor.Parallelism
 	target.cfg.AdmissionBudgetMiB = 272
+	target.cfg.AuditAccessRetainDays, target.cfg.AuditSecurityRetainDays = 90, 365
 	target.cfg.BackupRPO = config.DefaultBackupRPO
 	target.cfg.BackupInterval = config.DefaultBackupInterval
 	target.cfg.BackupRetainCount = config.DefaultBackupRetainCount
 	target.cfg.BackupRetainDays = config.DefaultBackupRetainDays
 	target.cfg.BackupRTOTarget = config.DefaultBackupRTOTarget
+	// Retention verification needs real recorded archive bytes. Only the
+	// operational health timestamps below are synthetic.
+	exportArchive(t, target)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	execRealAdoption(t, db, `UPDATE backup_state SET last_success_at=$1,last_artifact_name='synthetic.age',last_artifact_bytes=1,last_drill_at=$1,last_drill_ok=1 WHERE id=1`, now)
+	execRealAdoption(t, db, `UPDATE backup_state SET last_success_at=$1,last_prune_at=$1,last_prune_attempt_at=$1,last_drill_at=$1,last_drill_ok=1 WHERE id=1`, now)
 	execRealAdoption(t, db, `UPDATE retention_runtime SET last_prune_success=$1 WHERE id=1`, now)
 	srv, err := app.Boot(t.Context(), target.cfg, drillLogger())
 	if err != nil {
@@ -77,7 +82,7 @@ func TestOpsFloorDoctor(t *testing.T) {
 		t.Fatal(err)
 	}
 	origin := "http://" + srv.Addr
-	if err := state.Trust().Put(cli.TrustEntry{Name: "floor", Origin: origin}); err != nil {
+	if err := state.Trust().Put(cli.TrustEntry{Name: "floor", Origin: origin, CLISocket: target.cfg.CLISocket}); err != nil {
 		t.Fatal(err)
 	}
 	identity := authenticate(t, db, token)
@@ -128,6 +133,7 @@ func TestOpsFloorDoctor(t *testing.T) {
 		cmd.Env = []string{"HIKYO_STATE_DIR=" + stateDir}
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
+		safe := strings.NewReplacer(token, "[REDACTED]", artifacts.password, "[REDACTED]")
 		output, runErr := cmd.Output()
 		gotExit := 0
 		if runErr != nil {
@@ -148,12 +154,11 @@ func TestOpsFloorDoctor(t *testing.T) {
 				} `json:"findings"`
 			}
 			_ = json.Unmarshal(output, &diagnostic)
-			safe := strings.NewReplacer(token, "[REDACTED]", artifacts.password, "[REDACTED]")
 			t.Fatalf("%s: doctor exit %d, want %d; checklist=%+v; stderr=%s", name, gotExit, exit, diagnostic, safe.Replace(stderr.String()))
 		}
 		var report opsDoctorReport
 		if err := json.Unmarshal(output, &report); err != nil {
-			t.Fatalf("%s: invalid doctor JSON: %v", name, err)
+			t.Fatalf("%s: invalid doctor JSON (%d bytes): %v; stderr=%s", name, len(output), err, safe.Replace(stderr.String()))
 		}
 		if report.Status != status {
 			t.Fatalf("%s: status %q, want %q", name, report.Status, status)
@@ -176,7 +181,7 @@ func TestOpsFloorDoctor(t *testing.T) {
 		if fixtureHealthy {
 			for name, severity := range codes {
 				if severity != "ok" && name != "data-volume" {
-					t.Fatalf("healthy checklist retained %s=%s", name, severity)
+					t.Fatalf("healthy checklist retained %s=%s; findings=%s", name, severity, safe.Replace(fmt.Sprint(report.Findings)))
 				}
 			}
 		}

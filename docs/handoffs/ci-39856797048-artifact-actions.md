@@ -46,3 +46,29 @@ warnings disappear. A local pass is not release, notarization or deployment proo
 - [Upload 7.0.2](https://github.com/actions/upload-artifact/releases/tag/v7.0.2)
 - [Download 8.0.2](https://github.com/actions/download-artifact/releases/tag/v8.0.2)
 - [Action runtime metadata](https://docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax#runsusing-for-javascript-actions)
+
+## Ops-floor repair found during PR validation
+
+The native amd64 and arm64 jobs on the initial PR head failed before running
+doctor: the tagged fixture configured identical public and operational listener
+addresses. Local reproduction confirmed the same boot refusal. Advancing through
+the real CLI flow exposed missing audit-retention defaults, missing same-user
+socket trust and obsolete synthetic backup health state.
+
+The fixture now uses distinct ephemeral listener addresses, the existing private
+CLI socket helper and matching trust entry, explicit audit-retention defaults,
+and a real recorded encrypted backup archive. Its operational timestamps remain
+synthetic; backup retention can verify the actual archive bytes. JSON failures
+and unexpected health findings include sanitized diagnostics.
+
+The doctor and storage-refusal tests pass locally with the source-built CLI,
+including all eight doctor states. The existing listener acceptance/refusal
+tests also pass. The local datastore volume is above its critical threshold,
+which the test preserves as an error; this is functional evidence, not healthy
+native capacity acceptance. Fresh hosted amd64/arm64 evidence is still required.
+
+The ops-floor path filters now include the application bootstrap, CLI,
+configuration and backup service owners so changes to those contracts trigger
+the native fixture. The new artifact upload action successfully retained the
+original failure evidence without deprecation warnings in
+[the amd64 job](https://github.com/Hikyo-Org/Hikyo/actions/runs/39911360688/job/120274876810).

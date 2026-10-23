@@ -9,6 +9,10 @@ on:
       - scripts/ci/ops-floor.sh
       - scripts/ci/ops-floor_test.sh
       - internal/isolation/ops_floor_test.go
+      - internal/app/**
+      - internal/cli/**
+      - internal/config/**
+      - internal/service/backup*.go
 
 permissions:
   contents: read
