@@ -1,0 +1,245 @@
+{
+  "schema": "hikyo-1046/outer-adapter-origins/v1",
+  "files": {
+    "chrome-reviewed-aws-operator-source/reviewed-scripts/kms-guard-install-unarmed-v1.js": {
+      "bytes": 26211,
+      "rawSHA256": "13fb751df86d3544bca9dcea0869677097e4201ec947f955330b2d1f2328ce51"
+    },
+    "chrome-first-prepare-custody-integration-source/root_first_prepare.source-only.py": {
+      "bytes": 28422,
+      "rawSHA256": "0aebbbcf92aa2d82e1231330b4174312f2613de7348186d206b03536249dba49"
+    },
+    "chrome-first-prepare-custody-integration-source/chrome_first_prepare.py": {
+      "bytes": 18965,
+      "rawSHA256": "9c3457ec0fd13f63d265ebbfdbdbe3bdf4df5e8a4a35c42ba0cb6f749a922cdf"
+    },
+    "chrome-first-prepare-custody-integration-source/persistent_admission.py": {
+      "bytes": 18278,
+      "rawSHA256": "74eb078ac9bccbc4a1b50b86678280eb5bb7a5526e68c36e530ce152ba9afdd4"
+    },
+    "chrome-first-prepare-custody-integration-source/persistent_custody.py": {
+      "bytes": 12154,
+      "rawSHA256": "69641b3f99f2242745a8c347503f2104a759821bbd113c32fbf0c26812d5fb05"
+    },
+    "chrome-first-prepare-custody-integration-source/pair_collection.py": {
+      "bytes": 4700,
+      "rawSHA256": "832e0682e3a9beb3fd99be9787d25c04d3f145fead8d6dc25b039be6bfdc0848"
+    },
+    "chrome-first-prepare-custody-integration-source/ancestor_chrome_custody.py": {
+      "bytes": 12493,
+      "rawSHA256": "2ba28a8f7e36762809622689be719255e065b4f8ff2a2302ac05deb3de84ba17"
+    },
+    "chrome-first-prepare-custody-integration-source/native_carrier.py": {
+      "bytes": 4094,
+      "rawSHA256": "006de410fcc4bc03374ac90adc91b9b14a7ba70b7642b5805d5ec7357153f4e1"
+    },
+    "chrome-first-prepare-custody-integration-source/transport_receipt.py": {
+      "bytes": 1469,
+      "rawSHA256": "25fc50c0eeb820c0468f4e7ba04f7295b2012963c93491bc75237e24e79764cd"
+    },
+    "chrome-first-prepare-custody-integration-source/registry.fragment.json": {
+      "bytes": 111243,
+      "rawSHA256": "546b13a9b6082c61b8c46cdc3653b394e5eaa75dd9fac5905976beff09948f3e"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-owner-readout-v1.js": {
+      "bytes": 2376,
+      "rawSHA256": "90ef9752faefef5b2176368f36ce192207aa65fe1ddb0e131d036b25521f37e9"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-identity-readout-v1.js": {
+      "bytes": 2779,
+      "rawSHA256": "e2c5fe38bd116c1798922c27febc44e724992ce6fe883e5c3d5dbe29e28c45b7"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-historical-readout-v1.js": {
+      "bytes": 3097,
+      "rawSHA256": "6d9a509038fa629f9ec50afc414df388e537a88ef7b6f61728df69b19d56c245"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-create-readout-v1.js": {
+      "bytes": 2543,
+      "rawSHA256": "327035e8014c558fa33f88e7816b6f2d48ef3431db0dc10b1db4d1fdb4d5fff7"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-iam-readout-v1.js": {
+      "bytes": 4351,
+      "rawSHA256": "0feb341fb202b06e4ffe5f610f09fd806feda41e6b48d3d54e98a7a194d76527"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-kms-readout-v1.js": {
+      "bytes": 6375,
+      "rawSHA256": "e87de37350f4b7aa69b289009d43429046535bee69a535b15c89f9a711370f41"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-setup-readout-v1.js": {
+      "bytes": 3624,
+      "rawSHA256": "fda37b53f59391de16fd097fc31ecbbc95fe0433bd281b0123ebb31e52af1358"
+    },
+    "chrome-first-prepare-custody-integration-source/reviewed-scripts/aws-navigate-v1.js": {
+      "bytes": 2179,
+      "rawSHA256": "cb6d0cf9f8944af1256fa268c7c27d2b283d4c42b1929968627879152df9b474"
+    },
+    "chrome-persistent-create-lock-runner-source/create_holder.py": {
+      "bytes": 18433,
+      "rawSHA256": "5b80c6643699cb4a1eceab1c83a9f6634a0cb4d3dea07d5b18f7598b0fd35692"
+    },
+    "chrome-persistent-create-lock-runner-source/runner.py": {
+      "bytes": 11676,
+      "rawSHA256": "b64775e7acff862f39e310fadd95022f71063bea4e042f7783e9d48496519076"
+    },
+    "chrome-persistent-create-lock-runner-source/create_custody.py": {
+      "bytes": 12187,
+      "rawSHA256": "61284959ef7f75ff50240742a55236673f7ed13ab4e3d5f97521e8313e956444"
+    },
+    "chrome-persistent-create-lock-runner-source/local_files.py": {
+      "bytes": 3698,
+      "rawSHA256": "f802fb0544f7230b39e196d7d94fc4dd568e9df8cd10ef4c6f8e9e412ebf2d8c"
+    },
+    "chrome-persistent-create-lock-runner-source/pipe_io.py": {
+      "bytes": 1921,
+      "rawSHA256": "ab501a7c690ce3e73a4ceb8531d143f745c85cade321d25b0e59230ea7d66c25"
+    },
+    "chrome-persistent-create-lock-runner-source/runtime_binding.py": {
+      "bytes": 7680,
+      "rawSHA256": "64fc17b6e9cf7a3ffd606e4ab422b518c3aa7612ff5e34e80cdddf7a889751d3"
+    },
+    "chrome-persistent-create-lock-runner-source/aws-create-readout-v1.js": {
+      "bytes": 2543,
+      "rawSHA256": "327035e8014c558fa33f88e7816b6f2d48ef3431db0dc10b1db4d1fdb4d5fff7"
+    },
+    "chrome-persistent-create-lock-runner-source/create-registry.json": {
+      "bytes": 5588,
+      "rawSHA256": "92db7096523c283b1edde037d1305620b271a27036f55e5be5cbd7039ec02a75"
+    },
+    "chrome-persistent-create-lock-runner-source/TRANSPORT-CODE-PINS.json": {
+      "bytes": 4232,
+      "rawSHA256": "ccbcd92a47fbe00410b18c137230984e931e0a40b7a40c05240046b7e16da186"
+    },
+    "chrome-native-create-stage-source/preflight.py": {
+      "bytes": 8757,
+      "rawSHA256": "7ba84b5b2d3963f87f59d18db7324eadcbeb6555ee312ade09213c799348749c"
+    },
+    "chrome-native-create-stage-source/root_preflight.py": {
+      "bytes": 9492,
+      "rawSHA256": "deb03dfef311500cd8afcfd56b2552e6ac680997eb985926ff67caed28dd0365"
+    },
+    "chrome-native-create-stage-source/stage_custody.py": {
+      "bytes": 6141,
+      "rawSHA256": "2dda15911a39a56680cf00a9bd59a83706f71278716fb63999e9cd1456c044db"
+    },
+    "chrome-native-create-stage-source/stage-kernel.cjs": {
+      "bytes": 12723,
+      "rawSHA256": "44d41ba7ba5add64110179d01d8f80a9d16cce7b115a26544b2f69a9c0353b1b"
+    },
+    "chrome-native-create-stage-source/guarded-document.cjs": {
+      "bytes": 3164,
+      "rawSHA256": "81c5ee2e76e7c70703625e03460a3f3c3bf655b858e5dc781ed4e869232f636a"
+    },
+    "chrome-native-create-stage-source/shared-window.cjs": {
+      "bytes": 779,
+      "rawSHA256": "f72078c6663117c4cc82376af3b016a890f08dbeeb27c2d668132826f788739e"
+    },
+    "chrome-native-create-stage-source/native-guard.source-only.js": {
+      "bytes": 10526,
+      "rawSHA256": "6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26"
+    },
+    "chrome-native-create-stage-source/native-observer.source-only.js": {
+      "bytes": 12422,
+      "rawSHA256": "5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700"
+    },
+    "chrome-native-create-stage-source/build.cjs": {
+      "bytes": 11251,
+      "rawSHA256": "64b202702654cb82bf860c0e1d63fcc75d3a742312c2945f82bbab3573c0579c"
+    },
+    "chrome-native-create-stage-source/U-GUARD-REGISTRY.json": {
+      "bytes": 7677,
+      "rawSHA256": "e1001daf60df77fbb6bfc321d1b8f1527a0df54b31e0d93d4578eb5ae98f833f"
+    },
+    "chrome-native-create-stage-source/vm-fixture.cjs": {
+      "bytes": 8993,
+      "rawSHA256": "0e5102ff569b45b5be93ba9c0a2e516a990f5cbf98735622fc567d3a36e52d2e"
+    },
+    "chrome-native-paired-driver-source/paired_core.py": {
+      "bytes": 8371,
+      "rawSHA256": "409e01bc0d9bfe3d830b8d8c7a46e905194c586ba59bed47de21ca0bbf6ba2c9"
+    },
+    "chrome-native-paired-driver-source/driver_data.py": {
+      "bytes": 6200,
+      "rawSHA256": "caba8e9d1e5be0c28244c2883ff31338bfd1b21e296df038f615ac8e24ec2f20"
+    },
+    "chrome-native-paired-driver-source/source_gate.py": {
+      "bytes": 2130,
+      "rawSHA256": "fb4ebd5dcbef11a813be663e73afb551fb9ba4064c4dee868404a896e236539f"
+    },
+    "chrome-native-paired-driver-source/paired_custody.py": {
+      "bytes": 5124,
+      "rawSHA256": "e07cb660233679aba22b738dbcd33bd519df87a92cfa4207ee587a084bcec1b9"
+    },
+    "chrome-native-paired-driver-source/child_transport.py": {
+      "bytes": 2953,
+      "rawSHA256": "d950d031b694589b2cd94c355c4190b86c8768d57aa6712ae9db6e631f24a069"
+    },
+    "chrome-native-paired-driver-source/driver_native_carrier.py": {
+      "bytes": 4094,
+      "rawSHA256": "006de410fcc4bc03374ac90adc91b9b14a7ba70b7642b5805d5ec7357153f4e1"
+    },
+    "chrome-new-key-cleanup-source/root_connection.py": {
+      "bytes": 19091,
+      "rawSHA256": "55cf723210e21f72d62ee45cba32b92e73142a6c106e106e85d953f4825c2523"
+    },
+    "chrome-new-key-cleanup-source/k_cleanup_custody.py": {
+      "bytes": 19110,
+      "rawSHA256": "df8520ad405fdf61c1b5503eee4ef51f3c5804dbe8d9467bb1ca2c437bab05d3"
+    },
+    "chrome-new-key-cleanup-source/k_native_carrier.py": {
+      "bytes": 4094,
+      "rawSHA256": "006de410fcc4bc03374ac90adc91b9b14a7ba70b7642b5805d5ec7357153f4e1"
+    },
+    "chrome-new-key-cleanup-source/k_transport_receipt.py": {
+      "bytes": 1469,
+      "rawSHA256": "25fc50c0eeb820c0468f4e7ba04f7295b2012963c93491bc75237e24e79764cd"
+    },
+    "chrome-new-key-cleanup-source/binding.cjs": {
+      "bytes": 5112,
+      "rawSHA256": "f1e136f1f86ebf999f0e1f4443a99a3acade9984d510ede5da930b560b99e98c"
+    },
+    "chrome-new-key-cleanup-source/page-operation.cjs": {
+      "bytes": 16118,
+      "rawSHA256": "4f0220b20d85310bfa6c91ddec06af2f16d0eccfb4489f020e8564598ddef9f0"
+    },
+    "chrome-new-key-cleanup-source/public-dom.cjs": {
+      "bytes": 5253,
+      "rawSHA256": "491c9541ddc0f10c9a382dc83db074a8fc0864b6e0c8dd7b4741d2a067113ab3"
+    },
+    "chrome-new-key-cleanup-source/operator.js.txt": {
+      "bytes": 7235,
+      "rawSHA256": "b7c77c7658fd59b9470196934fd662543d10253fe885d5425ec9a02b1a8c2711"
+    },
+    "chrome-new-key-cleanup-source/native-pins.json": {
+      "bytes": 725,
+      "rawSHA256": "e4be1ed2a04da3e6a11657ef7aa2c742b2a1b1220e4e2d01ac143d082a63e298"
+    },
+    "chrome-new-key-cleanup-source/build.cjs": {
+      "bytes": 7084,
+      "rawSHA256": "8485aedf7a8e37ff64e82c254df458c4956f1d403259902bc91847e8c582d6da"
+    },
+    "chrome-new-key-cleanup-source/fixture.cjs": {
+      "bytes": 17636,
+      "rawSHA256": "2eccb1c14706650762326165e4032a583a13090a85c4fadc14f473b01c34cd2e"
+    },
+    "chrome-new-key-cleanup-source/prepare-from-ticket.mjs": {
+      "bytes": 606,
+      "rawSHA256": "15454afa2e3274b6aa4ca9698def6ec6f9d7b5692eecae855dc3afa965deb33c"
+    },
+    "chrome-new-key-cleanup-source/dependencies/native_partial_kms_deletion_prepare.source-only.mjs": {
+      "bytes": 2488,
+      "rawSHA256": "bb806cc3090fdab4f46c4ea0acf72fdb3db324e89583bf03174976a8486411fb"
+    },
+    "chrome-new-key-cleanup-source/dependencies/shared-window.cjs": {
+      "bytes": 779,
+      "rawSHA256": "f72078c6663117c4cc82376af3b016a890f08dbeeb27c2d668132826f788739e"
+    },
+    "chrome-new-key-cleanup-source/dependencies/native_partial_kms_deletion_guard.source-only.js": {
+      "bytes": 13501,
+      "rawSHA256": "aee32b7cca291edc42a33d78f2cf3831bc281d65a5b2dbd4a407e2ad06ac11be"
+    },
+    "chrome-new-key-cleanup-source/dependencies/native_next_key_custody_prearm_observer.source-only.js": {
+      "bytes": 12422,
+      "rawSHA256": "5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700"
+    }
+  }
+}

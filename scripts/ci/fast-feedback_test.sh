@@ -253,6 +253,19 @@ for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LI
 	jq -e '.docs == true' "$work/output" >/dev/null
 done
 
+# New Python contracts select their finite owner suite and propagate failure.
+release_admission_base=$(git rev-parse HEAD)
+mkdir -p scripts/ci/release-admission
+cat >scripts/ci/release-admission/run_checks.py <<'EOF'
+raise SystemExit('fixture release admission failure')
+EOF
+FAST_FEEDBACK_BASE="$release_admission_base" run_feedback --working-tree --plan
+jq -e '.releaseAdmission == true and .web == false and .client == false and .go == false' "$work/output" >/dev/null
+FAST_FEEDBACK_BASE="$release_admission_base" refuse 'fixture release admission failure' --working-tree --lane=go
+FAST_FEEDBACK_BASE="$release_admission_base" refuse 'fixture release admission failure' --working-tree --lane=go --go-scope=tooling
+FAST_FEEDBACK_BASE="$release_admission_base" run_feedback --working-tree --lane=go --go-scope=application
+rm -r scripts/ci/release-admission
+
 printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'
 
 bash "$script_dir/fast-feedback-lanes_test.sh"
