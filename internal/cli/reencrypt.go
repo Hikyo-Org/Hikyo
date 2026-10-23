@@ -16,10 +16,10 @@ import (
 // resumable — safe to re-run.
 func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	var format string
-	var instance bool
+	var instanceScope bool
 	st, flags, err := parseCommon("reencrypt", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
-		fs.BoolVar(&instance, "instance", false, "reencrypt the instance credential tables instead of a project")
+		fs.BoolVar(&instanceScope, "instance-scope", false, "reencrypt the instance credential tables instead of a project")
 	})
 	if err != nil {
 		return err
@@ -32,20 +32,20 @@ func runReencrypt(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
+	if err != nil {
+		return err
+	}
+	org, project, err := dekScope(resolved, flags, instanceScope, "reencrypt")
+	if err != nil {
+		return err
+	}
+	client, _, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
 	if err != nil {
 		return err
 	}
 	path := api.PathPrefix + "/instance/reencrypt"
-	if !instance {
-		org, err := resolved.Require(DimOrg)
-		if err != nil {
-			return err
-		}
-		project, err := resolved.Require(DimProject)
-		if err != nil {
-			return err
-		}
+	if !instanceScope {
 		path = api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/projects/" + url.PathEscape(project) + "/reencrypt"
 	}
 
