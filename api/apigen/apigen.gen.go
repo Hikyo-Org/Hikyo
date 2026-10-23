@@ -803,6 +803,69 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for AuditExportReceiptCause.
+const (
+	AuditExportCauseOutcomeWriteFailed  AuditExportReceiptCause = "outcome-write-failed"
+	AuditExportCausePageReadFailed      AuditExportReceiptCause = "page-read-failed"
+	AuditExportCauseSinkError           AuditExportReceiptCause = "sink-error"
+	AuditExportCauseWriterBarrierFailed AuditExportReceiptCause = "writer-barrier-failed"
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptCause enum.
+func (e AuditExportReceiptCause) Valid() bool {
+	switch e {
+	case AuditExportCauseOutcomeWriteFailed:
+		return true
+	case AuditExportCausePageReadFailed:
+		return true
+	case AuditExportCauseSinkError:
+		return true
+	case AuditExportCauseWriterBarrierFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditExportReceiptOutcome.
+const (
+	AuditExportReceiptOutcomeDisconnected AuditExportReceiptOutcome = "disconnected"
+	AuditExportReceiptOutcomeFailure      AuditExportReceiptOutcome = "failure"
+	AuditExportReceiptOutcomeRevoked      AuditExportReceiptOutcome = "revoked"
+	AuditExportReceiptOutcomeSuccess      AuditExportReceiptOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptOutcome enum.
+func (e AuditExportReceiptOutcome) Valid() bool {
+	switch e {
+	case AuditExportReceiptOutcomeDisconnected:
+		return true
+	case AuditExportReceiptOutcomeFailure:
+		return true
+	case AuditExportReceiptOutcomeRevoked:
+		return true
+	case AuditExportReceiptOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditExportReceiptVersion.
+const (
+	AuditExportReceiptV1 AuditExportReceiptVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptVersion enum.
+func (e AuditExportReceiptVersion) Valid() bool {
+	switch e {
+	case AuditExportReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthMethodProviderProfile.
 const (
 	AuthMethodProviderProfileGithub AuthMethodProviderProfile = "github"
@@ -3947,6 +4010,21 @@ func (e AuditOutcome) Valid() bool {
 	}
 }
 
+// Defines values for AuditReceipt.
+const (
+	AuditReceiptV1 AuditReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the AuditReceipt enum.
+func (e AuditReceipt) Valid() bool {
+	switch e {
+	case AuditReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeliveryProjection.
 const (
 	ConfigOnly DeliveryProjection = "config-only"
@@ -4103,6 +4181,21 @@ func (e ExportOrgAuditParamsOutcomes) Valid() bool {
 	}
 }
 
+// Defines values for ExportOrgAuditParamsReceipt.
+const (
+	ExportOrgAuditParamsReceiptV1 ExportOrgAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportOrgAuditParamsReceipt enum.
+func (e ExportOrgAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportOrgAuditParamsReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ShowAdapterTargetParamsFormat.
 const (
 	Detail   ShowAdapterTargetParamsFormat = "detail"
@@ -4241,6 +4334,21 @@ func (e ExportProjectAuditParamsOutcomes) Valid() bool {
 	}
 }
 
+// Defines values for ExportProjectAuditParamsReceipt.
+const (
+	ExportProjectAuditParamsReceiptV1 ExportProjectAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportProjectAuditParamsReceipt enum.
+func (e ExportProjectAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportProjectAuditParamsReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryEnvAuditParamsOutcome.
 const (
 	QueryEnvAuditParamsOutcomeDenied       QueryEnvAuditParamsOutcome = "denied"
@@ -4355,6 +4463,21 @@ func (e ExportEnvAuditParamsOutcomes) Valid() bool {
 	case ExportEnvAuditParamsOutcomesSuccess:
 		return true
 	case ExportEnvAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportEnvAuditParamsReceipt.
+const (
+	ExportEnvAuditParamsReceiptV1 ExportEnvAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportEnvAuditParamsReceipt enum.
+func (e ExportEnvAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportEnvAuditParamsReceiptV1:
 		return true
 	default:
 		return false
@@ -5321,6 +5444,57 @@ type AuditEvent struct {
 	// Type The event type from the closed audit registry.
 	Type      string  `json:"type"`
 	UserAgent *string `json:"user_agent,omitempty"`
+}
+
+// AuditExportReceipt How one export ended, as the export run saw it. Only `outcome:
+// success` means the stream holds every event the filter selected up to
+// the server's snapshot. The receipt counts rows; it does not attest that
+// the trail has no sequence gaps.
+type AuditExportReceipt struct {
+	// Cause Why the export did not succeed. Absent on success and on revocation.
+	Cause *AuditExportReceiptCause `json:"cause,omitempty"`
+
+	// Outcome `success`: the export read to its snapshot. `failure`: a server
+	// fault stopped it, or its terminal audit event did not commit.
+	// `disconnected`: a write to the client failed. `revoked`: the
+	// caller lost `audit-read` at a page boundary.
+	Outcome AuditExportReceiptOutcome `json:"outcome"`
+
+	// OutcomeRecorded True when the matching `audit.export_completed` event is durable in
+	// the trail. A revoked export never records one.
+	OutcomeRecorded bool `json:"outcome_recorded"`
+
+	// RowsStreamed The number of event lines written before this receipt.
+	RowsStreamed int64 `json:"rows_streamed"`
+
+	// StartedEventId The id of this export's `audit.export_started` event. The
+	// `audit.export_completed` event, when recorded, carries it as its
+	// correlation id.
+	StartedEventId string                    `json:"started_event_id"`
+	Version        AuditExportReceiptVersion `json:"version"`
+}
+
+// AuditExportReceiptCause Why the export did not succeed. Absent on success and on revocation.
+type AuditExportReceiptCause string
+
+// AuditExportReceiptOutcome `success`: the export read to its snapshot. `failure`: a server
+// fault stopped it, or its terminal audit event did not commit.
+// `disconnected`: a write to the client failed. `revoked`: the
+// caller lost `audit-read` at a page boundary.
+type AuditExportReceiptOutcome string
+
+// AuditExportReceiptVersion defines model for AuditExportReceipt.Version.
+type AuditExportReceiptVersion int
+
+// AuditExportReceiptLine The last line of an export stream when the client sent `receipt=v1`.
+// Event lines never carry the `export_receipt` member, so a reader tells
+// the two apart by that key.
+type AuditExportReceiptLine struct {
+	// ExportReceipt How one export ended, as the export run saw it. Only `outcome:
+	// success` means the stream holds every event the filter selected up to
+	// the server's snapshot. The receipt counts rows; it does not attest that
+	// the trail has no sequence gaps.
+	ExportReceipt AuditExportReceipt `json:"export_receipt"`
 }
 
 // AuditPage defines model for AuditPage.
@@ -12065,6 +12239,9 @@ type AuditOutcome string
 // AuditOutcomes defines model for AuditOutcomes.
 type AuditOutcomes = []string
 
+// AuditReceipt defines model for AuditReceipt.
+type AuditReceipt string
+
 // AuditTo defines model for AuditTo.
 type AuditTo = time.Time
 
@@ -12431,6 +12608,10 @@ type ExportOrgAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportOrgAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportOrgAuditParamsOutcome defines parameters for ExportOrgAudit.
@@ -12438,6 +12619,9 @@ type ExportOrgAuditParamsOutcome string
 
 // ExportOrgAuditParamsOutcomes defines parameters for ExportOrgAudit.
 type ExportOrgAuditParamsOutcomes string
+
+// ExportOrgAuditParamsReceipt defines parameters for ExportOrgAudit.
+type ExportOrgAuditParamsReceipt string
 
 // RevokeOrgGrantParams defines parameters for RevokeOrgGrant.
 type RevokeOrgGrantParams struct {
@@ -12572,6 +12756,10 @@ type ExportProjectAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportProjectAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportProjectAuditParamsOutcome defines parameters for ExportProjectAudit.
@@ -12579,6 +12767,9 @@ type ExportProjectAuditParamsOutcome string
 
 // ExportProjectAuditParamsOutcomes defines parameters for ExportProjectAudit.
 type ExportProjectAuditParamsOutcomes string
+
+// ExportProjectAuditParamsReceipt defines parameters for ExportProjectAudit.
+type ExportProjectAuditParamsReceipt string
 
 // ExportDefinitionsParams defines parameters for ExportDefinitions.
 type ExportDefinitionsParams struct {
@@ -12709,6 +12900,10 @@ type ExportEnvAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportEnvAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportEnvAuditParamsOutcome defines parameters for ExportEnvAudit.
@@ -12716,6 +12911,9 @@ type ExportEnvAuditParamsOutcome string
 
 // ExportEnvAuditParamsOutcomes defines parameters for ExportEnvAudit.
 type ExportEnvAuditParamsOutcomes string
+
+// ExportEnvAuditParamsReceipt defines parameters for ExportEnvAudit.
+type ExportEnvAuditParamsReceipt string
 
 // FetchDeliveryParams defines parameters for FetchDelivery.
 type FetchDeliveryParams struct {
@@ -21536,6 +21734,19 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportOrgAudit(w, r, org, params)
 	}))
@@ -23497,6 +23708,19 @@ func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportProjectAudit(w, r, org, project, params)
 	}))
@@ -25305,6 +25529,19 @@ func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
 		}
 		return
 	}
@@ -52498,8 +52735,13 @@ type ExportOrgAuditResponseObject interface {
 	VisitExportOrgAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportOrgAudit200ResponseHeaders struct {
+	HikyoAuditReceipt *string
+}
+
 type ExportOrgAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportOrgAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -52508,6 +52750,9 @@ func (response ExportOrgAudit200ApplicationxNdjsonResponse) VisitExportOrgAuditR
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
 	}
 	w.WriteHeader(200)
 
@@ -57030,8 +57275,13 @@ type ExportProjectAuditResponseObject interface {
 	VisitExportProjectAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportProjectAudit200ResponseHeaders struct {
+	HikyoAuditReceipt *string
+}
+
 type ExportProjectAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportProjectAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -57040,6 +57290,9 @@ func (response ExportProjectAudit200ApplicationxNdjsonResponse) VisitExportProje
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
 	}
 	w.WriteHeader(200)
 
@@ -60960,8 +61213,13 @@ type ExportEnvAuditResponseObject interface {
 	VisitExportEnvAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportEnvAudit200ResponseHeaders struct {
+	HikyoAuditReceipt *string
+}
+
 type ExportEnvAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportEnvAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -60970,6 +61228,9 @@ func (response ExportEnvAudit200ApplicationxNdjsonResponse) VisitExportEnvAuditR
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
 	}
 	w.WriteHeader(200)
 
