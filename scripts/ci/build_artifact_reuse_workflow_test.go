@@ -23,7 +23,7 @@ func TestWebFlowMatrixWorkflowArtifactReuse(t *testing.T) {
 	stable := "          name: hikyo-app-${{ github.run_id }}"
 	attempt := stable + "-${{ github.run_attempt }}"
 	report := "\n      - name: Retain attempt-bound diagnostic report\n" +
-		"        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2\n" +
+		"        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n" +
 		"        with:\n          name: diagnostic-${{ github.run_id }}-${{ github.run_attempt }}\n" +
 		"          path: diagnostic.json\n          overwrite: true\n"
 
@@ -76,10 +76,10 @@ func TestWebFlowMatrixWorkflowArtifactReuse(t *testing.T) {
 		})
 	}
 	download := "\n      - name: Duplicate app download\n" +
-		"        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1\n" +
+		"        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n" +
 		"        with:\n" + attempt + "\n"
 	reportDownload := "\n      - name: Download diagnostic report\n" +
-		"        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1\n" +
+		"        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2\n" +
 		"        with:\n          name: diagnostic-${{ github.run_id }}-${{ github.run_attempt }}\n"
 	tests = append(tests,
 		testCase{"consumer report is allowed", mutateJob(workflow, "web", appendStep(reportDownload)), ""},
@@ -92,7 +92,7 @@ func TestWebFlowMatrixWorkflowArtifactReuse(t *testing.T) {
 		testCase{"duplicate quoted consumer is refused", mutateJob(workflow, "web", appendStep(strings.Replace(download, attempt, "          name: 'hikyo-app-${{ github.run_id }}-${{ github.run_attempt }}'", 1))), "web must contain exactly one app artifact step"},
 		testCase{"renamed app artifact is refused", mutateJob(workflow, "web", replace(stable, "          name: wrong-artifact")), "web app artifact name is not stable across partial reruns"},
 		testCase{"environment cannot impersonate artifact input", mutateJob(workflow, "web", replace(stable, "          path: ci-artifacts\n        env:\n"+stable)), "web app artifact name is not stable across partial reruns"},
-		testCase{"report cannot supply pinned download action", mutateJob(mutateJob(workflow, "web", replace("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1", "uses: actions/download-artifact@latest")), "web", appendStep(reportDownload)), "web app artifact does not use the repository-pinned transfer action"},
+		testCase{"report cannot supply pinned download action", mutateJob(mutateJob(workflow, "web", replace("uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2", "uses: actions/download-artifact@latest")), "web", appendStep(reportDownload)), "web app artifact does not use the repository-pinned transfer action"},
 		testCase{"adjacent job cannot supply no-egress probe", mutateJob(mutateJob(workflow, "web-go", replace("run: ./scripts/ci/no-egress.sh", "run: echo removed")), "source-artifact-security", appendStep("\n      - name: Unrelated probe\n        run: ./scripts/ci/no-egress.sh\n")), "no-egress probe is missing from web-go"},
 		testCase{"adjacent job compilation is allowed", mutateJob(workflow, "source-artifact-security", appendStep("\n      - name: Unrelated build\n        run: go build ./cmd/hikyo\n")), ""},
 		testCase{"report cannot supply overwrite", mutateJob(mutateJob(workflow, "app-build", replace("          overwrite: true", "          overwrite: false")), "app-build", appendStep(report)), "app-build artifact cannot be replaced by a full workflow rerun"},

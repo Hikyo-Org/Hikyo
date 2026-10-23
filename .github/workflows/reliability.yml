@@ -83,7 +83,7 @@ jobs:
         run: ./scripts/ci/check-go-patch.sh
       - name: Preserve the proposed toolchain patch
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: go-patch-proposal
           path: ${{ runner.temp }}/go-patch-proposal/
@@ -140,7 +140,7 @@ jobs:
           exit "$status"
       - name: Preserve compiler and dependency metadata
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binary-security-build-info
           path: ${{ runner.temp }}/*-build-info.txt
@@ -233,7 +233,7 @@ jobs:
         run: ./scripts/ci/reporting-e2e.sh
       - name: Preserve screenshots, operator log and captured report bodies
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reporting-e2e-${{ github.sha }}
           path: |
@@ -332,7 +332,7 @@ jobs:
           exit "$status"
       - name: Upload race isolation timings
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: isolation-race-timings-${{ matrix.shard }}
           overwrite: true

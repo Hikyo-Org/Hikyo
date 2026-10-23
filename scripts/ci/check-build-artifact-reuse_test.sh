@@ -74,8 +74,8 @@ app_artifact_step() {
 	printf '%s\n' "$artifact_step"
 }
 
-upload_action='actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2'
-download_action='actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1'
+upload_action='actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2'
+download_action='actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2'
 app_block=$(workflow_job_block app-build)
 # The no-egress probe rides in web-go, which already downloads the app build.
 no_egress_block=$(workflow_job_block web-go)

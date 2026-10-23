@@ -198,6 +198,30 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		}
 		workflow.Jobs[jobName]["steps"] = kept
 	}
+	// Accept only the reviewed artifact runtime upgrades, then restore their
+	// frozen pins for hashing. Every other step setting remains fingerprinted.
+	artifactPins := map[string][2]string{
+		"actions/upload-artifact@":   {"cf430e030ddbb5b0abf93d22962f4752f3646cd9", "ea165f8d65b6e75b540449e92b4886f43607fa02"},
+		"actions/download-artifact@": {"9000827ccba6bdab643e8b6fd33ac0654aef8333", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"},
+	}
+	for name, job := range workflow.Jobs {
+		steps, _ := job["steps"].([]any)
+		for _, value := range steps {
+			step, ok := value.(map[string]any)
+			if !ok {
+				return fmt.Errorf("%s has malformed step configuration", name)
+			}
+			uses, _ := step["uses"].(string)
+			for prefix, pins := range artifactPins {
+				if strings.HasPrefix(uses, prefix) {
+					if uses != prefix+pins[0] {
+						return fmt.Errorf("%s requires the reviewed artifact action pin: %s", name, uses)
+					}
+					step["uses"] = prefix + pins[1]
+				}
+			}
+		}
+	}
 	normalized, err := yaml.Marshal(workflow)
 	if err != nil {
 		return err
@@ -554,6 +578,32 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 			}
 			if err := requireBaselineCoverage(raw, baseline); err == nil {
 				t.Fatal("coverage reduction escaped the frozen execution inventory")
+			}
+		})
+	}
+}
+
+func TestCoverageInventoryRejectsArtifactTransferChanges(t *testing.T) {
+	baseline, original := readCoverageBaseline(t)
+	upload := "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+	download := "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333"
+	for _, fixture := range []struct {
+		name, before, after string
+	}{
+		{"mutable upload", upload, "actions/upload-artifact@v7"},
+		{"mutable download", download, "actions/download-artifact@v8"},
+		{"old upload runtime", upload, "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"},
+		{"old download runtime", download, "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"},
+		{"fail-open upload", upload, upload + "\n        continue-on-error: true"},
+		{"missing files ignored", "if-no-files-found: error", "if-no-files-found: ignore"},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			if !strings.Contains(string(original), fixture.before) {
+				t.Fatal("artifact transfer mutation target missing")
+			}
+			raw := []byte(strings.Replace(string(original), fixture.before, fixture.after, 1))
+			if err := requireBaselineCoverage(raw, baseline); err == nil {
+				t.Fatal("artifact transfer change escaped the frozen execution inventory")
 			}
 		})
 	}
