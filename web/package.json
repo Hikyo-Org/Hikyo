@@ -39,7 +39,7 @@
     "react-dom": "19.2.8",
     "react-router": "8.3.0",
     "yaml": "2.9.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
