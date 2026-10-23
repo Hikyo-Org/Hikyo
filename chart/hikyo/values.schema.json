@@ -240,12 +240,8 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["restricted", "dns", "datastore", "identityProviders", "adapters", "collector", "extraRules"],
-          "allOf": [
-            {
-              "if": {"properties": {"restricted": {"const": true}}, "required": ["restricted"]},
-              "then": {"properties": {"datastore": {"properties": {"to": {"minItems": 1}}}}}
-            }
-          ],
+          "if": {"properties": {"restricted": {"const": true}}},
+          "then": {"properties": {"datastore": {"properties": {"to": {"minItems": 1}}}}},
           "properties": {
             "restricted": {"type": "boolean"},
             "dns": {"$ref": "#/definitions/networkPolicyDestination"},

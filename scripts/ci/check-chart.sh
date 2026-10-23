@@ -49,6 +49,80 @@ render_mode() {
 render_mode cluster-wide \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b,sa-shared}'
+render_mode network-restricted \
+	--set networkPolicy.ingress.restricted=true \
+	--set-json 'networkPolicy.ingress.from=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"ingress-nginx"}},"podSelector":{"matchLabels":{"app.kubernetes.io/name":"ingress-nginx"}}}]' \
+	--set networkPolicy.egress.restricted=true \
+	--set-json 'networkPolicy.egress.datastore.to=[{"ipBlock":{"cidr":"10.20.0.15/32"}}]' \
+	--set-json 'networkPolicy.egress.identityProviders.to=[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","169.254.0.0/16"]}}]' \
+	--set-json 'networkPolicy.egress.extraRules=[{"to":[{"ipBlock":{"cidr":"192.0.2.10/32"}}],"ports":[{"protocol":"TCP","port":10250}]}]'
+render_mode network-restricted-no-operator \
+	--set operator.enabled=false \
+	--set networkPolicy.ingress.restricted=true \
+	--set-json 'networkPolicy.ingress.from=[{"ipBlock":{"cidr":"10.42.0.0/16"}}]'
+
+python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" <<'PY' || exit 1
+import sys, yaml
+
+def policy(path):
+    with open(path) as stream:
+        docs = [doc for doc in yaml.safe_load_all(stream) if doc and doc.get("kind") == "NetworkPolicy"]
+    assert len(docs) == 1, f"{path}: expected exactly one NetworkPolicy, found {len(docs)}"
+    assert docs[0]["metadata"]["name"] == "fixture-hikyo-server"
+    spec = docs[0]["spec"]
+    assert spec["podSelector"] == {"matchLabels": {"app.kubernetes.io/name": "hikyo", "app.kubernetes.io/instance": "fixture"}}
+    return spec
+
+APP_PORT = [{"protocol": "TCP", "port": 8080}]
+OPERATOR = {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "hikyo-operator", "app.kubernetes.io/instance": "fixture"}}}
+INGRESS_CONTROLLER = {
+    "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}},
+    "podSelector": {"matchLabels": {"app.kubernetes.io/name": "ingress-nginx"}},
+}
+DNS = {
+    "to": [{
+        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+        "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+    }],
+    "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}],
+}
+
+legacy = policy(sys.argv[1])
+assert legacy["policyTypes"] == ["Ingress"], "default must keep the ingress-only policy"
+assert legacy["ingress"] == [{"ports": APP_PORT}], "default must keep the legacy port 8080 rule"
+assert "egress" not in legacy, "default must not limit egress"
+
+restricted = policy(sys.argv[2])
+assert restricted["policyTypes"] == ["Ingress", "Egress"]
+assert restricted["ingress"] == [{"ports": APP_PORT, "from": [INGRESS_CONTROLLER, OPERATOR]}], \
+    f"restricted ingress = {restricted['ingress']}"
+assert restricted["egress"] == [
+    DNS,
+    {"to": [{"ipBlock": {"cidr": "10.20.0.15/32"}}], "ports": [{"protocol": "TCP", "port": 5432}]},
+    {"to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": ["10.0.0.0/8", "169.254.0.0/16"]}}],
+     "ports": [{"protocol": "TCP", "port": 443}]},
+    {"to": [{"ipBlock": {"cidr": "192.0.2.10/32"}}], "ports": [{"protocol": "TCP", "port": 10250}]},
+], f"restricted egress = {restricted['egress']}"
+
+no_operator = policy(sys.argv[3])
+assert no_operator["policyTypes"] == ["Ingress"]
+assert no_operator["ingress"] == [{"ports": APP_PORT, "from": [{"ipBlock": {"cidr": "10.42.0.0/16"}}]}], \
+    "a disabled operator must not add an operator peer"
+PY
+
+for invalid_policy in \
+	'networkPolicy.ingress={"restricted":true,"from":[],"allowOperator":false}' \
+	'networkPolicy.egress.restricted=true' \
+	'networkPolicy.ingress.from=[{"ipBlock":{"cidr":"10.0.0.0/8"},"podSelector":{}}]' \
+	'networkPolicy.ingress.from=[{}]' \
+	'networkPolicy.egress.datastore.ports=[{"protocol":"ICMP","port":5432}]' \
+	'networkPolicy.egress.extraRules=[{}]' \
+	'networkPolicy.egress.allowAll=true'; do
+	if render_mode invalid-network-policy --set-json "$invalid_policy" >/dev/null 2>&1; then
+		fail "chart accepted invalid network policy: $invalid_policy"
+	fi
+done
+
 render_mode namespaced \
 	--set 'operator.namespaces={ns-a,ns-b}' \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
@@ -146,86 +220,6 @@ render_mode populated-upgrade \
 render_mode keyless-admission \
 	--set releaseTrust.admissionPolicy.enabled=true \
 	--set releaseTrust.admissionPolicy.mode=keyless
-
-render_mode network-restricted \
-	--set networkPolicy.ingress.restricted=true \
-	--set-json 'networkPolicy.ingress.from=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"ingress-nginx"}},"podSelector":{"matchLabels":{"app.kubernetes.io/name":"ingress-nginx"}}}]' \
-	--set networkPolicy.egress.restricted=true \
-	--set-json 'networkPolicy.egress.datastore.to=[{"ipBlock":{"cidr":"10.20.0.15/32"}}]' \
-	--set-json 'networkPolicy.egress.identityProviders.to=[{"ipBlock":{"cidr":"0.0.0.0/0","except":["10.0.0.0/8","169.254.0.0/16"]}}]' \
-	--set-json 'networkPolicy.egress.extraRules=[{"to":[{"ipBlock":{"cidr":"192.0.2.10/32"}}],"ports":[{"protocol":"TCP","port":10250}]}]'
-render_mode network-restricted-no-operator \
-	--set operator.enabled=false \
-	--set networkPolicy.ingress.restricted=true \
-	--set-json 'networkPolicy.ingress.from=[{"ipBlock":{"cidr":"10.42.0.0/16"}}]'
-
-python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" <<'PY' || exit 1
-import sys, yaml
-
-def policy(path):
-    with open(path) as stream:
-        docs = [doc for doc in yaml.safe_load_all(stream) if doc and doc.get("kind") == "NetworkPolicy"]
-    assert len(docs) == 1, f"{path}: expected exactly one NetworkPolicy, found {len(docs)}"
-    assert docs[0]["metadata"]["name"] == "fixture-hikyo-server"
-    spec = docs[0]["spec"]
-    assert spec["podSelector"] == {"matchLabels": {"app.kubernetes.io/name": "hikyo", "app.kubernetes.io/instance": "fixture"}}
-    return spec
-
-APP_PORT = [{"protocol": "TCP", "port": 8080}]
-OPERATOR = {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "hikyo-operator", "app.kubernetes.io/instance": "fixture"}}}
-INGRESS_CONTROLLER = {
-    "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}},
-    "podSelector": {"matchLabels": {"app.kubernetes.io/name": "ingress-nginx"}},
-}
-DNS = {
-    "to": [{
-        "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
-        "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
-    }],
-    "ports": [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}],
-}
-
-legacy = policy(sys.argv[1])
-assert legacy["policyTypes"] == ["Ingress"], "default must keep the ingress-only policy"
-assert legacy["ingress"] == [{"ports": APP_PORT}], "default must keep the legacy port 8080 rule"
-assert "egress" not in legacy, "default must not limit egress"
-
-restricted = policy(sys.argv[2])
-assert restricted["policyTypes"] == ["Ingress", "Egress"]
-assert restricted["ingress"] == [{"ports": APP_PORT, "from": [INGRESS_CONTROLLER, OPERATOR]}], \
-    f"restricted ingress = {restricted['ingress']}"
-assert restricted["egress"] == [
-    DNS,
-    {"to": [{"ipBlock": {"cidr": "10.20.0.15/32"}}], "ports": [{"protocol": "TCP", "port": 5432}]},
-    {"to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": ["10.0.0.0/8", "169.254.0.0/16"]}}],
-     "ports": [{"protocol": "TCP", "port": 443}]},
-    {"to": [{"ipBlock": {"cidr": "192.0.2.10/32"}}], "ports": [{"protocol": "TCP", "port": 10250}]},
-], f"restricted egress = {restricted['egress']}"
-
-no_operator = policy(sys.argv[3])
-assert no_operator["policyTypes"] == ["Ingress"]
-assert no_operator["ingress"] == [{"ports": APP_PORT, "from": [{"ipBlock": {"cidr": "10.42.0.0/16"}}]}], \
-    "a disabled operator must not add an operator peer"
-
-for spec in (legacy, restricted, no_operator):
-    for rule in spec["ingress"]:
-        assert rule["ports"] == APP_PORT, "port 8081 must never receive an ingress rule"
-PY
-
-for invalid_policy in \
-	'networkPolicy.ingress.allowOperator=false' \
-	'networkPolicy.egress.restricted=true' \
-	'networkPolicy.ingress.from=[{"ipBlock":{"cidr":"10.0.0.0/8"},"podSelector":{}}]' \
-	'networkPolicy.ingress.from=[{}]' \
-	'networkPolicy.egress.datastore.ports=[{"protocol":"ICMP","port":5432}]' \
-	'networkPolicy.egress.extraRules=[{}]' \
-	'networkPolicy.egress.allowAll=true'; do
-	if render_mode invalid-network-policy \
-		--set networkPolicy.ingress.restricted=true \
-		--set-json "$invalid_policy" >/dev/null 2>&1; then
-		fail "chart accepted invalid network policy: $invalid_policy"
-	fi
-done
 
 python3 - "$tmp/keyless-admission.yaml" "$chart/Chart.yaml" <<'PY' || exit 1
 import sys, yaml

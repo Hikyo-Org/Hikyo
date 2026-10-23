@@ -2,7 +2,7 @@
 {{- $egress := .Values.networkPolicy.egress -}}
 {{- $peers := list -}}
 {{- if $ingress.restricted -}}
-{{- $peers = concat $peers $ingress.from -}}
+{{- $peers = $ingress.from -}}
 {{- if and $ingress.allowOperator .Values.operator.enabled -}}
 {{- $peers = append $peers (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" (printf "%s-operator" (include "hikyo.name" .)) "app.kubernetes.io/instance" .Release.Name))) -}}
 {{- end -}}
