@@ -56,7 +56,7 @@ func checkLifecycleWorkflowContract(raw []byte) error {
 	if probe.Run != "go run ./scripts/ci/pr-gate --check-lifecycle-probe" || probe.Uses != "" || len(probe.With) != 0 || !reflect.DeepEqual(probe.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_PROBE_RECEIPT": "${{ runner.temp }}/check-lifecycle-probe.json"}) {
 		return fmt.Errorf("probe must invoke only its fixed trusted mode with an owned receipt path")
 	}
-	if receipt.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" || receipt.Run != "" || len(receipt.Env) != 0 || receipt.If != "always()" || !reflect.DeepEqual(receipt.With, map[string]string{"name": "check-lifecycle-probe-${{ github.run_id }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/check-lifecycle-probe.json", "if-no-files-found": "error", "retention-days": "7"}) {
+	if receipt.Uses != "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" || receipt.Run != "" || len(receipt.Env) != 0 || receipt.If != "always()" || !reflect.DeepEqual(receipt.With, map[string]string{"name": "check-lifecycle-probe-${{ github.run_id }}-${{ github.run_attempt }}", "path": "${{ runner.temp }}/check-lifecycle-probe.json", "if-no-files-found": "error", "retention-days": "7"}) {
 		return fmt.Errorf("probe must preserve its exact run-attempt receipt even on failure")
 	}
 	for i, step := range j.Steps {

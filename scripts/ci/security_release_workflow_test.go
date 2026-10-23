@@ -357,7 +357,7 @@ func TestReleaseFailureDiagnosticReceiptPolicy(t *testing.T) {
 			"path":              "${{ runner.temp }}/security-release/prepared.json\n${{ runner.temp }}/security-release/binary-scan.json\n${{ runner.temp }}/security-release/scan-completed-at\n${{ runner.temp }}/security-release/attacks.json\n${{ runner.temp }}/security-release/browser.json\n",
 			"if-no-files-found": "ignore", "retention-days": "7",
 		}
-		if step.If != "${{ failure() }}" || step.Uses != "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" || step.Run != "" || len(step.Env) != 0 || !reflect.DeepEqual(step.With, want) {
+		if step.If != "${{ failure() }}" || step.Uses != "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" || step.Run != "" || len(step.Env) != 0 || !reflect.DeepEqual(step.With, want) {
 			t.Fatalf("failure diagnostics lost their failure-only metadata boundary: %+v", step)
 		}
 	}
