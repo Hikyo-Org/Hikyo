@@ -1,7 +1,6 @@
 package isolation
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,7 +83,6 @@ func newAuditExportServer(t *testing.T, e accessWireEnv, wrap func(http.Response
 }
 
 type exportResponse struct {
-	status int
 	header http.Header
 	events []string
 	// receipt is the final line when it parses as a receipt line.
@@ -107,10 +105,10 @@ func getAuditExport(t *testing.T, srv *httptest.Server, token, path string) expo
 	if err != nil {
 		t.Fatal(err)
 	}
-	out := exportResponse{status: resp.StatusCode, header: resp.Header}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("export %s = %d %s, want 200", path, resp.StatusCode, body)
 	}
+	out := exportResponse{header: resp.Header}
 	if len(body) > 0 && body[len(body)-1] != '\n' {
 		t.Fatalf("export body does not end on a line boundary: %q", body[max(0, len(body)-80):])
 	}
@@ -132,7 +130,7 @@ func getAuditExport(t *testing.T, srv *httptest.Server, token, path string) expo
 		if out.receipt != nil {
 			t.Fatalf("second receipt line: %q", line)
 		}
-		dec := json.NewDecoder(bytes.NewReader([]byte(line)))
+		dec := json.NewDecoder(strings.NewReader(line))
 		dec.DisallowUnknownFields()
 		var parsed apigen.AuditExportReceiptLine
 		if err := dec.Decode(&parsed); err != nil {
