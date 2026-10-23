@@ -203,7 +203,8 @@ these models for provider destinations:
 - **Public addresses only.** Allow TCP 443 to `0.0.0.0/0` with the private,
   link-local, and cluster ranges in `except`. This blocks lateral traffic to
   cluster services. The server already refuses private provider addresses that
-  its egress policy files do not list.
+  its egress policy files do not list. This model does not limit public
+  destinations.
 - **Published provider ranges.** Put the CIDRs that each provider publishes in
   `ipBlock` peers. Update them when the provider changes its ranges.
 - **CNI FQDN policy.** Leave `identityProviders.to` and `adapters.to` empty, and
@@ -223,6 +224,13 @@ these models for provider destinations:
    [network policy probes](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/network-policy-probes.md)
    on a disposable cluster that enforces NetworkPolicy, then on production.
 5. To roll back, set `restricted: false` and run `helm upgrade` again.
+
+Keep each adapter and dynamic secret destination allowed until you remove its
+integrations and the provider cleanup finishes. Otherwise revocation and
+deletion requests fail. `kubectl port-forward` connects inside the pod network
+namespace, so it stays available as break-glass access. A collector in the same
+pod reads `127.0.0.1:8081` over loopback, and NetworkPolicy does not apply to
+that path.
 
 The operator runs as UID/GID 65532 with `runAsNonRoot`, a read-only root
 filesystem, all capabilities dropped, `RuntimeDefault` seccomp, and privilege
