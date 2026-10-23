@@ -29,8 +29,10 @@ A later granted provider run passed 3 narrow tests and 57 full-package tests wit
 zero failures/skips at 63 source inputs, manifest
 `1a24f483191de01a122de50481003f2f67021617dbbbf2b4da2be8320f9c6471`.
 That includes the controlled same-client cache refresh/refusal test. Original
-provider run with 56 tests and both first failures remain historical evidence. No result proves
-real STS/projected-token refresh, effective IAM or database revocation fences.
+provider run with 56 tests and both first failures remain historical evidence. Those
+provider-only runs do not prove real STS/projected-token refresh or effective AWS
+IAM revocation. Controlled database revocation-fence coverage for SQLite and
+PostgreSQL is recorded separately below.
 
 The source-completeness pass after R5 identified additional surface/integration
 work. Its new drafts are outside R5's verdict and outside the 57-test provider run:
