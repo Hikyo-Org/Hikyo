@@ -25,7 +25,7 @@ require (
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/gofrs/flock v0.13.1
 	github.com/google/cel-go v0.29.2
-	github.com/google/certificate-transparency-go v1.3.3
+	github.com/google/certificate-transparency-go v1.4.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.23.0
