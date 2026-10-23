@@ -12208,6 +12208,106 @@ paths:
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/instance/audit:
+    get:
+      operationId: queryInstanceAudit
+      tags: [audit]
+      summary: One bounded page of the instance audit trail.
+      description: |
+        Reads one bounded page of the instance trail: authentication events
+        (failed logins included), instance-scope security mutations, denials
+        that resolved to no tenant chain, and system events. Tenant audit pages
+        never show these events. Same shape and paging contract as
+        `queryOrgAudit`, and each page commits one `audit.query` event to the
+        instance trail.
+
+        Authorization is an instance-scope `audit-read` grant, evaluated like
+        every instance operation and never implied by the route. A tenant-scope
+        `audit-read` grant does not reach the instance trail. Only a human
+        session is eligible: a machine credential, including project automation
+        that holds `audit-read` in its project, is refused before authorization.
+      x-hikyo-class: instance
+      x-hikyo-operation: audit.instance-query
+      x-hikyo-formula: [audit-read@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 13
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditAfterSeq"
+        - $ref: "#/components/parameters/AuditToSeq"
+        - $ref: "#/components/parameters/AuditLimit"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: One page of instance trail events.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuditPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/audit/export:
+    get:
+      operationId: exportInstanceAudit
+      tags: [audit]
+      summary: Stream the instance audit trail as JSONL.
+      description: |
+        The instance-trail JSONL export. Same shape and INTENT/OUTCOME
+        contract as `exportOrgAudit`: the server reads one bounded page at a
+        time, and it resolves the session again and mints a fresh proof for
+        each page, so a revoked grant or session stops the stream at the next
+        page boundary. The `audit.export_started` and `audit.export_completed`
+        events go to the instance trail.
+
+        Authorization and artifact eligibility are as for
+        `queryInstanceAudit`. Instance exports have no organization, so the
+        per-organization export concurrency bound does not apply; the
+        per-principal rate and the instance-wide concurrency bound do.
+      x-hikyo-class: instance
+      x-hikyo-operation: audit.instance-export
+      x-hikyo-formula: [audit-read@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 13
+      parameters:
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
+        - $ref: "#/components/parameters/AuditOperation"
+        - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
+        - $ref: "#/components/parameters/AuditObjectType"
+        - $ref: "#/components/parameters/AuditObjectID"
+        - $ref: "#/components/parameters/AuditCorrelationID"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The instance trail as a JSONL byte stream.
+          content:
+            application/x-ndjson:
+              schema: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/instance/rotate-token-key:
     post:
       operationId: rotateTokenKey

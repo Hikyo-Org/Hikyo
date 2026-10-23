@@ -415,6 +415,8 @@ operations:
   exportProjectAudit:          {webui: project-audit, reach: path}
   queryEnvAudit:               {webui: project-audit}
   exportEnvAudit:              {webui: project-audit, reach: path}
+  queryInstanceAudit:          {issue: 1035}
+  exportInstanceAudit:         {issue: 1035}
 
   # instance
   rotateTokenKey:              {webui: instance-admin}

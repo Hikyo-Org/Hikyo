@@ -8423,6 +8423,73 @@ export const zExportEnvAuditQuery = z.object({
  */
 export const zExportEnvAuditResponse = z.string();
 
+export const zQueryInstanceAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(1000).optional().default(100),
+    actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * One page of instance trail events.
+ */
+export const zQueryInstanceAuditResponse = zAuditPage;
+
+export const zExportInstanceAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * The instance trail as a JSONL byte stream.
+ */
+export const zExportInstanceAuditResponse = z.string();
+
 /**
  * The rotation.
  */
