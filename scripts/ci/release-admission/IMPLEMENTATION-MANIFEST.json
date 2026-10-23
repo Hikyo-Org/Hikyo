@@ -141,7 +141,7 @@
     "test_adapter_context.py": "c43b06668442c702f3e24b941350353db047d226a5003f9ac64176ef280ebab0",
     "test_adapter_source_loader.py": "545330cb7001eaab202bd3c21ffc2d4034f3b606473d372dc320b45652e16396",
     "test_decision_journal.py": "8f0db5eb8526b89f72ad353407274c378d24e0101ba7a1d8a0105e78e0d9c8da",
-    "test_historical_integrity.py": "a3e85cd893d36164d02da7b589395d5636512e59e3fb68a754858807483f75c3",
+    "test_historical_integrity.py": "c84e0a7842df69985267b5bab9e63e94d22a0fbbc43c1e2a778f3d092b111caf",
     "test_release_collector.py": "3088000d071ac3c61c4352d69e4263d98ca29afce64e29ae48b81e84c9685b98",
     "test_release_records.py": "900ede702c0994c813b53bfc308b33248d12605a3e59c8119d7d66ca2b424afa",
     "test_repository_source_closure.py": "3ee987d5a3161838e38087f718f8be4d2e23830ffdc3952eca18a8481d69bb30",

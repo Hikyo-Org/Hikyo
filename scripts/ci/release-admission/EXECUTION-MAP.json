@@ -1,8 +1,8 @@
 {
   "actualConfiguration": null,
   "executionAuthorityGranted": false,
-  "implementationManifestRawSHA256": "4e01dfcaa390544eadf9a6bb796ad16eec7b8fdc6b216a8750954c1f029ff350",
-  "implementationManifestSHA256": "1357dce95ab8b1fb89ca65aad9f4928ab82f8da3e54a73213289417a0d246a55",
+  "implementationManifestRawSHA256": "973d592a2d403f4e2e202b3fe6520d39ad5a6bbb94944187c669d378d785342d",
+  "implementationManifestSHA256": "9208090f0388d71e241154c7e9f0c077c68551e1ba779334c351ce7a9cf81c07",
   "modules": {
     "collector": {
       "bytes": 52383,
@@ -619,8 +619,8 @@
       "rawSHA256": "8f0db5eb8526b89f72ad353407274c378d24e0101ba7a1d8a0105e78e0d9c8da"
     },
     "test_historical_integrity.py": {
-      "bytes": 3394,
-      "rawSHA256": "a3e85cd893d36164d02da7b589395d5636512e59e3fb68a754858807483f75c3"
+      "bytes": 5849,
+      "rawSHA256": "c84e0a7842df69985267b5bab9e63e94d22a0fbbc43c1e2a778f3d092b111caf"
     },
     "test_release_collector.py": {
       "bytes": 36988,
