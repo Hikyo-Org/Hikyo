@@ -12,7 +12,7 @@
     "verify": "pnpm run check && pnpm run test"
   },
   "dependencies": {
-    "@astrojs/markdown-remark": "7.2.4",
+    "@astrojs/markdown-remark": "7.3.0",
     "@astrojs/mdx": "7.0.7",
     "@astrojs/react": "6.0.4",
     "@fontsource-variable/archivo": "^5.3.0",
