@@ -28,6 +28,15 @@ printf '# Fixture\n' >README.md
 printf '26.7.0\n' >.nvmrc
 printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
 printf 'module example.invalid/feedback-fixture\n\ngo 1.27.2\n' >go.mod
+# Keep the imported library unchanged relative to base: changed-file linting
+# must follow it even when it is not listed as a changed ShellCheck input.
+# Its incomplete function deliberately fails parsing only when followed.
+mkdir -p scripts/ci
+cat >scripts/ci/source-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+fixture_message() { printf 'source fixture reached\n'; }
+fixture_invalid() {
+EOF
 commit_fixture
 base=$(git rev-parse HEAD)
 export FAST_FEEDBACK_BASE="$base"
@@ -51,6 +60,21 @@ run_feedback --working-tree
 printf 'untracked whitespace \n' >dirty.txt
 refuse 'untracked file whitespace differs' --working-tree
 rm dirty.txt
+
+cat >scripts/ci/import-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+# shellcheck source=scripts/ci/source-fixture.sh
+source ./scripts/ci/source-fixture.sh
+fixture_message
+EOF
+commit_fixture
+refuse 'SC1094 (warning): Parsing of sourced file failed.'
+# ShellCheck attaches sourced-file parse failures to the importing statement.
+# Require that statement and its diagnostic together, not just any failure.
+grep -F -A1 'source ./scripts/ci/source-fixture.sh' "$work/output" |
+	grep -F 'SC1094 (warning): Parsing of sourced file failed.' >/dev/null
+rm scripts/ci/import-fixture.sh
+commit_fixture
 
 printf 'whitespace \n' >README.md
 commit_fixture
