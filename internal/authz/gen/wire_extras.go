@@ -45,6 +45,10 @@ var reviewedWireExtras = wireExtras{
 		// not read answers exactly like a scope that is not there.
 		"http:GET /api/v1/orgs/{org}/audit":        {Events: []string{"EventAuditQuery"}},
 		"http:GET /api/v1/orgs/{org}/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
+		// The instance trail is instance-class: the formula is audit-read at
+		// instance scope, so a tenant grant never satisfies it.
+		"http:GET /api/v1/instance/audit":        {Events: []string{"EventAuditQuery"}},
+		"http:GET /api/v1/instance/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
 		// Temporary access (#152). Policy administration is manage-members at the
 		// project; the request queue and every decision are read@env with the
 		// finer eligibility checked after the grant (a reachable 403).

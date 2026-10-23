@@ -135,6 +135,8 @@ var wireRegistry = map[string]wireEntry{
 	"http:GET /api/v1/auth/webauthn/credentials":                                                                             {Class: ClassUnauthenticated},
 	"http:GET /api/v1/auth/whoami":                                                                                           {Class: ClassUnauthenticated},
 	"http:GET /api/v1/auth/workspace/transactions/{state}":                                                                   {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventRemoteWorkspaceHandoffRead}},
+	"http:GET /api/v1/instance/audit":                                                                                        {Class: ClassInstance, Ops: []Operation{OpAuditInstanceQuery}, Events: []audit.EventType{audit.EventAuditQuery}},
+	"http:GET /api/v1/instance/audit/export":                                                                                 {Class: ClassInstance, Ops: []Operation{OpAuditInstanceExport}, Events: []audit.EventType{audit.EventAuditExportStarted, audit.EventAuditExportCompleted}},
 	"http:GET /api/v1/instance/config":                                                                                       {Class: ClassInstance, Ops: []Operation{OpSelfConfigStatus}},
 	"http:GET /api/v1/instance/config/adoption":                                                                              {Class: ClassInstance, Ops: []Operation{OpSelfConfigPreview}},
 	"http:GET /api/v1/instance/connections":                                                                                  {Class: ClassInstance, Ops: []Operation{OpRemoteCredentialList}},
