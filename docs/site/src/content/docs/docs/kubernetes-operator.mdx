@@ -132,6 +132,106 @@ app's response headers through; an Ingress controller that adds its own HSTS
 sends browsers two policies with different lifetimes. See
 [security response headers](/docs/configuration/#security-response-headers).
 
+## Network policy
+
+The chart always renders one NetworkPolicy for the server pods. The default
+values keep the legacy rule: any source can reach TCP 8080, and the chart
+limits no outbound traffic. Application authentication still protects port
+8080. Port 8081 never gets an ingress rule, and `/metrics` refuses callers that
+are not loopback.
+
+NetworkPolicy rules add to each other. A second, narrower policy cannot remove
+the broad default rule, so narrow access through the chart values.
+
+Set `networkPolicy.ingress.restricted` to allow TCP 8080 only from trusted
+peers. Peers use the Kubernetes `podSelector`, `namespaceSelector`, and
+`ipBlock` shapes:
+
+```yaml
+networkPolicy:
+  ingress:
+    restricted: true
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ingress-nginx
+    allowOperator: true
+```
+
+Add one peer for each client that connects to the Service or to a pod IP: the
+Ingress controller or proxy, and each in-cluster caller. `allowOperator` adds
+the operator pods of this release. An operator in a different release or
+cluster needs its own peer, or it must use the external URL. Helm refuses a
+restricted policy that has no peer.
+
+Set `networkPolicy.egress.restricted` to allow outbound traffic only to the
+destinations that you list. A destination with an empty `to` list adds no rule.
+
+| Value | Default ports | Destinations |
+| --- | --- | --- |
+| `dns` | UDP and TCP 53 | `kube-dns` in `kube-system`. Change the peer for NodeLocal DNSCache or a different DNS service. |
+| `datastore` | TCP 5432 | The PostgreSQL endpoint in `HIKYO_DB`. Required when egress is restricted. |
+| `identityProviders` | TCP 443 | OIDC, SAML, social sign-in, and machine-identity federation issuers. |
+| `adapters` | TCP 443 | Deployment adapter origins, for example `api.github.com` or a Vault server. |
+| `collector` | none | The transport of a metrics collector in the same pod. The server itself sends no telemetry. |
+| `extraRules` | per rule | Complete egress rules for all other destinations. |
+
+Add an `extraRules` entry for each of these features that you use:
+
+- The SMTP relay in `HIKYO_MAIL_ADDR`, on TCP 465 or 587.
+- Release checks to `api.github.com` (`updates.channel`, default `stable`).
+- Unattended upgrades, which download from GitHub release hosts.
+- The kubelet for `database.storageMonitoring`.
+- The Kubernetes API when `rollout.enrolled` is true.
+- Dynamic secret targets and remote Hikyo instances.
+- AWS workload identity endpoints (`169.254.169.254`, `169.254.170.2`, and
+  `169.254.170.23`) when `HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow`.
+
+### Dynamic provider destinations
+
+NetworkPolicy matches IP addresses and labels. It cannot match DNS names, and
+provider endpoints such as OIDC issuers, GitHub, and cloud APIs change their
+addresses. Most server clients ignore `HTTP_PROXY`, so a generic egress proxy
+does not work. The chart renders only standard NetworkPolicy, so any CNI that
+enforces NetworkPolicy, including egress rules, applies it. A CNI that does not
+enforce NetworkPolicy, for example Flannel alone, ignores it. Choose one of
+these models for provider destinations:
+
+- **Public addresses only.** Allow TCP 443 to `0.0.0.0/0` with the private,
+  link-local, and cluster ranges in `except`. This blocks lateral traffic to
+  cluster services. The server already refuses private provider addresses that
+  its egress policy files do not list. This model does not limit public
+  destinations.
+- **Published provider ranges.** Put the CIDRs that each provider publishes in
+  `ipBlock` peers. Update them when the provider changes its ranges.
+- **CNI FQDN policy.** Leave `identityProviders.to` and `adapters.to` empty, and
+  add a CNI-specific policy, for example a Cilium `CiliumNetworkPolicy` with
+  `toFQDNs`. Allowed traffic is the union of all policies that select the pod,
+  so a broad chart rule makes the FQDN policy useless.
+
+### Migrate to restricted policies
+
+1. Upgrade the chart with the default values. The rendered policy does not
+   change.
+2. List every client of port 8080, then set `networkPolicy.ingress.restricted`
+   with one peer for each client.
+3. Set `networkPolicy.egress.restricted` with `datastore`, `dns`, and one
+   destination for each integration that you use.
+4. Run the
+   [network policy probes](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/network-policy-probes.md)
+   on a disposable cluster that enforces NetworkPolicy, then on production.
+5. To roll back, set `restricted: false` and run `helm upgrade` again.
+
+Keep each adapter and dynamic secret destination allowed until you remove its
+integrations and the provider cleanup finishes. Otherwise revocation and
+deletion requests fail. `kubectl port-forward` connects inside the pod network
+namespace, so it stays available as break-glass access. A collector in the same
+pod reads `127.0.0.1:8081` over loopback, and NetworkPolicy does not apply to
+that path.
+
 The operator runs as UID/GID 65532 with `runAsNonRoot`, a read-only root
 filesystem, all capabilities dropped, `RuntimeDefault` seccomp, and privilege
 escalation disabled. Its pod holds no Hikyo credential, Hikyo root key, or

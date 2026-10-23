@@ -123,4 +123,22 @@ refute 'stray RBAC object' \
 	templates/operator-rbac.yaml \
 	's|    verbs: \["get", "create", "update"\]|    verbs: ["get", "create", "update"]\n---\napiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: {{ $operatorName }}-rogue\nrules:\n  - apiGroups: [""]\n    resources: ["secrets"]\n    verbs: ["get", "list", "watch"]|'
 
-printf 'Chart fixture: valid chart accepted; RBAC/env/args/hardening mutations refused\n'
+# The sed script deliberately carries a literal {{ $peers }} template expression.
+# shellcheck disable=SC2016
+refute 'restricted ingress peers dropped' \
+	templates/networkpolicy.yaml \
+	's/{{- with $peers }}/{{- with list }}/'
+
+refute 'operational port admitted' \
+	templates/networkpolicy.yaml \
+	's/port: 8080/port: 8081/'
+
+refute 'egress policy type dropped' \
+	templates/networkpolicy.yaml \
+	'/- Egress/d'
+
+refute 'egress restricted by default' \
+	values.yaml \
+	'/^  egress:/,/^    restricted: false/s/restricted: false/restricted: true/'
+
+printf 'Chart fixture: valid chart accepted; RBAC/env/args/hardening/network policy mutations refused\n'
