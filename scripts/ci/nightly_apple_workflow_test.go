@@ -111,7 +111,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 					}
 				}
 			}
-			if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+			if step.Run == "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 				notarizations++
 				if name != "apple-notarize" || step.If != "" || step.Env["APPLE_NOTARY_KEY_P8"] != "${{ secrets.APPLE_NOTARY_KEY_P8 }}" || step.Env["APPLE_RELEASE_CHANNEL"] != "nightly" || step.Env["APPLE_RELEASE_VERSION"] != "${{ needs.build-artifacts.outputs.version }}" || step.Env["APPLE_RELEASE_COMMIT"] != "${{ needs.build-artifacts.outputs.commit }}" {
 					t.Fatal("nightly notarization must bind the canonical source in its separate job")

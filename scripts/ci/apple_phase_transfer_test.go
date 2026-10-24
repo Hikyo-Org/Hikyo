@@ -50,7 +50,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 	}
 	helperIndex := findStep(t, "notarize")
 	diagnosticsIndex := findStep(t, "Retain Apple notarization diagnostics")
-	if notary.Steps[helperIndex].Run != "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+	if notary.Steps[helperIndex].Run != "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 		t.Fatal("notarize outcome must belong to the actual notarization helper")
 	}
 	t.Run("helper outcome output binding", func(t *testing.T) {

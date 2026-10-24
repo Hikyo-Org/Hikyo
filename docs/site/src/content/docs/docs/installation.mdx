@@ -14,6 +14,7 @@ treat a development build or a nightly as a supported production release.
 | --- | --- | --- |
 | Try Hikyo locally | [Getting started](/docs/getting-started/) | Loopback-only server, SQLite, embedded web UI |
 | Try the latest `main` build | [Unsigned development snapshot](#unsigned-development-snapshots) | Exact-commit archive for six desktop/server targets |
+| Install the macOS CLI | [macOS DMG and Homebrew](#macos-dmg-and-homebrew) | Apple Silicon or Intel executable from a published release |
 | Run a signed nightly on a systemd host | [Upgrades](/docs/upgrades/#one-command-nightly-upgrade) | `sudo hikyo upgrade` with verified release evidence and a tested encrypted backup |
 | Pull a nightly for Docker or Kubernetes | [Nightly container images](#nightly-container-images) | Distroless image for Linux amd64 and arm64 |
 | Build a reusable binary | [Build from source](/docs/build-from-source/) | One binary for your current platform |
@@ -93,15 +94,51 @@ Each package installs only `/usr/bin/hikyo` and
 `/usr/share/doc/hikyo/LICENSE`. It does not create configuration, generate
 keys, install a service, or start a server.
 
-After a stable release's protected tap PR is merged, macOS users can install
-the same macOS archive bytes through the Homebrew convenience channel:
+## macOS DMG and Homebrew
+
+Hikyo is a command-line tool with an embedded browser UI. The DMG contains
+`hikyo` and `LICENSE`, rather than an application to drag into Applications.
+On [GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases), choose the
+release and download its `Darwin_arm64.dmg` for Apple Silicon or
+`Darwin_x86_64.dmg` for Intel. Verify the release bundle using the
+[release verification runbook](/release/signing/), then open the image and copy
+`hikyo` to a writable directory on your executable search path. Run
+`hikyo --help` to check the installation.
+
+Both images are Developer ID signed, notarized, and stapled before publication.
+A nightly may omit both DMGs when Apple notarization or ticket stapling fails;
+use an earlier release that includes the pair, or build from source. A missing
+DMG is not a reason to disable Gatekeeper or remove quarantine.
+
+Homebrew installs the executable from the same DMG. The nightly and stable
+channels have separate casks and cannot be installed together:
+
+```sh
+# Signed development nightly, after its protected tap PR is merged:
+brew install --cask hikyo-org/tap/hikyo@nightly
+```
+
+The `hikyo` cask is reserved for the first stable release. After its protected
+tap PR is merged, install it with:
 
 ```sh
 brew install --cask hikyo-org/tap/hikyo
 ```
 
+The tap is [Hikyo-Org/homebrew-tap](https://github.com/Hikyo-Org/homebrew-tap).
+If Homebrew cannot discover the tap, add its URL explicitly:
+
+```sh
+brew tap hikyo-org/tap https://github.com/Hikyo-Org/homebrew-tap
+```
+
+If Homebrew instead reports that the cask is unavailable, check that the
+matching `Casks/hikyo@nightly.rb` or `Casks/hikyo.rb` exists in the tap's `main`
+branch. Tapping alone cannot install a cask that has not been published.
+Use the DMG download while the tap PR awaits review.
+
 Homebrew does **not** verify Hikyo's pinned signing root. It authorizes the
-tap/cask and verifies the archive SHA-256 recorded in that cask; compromise of
+tap/cask and verifies the DMG SHA-256 recorded in that cask; compromise of
 the tap could replace the verification instructions, key, URL, and checksum
 together. Use the complete signed-bundle verification flow above when the
 Hikyo-root guarantee is required. The Homebrew path is convenient distribution,

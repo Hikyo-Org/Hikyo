@@ -17,6 +17,20 @@ func TestAppleSigningFixtures(t *testing.T) {
 	}
 }
 
+func TestAppleTicketNetworkFixtures(t *testing.T) {
+	cmd := exec.Command("sh", "../release/with-apple-ticket-network_test.sh")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Apple ticket network fixtures: %v\n%s", err, output)
+	}
+}
+
+func TestHomebrewNightlyPublisherFixtures(t *testing.T) {
+	cmd := exec.Command("sh", "../release/publish-homebrew-nightly_test.sh")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Homebrew nightly publisher fixtures: %v\n%s", err, output)
+	}
+}
+
 // Stable publication always consumes both accepted notarized disk images.
 func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 	var workflow struct {
@@ -100,7 +114,7 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 					}
 				}
 			}
-			if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+			if step.Run == "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 				notarySteps++
 				if name != "apple-notarize" || step.If != "" || step.Env["APPLE_NOTARY_KEY_P8"] != "${{ secrets.APPLE_NOTARY_KEY_P8 }}" {
 					t.Fatal("stable notarization must be unconditional in its separate credential-isolated job")
