@@ -183,6 +183,7 @@ verifications to preserve remembered rollback and equivocation protection.
   IFS= read -r tag
   printf 'Persistent verification-state file: '
   IFS= read -r verification_state
+  : "${verification_state:?Persistent verification-state file is required}"
   bundle=$(mktemp -d)
   gh release download "$tag" --repo Hikyo-Org/Hikyo --dir "$bundle"
   commit=$(gh api "repos/Hikyo-Org/Hikyo/commits/$tag" --jq .sha)

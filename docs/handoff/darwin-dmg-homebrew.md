@@ -159,3 +159,9 @@ installation proof.
 Local installer acceptance, if performed, is separate from immutable release
 publication and is delivered in chat without committing machine-specific
 artifact paths or HTML documentation.
+
+The R2 standards review caught an empty-input gap in the stable verification
+example: an empty state path disables persistence in the verifier. The command
+now requires a nonempty state path before downloading. A mocked execution of
+the exact documented snippet reproduced the download before the fix and
+confirmed that empty input fails before any download afterward.
