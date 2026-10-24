@@ -363,7 +363,7 @@ jobs:
           name: apple-signed-nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-nightly-inputs.tar.gz
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   apple-notarize:
     environment: apple-signing
@@ -416,7 +416,7 @@ jobs:
           APPLE_RELEASE_CHANNEL: nightly
           APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
           APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
-        run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
+        run: ./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
       - name: Retain Apple notarization diagnostics
         id: notarization-diagnostics
         if: ${{ always() }}
@@ -433,7 +433,7 @@ jobs:
           name: apple-nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-nightly-inputs.tar.gz
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   publish:
     needs: [validation, build-artifacts, apple-sign, apple-notarize]

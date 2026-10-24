@@ -38,7 +38,7 @@ func TestAppleNotarizationEvidenceRetainedOnFailure(t *testing.T) {
 			}
 			signingIndex, uploadIndex := -1, -1
 			for index, step := range workflow.Jobs["apple-notarize"].Steps {
-				if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+				if step.Run == "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 					signingIndex = index
 					if step.Env["APPLE_NOTARY_EVIDENCE_DIR"] != "${{ runner.temp }}/apple-notarization" {
 						t.Fatal("notarization must write diagnostics outside credential scratch and release payloads")

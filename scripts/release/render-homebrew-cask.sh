@@ -10,7 +10,18 @@ fail() {
 	exit 1
 }
 
-[ "$#" -eq 4 ] || fail 'usage: render-homebrew-cask.sh MANIFEST BUNDLE OUTPUT REPOSITORY'
+channel=stable
+cask_name=hikyo
+conflict=hikyo@nightly
+schema=hikyo.dev/release-manifest/v1
+if [ "${1:-}" = --nightly ]; then
+	shift
+	channel=nightly
+	cask_name=hikyo@nightly
+	conflict=hikyo
+	schema=hikyo.dev/nightly-manifest/v1
+fi
+[ "$#" -eq 4 ] || fail 'usage: render-homebrew-cask.sh [--nightly] MANIFEST BUNDLE OUTPUT REPOSITORY'
 manifest=$1
 bundle=$2
 output=$3
@@ -23,14 +34,20 @@ case "$repository" in
 	*[!A-Za-z0-9._/-]* | */*/* | /* | */ | '') fail 'invalid source repository' ;;
 esac
 
-jq -e '
-	.schema == "hikyo.dev/release-manifest/v1" and
+jq -e --arg schema "$schema" '
+	.schema == $schema and
 	(.version | type == "string") and
 	.tag == ("v" + .version) and
 	(.artifacts | type == "array")
 ' "$manifest" >/dev/null || fail 'invalid release manifest'
 version=$(jq -r '.version' "$manifest")
 is_semver "$version" || fail 'invalid release version'
+if [ "$channel" = nightly ]; then
+	jq -e '.profile == "nightly/v1" and (.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.[0-9]{8}\\.[1-9][0-9]*\\.g[0-9a-f]{8}$"))' \
+		"$manifest" >/dev/null || fail 'invalid nightly identity'
+else
+	[ "$("$script_dir/release-channel.sh" "v$version")" = stable ] || fail 'stable cask requires a stable version'
+fi
 
 image_record() {
 	architecture=$1
@@ -57,7 +74,7 @@ done
 tmp=$(mktemp "$output.tmp.XXXXXX")
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
 cat >"$tmp" <<EOF
-cask "hikyo" do
+cask "$cask_name" do
   arch arm: "arm64", intel: "x86_64"
 
   version "$version"
@@ -69,6 +86,7 @@ cask "hikyo" do
   desc "Self-hosted control plane for secrets and configuration"
   homepage "https://hikyo.app/"
 
+  conflicts_with cask: "$conflict"
   binary "hikyo"
 end
 EOF

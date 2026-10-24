@@ -179,6 +179,23 @@ the repository, publish a release, or mint a Cosign OIDC identity.
 
 ## DMG and Homebrew installations
 
+Both release workflows wrap notarization in
+`scripts/release/with-apple-ticket-network.sh`. On disposable GitHub-hosted
+macOS runners, this temporarily rejects outbound UDP port 443 in a dedicated
+packet-filter anchor so Apple's ticket client falls back from HTTP/3 to TCP.
+This addresses the accepted-notarization/stapling Error 68 reported in
+[actions/runner-images#14924](https://github.com/actions/runner-images/issues/14924).
+The wrapper preserves the parent ruleset, removes its anchor rules, releases
+its own firewall enablement token on exit, and propagates command or cleanup
+failure. It refuses local Macs and self-hosted runners. Apple acceptance,
+stapler validation and Gatekeeper assessment remain mandatory for DMGs.
+
+Both workflows retain their signed and finalized handoff artifacts for 30 days.
+These contain release files, not the signing Keychain or credential scratch.
+This preserves the exact signed bytes for inspection after an Apple service
+failure; it does not authorize rebuilding, resubmitting an uncertain upload,
+or adding files to an already-published manifest.
+
 Hikyo is a command-line executable with an embedded web UI. Each DMG contains
 `hikyo` and `LICENSE`; it is not a macOS application bundle. Download the DMG
 matching the Mac's architecture from the verified public release. After opening
@@ -190,6 +207,15 @@ same stapled DMGs with architecture-specific SHA-256 values from the verified
 manifest and installs their `hikyo` executable. It requires both DMGs and refuses
 missing, mismatched, or symlinked assets. No quarantine-removal hook is added.
 Tap publication remains a separate protected PR after public release verification.
+
+For development releases, `publish-homebrew-cask.sh --nightly` generates
+`hikyo@nightly` from the same signed DMG pair. It authenticates the complete
+bundle through the recovery-authorized `nightly verify` command before any tap
+mutation, then downloads both public DMGs and compares their hashes with the
+authenticated manifest. It requires a public nightly prerelease and keeps
+`hikyo` stable-only.
+See [the package-manager handoff](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/package-manager-releases.md#nightly-homebrew-publication)
+for the publication command. Neither publisher merges its tap PR.
 
 Raw executables and tarballs cannot carry a stapled ticket. Their contained code
 is submitted inside the DMG, but a first launch from a tarball may need access to
