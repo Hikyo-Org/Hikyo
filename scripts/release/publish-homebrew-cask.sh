@@ -76,6 +76,23 @@ set --
 "$script_dir/render-homebrew-cask.sh" "$@" "$manifest" "$bundle" "$cask" "$source_repository" >/dev/null
 cask_content=$(base64 <"$cask" | tr -d '\n')
 
+if [ "$nightly" = true ]; then
+	# Authenticate the local inventory first, then prove that each public URL
+	# actually serves those bytes. A retained valid bundle is not publication proof.
+	mkdir "$scratch/public"
+	for architecture in arm64 x86_64; do
+		image="hikyo_${version}_Darwin_${architecture}.dmg"
+		expected_sha=$(jq -r --arg name "$image" '.artifacts[] | select(.name == $name) | .sha256' "$manifest")
+		"$GH_BIN" release download "$tag" --repo "$source_repository" \
+			--dir "$scratch/public" --pattern "$image" \
+			|| fail "cannot download public disk image $image"
+		[ -f "$scratch/public/$image" ] && [ ! -L "$scratch/public/$image" ] \
+			|| fail "missing regular public disk image $image"
+		[ "$(sha256_file "$scratch/public/$image")" = "$expected_sha" ] \
+			|| fail "public disk image hash mismatch: $image"
+	done
+fi
+
 contents_endpoint="repos/$tap_repository/contents/Casks/$cask_name.rb"
 current_sha=
 if current_json=$("$GH_BIN" api "$contents_endpoint?ref=main" 2>"$scratch/main-error"); then

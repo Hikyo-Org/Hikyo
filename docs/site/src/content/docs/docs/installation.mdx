@@ -100,8 +100,9 @@ Hikyo is a command-line tool with an embedded browser UI. The DMG contains
 `hikyo` and `LICENSE`, rather than an application to drag into Applications.
 On [GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases), choose the
 release and download its `Darwin_arm64.dmg` for Apple Silicon or
-`Darwin_x86_64.dmg` for Intel. Verify the release bundle using the
-[release verification runbook](/release/signing/), then open the image and copy
+`Darwin_x86_64.dmg` for Intel. Follow the
+[stable DMG verification](#verify-a-stable-dmg) or
+[nightly DMG verification](#verify-a-nightly-dmg) steps below, then open the image and copy
 `hikyo` to a writable directory on your executable search path. Run
 `hikyo --help` to check the installation.
 
@@ -143,6 +144,88 @@ the tap could replace the verification instructions, key, URL, and checksum
 together. Use the complete signed-bundle verification flow above when the
 Hikyo-root guarantee is required. The Homebrew path is convenient distribution,
 not an official fail-closed installer.
+
+### Verify a downloaded DMG
+
+The following procedures verify the **complete release bundle**, including
+both DMGs, before opening a download. Run them from the root of a trusted
+Hikyo checkout with the Go version pinned in `go.mod` and the GitHub CLI (`gh`)
+installed. See [Build from source](/docs/build-from-source/) for the toolchain.
+The verifier runs from that trusted checkout, rather than from the download.
+
+Use a current, independently authenticated `release/trust` directory containing
+the pinned recovery root, public keys, signed metadata/catalog, and the selected
+channel's authorized policy and Sigstore roots. Do not establish trust by
+copying keys or policy from the same unverified download. If that public trust
+material is missing or cannot be authenticated, stop before installation; the
+[trust bootstrap runbook](/release/signing/#one-time-trust-bootstrap) describes
+its maintainer-managed authorization.
+
+Choose an exact **public** tag from [GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases).
+Each procedure prompts for that tag and downloads all its assets into a fresh
+temporary directory. A failed download, signature, policy, revocation or hash
+check stops the command before Finder opens. On success, the verifier prints
+the authenticated release identity and Finder opens the verified directory.
+Both architecture images must be present. Choose the image for your Mac and
+continue with the copy-to-PATH instructions above.
+
+### Verify a stable DMG
+
+This path becomes available after the first stable release is published.
+Enter its exact tag, such as `v1.0.0`, and a path for a persistent verification
+state file outside the download directory. Keep that state file across future
+verifications to preserve remembered rollback and equivocation protection.
+
+```sh
+(
+  set -eu
+  printf 'Published stable tag: '
+  IFS= read -r tag
+  printf 'Persistent verification-state file: '
+  IFS= read -r verification_state
+  bundle=$(mktemp -d)
+  gh release download "$tag" --repo Hikyo-Org/Hikyo --dir "$bundle"
+  commit=$(gh api "repos/Hikyo-Org/Hikyo/commits/$tag" --jq .sha)
+  go run ./scripts/release/stable verify --trust release/trust \
+    --state "$verification_state" --directory "$bundle" \
+    --version "${tag#v}" --commit "$commit" --latest
+  test -f "$bundle/hikyo_${tag#v}_Darwin_arm64.dmg"
+  test -f "$bundle/hikyo_${tag#v}_Darwin_x86_64.dmg"
+  printf 'Verified DMGs: %s\n' "$bundle"
+  open "$bundle"
+)
+```
+
+The command requires the signed latest stable release. An authorized older
+stable release needs explicit historical verification under the
+[release verification policy](/release/signing/#per-release-ceremony).
+
+### Verify a nightly DMG
+
+Enter the exact nightly tag containing the images you selected. Nightlies
+remain development prereleases. The verifier checks their authenticated
+inventory against the separately recovery-authorized `nightly/v1` policy.
+
+```sh
+(
+  set -eu
+  printf 'Published nightly tag: '
+  IFS= read -r tag
+  bundle=$(mktemp -d)
+  gh release download "$tag" --repo Hikyo-Org/Hikyo --dir "$bundle"
+  go run ./scripts/release/nightly verify --trust release/trust \
+    --directory "$bundle"
+  test -f "$bundle/hikyo_${tag#v}_Darwin_arm64.dmg"
+  test -f "$bundle/hikyo_${tag#v}_Darwin_x86_64.dmg"
+  printf 'Verified DMGs: %s\n' "$bundle"
+  open "$bundle"
+)
+```
+
+An authenticated nightly may legitimately contain no DMGs after an Apple
+service failure. In that case the presence checks stop installation. Select a
+different published nightly that includes both images; do not substitute an
+unlisted DMG or skip the bundle check.
 
 ## Unsigned development snapshots
 

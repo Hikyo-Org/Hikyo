@@ -132,6 +132,17 @@ criteria for Hikyo's public activation sequence below.
 
 ## Delivery sequence
 
+PR [1052](https://github.com/Hikyo-Org/Hikyo/pull/1052) review identified two
+additional gaps. The nightly publisher now downloads both public DMGs and
+checks them against the authenticated local manifest before any tap mutation.
+Regressions first reproduced publication with a missing public Apple Silicon
+image, then covered missing and tampered public files for both architectures.
+The installation page now provides separate reader-facing stable and nightly
+bundle-verification procedures, with independently authenticated trust,
+persistent stable verification state and DMG presence checks before opening
+Finder. Mocked/script checks do not establish a new public release or clean-Mac
+installation proof.
+
 1. Commit with cryptographic signing and DCO, open a PR, and satisfy the current
    review and CI gates. Merge requires the applicable authorization.
 2. Publish a newly authorized signed nightly through the existing protected

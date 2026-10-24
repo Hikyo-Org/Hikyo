@@ -17,6 +17,7 @@ func TestAppleSigningFixtures(t *testing.T) {
 	}
 }
 
+// TestAppleTicketNetworkFixtures preserves hosted-only networking and cleanup failure gates.
 func TestAppleTicketNetworkFixtures(t *testing.T) {
 	cmd := exec.Command("sh", "../release/with-apple-ticket-network_test.sh")
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -24,6 +25,7 @@ func TestAppleTicketNetworkFixtures(t *testing.T) {
 	}
 }
 
+// TestHomebrewNightlyPublisherFixtures requires authenticated local and matching public DMGs before tap writes.
 func TestHomebrewNightlyPublisherFixtures(t *testing.T) {
 	cmd := exec.Command("sh", "../release/publish-homebrew-nightly_test.sh")
 	if output, err := cmd.CombinedOutput(); err != nil {

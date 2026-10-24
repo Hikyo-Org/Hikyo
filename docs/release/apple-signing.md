@@ -211,7 +211,9 @@ Tap publication remains a separate protected PR after public release verificatio
 For development releases, `publish-homebrew-cask.sh --nightly` generates
 `hikyo@nightly` from the same signed DMG pair. It authenticates the complete
 bundle through the recovery-authorized `nightly verify` command before any tap
-mutation. It requires a public nightly prerelease and keeps `hikyo` stable-only.
+mutation, then downloads both public DMGs and compares their hashes with the
+authenticated manifest. It requires a public nightly prerelease and keeps
+`hikyo` stable-only.
 See [the package-manager handoff](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/package-manager-releases.md#nightly-homebrew-publication)
 for the publication command. Neither publisher merges its tap PR.
 
