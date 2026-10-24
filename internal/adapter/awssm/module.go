@@ -111,15 +111,13 @@ func (m *Module) describeResource(ctx context.Context, destination adapter.Desti
 	if r, ok := m.API.(regional); ok {
 		region = r.Region()
 	}
-	if err := verifyARN(meta.ARN, destination.Owner, region); err != nil {
+	if err := verifySecretIdentity(CreatedSecret{ARN: meta.ARN, Name: meta.Name}, name, destination.Owner, region); err != nil {
 		return SecretMetadata{}, false, err
 	}
 	// A complete ARN contains this exact name followed by six random
 	// characters. Never turn an unrelated provider response into a write
 	// destination, and never follow a replacement when inspecting by ARN.
-	resource := strings.SplitN(meta.ARN, ":", 7)[6]
-	suffix, matches := strings.CutPrefix(resource, name+"-")
-	if meta.Name != name || !matches || len(suffix) != 6 || (resourceID != name && meta.ARN != resourceID) {
+	if resourceID != name && meta.ARN != resourceID {
 		return SecretMetadata{}, false, fmt.Errorf("%w: provider secret identity does not match configured name", adapter.ErrDestinationID)
 	}
 	return meta, true, nil
@@ -135,6 +133,20 @@ func verifyARN(arn, account, region string) error {
 	}
 	if region != "" && parts[3] != region {
 		return fmt.Errorf("%w: secret lives in region %s, configured %s", adapter.ErrDestinationID, parts[3], region)
+	}
+	return nil
+}
+
+// verifySecretIdentity is shared by metadata reads and creation receipts.
+// Both bind a complete AWS ARN to the exact configured name.
+func verifySecretIdentity(identity CreatedSecret, name, account, region string) error {
+	if err := verifyARN(identity.ARN, account, region); err != nil {
+		return err
+	}
+	parts := strings.SplitN(identity.ARN, ":", 7)
+	suffix, match := strings.CutPrefix(parts[6], name+"-")
+	if identity.Name != name || !match || len(suffix) != 6 || strings.Trim(suffix, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+		return fmt.Errorf("%w: provider secret identity does not match configured name", adapter.ErrDestinationID)
 	}
 	return nil
 }
@@ -205,11 +217,15 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		// Historical custody is not current provider ownership. Surface the
 		// same refusal as Sync so a fresh scoped artifact can renew adoption.
-		if found && meta.Tags[adapter.SentinelName] != req.Target.ID {
+		// Pending first-write consent must still match this resource and
+		// current version, even if its ownership tag already landed. Invalid
+		// observed metadata yields no usable witness for explicit adoption.
+		observedWitness := adoptionWitness(meta)
+		if found && (meta.Tags[adapter.SentinelName] != req.Target.ID || (record.AdoptionPending && (observedWitness == "" || record.AdoptionWitness != observedWitness))) {
 			change.Disposition = adapter.Conflict
 		}
 		if found && change.Disposition == adapter.Conflict {
-			change.ObservedProviderWitness = adoptionWitness(meta)
+			change.ObservedProviderWitness = observedWitness
 		}
 	}
 	return adapter.Plan{Changes: changes}, nil

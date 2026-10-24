@@ -515,18 +515,15 @@ type CreatedSecret struct {
 // to API and validates against the caller's already approved account.
 func (c *Client) CreateSecretIdentity(ctx context.Context, input CreateSecretInput, account string) (CreatedSecret, error) {
 	var out CreatedSecret
-	if len(account) != 12 || strings.Trim(account, "0123456789") != "" {
+	if err := adapter.ValidateAWSSecretsManagerDestination(adapter.Destination{Kind: adapter.PerKey, Owner: account}); err != nil {
 		return out, errors.New("aws-secrets-manager: invalid expected creation account")
 	}
 	if err := c.createSecret(ctx, input, &out); err != nil {
 		return CreatedSecret{}, err
 	}
-	if err := verifyARN(out.ARN, account, c.route.region); err != nil {
-		return CreatedSecret{}, fmt.Errorf("%w: created resource identity mismatch", adapter.ErrDestinationID)
-	}
-	parts := strings.SplitN(out.ARN, ":", 7)
-	suffix, match := strings.CutPrefix(parts[6], input.Name+"-")
-	if parts[1] != "aws" || out.Name != input.Name || !match || len(suffix) != 6 || strings.Trim(suffix, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+	// Operator fixtures retain their commercial-only account contract.
+	// Ordinary metadata inspection also supports other AWS partitions.
+	if err := verifySecretIdentity(out, input.Name, account, c.route.region); err != nil || !strings.HasPrefix(out.ARN, "arn:aws:") {
 		return CreatedSecret{}, fmt.Errorf("%w: created resource identity mismatch", adapter.ErrDestinationID)
 	}
 	return out, nil
@@ -539,7 +536,7 @@ func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) erro
 func (c *Client) createSecret(ctx context.Context, input CreateSecretInput, out any) error {
 	request := struct {
 		Name               string `json:"Name"`
-		ClientRequestToken string `json:"ClientRequestToken"`
+		ClientRequestToken string `json:"ClientRequestToken,omitempty"`
 		Description        string `json:"Description"`
 		KmsKeyID           string `json:"KmsKeyId,omitempty"`
 		Tags               []tag  `json:"Tags"`
@@ -552,7 +549,7 @@ func (c *Client) createSecret(ctx context.Context, input CreateSecretInput, out 
 func (c *Client) PutSecretValue(ctx context.Context, name, token, value string) error {
 	request := struct {
 		SecretID           string   `json:"SecretId"`
-		ClientRequestToken string   `json:"ClientRequestToken"`
+		ClientRequestToken string   `json:"ClientRequestToken,omitempty"`
 		SecretString       string   `json:"SecretString"`
 		VersionStages      []string `json:"VersionStages"`
 	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{PendingStage}}

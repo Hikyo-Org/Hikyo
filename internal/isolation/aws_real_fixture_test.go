@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,7 +19,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
@@ -484,59 +481,11 @@ func (s *realAWSSandbox) call(ctx context.Context, oracle bool, operation, id st
 		}
 		in["SecretId"] = id
 	}
-	err := requestAWSFixture(ctx, env, operation, in, out)
+	err := externalAWSCall(ctx, env, operation, in, out)
 	if operation != "DescribeSecret" || !realAWSCode(err, "ResourceNotFoundException") {
 		logRealAWSDiagnostic(s.t, operation, err)
 	}
 	return err
-}
-
-// The raw signer stays outside production. Callers must first bind the exact
-// sandbox actor, operation and recorded synthetic ARN; it adds no adapter API.
-func requestAWSFixture(ctx context.Context, env externalAWS, operation string, in map[string]any, out any) error {
-	body, err := json.Marshal(in)
-	if err != nil {
-		return errors.New("cannot encode AWS fixture request")
-	}
-	defer crypto.Zero(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, env.origin+"/", bytes.NewReader(body))
-	if err != nil {
-		return errors.New("cannot build AWS fixture request")
-	}
-	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
-	req.Header.Set("X-Amz-Target", "secretsmanager."+operation)
-	sum := sha256.Sum256(body)
-	if err := v4.NewSigner().SignHTTP(ctx, env.creds, req, hex.EncodeToString(sum[:]), "secretsmanager", env.region, time.Now().UTC()); err != nil {
-		return errors.New("cannot sign AWS fixture request")
-	}
-	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Timeout: 15 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		return errors.New("AWS fixture transport failed")
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
-	defer crypto.Zero(raw)
-	if err != nil || len(raw) > 1<<20 {
-		return errors.New("AWS fixture response unreadable or too large")
-	}
-	if resp.StatusCode != http.StatusOK {
-		var e struct {
-			Type string `json:"__type"`
-		}
-		_ = json.Unmarshal(raw, &e)
-		code := e.Type
-		if i := strings.LastIndex(code, "#"); i >= 0 {
-			code = code[i+1:]
-		}
-		return &realAWSResponseError{code: code, status: resp.StatusCode}
-	}
-	if out != nil && json.Unmarshal(raw, out) != nil {
-		return errors.New("AWS fixture response invalid")
-	}
-	return nil
 }
 
 func (s *realAWSSandbox) arn(t *testing.T, name string) string {

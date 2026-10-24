@@ -807,6 +807,48 @@ func TestPlanIsValueBlindAndMarksConflicts(t *testing.T) {
 	}
 }
 
+func TestPlanPropagatesUnownedConflictDescribeFailure(t *testing.T) {
+	api := newFakeAPI()
+	name := "prod/APP_DATABASE_URL"
+	api.secrets[name] = &fakeSecret{tags: map[string]string{}, stages: map[string][]string{}}
+	transient := &ResponseError{Status: 503, Code: "ServiceUnavailable"}
+	api.failOnce["describe:"+name] = transient
+	req := adapter.PlanRequest{Target: perKeyTarget(), Manifest: manifest(), Gate: func(context.Context) error { return nil }}
+	plan, err := (&Module{API: api}).Plan(t.Context(), req)
+	if !errors.Is(err, transient) || len(plan.Changes) != 0 || len(api.writes()) != 0 {
+		t.Fatalf("describe failure lost or partial plan published: plan=%+v err=%v writes=%v", plan, err, api.writes())
+	}
+	plan, err = (&Module{API: api}).Plan(t.Context(), req)
+	if err != nil || len(plan.Changes) != 2 || plan.Changes[0].Disposition != adapter.Conflict || plan.Changes[0].ObservedProviderWitness == "" || len(api.writes()) != 0 {
+		t.Fatalf("fresh plan after transient failure: plan=%+v err=%v", plan, err)
+	}
+}
+
+func TestPlanRenewsLegacyPendingAdoptionWithMatchingTag(t *testing.T) {
+	for _, kind := range []adapter.DestinationKind{adapter.JSONObject, adapter.PerKey} {
+		t.Run(string(kind), func(t *testing.T) {
+			api := newFakeAPI()
+			target, name := jsonTarget(), "prod/app"
+			if kind == adapter.PerKey {
+				target, name = perKeyTarget(), "prod/APP_DATABASE_URL"
+			}
+			api.secrets[name] = &fakeSecret{tags: map[string]string{adapter.SentinelName: target.ID}, stages: map[string][]string{"legacy": {awsCurrent}}, values: map[string]string{"legacy": "legacy value"}}
+			entries := manifest()[:1]
+			ledger := []adapter.LedgerEntry{{Surface: adapter.Secret, EffectiveName: name, State: adapter.Owned, AdoptionPending: true}}
+			module := &Module{API: api}
+			journal := newFakeJournal()
+			journal.states[name] = adapter.Owned
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: ledger, JobID: "legacy"}, journal); !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != 0 {
+				t.Fatalf("legacy adoption bypassed witness: %v, writes=%v", err, api.writes())
+			}
+			plan, err := module.Plan(t.Context(), adapter.PlanRequest{Target: target, Manifest: entries, Ledger: ledger, Gate: func(context.Context) error { return nil }})
+			if err != nil || len(plan.Changes) == 0 || plan.Changes[0].Disposition != adapter.Conflict || plan.Changes[0].ObservedProviderWitness != testAdoptionWitness(t, api, name) || len(api.writes()) != 0 {
+				t.Fatalf("fresh plan did not renew legacy witness: %+v %v", plan, err)
+			}
+		})
+	}
+}
+
 func TestManifestRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name        string
@@ -896,5 +938,97 @@ func TestOwnedTagRetryDoesNotOverridePriorValueEvidence(t *testing.T) {
 		if !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != 0 || api.current("prod/app") != "external-value" {
 			t.Fatalf("versionTag=%v: external edit not protected: %v", versionTag, err)
 		}
+	}
+}
+
+func TestPlanRenewsPendingAdoptionAgainstCurrentMetadata(t *testing.T) {
+	for _, target := range []adapter.Target{jsonTarget(), perKeyTarget()} {
+		for _, mutation := range []string{"missing", "unchanged", "current-version", "resource", "malformed", "ambiguous-current", "empty-current", "missing-arn"} {
+			t.Run(string(target.Destination.Kind)+"/"+mutation, func(t *testing.T) {
+				name := "prod/app"
+				if target.Destination.Kind == adapter.PerKey {
+					name = "prod/APP_DATABASE_URL"
+				}
+				api := newFakeAPI()
+				api.secrets[name] = &fakeSecret{tags: map[string]string{adapter.SentinelName: target.ID}, stages: map[string][]string{"reviewed": {awsCurrent}}, values: map[string]string{"reviewed": "reviewed synthetic"}}
+				witness := testAdoptionWitness(t, api, name)
+				provider := &wrongResourceMetadataAPI{fakeAPI: api, mutate: func(*SecretMetadata) {}}
+				switch mutation {
+				case "missing":
+					witness = ""
+				case "current-version":
+					api.externalPut(name, "later-version", "later synthetic")
+				case "resource":
+					provider.mutate = func(meta *SecretMetadata) { meta.ARN = strings.TrimSuffix(meta.ARN, "AbCdEf") + "GhIjKl" }
+				case "malformed":
+					witness = "[]"
+				case "ambiguous-current":
+					api.secrets[name].stages["ambiguous"] = []string{awsCurrent}
+				case "empty-current":
+					api.secrets[name].stages = map[string][]string{}
+				case "missing-arn":
+					provider.mutate = func(meta *SecretMetadata) { meta.ARN = "" }
+				}
+				ledger := []adapter.LedgerEntry{{Surface: adapter.Secret, EffectiveName: name, State: adapter.Owned, AdoptionPending: true, AdoptionWitness: witness}}
+				module, journal := &Module{API: provider}, newFakeJournal()
+				journal.states[name] = adapter.Owned
+				if mutation != "unchanged" {
+					wantErr := adapter.ErrConflict
+					if mutation == "missing-arn" {
+						wantErr = adapter.ErrDestinationID
+					}
+					if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest()[:1], Ledger: ledger, JobID: "pending-witness"}, journal); !errors.Is(err, wantErr) || len(api.writes()) != 0 {
+						t.Fatalf("pending consent was not refused before writes: %v writes=%v", err, api.writes())
+					}
+				}
+				plan, err := module.Plan(t.Context(), adapter.PlanRequest{Target: target, Manifest: manifest()[:1], Ledger: ledger, Gate: func(context.Context) error { return nil }})
+				if mutation == "missing-arn" {
+					if !errors.Is(err, adapter.ErrDestinationID) || len(plan.Changes) != 0 || len(api.writes()) != 0 {
+						t.Fatalf("invalid metadata produced a partial plan: %+v %v", plan, err)
+					}
+					return
+				}
+				if err != nil || len(plan.Changes) != 1 || len(api.writes()) != 0 {
+					t.Fatalf("planning failed or wrote: %+v %v writes=%v", plan, err, api.writes())
+				}
+				want := adapter.Conflict
+				if mutation == "unchanged" {
+					want = adapter.Update
+				}
+				if plan.Changes[0].Disposition != want {
+					t.Fatalf("pending %s consent cannot renew: disposition=%s want=%s", mutation, plan.Changes[0].Disposition, want)
+				}
+				if want == adapter.Conflict {
+					meta, err := provider.DescribeSecret(t.Context(), name)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if got := plan.Changes[0].ObservedProviderWitness; got != adoptionWitness(meta) {
+						t.Fatal("renewed plan is not bound to canonical current metadata")
+					}
+					if mutation == "ambiguous-current" && plan.Changes[0].ObservedProviderWitness != "" {
+						t.Fatal("ambiguous metadata granted usable adoption consent")
+					}
+				} else if plan.Changes[0].ObservedProviderWitness != "" {
+					t.Fatal("unchanged consent was unnecessarily replaced")
+				}
+			})
+		}
+	}
+}
+
+func TestPlanDoesNotRenewNonpendingCustody(t *testing.T) {
+	for _, state := range []adapter.LedgerState{adapter.Owned, adapter.Dispatched} {
+		t.Run(string(state), func(t *testing.T) {
+			api := newFakeAPI()
+			api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{adapter.SentinelName: testTarget}, stages: map[string][]string{"reviewed": {awsCurrent}}, values: map[string]string{"reviewed": "reviewed synthetic"}}
+			witness := testAdoptionWitness(t, api, "prod/app")
+			api.externalPut("prod/app", "later-version", "later synthetic")
+			ledger := []adapter.LedgerEntry{{Surface: adapter.Secret, EffectiveName: "prod/app", State: state, AdoptionWitness: witness}}
+			plan, err := (&Module{API: api}).Plan(t.Context(), adapter.PlanRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, Gate: func(context.Context) error { return nil }})
+			if err != nil || len(plan.Changes) != 1 || plan.Changes[0].Disposition != adapter.Update || plan.Changes[0].ObservedProviderWitness != "" || len(api.writes()) != 0 {
+				t.Fatalf("nonpending %s custody widened adoption eligibility: %+v %v", state, plan, err)
+			}
+		})
 	}
 }

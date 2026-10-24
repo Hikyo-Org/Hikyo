@@ -25,6 +25,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
 
 // External AWS Secrets Manager coverage (#158). Both tests skip locally and
@@ -139,7 +140,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		for _, name := range owned {
-			if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil && !strings.Contains(err.Error(), "ResourceNotFound") {
+			if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil && !realAWSCode(err, "ResourceNotFoundException") {
 				t.Errorf("force-delete %s: %v", name, err)
 			}
 		}
@@ -517,38 +518,54 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 	}
 }
 
-// externalAWSCall is the test-only oracle and cleanup path. It signs any
-// Secrets Manager operation, which is exactly what production code cannot do.
+// externalAWSCall owns the test-only signed oracle and cleanup transport.
+// Real sandbox callers must first bind the actor, operation and recorded ARN.
+// Errors retain typed codes but never provider bodies, values or credentials.
 func externalAWSCall(ctx context.Context, env externalAWS, operation string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
-		return err
+		return errors.New("cannot encode AWS fixture request")
 	}
+	defer crypto.Zero(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(env.origin, "/")+"/", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return errors.New("cannot build AWS fixture request")
 	}
 	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
 	req.Header.Set("X-Amz-Target", "secretsmanager."+operation)
 	sum := sha256.Sum256(body)
 	if err := v4.NewSigner().SignHTTP(ctx, env.creds, req, hex.EncodeToString(sum[:]), "secretsmanager", env.region, time.Now().UTC()); err != nil {
-		return err
+		return errors.New("cannot sign AWS fixture request")
 	}
-	client := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: env.roots}}}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: env.roots}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Timeout: 15 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return errors.New("AWS fixture transport failed")
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
+	defer crypto.Zero(raw)
+	if err != nil || len(raw) > 1<<20 {
+		return errors.New("AWS fixture response unreadable or too large")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: status %d %s", operation, resp.StatusCode, resp.Header.Get("X-Amzn-ErrorType"))
+		var e struct {
+			Type string `json:"__type"`
+		}
+		if err := json.Unmarshal(raw, &e); err != nil || e.Type == "" {
+			e.Type = resp.Header.Get("X-Amzn-ErrorType")
+		}
+		code := e.Type
+		if i := strings.LastIndex(code, "#"); i >= 0 {
+			code = code[i+1:]
+		}
+		code, _, _ = strings.Cut(code, ":")
+		return &realAWSResponseError{code: code, status: resp.StatusCode}
 	}
-	if out != nil {
-		return json.Unmarshal(raw, out)
+	if out != nil && json.Unmarshal(raw, out) != nil {
+		return errors.New("AWS fixture response invalid")
 	}
 	return nil
 }

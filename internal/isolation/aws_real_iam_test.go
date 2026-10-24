@@ -104,7 +104,7 @@ func (s *realAWSSandbox) checkWriterDenials(t *testing.T, mode, ownName, foreign
 	}
 	// Use the writer's OWN namespace after a successful value delivery, so a
 	// namespace or missing-secret error cannot masquerade as the no-read deny.
-	if err := requestAWSFixture(t.Context(), probe, "GetSecretValue", map[string]any{"SecretId": ownARN, "VersionStage": "AWSCURRENT"}, nil); !realAWSCode(err, "AccessDeniedException") {
+	if err := externalAWSCall(t.Context(), probe, "GetSecretValue", map[string]any{"SecretId": ownARN, "VersionStage": "AWSCURRENT"}, nil); !realAWSCode(err, "AccessDeniedException") {
 		t.Fatal("AWS did not deny a writer's synthetic value read")
 	}
 }

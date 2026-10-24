@@ -998,3 +998,62 @@ this integration. Focused source-equality and whitespace checks passed; the
 already delegated broad suite was not repeated locally. The new commit pair
 requires fresh hosted validation. PR #969 remains draft and outside the merge
 queue; no feature merge, AWS fixture or deployment approval is implied.
+
+## October 24 independent PR review repairs
+
+The subsequent independent PR review at `1eb676a988a2976e7bb20e588df49ffc00ce21b3`
+returned **pass with required changes before merge**. This is distinct from
+historical frozen source reviews and does not discharge final review or real
+AWS acceptance. The repair increment remains subject to fresh independent review
+and current-head hosted checks. All operational, adoption, authentication,
+provider and delivery holds remain in place.
+
+An upgraded legacy pending adoption can retain the matching ownership tag but
+have no provider witness. Sync correctly refuses that combination. Plan now
+returns a Conflict with current resource/version metadata so the operator can
+review a fresh scoped artifact and explicitly adopt it. Replanning performs no
+writes, and neither the matching tag nor historical custody supplies consent.
+The regression traverses the service, both datastore engines, outbox and worker.
+
+Migration 81 adds scoped expression indexes for the existing plan and worker
+adoption lookups in SQLite and PostgreSQL. It preserves every conflict/effect
+record and migration 80's witness semantics. The development compatibility
+claims and legacy upgrade drill must include this new migration. Historical
+migration bodies and previously recorded source/test/report pins are unchanged.
+
+Both write request shapes omit an empty ClientRequestToken and retain any
+provided stable token byte-for-byte. The production module continues to supply
+its deterministic journal token; omission does not generate an idempotency token
+or establish that a tokenless raw HTTP request is accepted by AWS. The earlier
+CodeRabbit development-seed call-graph claim was withdrawn and is not evidence
+of a production caller sending an empty token.
+
+Metadata inspection and creation receipts share exact resource identity
+validation. The test-only oracle and fixture share one signed transport with
+bounded responses, typed provider errors, redacted messages, no redirects and
+explicit connection cleanup. The controlled credential refresh test retains its
+assertions under `TestClientRefreshesExpiredCredentials`; its synthetic cache is
+no longer an entry in the production registry, and the declaration sweep is
+unchanged. Transient metadata failures abort planning without a partial artifact.
+
+The historical USD 1 target, October 22 banked aggregate bound strictly below
+USD 15, and executable fixture budget ceiling of USD 10 are different limits.
+The validator still requires `0 < budget_usd <= 10`; the stricter trusted runner
+and conservative admission limits still apply. This repair grants no spending
+or execution authority and does not change owner approval, billing policy,
+manual/protected AWS CI gates, retry timing or ADR review status.
+
+
+## October 24 pending-adoption witness renewal followup
+
+A pending first write can retain genuine consent after its ownership tag lands.
+If the current provider version or complete resource identity then changes, Sync
+refuses that stale consent. Plan now compares pending consent with the canonical
+current metadata witness and surfaces a new conflict for explicit adoption.
+Ambiguous metadata supplies no usable witness. Historical custody and a matching
+ownership tag alone do not authorize a write; the existing exact-scope, generation,
+reauthentication, consumption and same-job promoted-token replay checks remain.
+
+This source repair requires fresh independent review. It does not supersede the
+original full-PR review, establish real AWS acceptance, satisfy the ADR review
+route, or grant authentication, adoption, provider execution or merge approval.

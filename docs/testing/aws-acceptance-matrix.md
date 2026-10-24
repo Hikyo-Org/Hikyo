@@ -146,7 +146,7 @@ sandbox setup remain external prerequisites as detailed below.
    copy unsigned sibling drafts or hand-edit generated SQL bindings.
 2. Run both-engine controlled durable tests and the real sandbox suite. Auth
    tests cover fresh-client reconstruction after expired inputs, and
-   `TestClientRefreshesExpiredCachedCredentials` covers same-client SDK cache
+   `TestClientRefreshesExpiredCredentials` covers same-client SDK cache
    refresh or refusal with controlled synthetic credentials. Real STS issuance,
    projected-token renewal and long-lived role-session refresh remain unproven;
    the controlled test is not real-provider auth recovery.
@@ -236,7 +236,7 @@ budget reset. Operator reconciliation from retained evidence is still required
 before further cleanup or a new approved namespace; do not claim a durable
 parent cleanup journal.
 
-The subsequently executed `TestClientRefreshesExpiredCachedCredentials` strengthens the
+The subsequently executed `TestClientRefreshesExpiredCredentials` strengthens the
 same-client boundary without waiting for real STS expiry: the actual SDK cache
 uses a controlled early-expiry window, and one client must obtain new synthetic
 signing credentials or refuse before its next HTTP request when refresh fails.

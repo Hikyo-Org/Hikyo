@@ -34,7 +34,7 @@ func (p *expiringTestCredentials) Retrieve(context.Context) (aws.Credentials, er
 // The SDK expiry window moves the first cached expiry into the past without
 // sleeping or changing the host clock. This exercises one actual Client and
 // CredentialsCache across two signed requests, not STS issuance/projection.
-func TestClientRefreshesExpiredCachedCredentials(t *testing.T) {
+func TestClientRefreshesExpiredCredentials(t *testing.T) {
 	for _, refuse := range []bool{false, true} {
 		name := "refresh-success"
 		if refuse {
