@@ -13,6 +13,7 @@ All response bodies, including failures, remain in private fixture custody.
 import json
 import os
 import re
+import runpy
 import secrets
 import ssl
 import subprocess
@@ -126,6 +127,11 @@ class Fixture:
                 f"fixture API returned HTTP {error.code}; inspect private diagnostics"
             ) from None
         return {} if not raw else object_value(json.loads(raw))
+
+    def login(self, password, draw_code):
+        self.token = ""
+        ceremony = runpy.run_path(str(Path(__file__).parents[1] / "fixture_cli_login.py"))["login"]
+        self.session(ceremony(self.origin, "rehearsal-admin", password, draw_code, self.http))
 
     def session(self, result):
         self.token = string_value(object_value(result).get("session_token"))
@@ -323,18 +329,9 @@ class Fixture:
         org = string_value(self.request("POST", "/orgs", {"name": "dbugit"}).get("id"))
         # Org creation grants the creator admin and invalidates their session
         # generation. Reauthenticate through the supported flow before continuing.
-        self.token = ""
-        self.session(
-            self.request(
-                "POST",
-                "/auth/local/login",
-                {
-                    "username": "rehearsal-admin",
-                    "password": password,
-                    "artifact": "cli",
-                },
-            )
-        )
+        step = int(time.time()) // otp.interval
+        time.sleep(max(0, (step + 1) * otp.interval + 1 - time.time()))
+        self.login(password, otp.now)
         step = int(time.time()) // otp.interval
         time.sleep(max(0, (step + 1) * otp.interval + 1 - time.time()))
         self.session(self.request("POST", "/auth/totp/step-up", {"code": otp.now()}))

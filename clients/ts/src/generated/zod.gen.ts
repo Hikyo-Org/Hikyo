@@ -1043,6 +1043,7 @@ export const zScanFinding = z.object({
  */
 export const zErrorCode = z.enum([
     'bad_request',
+    'cli_login_factor_required',
     'unauthenticated',
     'forbidden',
     'not_found',

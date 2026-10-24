@@ -1,11 +1,14 @@
 package isolation
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -125,6 +129,7 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 		Version:  "e2e",
 	}, nil)))
 	t.Cleanup(httpSrv.Close)
+	auth.ExternalOrigin = httpSrv.URL
 	cliSocket := serveLocalCLI(t, httpSrv.Config.Handler)
 
 	// Fresh install: the first administrator is minted on the host, never
@@ -301,16 +306,23 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 	// described.
 	// Every grant change to the ACTING principal kills its own sessions in the
 	// same transaction — the ADR working, not a demo problem — so both demos
-	// below get one closure that re-runs the login and step-up this test
-	// already performed, rather than five parameters carrying the material to
-	// redo them.
+	// below get one closure that signs in through browser MFA and the CLI's
+	// real PKCE callback. Enrolled accounts cannot use terminal password login.
+	// Login assurance and the subsequent operation step-up remain separate.
 	relogin := func() {
 		t.Helper()
-		prompts["Password for demo-admin"] = password
-		if code := cli.Run(t.Context(), ios(), []string{
-			"login", httpSrv.URL, "--local", "--as", "demo-admin",
+		advanceClock(30 * time.Second)
+		loginIO := ios()
+		loginIO.OpenURL = func(target string) error {
+			completeDemoBrowserLogin(t, httpSrv, target, password, totpCode(t, otpauthURI, clockNow()))
+			return nil
+		}
+		loginErr := &strings.Builder{}
+		loginIO.Stderr = loginErr
+		if code := cli.Run(t.Context(), loginIO, []string{
+			"login", httpSrv.URL,
 		}); code != cli.ExitOK {
-			t.Fatalf("re-login exited %d", code)
+			t.Fatalf("re-login exited %d: %s", code, loginErr.String())
 		}
 		advanceClock(30 * time.Second)
 		prompts["authenticator:"] = totpCode(t, otpauthURI, clockNow())
@@ -357,6 +369,87 @@ func runDemoFlow(t *testing.T, db *store.DB) {
 	}
 	if code := cli.Run(t.Context(), ios(), []string{"org", "list", "-o", "json"}); code != cli.ExitAuth {
 		t.Fatalf("a revoked session still worked (exit %d)", code)
+	}
+}
+
+// Substitute only the browser driver, as the terminal driver above does. The
+// actual router verifies password, TOTP, browser cookies and CSRF, then the CLI
+// receives the approved code on its loopback listener and redeems it with PKCE.
+func completeDemoBrowserLogin(t *testing.T, srv *httptest.Server, target, password, code string) {
+	t.Helper()
+	page, err := url.Parse(target)
+	if err != nil || page.Scheme+"://"+page.Host != srv.URL || page.Path != "/login/cli" || page.Query().Get("state") == "" {
+		t.Fatal("CLI opened an invalid browser continuation")
+	}
+	var cookies []*http.Cookie
+	post := func(path string, input, output any, status int, csrf string) {
+		t.Helper()
+		raw, err := json.Marshal(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/api/v1"+path, bytes.NewReader(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		for _, cookie := range cookies {
+			req.AddCookie(cookie)
+		}
+		if csrf != "" {
+			req.Header.Set("X-Hikyo-CSRF", csrf)
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != status {
+			t.Fatalf("browser %s status %d, want %d", path, resp.StatusCode, status)
+		}
+		if fresh := resp.Cookies(); len(fresh) != 0 {
+			cookies = fresh
+		}
+		if err := json.NewDecoder(resp.Body).Decode(output); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var challenge apigen.LoginChallenge
+	post("/auth/local/login", apigen.LocalLoginRequest{Username: "demo-admin", Password: password, Artifact: new(apigen.LocalLoginRequestArtifactBrowser)}, &challenge, http.StatusAccepted, "")
+	var browser apigen.LoginResult
+	post("/auth/login/challenge/"+string(challenge.ChallengeId)+"/totp", map[string]string{"code": code}, &browser, http.StatusOK, "")
+	if browser.Session.Artifact != "browser" || browser.SessionToken != nil {
+		t.Fatal("browser MFA did not establish a cookie-only browser session")
+	}
+	var csrf string
+	for _, cookie := range cookies {
+		if cookie.Name == "__Host-hikyo-csrf" {
+			csrf = cookie.Value
+		}
+	}
+	if csrf == "" {
+		t.Fatal("browser MFA did not set a CSRF cookie")
+	}
+	var approved apigen.CLILoginApproved
+	post("/auth/cli-login/approve", apigen.CLILoginApproveRequest{Reference: page.Query().Get("state")}, &approved, http.StatusOK, csrf)
+	callback, err := url.Parse(approved.RedirectUri)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback.RawQuery = url.Values{"code": {approved.Code}, "state": {approved.State}}.Encode()
+	callbackCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(callbackCtx, http.MethodGet, callback.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CLI login callback status %d", resp.StatusCode)
 	}
 }
 

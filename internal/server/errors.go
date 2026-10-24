@@ -27,7 +27,11 @@ import (
 // two 404 bodies learns nothing, because there is nothing in them that could
 // differ.
 //
-// `bad_request` is the single exception, and only for its `detail` member.
+// Caller-safe details are explicit exceptions to the fixed-message rule.
+// `cli_login_factor_required` carries sign-in guidance only after identity and
+// the pending transaction have been validated. Its code, not that guidance,
+// identifies the recovery path.
+// `bad_request` may also vary only its `detail` member.
 // Request-shape validation runs before any tenant resolution, so naming the
 // offending member reveals nothing about what exists or who may reach it —
 // and withholding it would make every malformed request a guessing game for
@@ -77,17 +81,18 @@ type WireError struct {
 // this table with the OpenAPI enum, so adding a public code without deciding
 // all four fields fails the suite.
 var wirePolicies = map[apigen.ErrorCode]WireError{
-	apigen.ErrorCodeServiceUnavailable: {status: http.StatusServiceUnavailable, code: apigen.ErrorCodeServiceUnavailable, message: "service is unavailable; retry shortly", detailPolicy: redactDetail},
-	apigen.ErrorCodeBadRequest:         {status: http.StatusBadRequest, code: apigen.ErrorCodeBadRequest, message: "the request does not satisfy the API contract", detailPolicy: allowSafeDetail},
-	apigen.ErrorCodeUnauthenticated:    {status: http.StatusUnauthorized, code: apigen.ErrorCodeUnauthenticated, message: "authentication required", detailPolicy: redactDetail},
-	apigen.ErrorCodeForbidden:          {status: http.StatusForbidden, code: apigen.ErrorCodeForbidden, message: "not permitted", detailPolicy: redactDetail},
-	apigen.ErrorCodeNotFound:           {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
-	apigen.ErrorCodeConflict:           {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
-	apigen.ErrorCodeLimitExceeded:      {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
-	apigen.ErrorCodeUnprocessable:      {status: http.StatusUnprocessableEntity, code: apigen.ErrorCodeUnprocessable, message: "a value is outside the vocabulary this server accepts", detailPolicy: allowSafeDetail},
-	apigen.ErrorCodePayloadTooLarge:    {status: http.StatusRequestEntityTooLarge, code: apigen.ErrorCodePayloadTooLarge, message: "the request body exceeds this operation's bound", detailPolicy: redactDetail},
-	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail, retryAfterSeconds: admission.RetryAfterSeconds(admission.RetryAfter)},
-	apigen.ErrorCodeInternal:           {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
+	apigen.ErrorCodeCliLoginFactorRequired: {status: http.StatusBadRequest, code: apigen.ErrorCodeCliLoginFactorRequired, message: "complete an enrolled factor before authorizing the CLI", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodeServiceUnavailable:     {status: http.StatusServiceUnavailable, code: apigen.ErrorCodeServiceUnavailable, message: "service is unavailable; retry shortly", detailPolicy: redactDetail},
+	apigen.ErrorCodeBadRequest:             {status: http.StatusBadRequest, code: apigen.ErrorCodeBadRequest, message: "the request does not satisfy the API contract", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodeUnauthenticated:        {status: http.StatusUnauthorized, code: apigen.ErrorCodeUnauthenticated, message: "authentication required", detailPolicy: redactDetail},
+	apigen.ErrorCodeForbidden:              {status: http.StatusForbidden, code: apigen.ErrorCodeForbidden, message: "not permitted", detailPolicy: redactDetail},
+	apigen.ErrorCodeNotFound:               {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
+	apigen.ErrorCodeConflict:               {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodeLimitExceeded:          {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
+	apigen.ErrorCodeUnprocessable:          {status: http.StatusUnprocessableEntity, code: apigen.ErrorCodeUnprocessable, message: "a value is outside the vocabulary this server accepts", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodePayloadTooLarge:        {status: http.StatusRequestEntityTooLarge, code: apigen.ErrorCodePayloadTooLarge, message: "the request body exceeds this operation's bound", detailPolicy: redactDetail},
+	apigen.ErrorCodeTooManyRequests:        {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail, retryAfterSeconds: admission.RetryAfterSeconds(admission.RetryAfter)},
+	apigen.ErrorCodeInternal:               {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
 }
 
 // wirePolicyForCode fails closed for an unrecognized public code. Callers that
@@ -100,7 +105,8 @@ func wirePolicyForCode(code apigen.ErrorCode) WireError {
 }
 
 // errorBody builds the wire body for a code. detail is honoured only for
-// bad_request, conflict and unprocessable (the policies that allowSafeDetail);
+// bad_request, cli_login_factor_required, conflict and unprocessable (the
+// policies that allowSafeDetail);
 // everywhere else it is dropped, because a uniform response with a varying
 // member is not uniform.
 //
@@ -185,6 +191,7 @@ var wireErrorRules = []struct {
 	match error
 	code  apigen.ErrorCode
 }{
+	{service.ErrCLILoginBrowserFactorRequired, apigen.ErrorCodeCliLoginFactorRequired},
 	{service.ErrSelfConfigUnavailable, apigen.ErrorCodeServiceUnavailable},
 	// Explicit operator sends may find mail disabled or an unreachable relay.
 	// Both use the closed unavailable policy, without SMTP response details.

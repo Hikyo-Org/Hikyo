@@ -8,6 +8,8 @@ docker_config_dir=${DOCKER_CONFIG:-${HOME:?}/.docker}
 tmp_dir=${TMPDIR:-/tmp}
 tmp_dir=${tmp_dir%/}
 work_dir=$(mktemp -d "$tmp_dir/hikyo-compose-demo.XXXXXX")
+# Every invocation owns its Compose containers, including failure cleanup.
+export COMPOSE_PROJECT_NAME="hikyo-compose-demo-$$"
 project_dir="$work_dir/project"
 runtime_dir="$work_dir/runtime"
 state_dir="$work_dir/state"
@@ -61,6 +63,75 @@ offset = digest[-1] & 15
 number = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7fffffff) % (10 ** digits)
 print(str(number).zfill(digits))
 PY
+}
+
+# Each successful verification consumes its time step. Browser sign-in and
+# operation step-up must read separate fresh codes, just as a human would.
+next_totp_code() {
+	while (( $(date +%s) / 30 <= last_totp_step )); do
+		sleep 0.2
+	done
+	DEMO_TOTP_CODE=$(totp_code "$work_dir/totp-uri")
+	last_totp_step=$(( $(date +%s) / 30 ))
+	export DEMO_TOTP_CODE
+}
+
+login_cli() {
+	local login_status challenge_id finish_status csrf
+	# Start a fresh browser login after every privilege change. The password
+	# produces a challenge, never a CLI bearer for this enrolled account.
+	printf '%s' "$password" >"$work_dir/login-password"
+	jq -cn --rawfile password "$work_dir/login-password" \
+		'{username:"compose-admin",password:$password,artifact:"browser"}' >"$work_dir/browser-login-request.json"
+	login_status=$(curl -sS -o "$work_dir/browser-login.json" -w '%{http_code}' -c "$cookie_jar" \
+		-H 'Content-Type: application/json' --data-binary "@$work_dir/browser-login-request.json" \
+		"$origin/api/v1/auth/local/login")
+	[[ "$login_status" == 202 ]] || fail "enrolled browser login returned HTTP $login_status, want a factor challenge"
+	challenge_id=$(jq -er 'select(.factors | index("totp")) | .challenge_id' "$work_dir/browser-login.json")
+	next_totp_code
+	printf '%s' "$DEMO_TOTP_CODE" >"$work_dir/login-code"
+	jq -cn --rawfile code "$work_dir/login-code" '{code:$code}' >"$work_dir/browser-totp-request.json"
+	finish_status=$(curl -sS -o "$work_dir/browser-totp.json" -w '%{http_code}' -b "$cookie_jar" -c "$cookie_jar" \
+		-H 'Content-Type: application/json' --data-binary "@$work_dir/browser-totp-request.json" \
+		"$origin/api/v1/auth/login/challenge/$challenge_id/totp")
+	[[ "$finish_status" == 200 ]] || fail "browser TOTP login returned HTTP $finish_status"
+	jq -e '.session.artifact == "browser" and (has("session_token") | not) and
+		(.session.assurance.factors | sort) == ["password","totp"]' "$work_dir/browser-totp.json" >/dev/null ||
+		fail 'browser MFA did not establish the expected cookie-only session'
+	csrf=$(awk '$6 == "__Host-hikyo-csrf" { value=$7 } END { print value }' "$cookie_jar")
+	[[ -n "$csrf" ]] || fail 'browser MFA did not set the CSRF cookie'
+	# Keep cookie/CSRF material in the private work directory, out of argv and
+	# Expect's transcript. Only the public device user code crosses this bridge.
+	printf 'silent\nshow-error\nfail\nurl = "%s"\ncookie = "%s"\nheader = "Content-Type: application/json"\nheader = "X-Hikyo-CSRF: %s"\noutput = "%s"\n' \
+		"$origin/api/v1/auth/cli-login/approve" "$cookie_jar" "$csrf" "$work_dir/device-approved.json" >"$work_dir/approve.curl"
+	export DEMO_APPROVAL_CONFIG="$work_dir/approve.curl"
+	expect <<'EOF' >/dev/null
+set timeout 15
+spawn $env(DEMO_BINARY) login $env(DEMO_ORIGIN) --device --socket $env(DEMO_CLI_SOCKET)
+expect {
+    -re {Record it.*:} { send "y\r"; exp_continue }
+    -re {Enter code: ([0-9A-Z]{8})} { set user_code $expect_out(1,string) }
+    timeout { puts stderr "compose demo: device login did not present a user code"; exit 1 }
+    eof { catch wait result; puts stderr "compose demo: device login exited before presenting a user code"; exit 1 }
+}
+if {[catch {exec curl --config $env(DEMO_APPROVAL_CONFIG) --data "{\"reference\":\"$user_code\"}"}]} {
+    puts stderr "compose demo: browser approval of the device login failed"
+    close
+    catch wait result
+    exit 1
+}
+expect {
+    eof {}
+    timeout { puts stderr "compose demo: approved device login did not complete"; close; catch wait result; exit 1 }
+}
+catch wait result
+exit [lindex $result 3]
+EOF
+	# The device flow issues its own CLI artifact. Discard the browser session
+	# only after token polling completes; it grants no operation proof window.
+	printf 'silent\nshow-error\nfail\nurl = "%s"\ncookie = "%s"\nheader = "X-Hikyo-CSRF: %s"\n' \
+		"$origin/api/v1/auth/logout" "$cookie_jar" "$csrf" >"$work_dir/logout.curl"
+	curl --config "$work_dir/logout.curl" --request POST >/dev/null
 }
 
 publish_pending() {
@@ -251,27 +322,12 @@ for step_offset in 0 1 2; do
 done
 [[ "$totp_confirm_status" == 200 || "$totp_confirm_status" == 204 ]] || fail "TOTP enrol confirm failed ($totp_attempts): $(<"$work_dir/totp-confirm.json")"
 
-confirmed_step=$(( $(date +%s) / 30 + step_offset ))
-while (( $(date +%s) / 30 <= confirmed_step )); do
-	sleep 0.2
-done
-
-export DEMO_BINARY="$binary" DEMO_ORIGIN="$origin" DEMO_PASSWORD="$password" DEMO_TOTP_URI="$work_dir/totp-uri" DEMO_CLI_SOCKET="$cli_socket"
-expect <<'EOF' >/dev/null
-set timeout 15
-spawn $env(DEMO_BINARY) login $env(DEMO_ORIGIN) --local --as compose-admin --socket $env(DEMO_CLI_SOCKET)
-expect -re {Record it.*:}
-send "y\r"
-expect -re {Password.*:}
-send "$env(DEMO_PASSWORD)\r"
-expect eof
-catch wait result
-exit [lindex $result 3]
-EOF
+last_totp_step=$(( $(date +%s) / 30 + step_offset ))
+export DEMO_BINARY="$binary" DEMO_ORIGIN="$origin" DEMO_CLI_SOCKET="$cli_socket"
+login_cli
 
 "$binary" context create demo --instance "$origin" --socket "$cli_socket"
-export DEMO_TOTP_CODE
-DEMO_TOTP_CODE=$(totp_code "$work_dir/totp-uri")
+next_totp_code
 expect <<'EOF' >/dev/null
 set timeout 15
 spawn $env(DEMO_BINARY) account factor step-up --context demo
@@ -330,21 +386,8 @@ org_id=$(printf '%s' "$org_json" | jq -er '.id')
 # created grants, rather than seeding equivalent break-glass grants out of band:
 # start a fresh session, step it up, then create the first project with the
 # creator's ordinary authority.
-last_totp_step=$(( $(date +%s) / 30 ))
-while (( $(date +%s) / 30 <= last_totp_step )); do
-	sleep 0.2
-done
-expect <<'EOF' >/dev/null
-set timeout 15
-spawn $env(DEMO_BINARY) login $env(DEMO_ORIGIN) --local --as compose-admin
-expect -re {Password.*:}
-send "$env(DEMO_PASSWORD)\r"
-expect eof
-catch wait result
-exit [lindex $result 3]
-EOF
-DEMO_TOTP_CODE=$(totp_code "$work_dir/totp-uri")
-export DEMO_TOTP_CODE
+login_cli
+next_totp_code
 expect <<'EOF' >/dev/null
 set timeout 15
 spawn $env(DEMO_BINARY) account factor step-up --context demo
