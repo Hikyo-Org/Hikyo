@@ -7056,9 +7056,9 @@ export type LocalLoginResponses = {
      * carries a single-use, expiring login challenge that must be
      * satisfied at `/api/v1/auth/login/challenge/{id}/...` before a
      * session exists. The factor is never skippable (human-auth ADR
-     * § Assurance). Only a `browser` artifact request receives this; a
-     * `cli` request mints a `password`-assurance session and steps up on
-     * demand at the authorization chokepoint.
+     * § Assurance). Only a `browser` artifact request receives this;
+     * an enrolled account's `cli` request is refused with guidance to
+     * use browser or device CLI login and complete the enrolled factor.
      *
      */
     202: LoginChallenge;

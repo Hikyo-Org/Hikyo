@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 
-import { parsed } from '../api/client.ts';
+import { ApiError, parsed } from '../api/client.ts';
+import { useLogout } from '../api/session.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Alert } from '../ui/Alert.tsx';
@@ -27,6 +28,7 @@ export function CLILogin() {
 
 function CLILoginRequest() {
   const auth = useAuth();
+  const logout = useLogout();
   const [query, setQuery] = useSearchParams();
   const state = query.get('state');
   const userCode = query.get('user_code');
@@ -194,6 +196,28 @@ function CLILoginRequest() {
           <p className="login__lede">
             Return to your terminal to continue. You remain signed in to this browser.
           </p>
+        </div>
+      </main>
+    );
+  // A verified browser session may lack the enrolled local factor. This safe
+  // refusal is distinct from an invalid/expired handoff (403). Keep its query
+  // while the existing logout and sign-in ceremonies replace that session.
+  if (
+    approve.error instanceof ApiError &&
+    approve.error.status === 400 &&
+    approve.error.operation === approveCliLoginOp &&
+    approve.error.detail ===
+      'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.'
+  )
+    return (
+      <main className="login">
+        <div className="login__card">
+          <h1 className="login__title">Complete your sign-in</h1>
+          <Alert>{approve.error.detail}</Alert>
+          {logout.isError ? <Alert>Sign-out failed. Try again to continue signing in.</Alert> : null}
+          <Button type="button" disabled={logout.isPending} onClick={() => logout.mutate()}>
+            {logout.isPending ? 'Signing out…' : 'Sign out and sign in again'}
+          </Button>
         </div>
       </main>
     );

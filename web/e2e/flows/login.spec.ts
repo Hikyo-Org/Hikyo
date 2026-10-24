@@ -10,7 +10,7 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { zAuthMethods, zOrgList, zRegistrationPolicy } from '@hikyo/zod';
+import { zAuthMethods, zError, zLoginResult, zOrgList, zRegistrationPolicy, zTotpEnrolStartResult, zWhoAmI } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
@@ -24,7 +24,7 @@ import {
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
-import { enrolledAccount, TOTP_STEP_MS } from '../fixtures/accounts.ts';
+import { enrolledAccount, TotpLedger, TOTP_STEP_MS, withSharedAdmin } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
 import { readMail } from '../fixtures/mail.ts';
 
@@ -1169,6 +1169,88 @@ test.describe('local sign-up', () => {
 /** #612 rides the existing login CI shard, including both viewport projects. */
 test.describe('CLI login handoff', () => {
   test.beforeEach(async ({ context }) => { await context.clearCookies(); });
+
+  test('password-only browser recovers through enrolled MFA before explicitly approving the same CLI request', async ({ page, browser }, testInfo) => {
+    const username = `cli-login-recovery-${randomBytes(8).toString('hex')}`;
+    const password = randomBytes(24).toString('base64url');
+    const invitation = await withSharedAdmin(browser, (admin) => browserApi(
+      admin, 'POST', `/api/v1/orgs/${readSeed().org}/invitations`,
+      z.object({ authority: z.string(), principal_id: z.string() }), { username },
+    ));
+    await publicPost('/api/v1/auth/credential/establish', { authority: invitation.authority, password }, z.object({}));
+    const signedIn = await page.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+      data: { username, password, artifact: 'browser' },
+    });
+    expect(signedIn.status()).toBe(200);
+    const initial = zLoginResult.parse(await signedIn.json());
+    expect(initial.session.assurance.factors).toEqual(['password']);
+    const enrolment = await browserApi(page, 'POST', '/api/v1/auth/totp/enrol/start', zTotpEnrolStartResult, { password });
+    const ledger = new TotpLedger(enrolment.otpauth_uri, new Date());
+    // Enrolment reissues the acting browser with password proof only. The
+    // confirming code enrols a factor; it does not authenticate this session.
+    const weak = await browserApi(page, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, { code: await ledger.next() });
+    expect(weak.session.artifact).toBe('browser');
+    expect(weak.session.assurance.factors).toEqual(['password']);
+    expect(weak.session.id).not.toBe(initial.session.id);
+
+    const flow = await startLoopbackLogin();
+    const returnTo = `/login/cli?state=${flow.state}&provider=oidc%3A${OIDC_PROVIDER.slug}`;
+    try {
+      await page.goto(returnTo);
+      const approve = page.getByRole('button', { name: 'Authorize CLI sign-in', exact: true });
+      await expect(approve).toBeVisible();
+      const refused = page.waitForResponse((response) => response.url().endsWith('/auth/cli-login/approve'));
+      await approve.click();
+      const refusal = await refused;
+      expect(refusal.status()).toBe(400);
+      const detail = 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.';
+      expect(zError.parse(await refusal.json()).error.detail).toBe(detail);
+      await expect(page.getByRole('heading', { name: 'Complete your sign-in' })).toBeVisible();
+      await expect(page.locator('.login__card').getByRole('alert')).toHaveText(detail);
+      await page.screenshot({ path: testInfo.outputPath('mfa-required.png') });
+
+      const loggedOut = page.waitForResponse((response) => response.url().endsWith('/auth/logout'));
+      await page.getByRole('button', { name: 'Sign out and sign in again', exact: true }).click();
+      expect((await loggedOut).status()).toBe(204);
+      await expect(page).toHaveURL(`${BASE_URL}${returnTo}`);
+      await expect(page.getByRole('heading', { name: `Sign in with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Other ways to sign in' }).click();
+      await page.getByRole('button', { name: /^Password\b/ }).click();
+      await page.getByLabel('Username').fill(username);
+      await page.getByLabel('Password', { exact: true }).fill(password);
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('second-factor.png') });
+      await page.getByLabel('Authenticator code').fill(await ledger.next());
+      await page.getByRole('button', { name: 'Present code' }).click();
+
+      await expect(page).toHaveURL(`${BASE_URL}${returnTo}`);
+      await expect(approve).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('consent-after-mfa.png') });
+      const browserIdentity = await browserApi(page, 'GET', '/api/v1/auth/whoami', zWhoAmI);
+      expect(browserIdentity.session.id).not.toBe(weak.session.id);
+      expect(browserIdentity.session.assurance.factors).toEqual(['password', 'totp']);
+      // Reaching consent did not approve the request: the same live transaction
+      // remains readable, and only this second explicit click authorizes it.
+      const pending = await browserApi(page, 'GET', `/api/v1/auth/cli-login/transactions/${flow.state}`, z.object({ reference: z.string() }));
+      expect(pending.reference).toBe(flow.state);
+      await approve.click();
+      await expect(page).toHaveURL(new RegExp(`^${flow.redirect.replaceAll('.', '\\.')}`));
+      const callback = new URL(page.url());
+      expect(callback.searchParams.get('state')).toBe(flow.state);
+      const redeemed = await publicPost('/api/v1/auth/cli-login/redeem', {
+        code: callback.searchParams.get('code'), pkce_verifier: flow.verifier, redirect_uri: flow.redirect,
+      }, zLoginResult);
+      expect(redeemed.session_token).toBeTruthy();
+      expect(redeemed.session.artifact).toBe('cli');
+      expect(redeemed.session.id).not.toBe(browserIdentity.session.id);
+      expect(redeemed.principal.id).toBe(invitation.principal_id);
+      expect(redeemed.session.assurance.factors).toEqual(['password', 'totp']);
+      const stillSignedIn = await browserApi(page, 'GET', '/api/v1/auth/whoami', zWhoAmI);
+      expect(stillSignedIn.session.id).toBe(browserIdentity.session.id);
+    } finally { await flow.close(); }
+  });
 
   test('device code entry preserves provider preselect and always starts sign-in', async ({ page }) => {
     await page.goto(`/login/cli?device=1&provider=oidc:${OIDC_PROVIDER.slug}`);

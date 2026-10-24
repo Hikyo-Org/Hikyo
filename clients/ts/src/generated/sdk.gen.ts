@@ -85,8 +85,10 @@ export const establishCredential = <ThrowOnError extends boolean = false>(option
  * their own storage, lifetime, audit identity and revocation surface,
  * and neither value is ever re-retrievable:
  *
- * - **CLI session** (default): a replayable bearer credential returned
- * in the response body, presented on `Authorization: Bearer`.
+ * - **CLI session** (default): for an unenrolled account, a replayable
+ * bearer credential returned in the response body, presented on
+ * `Authorization: Bearer`. An enrolled account is refused with `400`
+ * and guidance to complete the existing browser or device CLI login.
  * - **Browser session**: delivered ONLY on the `__Host-hikyo` HttpOnly
  * cookie, never in the body, so injected same-origin script cannot
  * read it. Its synchronizer token rides the `__Host-hikyo-csrf`

@@ -36,7 +36,7 @@
     "routes/AccountProfile.tsx": "719302386eed3430e3da78e56fc7f0e860879b3de5a2ede3c51172d59886f6c6",
     "routes/AccountSecurity.tsx": "8d523334f97455b7694847181557d1732cdb917d34a6604d0fdb7bcdeec54ebe",
     "routes/Adapters.tsx": "1a321ec0d6f57c0f7c378a1c7042cac166372fce8d470e61e3bf6df5b9c8f2d8",
-    "routes/CLILogin.tsx": "f3f77ae1dc8855da73c495c6a58bcdb8641be7c97e412b63cab75371bb332a7d",
+    "routes/CLILogin.tsx": "d7d59032119804c1f4c703450422db140ff0804bb81b3dce14f9644f715655e8",
     "routes/CLIReauth.tsx": "e197bf78d1424ce2664ec4815103661442cb6c2f3070d2cda502e730a4cdcd96",
     "routes/Ceremony.tsx": "5ecefbf6cd0afa380e35c5acade576f4e43dce43feab954dad6dec59e327cdf9",
     "routes/CertificatesTab.tsx": "4dc25e32057c870974addefefd7bea2c91d37b216692bb9e4145f694a95b9606",

@@ -346,10 +346,11 @@ func newSweepEnv(t *testing.T, db *store.DB) sweepEnv {
 	if err != nil {
 		t.Fatalf("create org: %v", err)
 	}
-	login, err := auth.LocalLogin(ctx, waAdmin, administrator.password, service.ArtifactCLI)
+	browser, err := discoverableLogin(t, auth, ctx, dev)
 	if err != nil {
 		t.Fatalf("login after org create: %v", err)
 	}
+	login := cliLoginFromBrowser(t, auth, browser)
 	token = stepUpPasskey(t, auth, ctx, login.SessionToken, dev)
 
 	// The administrator gets every capability the swept writes need, at org

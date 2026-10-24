@@ -6,13 +6,18 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { CLILogin } from './CLILogin.tsx';
 
-const auth = vi.hoisted(() => ({ revision: 0 }));
+const auth = vi.hoisted(() => ({ revision: 0, anonymous: false, epoch: 'browser-one', endSession: vi.fn() }));
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
-    state: { status: 'authenticated', sessionEpoch: 'browser-one' },
+    state: auth.anonymous ? { status: 'anonymous' } : { status: 'authenticated', sessionEpoch: auth.epoch },
     identity: { principal: { display_name: 'Alice' } },
     captureTransition: () => ({ revision: auth.revision }),
+    endSession: auth.endSession,
   }),
+}));
+vi.mock('./Login.tsx', () => ({
+  Login: ({ returnTo, providerHint, signInOnly }: { returnTo: string; providerHint?: string; signInOnly: boolean }) =>
+    <p data-return-to={returnTo} data-provider={providerHint} data-sign-in-only={String(signInOnly)}>Existing sign-in</p>,
 }));
 const fetcher = vi.fn<typeof fetch>();
 const cleanups: Array<() => Promise<void>> = [];
@@ -38,13 +43,16 @@ function NextRequest() {
     <button onClick={() => void navigate('/login/cli?user_code=JKMNPQRS')}>Next request</button>
   );
 }
-async function mount(query: string) {
-  const view = await renderForm(
+function screen(query: string) {
+  return (
     <MemoryRouter initialEntries={[`/login/cli?${query}`]}>
       <CLILogin />
       <NextRequest />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+async function mount(query: string) {
+  const view = await renderForm(screen(query));
   cleanups.push(view.unmount);
   await settleTask();
   return view;
@@ -58,12 +66,80 @@ function approve(container: HTMLElement) {
 }
 beforeEach(() => {
   auth.revision = 0;
+  auth.anonymous = false;
+  auth.epoch = 'browser-one';
+  auth.endSession.mockReset();
   fetcher.mockReset();
   vi.stubGlobal('fetch', fetcher);
 });
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+it.each([`state=${state}`, 'user_code=ABCDEFGH'])('recovers assurance refusal through sign-out and explicit sign-in approval: %s', async (query) => {
+  const reference = query.startsWith('state=') ? state : 'ABCDEFGH';
+  const displayed = transaction(reference);
+  let approvals = 0;
+  fetcher.mockImplementation(async (input) => {
+    if (!(input instanceof Request)) throw new Error('expected a request');
+    if (input.url.endsWith('/logout')) return new Response(null, { status: 204 });
+    if (input.method === 'GET') return response(displayed);
+    approvals += 1;
+    return approvals === 1
+      ? response({ error: { code: 'bad_request', message: 'the request does not satisfy the API contract', detail: 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.' } }, 400)
+      : response({ code: reference === state ? 'hik_1_hc_test' : '', state: reference, redirect_uri: displayed.redirect_uri });
+  });
+  auth.endSession.mockImplementation(() => { auth.anonymous = true; auth.revision += 1; });
+  const navigate = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => {});
+  const path = `${query}&provider=oidc%3Acorp`;
+  const view = await mount(path);
+  await act(async () => approve(view.container).click());
+  await settleTask();
+  expect(view.container.textContent).toContain('authenticator or passkey');
+  const retry = [...view.container.querySelectorAll('button')].find((node) => node.textContent === 'Sign out and sign in again');
+  if (retry === undefined) throw new Error('missing sign-in recovery');
+  await act(async () => retry.click());
+  await settleTask();
+  expect(auth.endSession).toHaveBeenCalledWith({ revision: 0 });
+  await view.rerender(screen(path));
+  const login = view.container.querySelector('[data-return-to]');
+  expect(login?.getAttribute('data-return-to')).toBe(`/login/cli?${path}`);
+  expect(login?.getAttribute('data-provider')).toBe('oidc:corp');
+  expect(login?.getAttribute('data-sign-in-only')).toBe('true');
+  // The existing sign-in ceremony returns a new browser epoch. It must not
+  // approve the pending CLI request automatically after completing MFA.
+  auth.anonymous = false;
+  auth.epoch = 'browser-two';
+  await view.rerender(screen(path));
+  await settleTask();
+  expect(approvals).toBe(1);
+  await act(async () => approve(view.container).click());
+  await settleTask();
+  expect(approvals).toBe(2);
+  if (reference === state) expect(navigate).toHaveBeenCalledOnce();
+  else expect(view.container.textContent).toContain('CLI sign-in approved');
+});
+
+it('retains the held session and retry when recovery sign-out fails', async () => {
+  const displayed = transaction();
+  fetcher.mockImplementation(async (input) => {
+    if (!(input instanceof Request)) throw new Error('expected a request');
+    if (input.url.endsWith('/logout')) return response({ error: { code: 'service_unavailable', message: 'temporarily unavailable' } }, 503);
+    return input.method === 'GET' ? response(displayed) : response({ error: { code: 'bad_request', message: 'the request does not satisfy the API contract', detail: 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.' } }, 400);
+  });
+  const { container } = await mount(`state=${state}`);
+  await act(async () => approve(container).click());
+  await settleTask();
+  const retry = [...container.querySelectorAll('button')].find((node) => node.textContent === 'Sign out and sign in again');
+  if (retry === undefined) throw new Error('missing sign-in recovery');
+  await act(async () => retry.click());
+  await settleTask();
+  expect(auth.endSession).not.toHaveBeenCalled();
+  expect(container.querySelector('[data-return-to]')).toBeNull();
+  expect(container.textContent).toContain('Sign-out failed');
+  expect(retry.disabled).toBe(false);
 });
 
 it('shows server consent metadata and ignores callback/instance URL fields', async () => {

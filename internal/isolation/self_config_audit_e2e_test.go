@@ -24,6 +24,7 @@ func runSelfConfigAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	t.Helper()
 	db := openSelfConfigAuditDB(t, engine)
 	auth := authService(t, db)
+	auth.ExternalOrigin = "https://self-config-audit.hikyo.test"
 	var clock atomic.Int64
 	// Advance only the authentication clock through distinct TOTP steps. Keep
 	// evidence in the recent past and runtime heartbeats on the real store clock.
@@ -94,10 +95,9 @@ func runSelfConfigAuditLifecycle(t *testing.T, engine store.Engine) *store.DB {
 	}
 	// Creating the system organization changes the administrator's grant
 	// generation. Authenticate anew instead of reusing the invalidated session.
-	login, err = auth.LocalLogin(t.Context(), "self-config-admin", password, service.ArtifactCLI)
-	if err != nil {
-		t.Fatal(err)
-	}
+	advance()
+	browser := browserLoginWithTOTP(t, auth, t.Context(), "self-config-admin", password, uri, now())
+	login = cliLoginFromBrowser(t, auth, browser)
 	advance()
 	elevated, err = auth.StepUpTOTP(t.Context(), login.SessionToken, totpCode(t, uri, now()))
 	if err != nil {
