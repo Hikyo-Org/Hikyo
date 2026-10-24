@@ -25,6 +25,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 )
 
 // External AWS Secrets Manager coverage (#158). Both tests skip locally and
@@ -41,12 +42,10 @@ import (
 //     HIKYO_TEST_AWS_REGION (default us-east-1),
 //     HIKYO_TEST_AWS_ALLOWED_CIDR for a private address, and
 //     HIKYO_TEST_AWS_CA_FILE for a private certificate.
-//   - TestAWSSecretsManagerRealSmoke runs against a sandbox AWS account:
-//     HIKYO_TEST_AWS_REAL_ACCOUNT, HIKYO_TEST_AWS_REAL_REGION,
-//     HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID, HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY,
-//     optional HIKYO_TEST_AWS_REAL_SESSION_TOKEN. The key needs
-//     secretsmanager:{Describe,List,Create,PutSecretValue,UpdateSecretVersionStage,Tag,Restore,Delete}
-//     and, for the oracle only, GetSecretValue on the hikyo-e2e-* names.
+//   - Real AWS coverage uses a separately authorized sandbox manifest and
+//     protected credential files. See aws_real_fixture_test.go and
+//     docs/testing/aws-sandbox.md. The real path never borrows the emulator's
+//     combined writer/oracle/cleanup identity.
 //
 // The adapter itself never reads a value; only the oracle below does, and it
 // lives in test code outside the production package's closure scan.
@@ -98,18 +97,6 @@ func TestAWSSecretsManagerEmulatorLifecycle(t *testing.T) {
 	runExternalAWSAdoptionReplay(t, env)
 }
 
-func TestAWSSecretsManagerRealSmoke(t *testing.T) {
-	account, region := os.Getenv("HIKYO_TEST_AWS_REAL_ACCOUNT"), os.Getenv("HIKYO_TEST_AWS_REAL_REGION")
-	keyID, secret := os.Getenv("HIKYO_TEST_AWS_REAL_ACCESS_KEY_ID"), os.Getenv("HIKYO_TEST_AWS_REAL_SECRET_ACCESS_KEY")
-	if account == "" || region == "" || keyID == "" || secret == "" {
-		requireExternalAWS(t, "HIKYO_TEST_AWS_REAL_REQUIRED", "HIKYO_TEST_AWS_REAL_ACCOUNT/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY")
-	}
-	runExternalAWSLifecycle(t, externalAWS{
-		origin: "https://secretsmanager." + region + ".amazonaws.com", account: account, region: region,
-		creds: aws.Credentials{AccessKeyID: keyID, SecretAccessKey: secret, SessionToken: os.Getenv("HIKYO_TEST_AWS_REAL_SESSION_TOKEN")},
-	})
-}
-
 func envOr(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -153,7 +140,7 @@ func runExternalAWSLifecycle(t *testing.T, env externalAWS) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		for _, name := range owned {
-			if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil && !strings.Contains(err.Error(), "ResourceNotFound") {
+			if err := externalAWSCall(ctx, env, "DeleteSecret", map[string]any{"SecretId": name, "ForceDeleteWithoutRecovery": true}, nil); err != nil && !realAWSCode(err, "ResourceNotFoundException") {
 				t.Errorf("force-delete %s: %v", name, err)
 			}
 		}
@@ -484,6 +471,11 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 				journal.states[forgejoLifecycleEffectKey(adapter.Effect{Surface: adapter.Secret, EffectiveName: name})] = adapter.Owned
 				req := adapter.SyncRequest{Target: adapter.Target{ID: "tgt_adoption_" + run, Environment: "external", Generation: 1, Destination: adapter.Destination{Kind: adapter.JSONObject, Owner: env.account, Name: name}}, Manifest: []adapter.ManifestEntry{{KeyID: "key_e2e", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "Hikyo value"}}, Ledger: journal.ledger(), JobID: "adoption_" + run}
 				req.Ledger[0].AdoptionPending = true
+				planned, err := (&awssm.Module{API: client}).Plan(t.Context(), adapter.PlanRequest{Target: req.Target, Manifest: req.Manifest, Gate: func(context.Context) error { return nil }})
+				if err != nil || len(planned.Changes) != 1 || planned.Changes[0].ObservedProviderWitness == "" {
+					t.Fatal("adoption fixture has no reviewed resource/version witness")
+				}
+				req.Ledger[0].AdoptionWitness = planned.Changes[0].ObservedProviderWitness
 				module := &awssm.Module{API: &externalAWSInterruptedAdoptionAPI{API: client, interruption: interruption}}
 				if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 					t.Fatalf("interrupted adoption = %v, want indeterminate", err)
@@ -526,38 +518,54 @@ func runExternalAWSAdoptionReplay(t *testing.T, env externalAWS) {
 	}
 }
 
-// externalAWSCall is the test-only oracle and cleanup path. It signs any
-// Secrets Manager operation, which is exactly what production code cannot do.
+// externalAWSCall owns the test-only signed oracle and cleanup transport.
+// Real sandbox callers must first bind the actor, operation and recorded ARN.
+// Errors retain typed codes but never provider bodies, values or credentials.
 func externalAWSCall(ctx context.Context, env externalAWS, operation string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
-		return err
+		return errors.New("cannot encode AWS fixture request")
 	}
+	defer crypto.Zero(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(env.origin, "/")+"/", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return errors.New("cannot build AWS fixture request")
 	}
 	req.Header.Set("Content-Type", "application/x-amz-json-1.1")
 	req.Header.Set("X-Amz-Target", "secretsmanager."+operation)
 	sum := sha256.Sum256(body)
 	if err := v4.NewSigner().SignHTTP(ctx, env.creds, req, hex.EncodeToString(sum[:]), "secretsmanager", env.region, time.Now().UTC()); err != nil {
-		return err
+		return errors.New("cannot sign AWS fixture request")
 	}
-	client := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: env.roots}}}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: env.roots}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Timeout: 15 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return errors.New("AWS fixture transport failed")
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return err
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
+	defer crypto.Zero(raw)
+	if err != nil || len(raw) > 1<<20 {
+		return errors.New("AWS fixture response unreadable or too large")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: status %d %s", operation, resp.StatusCode, resp.Header.Get("X-Amzn-ErrorType"))
+		var e struct {
+			Type string `json:"__type"`
+		}
+		if err := json.Unmarshal(raw, &e); err != nil || e.Type == "" {
+			e.Type = resp.Header.Get("X-Amzn-ErrorType")
+		}
+		code := e.Type
+		if i := strings.LastIndex(code, "#"); i >= 0 {
+			code = code[i+1:]
+		}
+		code, _, _ = strings.Cut(code, ":")
+		return &realAWSResponseError{code: code, status: resp.StatusCode}
 	}
-	if out != nil {
-		return json.Unmarshal(raw, out)
+	if out != nil && json.Unmarshal(raw, out) != nil {
+		return errors.New("AWS fixture response invalid")
 	}
 	return nil
 }

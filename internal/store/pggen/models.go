@@ -149,6 +149,7 @@ type AdapterConflict struct {
 	AdoptedAt               pgtype.Timestamptz
 	RepositoryID            int64
 	ObservedProviderVersion pgtype.Int8
+	ObservedProviderWitness string
 }
 
 type AdapterEffect struct {

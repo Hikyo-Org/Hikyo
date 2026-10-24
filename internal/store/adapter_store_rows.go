@@ -31,6 +31,13 @@ func adapterRequireVersion(provider string) int64 {
 	return 0
 }
 
+func adapterRequireWitness(provider string) int64 {
+	if provider == "aws-secrets-manager" {
+		return 1
+	}
+	return 0
+}
+
 func adapterCounter(value int64, valid bool) *int64 {
 	if !valid {
 		return nil

@@ -15,111 +15,111 @@ import { enrolledAccount, signInAs } from '../fixtures/accounts.ts';
 import { test, withPasskeyPage } from '../fixtures/passkey.ts';
 
 /** Pin each establish/password state while its real server ceremony is still active. */
-async function expectSocialSecuritySurface(page: Page, scope: Locator, heading: Locator, control: Locator, state: string, text: Locator[] = []) {
-  for (const theme of ['dark', 'light'] as const) {
-    await page.emulateMedia({ colorScheme: theme });
-    // The pinned set includes this state's complete axe check in each theme.
-    await expectPinnedAssertionSet(page, {
-      flow: 'account', surface: 'settings', theme,
-      text: [heading, ...text], radii: [[scope, 'container'], [control, 'control']],
-      fonts: [[heading, 'ui']], colours: [[heading, 'color', '--tx']],
-      hairlines: [scope], density: [[control, '--control']],
-    });
-    await page.screenshot({ path: test.info().outputPath(`social-${state}-${theme}.png`), fullPage: true });
-  }
+async function expectSocialSecuritySurface(page: Page, scope: Locator, heading: Locator, control: Locator, theme: 'dark' | 'light', state: string, text: Locator[] = []) {
+  // Each themed journey pins this state's complete axe check.
+  await expectPinnedAssertionSet(page, {
+    flow: 'account', surface: 'settings', theme,
+    text: [heading, ...text], radii: [[scope, 'container'], [control, 'control']],
+    fonts: [[heading, 'ui']], colours: [[heading, 'color', '--tx']],
+    hairlines: [scope], density: [[control, '--control']],
+  });
+  await page.screenshot({ path: test.info().outputPath(`social-${state}-${theme}.png`), fullPage: true });
 }
 
 test.describe('social-only account security', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('verifies an existing identity once to set a password, then changes it with local proof', async ({ page, browser }, testInfo) => {
-    const subject = `security-${testInfo.project.name}-${Date.now().toString(36)}`;
-    const admin = await browser.newContext({ storageState: STORAGE_STATE });
-    const invitation = await browserApi(await admin.newPage(), 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, { username: subject }).finally(() => admin.close());
-    // Only the fixture IdP chooses a fresh subject. All Hikyo routes, cookies,
-    // callback verification, session stamps and mutations run on the real server.
-    await page.route(/\/authorize\?/, async (route) => {
-      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(subject)}` });
+  for (const theme of ['dark', 'light'] as const) {
+    test(`verifies an existing identity once to set a password, then changes it with local proof (${theme})`, async ({ page, browser }, testInfo) => {
+      await page.emulateMedia({ colorScheme: theme });
+      const subject = `security-${testInfo.project.name}-${theme}-${Date.now().toString(36)}`;
+      const admin = await browser.newContext({ storageState: STORAGE_STATE });
+      const invitation = await browserApi(await admin.newPage(), 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, { username: subject }).finally(() => admin.close());
+      // Only the fixture IdP chooses a fresh subject. All Hikyo routes, cookies,
+      // callback verification, session stamps and mutations run on the real server.
+      await page.route(/\/authorize\?/, async (route) => {
+        await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(subject)}` });
+      });
+      await page.goto('/establish');
+      await page.getByLabel('Setup authority').fill(invitation.authority);
+      await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page).toHaveURL(/\/settings$/);
+      await page.goto('/settings?tab=factors');
+      await expect(page.getByRole('button', { name: 'Set password', exact: true })).toBeVisible();
+      await page.screenshot({ path: testInfo.outputPath('social-security-before.png'), fullPage: true });
+      await page.getByRole('button', { name: 'Set password', exact: true }).click();
+      await expect(page.getByRole('dialog').locator('input')).toHaveCount(0);
+      await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }), theme, 'establish-chooser');
+      await page.screenshot({ path: testInfo.outputPath('social-establish-chooser.png'), fullPage: true });
+      const establishStart = page.waitForRequest((request) => request.method() === 'POST' && request.url().includes(`/auth/oidc/${OIDC_PROVIDER.slug}/start`));
+      await page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }).click();
+      expect((await establishStart).postDataJSON()).toEqual({ purpose: 'establish', browser: true });
+      await expect(page).toHaveURL(/\/settings\?tab=factors$/);
+      await expect(page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })).toContainText('complete one change within about 5 minutes');
+      await expectSocialSecuritySurface(page, page.locator('#account-factors'), page.locator('#account-factors').getByRole('heading', { name: 'Sign-in factors' }), page.getByRole('button', { name: 'Set password', exact: true }), theme, 'verified-stamp', [page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })]);
+      await page.screenshot({ path: testInfo.outputPath('social-security-verified.png'), fullPage: true });
+
+      await page.getByRole('tab', { name: 'Identities' }).click();
+      await expect(page.locator('#account-identities')).toContainText(OIDC_PROVIDER.displayName);
+      await page.getByRole('button', { name: 'Link another identity' }).click();
+      await expect(page.getByRole('dialog')).toContainText('Set a password or enrol an authenticator first');
+      await expect(page.getByRole('dialog').getByRole('button', { name: /Verify with/ })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+      await page.getByRole('tab', { name: 'Sign-in factors' }).click();
+      await page.getByRole('button', { name: 'Set password', exact: true }).click();
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), theme, 'password-form');
+      await page.screenshot({ path: testInfo.outputPath('social-password-form.png'), fullPage: true });
+      const password = 'first-security-password-611';
+      await page.getByLabel('New password', { exact: true }).fill(password);
+      await page.getByLabel('Repeat new password', { exact: true }).fill(`${password}-different`);
+      await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
+      for (const label of ['New password', 'Repeat new password']) {
+        const input = page.getByLabel(label, { exact: true });
+        await expect(input).toHaveAttribute('aria-invalid', 'true');
+        await expect(input).toHaveAccessibleDescription(/The passwords do not match\. Enter them again\./);
+      }
+      await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), theme, 'password-mismatch');
+      await page.screenshot({ path: testInfo.outputPath('social-password-mismatch.png'), fullPage: true });
+      await page.getByLabel('Repeat new password', { exact: true }).fill(password);
+      await expect(page.getByLabel('New password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
+      await expect(page.getByLabel('Repeat new password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
+      const passwordSet = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
+      await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
+      expect((await passwordSet).postDataJSON()).toEqual({ password });
+      // Persistence and dialog closure also happen after an unexpected session
+      // replacement. Require the initiating mutation's success feedback too.
+      await expect(page.getByRole('dialog')).toBeHidden();
+      await expect(page.getByRole('status').filter({ hasText: 'Password saved. Every other session you held has ended.' })).toBeVisible();
+      await expect(page.locator('.alert')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Verified via' })).toHaveCount(0);
+      expect((await browserApi(page, 'GET', '/api/v1/auth/totp', zTotpStatus)).has_password).toBe(true);
+
+      await page.getByRole('button', { name: 'Change password', exact: true }).click();
+      await page.getByRole('dialog').getByLabel('Password', { exact: true }).fill(password);
+      await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+      const changedPassword = 'changed-security-password-611';
+      await page.getByLabel('New password', { exact: true }).fill(changedPassword);
+      await page.getByLabel('Repeat new password', { exact: true }).fill(changedPassword);
+      const passwordChange = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
+      await page.getByRole('dialog').getByRole('button', { name: 'Change password', exact: true }).click();
+      expect((await passwordChange).postDataJSON()).toEqual({ password: changedPassword, proof: password });
+      await expect(page.getByRole('dialog')).toBeHidden();
+      // Password proof gives this session password assurance. The existing local
+      // MFA floor applies; a provider assertion is never inherited by this write.
+      await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+      await expect(page.locator('.toast--error')).toHaveCount(0);
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+      await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+      await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      await page.goto('/settings?tab=factors');
+      await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
     });
-    await page.goto('/establish');
-    await page.getByLabel('Setup authority').fill(invitation.authority);
-    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
-    await expect(page).toHaveURL(/\/settings$/);
-    await page.goto('/settings?tab=factors');
-    await expect(page.getByRole('button', { name: 'Set password', exact: true })).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('social-security-before.png'), fullPage: true });
-    await page.getByRole('button', { name: 'Set password', exact: true }).click();
-    await expect(page.getByRole('dialog').locator('input')).toHaveCount(0);
-    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }), 'establish-chooser');
-    await page.screenshot({ path: testInfo.outputPath('social-establish-chooser.png'), fullPage: true });
-    const establishStart = page.waitForRequest((request) => request.method() === 'POST' && request.url().includes(`/auth/oidc/${OIDC_PROVIDER.slug}/start`));
-    await page.getByRole('button', { name: `Verify with ${OIDC_PROVIDER.displayName}` }).click();
-    expect((await establishStart).postDataJSON()).toEqual({ purpose: 'establish', browser: true });
-    await expect(page).toHaveURL(/\/settings\?tab=factors$/);
-    await expect(page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })).toContainText('complete one change within about 5 minutes');
-    await expectSocialSecuritySurface(page, page.locator('#account-factors'), page.locator('#account-factors').getByRole('heading', { name: 'Sign-in factors' }), page.getByRole('button', { name: 'Set password', exact: true }), 'verified-stamp', [page.getByRole('status').filter({ hasText: `Verified via ${OIDC_PROVIDER.displayName}` })]);
-    await page.screenshot({ path: testInfo.outputPath('social-security-verified.png'), fullPage: true });
-
-    await page.getByRole('tab', { name: 'Identities' }).click();
-    await expect(page.locator('#account-identities')).toContainText(OIDC_PROVIDER.displayName);
-    await page.getByRole('button', { name: 'Link another identity' }).click();
-    await expect(page.getByRole('dialog')).toContainText('Set a password or enrol an authenticator first');
-    await expect(page.getByRole('dialog').getByRole('button', { name: /Verify with/ })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Close', exact: true }).click();
-
-    await page.getByRole('tab', { name: 'Sign-in factors' }).click();
-    await page.getByRole('button', { name: 'Set password', exact: true }).click();
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
-    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), 'password-form');
-    await page.screenshot({ path: testInfo.outputPath('social-password-form.png'), fullPage: true });
-    const password = 'first-security-password-611';
-    await page.getByLabel('New password', { exact: true }).fill(password);
-    await page.getByLabel('Repeat new password', { exact: true }).fill(`${password}-different`);
-    await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
-    for (const label of ['New password', 'Repeat new password']) {
-      const input = page.getByLabel(label, { exact: true });
-      await expect(input).toHaveAttribute('aria-invalid', 'true');
-      await expect(input).toHaveAccessibleDescription(/The passwords do not match\. Enter them again\./);
-    }
-    await expectSocialSecuritySurface(page, page.getByRole('dialog'), page.getByRole('dialog').getByRole('heading', { level: 2 }), page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }), 'password-mismatch');
-    await page.screenshot({ path: testInfo.outputPath('social-password-mismatch.png'), fullPage: true });
-    await page.getByLabel('Repeat new password', { exact: true }).fill(password);
-    await expect(page.getByLabel('New password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
-    await expect(page.getByLabel('Repeat new password', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
-    const passwordSet = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
-    await page.getByRole('dialog').getByRole('button', { name: 'Set password', exact: true }).click();
-    expect((await passwordSet).postDataJSON()).toEqual({ password });
-    // Persistence and dialog closure also happen after an unexpected session
-    // replacement. Require the initiating mutation's success feedback too.
-    await expect(page.getByRole('dialog')).toBeHidden();
-    await expect(page.getByRole('status').filter({ hasText: 'Password saved. Every other session you held has ended.' })).toBeVisible();
-    await expect(page.locator('.alert')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
-    await expect(page.getByRole('status').filter({ hasText: 'Verified via' })).toHaveCount(0);
-    expect((await browserApi(page, 'GET', '/api/v1/auth/totp', zTotpStatus)).has_password).toBe(true);
-
-    await page.getByRole('button', { name: 'Change password', exact: true }).click();
-    await page.getByRole('dialog').getByLabel('Password', { exact: true }).fill(password);
-    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-    const changedPassword = 'changed-security-password-611';
-    await page.getByLabel('New password', { exact: true }).fill(changedPassword);
-    await page.getByLabel('Repeat new password', { exact: true }).fill(changedPassword);
-    const passwordChange = page.waitForRequest((request) => request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/auth/password');
-    await page.getByRole('dialog').getByRole('button', { name: 'Change password', exact: true }).click();
-    expect((await passwordChange).postDataJSON()).toEqual({ password: changedPassword, proof: password });
-    await expect(page.getByRole('dialog')).toBeHidden();
-    // Password proof gives this session password assurance. The existing local
-    // MFA floor applies; a provider assertion is never inherited by this write.
-    await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
-    await expect(page.locator('.toast--error')).toHaveCount(0);
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
-    await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
-    await page.goto('/settings?tab=factors');
-    await expect(page.getByRole('button', { name: 'Change password', exact: true })).toBeVisible();
-  });
+  }
 });
 
 /**

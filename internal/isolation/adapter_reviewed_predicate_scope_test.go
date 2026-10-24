@@ -16,13 +16,14 @@ func TestAdapterAdoptionConflictCountBindsConsentAndOwningChain(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		seedGitLabMoves(t, db, "staging")
 		execRealAdoption(t, db, `INSERT INTO adapter_conflicts(id,artifact_id,org_id,project_id,environment_id,target_id,destination_id,repository_id,target_generation,surface,effective_name,observed_provider_version,created_at) VALUES ('conf_review','artifact_review','org_gitlab','prj_gitlab','env_gitlab_e2e','tgt_gitlab_a',42,0,1,'secret','P_TOKEN',3,'2026-08-17T00:00:00Z')`)
+		execRealAdoption(t, db, `UPDATE adapter_conflicts SET observed_provider_witness=$1 WHERE id='conf_review'`, `["arn:aws:secretsmanager:eu-central-1:123456789012:secret:P_TOKEN-AbCdEf","reviewed-version"]`)
 		// PostgreSQL params are value-only and map one-for-one to SQLite here.
-		own := pggen.AdapterAdoptionConflictCountParams{ArtifactID: "artifact_review", TargetID: "tgt_gitlab_a", ChainOrg: "org_gitlab", ChainProject: "prj_gitlab", EnvironmentID: "env_gitlab_e2e", RepositoryID: 0, DestinationID: 42, Generation: 1, Surface: "secret", EffectiveName: "P_TOKEN", RequireVersion: 1}
+		own := pggen.AdapterAdoptionConflictCountParams{ArtifactID: "artifact_review", TargetID: "tgt_gitlab_a", ChainOrg: "org_gitlab", ChainProject: "prj_gitlab", EnvironmentID: "env_gitlab_e2e", RepositoryID: 0, DestinationID: 42, Generation: 1, Surface: "secret", EffectiveName: "P_TOKEN", RequireVersion: 1, RequireWitness: 1}
 		read := func(p pggen.AdapterAdoptionConflictCountParams) (int64, error) {
 			if db.Engine() == store.EnginePostgres {
 				return pggen.New(db.PG()).AdapterAdoptionConflictCount(t.Context(), p)
 			}
-			n, err := sqlitegen.New(db.SQLiteWrite()).AdapterAdoptionConflictCount(t.Context(), sqlitegen.AdapterAdoptionConflictCountParams{ArtifactID: p.ArtifactID, TargetID: p.TargetID, ChainOrg: p.ChainOrg, ChainProject: p.ChainProject, EnvironmentID: p.EnvironmentID, RepositoryID: p.RepositoryID, DestinationID: p.DestinationID, Generation: p.Generation, Surface: p.Surface, EffectiveName: p.EffectiveName, RequireVersion: int64(p.RequireVersion)})
+			n, err := sqlitegen.New(db.SQLiteWrite()).AdapterAdoptionConflictCount(t.Context(), sqlitegen.AdapterAdoptionConflictCountParams{ArtifactID: p.ArtifactID, TargetID: p.TargetID, ChainOrg: p.ChainOrg, ChainProject: p.ChainProject, EnvironmentID: p.EnvironmentID, RepositoryID: p.RepositoryID, DestinationID: p.DestinationID, Generation: p.Generation, Surface: p.Surface, EffectiveName: p.EffectiveName, RequireVersion: int64(p.RequireVersion), RequireWitness: int64(p.RequireWitness)})
 			return int64(n), err
 		}
 		if n, err := read(own); err != nil || n != 1 {
@@ -45,6 +46,14 @@ func TestAdapterAdoptionConflictCountBindsConsentAndOwningChain(t *testing.T) {
 			if n, err := read(foreign); err != nil || n != 0 {
 				t.Fatalf("foreign consent=%d %v", n, err)
 			}
+		}
+		execRealAdoption(t, db, `UPDATE adapter_conflicts SET observed_provider_witness='' WHERE id='conf_review'`)
+		if n, err := read(own); err != nil || n != 0 {
+			t.Fatalf("missing AWS witness=%d %v", n, err)
+		}
+		own.RequireWitness = 0
+		if n, err := read(own); err != nil || n != 1 {
+			t.Fatalf("provider without AWS witness requirement=%d %v", n, err)
 		}
 		execRealAdoption(t, db, `UPDATE adapter_conflicts SET observed_provider_version=NULL WHERE id='conf_review'`)
 		if n, err := read(own); err != nil || n != 0 {

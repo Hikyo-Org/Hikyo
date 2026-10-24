@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 )
@@ -109,15 +111,13 @@ func (m *Module) describeResource(ctx context.Context, destination adapter.Desti
 	if r, ok := m.API.(regional); ok {
 		region = r.Region()
 	}
-	if err := verifyARN(meta.ARN, destination.Owner, region); err != nil {
+	if err := verifySecretIdentity(CreatedSecret{ARN: meta.ARN, Name: meta.Name}, name, destination.Owner, region); err != nil {
 		return SecretMetadata{}, false, err
 	}
 	// A complete ARN contains this exact name followed by six random
 	// characters. Never turn an unrelated provider response into a write
 	// destination, and never follow a replacement when inspecting by ARN.
-	resource := strings.SplitN(meta.ARN, ":", 7)[6]
-	suffix, matches := strings.CutPrefix(resource, name+"-")
-	if meta.Name != name || !matches || len(suffix) != 6 || (resourceID != name && meta.ARN != resourceID) {
+	if resourceID != name && meta.ARN != resourceID {
 		return SecretMetadata{}, false, fmt.Errorf("%w: provider secret identity does not match configured name", adapter.ErrDestinationID)
 	}
 	return meta, true, nil
@@ -133,6 +133,20 @@ func verifyARN(arn, account, region string) error {
 	}
 	if region != "" && parts[3] != region {
 		return fmt.Errorf("%w: secret lives in region %s, configured %s", adapter.ErrDestinationID, parts[3], region)
+	}
+	return nil
+}
+
+// verifySecretIdentity is shared by metadata reads and creation receipts.
+// Both bind a complete AWS ARN to the exact configured name.
+func verifySecretIdentity(identity CreatedSecret, name, account, region string) error {
+	if err := verifyARN(identity.ARN, account, region); err != nil {
+		return err
+	}
+	parts := strings.SplitN(identity.ARN, ":", 7)
+	suffix, match := strings.CutPrefix(parts[6], name+"-")
+	if identity.Name != name || !match || len(suffix) != 6 || strings.Trim(suffix, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+		return fmt.Errorf("%w: provider secret identity does not match configured name", adapter.ErrDestinationID)
 	}
 	return nil
 }
@@ -187,7 +201,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	for i := range changes {
 		change := &changes[i]
 		record, held := ledger[adapter.NewLedgerKey(change.Surface, change.EffectiveName)]
-		if change.Disposition == adapter.Delete || !held || (record.State != adapter.Owned && record.State != adapter.Dispatched) {
+		if change.Disposition == adapter.Delete || (change.Disposition != adapter.Conflict && (!held || (record.State != adapter.Owned && record.State != adapter.Dispatched))) {
 			continue
 		}
 		meta, inspected := metadata[change.EffectiveName]
@@ -203,11 +217,65 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		// Historical custody is not current provider ownership. Surface the
 		// same refusal as Sync so a fresh scoped artifact can renew adoption.
-		if found && meta.Tags[adapter.SentinelName] != req.Target.ID {
+		// Pending first-write consent must still match this resource and
+		// current version, even if its ownership tag already landed. Invalid
+		// observed metadata yields no usable witness for explicit adoption.
+		observedWitness := adoptionWitness(meta)
+		if found && (meta.Tags[adapter.SentinelName] != req.Target.ID || (record.AdoptionPending && (observedWitness == "" || record.AdoptionWitness != observedWitness))) {
 			change.Disposition = adapter.Conflict
+		}
+		if found && change.Disposition == adapter.Conflict {
+			change.ObservedProviderWitness = observedWitness
 		}
 	}
 	return adapter.Plan{Changes: changes}, nil
+}
+
+// adoptionWitness is canonical metadata, not a value hash. It preserves the
+// complete ARN (including replacement suffix) and opaque AWSCURRENT version.
+// An empty current version is still bound to this particular empty resource.
+func adoptionWitness(meta SecretMetadata) string {
+	current := ""
+	for version, stages := range meta.Stages {
+		if slices.Contains(stages, awsCurrent) {
+			if current != "" || version == "" {
+				return "" // Ambiguous metadata must never authorize adoption.
+			}
+			current = version
+		}
+	}
+	if meta.ARN == "" {
+		return ""
+	}
+	raw, err := json.Marshal([2]string{meta.ARN, current})
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// permitsAdoption binds first-write consent to the plan-time resource/version.
+// A completed promotion may outlive its journal outcome. Only the same complete
+// ARN and this exact job's owned current token may resume metadata-only repair.
+func permitsAdoption(meta SecretMetadata, witness, targetID, token string) bool {
+	observed := adoptionWitness(meta)
+	if witness == "" || observed == "" {
+		return false
+	}
+	if witness == observed {
+		return true
+	}
+	var approved []string
+	if err := json.Unmarshal([]byte(witness), &approved); err != nil || len(approved) != 2 || approved[0] != meta.ARN {
+		return false
+	}
+	canonical, err := json.Marshal(approved)
+	if err != nil || string(canonical) != witness {
+		return false
+	}
+	return token != "" && meta.Tags[adapter.SentinelName] == targetID &&
+		slices.Contains(meta.Stages[token], awsCurrent) &&
+		(slices.Contains(meta.Stages[token], PendingStage) || slices.Contains(meta.Stages[token], CurrentStage) || meta.Tags[VersionTag] == token)
 }
 
 // rowStatus says how one name's failure affects the rest of the sync.
@@ -421,6 +489,10 @@ func (m *Module) converge(ctx context.Context, req adapter.SyncRequest, journal 
 		return change, statusFor(err), err
 	}
 	token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, row.EffectiveName)
+	if record.AdoptionPending && (!found || !permitsAdoption(meta, record.AdoptionWitness, req.Target.ID, token)) {
+		change.Disposition = adapter.Conflict
+		return change, rowConflict, fmt.Errorf("%w: secret %s changed since the reviewed adoption plan; a fresh plan is required", adapter.ErrConflict, row.EffectiveName)
+	}
 	plan := decide(meta, found, state, record.AdoptionPending, req.Target.ID, token)
 	if plan.conflict != "" {
 		change.Disposition = adapter.Conflict
@@ -471,7 +543,7 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 		if err := beforeRequest(); err != nil {
 			return mutated, err
 		}
-		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
+		err := m.API.CreateSecret(ctx, CreateSecretInput{Name: row.EffectiveName, ClientRequestToken: token, KMSKeyID: req.Target.Destination.Environment, Tags: tags})
 		if err != nil && !IsExists(err) {
 			return mutated, err
 		}
@@ -534,29 +606,47 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	}
 	if plan.promote && plan.previousCurrent == "" {
 		// AWS makes the first value AWSCURRENT even when PutSecretValue asks
-		// only for HIKYO_PENDING. Do not depend on an empty-predecessor
-		// promotion accepting an already-current version. Prove this job's
-		// version is current before skipping that redundant write, and never
-		// rebase the promotion onto a concurrently written foreign version.
-		if err := beforeRequest(); err != nil {
-			return mutated, err
+		// only for HIKYO_PENDING, but that metadata can lag behind the write.
+		// Refresh a bounded number of times instead of sending a blind move
+		// without a predecessor. Only this job's observed current version can
+		// skip promotion; never rebase onto a concurrently written version.
+		for attempt := range 3 {
+			if attempt > 0 {
+				timer := time.NewTimer(time.Duration(attempt) * 100 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return mutated, ctx.Err()
+				case <-timer.C:
+				}
+			}
+			if err := beforeRequest(); err != nil {
+				return mutated, err
+			}
+			meta, found, err := m.describeResource(ctx, req.Target.Destination, row.EffectiveName, plan.resourceID)
+			if err != nil {
+				return mutated, err
+			}
+			if !found {
+				return mutated, fmt.Errorf("%w: secret %s disappeared after staging", adapter.ErrConflict, row.EffectiveName)
+			}
+			fresh := decide(meta, true, state, adoptionPending, req.Target.ID, token)
+			if fresh.conflict != "" {
+				return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, fresh.conflict)
+			}
+			if fresh.previousCurrent == token && !fresh.put && !fresh.promote {
+				plan.promote = false
+				plan.markCurrent = fresh.markCurrent
+				plan.previousHikyo = fresh.previousHikyo
+				plan.versionTag = fresh.versionTag
+				break
+			}
+			if fresh.previousCurrent != "" {
+				return mutated, fmt.Errorf("%w: secret %s changed current version after staging", adapter.ErrConflict, row.EffectiveName)
+			}
 		}
-		meta, found, err := m.describeResource(ctx, req.Target.Destination, row.EffectiveName, plan.resourceID)
-		if err != nil {
-			return mutated, err
-		}
-		if !found {
-			return mutated, fmt.Errorf("%w: secret %s disappeared after staging", adapter.ErrConflict, row.EffectiveName)
-		}
-		fresh := decide(meta, true, state, adoptionPending, req.Target.ID, token)
-		if fresh.conflict != "" {
-			return mutated, fmt.Errorf("%w: secret %s: %s", adapter.ErrConflict, row.EffectiveName, fresh.conflict)
-		}
-		if !fresh.put && !fresh.promote {
-			plan.promote = false
-			plan.markCurrent = fresh.markCurrent
-			plan.previousHikyo = fresh.previousHikyo
-			plan.versionTag = fresh.versionTag
+		if plan.promote {
+			return mutated, fmt.Errorf("%w: secret %s current version is not visible after staging", adapter.ErrConflict, row.EffectiveName)
 		}
 	}
 	if plan.promote {
