@@ -1663,23 +1663,26 @@ func (e DynamicProviderState) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeBadRequest         ErrorCode = "bad_request"
-	ErrorCodeConflict           ErrorCode = "conflict"
-	ErrorCodeForbidden          ErrorCode = "forbidden"
-	ErrorCodeInternal           ErrorCode = "internal"
-	ErrorCodeLimitExceeded      ErrorCode = "limit_exceeded"
-	ErrorCodeNotFound           ErrorCode = "not_found"
-	ErrorCodePayloadTooLarge    ErrorCode = "payload_too_large"
-	ErrorCodeServiceUnavailable ErrorCode = "service_unavailable"
-	ErrorCodeTooManyRequests    ErrorCode = "too_many_requests"
-	ErrorCodeUnauthenticated    ErrorCode = "unauthenticated"
-	ErrorCodeUnprocessable      ErrorCode = "unprocessable"
+	ErrorCodeBadRequest             ErrorCode = "bad_request"
+	ErrorCodeCliLoginFactorRequired ErrorCode = "cli_login_factor_required"
+	ErrorCodeConflict               ErrorCode = "conflict"
+	ErrorCodeForbidden              ErrorCode = "forbidden"
+	ErrorCodeInternal               ErrorCode = "internal"
+	ErrorCodeLimitExceeded          ErrorCode = "limit_exceeded"
+	ErrorCodeNotFound               ErrorCode = "not_found"
+	ErrorCodePayloadTooLarge        ErrorCode = "payload_too_large"
+	ErrorCodeServiceUnavailable     ErrorCode = "service_unavailable"
+	ErrorCodeTooManyRequests        ErrorCode = "too_many_requests"
+	ErrorCodeUnauthenticated        ErrorCode = "unauthenticated"
+	ErrorCodeUnprocessable          ErrorCode = "unprocessable"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCodeBadRequest:
+		return true
+	case ErrorCodeCliLoginFactorRequired:
 		return true
 	case ErrorCodeConflict:
 		return true
@@ -7101,7 +7104,9 @@ type Error struct {
 		// Detail Present on `bad_request` and `unprocessable`, where it names
 		// the offending request member, and on a `conflict` whose refusal
 		// names the caller's own state or, for a key folder move that
-		// widens access, what `widening` carries. `null` and absent are
+		// widens access, what `widening` carries. On
+		// `cli_login_factor_required`, it carries sign-in guidance.
+		// `null` and absent are
 		// equivalent; every other error code omits the member entirely.
 		Detail *string `json:"detail,omitempty"`
 

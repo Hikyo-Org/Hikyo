@@ -36,7 +36,7 @@ describe('fixtureBearer real HTTP ceremony', () => {
     })));
   });
 
-  async function serve(options: { enrolled?: boolean; enrolmentRequired?: boolean; wrongBootstrapArtifact?: boolean; omitBootstrapToken?: boolean; wrongState?: boolean; refuseLogout?: boolean; refuseCode?: boolean; retryCode?: boolean } = {}) {
+  async function serve(options: { enrolled?: boolean; enrolmentRequired?: boolean; wrongBootstrapArtifact?: boolean; omitBootstrapToken?: boolean; wrongState?: boolean; refuseLogout?: boolean; refuseCode?: boolean; retryCode?: boolean; sharedSession?: boolean } = {}) {
     const calls: { path: string; body: Record<string, string>; cookie: string; csrf: string | string[] | undefined }[] = [];
     let state = '';
     let challenge = '';
@@ -57,7 +57,12 @@ describe('fixtureBearer real HTTP ceremony', () => {
         res.end(JSON.stringify(loginResult('browser')));
       };
       if (path === '/api/v1/auth/local/login') {
-        if (body['artifact'] === 'cli') {
+        // Like requireCSRF, a live inherited browser cookie makes this a
+        // cookie-authenticated mutation, even on the anonymous login route.
+        if (options.sharedSession && req.headers.cookie?.includes('__Host-hikyo=shared-browser-cookie')) {
+          res.statusCode = 401;
+          res.end('{}');
+        } else if (body['artifact'] === 'cli') {
           if (options.enrolled) {
             res.statusCode = 400;
             res.end('{}');
@@ -137,6 +142,34 @@ describe('fixtureBearer real HTTP ceremony', () => {
     expect(await fixtureBearer('unenrolled fixture', draw)).toBe('fixture-cli-bearer');
     expect(draw).not.toHaveBeenCalled();
     expect(calls.some((call) => call.path.includes('/challenge/'))).toBe(false);
+  });
+
+  it.each([true, false])('isolates enrolled=%s setup from the runner storageState', async (enrolled) => {
+    const calls = await serve({ enrolled, sharedSession: true });
+    const newContext = request.newContext.bind(request);
+    // Playwright applies test.use({ storageState }) to manually allocated
+    // request contexts too, unless the caller supplies its own storageState.
+    vi.spyOn(request, 'newContext').mockImplementation(async (options) => newContext({
+      storageState: {
+        cookies: [{
+          name: '__Host-hikyo', value: 'shared-browser-cookie', domain: 'localhost',
+          path: '/', expires: -1, httpOnly: true, secure: true, sameSite: 'Strict',
+        }],
+        origins: [],
+      },
+      ...options,
+    }));
+    const draw = vi.fn(async () => '123456');
+    expect(await fixtureBearer('isolated fixture', enrolled ? draw : undefined)).toBe('fixture-cli-bearer');
+    expect(draw).toHaveBeenCalledTimes(enrolled ? 1 : 0);
+    for (const call of calls.filter((call) => call.path.endsWith('/login') ||
+      call.path.endsWith('/start') || call.path.endsWith('/redeem'))) {
+      expect(call.cookie).toBe('');
+    }
+    if (enrolled) {
+      expect(calls.find((call) => call.path.endsWith('/approve'))?.cookie).toContain('__Host-hikyo=fixture-browser-cookie');
+      expect(calls.at(-1)?.path).toBe('/api/v1/auth/logout');
+    }
   });
 
   it('preserves the restricted CLI bootstrap session when enrolment is required', async () => {

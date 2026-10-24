@@ -36,6 +36,10 @@ func (cliLoginFactorRequired) SafeDetail() string {
 
 type cliLoginBrowserFactorRequired struct{}
 
+// ErrCLILoginBrowserFactorRequired permits recovery of a valid pending request
+// after fresh browser sign-in. Invalid references never return this refusal.
+var ErrCLILoginBrowserFactorRequired = cliLoginBrowserFactorRequired{}
+
 func (e cliLoginBrowserFactorRequired) Error() string { return "service: " + e.SafeDetail() }
 func (cliLoginBrowserFactorRequired) Unwrap() error   { return domain.ErrInvalid }
 func (cliLoginBrowserFactorRequired) SafeDetail() string {
@@ -210,7 +214,7 @@ func (s *Auth) ApproveCLILogin(ctx context.Context, actor Actor, reference strin
 		}
 		if err := s.requireCLILoginAssurance(ctx, az, account.ID, caller.Assurance); err != nil {
 			if errors.Is(err, ErrCLILoginInvalid) {
-				return CLIReauthApproval{}, cliLoginBrowserFactorRequired{}
+				return CLIReauthApproval{}, ErrCLILoginBrowserFactorRequired
 			}
 			return CLIReauthApproval{}, err
 		}

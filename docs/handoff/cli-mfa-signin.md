@@ -6,8 +6,8 @@ The owner approved removing the terminal password-login exception on
 [human authentication ADR](../adr/human-auth.md#second-factor-policy).
 After reviewing the local result, the owner authorized signed commit, push,
 pull-request creation, review and CI repairs, and merge through completion.
-Release and deployment remain outside scope. The evidence below records local
-validation; it does not establish hosted CI or merge outcomes.
+Release and deployment remain outside scope. Local validation, hosted CI, and
+merge outcomes are recorded separately below.
 
 ## Behavior
 
@@ -35,6 +35,12 @@ preserve the pending CLI reference and provider hint. After completing MFA,
 the user must explicitly approve again. Failed logout retains the session
 and a retry control. Invalid, expired, spent, or already-approved requests
 retain their generic 403 response.
+
+The recoverable approval refusal uses the machine-readable
+`cli_login_factor_required` code at HTTP 400. The SPA branches on that parsed
+code and the approval operation, independently of display wording. This adds
+one value to the existing closed error-code vocabulary; the response envelope,
+endpoint, and sign-in ceremony stay unchanged.
 
 Login assurance crosses the handoff; operation-specific proof windows do not.
 Sensitive operations still require their independent fresh proofs. There are
@@ -118,6 +124,54 @@ cumulative timeout. Its then-current disposable-database test had run for
 Docker-backed PostgreSQL fixtures also failed with confirmed disk exhaustion;
 the final both-engine HTTP batch used a disposable, bounded tmpfs fixture
 with durability enabled. No unrelated containers or volumes were pruned.
+
+## PR validation and consumer repairs
+
+[PR #1053](https://github.com/Hikyo-Org/Hikyo/pull/1053) entered the protected
+merge queue at head `b02608b95af75e328075db1dcf4dd73ccf812bda`.
+[Queue attempt 1](https://github.com/Hikyo-Org/Hikyo/actions/runs/40048366755/attempts/1)
+tested base `d827cfbb33fbbce3d1354fbc20393ff41e98c38e` and merge
+`0ba3f325010f8f61dda9e2125d73bcd1bd7dd15e`. It failed in the frozen client,
+demo, Compose, artifact-security campaign, and desktop/mobile matrix consumers.
+That attempt is failed evidence and must not be reused as merge approval.
+
+Remaining enrolled fixture callers now use the existing browser MFA and
+PKCE-bound loopback or device handoff. The Python upgrade fixtures share a
+fixture-only HTTP helper and retain separate fresh operation step-up. The
+frozen client still exercises its generated SDK and schemas, including a
+separate unenrolled control for the existing weak-assurance refusal. Browser
+fixture request contexts explicitly start with empty storage state, so the
+runner cannot inject its authenticated browser cookie into public CLI calls.
+
+The repaired demo passed on both databases; the real Compose campaign passed
+all 21 byte-exact deliveries and its refusal, doctor, sync, and restart checks.
+The frozen-client and Python fixture login checks passed against the real
+server on both databases. The refusal-code change passed TypeScript, 43
+focused frontend tests, and canonical server wire-policy tests. Final shared
+feedback passed Go compilation, client checks, shell checks, full web type
+checking and lint, and all 2,035 web tests across 217 files. A fresh independent
+source review found no actionable findings in the combined repairs. Runtime
+acceptance and hosted validation remain separate from that source review.
+
+The repaired artifact campaign passed all 14 cases on each database with 24
+generated steps, in 493 seconds, and completed both cleanups. The tested
+working-tree binary has SHA256
+`6d0c603eabe8caf7b912968ee4dc79093cfb68f1fd8e1be3781a09389f11b3ba`;
+its version stamp reports the then-current committed head `b02608b9`.
+The fixture-owner batch also passed 24 Python tests and five Node checks.
+Full kind/upgrade rehearsals and the optional five-minute Go artifact wrapper
+were not run locally. The campaign receipt is evidence of its own explicit
+cases, not of those omitted acceptance paths.
+
+Final rebuilt browser acceptance passed the matrix selection on desktop
+(37 passed, one viewport-specific expected skip) and mobile (38 passed), plus
+all 10 CLI handoff scenarios on each viewport. The fixture/sibling selection
+passed 33 tests. This campaign exercised the new refusal code and the repaired
+request-context isolation. Matrix cleanup reuses its own valid MFA-approved
+CLI session, avoiding redundant spending from the shared TOTP ledger. The
+original login failures and reproduced 30/60-second timeouts remain preserved
+as red evidence; no deadline was increased. Fixture listeners were removed.
+Filtered registry closure remained skipped under its documented contract.
 
 The configured Jev advisory was refreshed after the fixture changes, against
 a local candidate while checks were pending. Description match was 0.73 and

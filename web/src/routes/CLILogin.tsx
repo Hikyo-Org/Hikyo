@@ -206,8 +206,7 @@ function CLILoginRequest() {
     approve.error instanceof ApiError &&
     approve.error.status === 400 &&
     approve.error.operation === approveCliLoginOp &&
-    approve.error.detail ===
-      'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.'
+    approve.error.code === 'cli_login_factor_required'
   )
     return (
       <main className="login">

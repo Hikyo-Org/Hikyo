@@ -26,13 +26,22 @@ export const zFixtureRevisionList = z.object({
  */
 export async function fixtureBearer(label: string, drawTotp?: () => Promise<string>): Promise<string> {
   const contexts: APIRequestContext[] = [];
+  async function anonymousContext(): Promise<APIRequestContext> {
+    // Playwright also applies test.use({ storageState }) to new request
+    // contexts. Inheriting the shared browser session makes login a CSRF-
+    // protected mutation and leaks browser authority into the CLI handoff.
+    const context = await request.newContext({
+      baseURL: BASE_URL, storageState: { cookies: [], origins: [] },
+    });
+    contexts.push(context);
+    return context;
+  }
   async function mint(): Promise<string> {
     if (drawTotp === undefined) {
       // Required-enrolment sessions can enrol a factor but cannot approve a
       // browser handoff yet. Keep the original bootstrap artifact and let the
       // server refuse this path once a factor stands; never fall back from MFA.
-      const cli = await request.newContext({ baseURL: BASE_URL });
-      contexts.push(cli);
+      const cli = await anonymousContext();
       const response = await cli.post('/api/v1/auth/local/login', {
         data: { username: ADMIN.username, password: ADMIN.password, artifact: 'cli' },
         maxRedirects: 0,
@@ -46,10 +55,8 @@ export async function fixtureBearer(label: string, drawTotp?: () => Promise<stri
       }
       return result.session_token;
     }
-    const browser = await request.newContext({ baseURL: BASE_URL });
-    contexts.push(browser);
-    const cli = await request.newContext({ baseURL: BASE_URL });
-    contexts.push(cli);
+    const browser = await anonymousContext();
+    const cli = await anonymousContext();
     let signedIn = false;
     let csrf = '';
     async function logoutBrowser(): Promise<void> {

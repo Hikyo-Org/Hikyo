@@ -335,6 +335,12 @@ export const showCliLoginTransaction = <ThrowOnError extends boolean = false>(op
 
 /**
  * First-party CLI login approveCLILogin.
+ *
+ * A valid request refused because the browser lacks an enrolled local
+ * factor returns HTTP 400 with `cli_login_factor_required`. Clients use
+ * this code for sign-in recovery; `detail` is display text. Invalid,
+ * expired, consumed, and already-approved references retain HTTP 403.
+ *
  */
 export const approveCliLogin = <ThrowOnError extends boolean = false>(options: Options<ApproveCliLoginData, ThrowOnError>) => (options.client ?? client).post<ApproveCliLoginResponses, ApproveCliLoginErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

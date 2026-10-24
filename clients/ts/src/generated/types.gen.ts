@@ -1192,7 +1192,9 @@ export type Error = {
          * Present on `bad_request` and `unprocessable`, where it names
          * the offending request member, and on a `conflict` whose refusal
          * names the caller's own state or, for a key folder move that
-         * widens access, what `widening` carries. `null` and absent are
+         * widens access, what `widening` carries. On
+         * `cli_login_factor_required`, it carries sign-in guidance.
+         * `null` and absent are
          * equivalent; every other error code omits the member entirely.
          *
          */
@@ -1252,7 +1254,7 @@ export type ScanFinding = {
 /**
  * Closed response-code set. Clients branch on this, not on prose.
  */
-export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
+export type ErrorCode = 'bad_request' | 'cli_login_factor_required' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
 
 /**
  * An exact closed allowlist. `additionalProperties: false` is the

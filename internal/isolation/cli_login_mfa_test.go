@@ -273,7 +273,11 @@ func TestCLIHandoffRechecksEnrolledFactor(t *testing.T) {
 					before := queryInt(t, db, "SELECT COUNT(*) FROM sessions")
 					if !enrolAfterApproval {
 						status, raw := approve()
-						if status != 400 || !strings.Contains(string(raw), "Complete your enrolled authenticator or passkey") {
+						var refusal apigen.Error
+						if err := json.Unmarshal(raw, &refusal); err != nil {
+							t.Fatal(err)
+						}
+						if status != 400 || refusal.Error.Code != "cli_login_factor_required" || !strings.Contains(string(raw), "Complete your enrolled authenticator or passkey") {
 							t.Fatalf("weak browser approved after enrolment: %d %s", status, raw)
 						}
 						for _, invalid := range []string{strings.Repeat("Z", 43), expired.State} {

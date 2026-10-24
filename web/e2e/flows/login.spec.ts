@@ -1204,7 +1204,9 @@ test.describe('CLI login handoff', () => {
       const refusal = await refused;
       expect(refusal.status()).toBe(400);
       const detail = 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.';
-      expect(zError.parse(await refusal.json()).error.detail).toBe(detail);
+      const refusedError = zError.parse(await refusal.json()).error;
+      expect(refusedError.code).toBe('cli_login_factor_required');
+      expect(refusedError.detail).toBe(detail);
       await expect(page.getByRole('heading', { name: 'Complete your sign-in' })).toBeVisible();
       await expect(page.locator('.login__card').getByRole('alert')).toHaveText(detail);
       await page.screenshot({ path: testInfo.outputPath('mfa-required.png') });

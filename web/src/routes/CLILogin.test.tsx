@@ -88,7 +88,7 @@ it.each([`state=${state}`, 'user_code=ABCDEFGH'])('recovers assurance refusal th
     if (input.method === 'GET') return response(displayed);
     approvals += 1;
     return approvals === 1
-      ? response({ error: { code: 'bad_request', message: 'the request does not satisfy the API contract', detail: 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.' } }, 400)
+      ? response({ error: { code: 'cli_login_factor_required', message: 'complete an enrolled factor before authorizing the CLI', detail: 'Use your authenticator or passkey to finish signing in.' } }, 400)
       : response({ code: reference === state ? 'hik_1_hc_test' : '', state: reference, redirect_uri: displayed.redirect_uri });
   });
   auth.endSession.mockImplementation(() => { auth.anonymous = true; auth.revision += 1; });
@@ -97,7 +97,7 @@ it.each([`state=${state}`, 'user_code=ABCDEFGH'])('recovers assurance refusal th
   const view = await mount(path);
   await act(async () => approve(view.container).click());
   await settleTask();
-  expect(view.container.textContent).toContain('authenticator or passkey');
+  expect(view.container.textContent).toContain('Use your authenticator or passkey to finish signing in.');
   const retry = [...view.container.querySelectorAll('button')].find((node) => node.textContent === 'Sign out and sign in again');
   if (retry === undefined) throw new Error('missing sign-in recovery');
   await act(async () => retry.click());
@@ -127,7 +127,7 @@ it('retains the held session and retry when recovery sign-out fails', async () =
   fetcher.mockImplementation(async (input) => {
     if (!(input instanceof Request)) throw new Error('expected a request');
     if (input.url.endsWith('/logout')) return response({ error: { code: 'service_unavailable', message: 'temporarily unavailable' } }, 503);
-    return input.method === 'GET' ? response(displayed) : response({ error: { code: 'bad_request', message: 'the request does not satisfy the API contract', detail: 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.' } }, 400);
+    return input.method === 'GET' ? response(displayed) : response({ error: { code: 'cli_login_factor_required', message: 'complete an enrolled factor before authorizing the CLI', detail: 'Sign in again to complete your enrolled factor.' } }, 400);
   });
   const { container } = await mount(`state=${state}`);
   await act(async () => approve(container).click());
@@ -140,6 +140,25 @@ it('retains the held session and retry when recovery sign-out fails', async () =
   expect(container.querySelector('[data-return-to]')).toBeNull();
   expect(container.textContent).toContain('Sign-out failed');
   expect(retry.disabled).toBe(false);
+});
+
+it.each([
+  ['bad_request', 400],
+  ['cli_login_factor_required', 403],
+])('does not treat %s at %s as a recoverable approval refusal', async (code, status) => {
+  fetcher.mockImplementation(async (input) => {
+    if (!(input instanceof Request)) throw new Error('expected a request');
+    return input.method === 'GET' ? response(transaction()) : response({ error: {
+      code, message: 'refused',
+      detail: 'Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again.',
+    } }, status);
+  });
+  const { container } = await mount(`state=${state}`);
+  await act(async () => approve(container).click());
+  await settleTask();
+  expect(container.textContent).toContain('This request may have expired or already been used.');
+  expect(container.textContent).not.toContain('Sign out and sign in again');
+  expect(auth.endSession).not.toHaveBeenCalled();
 });
 
 it('shows server consent metadata and ignores callback/instance URL fields', async () => {
