@@ -19,7 +19,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def login(origin, username, password, draw_code, http=None):
     if http is None:
-        http = urllib.request.build_opener(NoRedirect())
+        # Fixture credentials and cookies must stay on the caller's origin,
+        # even when the operator's environment configures an HTTP proxy.
+        http = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def request(path, body, status=200, headers=None):
         req = urllib.request.Request(

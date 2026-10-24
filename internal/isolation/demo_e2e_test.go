@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -436,7 +437,13 @@ func completeDemoBrowserLogin(t *testing.T, srv *httptest.Server, target, passwo
 		t.Fatal(err)
 	}
 	callback.RawQuery = url.Values{"code": {approved.Code}, "state": {approved.State}}.Encode()
-	resp, err := http.Get(callback.String())
+	callbackCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(callbackCtx, http.MethodGet, callback.String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := srv.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

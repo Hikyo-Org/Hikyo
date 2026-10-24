@@ -173,6 +173,15 @@ original login failures and reproduced 30/60-second timeouts remain preserved
 as red evidence; no deadline was increased. Fixture listeners were removed.
 Filtered registry closure remained skipped under its documented contract.
 
+Subsequent review hardened two fixture transport boundaries. The demo callback
+request now observes the test context and a five-second deadline; the affected
+demo passed on both databases and scoped `noctx` lint reported zero issues.
+The Python helper's default opener explicitly ignores ambient proxy settings
+while retaining redirect refusal. A real HTTP trap reproduced proxy traffic
+with the old helper; the fixed full MFA/PKCE flow sent zero requests to that
+proxy. All 26 Python tests passed, including redirect refusal under the proxy
+environment. The affected shared Go feedback lane passed after these edits.
+
 The configured Jev advisory was refreshed after the fixture changes, against
 a local candidate while checks were pending. Description match was 0.73 and
 untested-logic probability 0.28;

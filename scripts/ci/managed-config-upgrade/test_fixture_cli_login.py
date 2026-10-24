@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import urllib.request
 
 
@@ -33,6 +33,12 @@ class LoginChecks(unittest.TestCase):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_args):
                 pass
+
+            def do_GET(self):
+                calls.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
@@ -59,6 +65,8 @@ class LoginChecks(unittest.TestCase):
                     test.assertIn("__Host-hikyo=browser-cookie", self.headers.get("Cookie", ""))
                     test.assertEqual(body, {"reference": binding["state"]})
                     result = {"state": "wrong" if failure == "binding" else binding["state"], "redirect_uri": binding["redirect_uri"], "code": "one-use"}
+                    if failure == "redirect":
+                        status = 302
                 elif path == "/auth/cli-login/redeem":
                     digest = hashlib.sha256(body["pkce_verifier"].encode()).digest()
                     test.assertEqual(base64.urlsafe_b64encode(digest).decode().rstrip("="), binding["pkce_challenge"])
@@ -77,6 +85,8 @@ class LoginChecks(unittest.TestCase):
                 else:
                     test.fail("unexpected ceremony path")
                 self.send_response(status)
+                if failure == "redirect" and path == "/auth/cli-login/approve":
+                    self.send_header("Location", "/redirected")
                 for cookie in cookies:
                     self.send_header("Set-Cookie", cookie)
                 self.end_headers()
@@ -96,7 +106,11 @@ class LoginChecks(unittest.TestCase):
                 fixture.http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
                 fixture.request = Mock(return_value={"session_token": "separate-step-up"})
                 if failure:
-                    with self.assertRaises(RuntimeError):
+                    expected_error = (
+                        self.assertRaisesRegex(RuntimeError, "fixture login refused an HTTP redirect")
+                        if failure == "redirect" else self.assertRaises(RuntimeError)
+                    )
+                    with expected_error:
                         if owner == "rollout":
                             fixture.login()
                         else:
@@ -105,6 +119,9 @@ class LoginChecks(unittest.TestCase):
                     if failure != "factor":
                         self.assertEqual(calls[-1], "/auth/logout")
                     if failure == "binding":
+                        self.assertNotIn("/auth/cli-login/redeem", calls)
+                    if failure == "redirect":
+                        self.assertNotIn("/redirected", calls)
                         self.assertNotIn("/auth/cli-login/redeem", calls)
                 else:
                     if owner == "rollout":
@@ -116,9 +133,52 @@ class LoginChecks(unittest.TestCase):
                         fixture.request.assert_not_called()
                         self.assertEqual(fixture.token, "cli-bearer")
                     self.assertEqual(calls[-1], "/auth/logout")
+                    self.assertEqual(calls, [
+                        "/auth/local/login", "/auth/login/challenge/challenge/totp",
+                        "/auth/cli-login/start", "/auth/cli-login/approve",
+                        "/auth/cli-login/redeem", "/auth/logout",
+                    ])
             finally:
                 server.shutdown()
                 worker.join()
+
+    def proxy_ceremony(self, failure=""):
+        proxy_requests = []
+
+        class ProxyTrap(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                # An honest trap refuses proxy traffic. It never impersonates
+                # the fixture or copies credential bodies into diagnostics.
+                proxy_requests.append(self.command)
+                self.send_response(502)
+                self.end_headers()
+
+        with ThreadingHTTPServer(("127.0.0.1", 0), ProxyTrap) as proxy:
+            worker = threading.Thread(target=proxy.serve_forever)
+            worker.start()
+            try:
+                proxy_url = f"http://127.0.0.1:{proxy.server_port}"
+                with patch.dict("os.environ", {
+                    "http_proxy": proxy_url, "HTTP_PROXY": proxy_url,
+                    "https_proxy": proxy_url, "HTTPS_PROXY": proxy_url,
+                    "no_proxy": "", "NO_PROXY": "",
+                }, clear=True):
+                    try:
+                        self.ceremony("rollout", failure)
+                    finally:
+                        self.assertEqual(proxy_requests, [], "fixture traffic reached the ambient proxy")
+            finally:
+                proxy.shutdown()
+                worker.join()
+
+    def test_default_login_ignores_ambient_proxy_through_mfa_and_handoff(self):
+        self.proxy_ceremony()
+
+    def test_default_login_still_refuses_redirects_with_ambient_proxy(self):
+        self.proxy_ceremony("redirect")
 
     def test_both_enrolled_callers_complete_browser_mfa_and_pkce(self):
         for owner in ("rollout", "rehearsal"):
