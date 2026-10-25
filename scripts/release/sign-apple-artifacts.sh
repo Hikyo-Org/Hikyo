@@ -171,8 +171,28 @@ if [ "$mode" != notarize ]; then
     # both architectures and Keychain cleanup succeed, independent of Apple API.
     COPYFILE_DISABLE=1 tar -czf "$scratch/archives/$(basename "$archive")" -C "$payload" LICENSE hikyo
     # HFS+ avoids the APFS image attachment/preflight failure with release payloads.
-    hdiutil create -volname "Hikyo $version $arch" -srcfolder "$payload" \
-      -fs HFS+ -format UDZO "$dmg" >/dev/null
+    image_attempt=1
+    printf 'hdiutil: create failed - Resource busy\n' >"$scratch/image-busy.err"
+    while :; do
+      if hdiutil create -volname "Hikyo $version $arch" -srcfolder "$payload" \
+        -nospotlight -fs HFS+ -format UDZO "$dmg" > /dev/null 2>"$scratch/image-create.err"; then
+        cat "$scratch/image-create.err" >&2
+        break
+      else
+        image_status=$?
+      fi
+      cat "$scratch/image-create.err" >&2
+      printf 'apple signing: disk image creation failed for %s (attempt %s/3, status %s)\n' \
+        "$arch" "$image_attempt" "$image_status" >&2
+      # Match the complete diagnostic, never a generic mention or mixed errors.
+      if [ "$image_attempt" -ge 3 ] || ! cmp -s "$scratch/image-busy.err" "$scratch/image-create.err"; then
+        exit "$image_status"
+      fi
+      # hdiutil can leave a partial image even when creation fails.
+      rm -f "$dmg"
+      sleep 2
+      image_attempt=$((image_attempt + 1))
+    done
     codesign --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain" \
       --identifier app.hikyo.cli.dmg --timestamp "$dmg"
     codesign --verify --strict -R "$requirement" "$dmg"

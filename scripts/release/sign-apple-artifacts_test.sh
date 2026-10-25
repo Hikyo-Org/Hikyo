@@ -137,12 +137,16 @@ printf 'hdiutil %s\n' "$1" >>"$APPLE_FIXTURE_LOG"
 [ "${APPLE_FIXTURE_PHASE:-}" != notarize ] || { printf 'forbidden disk image creation\n' >>"$APPLE_FIXTURE_LOG"; exit 1; }
 filesystem=
 format=
+source=
+spotlight=true
 option=
 for argument do
   case "$option" in
     -fs) filesystem=$argument ;;
     -format) format=$argument ;;
+    -srcfolder) source=$argument ;;
   esac
+  [ "$argument" != -nospotlight ] || spotlight=false
   option=$argument
   target=$argument
 done
@@ -150,7 +154,37 @@ done
   printf 'explicit HFS+ filesystem and compressed UDIF format required\n' >&2
   exit 1
 }
+image_arch=$(basename "$source")
+printf 'image options %s spotlight=%s\n' "$image_arch" "$spotlight" >>"$APPLE_FIXTURE_LOG"
+attempt_file=$APPLE_FIXTURE_STATE/image-$image_arch
+attempt=0
+[ ! -f "$attempt_file" ] || attempt=$(cat "$attempt_file")
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" >"$attempt_file"
+printf 'image attempt %s %s\n' "$image_arch" "$attempt" >>"$APPLE_FIXTURE_LOG"
+# hdiutil refuses to overwrite a failed attempt's partial output.
+[ ! -e "$target" ] || { printf 'image output already exists\n' >&2; exit 17; }
+case "$APPLE_FIXTURE_MODE:$image_arch:$attempt" in
+  image-busy-once:*:1 | image-busy-always:arm64:* | image-second-busy-always:x86_64:*)
+    printf 'partial disk image\n' >"$target"
+    printf 'hdiutil: create failed - Resource busy\n' >&2
+    exit 1
+    ;;
+  image-error:*) printf 'hdiutil: create failed - Permission denied\n' >&2; exit 13 ;;
+  image-other-busy:*) printf 'hdiutil: create failed - Permission denied (Resource busy)\n' >&2; exit 13 ;;
+  image-prefixed-busy:*) printf 'warning: hdiutil: create failed - Resource busy\n' >&2; exit 13 ;;
+  image-mixed-error:*)
+    printf 'hdiutil: create failed - Resource busy\nhdiutil: create failed - Permission denied\n' >&2
+    exit 13
+    ;;
+esac
 printf 'disk image\n' >"$target"
+EOF
+cat >"$fixture/bin/sleep" <<'EOF'
+#!/bin/sh
+set -eu
+[ "$#" -eq 1 ] && [ "$1" = 2 ] || exit 1
+printf 'sleep %s\n' "$1" >>"$APPLE_FIXTURE_LOG"
 EOF
 cat >"$fixture/bin/xcrun" <<'EOF'
 #!/bin/sh
@@ -478,6 +512,82 @@ assert_split_cleanup() {
     printf 'apple fixture: split phase printed credentials\n' >&2; exit 1
   fi
 }
+
+# Image creation retries must be bounded independently for each architecture.
+# Run every regression even on failure so the red witness covers the whole set.
+run_image_creation_case() {
+  : >"$APPLE_FIXTURE_LOG"
+  : >"$GITHUB_OUTPUT"
+  cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
+  rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
+  mkdir "$fixture/evidence" "$fixture/state"
+  cp -R "$fixture/original" "$fixture/dist"
+  "$script_dir/sign-apple-artifacts.sh" "$fixture/dist" >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
+  expected_arm64=1
+  expected_x86_64=0
+  expected_delays=0
+  expected_result=13
+  case "$APPLE_FIXTURE_MODE" in
+    image-busy-once) expected_arm64=2; expected_x86_64=2; expected_delays=2; expected_result=0 ;;
+    image-busy-always) expected_arm64=3; expected_delays=2; expected_result=1 ;;
+    image-second-busy-always) expected_x86_64=3; expected_delays=2; expected_result=1 ;;
+  esac
+  for image_arch in arm64 x86_64; do
+    expected_attempts=$expected_arm64
+    [ "$image_arch" != x86_64 ] || expected_attempts=$expected_x86_64
+    attempts=$(grep -c "^image attempt $image_arch " "$APPLE_FIXTURE_LOG" || true)
+    printf 'apple image fixture: %s %s attempts=%s expected=%s\n' "$APPLE_FIXTURE_MODE" "$image_arch" "$attempts" "$expected_attempts"
+    [ "$attempts" -eq "$expected_attempts" ]
+  done
+  delays=$(grep -c '^sleep 2$' "$APPLE_FIXTURE_LOG" || true)
+  printf 'apple image fixture: %s delays=%s expected=%s status=%s expected=%s\n' "$APPLE_FIXTURE_MODE" "$delays" "$expected_delays" "$result" "$expected_result"
+  [ "$delays" -eq "$expected_delays" ]
+  [ "$result" -eq "$expected_result" ]
+  for image_arch in arm64 x86_64; do
+    expected_attempts=$expected_arm64
+    [ "$image_arch" != x86_64 ] || expected_attempts=$expected_x86_64
+    [ "$(grep -c "^image options $image_arch spotlight=false$" "$APPLE_FIXTURE_LOG" || true)" -eq "$expected_attempts" ]
+  done
+  if [ "$expected_result" -eq 0 ]; then
+    assert_signed_outputs 1.2.3
+    [ "$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
+    [ "$(grep -c '^xcrun stapler validate$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
+    [ "$(grep -c '^spctl$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
+  else
+    for file in "$fixture/original/"*; do cmp "$file" "$fixture/dist/$(basename "$file")"; done
+    [ "$(find "$fixture/dist" -type f | wc -l | tr -d ' ')" -eq "$(find "$fixture/original" -type f | wc -l | tr -d ' ')" ]
+    [ -z "$(find "$fixture/dist" -name '*.dmg' -print)" ]
+    if grep -E '^xcrun |^spctl$' "$APPLE_FIXTURE_LOG"; then exit 1; fi
+    [ ! -s "$GITHUB_OUTPUT" ]
+    [ -z "$(find "$fixture/evidence" -mindepth 1 -print)" ]
+    case "$APPLE_FIXTURE_MODE" in
+      image-busy-always | image-second-busy-always) diagnostic='hdiutil: create failed - Resource busy' ;;
+      image-error | image-mixed-error) diagnostic='hdiutil: create failed - Permission denied' ;;
+      image-other-busy) diagnostic='hdiutil: create failed - Permission denied (Resource busy)' ;;
+      image-prefixed-busy) diagnostic='warning: hdiutil: create failed - Resource busy' ;;
+    esac
+    grep -Fx "$diagnostic" "$fixture/err" >/dev/null
+  fi
+  grep -Fx 'security delete-keychain' "$APPLE_FIXTURE_LOG" >/dev/null
+  assert_split_cleanup
+}
+image_failures=0
+for APPLE_FIXTURE_MODE in image-busy-once image-busy-always image-second-busy-always image-error image-other-busy image-prefixed-busy image-mixed-error; do
+  export APPLE_FIXTURE_MODE
+  set +e
+  (set -e; run_image_creation_case)
+  image_result=$?
+  set -e
+  if [ "$image_result" -ne 0 ]; then
+    printf 'apple image fixture: FAIL %s\n' "$APPLE_FIXTURE_MODE" >&2
+    cat "$fixture/err" >&2
+    image_failures=$((image_failures + 1))
+  else
+    printf 'apple image fixture: PASS %s\n' "$APPLE_FIXTURE_MODE"
+  fi
+done
+[ "$image_failures" -eq 0 ] || exit 1
+
 assert_sign_only_calls() {
   signing_version=${1:-1.2.3}
   [ ! -s "$GITHUB_OUTPUT" ] || { printf 'signing-only phase authorized a provider failure fallback\n' >&2; exit 1; }
