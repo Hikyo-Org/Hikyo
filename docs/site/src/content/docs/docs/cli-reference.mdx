@@ -155,7 +155,7 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider sealed-webhook --origin URL --env ENV --kind organization --owner RECEIVER_NAMESPACE --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider gitlab --origin URL --env ENV --kind project|group --owner NAMESPACE [--repo PROJECT] [--scope SCOPE] [--protected] [--hidden] [--expand-variables] [--spki-pin PIN] [--ca-bundle-file FILE] [--allow-personal-token] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
-hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.REGION.amazonaws.com --env ENV --kind json-object|per-key --owner ACCOUNT_ID [--secret NAME|PATH/] [--kms-key KEY] --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn ARN] [--aws-external-id ID] [--aws-session-seconds N] [--aws-access-key-id ID] [--aws-region REGION] [--aws-sts-origin URL] [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.REGION.amazonaws.com --env ENV --kind json-object|per-key --owner ACCOUNT_ID [--secret NAME|PATH/] [--kms-key KEY] [--aws-auth ambient|assume-role|web-identity [--aws-role-arn ARN] [--aws-external-id ID] [--aws-session-seconds N] [--aws-region REGION] [--aws-sts-origin URL]] [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE] [--aws-auth MODE ...]
 hikyo adapter update ADAPTER --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] [--secret NAME|PATH/] [--kms-key KEY] --prefix PREFIX --keys ID,ID [--keep-remote]
 hikyo adapter update ADAPTER --move MOVE --origin URL [--stdin|--value-file FILE] [--aws-auth MODE ...]
@@ -179,6 +179,26 @@ hikyo adapter target show|remove TARGET
 hikyo adapter plan|sync|test --target TARGET
 hikyo adapter adopt --target TARGET [--artifact ARTIFACT] NAME...
 ```
+
+AWS static authentication uses the complete one-line JSON access descriptor as
+protected credential input, with no `--aws-*` flags. Set `mode` to `static` and
+include `access_key_id`, `secret_access_key`, optional `session_token` for
+temporary credentials, and any `region` or `sts_origin` settings in that JSON.
+Supply it at the no-echo prompt, with `--stdin` from a private input producer, or
+with `--value-file` pointing to an owner-only descriptor file. For example:
+
+```sh
+hikyo adapter credential set --adapter ADAPTER --value-file ./private/aws-descriptor.json
+```
+
+The same protected input applies to `adapter create`, `adapter update --origin`,
+and credential replacement or origin-move resume. Never put any part of the
+static credential tuple in argv or echo it in a shell command. The former
+`--aws-auth static --aws-access-key-id` form is refused before credential input
+or HTTP; migrate the entire tuple to the protected descriptor, including any
+session token. Nonsecret `--aws-auth ambient|assume-role|web-identity` flags remain
+available with their mode-specific options and cannot be mixed with descriptor
+input.
 
 A target update replaces the complete key subset. Target fields cannot be mixed
 with adapter-level origin or credential fields. The environment is immutable;

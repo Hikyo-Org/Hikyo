@@ -79,53 +79,57 @@ func (s adapterCredentialSource) readPrompt(ios IO, prompt string) ([]byte, erro
 	return raw, nil
 }
 
-// adapterAWSAuth assembles the AWS Secrets Manager access descriptor from
-// flags. Only the static secret access key is secret, and it is read like any
-// adapter credential: no-echo prompt, --stdin, or --value-file, never argv.
+// adapterAWSAuth assembles nonsecret workload descriptors from flags. Static
+// credentials use the complete raw JSON descriptor through protected input.
 type adapterAWSAuth struct {
-	mode, roleARN, externalID, region, accessKeyID, stsOrigin string
-	sessionSeconds                                            int
+	mode, roleARN, externalID, region, stsOrigin string
+	sessionSeconds                               int
 }
 
 func (a *adapterAWSAuth) flags(fs *flag.FlagSet) {
-	fs.StringVar(&a.mode, "aws-auth", "", "AWS Secrets Manager authentication: ambient, assume-role, web-identity, or static")
+	fs.StringVar(&a.mode, "aws-auth", "", "AWS workload authentication: ambient, assume-role, or web-identity; static uses a protected JSON descriptor without --aws-* flags")
 	fs.StringVar(&a.roleARN, "aws-role-arn", "", "IAM role ARN for assume-role or web-identity")
 	fs.StringVar(&a.externalID, "aws-external-id", "", "external id for assume-role")
 	fs.IntVar(&a.sessionSeconds, "aws-session-seconds", 0, "assumed-role session duration, 900-3600 seconds")
 	fs.StringVar(&a.region, "aws-region", "", "AWS region; required for a VPC endpoint or emulator origin")
-	fs.StringVar(&a.accessKeyID, "aws-access-key-id", "", "access key id for static authentication; the secret key is read like a credential")
 	fs.StringVar(&a.stsOrigin, "aws-sts-origin", "", "STS endpoint for a VPC endpoint or emulator origin")
 }
 
 func (a adapterAWSAuth) set() bool {
-	return a.mode != "" || a.roleARN != "" || a.externalID != "" || a.sessionSeconds != 0 || a.region != "" || a.accessKeyID != "" || a.stsOrigin != ""
+	return a.mode != "" || a.roleARN != "" || a.externalID != "" || a.sessionSeconds != 0 || a.region != "" || a.stsOrigin != ""
+}
+
+const awsStaticInputHelp = "AWS static credentials require a complete JSON access descriptor via --stdin, --value-file, or the no-echo prompt, without --aws-* flags"
+
+func (a adapterAWSAuth) validateSource(source adapterCredentialSource) error {
+	if a.mode == string(awssm.AuthStatic) {
+		return failf(ExitUsage, "%s", awsStaticInputHelp)
+	}
+	if a.set() {
+		if a.mode == "" {
+			return failf(ExitUsage, "--aws-* flags require --aws-auth")
+		}
+		if source.stdin || source.file != "" {
+			return failf(ExitUsage, "protected JSON credential input cannot be combined with --aws-* flags")
+		}
+	}
+	return nil
 }
 
 // credential returns the adapter credential: the assembled AWS descriptor
 // when --aws-auth is given, otherwise the raw credential from the source.
 func (a adapterAWSAuth) credential(ios IO, source adapterCredentialSource) ([]byte, error) {
+	if err := a.validateSource(source); err != nil {
+		return nil, err
+	}
 	if !a.set() {
 		return source.read(ios)
 	}
-	if a.mode == "" {
-		return nil, failf(ExitUsage, "--aws-* flags require --aws-auth")
-	}
 	descriptor := awssm.Descriptor{
 		Mode: awssm.AuthMode(a.mode), Region: a.region, RoleARN: a.roleARN, ExternalID: a.externalID,
-		SessionSeconds: a.sessionSeconds, AccessKeyID: a.accessKeyID, STSOrigin: a.stsOrigin,
-	}
-	if descriptor.Mode == awssm.AuthStatic {
-		secret, err := source.readPrompt(ios, "AWS secret access key: ")
-		if err != nil {
-			return nil, err
-		}
-		descriptor.SecretKey = string(secret)
-		zeroBytes(secret)
-	} else if source.stdin || source.file != "" {
-		return nil, failf(ExitUsage, "--stdin and --value-file carry only the static secret access key")
+		SessionSeconds: a.sessionSeconds, STSOrigin: a.stsOrigin,
 	}
 	raw, err := json.Marshal(descriptor)
-	descriptor.SecretKey = ""
 	if err != nil {
 		return nil, failf(ExitInternal, "encode AWS access descriptor: %v", err)
 	}
@@ -408,6 +412,15 @@ func runAdapterCeremony(ctx context.Context, ios IO, client *Client, st *State, 
 }
 
 func runAdapter(ctx context.Context, ios IO, args []string) error {
+	// Refuse the removed identifier flag before parsing can echo its value or
+	// authentication/ceremony can perform HTTP. Accept neither spelling, even
+	// an empty value or a combination with a different auth mode.
+	for _, arg := range args {
+		name, _, _ := strings.Cut(arg, "=")
+		if name == "--aws-access-key-id" || name == "-aws-access-key-id" {
+			return failf(ExitUsage, "%s", awsStaticInputHelp)
+		}
+	}
 	sub, rest, err := subverb("adapter", args, "create", "list", "show", "update", "delete", "credential", "target", "adopt", "plan", "sync", "test")
 	if err != nil {
 		return err
@@ -477,6 +490,9 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 	})
 	if err != nil {
+		return err
+	}
+	if err := awsAuth.validateSource(source); err != nil {
 		return err
 	}
 	f, err := ParseFormat(format)
@@ -787,6 +803,9 @@ func runAdapterCredential(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	if err := flags.checkNoPositionals("adapter credential " + sub); err != nil {
+		return err
+	}
+	if err := awsAuth.validateSource(source); err != nil {
 		return err
 	}
 	if adapterID == "" {

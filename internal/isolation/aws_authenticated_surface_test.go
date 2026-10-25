@@ -42,6 +42,7 @@ import (
 const awsSurfacePassword = "correct horse battery staple aws surface"
 const awsSurfaceSecret = "aws-surface-synthetic-writer-secret"
 const awsSurfaceReplacement = "aws-surface-synthetic-replacement-secret"
+const awsSurfaceSessionToken = "aws-surface-synthetic-session-token"
 
 // HTTP contracts require canonical prefixed UUIDs, unlike the short identifiers
 // used by the shared service-only isolation fixture.
@@ -121,7 +122,7 @@ func awsSurfaceTLS(t *testing.T, handler http.Handler) *httptest.Server {
 func newAWSAuthenticatedSurface(t *testing.T, db *store.DB) *awsAuthenticatedSurface {
 	t.Helper()
 	seedAWSAuthenticatedCatalogue(t, db)
-	h := &awsAuthenticatedSurface{t: t, db: db, clock: time.Now().UTC(), forbidden: []string{awsSurfacePassword, awsSurfaceSecret, awsSurfaceReplacement, "AKIAHIKYOE2E0000001", "synthetic external value", awsSecretV1, awsSecretV2}}
+	h := &awsAuthenticatedSurface{t: t, db: db, clock: time.Now().UTC(), forbidden: []string{awsSurfacePassword, awsSurfaceSecret, awsSurfaceReplacement, awsSurfaceSessionToken, "AKIAHIKYOE2E0000001", "synthetic external value", awsSecretV1, awsSecretV2}}
 	kr := probeKeyring(t, db)
 	h.auth = authServiceForKeyring(t, db, kr)
 	limiter, err := admission.New(admission.Config{ArgonMemoryKiB: crypto.PasswordFloor.MemoryKiB, Now: func() time.Time { return h.clock }})
@@ -296,7 +297,7 @@ func (h *awsAuthenticatedSurface) noSecrets(raw []byte) {
 			h.t.Fatal("surface or audit disclosed synthetic secret material")
 		}
 	}
-	for _, field := range []string{"secret_access_key", "credential_ciphertext"} {
+	for _, field := range []string{"access_key_id", "secret_access_key", "session_token", "credential_ciphertext"} {
 		if bytes.Contains(raw, []byte(field)) {
 			h.t.Fatal("surface or audit exposed credential fields")
 		}
@@ -488,7 +489,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 						name, remoteName = "prod/surface/", "prod/surface/SHARED_KEY"
 					}
 					h.remote.Seed(remoteName, "synthetic external value", nil)
-					descriptor := `{"mode":"static","region":"` + awsRegion + `","access_key_id":"AKIAHIKYOE2E0000001","secret_access_key":"` + awsSurfaceSecret + `"}`
+					descriptor := `{"mode":"static","region":"` + awsRegion + `","access_key_id":"AKIAHIKYOE2E0000001","secret_access_key":"` + awsSurfaceSecret + `","session_token":"` + awsSurfaceSessionToken + `"}`
 					input := apigen.CreateAdapterRequest{Provider: "aws-secrets-manager", Origin: h.remote.URL, Credential: descriptor, Target: apigen.AdapterTargetInput{EnvironmentId: apigen.ID(awsSurfaceEnvironment), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: awsAccount, DestinationName: name, KeyIds: []apigen.ID{apigen.ID(awsSurfaceKey)}, SelectedRepositoryIds: []int64{}}}
 					before := len(h.remote.Operations())
 					h.request(h.front.Client(), "", http.MethodPost, base+"/adapters", input, http.StatusUnauthorized)
@@ -500,7 +501,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 					}
 					var configured apigen.Adapter
 					if surface == "cli" {
-						raw := h.command(cli.ExitOK, "adapter.configure", awsSurfaceSecret+"\n", "adapter", "create", "--provider", "aws-secrets-manager", "--origin", h.remote.URL, "--env", string(awsSurfaceEnvironment), "--kind", kind, "--owner", awsAccount, "--secret", name, "--keys", awsSurfaceKey, "--aws-auth", "static", "--aws-region", awsRegion, "--aws-access-key-id", "AKIAHIKYOE2E0000001", "--stdin", "-o", "json")
+						raw := h.command(cli.ExitOK, "adapter.configure", descriptor+"\n", "adapter", "create", "--provider", "aws-secrets-manager", "--origin", h.remote.URL, "--env", string(awsSurfaceEnvironment), "--kind", kind, "--owner", awsAccount, "--secret", name, "--keys", awsSurfaceKey, "--stdin", "-o", "json")
 						var list apigen.AdapterList
 						if err := json.Unmarshal(raw, &list); err != nil || len(list.Items) != 1 {
 							t.Fatal("CLI configuration did not render the actual API adapter")
@@ -558,7 +559,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 					replacement := strings.ReplaceAll(descriptor, awsSurfaceSecret, awsSurfaceReplacement)
 					h.request(h.browser, "", http.MethodPut, credentialPath, apigen.SetAdapterCredentialRequest{Credential: replacement}, http.StatusConflict)
 					if surface == "cli" {
-						h.command(cli.ExitOK, "adapter.credential-set", awsSurfaceReplacement+"\n", "adapter", "credential", "set", "--adapter", adapterID, "--aws-auth", "static", "--aws-region", awsRegion, "--aws-access-key-id", "AKIAHIKYOE2E0000001", "--stdin")
+						h.command(cli.ExitOK, "adapter.credential-set", replacement+"\n", "adapter", "credential", "set", "--adapter", adapterID, "--stdin")
 					} else {
 						h.reauth("adapter.credential-set")
 						h.request(h.browser, "", http.MethodPut, credentialPath, apigen.SetAdapterCredentialRequest{Credential: replacement}, http.StatusNoContent)
@@ -585,7 +586,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 					}
 					stored, parseErr := awssm.ParseDescriptor(string(plain))
 					crypto.Zero(plain)
-					if parseErr != nil || stored.SecretKey != awsSurfaceReplacement {
+					if parseErr != nil || stored.SecretKey != awsSurfaceReplacement || stored.AccessKeyID != "AKIAHIKYOE2E0000001" || stored.SessionToken != awsSurfaceSessionToken || stored.Mode != awssm.AuthStatic || stored.Region != awsRegion {
 						t.Fatal("replacement descriptor was not sealed in actual credential custody")
 					}
 					// Workload descriptors may only address AWS-owned endpoints.
@@ -667,7 +668,7 @@ func TestAWSAuthenticatedAPIAndCLILifecycle(t *testing.T) {
 					// Recovery requires explicit fresh custody and a fresh sync
 					// ceremony; it cannot resurrect the retired job or old bearer.
 					if surface == "cli" {
-						h.command(cli.ExitOK, "adapter.credential-set", awsSurfaceReplacement+"\n", "adapter", "credential", "set", "--adapter", adapterID, "--aws-auth", "static", "--aws-region", awsRegion, "--aws-access-key-id", "AKIAHIKYOE2E0000001", "--stdin")
+						h.command(cli.ExitOK, "adapter.credential-set", replacement+"\n", "adapter", "credential", "set", "--adapter", adapterID, "--stdin")
 						h.command(cli.ExitOK, "adapter.sync", "", "adapter", "sync", "--target", targetID)
 					} else {
 						h.reauth("adapter.credential-set")

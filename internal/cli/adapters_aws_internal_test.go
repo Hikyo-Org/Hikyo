@@ -12,10 +12,20 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 )
 
+const awsCLIStaticDescriptor = `{"mode":"static","region":"eu-west-1","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"aws-cli-secret-canary","session_token":"aws-cli-temporary-token-canary"}`
+
 // This fixture checks CLI dispatch and wire contracts only. It deliberately
 // omits OpenURL, using the existing injectable transport seam; ceremony and
 // provider behavior require their separate integration acceptance suites.
 func runAWSAdapterCommand(t *testing.T, handler http.HandlerFunc, args ...string) (int, string, string) {
+	t.Helper()
+	return runAWSAdapterCommandWithInput(t, handler, strings.NewReader(awsCLIStaticDescriptor+"\n"), func(string) (string, error) {
+		t.Error("AWS descriptor unexpectedly requested a terminal secret")
+		return "", io.ErrUnexpectedEOF
+	}, args...)
+}
+
+func runAWSAdapterCommandWithInput(t *testing.T, handler http.HandlerFunc, input io.Reader, password func(string) (string, error), args ...string) (int, string, string) {
 	t.Helper()
 	server := newRevisionAwareFixtureServer(handler)
 	defer server.Close()
@@ -29,23 +39,20 @@ func runAWSAdapterCommand(t *testing.T, handler http.HandlerFunc, args ...string
 	}
 	var stdout, stderr bytes.Buffer
 	ios := IO{
-		Stdin: strings.NewReader("aws-cli-secret-canary\n"), Stdout: &stdout, Stderr: &stderr,
+		Stdin: input, Stdout: &stdout, Stderr: &stderr,
 		Env: Env{Getenv: func(name string) string {
 			if name == "HIKYO_STATE_DIR" {
 				return stateDir
 			}
 			return ""
 		}},
-		ReadPassword: func(string) (string, error) {
-			t.Error("AWS descriptor unexpectedly requested a terminal secret")
-			return "", io.ErrUnexpectedEOF
-		},
+		ReadPassword: password,
 	}
 	args = append(args, "--instance", "local", "--org", "org_one", "--project", "prj_one")
 	code := Run(t.Context(), ios, args)
-	for _, forbidden := range []string{"aws-cli-secret-canary", "aws-cli-session-canary", "AKIAHIKYOTEST0000001", "secret_access_key"} {
+	for _, forbidden := range []string{"aws-cli-secret-canary", "aws-cli-session-canary", "aws-cli-temporary-token-canary", "AKIAHIKYOTEST0000001", "secret_access_key", "session_token"} {
 		if strings.Contains(stdout.String(), forbidden) || strings.Contains(stderr.String(), forbidden) {
-			t.Errorf("CLI output disclosed %q", forbidden)
+			t.Error("CLI output disclosed credential material")
 		}
 	}
 	return code, stdout.String(), stderr.String()
@@ -80,8 +87,8 @@ func TestAWSAdapterCreateDispatchesBothKindsAndAllCredentialModes(t *testing.T) 
 					if err != nil || string(descriptor.Mode) != mode || descriptor.Region != "eu-west-1" {
 						t.Error("AWS create lost a valid mode-specific descriptor")
 					}
-					if mode == "static" && (descriptor.AccessKeyID != "AKIAHIKYOTEST0000001" || descriptor.SecretKey != "aws-cli-secret-canary") {
-						t.Error("static descriptor did not preserve stdin secret")
+					if mode == "static" && (descriptor.AccessKeyID != "AKIAHIKYOTEST0000001" || descriptor.SecretKey != "aws-cli-secret-canary" || descriptor.SessionToken != "aws-cli-temporary-token-canary") {
+						t.Error("static descriptor did not preserve the complete private temporary credentials")
 					}
 					if mode == "assume-role" && descriptor.ExternalID != "tenant-one" {
 						t.Error("AssumeRole external ID lost")
@@ -93,9 +100,11 @@ func TestAWSAdapterCreateDispatchesBothKindsAndAllCredentialModes(t *testing.T) 
 					w.WriteHeader(http.StatusCreated)
 					_, _ = io.WriteString(w, `{"id":"adp_one","provider":"aws-secrets-manager","origin":"https://secretsmanager.eu-west-1.amazonaws.com","state":"active","credential_present":true,"targets":[]}`)
 				}
-				args := []string{"adapter", "create", "--provider", "aws-secrets-manager", "--origin", "https://secretsmanager.eu-west-1.amazonaws.com", "--env", "env_one", "--kind", kind, "--owner", "123456789012", "--secret", destination, "--kms-key", "alias/hikyo", "--prefix", "PROD_", "--keys", "key_one", "--aws-auth", mode, "--aws-region", "eu-west-1"}
+				args := []string{"adapter", "create", "--provider", "aws-secrets-manager", "--origin", "https://secretsmanager.eu-west-1.amazonaws.com", "--env", "env_one", "--kind", kind, "--owner", "123456789012", "--secret", destination, "--kms-key", "alias/hikyo", "--prefix", "PROD_", "--keys", "key_one"}
 				if mode == "static" {
-					args = append(args, "--aws-access-key-id", "AKIAHIKYOTEST0000001", "--stdin")
+					args = append(args, "--stdin")
+				} else {
+					args = append(args, "--aws-auth", mode, "--aws-region", "eu-west-1")
 				}
 				if mode == "assume-role" || mode == "web-identity" {
 					args = append(args, "--aws-role-arn", "arn:aws:iam::123456789012:role/hikyo", "--aws-session-seconds", "900")
@@ -127,11 +136,11 @@ func TestAWSAdapterCredentialReplacementHasNoReadback(t *testing.T) {
 			return
 		}
 		descriptor, err := awssm.ParseDescriptor(body.Credential)
-		if err != nil || descriptor.Mode != awssm.AuthStatic || descriptor.SecretKey != "aws-cli-secret-canary" {
+		if err != nil || descriptor.Mode != awssm.AuthStatic || descriptor.SecretKey != "aws-cli-secret-canary" || descriptor.AccessKeyID != "AKIAHIKYOTEST0000001" || descriptor.SessionToken != "aws-cli-temporary-token-canary" || descriptor.Region != "eu-west-1" {
 			t.Error("replacement did not carry a valid static descriptor")
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}, "adapter", "credential", "set", "--adapter", "adp_one", "--aws-auth", "static", "--aws-access-key-id", "AKIAHIKYOTEST0000001", "--stdin")
+	}, "adapter", "credential", "set", "--adapter", "adp_one", "--stdin")
 	if code != ExitOK || calls != 1 || stdout != "" {
 		t.Fatalf("exit=%d requests=%d stdout=%q stderr=%s", code, calls, stdout, stderr)
 	}

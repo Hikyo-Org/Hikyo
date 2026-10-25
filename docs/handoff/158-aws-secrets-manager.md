@@ -646,10 +646,14 @@ with the same (empty) prefix in one account are allowed.
   new fields or routes. `apigen` and `clients/ts` regenerated.
 - CLI: `--kind json-object|per-key`, `--secret`, `--kms-key`, and `--aws-auth`
   with `--aws-role-arn`, `--aws-external-id`, `--aws-session-seconds`,
-  `--aws-region`, `--aws-access-key-id`, `--aws-sts-origin` on `adapter create`,
-  `adapter update --origin`, `adapter credential set`, `adapter target add`.
-  The static secret key only ever arrives via no-echo prompt, `--stdin`, or
-  `--value-file`. Help golden updated.
+  `--aws-region`, `--aws-sts-origin` on `adapter create`,
+  `adapter update --origin`, and `adapter credential set` for ambient,
+  AssumeRole, and WebIdentity. Static authentication uses the complete one-line
+  JSON descriptor with `mode: static`, access-key ID, secret access key, optional
+  session token and region through the no-echo prompt, `--stdin`, or
+  `--value-file`, without any `--aws-*` flags. The removed identifier flag and
+  `--aws-auth static` return a safe migration error before input or HTTP.
+  Destination flags also apply to `adapter target add`. Help golden updated.
 - Web: provider option, `AwsAccessFields` (descriptor in sensitive state),
   AWS kinds in `TargetForm`, AWS-aware target labels. Sensitivity inventory
   re-pinned with a review note.
