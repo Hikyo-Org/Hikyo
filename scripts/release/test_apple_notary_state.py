@@ -105,6 +105,24 @@ class CheckpointTests(unittest.TestCase):
         record, _files = self.read()
         self.assertTrue(record["recovery_pending"])
 
+    def test_accepted_unavailable_logs_resume_after_outputs_are_lost(self):
+        for availability, blocked, expected in (("unavailable", False, True), ("unavailable", True, False), ("invalid", False, False)):
+            with self.subTest(availability=availability, blocked=blocked):
+                for number, arch in enumerate(("arm64", "x86_64")):
+                    path = self.directory / f"{arch}-receipt.json"
+                    receipt = json.loads(path.read_text())
+                    receipt.update(phase="Submitted", status="Accepted", diagnostics=dict(availability=availability),
+                                   submission_id=f"00000000-1111-2222-3333-{number:012d}",
+                                   finalization_state="Blocked" if blocked else "NotStarted")
+                    path.write_text(json.dumps(receipt))
+                state.snapshot(self.directory, self.destination, "finalized", False, self.current)
+                self.set_archive(self.destination.read_bytes())
+                record, files = self.read()
+                self.assertEqual(record["recovery_pending"], expected)
+                with patch.object(state, "artifacts", return_value=[self.artifact]), patch.object(state, "read_checkpoint", return_value=(record, files)), patch.object(state, "api", side_effect=[dict(status="ahead"), self.run, b""]) as api:
+                    self.assertEqual(state.recover_one(self.current["repository"], self.run), expected)
+                    self.assertEqual(any(call.kwargs.get("method") == "POST" for call in api.call_args_list), expected)
+
     def test_per_architecture_checkpoint_survives_before_next_upload(self):
         path = self.directory / "arm64-receipt.json"
         receipt = json.loads(path.read_text())

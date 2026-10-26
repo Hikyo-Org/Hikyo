@@ -162,13 +162,15 @@ def snapshot(directory, destination, stage, pending, current):
         # unresolved provider status still requires safe read-only continuation.
         if receipt.get("phase") in ("Prepared", "Submitting") and receipt.get("submission_id") is None:
             pending = True  # Continue safely; never infer whether Apple saw it.
-        if receipt.get("phase") == "Submitted" and receipt.get("status") in ("Unknown", "In Progress"):
+        if receipt.get("phase") == "Submitted":
             require(re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", receipt.get("submission_id", "")),
                     "invalid retained submission UUID")
-            pending = True
+            if receipt.get("status") in ("Unknown", "In Progress"):
+                pending = True
         if (receipt.get("phase") == "Submitted" and receipt.get("status") == "Accepted" and
-                receipt.get("diagnostics", {}).get("availability") == "available" and
-                receipt.get("finalization_state", "NotStarted") != "Complete"):
+                (receipt.get("diagnostics", {}).get("availability") == "unavailable" or
+                 (receipt.get("diagnostics", {}).get("availability") == "available" and
+                  receipt.get("finalization_state", "NotStarted") != "Complete"))):
             pending = True
     if any(receipt.get("finalization_state") == "Blocked" for receipt in receipts):
         pending = False
