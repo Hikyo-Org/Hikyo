@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -81,7 +82,7 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
 			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
 		}
-		if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || len(apple.Permissions) != 1 || apple.Permissions["contents"] != "read" {
+		if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || !reflect.DeepEqual(apple.Permissions, applePhasePermissions(name)) {
 			t.Fatal("Apple signing must use macOS without repository mutation or OIDC permissions")
 		}
 	}
