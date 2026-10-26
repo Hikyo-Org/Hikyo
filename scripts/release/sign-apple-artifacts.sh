@@ -124,27 +124,34 @@ restore_keychain() {
 }
 cleanup() {
   status=$?
+  cleanup_failed=false
   trap - EXIT HUP INT TERM
-  if ! restore_keychain; then status=1; fi
+  if ! restore_keychain; then status=1; cleanup_failed=true; fi
   if [ -n "${owned_mount:-}" ]; then
-    if hdiutil detach "$owned_mount" >/dev/null 2>&1; then owned_mount=; else status=1; fi
+    if hdiutil detach "$owned_mount" >/dev/null 2>&1; then owned_mount=; else status=1; cleanup_failed=true; fi
   fi
   if [ -n "${staging:-}" ]; then
-    if ! rm -rf "$staging"; then status=1; fi
+    if ! rm -rf "$staging"; then status=1; cleanup_failed=true; fi
   fi
   if [ -z "${owned_mount:-}" ]; then
-    if ! rm -rf "$scratch"; then status=1; fi
+    if ! rm -rf "$scratch"; then status=1; cleanup_failed=true; fi
   else
     # Never recursively remove an attached filesystem. Remove private keys and
     # client output, retaining only the owned mountpoint for operator cleanup.
     for private_entry in "$scratch/"*; do
       [ "$private_entry" != "$owned_mount" ] || continue
-      if ! rm -rf "$private_entry"; then status=1; fi
+      if ! rm -rf "$private_entry"; then status=1; cleanup_failed=true; fi
     done
     printf 'apple signing: owned image could not be detached; private files removed, mountpoint retained\n' >&2
   fi
   if [ "$lock_owned" = true ]; then
-    if ! rmdir "$evidence/.lock"; then status=1; fi
+    if ! rmdir "$evidence/.lock"; then status=1; cleanup_failed=true; fi
+  fi
+  # Only resolved terminal provider evidence AND successful private cleanup may
+  # authorize the existing signed-tarball fallback. Unknown is never terminal.
+  if [ "${fallback_permitted:-false}" = true ] && [ "$cleanup_failed" = false ] &&
+    [ "$status" -ne 0 ] && [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf 'fallback_authorized=true\n' >>"$GITHUB_OUTPUT" || status=1
   fi
   exit "$status"
 }
@@ -504,22 +511,24 @@ fi
 
 accepted=true
 pending=false
+resolved=true
 for arch in arm64 x86_64; do
   load_receipt
-  if [ -z "$submission_id" ]; then accepted=false; continue; fi
+  if [ -z "$submission_id" ]; then accepted=false; resolved=false; continue; fi
   # Always query the retained UUID. A client error never authorizes a new upload.
   if ! notary info "$submission_id" >"$scratch/info.json" 2>"$scratch/info.err"; then
     accepted=false
+    resolved=false
     # A retained UUID with an unavailable status query is safe to query again,
     # never to upload again. Preserve Unknown as Unknown in the receipt.
     case "$notary_status" in Invalid | Rejected) ;; *) pending=true ;; esac
     continue
   fi
   read_result "$scratch/info.json"
-  if [ "$result_id" != "$submission_id" ] || [ "$result_status" = Unknown ]; then accepted=false; continue; fi
+  if [ "$result_id" != "$submission_id" ] || [ "$result_status" = Unknown ]; then accepted=false; resolved=false; continue; fi
   case "$notary_status" in
     Accepted | Invalid | Rejected)
-      if [ "$notary_status" != "$result_status" ]; then accepted=false; continue; fi ;;
+      if [ "$notary_status" != "$result_status" ]; then accepted=false; resolved=false; continue; fi ;;
   esac
   notary_status=$result_status
   if [ "$notary_status" = 'In Progress' ]; then
@@ -548,6 +557,7 @@ for arch in arm64 x86_64; do
         # Keep a previously validated receipt/log pair intact on a new provider
         # failure. This invocation still fails; a later retry can fetch again.
         accepted=false
+        resolved=false
         continue
       fi
       if [ "$diagnostic_availability" = available ]; then atomic_copy "$log" "$evidence/$arch-notary-log.json"; fi
@@ -562,10 +572,15 @@ for arch in arm64 x86_64; do
       "$warning_count" "$arch" "$log_filename"
   fi
   if [ "$notary_status" != Accepted ] || [ "$diagnostic_availability" != available ]; then accepted=false; fi
+  case "$notary_status:$diagnostic_availability" in
+    Accepted:available | Invalid:available | Rejected:available) ;;
+    *) resolved=false ;;
+  esac
 done
 if [ "$pending" = true ]; then
   [ -z "${GITHUB_OUTPUT:-}" ] || printf 'recovery_pending=true\n' >>"$GITHUB_OUTPUT"
 fi
+if [ "$resolved" = true ] && [ "$accepted" = false ]; then fallback_permitted=true; fi
 [ "$accepted" = true ] || fail 'notarization not accepted with matching diagnostics for both architectures'
 
 # Copy both DMGs on the same filesystem as dist. No staple, assessment, mount,

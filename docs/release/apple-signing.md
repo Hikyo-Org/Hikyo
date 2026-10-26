@@ -4,12 +4,12 @@ Apple Developer Program enrollment makes Developer ID distribution available.
 Enrollment alone does not install a signing identity or configure CI credentials.
 Stable and nightly releases require Apple signing for both macOS architectures
 before their final hashes and Cosign signatures are generated. Stable releases
-also require notarization. Nightlies may publish without disk images when an
-Apple-side operation fails after signed inputs are verified; their macOS tarballs
+also require notarization. Nightlies may publish without disk images after a
+verified terminal Apple rejection; their macOS tarballs
 remain signed, with notarization explicitly unverified in the release notes.
 Local development snapshots keep their existing signing profile.
 
-The fallback requires failure of the notarization helper step after input
+The fallback requires explicit terminal-rejection authorization from the notarization helper after input
 verification and successful retention of notarization diagnostics. A failed
 diagnostics upload blocks fallback even when the helper also failed.
 A later diagnostics upload, finalized packaging, or artifact
@@ -143,8 +143,9 @@ installation checks on `macos-15` (ARM64) and `macos-15-intel`. Both gates valid
 the ticket, signatures, architecture and installed executable bytes, assess the
 DMG and installed CLI with Gatekeeper, and run `--version` and `--help` while
 retaining quarantine. This is hosted native CLI installation evidence, not a
-claim of physical clean-Mac or Homebrew lifecycle qualification. A terminal Apple-side
-failure permits fallback only after source metadata, both signatures and the
+claim of physical clean-Mac or Homebrew lifecycle qualification. An Apple
+`Invalid` or `Rejected` result permits fallback only when both submissions have
+matching terminal diagnostics and source metadata, both signatures and the
 signed-byte handoff have been verified. That path selects
 the original signing job's immutable artifact, independently rechecks the signed
 macOS digest, publishes the six signed platform
@@ -154,6 +155,10 @@ macOS notarization was not verified. Linux, Windows, and container publication
 retain their existing validation, signature, startup, and upgrade checks.
 A cancelled or skipped notarization job does not authorize a new publication.
 Failed handoff or input signature checks also block publication.
+Malformed or conflicting status evidence, ticket verification, mounted-payload
+and credential-cleanup failures cannot authorize fallback. An interruption
+between UUID capture and waiting retains the recovery hold, including a failed
+checkpoint upload. A later final checkpoint cannot erase that unresolved state.
 Stable publication continues to require successful notarization.
 
 Pending UUIDs and unavailable status/log queries hold publication for automatic

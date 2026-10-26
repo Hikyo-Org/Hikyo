@@ -24,16 +24,18 @@ func TestNightlyPendingRecoveryAndNativeAcceptanceBlockPublication(t *testing.T)
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		name, notary, helper, pending, native string
-		want                                  bool
+		name, notary, helper, pending, native, fallback string
+		want                                            bool
 	}{
-		{"complete native pair", "success", "success", "false", "success", true},
-		{"native failure", "success", "success", "false", "failure", false},
-		{"native skipped", "success", "success", "false", "skipped", false},
-		{"native cancelled", "success", "success", "false", "cancelled", false},
-		{"pending submission", "failure", "failure", "true", "skipped", false},
-		{"qualified interruption", "failure", "skipped", "true", "skipped", false},
-		{"terminal fallback preserved", "failure", "failure", "false", "skipped", true},
+		{"complete native pair", "success", "success", "false", "success", "", true},
+		{"native failure", "success", "success", "false", "failure", "", false},
+		{"native skipped", "success", "success", "false", "skipped", "", false},
+		{"native cancelled", "success", "success", "false", "cancelled", "", false},
+		{"pending submission", "failure", "failure", "true", "skipped", "", false},
+		{"qualified interruption", "failure", "skipped", "true", "skipped", "", false},
+		{"terminal fallback preserved", "failure", "failure", "false", "skipped", "true", true},
+		{"unknown cannot authorize fallback", "failure", "failure", "false", "skipped", "", false},
+		{"explicit fallback refusal", "failure", "failure", "false", "skipped", "false", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expression := strings.ReplaceAll(workflow.Jobs["publish"].If, "'", "\"")
@@ -42,7 +44,7 @@ func TestNightlyPendingRecoveryAndNativeAcceptanceBlockPublication(t *testing.T)
 				"needs.apple-sign.result": "success", "needs.apple-notarize.result": tc.notary,
 				"needs.build-artifacts.outputs.skip": "false", "needs.apple-notarize.outputs.inputs_verified": "true",
 				"needs.apple-notarize.outputs.notarize_outcome": tc.helper, "needs.apple-notarize.outputs.diagnostics_outcome": "success",
-				"needs.apple-notarize.outputs.recovery_pending": tc.pending, "needs.apple-acceptance.result": tc.native,
+				"needs.apple-notarize.outputs.fallback_authorized": tc.fallback, "needs.apple-notarize.outputs.recovery_pending": tc.pending, "needs.apple-acceptance.result": tc.native,
 			} {
 				expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
 			}
@@ -52,6 +54,48 @@ func TestNightlyPendingRecoveryAndNativeAcceptanceBlockPublication(t *testing.T)
 				t.Fatalf("publication condition = %v, want %t: %v", value.Value, tc.want, err)
 			}
 		})
+	}
+}
+
+func TestApplePersistenceFailureKeepsUnresolvedUUIDsPending(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/nightly.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	var pendingExpression string
+	for _, step := range workflow.Jobs["apple-notarize"].Steps {
+		if step.Name == "Checkpoint final provider decision and exact submitted bytes" {
+			pendingExpression = step.Env["APPLE_RECOVERY_PENDING"]
+		}
+	}
+	for _, tc := range []struct {
+		submit, notary, submitPending, notaryPending string
+		want                                         bool
+	}{
+		{"success", "skipped", "true", "", true},
+		{"success", "skipped", "", "", true},
+		{"success", "failure", "true", "true", true},
+		{"success", "failure", "true", "", false},
+		{"success", "success", "true", "false", false},
+		{"failure", "skipped", "true", "", true},
+	} {
+		expression := strings.TrimSuffix(strings.TrimPrefix(pendingExpression, "${{ "), " }}")
+		expression = strings.ReplaceAll(expression, "'", "\"")
+		for name, value := range map[string]string{
+			"steps.submit.outcome": tc.submit, "steps.notarize.outcome": tc.notary,
+			"steps.submit.outputs.recovery_pending": tc.submitPending, "steps.notarize.outputs.recovery_pending": tc.notaryPending,
+			"steps.defer.outputs.recovery_pending": "",
+		} {
+			expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
+		}
+		value, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expression)
+		if err != nil || value.Value == nil || value.Value.Kind() != constant.Bool || constant.BoolVal(value.Value) != tc.want {
+			t.Fatalf("pending hold %s = %v, want %t: %v", expression, value.Value, tc.want, err)
+		}
 	}
 }
 

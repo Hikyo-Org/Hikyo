@@ -373,7 +373,8 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
-      recovery_pending: ${{ steps.defer.outputs.recovery_pending || steps.notarize.outputs.recovery_pending || 'false' }}
+      recovery_pending: ${{ steps.defer.outputs.recovery_pending || steps.notarize.outputs.recovery_pending || (steps.notarize.outcome == 'skipped' && steps.submit.outcome == 'success' && 'true') || 'false' }}
+      fallback_authorized: ${{ steps.notarize.outputs.fallback_authorized }}
       notarize_outcome: ${{ steps.notarize.outcome }}
       diagnostics_outcome: ${{ steps.notarization-diagnostics.outcome }}
     permissions:
@@ -494,7 +495,7 @@ jobs:
         id: snapshot-final
         env:
           APPLE_RELEASE_CHANNEL: nightly
-          APPLE_RECOVERY_PENDING: ${{ steps.defer.outputs.recovery_pending == 'true' || steps.notarize.outputs.recovery_pending == 'true' || (steps.submit.outcome == 'failure' && steps.submit.outputs.recovery_pending == 'true') }}
+          APPLE_RECOVERY_PENDING: ${{ steps.defer.outputs.recovery_pending == 'true' || steps.notarize.outputs.recovery_pending == 'true' || (steps.submit.outcome == 'failure' && steps.submit.outputs.recovery_pending == 'true') || (steps.submit.outcome == 'success' && steps.notarize.outcome == 'skipped') }}
         run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/finalized/checkpoint.tar" finalized
       - name: Persist final stage checkpoint
         if: ${{ always() && steps.snapshot-final.outcome == 'success' }}
@@ -587,6 +588,7 @@ jobs:
       needs.apple-acceptance.result == 'success') ||
       (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' &&
       needs.apple-notarize.outputs.recovery_pending != 'true' &&
+      needs.apple-notarize.outputs.fallback_authorized == 'true' &&
       needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.

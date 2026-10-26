@@ -123,7 +123,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				}
 			}
 			expression := strings.ReplaceAll(workflow.Jobs["publish"].If, "'", "\"")
-			for name, value := range map[string]string{"needs.apple-acceptance.result": "success", "needs.apple-notarize.outputs.recovery_pending": "false", "github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]], "needs.apple-notarize.outputs.diagnostics_outcome": outputs[notary.Outputs["diagnostics_outcome"]]} {
+			for name, value := range map[string]string{"needs.apple-notarize.outputs.fallback_authorized": "true", "needs.apple-acceptance.result": "success", "needs.apple-notarize.outputs.recovery_pending": "false", "github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]], "needs.apple-notarize.outputs.diagnostics_outcome": outputs[notary.Outputs["diagnostics_outcome"]]} {
 				expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
 			}
 			expression = strings.ReplaceAll(expression, "always()", "true")

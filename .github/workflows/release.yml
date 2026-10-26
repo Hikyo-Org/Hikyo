@@ -417,7 +417,7 @@ jobs:
         id: snapshot-final
         env:
           APPLE_RELEASE_CHANNEL: stable
-          APPLE_RECOVERY_PENDING: ${{ steps.notarize.outputs.recovery_pending == 'true' || (steps.submit.outcome == 'failure' && steps.submit.outputs.recovery_pending == 'true') }}
+          APPLE_RECOVERY_PENDING: ${{ steps.notarize.outputs.recovery_pending == 'true' || (steps.submit.outcome == 'failure' && steps.submit.outputs.recovery_pending == 'true') || (steps.submit.outcome == 'success' && steps.notarize.outcome == 'skipped') }}
         run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/finalized/checkpoint.tar" finalized
       - name: Persist final stage checkpoint
         if: ${{ always() && steps.snapshot-final.outcome == 'success' }}

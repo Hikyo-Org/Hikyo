@@ -1124,6 +1124,7 @@ for APPLE_FIXTURE_MODE in info-failure malformed-info; do
   assert_no_resubmission
   assert_original_images
   if grep -Fx 'notarized=true' "$GITHUB_OUTPUT"; then exit 1; fi
+  if grep -Fx 'fallback_authorized=true' "$GITHUB_OUTPUT"; then exit 1; fi
   if [ "$APPLE_FIXTURE_MODE" = info-failure ]; then
     grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT" >/dev/null
   elif grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT"; then exit 1; fi
@@ -1143,6 +1144,7 @@ for APPLE_FIXTURE_MODE in staple-failure second-staple-failure invalid-ticket ga
   expect_phase_failure --notarize-only
   assert_no_resubmission
   assert_original_images
+  if grep -Fx 'fallback_authorized=true' "$GITHUB_OUTPUT"; then exit 1; fi
   if [ "$APPLE_FIXTURE_MODE" = ticket-pending ]; then
     grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT" >/dev/null
   elif grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT"; then exit 1; fi
@@ -1164,4 +1166,16 @@ if find "$fixture/scratch" -type f | grep -Ev '/mount-arm64/(hikyo|LICENSE)$'; t
 [ "$(grep -c '^hdiutil detach$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
 rm -rf "$fixture/scratch/"*
 printf 'apple recovery fixture: persistent detach failure scrubs private files PASS\n'
+for terminal in rejected terminal-rejected second-rejected; do
+  reset_recovery
+  export APPLE_FIXTURE_MODE=$terminal
+  phase --prepare-only
+  phase --submit-only
+  expect_phase_failure --notarize-only
+  grep -Fx 'fallback_authorized=true' "$GITHUB_OUTPUT" >/dev/null
+  assert_no_resubmission
+  assert_original_images
+  assert_split_cleanup
+  printf 'apple recovery fixture: explicit terminal fallback %s PASS\n' "$terminal"
+done
 printf 'apple fixtures: stable/nightly full and split phases, credential/tool isolation, signed handoff validation, both intents before submission, keychain cleanup, diagnostic matrix, receipts, warnings, recovery, mounted payload and unchanged original images/archives/Linux/Windows verified\n'
