@@ -126,7 +126,7 @@ shell_files=()
 release_admission=false
 while IFS= read -r -d '' path; do
 	case "$path" in
-		scripts/ci/release-admission/*) release_admission=true ;;
+		scripts/ci/release-admission/* | scripts/ci/aws-acceptance/* | .github/workflows/aws-acceptance.yml) release_admission=true ;;
 	esac
 	case "$path" in
 		web/*) web=true ;;

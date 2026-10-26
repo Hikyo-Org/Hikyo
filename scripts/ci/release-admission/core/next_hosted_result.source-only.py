@@ -34,6 +34,25 @@ EVIDENCE_KEYS = {'schema','candidate_sha','workflow_sha','run_id','status','stag
 API = 'https://api.github.com/repos/Hikyo-Org/Hikyo/actions/runs/'
 
 
+def _evidence_shape(m,data):
+    """Closed legacy v1 and assertion-bearing v2; no authority from diagnostics."""
+    m.require(type(data) is dict,'evidence-object')
+    schema=data.get('schema')
+    m.require(type(schema) is str and schema in ('hikyo.aws-acceptance/v1','hikyo.aws-acceptance/v2'),'evidence-schema')
+    if schema=='hikyo.aws-acceptance/v1':
+        m.exact(data,EVIDENCE_KEYS)
+        return
+    m.exact(data,EVIDENCE_KEYS|{'failure_assertions','failure_assertions_truncated'})
+    rows=data['failure_assertions']
+    m.require(type(rows) is list and len(rows)<=128
+        and type(data['failure_assertions_truncated']) is bool,'bounded-assertion-diagnostics')
+    identifiers={f'assertion-{index:03d}' for index in range(1,225)}
+    for row in rows:
+        m.exact(row,{'test','assertion'})
+        m.require(type(row['test']) is str and row['test'] in TESTS
+            and type(row['assertion']) is str and row['assertion'] in identifiers,'closed-assertion-diagnostics')
+
+
 class RootHostedProofAdapter(ABC):
     """Authenticate complete original evidence; no boolean/hash-only approval.
 
@@ -206,8 +225,8 @@ def validate(model, archive_bytes, bound, sealed, bundle, adapter, *, explicit_n
         and m.same(approval['environments'],[{'id':m.ENV_ID,'name':'hikyo-158-aws-sandbox'}])
         and m.instant(job['completed_at'])<=m.instant(review['observedAt'])<=m.instant(bundle['observedAt']),'exact-human-protected-deployment-review')
     raw=_archive(m,archive_bytes,artifact);data=m.strict_json(raw)
-    m.exact(data,EVIDENCE_KEYS);run=bound['run'];passed=actual['conclusion']=='success'
-    m.require(data['schema']=='hikyo.aws-acceptance/v1' and data['candidate_sha']==run['candidateSHA'] and data['workflow_sha']==run['workflowSHA']
+    _evidence_shape(m,data);run=bound['run'];passed=actual['conclusion']=='success'
+    m.require(data['schema'] in ('hikyo.aws-acceptance/v1','hikyo.aws-acceptance/v2') and data['candidate_sha']==run['candidateSHA'] and data['workflow_sha']==run['workflowSHA']
         and data['run_id']==run['runId'] and data['account']==m.ACCOUNT and data['region']==m.REGION and data['prefix']==run['prefix']
         and type(data['maximum_create_reservations']) is int and data['maximum_create_reservations']==32
         and data['unresolved_names']==[] and data['diagnostics_truncated'] is False,'exact-complete-bounded-metadata-evidence')
