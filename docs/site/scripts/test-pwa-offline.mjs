@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { checkAnalyticsLayout } from './check-analytics-layout.mjs';
 
 const dist = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 const contentTypes = new Map([
@@ -80,6 +81,7 @@ let browser;
 
 try {
   browser = await chromium.launch();
+  await checkAnalyticsLayout(browser, origin);
   const context = await browser.newContext({ serviceWorkers: 'allow' });
   const page = await context.newPage();
 

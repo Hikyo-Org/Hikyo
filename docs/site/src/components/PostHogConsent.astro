@@ -34,7 +34,9 @@ const { apiKey, apiHost } = Astro.props;
     <button type="button" data-posthog-reject>No thanks</button>
   </div>
 </aside>
-<button class="analytics-settings" type="button" data-posthog-settings>Analytics settings</button>
+<div class="analytics-settings-footer">
+  <button class="analytics-settings" type="button" data-posthog-settings>Analytics settings</button>
+</div>
 
 <script>
   const consent = document.querySelector('[data-posthog-consent]');
@@ -197,16 +199,16 @@ const { apiKey, apiHost } = Astro.props;
     background: #8dd6c2;
   }
 
+  /* Keep settings in page flow so it cannot cover navigation or reading content. */
+  .analytics-settings-footer {
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+  }
+
   .analytics-settings {
-    position: fixed;
-    z-index: 999;
-    left: 0.75rem;
-    bottom: 0.75rem;
-    min-height: 2rem;
     padding: 0.25rem 0.5rem;
-    color: #aebcc0;
-    background: #1b2225;
-    font: 0.75rem/1.2 system-ui, sans-serif;
+    font: 0.875rem/1.2 system-ui, sans-serif;
   }
 
   [data-posthog-consent][hidden] {
