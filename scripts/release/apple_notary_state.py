@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import re
-import stat
 import subprocess
 import tarfile
 import tempfile
@@ -21,7 +20,7 @@ import zipfile
 
 WORKFLOW = ".github/workflows/nightly.yml"
 SCHEMA = "hikyo.dev/apple-notary-checkpoint/v1"
-STAGES = {"prepared": 0, "submitted": 1, "finalized": 2}
+STAGES = {"prepared": 0, "submitted-arm64": 1, "submitted-x86_64": 2, "submitted": 3, "finalized": 4}
 FILES = {f"{arch}-{suffix}" for arch in ("arm64", "x86_64")
          for suffix in ("receipt.json", "notary-log.json", "submitted.dmg")}
 MAX_BYTES = 512 * 1024 * 1024
@@ -88,7 +87,7 @@ def artifacts(repository, run_id):
 
 def select_checkpoint(items, run_id, before_attempt=None):
     candidates = []
-    pattern = rf"apple-notary-state-{run_id}-([1-9][0-9]*)-(prepared|submitted|finalized)"
+    pattern = rf"apple-notary-state-{run_id}-([1-9][0-9]*)-({'|'.join(STAGES)})"
     for item in items:
         match = re.fullmatch(pattern, item["name"])
         if match and (before_attempt is None or int(match[1]) < before_attempt):
@@ -136,6 +135,7 @@ def read_checkpoint(artifact, repository, run_id):
                 receipt["source_commit"] == record["source_commit"] and
                 receipt["architecture"] == arch and receipt["channel"] == record["channel"] and
                 receipt["source_ref"] == record["source_ref"] and
+                receipt.get("input_binding", "actions-handoff") == "actions-handoff" and
                 receipt["submitted_sha256"] == hashlib.sha256(result[f"{arch}-submitted.dmg"]).hexdigest(),
                 "receipt checkpoint binding mismatch")
     return record, result
@@ -143,11 +143,35 @@ def read_checkpoint(artifact, repository, run_id):
 
 def snapshot(directory, destination, stage, pending, current):
     files = {}
+    receipts = []
     for path in directory.iterdir():
         require(path.name in FILES and path.is_file() and not path.is_symlink(), "unexpected checkpoint file")
         files[path.name] = path.read_bytes()
     for arch in ("arm64", "x86_64"):
         require({f"{arch}-receipt.json", f"{arch}-submitted.dmg"} <= files.keys(), "missing stage intent")
+        receipt = parse_json(files[f"{arch}-receipt.json"])
+        receipts.append(receipt)
+        require(receipt["schema"] == "hikyo.dev/apple-notarization-receipt/v2" and
+                receipt["source_commit"] == current["source_commit"] and receipt["repository"] == current["repository"] and
+                receipt["original_run_id"] == current["run_id"] and receipt["channel"] == current["channel"] and
+                receipt["source_ref"] == current["source_ref"] and receipt["architecture"] == arch and
+                receipt.get("input_binding", "actions-handoff") == "actions-handoff" and
+                receipt["submitted_sha256"] == hashlib.sha256(files[f"{arch}-submitted.dmg"]).hexdigest(),
+                "unbound checkpoint receipt")
+        # Step outputs can disappear on interruption. A retained UUID with an
+        # unresolved provider status still requires safe read-only continuation.
+        if receipt.get("phase") in ("Prepared", "Submitting") and receipt.get("submission_id") is None:
+            pending = True  # Continue safely; never infer whether Apple saw it.
+        if receipt.get("phase") == "Submitted" and receipt.get("status") in ("Unknown", "In Progress"):
+            require(re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", receipt.get("submission_id", "")),
+                    "invalid retained submission UUID")
+            pending = True
+        if (receipt.get("phase") == "Submitted" and receipt.get("status") == "Accepted" and
+                receipt.get("diagnostics", {}).get("availability") == "available" and
+                receipt.get("finalization_state", "NotStarted") != "Complete"):
+            pending = True
+    if any(receipt.get("finalization_state") == "Blocked" for receipt in receipts):
+        pending = False
     record = dict(current, schema=SCHEMA, stage=stage, recovery_pending=pending,
                   files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
     files["checkpoint.json"] = json.dumps(record, sort_keys=True).encode()
@@ -165,6 +189,58 @@ def snapshot(directory, destination, stage, pending, current):
         temporary_name.unlink(missing_ok=True)
 
 
+def unstarted_architectures(files, current):
+    prepared = {arch: parse_json(files[f"{arch}-receipt.json"]) for arch in ("arm64", "x86_64")}
+    prepared = {arch: receipt for arch, receipt in prepared.items()
+                if receipt.get("phase") == "Prepared" and receipt.get("submission_id") is None}
+    if not prepared:
+        return []
+    earliest = min(int(receipt["original_run_attempt"]) for receipt in prepared.values())
+    latest = int(current["attempt"])
+    require(1 <= earliest < latest, "invalid original preparation attempt")
+    if latest - earliest > 12:
+        return []  # Bounded proof lookup; UUID reconciliation remains available.
+    for attempt in range(earliest, latest):
+        pages = api(f"repos/{current['repository']}/actions/runs/{current['run_id']}/attempts/{attempt}/jobs?per_page=100", paginate=True)
+        jobs = [job for page in pages for job in page["jobs"] if job["name"] == "apple-notarize"]
+        if len(jobs) != 1:
+            return []
+        job = jobs[0]
+        require(job["run_id"] == int(current["run_id"]) and job["run_attempt"] == attempt and
+                job["head_sha"] == current["source_commit"], "previous job identity mismatch")
+        for arch, receipt in list(prepared.items()):
+            if attempt < int(receipt["original_run_attempt"]):
+                continue
+            steps = [step for step in job["steps"] if step["name"] == f"Submit {arch} once or reconcile its UUID"]
+            if not (len(steps) == 1 and steps[0]["status"] == "completed" and steps[0]["conclusion"] == "skipped"):
+                prepared.pop(arch)
+    return sorted(prepared)
+
+
+def no_previous_upload(current):
+    # Creating initial intents on a later attempt is safe only with positive
+    # skipped-job/step proof for every prior attempt. Missing checkpoint data or
+    # empty Apple history never grants this permission.
+    latest = int(current["attempt"])
+    if latest > 13:
+        return False
+    for attempt in range(1, latest):
+        pages = api(f"repos/{current['repository']}/actions/runs/{current['run_id']}/attempts/{attempt}/jobs?per_page=100", paginate=True)
+        jobs = [job for page in pages for job in page["jobs"] if job["name"] == "apple-notarize"]
+        if len(jobs) != 1:
+            return False
+        job = jobs[0]
+        require(job["run_id"] == int(current["run_id"]) and job["run_attempt"] == attempt and
+                job["head_sha"] == current["source_commit"], "previous job identity mismatch")
+        if job["status"] == "completed" and job["conclusion"] == "skipped":
+            continue
+        for arch in ("arm64", "x86_64"):
+            steps = [step for step in job["steps"] if step["name"] == f"Submit {arch} once or reconcile its UUID"]
+            if not (len(steps) == 1 and steps[0]["status"] == "completed" and steps[0]["conclusion"] == "skipped"):
+                return False
+    return True
+
+
 def restore(directory, current):
     require(not directory.exists(), "restore destination already exists")
     run = api(f"repos/{current['repository']}/actions/runs/{current['run_id']}")
@@ -174,7 +250,8 @@ def restore(directory, current):
                                  current["run_id"], int(current["attempt"]))
     directory.mkdir(parents=True)
     if selected is None:
-        require(current["attempt"] == "1", "retry has no retained intent; do not resubmit")
+        require(current["attempt"] == "1" or no_previous_upload(current),
+                "retry has no retained intent or proof of skipped uploads; do not resubmit")
         return
     record, files = read_checkpoint(selected, current["repository"], current["run_id"])
     require(all(record[key] == current[key] for key in ("source_commit", "channel", "source_ref")), "restored source mismatch")
@@ -183,36 +260,57 @@ def restore(directory, current):
         with path.open("xb") as stream:
             stream.write(raw)
         path.chmod(0o600)
+    # Every attempt since preparation must explicitly show the upload skipped.
+    # A later skipped attempt cannot erase an earlier ambiguous upload.
+    unstarted = unstarted_architectures(files, current)
+    if os.environ.get("GITHUB_OUTPUT"):
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            output.write("unstarted_architectures=" + " ".join(unstarted) + "\n")
     print(f"restored checkpoint {selected['id']} from attempt {record['attempt']} ({record['stage']})")
+
+
+def recover_one(repository, run):
+    trusted_run(run, repository)
+    if run["conclusion"] not in ("failure", "timed_out"):
+        return False
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
+    if run["run_attempt"] >= 12 or age.total_seconds() > 7 * 86400:
+        return False
+    prefix = f"apple-notary-state-{run['id']}-{run['run_attempt']}-"
+    current_items = [item for item in artifacts(repository, run["id"]) if item["name"].startswith(prefix)]
+    selected = select_checkpoint(current_items, run["id"])
+    if selected is None:
+        return False
+    record, _files = read_checkpoint(selected, repository, run["id"])
+    if not record["recovery_pending"] or int(record["attempt"]) != run["run_attempt"]:
+        return False
+    require(record["source_commit"] == run["head_sha"] and record["channel"] == "nightly" and
+            record["source_ref"] == "refs/heads/main", "recovery source mismatch")
+    ancestry = api(f"repos/{repository}/compare/{run['head_sha']}...main")
+    require(ancestry["status"] in ("ahead", "identical"), "recovery source left main history")
+    # Recheck live state immediately before mutation, under worker concurrency.
+    latest = api(f"repos/{repository}/actions/runs/{run['id']}")
+    if latest["status"] != "completed" or latest["conclusion"] not in ("failure", "timed_out") or latest["run_attempt"] != run["run_attempt"]:
+        return False
+    api(f"repos/{repository}/actions/runs/{run['id']}/rerun-failed-jobs", method="POST", binary=True)
+    print(f"continued original run {run['id']} attempt {run['run_attempt']}; no rebuild or resign requested")
+    return True
 
 
 def recover(repository):
     # No Apple key, signing identity or publication token is available here.
     pages = api(f"repos/{repository}/actions/workflows/nightly.yml/runs?branch=main&status=completed&per_page=100", paginate=True)
+    failures = 0
     for run in (item for page in pages for item in page["workflow_runs"]):
-        trusted_run(run, repository)
-        if run["conclusion"] not in ("failure", "timed_out"):
-            continue
-        age = datetime.now(timezone.utc) - datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
-        if run["run_attempt"] >= 12 or age.total_seconds() > 7 * 86400:
-            continue
-        selected = select_checkpoint(artifacts(repository, run["id"]), run["id"])
-        if selected is None:
-            continue
-        record, _files = read_checkpoint(selected, repository, run["id"])
-        if not record["recovery_pending"] or int(record["attempt"]) != run["run_attempt"]:
-            continue
-        require(record["source_commit"] == run["head_sha"] and record["channel"] == "nightly" and
-                record["source_ref"] == "refs/heads/main", "recovery source mismatch")
-        ancestry = api(f"repos/{repository}/compare/{run['head_sha']}...main")
-        require(ancestry["status"] in ("ahead", "identical"), "recovery source left main history")
-        # Recheck live state immediately before mutation, under worker concurrency.
-        latest = api(f"repos/{repository}/actions/runs/{run['id']}")
-        if latest["status"] != "completed" or latest["conclusion"] not in ("failure", "timed_out") or latest["run_attempt"] != run["run_attempt"]:
-            continue
-        api(f"repos/{repository}/actions/runs/{run['id']}/rerun-failed-jobs", method="POST", binary=True)
-        print(f"continued original run {run['id']} attempt {run['run_attempt']}; no rebuild or resign requested")
-        return
+        try:
+            if recover_one(repository, run):
+                break
+        except (ValueError, KeyError, TypeError, OSError, subprocess.TimeoutExpired, zipfile.BadZipFile, tarfile.TarError) as error:
+            failures += 1
+            # Retain a bounded refusal witness without emitting provider text as
+            # workflow annotations. Another run's state remains independent.
+            print(json.dumps(dict(run_id=run.get("id"), refused=str(error)), ensure_ascii=True))
+    require(failures == 0, "one or more recovery checkpoints refused; see per-run diagnostics")
 
 
 def append_evidence(dist, installations, notes, current, version, final_artifact):
@@ -231,7 +329,7 @@ def append_evidence(dist, installations, notes, current, version, final_artifact
         require(arch in ("arm64", "x86_64") and receipt["schema"] == "hikyo.dev/apple-install-receipt/v1" and
                 receipt["source_commit"] == current["source_commit"] and receipt["run_id"] == current["run_id"] and
                 receipt["version"] == version and receipt["input_artifact_id"] == final_artifact and
-                all(receipt[key] is True for key in ("gatekeeper", "quarantine_retained", "native_version", "native_help")),
+                all(receipt[key] is True for key in ("gatekeeper", "executable_notarization", "quarantine_retained", "native_version", "native_help")),
                 "native installation receipt mismatch")
         require(arch not in natives or natives[arch] == receipt, "conflicting native installation receipts")
         natives[arch] = receipt

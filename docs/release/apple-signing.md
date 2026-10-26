@@ -106,8 +106,14 @@ The v2 receipts also bind the repository, original run, original signed artifact
 ID and digest, channel, source ref, Developer ID identity and team. The helper
 accepts prior evidence only when every binding and retained submitted-image
 digest matches. `--prepare-only` verifies the signed handoff without credentials
-and writes both intents. CI persists them before `--submit-only` uploads without
-waiting, then persists UUIDs before `--notarize-only` queries or waits for them.
+and writes both intents. CI persists them before `--submit-only --architecture
+arm64` uploads without waiting, persists ARM's UUID, then submits and persists
+Intel with `--architecture x86_64` before `--notarize-only` queries or waits.
+The Intel upload cannot start until the ARM checkpoint upload succeeds.
+The optional same-invocation full mode computes its signed digest after signing,
+so callers need not predict secure timestamps. Its input artifact ID denotes the
+canonical pre-signing input, and its receipts are labelled `same-invocation`.
+They cannot be restored as `actions-handoff` checkpoints; CI uses phased commands.
 Each checkpoint is an immutable Actions artifact named
 `apple-notary-state-RUN_ID-ATTEMPT-STAGE`, retained for 90 days. It contains only
 allowlisted receipts, validated logs, exact submitted DMGs and its closed digest
@@ -121,6 +127,12 @@ checks main ancestry and current attempt, then reruns failed jobs of that same
 run. Successful build/signing jobs are reused. It has only repository read and
 Actions write permissions, no Apple secrets, publication key or OIDC authority.
 Recovery is bounded to 12 attempts and seven days; cancellation is respected.
+Final checkpoint decisions derive from validated receipts even when interruption
+loses step outputs. Unfinished ticket operations resume; an explicit terminal
+trust failure blocks that continuation. Known connection loss is classified
+narrowly during both staple and validation. An old prepared intent may upload
+only if GitHub explicitly records its upload step skipped in every attempt since
+preparation. A later skipped attempt never erases an earlier ambiguous upload.
 Unknown, missing or conflicting receipt identity never permits another upload.
 Missing UUID reconciliation requires a unique history entry with matching
 filename and submitted hash in Apple's terminal diagnostics. Empty or incomplete
@@ -141,7 +153,8 @@ Nightly publication waits for the separate notarization job to finish. Success
 selects its finalized artifact and includes both notarized DMGs after native
 installation checks on `macos-15` (ARM64) and `macos-15-intel`. Both gates validate
 the ticket, signatures, architecture and installed executable bytes, assess the
-DMG and installed CLI with Gatekeeper, and run `--version` and `--help` while
+DMG with Gatekeeper, require the standalone CLI's explicit `notarized` code
+requirement with an online ticket check, and run `--version` and `--help` while
 retaining quarantine. This is hosted native CLI installation evidence, not a
 claim of physical clean-Mac or Homebrew lifecycle qualification. An Apple
 `Invalid` or `Rejected` result permits fallback only when both submissions have

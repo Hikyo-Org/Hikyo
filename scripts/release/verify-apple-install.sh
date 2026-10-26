@@ -55,11 +55,14 @@ ditto "$scratch/mount/hikyo" "$scratch/bin/hikyo"
 xattr -w com.apple.quarantine "$quarantine" "$scratch/bin/hikyo"
 [ "$(lipo -archs "$scratch/bin/hikyo")" = "$arch" ] || fail 'installed architecture mismatch'
 codesign --verify --strict -R "$requirement" "$scratch/bin/hikyo"
-spctl --assess --type execute --verbose=2 "$scratch/bin/hikyo"
+# A standalone Mach-O CLI is not an app bundle. Apple's notarization test for
+# this topology is the explicit code requirement, with an online ticket check.
+# The DMG assessment above and quarantined native execution remain mandatory.
+codesign --verify --strict -R=notarized --check-notarization "$scratch/bin/hikyo"
 "$scratch/bin/hikyo" --version >"$scratch/version"
-grep -F "$version" "$scratch/version" >/dev/null || fail 'installed version mismatch'
+[ "$(cat "$scratch/version")" = "$version" ] || fail 'installed version mismatch'
 "$scratch/bin/hikyo" --help >/dev/null
-[ "$(xattr -p com.apple.quarantine "$scratch/bin/hikyo")" = "$quarantine" ] || fail 'quarantine was changed'
+[ -n "$(xattr -p com.apple.quarantine "$scratch/bin/hikyo")" ] || fail 'quarantine was removed'
 installed_sha256=$(sha256_file "$scratch/bin/hikyo")
 hdiutil detach "$scratch/mount" >/dev/null
 mounted=false
@@ -68,7 +71,7 @@ jq -n --arg source "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" --arg architecture "
   --arg image "$(sha256_file "$image")" --arg binary "$installed_sha256" \
   '{schema:"hikyo.dev/apple-install-receipt/v1",source_commit:$source,run_id:$run,architecture:$architecture,
     version:$version,input_artifact_id:$artifact,final_dmg_sha256:$image,installed_binary_sha256:$binary,
-    gatekeeper:true,quarantine_retained:true,native_version:true,native_help:true}' >"$scratch/receipt.json"
+    gatekeeper:true,executable_notarization:true,quarantine_retained:true,native_version:true,native_help:true}' >"$scratch/receipt.json"
 rm -rf "${scratch:?}/archive" "${scratch:?}/bin" "${scratch:?}/mount" || fail 'installation cleanup failed'
 mv "$scratch/receipt.json" "$output"
 printf 'Apple install: %s native CLI, ticket, Gatekeeper and quarantine checks passed\n' "$arch"

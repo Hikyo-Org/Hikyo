@@ -26,11 +26,13 @@ printf '%s %s\n' "$command" "$*" >>"$NATIVE_FIXTURE_ROOT/log"
 case "$command" in
   uname | lipo)
     if [ "$NATIVE_FIXTURE_MODE" = wrong-arch ]; then echo x86_64; else echo arm64; fi ;;
-  codesign) [ "$NATIVE_FIXTURE_MODE" != bad-signature ] ;;
+  codesign)
+    [ "$NATIVE_FIXTURE_MODE" != bad-signature ]
+    case "$NATIVE_FIXTURE_MODE:$*" in unnotarized-executable:*--check-notarization*) exit 1 ;; esac ;;
   xcrun) [ "$NATIVE_FIXTURE_MODE" != bad-ticket ] ;;
   spctl)
     case "$NATIVE_FIXTURE_MODE:$*" in
-      rejected-image:*'type open'* | rejected-executable:*'type execute'*) exit 1 ;;
+      rejected-image:*'type open'*) exit 1 ;;
     esac ;;
   xattr)
     case "$1" in
@@ -57,14 +59,14 @@ for command in uname lipo codesign xcrun spctl xattr hdiutil ditto; do ln -s moc
 export PATH="$fixture/bin:$PATH" TMPDIR="$fixture/tmp"
 export APPLE_TEAM_ID=ABCDEFGHIJ APPLE_SIGNING_IDENTITY='Developer ID Application: Fixture (ABCDEFGHIJ)'
 export GITHUB_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa GITHUB_RUN_ID=42 APPLE_NOTARY_INPUT_ARTIFACT_ID=7
-for NATIVE_FIXTURE_MODE in accepted wrong-arch bad-signature bad-ticket rejected-image rejected-executable changed-payload wrong-version failed-help cleared-quarantine failed-detach; do
+for NATIVE_FIXTURE_MODE in accepted wrong-arch bad-signature bad-ticket rejected-image unnotarized-executable changed-payload wrong-version failed-help cleared-quarantine failed-detach; do
   export NATIVE_FIXTURE_MODE
   rm -f "$fixture/receipt.json"
   : >"$fixture/log"
   if "$script_dir/verify-apple-install.sh" "$fixture/dist" 1.2.3 arm64 "$fixture/receipt.json" >"$fixture/out" 2>"$fixture/err"; then
     [ "$NATIVE_FIXTURE_MODE" = accepted ] || { cat "$fixture/err"; exit 1; }
     jq -e '.gatekeeper and .quarantine_retained and .native_version and .native_help and .architecture == "arm64"' "$fixture/receipt.json" >/dev/null
-    grep -F 'spctl --assess --type execute' "$fixture/log" >/dev/null
+    grep -F 'codesign --verify --strict -R=notarized --check-notarization' "$fixture/log" >/dev/null
   else
     [ "$NATIVE_FIXTURE_MODE" != accepted ] || { cat "$fixture/err"; exit 1; }
     [ ! -e "$fixture/receipt.json" ] || exit 1

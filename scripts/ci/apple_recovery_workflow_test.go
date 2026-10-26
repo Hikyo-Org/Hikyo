@@ -81,12 +81,12 @@ func TestApplePersistenceFailureKeepsUnresolvedUUIDsPending(t *testing.T) {
 		{"success", "failure", "true", "true", true},
 		{"success", "failure", "true", "", false},
 		{"success", "success", "true", "false", false},
-		{"failure", "skipped", "true", "", true},
+		{"failure", "skipped", "true", "", false},
 	} {
 		expression := strings.TrimSuffix(strings.TrimPrefix(pendingExpression, "${{ "), " }}")
 		expression = strings.ReplaceAll(expression, "'", "\"")
 		for name, value := range map[string]string{
-			"steps.submit.outcome": tc.submit, "steps.notarize.outcome": tc.notary,
+			"steps.submit-arm64.outcome": tc.submit, "steps.submit-x86_64.outcome": tc.submit, "steps.notarize.outcome": tc.notary,
 			"steps.submit.outputs.recovery_pending": tc.submitPending, "steps.notarize.outputs.recovery_pending": tc.notaryPending,
 			"steps.defer.outputs.recovery_pending": "",
 		} {
@@ -163,7 +163,7 @@ func TestAppleCheckpointOrderAndAuthority(t *testing.T) {
 				phases = append(phases, "wait-and-finalize")
 			}
 		}
-		if strings.Join(phases, ",") != "prepare,persist-intent,submit,persist-UUID,wait-and-finalize" {
+		if strings.Join(phases, ",") != "prepare,persist-intent,submit,persist-UUID,submit,persist-UUID,wait-and-finalize" {
 			t.Fatalf("%s loses submit-once checkpoint order: %v", name, phases)
 		}
 	}

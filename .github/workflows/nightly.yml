@@ -373,7 +373,7 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
-      recovery_pending: ${{ steps.defer.outputs.recovery_pending || steps.notarize.outputs.recovery_pending || (steps.notarize.outcome == 'skipped' && steps.submit.outcome == 'success' && 'true') || 'false' }}
+      recovery_pending: ${{ steps.defer.outputs.recovery_pending || steps.notarize.outputs.recovery_pending || (steps.notarize.outcome == 'skipped' && (steps.submit-arm64.outcome == 'success' || steps.submit-x86_64.outcome == 'success') && 'true') || 'false' }}
       fallback_authorized: ${{ steps.notarize.outputs.fallback_authorized }}
       notarize_outcome: ${{ steps.notarize.outcome }}
       diagnostics_outcome: ${{ steps.notarization-diagnostics.outcome }}
@@ -408,6 +408,7 @@ jobs:
           darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
       - name: Restore the original run's notarization checkpoint
+        id: restore-notary
         env:
           GH_TOKEN: ${{ github.token }}
           APPLE_RELEASE_CHANNEL: nightly
@@ -436,9 +437,10 @@ jobs:
           path: ${{ runner.temp }}/prepared/checkpoint.tar
           if-no-files-found: error
           retention-days: 90
-      - name: Submit new intents once or reconcile retained UUIDs
-        id: submit
+      - name: Submit arm64 once or reconcile its UUID
+        id: submit-arm64
         env:
+          APPLE_NOTARY_UNSTARTED_ARCHITECTURES: ${{ steps.restore-notary.outputs.unstarted_architectures }}
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
@@ -450,20 +452,51 @@ jobs:
           APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
           APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
-        run: ./scripts/release/sign-apple-artifacts.sh --submit-only dist
-      - name: Checkpoint UUIDs before waiting
-        if: ${{ always() && steps.prepare.outcome == 'success' }}
-        id: snapshot-submitted
+        run: ./scripts/release/sign-apple-artifacts.sh --submit-only --architecture arm64 dist
+      - name: Checkpoint arm64 UUID before advancing
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.submit-arm64.outcome != 'skipped' }}
+        id: snapshot-arm64
         env:
           APPLE_RECOVERY_PENDING: 'true'
           APPLE_RELEASE_CHANNEL: nightly
-        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/submitted/checkpoint.tar" submitted
-      - name: Persist submission UUIDs
-        if: ${{ always() && steps.snapshot-submitted.outcome == 'success' }}
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/submitted-arm64/checkpoint.tar" submitted-arm64
+      - name: Persist arm64 UUID before advancing
+        if: ${{ always() && steps.snapshot-arm64.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-submitted
-          path: ${{ runner.temp }}/submitted/checkpoint.tar
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-submitted-arm64
+          path: ${{ runner.temp }}/submitted-arm64/checkpoint.tar
+          if-no-files-found: error
+          retention-days: 90
+      - name: Submit x86_64 once or reconcile its UUID
+        id: submit-x86_64
+        env:
+          APPLE_NOTARY_UNSTARTED_ARCHITECTURES: ${{ steps.restore-notary.outputs.unstarted_architectures }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-sign.outputs.artifact_id }}
+          APPLE_NOTARY_INPUT_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
+          APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: ./scripts/release/sign-apple-artifacts.sh --submit-only --architecture x86_64 dist
+      - name: Checkpoint x86_64 UUID before advancing
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.submit-x86_64.outcome != 'skipped' }}
+        id: snapshot-x86_64
+        env:
+          APPLE_RECOVERY_PENDING: 'true'
+          APPLE_RELEASE_CHANNEL: nightly
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/submitted-x86_64/checkpoint.tar" submitted-x86_64
+      - name: Persist x86_64 UUID before advancing
+        if: ${{ always() && steps.snapshot-x86_64.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-submitted-x86_64
+          path: ${{ runner.temp }}/submitted-x86_64/checkpoint.tar
           if-no-files-found: error
           retention-days: 90
       # Qualification deliberately interrupts after real submissions are retained.
@@ -495,7 +528,7 @@ jobs:
         id: snapshot-final
         env:
           APPLE_RELEASE_CHANNEL: nightly
-          APPLE_RECOVERY_PENDING: ${{ steps.defer.outputs.recovery_pending == 'true' || steps.notarize.outputs.recovery_pending == 'true' || (steps.submit.outcome == 'failure' && steps.submit.outputs.recovery_pending == 'true') || (steps.submit.outcome == 'success' && steps.notarize.outcome == 'skipped') }}
+          APPLE_RECOVERY_PENDING: ${{ steps.defer.outputs.recovery_pending == 'true' || steps.notarize.outputs.recovery_pending == 'true' || (steps.notarize.outcome == 'skipped' && (steps.submit-arm64.outcome == 'success' || steps.submit-x86_64.outcome == 'success')) }}
         run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/finalized/checkpoint.tar" finalized
       - name: Persist final stage checkpoint
         if: ${{ always() && steps.snapshot-final.outcome == 'success' }}

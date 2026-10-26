@@ -7,14 +7,39 @@ umask 077
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$script_dir/../lib/release.sh"
-fail() { printf 'apple signing: %s\n' "$*" >&2; exit 1; }
+atomic_copy() {
+  [ ! -L "$2" ] || fail 'symlink evidence destination'
+  temporary=$(mktemp "$evidence/.write.XXXXXX")
+  if cp "$1" "$temporary" && chmod 600 "$temporary" && mv -f "$temporary" "$2"; then :; else
+    fail 'cannot atomically retain evidence'
+  fi
+}
+fail() {
+  if [ "${finalizing:-false}" = true ] && [ "${ticket_pending:-false}" != true ]; then
+    finalizing=false
+    jq '.finalization_state = "Blocked"' "$receipt" >"$scratch/blocked.json" &&
+      atomic_copy "$scratch/blocked.json" "$receipt"
+  fi
+  printf 'apple signing: %s\n' "$*" >&2
+  exit 1
+}
 mode=full
+submit_architecture=
 case "${1:-}" in
   --sign-only) mode=sign; shift ;;
   --prepare-only) mode=prepare; shift ;;
   --submit-only) mode=submit; shift ;;
   --notarize-only) mode=notarize; shift ;;
   --*) fail 'usage: sign-apple-artifacts.sh [--sign-only|--prepare-only|--submit-only|--notarize-only] DIST' ;;
+esac
+if [ "${1:-}" = --architecture ]; then
+  [ "$mode" = submit ] || fail 'architecture selection is only valid for submission'
+  case "${2:-}" in arm64 | x86_64) submit_architecture=$2 ;; *) fail 'invalid submission architecture' ;; esac
+  shift 2
+fi
+case "${APPLE_NOTARY_UNSTARTED_ARCHITECTURES:-}" in
+  '' | arm64 | x86_64 | 'arm64 x86_64') ;;
+  *) fail 'invalid unstarted architecture proof' ;;
 esac
 [ "$#" -eq 1 ] || fail 'usage: sign-apple-artifacts.sh [--sign-only|--prepare-only|--submit-only|--notarize-only] DIST'
 [ "$(uname -s)" = Darwin ] || fail 'macOS is required'
@@ -24,7 +49,8 @@ if [ "$mode" = sign ] || [ "$mode" = full ]; then
   set -- "$@" APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD
 fi
 if [ "$mode" != sign ]; then
-  set -- "$@" APPLE_NOTARY_EVIDENCE_DIR GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT APPLE_NOTARY_INPUT_ARTIFACT_ID APPLE_NOTARY_INPUT_SHA256
+  set -- "$@" APPLE_NOTARY_EVIDENCE_DIR GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT APPLE_NOTARY_INPUT_ARTIFACT_ID
+  if [ "$mode" != full ]; then set -- "$@" APPLE_NOTARY_INPUT_SHA256; fi
   if [ "$mode" != prepare ]; then
     set -- "$@" APPLE_NOTARY_KEY_P8 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID
   fi
@@ -85,7 +111,9 @@ if [ "$mode" != sign ]; then
   for number in "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$APPLE_NOTARY_INPUT_ARTIFACT_ID"; do
     printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]{0,17}$' || fail 'invalid run or input artifact ID'
   done
-  printf '%s\n' "$APPLE_NOTARY_INPUT_SHA256" | grep -Eq '^[0-9a-f]{64}$' || fail 'invalid signed input digest'
+  if [ "$mode" != full ]; then
+    printf '%s\n' "$APPLE_NOTARY_INPUT_SHA256" | grep -Eq '^[0-9a-f]{64}$' || fail 'invalid signed input digest'
+  fi
   printf '%s\n' "${APPLE_NOTARY_TIMEOUT:-30m}" | grep -Eq '^[1-9][0-9]{0,4}[smh]?$' || fail 'invalid finite notary timeout'
   evidence_component=$APPLE_NOTARY_EVIDENCE_DIR
   case "$evidence_component" in /*) ;; *) evidence_component=$PWD/$evidence_component ;; esac
@@ -282,18 +310,20 @@ fi
 # Verify the complete signed handoff and every restored receipt before credentials
 # are materialized or the first provider operation can authorize nightly fallback.
 input_digest=$("$script_dir/apple-artifact-digest.sh" "$dist" "$version")
-[ "$input_digest" = "$APPLE_NOTARY_INPUT_SHA256" ] || fail 'signed Actions input digest mismatch'
+input_binding=actions-handoff
+if [ "$mode" = full ]; then
+  # No signed handoff exists yet in same-process mode. Bind the actual newly
+  # timestamped bytes, rather than requiring the caller to predict them. These
+  # fresh receipts cannot be imported as an Actions signed-handoff receipt.
+  input_binding=same-invocation
+  [ -z "${APPLE_NOTARY_INPUT_SHA256:-}" ] || [ "$input_digest" = "$APPLE_NOTARY_INPUT_SHA256" ] || fail 'same-invocation signed digest assertion mismatch'
+else
+  [ "$input_digest" = "$APPLE_NOTARY_INPUT_SHA256" ] || fail 'signed Actions input digest mismatch'
+fi
 channel=${APPLE_RELEASE_CHANNEL:-stable}
 candidate_sha256=${CANDIDATE_SHA256:-}
 [ "$channel" != nightly ] || candidate_sha256=
 
-atomic_copy() {
-  [ ! -L "$2" ] || fail 'symlink evidence destination'
-  temporary=$(mktemp "$evidence/.write.XXXXXX")
-  if cp "$1" "$temporary" && chmod 600 "$temporary" && mv -f "$temporary" "$2"; then :; else
-    fail 'cannot atomically retain evidence'
-  fi
-}
 valid_log() {
   # For a retained UUID Apple's optional filename/hash fields must match when
   # present. Lost-UUID reconciliation requires BOTH fields, never status alone.
@@ -353,12 +383,15 @@ for arch in arm64 x86_64; do
       (.original_run_attempt | type == "string" and test("^[1-9][0-9]{0,17}$")) and
       (.original_run_attempt | tonumber) <= ($attempt | tonumber) and
       .input_artifact_id == $artifact and .input_sha256 == $digest and
+      .input_binding == "actions-handoff" and
       .team_id == $team and .signing_identity == $identity and
       (.phase == "Prepared" or .phase == "Submitting" or .phase == "Submitted") and
       (if .phase == "Submitted" then (.submission_id | uuid) else .submission_id == null end) and
       (.status == "Unknown" or .status == "In Progress" or .status == "Accepted" or .status == "Invalid" or .status == "Rejected") and
       (if .phase == "Prepared" then .status == "Unknown" else true end) and
       (.final_sha256 == null or (.final_sha256 | type == "string" and test("^[0-9a-f]{64}$"))) and
+      (.finalization_state == null or .finalization_state == "NotStarted" or .finalization_state == "InProgress" or
+       .finalization_state == "Pending" or .finalization_state == "Blocked" or .finalization_state == "Complete") and
       (.diagnostics | type == "object" and
         (.availability == "unavailable" or .availability == "invalid" or .availability == "available")) and
       (if .diagnostics.availability == "available" then
@@ -390,12 +423,13 @@ if [ ! -f "$evidence/arm64-receipt.json" ]; then
       --arg filename "$filename" --arg sha "$submitted_sha256" --arg repo "$GITHUB_REPOSITORY" \
       --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
       --arg artifact "$APPLE_NOTARY_INPUT_ARTIFACT_ID" --arg digest "$input_digest" \
+      --arg binding "$input_binding" \
       --arg team "$APPLE_TEAM_ID" --arg identity "$APPLE_SIGNING_IDENTITY" '
       {schema:"hikyo.dev/apple-notarization-receipt/v2",version:$version,source_commit:$commit,source_ref:$ref,
        channel:$channel,candidate_sha256:$candidate,architecture:$arch,archive_filename:$filename,
        submitted_sha256:$sha,repository:$repo,original_run_id:$run,original_run_attempt:$attempt,
-       input_artifact_id:$artifact,input_sha256:$digest,team_id:$team,signing_identity:$identity,
-       phase:"Prepared",submission_id:null,status:"Unknown",final_sha256:null,
+       input_artifact_id:$artifact,input_sha256:$digest,input_binding:$binding,team_id:$team,signing_identity:$identity,
+       phase:"Prepared",submission_id:null,status:"Unknown",final_sha256:null,finalization_state:"NotStarted",
        diagnostics:{availability:"unavailable",log_filename:null,warning_count:null}}
     ' >"$scratch/receipt.json"
     atomic_copy "$scratch/receipt.json" "$evidence/$arch-receipt.json"
@@ -475,11 +509,18 @@ reconcile() {
 submission_failed=false
 submission_pending=false
 for arch in arm64 x86_64; do
+  [ -z "$submit_architecture" ] || [ "$arch" = "$submit_architecture" ] || continue
   load_receipt
   [ -z "$submission_id" ] || continue
   phase=$(jq -r '.phase' "$receipt")
   prepared_attempt=$(jq -r '.original_run_attempt' "$receipt")
-  if [ "$mode" != notarize ] && [ "$phase" = Prepared ] && [ "$prepared_attempt" = "$GITHUB_RUN_ATTEMPT" ]; then
+  fresh_intent=false
+  if [ "$prepared_attempt" = "$GITHUB_RUN_ATTEMPT" ]; then fresh_intent=true; fi
+  # The trusted restore step may prove, from GitHub's previous-attempt step
+  # record, that this architecture's upload was skipped. Empty Apple history
+  # is never such proof. This permission applies only to an unstarted intent.
+  case " ${APPLE_NOTARY_UNSTARTED_ARCHITECTURES:-} " in *" $arch "*) fresh_intent=true ;; esac
+  if [ "$mode" != notarize ] && [ "$phase" = Prepared ] && [ "$fresh_intent" = true ]; then
     # Mark the upload uncertain BEFORE invoking the provider. Even the same
     # attempt must reconcile if the client dies without recording a UUID.
     phase=Submitting
@@ -587,22 +628,36 @@ if [ "$resolved" = true ] && [ "$accepted" = false ]; then fallback_permitted=tr
 # detach or private-credential cleanup failure may change the signed originals.
 staging=$(mktemp -d "$dist/.apple-final.XXXXXX")
 owned_mount=
+finalizing=true
+ticket_pending=false
+ticket_failed() {
+  ticket_status=$1
+  ticket_error=$2
+  if [ "$ticket_status" -eq 68 ] && grep -F 'NSURLErrorDomain Code=-1005' "$ticket_error" >/dev/null; then
+    ticket_pending=true
+    jq '.finalization_state = "Pending"' "$receipt" >"$scratch/pending.json"
+    atomic_copy "$scratch/pending.json" "$receipt"
+    [ -z "${GITHUB_OUTPUT:-}" ] || printf 'recovery_pending=true\n' >>"$GITHUB_OUTPUT"
+  fi
+  fail 'ticket operation failed; signed originals retained'
+}
 for arch in arm64 x86_64; do
   load_receipt
+  jq '.finalization_state = "InProgress"' "$receipt" >"$scratch/finalizing.json"
+  atomic_copy "$scratch/finalizing.json" "$receipt"
   final=$staging/$filename
   cp "$dmg" "$final"
   if xcrun stapler staple "$final" >"$scratch/staple.out" 2>"$scratch/staple.err"; then :; else
-    ticket_status=$?
     # Exit 68 alone does not distinguish a missing/invalid ticket from the
     # observed CloudKit connection-loss diagnostic. Only that transport witness
     # permits automatic ticket-only continuation, with the same Accepted UUIDs.
-    if [ "$ticket_status" -eq 68 ] && grep -F 'NSURLErrorDomain Code=-1005' "$scratch/staple.err" >/dev/null &&
-      [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'recovery_pending=true\n' >>"$GITHUB_OUTPUT"; fi
-    fail 'ticket stapling failed; signed originals retained'
+    ticket_failed "$?" "$scratch/staple.err"
   fi
-  xcrun stapler validate "$final" >"$scratch/validate.out" 2>"$scratch/validate.err" || fail 'ticket validation failed'
-  codesign --verify --strict -R "$requirement" "$final"
-  spctl --assess --type open --context context:primary-signature --verbose=2 "$final"
+  if xcrun stapler validate "$final" >"$scratch/validate.out" 2>"$scratch/validate.err"; then :; else
+    ticket_failed "$?" "$scratch/validate.err"
+  fi
+  codesign --verify --strict -R "$requirement" "$final" || fail 'final image signature failed'
+  spctl --assess --type open --context context:primary-signature --verbose=2 "$final" || fail 'final image Gatekeeper assessment failed'
   mountpoint=$scratch/mount-$arch
   mkdir "$mountpoint"
   owned_mount=$mountpoint
@@ -612,12 +667,13 @@ for arch in arm64 x86_64; do
     cmp -s "$mountpoint/$file" "$scratch/$arch/$file" || fail 'mounted payload differs from signed archive'
   done
   [ "$(lipo -archs "$mountpoint/hikyo")" = "$arch" ] || fail 'mounted executable architecture mismatch'
-  codesign --verify --strict -R "$requirement" "$mountpoint/hikyo"
+  codesign --verify --strict -R "$requirement" "$mountpoint/hikyo" || fail 'mounted executable signature failed'
   hdiutil detach "$owned_mount" >"$scratch/detach.out" 2>"$scratch/detach.err" || fail 'cannot detach owned image'
   owned_mount=
-  jq --arg sha "$(sha256_file "$final")" '.final_sha256 = $sha' "$receipt" >"$scratch/receipt.json"
+  jq --arg sha "$(sha256_file "$final")" '.final_sha256 = $sha | .finalization_state = "Complete"' "$receipt" >"$scratch/receipt.json"
   atomic_copy "$scratch/receipt.json" "$receipt"
 done
+finalizing=false
 # Cleanup is part of the promotion gate, and must happen before replacing bytes.
 restore_keychain || fail 'Keychain cleanup failed before promotion'
 rm -rf "$scratch" || fail 'private cleanup failed before promotion'

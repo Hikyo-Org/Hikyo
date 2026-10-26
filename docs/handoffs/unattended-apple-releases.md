@@ -45,16 +45,19 @@ the active rulesets, not that response, establish the current protections.
    attempt of the same run, source, channel and ref.
 2. `--prepare-only` verifies all signatures and writes both v2 intents without
    Apple credentials. Persist the prepared checkpoint before any upload.
-3. `--submit-only` marks each upload uncertain before the provider call, uploads
-   without waiting, and atomically records returned UUIDs. Persist the submitted
-   checkpoint before waiting. No retained UUID can authorize another upload.
+3. `--submit-only --architecture arm64` marks its upload uncertain before the
+   provider call, uploads without waiting, and atomically records its UUID.
+   Persist that checkpoint before submitting Intel with `--architecture x86_64`,
+   then persist Intel before waiting. No retained UUID authorizes another upload.
 4. `--notarize-only` queries/waits for retained UUIDs with a finite timeout,
    retrieves matching terminal diagnostics and stages ticket operations on
    private copies. Both architectures, mounted payloads, detach and private
    cleanup must pass before finalized bytes can leave the job.
 5. Two credential-free native runners verify the exact finalized candidate.
-   They assess the quarantined DMG and installed CLI, compare signed executable
-   bytes, and run native version/help checks while retaining quarantine.
+   They assess the quarantined DMG, require an online notarization check on the
+   standalone CLI, compare signed executable bytes, and run native version/help
+   checks while retaining quarantine. No app-bundle assessment substitutes for
+   this project's standalone executable topology.
 6. Publication preserves existing source, digest, authenticated inventory,
    predecessor, production startup, populated-upgrade and immutable-release
    gates. Small Apple and installation evidence is embedded in the existing
@@ -63,6 +66,10 @@ the active rulesets, not that response, establish the current protections.
 The Actions-only recovery worker runs on completed nightly failure and every
 15 minutes. It verifies the checkpoint digest, original workflow/run metadata,
 main ancestry and current attempt immediately before rerunning failed jobs.
+Continuation comes from bound durable receipts even if interruption loses step
+outputs. GitHub must explicitly record the architecture's upload step skipped in
+every intervening attempt before an old prepared intent may start. Otherwise
+UUID/history reconciliation is required, including a runner lost mid-upload.
 Successful build and signing jobs are reused. Automatic recovery stops at 12
 attempts or seven days, and does not override cancellation. Missing UUIDs require
 unique history and matching filename/hash diagnostics; unavailable or ambiguous

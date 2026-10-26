@@ -148,6 +148,9 @@ if [ "$sign" = true ]; then
     }
   done <"$APPLE_FIXTURE_ORIGINAL_SEARCH_LIST"
   printf 'Developer ID signed\n' >>"$target"
+  if [ "$APPLE_FIXTURE_MODE" = accepted-dynamic-signature ]; then
+    case "$target" in *.dmg) ;; *) openssl rand -hex 16 >>"$target" ;; esac
+  fi
   touch -t 202001010000 "$target"
 else
   grep -Fx 'Developer ID signed' "$target" >/dev/null || exit 1
@@ -287,7 +290,7 @@ case "$1 $2" in
     case "$APPLE_FIXTURE_MODE:$arch" in
       rejected:* | second-rejected:x86_64) status=Invalid ;;
       terminal-rejected:*) status=rEjEcTeD ;;
-      timeout:*) status='In Progress' ;;
+      timeout:* | wait-interrupted:*) status='In Progress' ;;
     esac
     jq -n --arg filename "$(basename "$3")" --arg sha "$(shasum -a 256 "$3" | awk '{print $1}')" \
       --arg status "$status" '{filename:$filename,sha256:$sha,status:$status}' >"$APPLE_FIXTURE_STATE/$arch.json"
@@ -306,6 +309,7 @@ case "$1 $2" in
     esac
     if [ "$2" = wait ]; then
       case " $* " in *' --timeout '*) ;; *) exit 1 ;; esac
+      if [ "$APPLE_FIXTURE_MODE" = wait-interrupted ]; then kill -TERM "$PPID"; exit 1; fi
     fi
     [ "$APPLE_FIXTURE_MODE" != info-failure ] || exit 1
     if [ "$APPLE_FIXTURE_MODE" = malformed-info ]; then printf '{bad\n'; exit 0; fi
@@ -322,6 +326,11 @@ case "$1 $2" in
       history-ambiguous)
         jq -n --arg name "$(jq -r '.filename' "$APPLE_FIXTURE_STATE/arm64.json")" \
           '{history:[{name:$name,id:"aaaaaaaa-1111-2222-3333-444444444444",status:"Accepted"}, {name:$name,id:"aaaaaaaa-1111-2222-3333-444444444444",status:"Accepted"}]}' ;;
+      history-both)
+        jq -n --arg arm "$(jq -r '.filename' "$APPLE_FIXTURE_STATE/arm64.json")" \
+          --arg intel "$(jq -r '.filename' "$APPLE_FIXTURE_STATE/x86_64.json")" \
+          '{history:[{name:$arm,id:"aaaaaaaa-1111-2222-3333-444444444444",status:"Accepted"},
+                     {name:$intel,id:"bbbbbbbb-1111-2222-3333-444444444444",status:"Accepted"}]}' ;;
       *)
         jq -n --arg name "$(jq -r '.filename' "$APPLE_FIXTURE_STATE/arm64.json")" \
           '{history:[{name:$name,id:"aaaaaaaa-1111-2222-3333-444444444444",status:"Accepted"}]}' ;;
@@ -366,7 +375,9 @@ case "$1 $2" in
     case "$APPLE_FIXTURE_MODE:$3" in second-staple-failure:*_x86_64.dmg) exit 1 ;; esac
     printf 'stapled\n' >>"$3"
     ;;
-  'stapler validate') [ "$APPLE_FIXTURE_MODE" != invalid-ticket ] ;;
+  'stapler validate')
+    if [ "$APPLE_FIXTURE_MODE" = validation-pending ]; then echo 'NSURLErrorDomain Code=-1005' >&2; exit 68; fi
+    [ "$APPLE_FIXTURE_MODE" != invalid-ticket ] ;;
   *) exit 2 ;;
 esac
 EOF
@@ -490,14 +501,14 @@ assert_evidence() {
       cmp "$APPLE_FIXTURE_STATE/$evidence_arch-returned-log.json" "$fixture/evidence/$evidence_arch-notary-log.json"
     fi
     case "$APPLE_FIXTURE_MODE:$evidence_arch" in
-      accepted:* | accepted-warnings:* | accepted-minimal-log:*)
+      accepted:* | accepted-warnings:* | accepted-minimal-log:* | accepted-dynamic-signature:*)
         stapled_sha=$(shasum -a 256 "$fixture/dist/hikyo_${evidence_version}_Darwin_$evidence_arch.dmg" | awk '{print $1}')
         [ "$stapled_sha" != "$submitted_fixture_sha256" ] || { printf 'apple fixture: pre-staple digest not distinguished\n' >&2; exit 1; }
         ;;
     esac
   done
   case "$APPLE_FIXTURE_MODE" in
-    accepted | accepted-warnings | accepted-minimal-log) ;;
+    accepted | accepted-warnings | accepted-minimal-log | accepted-dynamic-signature) ;;
     *)
       if [ "$submissions" -gt 0 ]; then
         for retained_arch in arm64 x86_64; do
@@ -526,7 +537,7 @@ assert_evidence() {
   fi
 }
 
-for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure search-list-restore-failure keychain-delete-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
+for APPLE_FIXTURE_MODE in accepted accepted-dynamic-signature accepted-warnings accepted-minimal-log search-list-read-failure search-list-update-failure search-list-restore-failure keychain-delete-failure invalid-identity wrong-imported-identity identity-query-failure missing-evidence-dir evidence-contains-scratch stale-evidence missing-secret wrong-team wrong-candidate wrong-tag tampered-input unexpected-entry symlink-entry wrong-arch bad-signature rejected terminal-rejected timeout staple-failure invalid-ticket gatekeeper-failure timeout-no-id accepted-no-id log-failure malformed-log mismatched-job mismatched-status mismatched-filename mismatched-hash malformed-issues second-rejected; do
   export APPLE_FIXTURE_MODE
   : >"$APPLE_FIXTURE_LOG"
   : >"$GITHUB_OUTPUT"
@@ -557,6 +568,7 @@ for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search
   (
     set -- env
     case "$APPLE_FIXTURE_MODE" in
+      accepted-dynamic-signature) unset APPLE_NOTARY_INPUT_SHA256 ;;
       missing-secret) unset APPLE_NOTARY_KEY_P8 ;;
       missing-evidence-dir) unset APPLE_NOTARY_EVIDENCE_DIR ;;
       evidence-contains-scratch) set -- "$@" APPLE_NOTARY_EVIDENCE_DIR="$fixture/scratch" ;;
@@ -566,7 +578,7 @@ for APPLE_FIXTURE_MODE in accepted accepted-warnings accepted-minimal-log search
     esac
     "$@" "$script_dir/sign-apple-artifacts.sh" "$fixture/dist"
   ) >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
-  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ]; then
+  if [ "$APPLE_FIXTURE_MODE" = accepted ] || [ "$APPLE_FIXTURE_MODE" = accepted-warnings ] || [ "$APPLE_FIXTURE_MODE" = accepted-minimal-log ] || [ "$APPLE_FIXTURE_MODE" = accepted-dynamic-signature ]; then
     [ "$result" -eq 0 ] || { cat "$fixture/err"; printf 'apple fixture: unexpected result %s for %s\n' "$result" "$APPLE_FIXTURE_MODE" >&2; exit 1; }
     assert_signed_outputs 1.2.3
     [ "$(grep -c '^spctl$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
@@ -943,10 +955,10 @@ phase() (
   else
     export APPLE_FIXTURE_PHASE=notarize
   fi
-  "$script_dir/sign-apple-artifacts.sh" "$1" "$fixture/dist" >"$fixture/out" 2>"$fixture/err"
+  "$script_dir/sign-apple-artifacts.sh" "$@" "$fixture/dist" >"$fixture/out" 2>"$fixture/err"
 )
 expect_phase_failure() {
-  if phase "$1"; then printf 'unexpected phase success: %s %s\n' "$APPLE_FIXTURE_MODE" "$1" >&2; exit 1; fi
+  if phase "$@"; then printf 'unexpected phase success: %s %s\n' "$APPLE_FIXTURE_MODE" "$1" >&2; exit 1; fi
 }
 assert_original_images() {
   for original_arch in arm64 x86_64; do
@@ -979,6 +991,56 @@ for arch in arm64 x86_64; do
 done
 assert_split_cleanup
 printf 'apple recovery fixture: credential-free intents, split submission, UUID reuse and retained originals PASS\n'
+
+# ARM's UUID is checkpointable before Intel is even called. On a new attempt,
+# an explicit GitHub skipped-step proof may authorize the still-unstarted Intel
+# intent; the ARM UUID is always reused.
+reset_recovery
+phase --prepare-only
+phase --submit-only --architecture arm64
+[ "$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG")" -eq 1 ]
+[ ! -f "$APPLE_FIXTURE_STATE/x86_64.json" ]
+cp -R "$fixture/evidence" "$fixture/retained"
+export GITHUB_RUN_ATTEMPT=2 APPLE_NOTARY_UNSTARTED_ARCHITECTURES=x86_64
+phase --submit-only --architecture arm64
+phase --submit-only --architecture x86_64
+assert_no_resubmission
+phase --notarize-only
+assert_split_cleanup
+unset APPLE_NOTARY_UNSTARTED_ARCHITECTURES
+export GITHUB_RUN_ATTEMPT=1
+printf 'apple recovery fixture: per-architecture checkpoint and proven-unstarted continuation PASS\n'
+
+# Losing the runner during Intel upload cannot erase the already retained ARM
+# UUID. Intel requires strict history reconciliation, never another upload.
+reset_recovery
+phase --prepare-only
+phase --submit-only --architecture arm64
+cp -R "$fixture/evidence" "$fixture/retained"
+export APPLE_FIXTURE_MODE=accepted-no-id
+expect_phase_failure --submit-only --architecture x86_64
+rm -rf "$fixture/evidence"
+cp -R "$fixture/retained" "$fixture/evidence"
+export GITHUB_RUN_ATTEMPT=2 APPLE_FIXTURE_MODE=history-both
+phase --submit-only --architecture arm64
+phase --submit-only --architecture x86_64
+assert_no_resubmission
+phase --notarize-only
+assert_split_cleanup
+export GITHUB_RUN_ATTEMPT=1
+printf 'apple recovery fixture: runner loss during second upload retains first UUID and reconciles second PASS\n'
+
+reset_recovery
+phase --prepare-only
+export APPLE_FIXTURE_MODE=wait-interrupted
+phase --submit-only
+: >"$GITHUB_OUTPUT"
+expect_phase_failure --notarize-only
+jq -e '.status == "In Progress" and .submission_id != null' "$fixture/evidence/arm64-receipt.json" >/dev/null
+if grep -E '^fallback_authorized=true$|^recovery_pending=true$' "$GITHUB_OUTPUT"; then exit 1; fi
+assert_no_resubmission
+assert_split_cleanup
+printf 'apple recovery fixture: interrupted wait retains pending UUID without relying on step outputs PASS\n'
 
 # A failed finite wait is pending, never success. Two retries query the exact
 # same UUIDs without another upload, and can finish after Apple accepts.
@@ -1134,7 +1196,7 @@ done
 
 # All post-acceptance failures retain BOTH original disk images, including an
 # accepted first architecture followed by a failed second architecture.
-for APPLE_FIXTURE_MODE in staple-failure second-staple-failure invalid-ticket gatekeeper-failure post-staple-signature-failure mount-failure mounted-license-mismatch mounted-binary-mismatch mounted-symlink mounted-wrong-arch detach-failure private-cleanup-failure ticket-pending ticket-unclassified; do
+for APPLE_FIXTURE_MODE in staple-failure second-staple-failure invalid-ticket gatekeeper-failure post-staple-signature-failure mount-failure mounted-license-mismatch mounted-binary-mismatch mounted-symlink mounted-wrong-arch detach-failure private-cleanup-failure ticket-pending validation-pending ticket-unclassified; do
   failure_mode=$APPLE_FIXTURE_MODE
   reset_recovery
   phase --prepare-only
@@ -1145,7 +1207,7 @@ for APPLE_FIXTURE_MODE in staple-failure second-staple-failure invalid-ticket ga
   assert_no_resubmission
   assert_original_images
   if grep -Fx 'fallback_authorized=true' "$GITHUB_OUTPUT"; then exit 1; fi
-  if [ "$APPLE_FIXTURE_MODE" = ticket-pending ]; then
+  if [ "$APPLE_FIXTURE_MODE" = ticket-pending ] || [ "$APPLE_FIXTURE_MODE" = validation-pending ]; then
     grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT" >/dev/null
   elif grep -Fx 'recovery_pending=true' "$GITHUB_OUTPUT"; then exit 1; fi
   [ -z "$(find "$fixture/state" -name 'mounted-*' -print)" ]

@@ -72,9 +72,87 @@ class CheckpointTests(unittest.TestCase):
                 state.restore(self.root / "wrong-source", self.current)
 
     def test_retry_without_checkpoint_cannot_create_new_intent(self):
-        with patch.object(state, "api", return_value=self.run), patch.object(state, "artifacts", return_value=[]):
+        def api(endpoint, **_kwargs):
+            return [dict(jobs=[])] if "/attempts/" in endpoint else self.run
+
+        with patch.object(state, "api", side_effect=api), patch.object(state, "artifacts", return_value=[]):
             with self.assertRaisesRegex(ValueError, "do not resubmit"):
                 state.restore(self.root / "retry", dict(self.current, attempt="2"))
+
+    def test_retry_can_create_first_intents_after_proven_skipped_notarization(self):
+        job = dict(name="apple-notarize", run_id=42, run_attempt=1, head_sha="a" * 40,
+                   status="completed", conclusion="skipped", steps=[])
+
+        def api(endpoint, **_kwargs):
+            return [dict(jobs=[job])] if "/attempts/" in endpoint else self.run
+
+        with patch.object(state, "api", side_effect=api), patch.object(state, "artifacts", return_value=[]):
+            state.restore(self.root / "first-intents", dict(self.current, attempt="2"))
+        self.assertEqual(list((self.root / "first-intents").iterdir()), [])
+        job.update(conclusion="failure", steps=[dict(name=f"Submit {arch} once or reconcile its UUID", status="completed",
+                                                    conclusion="failure" if arch == "arm64" else "skipped")
+                                                for arch in ("arm64", "x86_64")])
+        with patch.object(state, "api", side_effect=api):
+            self.assertFalse(state.no_previous_upload(dict(self.current, attempt="2")))
+
+    def test_interrupted_wait_receipt_overrides_missing_outputs(self):
+        path = self.directory / "arm64-receipt.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(phase="Submitted", status="In Progress", submission_id="aaaaaaaa-1111-2222-3333-444444444444")
+        path.write_text(json.dumps(receipt))
+        state.snapshot(self.directory, self.destination, "finalized", False, self.current)
+        self.set_archive(self.destination.read_bytes())
+        record, _files = self.read()
+        self.assertTrue(record["recovery_pending"])
+
+    def test_per_architecture_checkpoint_survives_before_next_upload(self):
+        path = self.directory / "arm64-receipt.json"
+        receipt = json.loads(path.read_text())
+        receipt.update(phase="Submitted", status="Unknown", submission_id="aaaaaaaa-1111-2222-3333-444444444444")
+        path.write_text(json.dumps(receipt))
+        state.snapshot(self.directory, self.destination, "submitted-arm64", True, self.current)
+        self.set_archive(self.destination.read_bytes())
+        self.artifact["name"] = "apple-notary-state-42-1-submitted-arm64"
+        record, files = self.read()
+        self.assertEqual(record["stage"], "submitted-arm64")
+        self.assertEqual(state.parse_json(files["arm64-receipt.json"])["submission_id"], receipt["submission_id"])
+
+    def test_only_all_skipped_upload_steps_allow_an_old_prepared_intent(self):
+        files = {path.name: path.read_bytes() for path in self.directory.iterdir()}
+        for arch in ("arm64", "x86_64"):
+            receipt = state.parse_json(files[f"{arch}-receipt.json"])
+            receipt.update(phase="Prepared", original_run_attempt="1", submission_id=None)
+            files[f"{arch}-receipt.json"] = json.dumps(receipt).encode()
+        calls = []
+
+        def previous_jobs(endpoint, **_kwargs):
+            attempt = int(endpoint.split("/attempts/")[1].split("/")[0])
+            calls.append(attempt)
+            steps = [dict(name=f"Submit {arch} once or reconcile its UUID", status="completed", conclusion="skipped")
+                     for arch in ("arm64", "x86_64")]
+            if attempt == 1:
+                steps[0]["conclusion"] = "failure"
+            return [dict(jobs=[dict(name="apple-notarize", run_id=42, run_attempt=attempt, head_sha="a" * 40, steps=steps)])]
+
+        with patch.object(state, "api", side_effect=previous_jobs):
+            self.assertEqual(state.unstarted_architectures(files, dict(self.current, attempt="3")), ["x86_64"])
+        self.assertEqual(calls, [1, 2])
+        with patch.object(state, "api", return_value=[dict(jobs=[])]):
+            self.assertEqual(state.unstarted_architectures(files, dict(self.current, attempt="2")), [])
+
+    def test_interrupted_finalization_resumes_but_blocked_trust_does_not(self):
+        for disposition, expected in (("InProgress", True), ("Pending", True), ("Blocked", False), ("Complete", False)):
+            with self.subTest(disposition=disposition):
+                for arch in ("arm64", "x86_64"):
+                    path = self.directory / f"{arch}-receipt.json"
+                    receipt = json.loads(path.read_text())
+                    receipt.update(phase="Submitted", status="Accepted", finalization_state=disposition,
+                                   diagnostics=dict(availability="available"), submission_id="aaaaaaaa-1111-2222-3333-444444444444")
+                    path.write_text(json.dumps(receipt))
+                state.snapshot(self.directory, self.destination, "finalized", False, self.current)
+                self.set_archive(self.destination.read_bytes())
+                record, _files = self.read()
+                self.assertEqual(record["recovery_pending"], expected)
 
     def test_latest_stage_never_falls_back_to_expired_or_duplicate(self):
         prepared = dict(self.artifact, id=6, name="apple-notary-state-42-1-prepared")
@@ -105,6 +183,14 @@ class CheckpointTests(unittest.TestCase):
     def test_local_snapshot_rejects_unallowlisted_private_material(self):
         (self.directory / "notary.p8").write_text("synthetic credential")
         with self.assertRaisesRegex(ValueError, "unexpected checkpoint file"):
+            state.snapshot(self.directory, self.destination, "submitted", True, self.current)
+
+    def test_same_invocation_receipt_is_not_an_actions_handoff(self):
+        path = self.directory / "arm64-receipt.json"
+        receipt = json.loads(path.read_text())
+        receipt["input_binding"] = "same-invocation"
+        path.write_text(json.dumps(receipt))
+        with self.assertRaisesRegex(ValueError, "unbound"):
             state.snapshot(self.directory, self.destination, "submitted", True, self.current)
 
     def test_only_trusted_nightly_run_can_be_continued(self):
@@ -140,8 +226,19 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(self.recover(run=dict(self.run, conclusion="cancelled")), [])
         self.assertEqual(self.recover(run=dict(self.run, run_attempt=12)), [])
         self.assertEqual(self.recover(run=dict(self.run, created_at="2020-01-01T00:00:00Z")), [])
-        with self.assertRaisesRegex(ValueError, "left main"):
+        with self.assertRaisesRegex(ValueError, "checkpoints refused"):
             self.recover(ancestry="diverged")
+
+    def test_stale_checkpoint_attempt_is_filtered_before_download(self):
+        with patch.object(state, "artifacts", return_value=[self.artifact]), patch.object(state, "read_checkpoint") as read:
+            self.assertFalse(state.recover_one(self.current["repository"], dict(self.run, run_attempt=2)))
+        read.assert_not_called()
+
+    def test_invalid_run_does_not_starve_an_independent_candidate_and_failure_propagates(self):
+        with patch.object(state, "api", return_value=[dict(workflow_runs=[self.run, dict(self.run, id=43)])]), patch.object(state, "recover_one", side_effect=[ValueError("synthetic malformed checkpoint"), True]) as recover:
+            with self.assertRaisesRegex(ValueError, "checkpoints refused"):
+                state.recover(self.current["repository"])
+        self.assertEqual([call.args[1]["id"] for call in recover.call_args_list], [42, 43])
 
 
 class ImmutableEvidenceTests(unittest.TestCase):
@@ -170,7 +267,7 @@ class ImmutableEvidenceTests(unittest.TestCase):
                     evidence["logs"].append(dict(jobId=submission, status="Accepted", archiveFilename=filename, sha256="b" * 64))
                     receipt = dict(schema="hikyo.dev/apple-install-receipt/v1", source_commit="a" * 40, run_id="42", architecture=arch,
                                    version="1.2.3", input_artifact_id="7", final_dmg_sha256=image_hash, installed_binary_sha256=binary_hash,
-                                   gatekeeper=True, quarantine_retained=True, native_version=True, native_help=True)
+                                   gatekeeper=True, executable_notarization=True, quarantine_retained=True, native_version=True, native_help=True)
                     if arch == "arm64":
                         if mutation == "source": receipt["source_commit"] = "c" * 40
                         if mutation == "image": receipt["final_dmg_sha256"] = "c" * 64
