@@ -166,6 +166,18 @@ func TestAppleCheckpointOrderAndAuthority(t *testing.T) {
 		if strings.Join(phases, ",") != "prepare,persist-intent,submit,persist-UUID,submit,persist-UUID,wait-and-finalize" {
 			t.Fatalf("%s loses submit-once checkpoint order: %v", name, phases)
 		}
+		for _, arch := range []string{"arm64", "x86_64"} {
+			want := "Submit " + arch + " once or reconcile its UUID"
+			matches := 0
+			for _, step := range workflow.Jobs["apple-notarize"].Steps {
+				if step.Name == want && strings.Contains(step.Run, "--submit-only --architecture "+arch+" ") {
+					matches++
+				}
+			}
+			if matches != 1 {
+				t.Fatalf("%s needs exactly one %q for Python recovery lookup, got %d", name, want, matches)
+			}
+		}
 	}
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/apple-release-recovery.yml"))
 	if err != nil {

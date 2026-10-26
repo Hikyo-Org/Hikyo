@@ -3,6 +3,7 @@
 set +x
 set -eu
 umask 077
+temporary=
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
@@ -10,7 +11,16 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 atomic_copy() {
   [ ! -L "$2" ] || fail 'symlink evidence destination'
   temporary=$(mktemp "$evidence/.write.XXXXXX")
-  if cp "$1" "$temporary" && chmod 600 "$temporary" && mv -f "$temporary" "$2"; then :; else
+  if cp "$1" "$temporary" && chmod 600 "$temporary" && mv -f "$temporary" "$2"; then
+    temporary=
+  else
+    # fail may atomically mark a finalization receipt Blocked. Remove this
+    # transaction before that nested write can replace the tracked path.
+    if ! rm -f "$temporary"; then
+      printf 'apple signing: cannot remove interrupted evidence write\n' >&2
+      exit 1
+    fi
+    temporary=
     fail 'cannot atomically retain evidence'
   fi
 }
@@ -154,6 +164,9 @@ cleanup() {
   status=$?
   cleanup_failed=false
   trap - EXIT HUP INT TERM
+  if [ -n "${temporary:-}" ]; then
+    if ! rm -f "$temporary"; then status=1; cleanup_failed=true; fi
+  fi
   if ! restore_keychain; then status=1; cleanup_failed=true; fi
   if [ -n "${owned_mount:-}" ]; then
     if hdiutil detach "$owned_mount" >/dev/null 2>&1; then owned_mount=; else status=1; cleanup_failed=true; fi
@@ -191,7 +204,7 @@ if [ "$mode" != sign ]; then
   mkdir "$evidence/.lock" 2>/dev/null || fail 'evidence directory is locked; do not replay an uncertain submission'
   lock_owned=true
   # Only these public evidence files are reusable. Never follow restored links,
-  # accept arbitrary old receipts, or silently clean up interrupted writes.
+  # accept arbitrary old receipts, or clean up another invocation's writes.
   for entry in "$evidence/"* "$evidence/".[!.]* "$evidence/"..?*; do
     [ -e "$entry" ] || [ -L "$entry" ] || continue
     [ "$entry" != "$evidence/.lock" ] || continue

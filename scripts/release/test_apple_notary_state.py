@@ -252,6 +252,23 @@ class CheckpointTests(unittest.TestCase):
             self.assertFalse(state.recover_one(self.current["repository"], dict(self.run, run_attempt=2)))
         read.assert_not_called()
 
+    def test_ineligible_historical_events_skip_without_artifact_access(self):
+        for change in (dict(conclusion="success"), dict(run_attempt=12),
+                       dict(created_at="2020-01-01T00:00:00Z")):
+            with self.subTest(change=change), patch.object(state, "artifacts") as artifacts, patch.object(state, "api") as api:
+                historical = dict(self.run, event="workflow_dispatch", **change)
+                self.assertFalse(state.recover_one(self.current["repository"], historical))
+                artifacts.assert_not_called()
+                api.assert_not_called()
+
+    def test_eligible_untrusted_run_is_refused_before_artifact_access(self):
+        for change in (dict(event="workflow_dispatch"), dict(head_repository=dict(id=2))):
+            with self.subTest(change=change), patch.object(state, "artifacts") as artifacts, patch.object(state, "api") as api:
+                with self.assertRaisesRegex(ValueError, "untrusted workflow run"):
+                    state.recover_one(self.current["repository"], dict(self.run, **change))
+                artifacts.assert_not_called()
+                api.assert_not_called()
+
     def test_invalid_run_does_not_starve_an_independent_candidate_and_failure_propagates(self):
         with patch.object(state, "api", return_value=[dict(workflow_runs=[self.run, dict(self.run, id=43)])]), patch.object(state, "recover_one", side_effect=[ValueError("synthetic malformed checkpoint"), True]) as recover:
             with self.assertRaisesRegex(ValueError, "checkpoints refused"):

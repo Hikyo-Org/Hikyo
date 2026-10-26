@@ -272,12 +272,12 @@ def restore(directory, current):
 
 
 def recover_one(repository, run):
-    trusted_run(run, repository)
     if run["conclusion"] not in ("failure", "timed_out"):
         return False
     age = datetime.now(timezone.utc) - datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
     if run["run_attempt"] >= 12 or age.total_seconds() > 7 * 86400:
         return False
+    trusted_run(run, repository)
     prefix = f"apple-notary-state-{run['id']}-{run['run_attempt']}-"
     current_items = [item for item in artifacts(repository, run["id"]) if item["name"].startswith(prefix)]
     selected = select_checkpoint(current_items, run["id"])

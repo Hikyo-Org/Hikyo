@@ -20,13 +20,47 @@ mkdir "$fixture/bin" "$fixture/scratch" "$fixture/original" "$fixture/payload"
 APPLE_FIXTURE_REAL_PRINTENV=$(command -v printenv)
 APPLE_FIXTURE_REAL_TAR=$(command -v tar)
 APPLE_FIXTURE_REAL_RM=$(command -v rm)
+APPLE_FIXTURE_REAL_CP=$(command -v cp)
+APPLE_FIXTURE_REAL_CHMOD=$(command -v chmod)
+APPLE_FIXTURE_REAL_MV=$(command -v mv)
 export APPLE_FIXTURE_REAL_PRINTENV APPLE_FIXTURE_REAL_TAR APPLE_FIXTURE_REAL_RM
+export APPLE_FIXTURE_REAL_CP APPLE_FIXTURE_REAL_CHMOD APPLE_FIXTURE_REAL_MV
 export APPLE_FIXTURE_LOG="$fixture/calls" APPLE_FIXTURE_STATE="$fixture/state"
 export APPLE_FIXTURE_SEARCH_LIST="$fixture/search-list"
 export APPLE_FIXTURE_ORIGINAL_SEARCH_LIST="$fixture/original-search-list"
 export APPLE_NOTARY_EVIDENCE_DIR="$fixture/evidence"
 export GITHUB_OUTPUT="$fixture/outputs"
 export DEVELOPER_DIR="$fixture/Developer tools"
+for operation in cp chmod mv; do
+  cat >"$fixture/bin/$operation" <<'EOF'
+#!/bin/sh
+set -eu
+operation=${0##*/}
+case "$operation" in
+  cp) actual=$APPLE_FIXTURE_REAL_CP ;;
+  chmod) actual=$APPLE_FIXTURE_REAL_CHMOD ;;
+  mv) actual=$APPLE_FIXTURE_REAL_MV ;;
+esac
+for argument do
+  [ -n "${APPLE_NOTARY_EVIDENCE_DIR:-}" ] || break
+  case "$argument" in
+    "$APPLE_NOTARY_EVIDENCE_DIR"/.write.*)
+      if [ "$APPLE_FIXTURE_MODE" = "evidence-$operation-failure" ]; then
+        printf 'atomic write %s failure\n' "$operation" >>"$APPLE_FIXTURE_LOG"
+        exit 1
+      fi
+      if [ "$operation:$APPLE_FIXTURE_MODE" = cp:evidence-interrupted ]; then
+        "$actual" "$@"
+        printf 'atomic write interrupted\n' >>"$APPLE_FIXTURE_LOG"
+        kill -TERM "$PPID"
+        exit 1
+      fi
+      ;;
+  esac
+done
+exec "$actual" "$@"
+EOF
+done
 printf '    "%s"\n' "$fixture/login fixture.keychain-db" "$fixture/secondary.keychain-db" >"$fixture/original-search-list"
 cat >"$fixture/bin/printenv" <<'EOF'
 #!/bin/sh
@@ -414,7 +448,9 @@ export APPLE_FIXTURE_MODE=accepted
 mkdir "$fixture/state"
 cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
 cp -R "$fixture/original" "$fixture/dist"
-"$script_dir/sign-apple-artifacts.sh" --sign-only "$fixture/dist" >"$fixture/out" 2>"$fixture/err"
+printf 'unowned file\n' >"$fixture/unowned"
+temporary="$fixture/unowned" "$script_dir/sign-apple-artifacts.sh" --sign-only "$fixture/dist" >"$fixture/out" 2>"$fixture/err"
+[ -f "$fixture/unowned" ] || { printf 'apple fixture: cleanup removed an inherited unowned path\n' >&2; exit 1; }
 cp -R "$fixture/dist" "$fixture/reference-signed"
 expected_binding() {
   for binding_arch in arm64 x86_64; do
@@ -970,6 +1006,27 @@ assert_original_images() {
 assert_no_resubmission() {
   [ "$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG" || true)" -eq 2 ]
 }
+for write_failure in evidence-cp-failure evidence-chmod-failure evidence-mv-failure evidence-interrupted; do
+  reset_recovery
+  phase --prepare-only
+  cp "$fixture/evidence/arm64-receipt.json" "$fixture/receipt-before-write"
+  export APPLE_FIXTURE_MODE=$write_failure
+  expect_phase_failure --submit-only
+  cmp "$fixture/receipt-before-write" "$fixture/evidence/arm64-receipt.json"
+  [ -z "$(find "$fixture/evidence" -name '.write.*' -o -name .lock)" ] || {
+    printf 'apple fixture: atomic write left temporary evidence\n' >&2; exit 1;
+  }
+  [ "$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG" || true)" -eq 0 ]
+  if grep -E '^(submitted|notarized|fallback_authorized)=true$' "$GITHUB_OUTPUT"; then exit 1; fi
+  assert_original_images
+  assert_split_cleanup
+  APPLE_RELEASE_CHANNEL=stable python3 -B "$script_dir/apple_notary_state.py" snapshot \
+    "$fixture/evidence" "$fixture/checkpoint-after-write.tar" prepared
+  export APPLE_FIXTURE_MODE=accepted
+  phase --submit-only
+  assert_no_resubmission
+  printf 'apple recovery fixture: atomic write %s cleanup and continuation PASS\n' "$write_failure"
+done
 reset_recovery
 phase --prepare-only
 [ "$(find "$fixture/evidence" -type f | wc -l | tr -d ' ')" -eq 4 ]
