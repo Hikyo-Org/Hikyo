@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 
+/**
+ * Check settings placement and consent controls in the built site across themes
+ * and viewport sizes. Analytics-disabled builds skip these checks.
+ */
 export async function checkAnalyticsLayout(browser, origin) {
   for (const width of [320, 390, 768, 1280]) {
     for (const theme of ['dark', 'light']) {
@@ -35,8 +39,11 @@ export async function checkAnalyticsLayout(browser, origin) {
           await settings.click();
           const consent = page.getByRole('complementary', { name: 'Optional site analytics' });
           await consent.waitFor({ state: 'visible' });
+          await page.evaluate(() => localStorage.removeItem('hikyo.analytics.consent'));
           await consent.getByRole('button', { name: 'No thanks', exact: true }).click();
           await consent.waitFor({ state: 'hidden' });
+          assert.equal(await page.evaluate(() => localStorage.getItem('hikyo.analytics.consent')), 'denied',
+            'refusal must be saved');
 
           if (route.startsWith('/docs/') && width < 768) {
             await page.evaluate(() => window.scrollTo(0, 0));
