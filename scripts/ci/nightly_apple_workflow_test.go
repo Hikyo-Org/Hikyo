@@ -38,7 +38,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		"build-artifacts": {"validation"},
 		"apple-sign":      {"build-artifacts"},
 		"apple-notarize":  {"build-artifacts", "apple-sign"},
-		"publish":         {"validation", "build-artifacts", "apple-sign", "apple-notarize"},
+		"publish":         {"validation", "build-artifacts", "apple-sign", "apple-notarize", "apple-acceptance"},
 		"container":       {"publish"},
 	} {
 		needs, err := workflowNeeds(workflow.Jobs[name].Needs)
@@ -51,7 +51,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
 			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
 		}
-		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
+		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, applePhasePermissions(name)) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
 			t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
 		}
 	}
@@ -68,7 +68,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		}
 	}
 	publish := workflow.Jobs["publish"]
-	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && needs.apple-notarize.outputs.inputs_verified == 'true' && ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') || (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' && needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))" {
+	if publish.Environment != "nightly-release" || publish.If != "always() && !cancelled() && github.ref == 'refs/heads/main' && needs.validation.result == 'success' && needs.build-artifacts.result == 'success' && (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' && needs.apple-notarize.outputs.inputs_verified == 'true' && ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success' && needs.apple-acceptance.result == 'success') || (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' && needs.apple-notarize.outputs.recovery_pending != 'true' && needs.apple-notarize.outputs.fallback_authorized == 'true' && needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))" {
 		t.Fatal("nightly publication requires validation/build/signing and matching notarization job/helper outcomes; only verified helper failure with retained diagnostics may omit DMGs")
 	}
 	if workflow.Jobs["apple-notarize"].Outputs["inputs_verified"] != "${{ steps.notarize.outputs.inputs_verified }}" {
@@ -125,6 +125,9 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 				if name == "publish" {
 					switch step.If {
 					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'success'":
+						if step.With["pattern"] == "apple-install-${{ github.run_id }}-*" && step.With["merge-multiple"] == "" {
+							continue
+						}
 						upstream = "apple-notarize"
 					case "needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.inputs_verified == 'true'":
 						upstream = "apple-sign"

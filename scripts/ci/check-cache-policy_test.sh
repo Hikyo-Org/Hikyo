@@ -85,7 +85,7 @@ for file in "$@"; do
 	runner_source=$file
 	case $(basename "$file") in
 		nightly.yml | release.yml)
-			# Only the credential-isolated Apple phases require macOS.
+			# Credential-isolated signing and native acceptance require macOS.
 			# Every other job in either release workflow remains Ubuntu-only.
 			for apple_job in apple-sign apple-notarize; do
 				[ "$(grep -c "^  $apple_job:\$" "$file")" = 1 ] ||
@@ -117,9 +117,32 @@ for file in "$@"; do
 					END { validate(); if (bad) exit 1 }
 				' || fail 'Apple signing must disable setup action caches'
 			done
+			native_acceptance=false
+			if [ "$(basename "$file")" = nightly.yml ]; then
+				native_acceptance=true
+				[ "$(grep -c '^  apple-acceptance:$' "$file")" = 1 ] ||
+					fail 'nightly must declare exactly one native Apple acceptance job'
+				apple=$(workflow_job_block "$file" apple-acceptance)
+				printf '%s\n' "$apple" | grep -Fx '    runs-on: ${{ matrix.runner }}' >/dev/null ||
+					fail 'native Apple acceptance must use its closed runner matrix'
+				[ "$(printf '%s\n' "$apple" | grep -c 'runs-on:')" = 1 ] ||
+					fail 'native Apple acceptance must declare exactly one runner'
+				pairs=$(printf '%s\n' "$apple" | awk '
+					/^          - arch:/ { arch = $3; architectures++ }
+					/^            runner:/ { print arch ":" $2; runners++ }
+					END { if (architectures != 2 || runners != 2) exit 1 }
+				') || fail 'native Apple acceptance must contain exactly two architecture/runner pairs'
+				[ "$pairs" = "$(printf '%s\n' arm64:macos-15 x86_64:macos-15-intel)" ] ||
+					fail 'native Apple acceptance must use the approved ARM and Intel runner pair'
+				printf '%s\n' "$apple" | grep -Fx '    environment: apple-signing' >/dev/null ||
+					fail 'native Apple acceptance must retain its protected environment'
+				if printf '%s\n' "$apple" | grep -E 'secrets\.|actions/cache(@|/)|actions/setup-(go|node)@|^[[:space:]]+[a-z-]+:[[:space:]]+write' >/dev/null; then
+					fail 'native Apple acceptance must not receive credentials, shared caches or write authority'
+				fi
+			fi
 			runner_source=$(mktemp)
-			awk '
-				$0 == "  apple-sign:" || $0 == "  apple-notarize:" { skip = 1; next }
+			awk -v native_acceptance="$native_acceptance" '
+				$0 == "  apple-sign:" || $0 == "  apple-notarize:" || (native_acceptance == "true" && $0 == "  apple-acceptance:") { skip = 1; next }
 				skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
 				!skip { print }
 			' "$file" >"$runner_source"
