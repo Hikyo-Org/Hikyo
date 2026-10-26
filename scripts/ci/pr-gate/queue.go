@@ -564,21 +564,34 @@ func (q *queueController) sharedHead(ctx context.Context, p pull) (bool, error) 
 }
 
 func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
+	type runList struct {
+		Runs  []run `json:"workflow_runs"`
+		Total int   `json:"total_count"`
+	}
 	var w workflow
-	if err := q.api.read(ctx, q.endpoint("actions/workflows/ci-feedback.yml"), &w); err != nil {
+	var first runList
+	runsPath := func(page int) string {
+		return q.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page))
+	}
+	// The definition and first run page are independent reads of the same
+	// feedback phase. Join and validate both before trusting any run or job.
+	if err := parallelReads(ctx, func(ctx context.Context) error {
+		return q.api.read(ctx, q.endpoint("actions/workflows/ci-feedback.yml"), &w)
+	}, func(ctx context.Context) error {
+		return q.api.read(ctx, runsPath(1), &first)
+	}); err != nil {
 		return nil, err
 	}
 	if w.ID <= 0 || w.Path != feedbackWorkflowPath || w.Name != "ci-feedback" {
 		return nil, errors.New("invalid feedback workflow identity")
 	}
 	for page := 1; page <= 10; page++ {
-		var list struct {
-			Runs  []run `json:"workflow_runs"`
-			Total int   `json:"total_count"`
-		}
-		path := q.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page))
-		if err := q.api.read(ctx, path, &list); err != nil {
-			return nil, err
+		list := first
+		if page > 1 {
+			list = runList{}
+			if err := q.api.read(ctx, runsPath(page), &list); err != nil {
+				return nil, err
+			}
 		}
 		if list.Runs == nil || list.Total < 0 || list.Total > 1000 {
 			return nil, errors.New("invalid feedback run list")

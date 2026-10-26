@@ -63,12 +63,13 @@ type controlEvent struct {
 }
 
 type request struct {
-	head    string
-	run     int64
-	attempt int
+	head      string
+	run       int64
+	attempt   int
+	workloads workloads
 }
 
-var requestPattern = regexp.MustCompile(`^<!-- hikyo-benchmark head=([0-9a-f]{40}) run=([0-9]+) attempt=([0-9]+) -->\n`)
+var requestPattern = regexp.MustCompile(`^<!-- hikyo-benchmark head=([0-9a-f]{40}) run=([0-9]+) attempt=([0-9]+)(?: workloads=([0-9]+))? -->\n`)
 
 func parseRequest(body string) (request, error) {
 	parts := requestPattern.FindStringSubmatch(body)
@@ -83,7 +84,15 @@ func parseRequest(body string) (request, error) {
 	if err != nil {
 		return request{}, err
 	}
-	return request{head: parts[1], run: runID, attempt: attempt}, nil
+	var selected workloads
+	if parts[4] != "" {
+		value, err := strconv.ParseUint(parts[4], 10, 8)
+		if err != nil || workloads(value)&^allPRWorkloads != 0 {
+			return request{}, fmt.Errorf("invalid benchmark workload selection")
+		}
+		selected = workloads(value)
+	}
+	return request{head: parts[1], run: runID, attempt: attempt, workloads: selected}, nil
 }
 
 func checked(body, line string) bool {
@@ -161,7 +170,11 @@ func botComment(repository string, number int) (comment, error) {
 }
 
 func commentBody(pr pull, r request, status string) string {
-	return fmt.Sprintf("<!-- hikyo-benchmark head=%s run=%d attempt=%d -->\n### Performance: PR #%d\n\nHead `%s`.\n\n%s\n\n- [ ] Run benchmark\n- [ ] Use confirmed credit\n\nPerformance-relevant PR changes run automatically when projected usage fits the shared 600-minute allowance. A maintainer can also tick **Run benchmark** to run the Go suite with CodSpeed walltime reporting and the large-matrix browser check for this head. Go comparisons use the available daily main baseline on the same Graviton hardware. Browser checks run separately on GitHub-hosted Chromium and retain timing samples as run artifacts. This is optional and does not replace required CI. One walltime request runs at a time.\n\nAutomatic, daily and normal requested runs share a 600-minute rolling 32-day allowance. Automatic PR admission also projects recent requested usage plus daily coverage over 32 days. Tick **Use confirmed credit** first to permit up to 156 extra minutes (about $5) over the last 32 days; account credit must be confirmed by an administrator.\n", r.head, r.run, r.attempt, pr.Number, r.head[:12], status)
+	selection := "Workloads are selected from this head's changed files when admitted."
+	if r.run != 0 {
+		selection = "Selected workloads: " + r.workloads.description() + "."
+	}
+	return fmt.Sprintf("<!-- hikyo-benchmark head=%s run=%d attempt=%d workloads=%d -->\n### Performance: PR #%d\n\nHead `%s`.\n\n%s\n\n%s\n\n- [ ] Run benchmark\n- [ ] Use confirmed credit\n\nAffected performance workloads run automatically. Go walltime runs require projected usage to fit the shared 600-minute allowance. Browser-only changes run the Matrix check without a Macro allocation. A maintainer can also tick **Run benchmark** for this head; documentation-only manual requests run representative Go and browser workloads. Narrow helpers and historical comparisons remain in daily/main diagnostic coverage. Go comparisons use the available daily main baseline on the same Graviton hardware; inherited partial-run results are not fresh measurements. Browser checks retain timing samples as run artifacts. This is optional and does not replace required CI. One walltime request runs at a time.\n\nAutomatic, daily and normal requested walltime runs share a 600-minute rolling 32-day allowance. Automatic PR admission also projects recent requested usage plus daily coverage over 32 days. Tick **Use confirmed credit** first to permit up to 156 extra minutes (about $5) over the last 32 days; account credit must be confirmed by an administrator.\n", r.head, r.run, r.attempt, r.workloads, pr.Number, r.head[:12], status, selection)
 }
 
 func updateComment(repository string, c comment, body string) error {
@@ -241,23 +254,33 @@ type benchmarkRun struct {
 	Attempt    int    `json:"run_attempt"`
 }
 
-func completedMeasurement(repository string, r benchmarkRun) error {
+func completedMeasurement(repository string, r benchmarkRun, selected workloads) error {
 	var pages []struct {
 		Jobs []job `json:"jobs"`
 	}
 	if err := api(fmt.Sprintf("repos/%s/actions/runs/%d/attempts/%d/jobs?per_page=100", repository, r.ID, r.Attempt), &pages); err != nil {
 		return err
 	}
+	goDone, browserDone := !selected.goMeasurement(), !selected.browserMeasurement()
 	for _, page := range pages {
 		for _, j := range page.Jobs {
+			if j.Status != "completed" || j.Conclusion != "success" || j.RunnerName == "" {
+				continue
+			}
+			if j.Name == "Requested PR browser performance / Large matrix browser performance" {
+				browserDone = true
+			}
 			for _, label := range j.Labels {
-				if label == macroLabel && j.Status == "completed" && j.Conclusion == "success" && j.RunnerName != "" {
-					return nil
+				if label == macroLabel {
+					goDone = true
 				}
 			}
 		}
 	}
-	return fmt.Errorf("the workflow did not complete an assigned walltime measurement")
+	if !goDone || !browserDone {
+		return fmt.Errorf("the workflow did not complete its assigned measurements (walltime=%t, browser=%t)", goDone, browserDone)
+	}
+	return nil
 }
 
 func report(repository string, r benchmarkRun) error {
@@ -290,19 +313,19 @@ func report(repository string, r benchmarkRun) error {
 	if err != nil {
 		return err
 	}
-	if identity != (request{head: r.Head, run: r.ID, attempt: r.Attempt}) {
+	if identity.head != r.Head || identity.run != r.ID || identity.attempt != r.Attempt {
 		return nil
 	}
 	conclusion := r.Conclusion
 	var measurementError error
 	if conclusion == "success" {
-		if err := completedMeasurement(repository, r); err != nil {
+		if err := completedMeasurement(repository, r, identity.workloads); err != nil {
 			measurementError = err
 			conclusion = "not measured"
 		}
 	}
 	link := fmt.Sprintf("https://github.com/%s/actions/runs/%d/attempts/%d", repository, r.ID, r.Attempt)
-	if err := updateComment(repository, c, commentBody(pr, identity, "Benchmark **"+conclusion+"**. [Results and CodSpeed upload]("+link+").")); err != nil {
+	if err := updateComment(repository, c, commentBody(pr, identity, "Benchmark **"+conclusion+"**. [Selected workload results]("+link+").")); err != nil {
 		return err
 	}
 	return measurementError
@@ -395,6 +418,16 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 	if err := checkWorkflow(repository, pr); err != nil {
 		return decline(err)
 	}
+	selected, err := changedWorkloads(repository, pr)
+	if err != nil {
+		return decline(err)
+	}
+	if selected == 0 {
+		if automatic {
+			return skipAutomatic(repository, pr, c, "no performance-relevant changes")
+		}
+		selected = allPRWorkloads
+	}
 	run, err := findRun(repository, pr)
 	if automatic && run.ID != 0 && run.ID != e.WorkflowRun.ID {
 		return nil // A newer discovery for the same head owns admission now.
@@ -403,24 +436,28 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		return decline(err)
 	}
 	credit := !automatic && checked(c.Body, creditCheckbox)
-	if credit && os.Getenv("CODSPEED_CREDIT_CONFIRMED") != "true" {
+	if selected.goMeasurement() && credit && os.Getenv("CODSPEED_CREDIT_CONFIRMED") != "true" {
 		return decline(fmt.Errorf("CodSpeed credit has not been confirmed for this account"))
 	}
-	u, f, err := collectForecast(repository, time.Now().UTC(), 0)
-	if err != nil {
-		return decline(err)
-	}
-	allowed, reason := admit(u, "workflow_dispatch", credit)
-	if automatic {
-		allowed, reason = admitAutomatic(u, f)
-	}
-	if !allowed {
-		if automatic {
-			return skipAutomatic(repository, pr, c, reason)
+	reason := "browser-only measurement uses no Macro minutes"
+	if selected.goMeasurement() {
+		u, f, err := collectForecast(repository, time.Now().UTC(), 0)
+		if err != nil {
+			return decline(err)
 		}
-		return decline(fmt.Errorf("%s (daily %d min; requested %d min)", reason, u.automatic, u.manual))
+		allowed, budgetReason := admit(u, "workflow_dispatch", credit)
+		if automatic {
+			allowed, budgetReason = admitAutomatic(u, f)
+		}
+		if !allowed {
+			if automatic {
+				return skipAutomatic(repository, pr, c, budgetReason)
+			}
+			return decline(fmt.Errorf("%s (daily %d min; requested %d min)", budgetReason, u.automatic, u.manual))
+		}
+		reason = budgetReason
 	}
-	r := request{head: pr.Head.SHA, run: run.ID, attempt: run.Attempt + 1}
+	r := request{head: pr.Head.SHA, run: run.ID, attempt: run.Attempt + 1, workloads: selected}
 	link := fmt.Sprintf("https://github.com/%s/actions/runs/%d", repository, run.ID)
 	// Budget collection may take several API pages. Recheck the live request
 	// immediately before changing the comment or triggering the old PR run.
@@ -461,7 +498,7 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 			if current.Conclusion != "success" {
 				return fmt.Errorf("PR benchmark %s", current.Conclusion)
 			}
-			if err := completedMeasurement(repository, current); err != nil {
+			if err := completedMeasurement(repository, current, selected); err != nil {
 				return err
 			}
 			return nil
@@ -498,15 +535,21 @@ func verifyRequest(repository string, e controlEvent) error {
 		return err
 	}
 	allowed := false
+	var selected workloads
 	if c.ID != 0 {
 		r, err := parseRequest(c.Body)
 		if err != nil {
 			return err
 		}
 		allowed = pr.State == "open" && pr.Head.SHA == e.Pull.Head.SHA && r.head == pr.Head.SHA && r.run == runID && r.attempt == attempt
+		selected = r.workloads
 	}
 	if path := os.Getenv("GITHUB_OUTPUT"); path != "" {
-		if err := appendFile(path, fmt.Sprintf("allowed=%t\n", allowed)); err != nil {
+		output := fmt.Sprintf("allowed=%t\n", allowed)
+		if allowed {
+			output += fmt.Sprintf("go=%t\nbrowser=%t\ncommand<<CODSPEED_COMMAND\n%s\nCODSPEED_COMMAND\n", selected.goMeasurement(), selected.browserMeasurement(), selected.command())
+		}
+		if err := appendFile(path, output); err != nil {
 			return err
 		}
 	} else {

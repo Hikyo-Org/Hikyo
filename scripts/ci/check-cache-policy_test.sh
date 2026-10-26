@@ -152,7 +152,7 @@ for file in "$@"; do
 			printf '%s\n' "$macro" | grep -Fx "    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && needs.budget.outputs.allowed == 'true'" >/dev/null ||
 				fail 'CodSpeed main Macro runner must require daily/manual main budget admission'
 		else
-			printf '%s\n' "$macro" | grep -Fx "    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'" >/dev/null ||
+			printf '%s\n' "$macro" | grep -Fx "    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true' && needs.request.outputs.go == 'true'" >/dev/null ||
 				fail 'PR Macro runner must require an explicit unprivileged PR request'
 			if grep -E '^[[:space:]]+(id-token|pull-requests|contents|actions):[[:space:]]+write|secrets\.' "$file" >/dev/null; then
 				fail 'PR Macro runner must not receive secrets or write authority'
