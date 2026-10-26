@@ -256,7 +256,8 @@ func TestPRRequestBindsHeadRunAndAttempt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.HasPrefix(string(raw), fmt.Sprintf("allowed=%t\n", test.allowed)) || (!test.allowed && strings.Contains(string(raw), "command")) {
+			want := fmt.Sprintf("allowed=%t\n", test.allowed)
+			if (test.allowed && !strings.HasPrefix(string(raw), want)) || (!test.allowed && string(raw) != want) {
 				t.Fatalf("output %q", raw)
 			}
 		})

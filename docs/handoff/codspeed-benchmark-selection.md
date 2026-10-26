@@ -117,6 +117,18 @@ Expected result: three `/operation` cases at millisecond scale and `CodSpeed tim
 
 ## Remaining hosted qualification
 
+### Delivery review and queue-publisher follow-up
+
+CodeRabbit identified that unauthorized-request tests accepted extra output such as `go=true` after `allowed=false`. The assertion now requires exact unauthorized output while allowing the additional authorized selection fields.
+
+Trusted-main queue publishers for PR #1062 failed in [run 40347935477](https://github.com/Hikyo-Org/Hikyo/actions/runs/40347935477) and [run 40347937101](https://github.com/Hikyo-Org/Hikyo/actions/runs/40347937101). Setup used approximately 24 to 27 seconds, leaving about 18 to 20 seconds before the original 45-second work cutoff. Subsequent serial GitHub reconciliation exhausted that cutoff; the 15-second publication reserve produced the terminal failure. These were publisher failures, not failed benchmark or merge-group tests.
+
+The follow-up overlaps the independent feedback-workflow definition and first exact-head run-list reads within each feedback phase, then joins and validates both before reading jobs. All request counts, job checks, authority/DCO checks, final source/role/owned-check barriers and the original 60-second deadline remain. Deterministic tests failed before the overlap repair and passed afterward, including cancellation of either failed read and complete proof using a budget with 26 seconds already spent on setup.
+
+The trusted publisher build also omits DWARF debugger data while retaining the exact toolchain and isolated environment. A frozen-source local cold-cache comparison measured 10.642 versus 10.518 seconds and reduced binary size from 7.75 MB to 5.62 MB. This does not establish a meaningful startup improvement or hosted deadline recovery. The original probe's help comparison included temporary executable names; that probe failure is retained, and the corrected comparison normalizes only the executable path.
+
+The full publisher/controller race suites, complete CI-owner suite, scoped vet, shared feedback, ShellCheck and pinned Actionlint passed for the follow-up. Independent local review found no actionable correctness or security issues. Publishers still executing the previous trusted main cannot use PR-side changes before merge; fresh hosted admission and full merge-group proof remain required.
+
 Workflow byte-identity admission intentionally prevents this changed PR workflow from receiving paid PR admission before its workflow is on main. Local tests do not bypass that boundary. After authorized delivery, the first corrected main run and a newly admitted PR run must establish Linux/Macro assignment, result upload, selected-job reporting and the fresh baseline. Browser-only hosted selection also needs a real workflow run.
 
 Live per-benchmark thresholds and old-identity archival were not changed. Calibrate tolerances from corrected same-hardware samples and workload relevance after hosted qualification. The independent local review does not establish cross-provider review, hosted CI or release acceptance.
