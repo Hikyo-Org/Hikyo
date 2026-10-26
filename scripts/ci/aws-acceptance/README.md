@@ -98,10 +98,11 @@ and [AWS STS WebIdentity sessions](https://docs.aws.amazon.com/STS/latest/APIRef
 
 ## Set exact nonsecret environment variables
 
-Configure these nine required variables and the optional historical-cleanup
-variable on the protected environment. They must match the reviewed candidate
-and effective AWS policies. Never store credentials, JWTs or private descriptors
-in them.
+Configure these nine required variables on the protected environment. The
+workflow pins historical cleanup to a literal empty value. Leave its environment
+variable unset; organization variables cannot enable it. Values must match the
+reviewed candidate and effective AWS policies. Never store credentials, JWTs or
+private descriptors in them.
 
 | Variable | Required value |
 | --- | --- |
@@ -114,27 +115,28 @@ in them.
 | `AWS_ACCEPTANCE_CLEANUP_EXPIRES_AT` | UTC ISO timestamp matching cleanup policies, from mutation expiry to at most two hours later. |
 | `AWS_ACCEPTANCE_KMS_KEY_ARN` | Exact approved single-region customer key ARN in the sandbox account and region. |
 | `AWS_ACCEPTANCE_EXTERNAL_ID` | Exact external ID shared by the source policy, AssumeRole trust and descriptor. |
-| `AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN` | Optional. Empty skips historical cleanup. A nonempty value must be the one exact ARN in the historical-cleanup section below. |
+| `AWS_ACCEPTANCE_HISTORICAL_CLEANUP_ARN` | Do not configure. The workflow supplies a literal empty string and skips historical cleanup. |
 
 Choose imminent activation times with room for candidate compilation, genuine
 session expiry preparation and the 30-minute test deadline. Recheck the exact
 policy deadlines and matching variables immediately before approval. An
 exhausted window is a refusal, not a reason to extend authority automatically.
 
-## Optional exact historical-secret cleanup
+## Retained historical-cleanup helper contract
 
-This local capability does not grant live execution or additional creation
-allowance. The proposed first future protected job may, only after explicit
-owner approval and matching cleanup-role permissions, reconcile this one
-historical secret before the new suite can create anything:
+The helper retains the original exact historical-secret contract below. The
+current workflow always supplies an empty request and cannot enable this path
+through repository, environment or organization variables. Re-enabling it would
+require a separately reviewed workflow change, explicit owner approval and
+matching cleanup-role permissions. This retained contract grants no live
+execution or additional creation allowance:
 
 ```text
 arn:aws:secretsmanager:eu-central-1:099256073061:secret:hikyo-e2e-20261018b/web-identity/postgres/role-document-vmN1Vj
 ```
 
-Set the optional protected variable only for that exact approved run. The
-operator must durably claim the historical operation in the parent ledger,
-bind it to the exact pending GitHub run ID before human approval, and clear the
+If separately re-enabled, the operator must durably claim the historical
+operation in the parent ledger, bind it to the exact pending GitHub run ID before human approval, and clear the
 variable for subsequent runs. The runner does not enforce a global once token
 across different hosted runners. There are no arbitrary ARN/prefix inputs or
 cleanup CLI arguments.
@@ -172,7 +174,9 @@ The helper has no GetSecretValue, restore or KMS operation.
 Evidence records this phase under `historical_cleanup`, separate from all 46
 new-suite results, new reservations and new ARNs. `delete_attempts` is a durable
 claim count, not proof that AWS accepted a request; `verified_absent` is required
-before the new suite can pass. The earlier failed artifact remains immutable.
+for a requested cleanup before the new suite can pass. The current workflow
+records this phase as not requested. The earlier failed artifact remains
+immutable.
 Neither historical deletion nor a fresh prefix refunds previous reservations.
 The owner still reconciles the cumulative ledger and billing independently.
 
@@ -249,3 +253,30 @@ disabled. Child-ownership regressions inject post-spawn setup failures against
 harmless local sleeping processes, then verify group termination, wait and pipe
 closure. The remaining checks use synthetic inputs and mocked provider calls.
 None of these checks contacts AWS or establishes real-provider acceptance.
+
+## Assertion diagnostics and schema compatibility
+
+Runner evidence uses schema
+`hikyo.aws-acceptance/v2`. All v1 fields and acceptance predicates remain.
+The source-only hosted-result consumer validates v1 with its original exact
+field set and v2 with exactly two additional required fields:
+
+- `failure_assertions`: at most 128 exact `{test, assertion}` objects. Test
+  names belong to the existing 46-test inventory; identifiers are the closed
+  `assertion-001` through `assertion-224` mapping pinned to the fixture candidate.
+- `failure_assertions_truncated`: an exact JSON boolean. Truncation indicates
+  omitted categories and grants no success, cleanup or execution authority.
+
+The runner holds only a closed identifier in bounded per-test memory until an
+exact Go failure footer and terminal fail event confirm its framing. Split
+multiline output, unknown framing, another log line, incomplete output and
+interrupted streams discard the pending identifier. No raw message is saved.
+This deliberately omits assertions followed by additional cleanup log lines.
+An identifier is an observed category, not proof of its source or root cause.
+An empty list does not prove that no assertion occurred; dynamic messages and
+discarded child output remain unobservable. The static map does not recover
+the four failures from the prior AWS run.
+
+The v2 producer and consumer must be adopted together after the required source
+disposition. The existing workflow uploads the same single `evidence.json` file.
+Schema compatibility grants no AWS execution or permission to change a closed claim.
