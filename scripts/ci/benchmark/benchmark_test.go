@@ -54,6 +54,9 @@ func TestJobAccounting(t *testing.T) {
 		{"missing evidence fails closed", func(j *job) { j.CompletedAt = nil }, 0, true},
 		{"unapproved Macro label", func(j *job) { j.Labels = []string{"codspeed-macro-x64-other"} }, 0, true},
 		{"missing Macro label", func(j *job) { j.Labels = nil; j.Name = "Requested PR walltime" }, 0, true},
+		{"browser-only skipped walltime has no runner charge", func(j *job) {
+			j.Name, j.Labels, j.Conclusion, j.RunnerName = "Requested PR walltime", nil, "skipped", ""
+		}, 0, false},
 		{"hosted smoke is free", func(j *job) { j.Labels = []string{"ubuntu-latest"} }, 0, false},
 		{"old job excluded", func(j *job) {
 			s, e := start.Add(-33*24*time.Hour), end.Add(-33*24*time.Hour)
@@ -253,7 +256,7 @@ func TestPRRequestBindsHeadRunAndAttempt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(raw) != fmt.Sprintf("allowed=%t\n", test.allowed) {
+			if !strings.HasPrefix(string(raw), fmt.Sprintf("allowed=%t\n", test.allowed)) || (!test.allowed && strings.Contains(string(raw), "command")) {
 				t.Fatalf("output %q", raw)
 			}
 		})
@@ -327,7 +330,7 @@ func TestUsageSkipsInitialPRSmokeWithoutSkippingReruns(t *testing.T) {
 func TestSkippedMeasurementCannotReportSuccess(t *testing.T) {
 	r := benchmarkRun{ID: 10, Attempt: 2}
 	fakeGH(t, map[string]string{"repos/o/r/actions/runs/10/attempts/2/jobs?per_page=100": `[{"jobs":[{"id":1,"labels":["codspeed-macro-arm64-graviton-ubuntu-22-04"],"status":"completed","conclusion":"skipped","runner_name":""}]}]`})
-	if err := completedMeasurement("o/r", r); err == nil {
+	if err := completedMeasurement("o/r", r, allPRWorkloads); err == nil {
 		t.Fatal("skipped Macro job is not a benchmark success")
 	}
 }
@@ -357,12 +360,13 @@ func TestCheckboxRunsAndReportsOnlyTheAuthorizedPullRequest(t *testing.T) {
 	measured.Conclusion = "success"
 	measured.RunnerName = "macro"
 	log := fakeGH(t, map[string]string{
-		"repos/o/r/collaborators/maintainer/permission":                                                           `{"permission":"write"}`,
-		"repos/o/r/pulls/7":                                                                                       `{"number":7,"state":"open","head":{"sha":"` + head + `"}}`,
-		"repos/o/r/issues/7/comments?per_page=100":                                                                encode(t, [][]comment{{c}}),
-		"repos/o/r/issues/comments/20":                                                                            `{}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":                                          `{"sha":"trusted"}`,
-		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head:                                       `{"sha":"trusted"}`,
+		"repos/o/r/collaborators/maintainer/permission":                     `{"permission":"write"}`,
+		"repos/o/r/pulls/7":                                                 `{"number":7,"state":"open","changed_files":1,"head":{"sha":"` + head + `"}}`,
+		"repos/o/r/pulls/7/files?per_page=100":                              `[[{"filename":"internal/service/values.go"}]]`,
+		"repos/o/r/issues/7/comments?per_page=100":                          encode(t, [][]comment{{c}}),
+		"repos/o/r/issues/comments/20":                                      `{}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=main":    `{"sha":"trusted"}`,
+		"repos/o/r/contents/.github/workflows/pr-benchmark.yml?ref=" + head: `{"sha":"trusted"}`,
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?event=pull_request&head_sha=" + head + "&per_page=100": encode(t, []map[string][]benchmarkRun{{"workflow_runs": {wrongPR, r}}}),
 		"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":                                              `[{"workflow_runs":[]}]`,
 		"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100":                                          fmt.Sprintf(`[{"workflow_runs":[{"id":10,"run_attempt":2,"event":"pull_request","status":"completed","updated_at":%q}]}]`, time.Now().UTC().Format(time.RFC3339)),

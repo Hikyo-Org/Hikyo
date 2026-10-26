@@ -170,6 +170,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 	}{
 		{name: "runtime change", file: "internal/service/values.go", wantRun: true},
 		{name: "web change", file: "web/src/routes/Matrix.tsx", wantRun: true},
+		{name: "browser does not consume exhausted Macro allowance", file: "web/src/routes/Matrix.tsx", budgetExceeded: true, wantRun: true},
 		{name: "docs only", file: "README.md"},
 		{name: "draft", file: "go.mod", draft: true},
 		{name: "superseded head", file: "go.mod", stale: true},
@@ -228,7 +229,7 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 				"repos/o/r/actions/workflows/codspeed.yml/runs?per_page=100":                                              `[{"workflow_runs":[]}]`,
 				"repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100":                                          fmt.Sprintf(`[{"workflow_runs":[{"id":10,"run_attempt":1,"event":"pull_request","status":"completed","updated_at":%q}]}]`, now.Format(time.RFC3339)),
 				"repos/o/r/actions/runs/10/rerun":                                                                         `{}`,
-				"repos/o/r/actions/runs/10/attempts/2/jobs?per_page=100":                                                  encode(t, []map[string][]job{{"jobs": {measured}}}),
+				"repos/o/r/actions/runs/10/attempts/2/jobs?per_page=100":                                                  encode(t, []map[string][]job{{"jobs": {measured, {ID: 13, Name: "Requested PR browser performance / Large matrix browser performance", Status: "completed", Conclusion: "success", RunnerName: "hosted"}}}}),
 			}
 			if test.budgetExceeded {
 				responses["repos/o/r/actions/workflows/pr-benchmark.yml/runs?per_page=100"] = fmt.Sprintf(`[{"workflow_runs":[{"id":2,"run_attempt":2,"event":"pull_request","status":"completed","updated_at":%q}]}]`, now.Format(time.RFC3339))
@@ -280,6 +281,11 @@ func TestAutomaticRequestRunsOnlyRelevantCurrentHeads(t *testing.T) {
 			}
 			if gotRun && !strings.Contains(string(calls), "Benchmark **success**") {
 				t.Fatal("missing completed measurement report")
+			}
+			if gotRun && test.file == "web/src/routes/Matrix.tsx" {
+				if !strings.Contains(string(calls), "workloads=16") || strings.Contains(string(calls), "workflows/codspeed.yml/runs") {
+					t.Fatal("browser-only admission must bind browser scope without collecting paid-run usage")
+				}
 			}
 			if !test.wantRun && strings.Contains(string(calls), "--method POST") {
 				t.Fatal("ineligible PR must not trigger a run")
