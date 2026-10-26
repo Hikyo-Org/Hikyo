@@ -287,7 +287,10 @@ func TestRaceReuseReadersShareTheSeedKey(t *testing.T) {
 	if lookup["key"] != sharedRaceReuseKey || lookup["restore-keys"] != sharedRaceReuseRestoreKeys {
 		t.Fatal("seed lookup drifted from the shared race cache key")
 	}
-	for workflowName, job := range map[string]string{"ci.yml": "race_shard", "reliability.yml": "race-isolation"} {
+	for _, reader := range []struct{ workflow, job string }{
+		{"ci.yml", "race_shard"}, {"reliability.yml", "race-isolation"}, {"reliability.yml", "race-analyzers"},
+	} {
+		workflowName, job := reader.workflow, reader.job
 		workflow, raw := readWorkflowFile(t, workflowName)
 		steps := workflowJobSteps(t, workflow, job)
 		if err := requireSharedRaceReader(steps); err != nil {
