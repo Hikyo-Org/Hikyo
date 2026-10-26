@@ -1,8 +1,8 @@
 {
   "actualConfiguration": null,
   "executionAuthorityGranted": false,
-  "implementationManifestRawSHA256": "9109a0427457404b049024a91d7a23b570275b12b497e05d133f08b224c1952e",
-  "implementationManifestSHA256": "1ab6e90b2c524771aaa12599878ada5205e9b9b0ee202df6249b57f104ce04fe",
+  "implementationManifestRawSHA256": "cadd299fc2272717eea277d69b1fcf4f47b8029ebfce0b3e4fb5f8181bff6dd4",
+  "implementationManifestSHA256": "0ed7a4da727a48574acf432abf9408bbcba90a2104f4e50a7171866c8a4d32fa",
   "modules": {
     "collector": {
       "bytes": 52383,
@@ -587,8 +587,8 @@
       "rawSHA256": "76a0b7bc71431a348c048f13660a5aafc0988413023bfa258a66e4abad645beb"
     },
     "run_checks.py": {
-      "bytes": 2681,
-      "rawSHA256": "f4f6a7f9a6976c512337db3764e7ceb3cb84fca6babb336b04c758828e140008"
+      "bytes": 2729,
+      "rawSHA256": "525ebfaeeae1684424b55de94e3bb419c845d1fbe7232f63990480e051b88836"
     },
     "seal_sources.py": {
       "bytes": 2810,
@@ -613,6 +613,10 @@
     "test_adapter_source_loader.py": {
       "bytes": 4563,
       "rawSHA256": "545330cb7001eaab202bd3c21ffc2d4034f3b606473d372dc320b45652e16396"
+    },
+    "test_aws_acceptance_contract.py": {
+      "bytes": 337,
+      "rawSHA256": "4362cd8666061c37257478db04aaeb2c7baa2c415bc593f1470551296979f02b"
     },
     "test_decision_journal.py": {
       "bytes": 13370,

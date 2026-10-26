@@ -294,7 +294,12 @@ rm -r scripts/ci/release-admission
 # Commit the inert consumer before the comparison base so its path cannot
 # accidentally be the reason the new selection passes.
 mkdir -p scripts/ci/release-admission scripts/ci/aws-acceptance
-printf 'print("fixture consumer checked")\n' >scripts/ci/release-admission/run_checks.py
+cat >scripts/ci/release-admission/run_checks.py <<'EOF'
+import unittest
+print("fixture consumer checked")
+suite = unittest.defaultTestLoader.discover("scripts/ci/aws-acceptance")
+raise SystemExit(not unittest.TextTestRunner().run(suite).wasSuccessful())
+EOF
 cat >scripts/ci/aws-acceptance/test_runner.py <<'EOF'
 import unittest
 
