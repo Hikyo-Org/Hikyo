@@ -15,7 +15,67 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Current status, 2026-10-22
+## Current status, 2026-10-27
+
+Issue #158 remains unfinished. The owner selected bounded, owner-assisted AWS
+acceptance; reusable controller qualification belongs to #1057. Historical
+authorizations below are retained evidence, not fresh execution grants. Final
+application merge still requires the separate human decision, successful real
+acceptance, verified cleanup and mandatory CI for the actual current-base pair.
+
+The latest real run, `40485386416`, attempt 1, tested application
+`327dec159d680fab7b33a251ab46a2d1c16e9fa1` with trusted workflow/main
+`9d620dd451a56408ccab8360283dfeef0320eac7`. It captured all 46 expected
+records: 40 passed and six failed, including parents. Two leaves failed:
+SQLite lifecycle (`assertion-066`, durable convergence) and PostgreSQL
+replacement-after-adopt (`assertion-013`, fixture metadata read). These are
+observed assertion categories; the artifact does not establish their causes.
+
+Independent cleanup confirmed all 27 recorded ARNs and two additional attempted
+names absent, complete namespace inventory empty, eight roles, issuer, boundary
+and alias absent, nine execution variables removed, and the exact expired setup
+v5 restored. Versions v2-v5 and owned v8 remain retained with their dates. The
+c08 key is PendingDeletion for `2026-11-03T10:51:15.444Z`, not physically deleted;
+all prior schedules were preserved. The 32-slot pool is closed without refund,
+including three unused slots, at 240 charged lifetime reservations. Its sole
+run and fourth-key allowance are consumed. No retry, new key, cancellation,
+reservation, deployment or renewed execution window is authorized.
+
+Two local regressions reproduce the same assertion categories. An established
+delivery followed by a transient metadata 500 leaves the durable job correctly
+scheduled for retry, but the fixture asserted convergence before draining it.
+An acknowledged replacement followed by one metadata NotFound also failed its
+one-shot observation. Neither reproduction proves the real run's root cause.
+The fixture corrections:
+
+- Drain only an existing queued network/provider-limit retry, within the
+  original 24-attempt budget and manifest expiry. Authentication, conflict,
+  ambiguity, refusal, pause and operator-attention states remain failures.
+  This advances the fixture's logical queue clock; genuine STS expiry still
+  requires the unchanged real-time provider check.
+- Observe only the recorded complete ARN, at most three DescribeSecret reads
+  inside the existing 15-second deadline. Only NotFound is retried; different
+  identity, permanent refusal and cancellation remain failures. Existing safe
+  DescribeSecret diagnostics now retain a bounded failure category.
+
+The complete offline AWS-fixture selection passed 162 parent/subtest records,
+zero failures or skips, with SQLite and PostgreSQL enabled. Controls verify
+persistent-error budget exhaustion, cancellation, identity binding, no value
+reads, unchanged creation accounting and no duplicate delivered version. The
+complete-diff Go application feedback lane and isolation package vet passed;
+dependency locks remained unchanged. Production code, trusted workflow,
+acceptance assertions, creation ceilings and real-time expiry checks were not
+changed. Local fixtures are not provider acceptance or hosted current-pair CI.
+
+Five of five model review rounds are consumed; cross-provider review remains
+unavailable. No independent CLEAN or sixth review is claimed for this increment.
+Executing materially changed sources requires a concrete owner disposition.
+Any further provider attempt also requires an explicit exception to the closed
+run, key, reservation and budget grants, followed by the separate exact-policy
+and pending-deployment approvals. Prepare and validate source before starting
+another expiring clock. Preserve the failed runs and canonical cleanup receipts.
+
+## Historical status, 2026-10-22
 
 The latest banked owner directive is **A, accept runs until green but below $15 billable**.
 Controlled manual attempts until real AWS green are authorized within the

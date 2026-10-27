@@ -126,6 +126,7 @@ type realAWSDurable struct {
 	failCurrentMarker          bool
 	finishAdoption             func(string) error
 	secrets                    []string
+	drainRemaining             int
 }
 
 func newRealAWSDurable(t *testing.T, db *store.DB, s *realAWSSandbox, mode string) *realAWSDurable {
@@ -236,7 +237,9 @@ func (h *realAWSDurable) drain() {
 // Every other worker error remains fatal, including marker-refusal and replay.
 func (h *realAWSDurable) drainWithFinishLoss(interrupted *bool) {
 	h.t.Helper()
-	for range 24 {
+	h.drainRemaining = 24
+	for h.drainRemaining > 0 {
+		h.drainRemaining--
 		// Services enqueue against wall time, which can overtake the fixture
 		// clock during real provider calls. Preserve deliberate replay advances.
 		if now := time.Now().UTC(); h.clock.Before(now) {
@@ -285,10 +288,52 @@ func bytesContain(raw []byte, secret string) bool { return strings.Contains(stri
 
 func (h *realAWSDurable) converged(id string) {
 	h.t.Helper()
-	state := h.inspect(id)
+	state := h.retryConvergence(id)
 	if state.Health() != adapter.HealthConverged || state.ConvergedRevision == nil || state.LastErrorClass != "" {
 		h.t.Fatal("durable AWS target did not converge")
 	}
+}
+
+func (h *realAWSDurable) retryConvergence(id string) store.AdapterTarget {
+	h.t.Helper()
+	state := h.inspect(id)
+	for h.drainRemaining > 0 {
+		next, retry := realAWSConvergenceRetry(state, h.clock, h.s.manifest.ExpiresAt)
+		if !retry {
+			break
+		}
+		// This is the fixture's logical queue clock, not a provider expiry
+		// witness. Reuse the recorded job and the original drain attempt budget.
+		h.clock = next
+		h.drainRemaining--
+		worked, err := h.worker.RunOnce(h.t.Context())
+		if err != nil {
+			h.t.Fatal("real AWS durable worker failed")
+		}
+		if !worked {
+			break
+		}
+		state = h.inspect(id)
+	}
+	return state
+}
+
+func realAWSConvergenceRetry(state store.AdapterTarget, clock, expires time.Time) (time.Time, bool) {
+	if state.ActiveJobState != "queued" || state.RetryAt == nil || state.PausedAt != nil || state.DriftAttention {
+		return time.Time{}, false
+	}
+	if state.LastErrorClass != adapter.ErrorClassNetwork && state.LastErrorClass != adapter.ErrorClassProviderLimit {
+		return time.Time{}, false
+	}
+	next := *state.RetryAt
+	if next.Before(clock) {
+		next = clock
+	}
+	next = next.Add(time.Second)
+	if !expires.After(next) {
+		return time.Time{}, false
+	}
+	return next, true
 }
 
 func (h *realAWSDurable) metadata(name string) awssm.SecretMetadata {
@@ -302,11 +347,43 @@ func (h *realAWSDurable) metadata(name string) awssm.SecretMetadata {
 	if !ok {
 		h.t.Fatal("unexpected AWS module")
 	}
-	meta, err := module.API.DescribeSecret(h.t.Context(), h.s.arn(h.t, name))
+	ctx, cancel := context.WithTimeout(h.t.Context(), 15*time.Second)
+	defer cancel()
+	meta, err := readRealAWSMetadata(ctx, module.API, name, h.s.arn(h.t, name))
 	if err != nil {
+		logRealAWSDiagnostic(h.t, "DescribeSecret", err)
 		h.t.Fatal("AWS fixture metadata read failed")
 	}
 	return meta
+}
+
+// An acknowledged seed or replacement can be temporarily absent from metadata.
+// Observe only its recorded complete ARN, with the existing request deadline.
+// Never follow a name, retry a mutation, or hide a different refusal or identity.
+func readRealAWSMetadata(ctx context.Context, api awssm.API, name, arn string) (awssm.SecretMetadata, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return awssm.SecretMetadata{}, err
+		}
+		meta, err := api.DescribeSecret(ctx, arn)
+		if err == nil {
+			if meta.ARN != arn || meta.Name != name {
+				return awssm.SecretMetadata{}, errors.New("fixture metadata identity mismatch")
+			}
+			return meta, nil
+		}
+		if !awssm.IsNotFound(err) || attempt == 2 {
+			return awssm.SecretMetadata{}, err
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return awssm.SecretMetadata{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return awssm.SecretMetadata{}, errors.New("fixture metadata observation exhausted")
 }
 
 func (h *realAWSDurable) deleted(name string, want bool) {
