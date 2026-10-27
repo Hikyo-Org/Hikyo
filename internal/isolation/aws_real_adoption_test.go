@@ -176,6 +176,13 @@ func realAWSAddedVersion(before, after awssm.SecretMetadata, targetID string, pu
 	return realAWSPromotedVersion(before, after, targetID, puts) && unique && marker == puts[0] && after.Tags[awssm.VersionTag] == puts[0]
 }
 
+func realAWSReplayCompleted(loads int, before, after awssm.SecretMetadata, targetID string, puts []string) bool {
+	// The observer checks the same job and consent witness on every load.
+	// A scheduled transient-read retry can load again without another value
+	// version. Both drain budgets and the distinct-token proof still apply.
+	return loads >= 2 && realAWSAddedVersion(before, after, targetID, puts)
+}
+
 func realAWSMarkerRefused(before, after awssm.SecretMetadata, targetID string, puts []string) bool {
 	oldMarker, oldUnique := realAWSStageVersion(before, awssm.CurrentStage)
 	marker, unique := realAWSStageVersion(after, awssm.CurrentStage)
@@ -262,7 +269,7 @@ func runRealAWSPromotedReplay(t *testing.T, s *realAWSSandbox) {
 				h.clock = h.clock.Add(adapter.LeaseTime + adapter.RetryCap + time.Second)
 				h.drain()
 				h.converged(target.ID)
-				if observer.loads != 2 || !realAWSAddedVersion(before, h.metadata(name), target.ID, s.recordedPutTokens(before.ARN)) {
+				if !realAWSReplayCompleted(observer.loads, before, h.metadata(name), target.ID, s.recordedPutTokens(before.ARN)) {
 					t.Fatal("real promoted replay changed job/witness or duplicated a version")
 				}
 				if fault == "finish-loss" && queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE target_id='%s' AND outcome='unknown'`, target.ID)) != 1 {

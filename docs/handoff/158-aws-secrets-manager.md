@@ -17,6 +17,80 @@ Historical cross-provider SKIP remains; no additional formal pass is required.
 
 ## Current status, 2026-10-27
 
+Issue #158 remains unfinished. The c09 attempt is closed after failed real AWS
+acceptance and independently verified cleanup. Reusable controller qualification
+remains #1057. No additional AWS attempt or new resource authority is inferred.
+
+Run [40510334025](https://github.com/Hikyo-Org/Hikyo/actions/runs/40510334025),
+attempt 1, tested application `f44f9fd717c1980fddc11ac6690a8a6e6e311104`
+with trusted workflow/main `9d620dd451a56408ccab8360283dfeef0320eac7`.
+All 46 records are terminal: 34 passed and 12 failed, including parents.
+Four leaves failed: PostgreSQL lifecycle and web-identity role auth
+(`assertion-066`), PostgreSQL version-before-adopt (`assertion-017`) and SQLite
+marker-refusal replay (`assertion-160`). These categories do not establish their
+actual causes. Both replacement-after-adopt leaves passed.
+
+Artifact `12738459949` has ZIP SHA-256
+`871c0828cc36ec1b0ad12c3b0d29d4dc145e42dffab7b32dbfe3590b2a30c3d4`;
+its validated `evidence.json` SHA-256 is
+`122be28ffe19fd13600e3b5e9da9a7f64ceff8a2381ef5ae1ae584d6ca70f85f`.
+It retains `complete_creation_ledger=false`. All 27 recorded ARNs and two
+additional reserved-name targets were independently strict-not-found. Complete
+regional inventory including planned deletion was empty after terminal
+quiescence and in the final read. Cleanup does not turn failed acceptance green.
+
+The eight exact roles, owned issuer, boundary and c09 alias are absent. Nine
+execution variables were removed while environment and OIDC protections remain.
+Original expired setup v5 is restored, with v2-v5 and new v9 documents and dates
+preserved. Setup identity, MFA, sole attachment and absence of keys/groups/inline
+policies were independently verified. The fifth new key is PendingDeletion for
+`2026-11-03T14:19:45.807Z`, not physically deleted. Six prior pending schedules
+and two previously deleted keys were unchanged. Final cleanup receipt SHA-256:
+`4db0330e33816d30041f9904c2dfad0c70acb0a00040ea22944d5151b0fee434`.
+The 32-slot pool is closed without refund, with 29 reservation attempts and three
+unused slots; 272 lifetime reservations remain charged. All prior cost reserves
+remain retained. The timestamped final bill showed USD 0.07 gross; the retained
+usage projection was USD 4.53 against the approved USD 4.60 ceiling.
+
+Focused local reproductions identify three fixture defects matching the failed
+categories, without proving the real run's causes:
+
+- Replay advances the logical queue clock beyond lease/retry horizons. Comparing
+  that clock with the real authorization deadline refused a live queued retry.
+  The fixture now gates against real time while each mutation independently
+  checks the unchanged real expiry. The original drain attempt budget remains.
+- A transient read can require a third loader entry for the same job and consent
+  witness. The fixture counts distinct delivered tokens/versions rather than
+  requiring exactly two loader entries. The observer still checks job and
+  witness identity on every load; the one-version predicate is unchanged.
+- An acknowledged schedule or restore can precede its metadata observation.
+  The fixture observes only the exact recorded ARN, at most three reads in the
+  existing 15-second deadline, before asserting the requested deletion state.
+  Persistent mismatch, foreign identity, permanent refusal and cancellation
+  remain failures. No mutation repeats to obtain an observation.
+
+The complete offline AWS-fixture selection passed 178 parent/subtest records,
+zero failures or skips, with SQLite and PostgreSQL enabled. Complete-diff Go
+application feedback and isolation vet passed. Dependencies, production adapter
+code, genuine expiry checks and creation accounting remain unchanged.
+
+The PostgreSQL web-identity failure remains unattributed. A companion trusted
+runner change prepares six closed convergence-class identifiers, 225-230, in the
+existing v2 artifact shape, preserving identifiers 001-224. Source publication
+must pass its separate human gate before these identifiers can be retained by
+a future hosted run. No raw target state, provider message or credential is
+published. These local changes do not establish successful provider acceptance.
+
+Five of five model reviews remain consumed, cross-provider unavailable. No
+independent CLEAN or sixth review is claimed. Changed source needs a concrete
+owner disposition. Any further AWS execution needs a new explicit grant for
+its consumed run, key, reservation and budget limits, then the retained Ready,
+exact-policy-hash and pending-deployment gates. Final application merge still
+requires successful real acceptance, independent cleanup, mandatory current-base
+CI and the separate human merge decision. No new execution clock starts here.
+
+## Prior c08 result and c09 source preparation, 2026-10-27
+
 Issue #158 remains unfinished. The owner selected bounded, owner-assisted AWS
 acceptance; reusable controller qualification belongs to #1057. Historical
 authorizations below are retained evidence, not fresh execution grants. Final

@@ -137,16 +137,51 @@ func TestAWSRealConvergenceRetryRefusals(t *testing.T) {
 		{"no schedule", store.AdapterTarget{ActiveJobState: "queued", LastErrorClass: adapter.ErrorClassNetwork}, now.Add(time.Hour), false},
 		{"paused", store.AdapterTarget{ActiveJobState: "queued", RetryAt: &due, PausedAt: &now, LastErrorClass: adapter.ErrorClassNetwork}, now.Add(time.Hour), false},
 		{"operator attention", store.AdapterTarget{ActiveJobState: "queued", RetryAt: &due, DriftAttention: true, LastErrorClass: adapter.ErrorClassNetwork}, now.Add(time.Hour), false},
-		{"expired", store.AdapterTarget{ActiveJobState: "queued", RetryAt: &due, LastErrorClass: adapter.ErrorClassNetwork}, due, false},
+		{"expired", store.AdapterTarget{ActiveJobState: "queued", RetryAt: &due, LastErrorClass: adapter.ErrorClassNetwork}, now, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			next, retry := realAWSConvergenceRetry(scenario.state, now, scenario.expires)
+			next, retry := realAWSConvergenceRetry(scenario.state, now, now, scenario.expires)
 			if retry != scenario.wantNext {
 				t.Fatalf("retry=%v; want %v", retry, scenario.wantNext)
 			}
-			if retry && (!next.After(due) || !next.Before(scenario.expires)) {
-				t.Fatal("retry did not remain inside the recorded schedule and authorization")
+			if retry && !next.After(due) {
+				t.Fatal("retry preceded the recorded queue schedule")
 			}
 		})
+	}
+}
+
+func TestAWSRealConvergenceRetrySeparatesClocks(t *testing.T) {
+	wallNow := time.Now().UTC()
+	queueClock := wallNow.Add(2 * time.Hour)
+	due := queueClock.Add(time.Minute)
+	state := store.AdapterTarget{ActiveJobState: "queued", RetryAt: &due, LastErrorClass: adapter.ErrorClassNetwork}
+	if next, ok := realAWSConvergenceRetry(state, queueClock, wallNow, wallNow.Add(time.Minute)); !ok || !next.After(due) {
+		t.Fatal("logical replay advance refused a live authorized retry")
+	}
+	for _, deadline := range []time.Time{wallNow, wallNow.Add(-time.Second)} {
+		if _, ok := realAWSConvergenceRetry(state, queueClock, wallNow, deadline); ok {
+			t.Fatal("queue replay bypassed an expired real authorization")
+		}
+	}
+}
+
+func TestAWSRealConvergenceAssertionVocabulary(t *testing.T) {
+	for _, scenario := range []struct {
+		class adapter.ErrorClass
+		want  string
+	}{
+		{adapter.ErrorClassAuth, "durable AWS target did not converge: auth"},
+		{adapter.ErrorClassNetwork, "durable AWS target did not converge: network"},
+		{adapter.ErrorClassConflict, "durable AWS target did not converge: conflict"},
+		{adapter.ErrorClassProviderLimit, "durable AWS target did not converge: provider_limit"},
+		{adapter.ErrorClassProviderAmbiguous, "durable AWS target did not converge: provider_ambiguous"},
+		{adapter.ErrorClassRefused, "durable AWS target did not converge: refused"},
+		{"", "durable AWS target did not converge"},
+		{"synthetic-private-credential\nnetwork", "durable AWS target did not converge"},
+	} {
+		if got := realAWSConvergenceAssertion(scenario.class); got != scenario.want {
+			t.Fatal("convergence assertion escaped its fixed vocabulary")
+		}
 	}
 }

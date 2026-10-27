@@ -80,6 +80,9 @@ func TestAWSRealLabeledVersionDelivery(t *testing.T) {
 	if value, ok := remote.Value(name); !ok || value != "synthetic delivery" {
 		t.Fatal("exact current version did not contain the expected synthetic value")
 	}
+	if realAWSReplayCompleted(1, before, after, "offline-target", sandbox.recordedPutTokens(before.ARN)) || !realAWSReplayCompleted(3, before, after, "offline-target", sandbox.recordedPutTokens(before.ARN)) {
+		t.Fatal("replay load count replaced the exact single-version delivery proof")
+	}
 	for _, scenario := range []struct {
 		name  string
 		alter func(*awssm.SecretMetadata)
@@ -105,7 +108,7 @@ func TestAWSRealLabeledVersionDelivery(t *testing.T) {
 				candidate.Stages[version] = append([]string(nil), stages...)
 			}
 			scenario.alter(&candidate)
-			if realAWSAddedVersion(before, candidate, "offline-target", scenario.puts) {
+			if realAWSAddedVersion(before, candidate, "offline-target", scenario.puts) || realAWSReplayCompleted(3, before, candidate, "offline-target", scenario.puts) {
 				t.Fatal("delivery proof accepted missing, duplicate or foreign evidence")
 			}
 		})

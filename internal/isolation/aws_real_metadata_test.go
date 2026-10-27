@@ -12,11 +12,72 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm/awssmtest"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 type realAWSMetadataProbe struct {
 	awssm.API
 	describe func(context.Context, string) (awssm.SecretMetadata, error)
+}
+
+func TestAWSRealDeletionVisibility(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h, remote := newRealAWSConvergenceFixture(t, db)
+		build := h.build
+		stale := 0
+		h.build = func(config adapter.Config, credential string) (*adapter.ModuleLease, error) {
+			lease, err := build(config, credential)
+			if err != nil {
+				return nil, err
+			}
+			module := lease.Module.(*awssm.Module)
+			api := module.API
+			module.API = realAWSMetadataProbe{API: api, describe: func(ctx context.Context, id string) (awssm.SecretMetadata, error) {
+				meta, err := api.DescribeSecret(ctx, id)
+				if err == nil && stale > 0 {
+					stale--
+					meta.Deleted = !meta.Deleted
+				}
+				return meta, err
+			}}
+			return lease, nil
+		}
+		h.restartWorker()
+		prefix := h.prefix + "deletion-visibility/"
+		h.create(prefix, adapter.PerKey)
+		h.publish("before deletion", "synthetic alpha")
+		h.drain()
+		values := service.Values{DB: db, Keyring: h.keyring}
+		removed, err := values.Unset(t.Context(), service.LocalPrincipal(custodian), domain.Scope{Org: orgA, Project: prjA1, Env: envA1}, "SHARED_KEY")
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.publishVersions([]string{removed.VersionID})
+		h.drain()
+		name := prefix + "SHARED_KEY"
+		if !remote.Deleted(name) {
+			t.Fatal("deletion visibility control did not schedule the recorded secret")
+		}
+		stale = 1
+		h.deleted(name, true)
+		h.publish("after restore", "synthetic alpha")
+		h.drain()
+		if remote.Deleted(name) {
+			t.Fatal("deletion visibility control did not restore the recorded secret")
+		}
+		stale = 1
+		h.deleted(name, false)
+		if stale != 0 || len(h.s.creations) != 2 {
+			t.Fatal("deletion observation changed creation accounting")
+		}
+		for _, operation := range remote.Operations() {
+			if operation == "GetSecretValue" {
+				t.Fatal("writer read secret plaintext")
+			}
+		}
+	})
 }
 
 func (p realAWSMetadataProbe) DescribeSecret(ctx context.Context, arn string) (awssm.SecretMetadata, error) {
@@ -47,6 +108,7 @@ func TestAWSRealMetadataObservationBounds(t *testing.T) {
 		{name: "foreign name", wrongName: true, wantReads: 1, wantError: true},
 		{name: "cancelled before request", cancelBefore: true, wantReads: 0, wantError: true},
 		{name: "cancelled after missing request", missing: 9, cancelAfterRead: true, wantReads: 1, wantError: true},
+		{name: "cancelled after visible request", cancelAfterRead: true, wantReads: 1, wantError: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -90,6 +152,58 @@ func TestAWSRealMetadataObservationBounds(t *testing.T) {
 				if !errors.As(err, &response) || response.Code != scenario.code {
 					t.Fatal("metadata refusal code was not preserved")
 				}
+			}
+		})
+	}
+}
+
+func TestAWSRealDeletionObservationBounds(t *testing.T) {
+	name := "hikyo-e2e-abcdefgh/recorded-deletion"
+	arn := "arn:aws:secretsmanager:eu-west-1:123456789012:secret:" + name + "-AbCd12"
+	for _, scenario := range []struct {
+		name      string
+		stale     int
+		foreign   bool
+		denied    bool
+		cancel    bool
+		wantReads int
+		wantError bool
+		wantState bool
+	}{
+		{name: "already visible", wantReads: 1, wantState: true},
+		{name: "two stale observations", stale: 2, wantReads: 3, wantState: true},
+		{name: "persistent stale state", stale: 9, wantReads: 3},
+		{name: "foreign identity", foreign: true, wantReads: 1, wantError: true},
+		{name: "permanent denial", denied: true, wantReads: 1, wantError: true},
+		{name: "cancelled stale observation", stale: 9, cancel: true, wantReads: 1, wantError: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			reads := 0
+			api := realAWSMetadataProbe{describe: func(_ context.Context, id string) (awssm.SecretMetadata, error) {
+				reads++
+				if id != arn {
+					t.Error("deletion observation followed an unrecorded identity")
+				}
+				if scenario.cancel {
+					cancel()
+				}
+				if scenario.denied {
+					return awssm.SecretMetadata{}, &awssm.ResponseError{Status: 400, Code: "AccessDeniedException"}
+				}
+				meta := awssm.SecretMetadata{ARN: arn, Name: name, Deleted: reads > scenario.stale}
+				if scenario.foreign {
+					meta.ARN += "foreign"
+				}
+				return meta, nil
+			}}
+			meta, err := readRealAWSMetadataWhere(ctx, api, name, arn, func(m awssm.SecretMetadata) bool { return m.Deleted })
+			if reads != scenario.wantReads || (err != nil) != scenario.wantError || meta.Deleted != scenario.wantState {
+				t.Fatalf("reads=%d error=%v deleted=%v", reads, err != nil, meta.Deleted)
+			}
+			if scenario.cancel && !errors.Is(err, context.Canceled) {
+				t.Fatal("deletion observation lost cancellation")
 			}
 		})
 	}

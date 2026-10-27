@@ -290,7 +290,28 @@ func (h *realAWSDurable) converged(id string) {
 	h.t.Helper()
 	state := h.retryConvergence(id)
 	if state.Health() != adapter.HealthConverged || state.ConvergedRevision == nil || state.LastErrorClass != "" {
-		h.t.Fatal("durable AWS target did not converge")
+		h.t.Fatal(realAWSConvergenceAssertion(state.LastErrorClass))
+	}
+}
+
+// The trusted runner maps only these complete literals to closed identifiers.
+// Never append target state, provider messages or an unrecognized class.
+func realAWSConvergenceAssertion(class adapter.ErrorClass) string {
+	switch class {
+	case adapter.ErrorClassAuth:
+		return "durable AWS target did not converge: auth"
+	case adapter.ErrorClassNetwork:
+		return "durable AWS target did not converge: network"
+	case adapter.ErrorClassConflict:
+		return "durable AWS target did not converge: conflict"
+	case adapter.ErrorClassProviderLimit:
+		return "durable AWS target did not converge: provider_limit"
+	case adapter.ErrorClassProviderAmbiguous:
+		return "durable AWS target did not converge: provider_ambiguous"
+	case adapter.ErrorClassRefused:
+		return "durable AWS target did not converge: refused"
+	default:
+		return "durable AWS target did not converge"
 	}
 }
 
@@ -298,7 +319,7 @@ func (h *realAWSDurable) retryConvergence(id string) store.AdapterTarget {
 	h.t.Helper()
 	state := h.inspect(id)
 	for h.drainRemaining > 0 {
-		next, retry := realAWSConvergenceRetry(state, h.clock, h.s.manifest.ExpiresAt)
+		next, retry := realAWSConvergenceRetry(state, h.clock, time.Now().UTC(), h.s.manifest.ExpiresAt)
 		if !retry {
 			break
 		}
@@ -318,7 +339,13 @@ func (h *realAWSDurable) retryConvergence(id string) store.AdapterTarget {
 	return state
 }
 
-func realAWSConvergenceRetry(state store.AdapterTarget, clock, expires time.Time) (time.Time, bool) {
+func realAWSConvergenceRetry(state store.AdapterTarget, clock, wallNow, expires time.Time) (time.Time, bool) {
+	// Replay deliberately advances the queue clock past lease/retry horizons.
+	// Authorization is a real-time gate, independently rechecked by every
+	// provider mutation; a logical advance is never an STS-expiry witness.
+	if !expires.After(wallNow) {
+		return time.Time{}, false
+	}
 	if state.ActiveJobState != "queued" || state.RetryAt == nil || state.PausedAt != nil || state.DriftAttention {
 		return time.Time{}, false
 	}
@@ -330,13 +357,15 @@ func realAWSConvergenceRetry(state store.AdapterTarget, clock, expires time.Time
 		next = clock
 	}
 	next = next.Add(time.Second)
-	if !expires.After(next) {
-		return time.Time{}, false
-	}
 	return next, true
 }
 
 func (h *realAWSDurable) metadata(name string) awssm.SecretMetadata {
+	h.t.Helper()
+	return h.metadataWhere(name, func(awssm.SecretMetadata) bool { return true })
+}
+
+func (h *realAWSDurable) metadataWhere(name string, visible func(awssm.SecretMetadata) bool) awssm.SecretMetadata {
 	h.t.Helper()
 	lease, err := h.build(adapter.Config{Origin: h.origin}, h.descriptor)
 	if err != nil {
@@ -349,7 +378,7 @@ func (h *realAWSDurable) metadata(name string) awssm.SecretMetadata {
 	}
 	ctx, cancel := context.WithTimeout(h.t.Context(), 15*time.Second)
 	defer cancel()
-	meta, err := readRealAWSMetadata(ctx, module.API, name, h.s.arn(h.t, name))
+	meta, err := readRealAWSMetadataWhere(ctx, module.API, name, h.s.arn(h.t, name), visible)
 	if err != nil {
 		logRealAWSDiagnostic(h.t, "DescribeSecret", err)
 		h.t.Fatal("AWS fixture metadata read failed")
@@ -361,18 +390,29 @@ func (h *realAWSDurable) metadata(name string) awssm.SecretMetadata {
 // Observe only its recorded complete ARN, with the existing request deadline.
 // Never follow a name, retry a mutation, or hide a different refusal or identity.
 func readRealAWSMetadata(ctx context.Context, api awssm.API, name, arn string) (awssm.SecretMetadata, error) {
+	return readRealAWSMetadataWhere(ctx, api, name, arn, func(awssm.SecretMetadata) bool { return true })
+}
+
+// An acknowledged schedule/restore can precede its metadata observation.
+// Only reads repeat: three attempts in the existing aggregate deadline, on
+// the exact recorded ARN. Return the final mismatching state for assertion.
+func readRealAWSMetadataWhere(ctx context.Context, api awssm.API, name, arn string, visible func(awssm.SecretMetadata) bool) (awssm.SecretMetadata, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return awssm.SecretMetadata{}, err
 		}
 		meta, err := api.DescribeSecret(ctx, arn)
+		if cancelled := ctx.Err(); cancelled != nil {
+			return awssm.SecretMetadata{}, cancelled
+		}
 		if err == nil {
 			if meta.ARN != arn || meta.Name != name {
 				return awssm.SecretMetadata{}, errors.New("fixture metadata identity mismatch")
 			}
-			return meta, nil
-		}
-		if !awssm.IsNotFound(err) || attempt == 2 {
+			if visible(meta) || attempt == 2 {
+				return meta, nil
+			}
+		} else if !awssm.IsNotFound(err) || attempt == 2 {
 			return awssm.SecretMetadata{}, err
 		}
 		timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
@@ -388,7 +428,7 @@ func readRealAWSMetadata(ctx context.Context, api awssm.API, name, arn string) (
 
 func (h *realAWSDurable) deleted(name string, want bool) {
 	h.t.Helper()
-	if h.metadata(name).Deleted != want {
+	if h.metadataWhere(name, func(meta awssm.SecretMetadata) bool { return meta.Deleted == want }).Deleted != want {
 		h.t.Fatal("AWS scheduled deletion state differs from expected lifecycle")
 	}
 }
