@@ -38,6 +38,17 @@ class FailureAssertionTests(unittest.TestCase):
                 self.assertEqual(self.evidence.data["failure_assertions"], [{"test": self.test, "assertion": identifier}])
                 self.assertNotIn(message, self.evidence.path.read_text())
 
+    def test_convergence_classes_extend_the_closed_vocabulary(self):
+        self.assertEqual(len(runner.FAILURE_ASSERTIONS), 230)
+        self.assertEqual(len(set(runner.FAILURE_ASSERTIONS.values())), 230)
+        self.assertEqual(runner.FAILURE_ASSERTIONS["durable AWS target did not converge"], "assertion-066")
+        self.assertEqual(set(runner.CONVERGENCE_ASSERTIONS.values()),
+                         {f"assertion-{index:03d}" for index in range(225, 231)})
+        for suffix in ("", "unknown", "auth synthetic-private-credential", "network\ncredential"):
+            self.emit(self.line("durable AWS target did not converge: " + suffix))
+            self.end_failure()
+        self.assertEqual(self.evidence.data["failure_assertions"], [])
+
     def test_real_split_multiline_message_is_rejected(self):
         self.emit(self.line())
         self.emit("        synthetic-private-credential-never-publish\n")

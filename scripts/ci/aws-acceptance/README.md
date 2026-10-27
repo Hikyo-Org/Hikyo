@@ -263,7 +263,7 @@ field set and v2 with exactly two additional required fields:
 
 - `failure_assertions`: at most 128 exact `{test, assertion}` objects. Test
   names belong to the existing 46-test inventory; identifiers are the closed
-  `assertion-001` through `assertion-224` mapping pinned to the fixture candidate.
+  `assertion-001` through `assertion-230` mapping pinned to the fixture candidate.
 - `failure_assertions_truncated`: an exact JSON boolean. Truncation indicates
   omitted categories and grants no success, cleanup or execution authority.
 
@@ -280,3 +280,15 @@ the four failures from the prior AWS run.
 The v2 producer and consumer must be adopted together after the required source
 disposition. The existing workflow uploads the same single `evidence.json` file.
 Schema compatibility grants no AWS execution or permission to change a closed claim.
+
+Identifiers 225 through 230 distinguish a nonconverged target's existing closed
+error classes: auth, network, conflict, provider limit, provider ambiguity and
+refused. The fixture selects a literal message from this finite vocabulary,
+using the exact unsuffixed convergence message for unknown or empty classes.
+The runner maps only that exact unsuffixed message to generic assertion 066;
+unknown, empty-suffix, dynamic, sensitive or multiline output variants produce
+no diagnostic row. No target record, error message, credential, new evidence
+field or additional execution authority is
+included. Identifiers 001 through 224 keep their original meanings. The runner
+and its source-only consumer must be published together before using these new
+categories in a protected AWS attempt.

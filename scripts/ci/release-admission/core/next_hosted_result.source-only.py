@@ -46,7 +46,7 @@ def _evidence_shape(m,data):
     rows=data['failure_assertions']
     m.require(type(rows) is list and len(rows)<=128
         and type(data['failure_assertions_truncated']) is bool,'bounded-assertion-diagnostics')
-    identifiers={f'assertion-{index:03d}' for index in range(1,225)}
+    identifiers={f'assertion-{index:03d}' for index in range(1,231)}
     for row in rows:
         m.exact(row,{'test','assertion'})
         m.require(type(row['test']) is str and row['test'] in TESTS
