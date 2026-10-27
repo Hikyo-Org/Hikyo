@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -356,6 +357,14 @@ func findRun(repository string, pr pull) (benchmarkRun, error) {
 	return found, nil
 }
 
+type workflowMismatchError struct {
+	workflow string
+}
+
+func (e *workflowMismatchError) Error() string {
+	return fmt.Sprintf("PR benchmark workflow %s must match main; update the PR from main or merge workflow changes before benchmarking", e.workflow)
+}
+
 func checkWorkflow(repository string, pr pull) error {
 	// A PR cannot redefine the job that receives runner admission. The workflow
 	// must be byte-identical to main, even if the rest of the PR changes CI.
@@ -370,8 +379,11 @@ func checkWorkflow(repository string, pr pull) error {
 		if err := readAPI(path+pr.Head.SHA, &candidate); err != nil {
 			return err
 		}
-		if trusted.SHA == "" || trusted.SHA != candidate.SHA {
-			return fmt.Errorf("PR benchmark workflow %s must match main; merge workflow changes before using paid PR benchmarks", workflow)
+		if trusted.SHA == "" || candidate.SHA == "" {
+			return fmt.Errorf("PR benchmark workflow %s has missing GitHub content identity", workflow)
+		}
+		if trusted.SHA != candidate.SHA {
+			return &workflowMismatchError{workflow: workflow}
 		}
 	}
 	return nil
@@ -416,6 +428,10 @@ func runBenchmark(repository string, e controlEvent, automatic bool) error {
 		return reason
 	}
 	if err := checkWorkflow(repository, pr); err != nil {
+		var mismatch *workflowMismatchError
+		if automatic && errors.As(err, &mismatch) {
+			return skipAutomatic(repository, pr, c, err.Error())
+		}
 		return decline(err)
 	}
 	selected, err := changedWorkloads(repository, pr)
