@@ -283,9 +283,12 @@ Schema compatibility grants no AWS execution or permission to change a closed cl
 
 Identifiers 225 through 230 distinguish a nonconverged target's existing closed
 error classes: auth, network, conflict, provider limit, provider ambiguity and
-refused. The fixture selects a literal message from this finite vocabulary;
-unknown or empty classes retain generic assertion 066. No target record, error
-message, credential, new evidence field or additional execution authority is
+refused. The fixture selects a literal message from this finite vocabulary,
+using the exact unsuffixed convergence message for unknown or empty classes.
+The runner maps only that exact unsuffixed message to generic assertion 066;
+unknown, empty-suffix, dynamic, sensitive or multiline output variants produce
+no diagnostic row. No target record, error message, credential, new evidence
+field or additional execution authority is
 included. Identifiers 001 through 224 keep their original meanings. The runner
 and its source-only consumer must be published together before using these new
 categories in a protected AWS attempt.
