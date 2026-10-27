@@ -63,7 +63,7 @@ class EvidenceSchemaTests(unittest.TestCase):
     def test_unknown_id_test_raw_text_entry_fields_and_types_are_rejected(self):
         variants = [
             {"test": runner.SUITE, "assertion": "assertion-000"},
-            {"test": runner.SUITE, "assertion": "assertion-225"},
+            {"test": runner.SUITE, "assertion": "assertion-231"},
             {"test": "TestForeign", "assertion": "assertion-066"},
             {"test": runner.SUITE, "assertion": "synthetic-private-credential"},
             {"test": runner.SUITE, "assertion": "assertion-066", "raw": "synthetic-private"},

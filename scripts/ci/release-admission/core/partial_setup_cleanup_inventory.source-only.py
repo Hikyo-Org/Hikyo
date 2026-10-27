@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # Copied reviewed S coordinator; only truthful inventory derivation is changed.
-PINS = {'model': 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19', 'executor': '57c31fce3d373d770930e5e01f4b1a0fb27c4128983c78eb18b0c08a4f27a85c', 'ledger': 'c93ebd62f4304b880d29eb24812ccbf4c567d803970db1b11f27ff834f55a297', 'runtime': '018cb2a29568c47bd9fbed644be60182c448ebd21b2a9b253b2a5c5184a70d16', 'finalizer': '401565f523e4270573e44a23b13d6dea73e075722fa7259b48630467a4150c94', 'operator': '190bb8cdfc35834528fafb7e340ac3724ab42fac21ba82f228fa631a69b1c8b9', 'metadata': '79940fc3d90ce8bb553c90f67eec679ff692536e53279dff2ab08099094a692b', 'keyFacts': '7a13f5fc03a9643b6535327b55851cb44923911a5422a7f002b871cb2c45db54', 'stdout': 'e85ef0bfba61af2dccd90691a94a0aaed92f5b91e21f1bd6df2006e5196c15b9'}
+PINS = {'model': 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19', 'executor': '57c31fce3d373d770930e5e01f4b1a0fb27c4128983c78eb18b0c08a4f27a85c', 'ledger': 'c93ebd62f4304b880d29eb24812ccbf4c567d803970db1b11f27ff834f55a297', 'runtime': '018cb2a29568c47bd9fbed644be60182c448ebd21b2a9b253b2a5c5184a70d16', 'finalizer': '6680b842358be939f0953963c353d2f8392465a59a28db64c8f45dc45dff42ce', 'operator': '1274ce7b4d0e36f071c27ac39e93b374f45949ccde2d8a9a828213ad558a3265', 'metadata': '79940fc3d90ce8bb553c90f67eec679ff692536e53279dff2ab08099094a692b', 'keyFacts': '7a13f5fc03a9643b6535327b55851cb44923911a5422a7f002b871cb2c45db54', 'stdout': '8b644a4788fc2027dadb87ccb8dfefd5e7219a23397a1a70362fc74e1a8ee92a'}
 OPERATIONS = ('ScheduleKeyDeletion', 'DeletePolicy', 'SetDefaultPolicyVersion')
 
 

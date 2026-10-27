@@ -88,6 +88,18 @@ FAILURE_ASSERTIONS = {'AWS audit contains protected material': 'assertion-001', 
 ASSERTION_LINE = re.compile('[ \\t]+(?:aws_real_adoption_test\\.go|aws_real_auth_test\\.go|aws_real_clock_test\\.go|aws_real_creation_test\\.go|aws_real_credential_fence_test\\.go|aws_real_delivery_test\\.go|aws_real_diagnostics_test\\.go|aws_real_durable_test\\.go|aws_real_finish_loss_test\\.go|aws_real_fixture_test\\.go|aws_real_iam_test\\.go|aws_real_move_test\\.go|aws_real_oracle_test\\.go|aws_real_process_test\\.go|aws_real_scope_test\\.go):[1-9][0-9]*: ([^\\r\\n]+)\\n?')
 
 
+# Append categories without renumbering any retained failure receipt.
+CONVERGENCE_ASSERTIONS = {
+    "durable AWS target did not converge: auth": "assertion-225",
+    "durable AWS target did not converge: network": "assertion-226",
+    "durable AWS target did not converge: conflict": "assertion-227",
+    "durable AWS target did not converge: provider_limit": "assertion-228",
+    "durable AWS target did not converge: provider_ambiguous": "assertion-229",
+    "durable AWS target did not converge: refused": "assertion-230",
+}
+FAILURE_ASSERTIONS.update(CONVERGENCE_ASSERTIONS)
+
+
 class Refused(Exception):
     """A failure whose raw cause must never enter the workflow log."""
 

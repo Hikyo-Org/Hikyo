@@ -11,7 +11,7 @@ import math
 LEDGER_SHA256 = 'c93ebd62f4304b880d29eb24812ccbf4c567d803970db1b11f27ff834f55a297'
 MODEL_SHA256 = 'f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19'
 EXECUTOR_SHA256 = '57c31fce3d373d770930e5e01f4b1a0fb27c4128983c78eb18b0c08a4f27a85c'
-RESULT_SHA256 = '1b827401e65985ae7480ada9e25b503680490faa6f3cfb5cd9ae610cf25998c8'
+RESULT_SHA256 = '33bbfaa610fe1bb95ee8b0574b13bb4f4cc361c6c15f041e66a0c074b8c768ba'
 HISTORICAL_NATIVE_GUARD_PINS={'next_fixture_iam_operations.source-only.mjs':'416f56cac09284ded03b44be08c100165f8e799257bea987065a5cf16e392613',
     'native_next_fixture_iam_guard.source-only.js':'9fb4c016531ab676f5e8f79f6c8c795bbc8a698a3cb831ecd65d28681ee281fc',
     'setup_version_operations.source-only.mjs':'7c04cb1c5e4e1d9e4f423f49b08ec1aaef62a4a36e0e262d1b90ea55e9bab454',
