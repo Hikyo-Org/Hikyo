@@ -1,6 +1,6 @@
 # #1034 authentication refusal signals: decision packet
 
-Status: **Exact contract approved by the owner on 2026-10-28; producer implemented, final validation in progress.**
+Status: **Producer implemented in PR #1074. Scoped local and hosted source checks pass; maintainer security review and merge proof remain HOLD.**
 The owner explicitly waived cross-provider review for #1034 only. Maintainer
 security review and the human merge gate remain. This does not close #1034.
 
@@ -164,7 +164,7 @@ request rate and are not recommended.
   Its owner reports exact-head hosted feedback, CodeQL and full repository
   invariants passing; local lint hit its unchanged aggregate deadline. It is
   unmerged and still requires maintainer security review. Combined-source
-  runtime proof will be recorded separately from this lane's own head.
+  runtime proof is recorded separately below.
 - **#1035:** consume sealed instance security events through its existing
   instance proof, query and export owners. Add filter vocabulary only through
   canonical generated contracts if required. Operator tests must correlate an
@@ -201,8 +201,11 @@ admission-enforcement repair is included in this PR.
 The prior compatibility-only head `bc7ea467520c89c956e755197a2cb3202db3741c`
 reproduced generic silence on main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
 Its local/hosted results do not qualify the producer added afterward. Canonical
-main was rechecked at `970ac0db7c6024f91dedcefe34db7ca560b247e3`; the intervening
-changes were documentation only.
+main was rechecked at `970ac0db7c6024f91dedcefe34db7ca560b247e3`, then at
+`1c7a0d0bdb5f8e4f9bd9c71f0a67219cd8f72736` before final handoff. The later
+main changes affect documentation/community records and MCP acceptance tooling;
+they do not change these producer owners or migrations. Exact current-base
+merge proof remains a separate gate.
 
 Current producer checks exercise the real router and services on SQLite and
 PostgreSQL, including modern/Codex MCP. They cover browser/CLI/machine dead and
@@ -210,8 +213,88 @@ unknown artifacts, stale generation/epoch, connection/workspace/SCIM siblings,
 CSRF/DPoP/channel refusals, dedicated developer/federation/SCIM/login ownership,
 retained revoked replay correlation, bounded source floods and concurrent nodes,
 startup recovery, sink and seal failures, public cap observation and complete
-wire/log/metrics/audit canaries. Exact final source and results will be recorded
-below after validation completes. No hosted producer CI result is claimed yet.
+wire/log/metrics/audit canaries. The signed producer source is
+`3a6f568d63e913ee19c82a42ad5fc43b61e32389`, in
+[PR #1074](https://github.com/Hikyo-Org/Hikyo/pull/1074). GitHub verifies every
+commit in its six-commit range. The later handoff receipt changes documentation
+only; it does not substitute new runtime source for the tested producer.
+
+### Local proof and limits
+
+- **PASS:** real producer regressions and `TestAuditCore` on both engines,
+  including retained replay correlation, dedicated persistence failure fallback,
+  flood/HA/sealing/recovery negatives, all SCIM/developer/federation siblings and
+  both MCP profiles. The final expanded producer batch completed in 180.793 s.
+- **PASS:** full server, service, audit, admission, operation, authorizer and
+  store owner suites, including `store/migrate`, `store/tx` and `store/upgrade`.
+  Full app recovery proof passes separately in the existing CI ordering
+  (480.503 s), including the new refusal-evidence guard.
+- **PASS:** normal sqlc/authz/development-identity generation. The explicit
+  reviewed-pin updater refreshed only the refusal validator closure and the
+  restore seed guard. The new PostgreSQL-only restore protocol pin names the
+  exact pristine seed rule and its negative tests; it is not a general waiver.
+- **PASS:** prepared scoped repository invariants: SQL predicates, driver
+  handles, append-only writes, proof signatures/forgery, transaction results,
+  fence completeness, reencrypt coverage, grant locks, redaction surfaces and
+  sensitive formatting. The aggregate scoped batch completed in 203.948 s.
+- **PASS:** complete-PR-diff feedback on the signed source, selected Go only,
+  completed in 35 s. Documentation mapping, formatting, portability and all
+  cryptographic signature/DCO checks pass.
+- **HOLD:** the broad unsharded local command reached unchanged ten-minute
+  isolation and lint package deadlines. Its migration/surface/SQL inventory
+  findings were repaired. The superseded invocation was stopped after retaining
+  its failure receipt; no full-suite PASS is inferred. The canonical CI helper
+  prewarms lint exports and separates app recovery from other datastore suites.
+  An earlier concurrent app-owner batch also hit its ten-minute aggregate
+  deadline; the separate app run above rechecked it successfully without
+  changing that deadline. Protected full current-base merge proof remains
+  required.
+- **PASS:** blocked-datastore deadline and writer release on SQLite/PostgreSQL
+  (2.21 s across both fixtures). Releasing the held writer/row afterward does
+  not cause a timed-out update to commit in the background.
+- **PASS:** full `go vet -p 2 ./...`; the prepared validation job returned zero.
+- **PASS on source `3a6f568d63e913ee19c82a42ad5fc43b61e32389`:** all hosted
+  [feedback lanes](https://github.com/Hikyo-Org/Hikyo/actions/runs/40687274026),
+  [full repository invariants](https://github.com/Hikyo-Org/Hikyo/actions/runs/40687274179)
+  and [CodeQL analyses](https://github.com/Hikyo-Org/Hikyo/actions/runs/40687269474).
+  The final documentation-only receipt gets fresh exact-head CI; source-head
+  results do not become a claim that those new-head checks already completed.
+- **PASS:** cleanup verified. The owned disposable PostgreSQL container and its
+  anonymous volume, and the temporary combined-source worktree are absent.
+  Shared images, normal Go caches and the active feature worktree are preserved.
+  Only ignored local failure/validation receipts and the offline report remain
+  for review; they may be removed once that review no longer needs them.
+
+### Pinned combined-source proof
+
+The isolated combined tree `126961ee54d3fd372ad6ac9aa3f01bb51b2c1e06` contains
+this producer source, the consumer-inventory repairs, #1035 PR #1045 at
+`abb544df94f881343d59114c14e7150ffd48111d`, and #1040 PR #1084 at
+`f5faf05fcb61e69327db3bf492c5a0c9ca0d40cc`. Both dependencies were rechecked
+open and unmerged. One integration conflict in `internal/server/browser.go`
+was resolved by retaining `WithRefusalArtifactProbe` and handling the existing
+`admission.ErrOverloaded` before other CSRF errors. This resolution belongs to
+the combined proof; admission repair source stays in #1040.
+
+The following pass on SQLite and PostgreSQL:
+
+- `TestRequestRefusalSupportedInstanceConsumers`: real revoked replay over TLS,
+  server-generated request ID, window seal, cookie-authenticated instance query,
+  and real CLI instance query/export carrying the retained request/source sample.
+- `TestRequestRefusalCanonicalAdmissionSignal`: exactly the remaining source
+  allowance, one dedicated developer refusal, then uniform 429 plus Retry-After
+  with one admission sample. Accounting neither charges again nor resolves the
+  refused credential after overload.
+- Existing `TestInstanceAuditWire` and all `TestPreauthentication*` regressions,
+  including browser mutation, shared backend, SCIM, paired, MCP and SPA siblings.
+- Full `internal/server`, `internal/service`, `internal/audit`,
+  `internal/admission`, `internal/operation` and `internal/authz` package suites.
+
+This is source integration proof, not evidence that either dependency is
+merged, deployed or published. The browser consumer test drives its real
+cookie-authenticated API; #1035 owns rendered-UI acceptance and screenshots.
+On the producer-only branch the supported-reader test reports NOTRUN because
+those routes are absent, rather than silently claiming reader delivery.
 
 Cross-provider review is **SKIPPED**, under the explicit #1034-only waiver.
 Maintainer security review, protected merge-group proof and a later explicit
@@ -219,6 +302,24 @@ human merge instruction remain **HOLD**. Hosted/local source checks do not prove
 publication, deployment, live-provider acceptance or real collector delivery.
 
 ## Executable handoff
+
+Run commands from the repository root with pinned prerequisites and an
+exclusively owned synthetic `HIKYO_TEST_POSTGRES_DSN`. Use the applicable shared
+heavy-job queue for these commands. No production or external provider is needed.
+
+```sh
+scripts/ci/fast-feedback.sh --plan
+scripts/ci/fast-feedback.sh
+go run ./scripts/ci/prepare-lint-cache
+go test -p 2 ./internal/isolation -run '^(TestAuthenticationRefusalWireCompatibility|TestRequestRefusal.*|TestAuditCore|TestMCPToolsEndToEndCanaryAndDenial)$' -count=1
+go test -p 2 ./internal/app -count=1
+go vet -p 2 ./...
+```
+
+Expected: both-engine producer checks pass; the supported-reader consumer reports
+NOTRUN without #1035, and passes on the pinned combined source. Keep app recovery
+separate from other PostgreSQL test packages, as the canonical CI helper does.
+
 
 1. Validate this PR's complete diff using
    `scripts/ci/fast-feedback.sh --working-tree --plan`, then the selected shared
