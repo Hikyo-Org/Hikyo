@@ -62,6 +62,7 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	path := strings.TrimPrefix(r.URL.Path, "/api/v4")
 	switch path {
 	case "/version":
@@ -94,7 +95,7 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		json.NewEncoder(w).Encode(value)
+		writeVariable(w, http.StatusOK, value)
 		return
 	}
 	if r.Method == http.MethodDelete {
@@ -114,6 +115,7 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if v.Scope == "" {
 		v.Scope = "*"
 	}
+	status := http.StatusCreated
 	if r.Method == http.MethodPost {
 		key = v.Scope + ":" + v.Key
 		if _, ok := g.values[key]; ok {
@@ -121,7 +123,6 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.values[key] = v
-		w.WriteHeader(http.StatusCreated)
 	} else if r.Method == http.MethodPut {
 		if _, ok := g.values[key]; !ok {
 			w.WriteHeader(http.StatusNotFound)
@@ -129,12 +130,24 @@ func (g *gitlabFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		v.Key = name
 		g.values[key] = v
-		w.WriteHeader(http.StatusOK)
+		status = http.StatusOK
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	json.NewEncoder(w).Encode(v)
+	writeVariable(w, status, v)
+}
+
+// Keep JSON serialization separate from ResponseWriter side effects. Provider
+// values roundtrip unchanged, while HTML characters stay escaped on the wire.
+func writeVariable(w http.ResponseWriter, status int, value variable) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		http.Error(w, "invalid variable response", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 func certificate(host string) (tls.Certificate, []byte) {
