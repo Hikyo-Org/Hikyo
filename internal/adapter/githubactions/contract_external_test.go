@@ -30,6 +30,8 @@ var contractWorkflowFixture []byte
 
 type githubContractConfig struct {
 	owner, repository, environment, workflowPath, ref                                    string
+	workflowSHA, candidateSHA, authorizationRef                                          string
+	repositoryID, organizationID, environmentID                                          int64
 	repositoryToken, organizationToken, environmentToken                                 string
 	repositoryDeniedToken, organizationDeniedToken, environmentDeniedToken, harnessToken string
 }
@@ -49,6 +51,7 @@ func TestGitHubDotComContract(t *testing.T) {
 	}
 	harness := newContractHTTP(cfg)
 	harness.assertWorkflowFixture(t)
+	contractEvidence(t, map[string]any{"kind": "binding", "candidate_sha": cfg.candidateSHA, "authorization_ref": cfg.authorizationRef, "repository_id": cfg.repositoryID, "organization_id": cfg.organizationID, "environment_id": cfg.environmentID, "workflow_sha": cfg.workflowSHA, "workflow_sha256": fmt.Sprintf("%x", sha256.Sum256(contractWorkflowFixture))})
 
 	repositoryClient := newContractClient(t, cfg.repositoryToken)
 	organizationClient := newContractClient(t, cfg.organizationToken)
@@ -60,21 +63,21 @@ func TestGitHubDotComContract(t *testing.T) {
 
 	repository := adapter.Destination{Kind: adapter.Repository, Owner: cfg.owner, Name: cfg.repository}
 	repositoryIdentity, err := repositoryClient.ResolveDestination(t.Context(), repository)
-	if err != nil || repositoryIdentity.ID <= 0 {
+	if err != nil || repositoryIdentity.ID != cfg.repositoryID {
 		t.Fatalf("resolve dedicated repository identity: id=%d error=%v", repositoryIdentity.ID, err)
 	}
 	repository.NumericID = repositoryIdentity.ID
 
 	organization := adapter.Destination{Kind: adapter.Organization, Owner: cfg.owner, Visibility: "selected", SelectedRepositoryIDs: []int64{repositoryIdentity.ID}}
 	organizationIdentity, err := organizationClient.ResolveDestination(t.Context(), organization)
-	if err != nil || organizationIdentity.ID <= 0 {
+	if err != nil || organizationIdentity.ID != cfg.organizationID {
 		t.Fatalf("resolve dedicated organization identity: id=%d error=%v", organizationIdentity.ID, err)
 	}
 	organization.NumericID = organizationIdentity.ID
 
 	environment := adapter.Destination{Kind: adapter.Environment, Owner: cfg.owner, Name: cfg.repository, Environment: cfg.environment, RepositoryID: repositoryIdentity.ID}
 	environmentIdentity, err := environmentClient.ResolveDestination(t.Context(), environment)
-	if err != nil || environmentIdentity.ID <= 0 || environmentIdentity.RepositoryID != repositoryIdentity.ID {
+	if err != nil || environmentIdentity.ID != cfg.environmentID || environmentIdentity.RepositoryID != repositoryIdentity.ID {
 		t.Fatalf("resolve protected environment identity: repo=%d environment=%d error=%v", environmentIdentity.RepositoryID, environmentIdentity.ID, err)
 	}
 	environment.NumericID = environmentIdentity.ID
@@ -124,14 +127,19 @@ func TestGitHubDotComContract(t *testing.T) {
 	t.Run("administration token auto-create identity pin", func(t *testing.T) {
 		name := strings.ToLower(prefix) + "autocreate"
 		destination := adapter.Destination{Kind: adapter.Environment, Owner: cfg.owner, Name: cfg.repository, Environment: name, RepositoryID: repositoryIdentity.ID}
+		t.Cleanup(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			if err := harness.deleteEnvironment(ctx, name); err != nil {
+				t.Errorf("teardown auto-created environment: %v", err)
+				return
+			}
+			contractEvidence(t, map[string]any{"kind": "cleaned_environment", "name": name})
+		})
+		contractEvidence(t, map[string]any{"kind": "owned_environment", "name": name})
 		if err := adminClient.CreateEnvironment(t.Context(), destination); err != nil {
 			t.Fatalf("settings-free environment create: %v", err)
 		}
-		t.Cleanup(func() {
-			if err := harness.deleteEnvironment(context.Background(), name); err != nil {
-				t.Errorf("teardown auto-created environment: %v", err)
-			}
-		})
 		identity, err := adminClient.ResolveDestination(t.Context(), destination)
 		if err != nil || identity.ID <= 0 || identity.RepositoryID != repositoryIdentity.ID {
 			t.Fatalf("post-PUT identity pin=(%d,%d): %v", identity.RepositoryID, identity.ID, err)
@@ -145,44 +153,9 @@ func loadGitHubContractConfig(t *testing.T) (githubContractConfig, bool) {
 		t.Skip("EXTERNAL github.com contract SKIPPED LOUDLY: set HIKYO_GITHUB_CONTRACT=1 only for the dedicated all-or-nothing harness")
 		return githubContractConfig{}, false
 	}
-	cfg := githubContractConfig{
-		owner:                   os.Getenv("HIKYO_GITHUB_CONTRACT_OWNER"),
-		repository:              os.Getenv("HIKYO_GITHUB_CONTRACT_REPOSITORY"),
-		environment:             os.Getenv("HIKYO_GITHUB_CONTRACT_ENVIRONMENT"),
-		workflowPath:            os.Getenv("HIKYO_GITHUB_CONTRACT_WORKFLOW_PATH"),
-		ref:                     os.Getenv("HIKYO_GITHUB_CONTRACT_REF"),
-		repositoryToken:         os.Getenv("HIKYO_GITHUB_CONTRACT_REPOSITORY_TOKEN"),
-		organizationToken:       os.Getenv("HIKYO_GITHUB_CONTRACT_ORGANIZATION_TOKEN"),
-		environmentToken:        os.Getenv("HIKYO_GITHUB_CONTRACT_ENVIRONMENT_TOKEN"),
-		repositoryDeniedToken:   os.Getenv("HIKYO_GITHUB_CONTRACT_REPOSITORY_DENIED_TOKEN"),
-		organizationDeniedToken: os.Getenv("HIKYO_GITHUB_CONTRACT_ORGANIZATION_DENIED_TOKEN"),
-		environmentDeniedToken:  os.Getenv("HIKYO_GITHUB_CONTRACT_ENVIRONMENT_DENIED_TOKEN"),
-		harnessToken:            os.Getenv("HIKYO_GITHUB_CONTRACT_HARNESS_TOKEN"),
-	}
-	missing := make([]string, 0, 12)
-	for name, value := range map[string]string{
-		"OWNER": cfg.owner, "REPOSITORY": cfg.repository, "ENVIRONMENT": cfg.environment,
-		"WORKFLOW_PATH": cfg.workflowPath, "REF": cfg.ref, "REPOSITORY_TOKEN": cfg.repositoryToken,
-		"ORGANIZATION_TOKEN": cfg.organizationToken, "ENVIRONMENT_TOKEN": cfg.environmentToken,
-		"REPOSITORY_DENIED_TOKEN": cfg.repositoryDeniedToken, "ORGANIZATION_DENIED_TOKEN": cfg.organizationDeniedToken,
-		"ENVIRONMENT_DENIED_TOKEN": cfg.environmentDeniedToken, "HARNESS_TOKEN": cfg.harnessToken,
-	} {
-		if value == "" {
-			missing = append(missing, "HIKYO_GITHUB_CONTRACT_"+name)
-		}
-	}
-	if len(missing) != 0 {
-		slices.Sort(missing)
-		t.Skipf("EXTERNAL github.com contract SKIPPED LOUDLY: dedicated all-or-nothing configuration is missing %s", strings.Join(missing, ", "))
-		return githubContractConfig{}, false
-	}
-	tokens := []string{cfg.repositoryToken, cfg.organizationToken, cfg.environmentToken, cfg.repositoryDeniedToken, cfg.organizationDeniedToken, cfg.environmentDeniedToken, cfg.harnessToken}
-	for i := range tokens {
-		for j := i + 1; j < len(tokens); j++ {
-			if tokens[i] == tokens[j] {
-				t.Fatal("EXTERNAL github.com contract configuration invalid: minimum, one-permission-less, and harness tokens must all be distinct")
-			}
-		}
+	cfg, err := parseGitHubContractConfig(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return cfg, true
 }
@@ -248,14 +221,9 @@ func assertNamedVariablePermissionRefusal(t *testing.T, denied, cleanup *Client,
 	}
 	prefix := "HIKYO_PERMISSION_" + strings.ToUpper(rand.Text()) + "_"
 	sentinel := prefix + adapter.SentinelName
-	// The secret sentinel may land before the variable is refused. Register
-	// full-permission cleanup before Sync, including unexpected-success paths.
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		cleanupContractName(t, cleanup.DeleteVariable(ctx, destination, sentinel), "permission sentinel variable")
-		cleanupContractName(t, cleanup.DeleteSecret(ctx, destination, sentinel), "permission sentinel secret")
-	})
+	// A sentinel may land even when its response is lost or permission is wrong.
+	ownContractName(t, cleanup, destination, adapter.Variable, sentinel)
+	ownContractName(t, cleanup, destination, adapter.Secret, sentinel)
 	result, err := module.Sync(t.Context(), adapter.SyncRequest{
 		Target: adapter.Target{ID: "github-permission-contract", Generation: 1, Destination: destination, NamePrefix: prefix},
 	}, newFakeJournal())
@@ -281,14 +249,14 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 	variable := prefix + "VARIABLE"
 	missing := prefix + "MISSING"
 	adoption := prefix + "ADOPTION"
+	ownContractName(t, client, destination, adapter.Variable, variable)
+	ownContractName(t, client, destination, adapter.Variable, missing)
+	ownContractName(t, client, destination, adapter.Secret, adoption)
 	created, err := client.CreateVariable(t.Context(), destination, variable, "contract-value-not-logged")
 	if err != nil || created.Status != http.StatusCreated {
 		t.Fatalf("variable POST status=%d: %v", created.Status, err)
 	}
 	configureSelectedRecipients(t, client, destination, adapter.Variable, variable)
-	t.Cleanup(func() {
-		cleanupContractName(t, client.DeleteVariable(context.Background(), destination, variable), "variable")
-	})
 	if _, err := client.CreateVariable(t.Context(), destination, variable, "contract-value-not-logged"); !IsStatus(err, http.StatusConflict) {
 		t.Fatalf("duplicate variable POST did not return exact 409: %v", err)
 	}
@@ -303,15 +271,14 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 	assertEmptyValueContract(t, client, harness, destination, prefix, variable, key)
 	for _, row := range workflowByteClasses() {
 		name := prefix + row.name
+		ownContractName(t, client, destination, adapter.Variable, name)
 		if result, err := client.CreateVariable(t.Context(), destination, name, row.value); err != nil || result.Status != http.StatusCreated {
 			t.Fatalf("workflow byte class %s variable status=%d: %v", row.name, result.Status, err)
 		}
 		configureSelectedRecipients(t, client, destination, adapter.Variable, name)
-		t.Cleanup(func() {
-			cleanupContractName(t, client.DeleteVariable(context.Background(), destination, name), "workflow variable")
-		})
 
 		secretName := prefix + "SECRET_" + row.name
+		ownContractName(t, client, destination, adapter.Secret, secretName)
 		sealed, err := SealSecret([]byte(row.value), key)
 		if err != nil {
 			t.Fatal(err)
@@ -321,9 +288,6 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 			t.Fatalf("workflow byte class %s secret status=%d: %v", row.name, result.Status, err)
 		}
 		configureSelectedRecipients(t, client, destination, adapter.Secret, secretName)
-		t.Cleanup(func() {
-			cleanupContractName(t, client.DeleteSecret(context.Background(), destination, secretName), "workflow secret")
-		})
 		harness.assertWorkflowHashes(t, destination, secretName, name, row.value)
 	}
 	assertValueBoundaryContract(t, client, harness, destination, prefix, key)
@@ -337,9 +301,6 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 		t.Fatalf("adoption secret PUT status=%d: %v", result.Status, err)
 	}
 	configureSelectedRecipients(t, client, destination, adapter.Secret, adoption)
-	t.Cleanup(func() {
-		cleanupContractName(t, client.DeleteSecret(context.Background(), destination, adoption), "adoption secret")
-	})
 	plan, err := (&Module{API: client}).Plan(t.Context(), adapter.PlanRequest{
 		Target: adapter.Target{Destination: destination}, Gate: func(context.Context) error { return nil },
 		Manifest: []adapter.ManifestEntry{{CanonicalName: adoption, Classification: adapter.SecretClassification}},
@@ -355,12 +316,8 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 func assertEmptyValueContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix, nonemptyVariable string, key PublicKey) {
 	t.Helper()
 	variable, secret := prefix+"EMPTY_VARIABLE", prefix+"EMPTY_SECRET"
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		cleanupContractName(t, client.DeleteVariable(ctx, destination, variable), "empty variable probe")
-		cleanupContractName(t, client.DeleteSecret(ctx, destination, secret), "empty secret proof")
-	})
+	ownContractName(t, client, destination, adapter.Variable, variable)
+	ownContractName(t, client, destination, adapter.Secret, secret)
 	// Probe the provider constraint, not the local Sync preflight: a changed
 	// provider acceptance contract must fail visibly, with cleanup already owned.
 	if _, err := client.CreateVariable(t.Context(), destination, variable, ""); !IsStatus(err, http.StatusUnprocessableEntity) {
@@ -387,16 +344,12 @@ func assertValueBoundaryContract(t *testing.T, client *Client, harness *contract
 	t.Helper()
 	variable, secret := prefix+"VARIABLE_MAX", prefix+"SECRET_MAX"
 	overVariable, overSecret := prefix+"VARIABLE_OVER", prefix+"SECRET_OVER"
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		for _, name := range []string{variable, overVariable} {
-			cleanupContractName(t, client.DeleteVariable(ctx, destination, name), "variable boundary proof")
-		}
-		for _, name := range []string{secret, overSecret} {
-			cleanupContractName(t, client.DeleteSecret(ctx, destination, name), "secret boundary proof")
-		}
-	})
+	for _, name := range []string{variable, overVariable} {
+		ownContractName(t, client, destination, adapter.Variable, name)
+	}
+	for _, name := range []string{secret, overSecret} {
+		ownContractName(t, client, destination, adapter.Secret, name)
+	}
 	// These independently observed effective limits are plaintext UTF-8 bytes.
 	// Do not infer the provider's internal encrypted-value accounting from them.
 	variableValue, secretValue := strings.Repeat("x", 48000), strings.Repeat("x", 47952)
@@ -456,7 +409,7 @@ type contractHTTP struct {
 }
 
 func newContractHTTP(cfg githubContractConfig) *contractHTTP {
-	return &contractHTTP{cfg: cfg, client: &http.Client{Timeout: 45 * time.Second}}
+	return &contractHTTP{cfg: cfg, client: &http.Client{Timeout: 45 * time.Second, CheckRedirect: contractRedirect}}
 }
 
 func (c *contractHTTP) api(ctx context.Context, method, path string, body, out any) (int, error) {
@@ -508,11 +461,28 @@ func (c *contractHTTP) repoPath(suffix string) string {
 
 func (c *contractHTTP) assertWorkflowFixture(t *testing.T) {
 	t.Helper()
+	var repository struct {
+		ID       int64 `json:"id"`
+		Private  *bool `json:"private"`
+		Archived *bool `json:"archived"`
+		Owner    struct {
+			ID int64 `json:"id"`
+		} `json:"owner"`
+	}
+	if _, err := c.api(t.Context(), http.MethodGet, c.repoPath(""), nil, &repository); err != nil || repository.ID != c.cfg.repositoryID || repository.Owner.ID != c.cfg.organizationID || repository.Private == nil || *repository.Private || repository.Archived == nil || *repository.Archived {
+		t.Fatalf("authorized fixture must match numeric identities and be public and active: %v", err)
+	}
+	var commit struct {
+		SHA string `json:"sha"`
+	}
+	if _, err := c.api(t.Context(), http.MethodGet, c.repoPath("/commits/"+url.PathEscape(c.cfg.ref)), nil, &commit); err != nil || commit.SHA != c.cfg.workflowSHA {
+		t.Fatalf("fixture ref does not match authorized workflow commit: %v", err)
+	}
 	var response struct {
 		Encoding string `json:"encoding"`
 		Content  string `json:"content"`
 	}
-	path := c.repoPath("/contents/"+escapeContractPath(c.cfg.workflowPath)) + "?ref=" + url.QueryEscape(c.cfg.ref)
+	path := c.repoPath("/contents/"+escapeContractPath(c.cfg.workflowPath)) + "?ref=" + url.QueryEscape(c.cfg.workflowSHA)
 	if _, err := c.api(t.Context(), http.MethodGet, path, nil, &response); err != nil {
 		t.Fatalf("read installed workflow fixture: %v", err)
 	}
@@ -594,47 +564,73 @@ func (c *contractHTTP) assertWorkflowValueHashes(t *testing.T, destination adapt
 		environmentName = destination.Environment
 	}
 	started := time.Now().UTC().Add(-5 * time.Second)
+	contractEvidence(t, map[string]any{"kind": "dispatch_intent", "nonce": nonce, "workflow_sha": c.cfg.workflowSHA})
 	body := map[string]any{"ref": c.cfg.ref, "inputs": map[string]string{
 		"nonce": nonce, "secret_name": secretName, "variable_name": variableName, "environment_name": environmentName,
 	}}
 	workflowID := url.PathEscape(path.Base(c.cfg.workflowPath))
+	owned := map[int64]bool{}
+	// A dispatch may succeed even if its response is lost. Own nonce discovery
+	// before POST so failure cleanup can find, cancel and scrub that run too.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+		if err := c.cleanupDispatch(ctx, workflowID, nonce, started, owned, func(id int64, kind string) {
+			contractEvidence(t, map[string]any{"kind": kind, "run_id": id, "nonce": nonce})
+		}); err != nil {
+			t.Errorf("teardown dispatched workflow %s: %v", nonce, err)
+		}
+	})
 	if status, err := c.api(t.Context(), http.MethodPost, c.repoPath("/actions/workflows/"+workflowID+"/dispatches"), body, nil); err != nil || status != http.StatusNoContent {
 		t.Fatalf("dispatch hash-only workflow status=%d: %v", status, err)
 	}
-	runID := c.waitForWorkflow(t, workflowID, nonce, started)
-	artifactID, archiveURL := c.waitForArtifact(t, runID, nonce)
-	got := c.downloadHashes(t, archiveURL)
+	runID := c.waitForWorkflow(t, workflowID, nonce, started, owned)
+	artifactID := c.waitForArtifact(t, runID, nonce)
+	// Delete an observed artifact by ID even if a later list response lags.
+	contractEvidence(t, map[string]any{"kind": "owned_artifact", "artifact_id": artifactID, "run_id": runID})
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		if err := c.cleanupArtifact(ctx, artifactID); err != nil {
+			t.Errorf("teardown observed artifact %d: %v", artifactID, err)
+			return
+		}
+		contractEvidence(t, map[string]any{"kind": "cleaned_artifact", "artifact_id": artifactID, "run_id": runID})
+	})
+	got := c.downloadHashes(t, "https://api.github.com"+c.repoPath("/actions/artifacts/"+strconv.FormatInt(artifactID, 10)+"/zip"))
 	wantSecret := fmt.Sprintf("%x", sha256.Sum256([]byte(secretValue)))
 	wantVariable := fmt.Sprintf("%x", sha256.Sum256([]byte(variableValue)))
 	if got.Secret != wantSecret || got.Variable != wantVariable {
 		t.Fatalf("workflow byte hash mismatch for %s (secret_match=%t variable_match=%t)", destination.Kind, got.Secret == wantSecret, got.Variable == wantVariable)
 	}
-	if _, err := c.api(t.Context(), http.MethodDelete, c.repoPath("/actions/artifacts/"+strconv.FormatInt(artifactID, 10)), nil, nil); err != nil {
-		t.Errorf("delete hash-only artifact: %v", err)
-	}
+	contractEvidence(t, map[string]any{"kind": "consumption", "destination": destination.Kind, "secret_name": secretName, "variable_name": variableName, "run_id": runID, "artifact_id": artifactID, "workflow_sha": c.cfg.workflowSHA, "secret_sha256": got.Secret, "variable_sha256": got.Variable, "secret_bytes": len(secretValue), "variable_bytes": len(variableValue)})
 }
 
-func (c *contractHTTP) waitForWorkflow(t *testing.T, workflowID, nonce string, started time.Time) int64 {
+func (c *contractHTTP) waitForWorkflow(t *testing.T, workflowID, nonce string, started time.Time, owned map[int64]bool) int64 {
 	t.Helper()
 	deadline := time.Now().Add(12 * time.Minute)
 	title := "hikyo-contract-" + nonce
 	for time.Now().Before(deadline) {
-		var response struct {
-			Runs []struct {
-				ID           int64     `json:"id"`
-				DisplayTitle string    `json:"display_title"`
-				Status       string    `json:"status"`
-				Conclusion   string    `json:"conclusion"`
-				CreatedAt    time.Time `json:"created_at"`
-			} `json:"workflow_runs"`
-		}
-		path := c.repoPath("/actions/workflows/"+workflowID+"/runs") + "?event=workflow_dispatch&per_page=50"
-		if _, err := c.api(t.Context(), http.MethodGet, path, nil, &response); err != nil {
+		runs, err := c.dispatchRuns(t.Context(), workflowID, nonce, started)
+		if err != nil {
 			t.Fatalf("poll workflow run: %v", err)
 		}
-		for _, run := range response.Runs {
+		if len(runs) > 1 {
+			t.Fatal("duplicate workflow dispatch nonce")
+		}
+		for _, run := range runs {
 			if run.DisplayTitle != title || run.CreatedAt.Before(started) {
 				continue
+			}
+			if run.ID <= 0 || run.Repository.ID != c.cfg.repositoryID {
+				t.Fatal("workflow run repository identity mismatch")
+			}
+			if !owned[run.ID] {
+				owned[run.ID] = true
+				contractEvidence(t, map[string]any{"kind": "owned_run", "run_id": run.ID, "nonce": nonce})
+			}
+			if run.HeadSHA != c.cfg.workflowSHA || run.Event != "workflow_dispatch" || run.RunAttempt != 1 {
+				t.Fatal("workflow run commit, event, or attempt differs from authorized dispatch")
 			}
 			if run.Status == "completed" {
 				if run.Conclusion != "success" {
@@ -653,17 +649,16 @@ func (c *contractHTTP) waitForWorkflow(t *testing.T, workflowID, nonce string, s
 	return 0
 }
 
-func (c *contractHTTP) waitForArtifact(t *testing.T, runID int64, nonce string) (int64, string) {
+func (c *contractHTTP) waitForArtifact(t *testing.T, runID int64, nonce string) int64 {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Minute)
 	name := "hikyo-contract-" + nonce
 	for time.Now().Before(deadline) {
 		var response struct {
 			Artifacts []struct {
-				ID                 int64  `json:"id"`
-				Name               string `json:"name"`
-				ArchiveDownloadURL string `json:"archive_download_url"`
-				Expired            bool   `json:"expired"`
+				ID      int64  `json:"id"`
+				Name    string `json:"name"`
+				Expired bool   `json:"expired"`
 			} `json:"artifacts"`
 		}
 		if _, err := c.api(t.Context(), http.MethodGet, c.repoPath("/actions/runs/"+strconv.FormatInt(runID, 10)+"/artifacts"), nil, &response); err != nil {
@@ -671,7 +666,7 @@ func (c *contractHTTP) waitForArtifact(t *testing.T, runID int64, nonce string) 
 		}
 		for _, artifact := range response.Artifacts {
 			if artifact.Name == name && !artifact.Expired {
-				return artifact.ID, artifact.ArchiveDownloadURL
+				return artifact.ID
 			}
 		}
 		select {
@@ -681,7 +676,7 @@ func (c *contractHTTP) waitForArtifact(t *testing.T, runID int64, nonce string) 
 		}
 	}
 	t.Fatal("timed out waiting for hash-only workflow artifact")
-	return 0, ""
+	return 0
 }
 
 type workflowHashes struct {
@@ -737,6 +732,10 @@ func (c *contractHTTP) deleteEnvironment(ctx context.Context, environment string
 	status, err := c.api(ctx, http.MethodDelete, c.repoPath("/environments/"+url.PathEscape(environment)), nil, nil)
 	if err != nil && status != http.StatusNotFound {
 		return err
+	}
+	status, err = c.api(ctx, http.MethodGet, c.repoPath("/environments/"+url.PathEscape(environment)), nil, nil)
+	if status != http.StatusNotFound {
+		return fmt.Errorf("deleted environment still resolves: status %d error %v", status, err)
 	}
 	return nil
 }

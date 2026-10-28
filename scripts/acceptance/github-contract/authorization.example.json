@@ -1,0 +1,18 @@
+{
+  "approved_by": "",
+  "approval_ref": "",
+  "expires_at": "",
+  "candidate_sha": "",
+  "owner": "Hikyo-Org",
+  "organization_id": 316726515,
+  "repository": "hikyo-adapter-acceptance",
+  "repository_id": 1358512924,
+  "environment": "contract",
+  "environment_id": 21319818820,
+  "ref": "main",
+  "workflow_sha": "",
+  "synthetic_only": true,
+  "no_new_spend": true,
+  "maximum_workflow_dispatches": 18,
+  "credential_grants_attested": false
+}
