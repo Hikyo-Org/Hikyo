@@ -13,6 +13,7 @@ import {
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
+import { registerAwsAdapterFlows } from './aws-adapters.flows.ts';
 
 const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
 
@@ -1779,3 +1780,6 @@ test.describe('browser-only lifecycle', () => {
     }
   });
 });
+
+// AWS product forms use this already-scheduled spec; provider proof is separate.
+registerAwsAdapterFlows();

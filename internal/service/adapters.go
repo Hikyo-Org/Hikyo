@@ -1853,7 +1853,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 		for _, change := range plan.Changes {
 			changes = append(changes, string(change.Surface)+":"+change.EffectiveName+":"+string(change.Disposition))
 			if change.Disposition == adapter.Conflict {
-				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName, ObservedProviderVersion: change.ObservedProviderVersion})
+				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName, ObservedProviderVersion: change.ObservedProviderVersion, ObservedProviderWitness: change.ObservedProviderWitness})
 			}
 		}
 		if len(conflicts) != 0 {

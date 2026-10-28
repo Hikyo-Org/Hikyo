@@ -669,6 +669,7 @@ func TestAdoptedSecretIsTaggedBeforeWrite(t *testing.T) {
 	journal.states["prod/app"] = adapter.Owned // explicit adoption
 	ledger := journal.ledger()
 	ledger[0].AdoptionPending = true
+	ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 	if _, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, JobID: "job_1"}, journal); err != nil {
 		t.Fatal(err)
 	}
@@ -785,11 +786,21 @@ func TestPlanIsValueBlindAndMarksConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []adapter.Change{
-		{Surface: adapter.Secret, EffectiveName: "prod/APP_DATABASE_URL", Disposition: adapter.Conflict},
+		{
+			Surface: adapter.Secret, EffectiveName: "prod/APP_DATABASE_URL", Disposition: adapter.Conflict,
+			ObservedProviderWitness: `["arn:aws:secretsmanager:eu-west-1:123456789012:secret:prod/APP_DATABASE_URL-AbCdEf",""]`,
+		},
 		{Surface: adapter.Secret, EffectiveName: "prod/APP_LOG_LEVEL", Disposition: adapter.Create},
 	}
 	if !slices.Equal(plan.Changes, want) {
 		t.Fatalf("plan = %+v", plan.Changes)
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "arn:aws:") || strings.Contains(string(encoded), "ObservedProviderWitness") {
+		t.Fatalf("plan exposed internal adoption witness: %s", encoded)
 	}
 	if len(api.writes()) != 0 {
 		t.Fatalf("plan wrote: %v", api.writes())
@@ -849,6 +860,8 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 			module := &Module{API: wrapped}
 			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_adopt"}
 			req.Ledger[0].AdoptionPending = true
+			req.Ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
+			approvedWitness := req.Ledger[0].AdoptionWitness
 			if _, err := module.Sync(t.Context(), req, journal); err == nil {
 				t.Fatal("tag failure succeeded")
 			}
@@ -857,6 +870,7 @@ func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
 			}
 			req.Ledger = journal.ledger()
 			req.Ledger[0].AdoptionPending = true
+			req.Ledger[0].AdoptionWitness = approvedWitness
 			if _, err := module.Sync(t.Context(), req, journal); err != nil {
 				t.Fatalf("landed=%v: retry: %v", landed, err)
 			}

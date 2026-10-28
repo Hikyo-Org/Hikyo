@@ -340,6 +340,22 @@ func TestDescriptorContract(t *testing.T) {
 }
 
 func TestWorkloadIdentityRequiresInstanceOptIn(t *testing.T) {
+	// The enabled AssumeRole constructor below loads SDK configuration. Keep
+	// this local contract test independent of real profiles, projected tokens,
+	// credential processes, container sources and instance metadata.
+	emptyConfig := filepath.Join(t.TempDir(), "empty-aws-config")
+	if err := os.WriteFile(emptyConfig, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AWS_CONFIG_FILE", emptyConfig)
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", emptyConfig)
+	for _, name := range []string{"AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SESSION_TOKEN", "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAHIKYOTEST0000001")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret-access-key")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	t.Setenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")
 	for _, raw := range []string{`{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":"arn:aws:iam::123456789012:role/r"}`, `{"mode":"web-identity","role_arn":"arn:aws:iam::123456789012:role/r"}`} {
 		_, err := NewClient(ClientConfig{Origin: "https://secretsmanager.eu-west-1.amazonaws.com", Credential: raw, Deadline: time.Second})
 		if !errors.Is(err, ErrWorkloadIdentityDisabled) {
