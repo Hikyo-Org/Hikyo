@@ -1,5 +1,17 @@
 {{- $ingress := .Values.networkPolicy.ingress -}}
 {{- $egress := .Values.networkPolicy.egress -}}
+{{- /* Kubernetes also requires endPort >= port; JSON Schema cannot compare fields. */ -}}
+{{- $rules := $egress.extraRules -}}
+{{- range $name := list "dns" "datastore" "identityProviders" "adapters" "collector" -}}
+{{- $rules = append $rules (index $egress $name) -}}
+{{- end -}}
+{{- range $rule := $rules -}}
+{{- range $port := $rule.ports -}}
+{{- if and (hasKey $port "endPort") (lt (int $port.endPort) (int $port.port)) -}}
+{{- fail "networkPolicy egress endPort must be greater than or equal to port" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- $peers := list -}}
 {{- if $ingress.restricted -}}
 {{- $peers = $ingress.from -}}

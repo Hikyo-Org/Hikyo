@@ -60,8 +60,18 @@ render_mode network-restricted-no-operator \
 	--set operator.enabled=false \
 	--set networkPolicy.ingress.restricted=true \
 	--set-json 'networkPolicy.ingress.from=[{"ipBlock":{"cidr":"10.42.0.0/16"}}]'
+render_mode network-example --values "$chart/examples/restricted-network.yaml"
+render_mode network-operator-only --set networkPolicy.ingress.restricted=true
+render_mode network-egress-only \
+	--set networkPolicy.egress.restricted=true \
+	--set-json 'networkPolicy.egress.datastore.to=[{"podSelector":{"matchExpressions":[{"key":"app","operator":"In","values":["postgres"]}]}}]' \
+	--set-json 'networkPolicy.egress.extraRules=[{"to":[{"ipBlock":{"cidr":"2001:db8::/32"}}],"ports":[{"protocol":"TCP","port":8000,"endPort":8010},{"protocol":"TCP","port":"smtp"}]}]'
+if render_mode network-no-peers --set operator.enabled=false \
+	--set networkPolicy.ingress.restricted=true >/dev/null 2>&1; then
+	fail 'restricted ingress accepted no peers with the operator disabled'
+fi
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" "$tmp/network-operator-only.yaml" "$tmp/network-egress-only.yaml" <<'PY' || exit 1
 import sys, yaml
 
 def policy(path):
@@ -108,6 +118,18 @@ no_operator = policy(sys.argv[3])
 assert no_operator["policyTypes"] == ["Ingress"]
 assert no_operator["ingress"] == [{"ports": APP_PORT, "from": [{"ipBlock": {"cidr": "10.42.0.0/16"}}]}], \
     "a disabled operator must not add an operator peer"
+
+operator_only = policy(sys.argv[4])
+assert operator_only["ingress"] == [{"ports": APP_PORT, "from": [OPERATOR]}]
+assert operator_only["policyTypes"] == ["Ingress"]
+
+egress_only = policy(sys.argv[5])
+assert egress_only["ingress"] == [{"ports": APP_PORT}]
+assert egress_only["policyTypes"] == ["Ingress", "Egress"]
+assert egress_only["egress"][-1] == {
+    "to": [{"ipBlock": {"cidr": "2001:db8::/32"}}],
+    "ports": [{"protocol": "TCP", "port": 8000, "endPort": 8010}, {"protocol": "TCP", "port": "smtp"}],
+}
 PY
 
 for invalid_policy in \
@@ -117,6 +139,17 @@ for invalid_policy in \
 	'networkPolicy.ingress.from=[{}]' \
 	'networkPolicy.egress.datastore.ports=[{"protocol":"ICMP","port":5432}]' \
 	'networkPolicy.egress.extraRules=[{}]' \
+	'networkPolicy.egress.extraRules=[{"to":[]}]' \
+	'networkPolicy.egress.extraRules=[{"ports":[]}]' \
+	'networkPolicy.egress.extraRules=[{"to":[],"ports":[{"protocol":"TCP","port":443}]}]' \
+	'networkPolicy.egress.extraRules=[{"to":[{"podSelector":{}}],"ports":[]}]' \
+	'networkPolicy.egress.collector={"to":[{"podSelector":{}}],"ports":[]}' \
+	'networkPolicy.egress.datastore.ports=[{"protocol":"TCP"}]' \
+	'networkPolicy.egress.datastore.ports=[{"protocol":"TCP","port":"5432"}]' \
+	'networkPolicy.egress.datastore.ports=[{"protocol":"TCP","port":"postgres","endPort":5500}]' \
+	'networkPolicy.egress.datastore.ports=[{"protocol":"TCP","port":5432,"endPort":5400}]' \
+	'networkPolicy.ingress.from=[{"podSelector":{"matchExpressions":[{"key":"app","operator":"In"}]}}]' \
+	'networkPolicy.ingress.from=[{"podSelector":{"matchExpressions":[{"key":"app","operator":"Exists","values":["x"]}]}}]' \
 	'networkPolicy.egress.allowAll=true'; do
 	if render_mode invalid-network-policy --set-json "$invalid_policy" >/dev/null 2>&1; then
 		fail "chart accepted invalid network policy: $invalid_policy"

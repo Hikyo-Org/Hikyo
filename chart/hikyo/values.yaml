@@ -139,6 +139,9 @@ network:
 
 # NetworkPolicy for the server pods. Peers and rules use the Kubernetes
 # NetworkPolicy shapes (podSelector, namespaceSelector, ipBlock, ports).
+# Selectors in one peer are ANDed; separate peers are ORed. A podSelector
+# alone selects only this release namespace. Labels are not authentication:
+# restrict who can create/relabel pods and namespaces with Kubernetes RBAC.
 # Port 8081 never gets an ingress rule. NetworkPolicy cannot match DNS names,
 # so set provider destinations as CIDRs or use a CNI-specific FQDN policy.
 networkPolicy:
@@ -154,7 +157,8 @@ networkPolicy:
   egress:
     # false keeps the legacy behavior: the chart limits no outbound traffic.
     # Set true to allow only the destinations below. Each destination with an
-    # empty `to` list adds no rule.
+    # empty `to` list adds no rule. Configured destinations and extraRules
+    # require explicit, nonempty peers and ports, never implicit allow-all.
     restricted: false
     dns:
       to:

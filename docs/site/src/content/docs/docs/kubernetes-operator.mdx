@@ -167,8 +167,23 @@ the operator pods of this release. An operator in a different release or
 cluster needs its own peer, or it must use the external URL. Helm refuses a
 restricted policy that has no peer.
 
+Within one peer, the namespace and pod selectors must both match. Separate
+peers are alternatives. A `podSelector` without a `namespaceSelector` selects
+pods only in the release namespace. An empty selector deliberately selects
+every pod or namespace in its scope; it is not a deny rule. Labels identify
+trusted peers only if Kubernetes RBAC prevents untrusted users from creating
+or relabeling those pods and namespaces. `allowOperator` trusts matching pod
+labels in the release namespace, not a ServiceAccount identity.
+
+The [restricted values example](https://github.com/Hikyo-Org/Hikyo/blob/main/chart/hikyo/examples/restricted-network.yaml)
+is an inventory starting point. Its illustrative labels are not an
+installation-specific approval.
+
 Set `networkPolicy.egress.restricted` to allow outbound traffic only to the
 destinations that you list. A destination with an empty `to` list adds no rule.
+Every configured destination requires nonempty ports. Every `extraRules`
+entry requires nonempty peers and ports. The chart rejects omitted or empty
+lists that would otherwise mean all destinations or all ports in Kubernetes.
 
 | Value | Default ports | Destinations |
 | --- | --- | --- |
@@ -200,11 +215,12 @@ enforces NetworkPolicy, including egress rules, applies it. A CNI that does not
 enforce NetworkPolicy, for example Flannel alone, ignores it. Choose one of
 these models for provider destinations:
 
-- **Public addresses only.** Allow TCP 443 to `0.0.0.0/0` with the private,
-  link-local, and cluster ranges in `except`. This blocks lateral traffic to
-  cluster services. The server already refuses private provider addresses that
-  its egress policy files do not list. This model does not limit public
-  destinations.
+- **Public addresses only, when explicitly approved by the operator.** An
+  `ipBlock` can allow public TCP 443 while excluding the installation's
+  private, link-local, node, pod and Service ranges. This is broad public
+  egress, not a provider allowlist. Inventory both IP families, test the CNI's
+  address-translation behavior, and preserve the server's separate outbound
+  address policy. There is no universal safe CIDR list in this chart.
 - **Published provider ranges.** Put the CIDRs that each provider publishes in
   `ipBlock` peers. Update them when the provider changes its ranges.
 - **CNI FQDN policy.** Leave `identityProviders.to` and `adapters.to` empty, and
@@ -212,25 +228,48 @@ these models for provider destinations:
   `toFQDNs`. Allowed traffic is the union of all policies that select the pod,
   so a broad chart rule makes the FQDN policy useless.
 
+NetworkPolicy is a pod-network boundary, not a sandbox for hostile cluster
+administrators. Node-originated traffic, host-network pods, Service address
+translation and existing connections have CNI-specific behavior. Inspect all
+policies selecting the server, including CNI-specific and administrative
+policies. Verify new connections over each configured IP family. This chart
+does not isolate the separate operator pod's outbound Kubernetes API traffic.
+
 ### Migrate to restricted policies
 
-1. Upgrade the chart with the default values. The rendered policy does not
-   change.
-2. List every client of port 8080, then set `networkPolicy.ingress.restricted`
-   with one peer for each client.
-3. Set `networkPolicy.egress.restricted` with `datastore`, `dns`, and one
-   destination for each integration that you use.
-4. Run the
+1. Keep the installation's existing values, exact image and upgrade custody.
+   Both restriction flags default to false; omitting them preserves the
+   ingress-only TCP 8080 rule and unrestricted egress.
+2. Inventory every direct client of port 8080, outbound destination and pending
+   provider cleanup. Review actual namespace/pod selectors, DNS, datastore,
+   IdP discovery/token/JWKS endpoints, adapter endpoints, remote instances,
+   collectors and any mail, update, artifact-download or Kubernetes access.
+3. Before restricting anything, verify an independent Kubernetes API/RBAC
+   recovery path, including permission for port-forward and policy-only Helm
+   upgrades. Retain the last working policy values outside Hikyo. Do not make
+   recovery depend on logging into Hikyo through the policy being changed.
+4. Render the same chart with reviewed values and inspect its single server
+   policy and all other policies selecting the pods. Test default-to-restricted
+   upgrades, a real reboot and policy-only recovery on a disposable cluster.
+5. Run the
    [network policy probes](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/network-policy-probes.md)
-   on a disposable cluster that enforces NetworkPolicy, then on production.
-5. To roll back, set `restricted: false` and run `helm upgrade` again.
+   on an enforcing CNI with positive controls before negative probes. Actual
+   deployment changes and acceptance need separate operator authorization.
+6. Apply ingress and egress restrictions independently if that reduces rollout
+   risk. After each step test all active integrations and cleanup. To recover
+   connectivity, restore the reviewed prior policy values, or explicitly set
+   both `restricted` flags false using the same chart and exact image. This
+   deliberately restores broad access. Do not use a binary/schema rollback
+   as a substitute for a policy-only recovery.
 
 Keep each adapter and dynamic secret destination allowed until you remove its
 integrations and the provider cleanup finishes. Otherwise revocation and
 deletion requests fail. `kubectl port-forward` connects inside the pod network
 namespace, so it stays available as break-glass access. A collector in the same
 pod reads `127.0.0.1:8081` over loopback, and NetworkPolicy does not apply to
-that path.
+that path. Test port-forward on the chosen CNI and cluster access path before
+relying on it; NetworkPolicy does not grant Kubernetes API access. Full
+binary/database upgrades still follow the signed upgrade and restore gates.
 
 The operator runs as UID/GID 65532 with `runAsNonRoot`, a read-only root
 filesystem, all capabilities dropped, `RuntimeDefault` seccomp, and privilege

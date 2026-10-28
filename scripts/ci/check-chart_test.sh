@@ -141,4 +141,8 @@ refute 'egress restricted by default' \
 	values.yaml \
 	'/^  egress:/,/^    restricted: false/s/restricted: false/restricted: true/'
 
+refute 'empty egress peers and ports accepted' \
+	values.schema.json \
+	's/"minItems": 1, //g'
+
 printf 'Chart fixture: valid chart accepted; RBAC/env/args/hardening/network policy mutations refused\n'

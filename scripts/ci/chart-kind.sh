@@ -60,6 +60,9 @@ kind_config="$work/kind.yaml"
 port_forward_pid=
 created=false
 registry_created=false
+fixture_image="hikyo-network-policy-$CLUSTER:local"
+fixture_image_created=false
+candidate_image_created=false
 diagnostics() {
 	echo "chart-kind: collecting failed deployment diagnostics" >&2
 	kubectl --namespace "$NAMESPACE" get deployments,pods --output=wide >&2 || true
@@ -92,6 +95,12 @@ cleanup() {
 	if [[ "$registry_created" == true ]]; then
 		docker rm --force "$REGISTRY_NAME" >/dev/null 2>&1 || true
 	fi
+    if [[ "$fixture_image_created" == true ]]; then
+        docker image rm "$fixture_image" >/dev/null
+    fi
+    if [[ "$candidate_image_created" == true ]]; then
+        docker image rm "$IMAGE_TAG" >/dev/null
+    fi
 	rm -rf "$work"
 	return "$status"
 }
@@ -100,6 +109,9 @@ trap cleanup EXIT HUP INT TERM
 cat >"$kind_config" <<'EOF'
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+  podSubnet: 192.168.0.0/16
 containerdConfigPatches:
   - |-
     [plugins."io.containerd.grpc.v1.cri".registry]
@@ -113,10 +125,25 @@ docker run --detach --restart=always \
 	--name "$REGISTRY_NAME" "$REGISTRY_IMAGE" >/dev/null
 registry_created=true
 echo "chart-kind: creating cluster $CLUSTER"
-kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" \
-	--config "$kind_config" --kubeconfig "$kubeconfig" --wait 120s
+# Own partial creates too, so failed cluster setup is cleaned up.
 created=true
+kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" \
+	--config "$kind_config" --kubeconfig "$kubeconfig"
 export KUBECONFIG="$kubeconfig"
+# kindnet does not enforce NetworkPolicy. This is the pinned upstream Calico
+# manifest, installed only into the newly owned disposable cluster.
+curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+    https://raw.githubusercontent.com/projectcalico/calico/v3.33.0/manifests/calico.yaml \
+    --output "$work/calico.yaml"
+calico_hash=$(openssl dgst -sha256 "$work/calico.yaml" | awk '{print $NF}')
+[[ "$calico_hash" == 2de8f47595fb9c41b3f47d7b767a1f8e72ecf84057af834738ff12689a234da5 ]] || {
+    echo 'chart-kind: Calico manifest checksum mismatch' >&2
+    exit 1
+}
+kubectl create --filename "$work/calico.yaml" >/dev/null
+kubectl --namespace kube-system rollout status daemonset/calico-node --timeout=180s
+kubectl --namespace kube-system rollout status deployment/calico-kube-controllers --timeout=180s
+kubectl wait --for=condition=Ready nodes --all --timeout=120s
 docker network connect kind "$REGISTRY_NAME"
 registry_dir="/etc/containerd/certs.d/localhost:$REGISTRY_PORT"
 while IFS= read -r node; do
@@ -153,12 +180,17 @@ mkdir -p "$work/build/image-root/$target_arch"
 cp "$BINARY" "$work/build/image-root/$target_arch/hikyo"
 cp Dockerfile.release "$work/build/Dockerfile.release"
 chmod 0755 "$work/build/image-root/$target_arch/hikyo"
+if docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+    echo "chart-kind: refusing to replace existing image $IMAGE_TAG" >&2
+    exit 1
+fi
 echo "chart-kind: building candidate image"
 docker buildx build --load --platform "linux/$target_arch" \
 	--build-arg TARGETARCH="$target_arch" \
 	--metadata-file "$work/image-metadata.json" \
 	--tag "$IMAGE_TAG" \
 	--file "$work/build/Dockerfile.release" "$work/build" >/dev/null
+candidate_image_created=true
 image_digest=$(jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' \
 	"$work/image-metadata.json")
 docker push "$IMAGE_TAG" >/dev/null
@@ -550,3 +582,25 @@ if [[ "$restarts_after" != "$restarts_before" ]]; then
 fi
 
 echo "chart-kind: exact chart/image booted; database outage toggled readiness without liveness restart"
+
+mkdir "$work/network-fixture"
+CGO_ENABLED=0 GOOS=linux GOARCH="$target_arch" go build -p 2 -trimpath \
+    -o "$work/network-fixture/fixture" ./scripts/ci/networkpolicyfixture
+CGO_ENABLED=0 GOOS=linux GOARCH="$target_arch" go test -p 2 -c \
+    -o "$work/network-fixture/functional.test" ./internal/isolation
+cat >"$work/network-fixture/Dockerfile" <<'EOF'
+FROM scratch
+COPY fixture /fixture
+COPY functional.test /functional.test
+USER 65532:65532
+ENTRYPOINT ["/fixture"]
+EOF
+if docker image inspect "$fixture_image" >/dev/null 2>&1; then
+    echo "chart-kind: refusing to replace existing fixture image $fixture_image" >&2
+    exit 1
+fi
+docker build --tag "$fixture_image" "$work/network-fixture" >/dev/null
+fixture_image_created=true
+kind load docker-image --name "$CLUSTER" "$fixture_image"
+HIKYO_NETWORK_POLICY_FIXTURE_IMAGE="$fixture_image" \
+    scripts/ci/chart-network-policy.sh "$NAMESPACE" "$RELEASE" "$work/network-policy"
