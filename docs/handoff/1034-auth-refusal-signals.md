@@ -181,6 +181,30 @@ bearer and request-path/query canaries. It asserts that unauthenticated failures
 do not become `grant.denied`. It does not pin silence as a permanent invariant.
 
 This is compatibility coverage, **not implemented refusal signal acceptance**.
+
+Validation on source commit `92cfbe8c1b0d58a36913cc92e493e5c2cf146144`:
+
+- Complete-diff `fast-feedback.sh --working-tree --plan` selected Go only;
+  the shared driver passed whitespace, changed-Go formatting and compilation
+  in 179 seconds. No frontend prerequisite or unrelated language check was
+  selected locally.
+- `TestAuthenticationRefusalWireCompatibility`, `TestAuditCore`,
+  `TestMachineAuthIsUniform`,
+  `TestDeveloperUnknownCredentialFloodBoundsDurableRefusals`, and
+  `TestMCPToolsEndToEndCanaryAndDenial` passed on both SQLite and PostgreSQL.
+  The MCP test exercised both modern and Codex profiles.
+- Full `internal/server`, `internal/audit` and `internal/admission` package tests
+  passed. The aggregate validation command returned zero and ran through the
+  shared heavy queue. The isolated PostgreSQL fixture was disposable.
+- Every generic session/machine refusal observed by the new test returned 401
+  with zero new instance events, reproducing the producer gap. Existing
+  artifact-class refusal and authenticated denial each remained exactly one
+  event; captured credential and request-data canaries were absent.
+- GitHub reported the source commit Verified and all three hosted feedback
+  lanes passed. This is not full candidate CI, independent review, release or
+  deployed evidence. Subsequent documentation-only updates do not change the
+  tested Go blob `6c4b16ffac204522aaa06e1dc59e461a4babd24d`.
+
 The following remain **NOTRUN** until the amendment is operative and a producer
 exists:
 
