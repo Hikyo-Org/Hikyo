@@ -31,6 +31,17 @@ The supported integration seams are:
   `auditExportStream`, with the instance route's negotiated `receipt` flag.
   Existing error-only instance service entry points remain available.
 
+The generated SDK is a low-level transport, not completion proof. Request
+`query: { receipt: 'v1' }` and `parseAs: 'stream'`, then pass its untouched
+`result.response` into `consumeAuditExport`. Do not use its raw parsed string as
+an archive or collection-success signal. The SDK-to-consumer regression exercises
+this exact path with both complete and deliberately partial HTTP 200 bodies.
+
+#1035 owns admitting project automation on project/environment audit routes,
+using the existing machine `audit-read` allowlist and project confinement.
+Organization and instance routes remain human-only. Completion consumers grant
+no authority and apply identical validation to every admitted actor class.
+
 ## Wire contract and compatibility
 
 Request `receipt=v1`. A supporting server returns:
