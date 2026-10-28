@@ -4,8 +4,8 @@ Assessed canonical `Hikyo-Org/Hikyo` main on 2026-10-28:
 `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
 
 This is the entry point for the Transit, Vault KV and social governance lane.
-It records existing decisions, corrects stale delivery text and prepares the
-remaining owner decisions. It does not approve an amendment, select a release
+It reconciles existing decisions and delivery, and records the owner-selected
+T1 + V1 disposition. It does not approve an amendment, select a release
 candidate, change release membership, reopen delivered implementation, or
 authorize removing shipped code or tests. The release-scope coordinator owns
 `docs/release/release-plan-1.0.md`, `docs/release/acceptance-1.0.md`, the roadmap
@@ -108,14 +108,30 @@ social membership decision is required to preserve this operative scope.
 The old exceptions do not automatically qualify this reconciliation's new
 bytes; its ordinary review and protected merge requirements remain.
 
-## Owner decision packet
+## Owner disposition and decision packet
 
-No option below is selected by this document or by merging the factual
-corrections. Record Transit and Vault KV separately, with an owner-authored
-decision link. A generic approval of the stabilization effort is not a review
-waiver. Recommended interim disposition: **T1 + V1**, preserving the existing
-gates until the owner selects a qualifying path. This keeps both closeouts on
-HOLD; it does not make a candidate ready to freeze.
+On 2026-10-28, Marc explicitly selected **T1 + V1** in the
+[PR #1071](https://github.com/Hikyo-Org/Hikyo/pull/1071) task conversation:
+
+> Retain both gates: T1 + V1 (recommended)
+
+The instruction came from the task conversation; no public owner-authored
+comment URL is available. This committed record quotes the instruction for
+the coordinator. Its scope is retention of the two existing gates:
+
+- **T1 selected:** Transit stays delivered and promoted In; amendment
+  closeout remains **HOLD** until qualifying review and the amendment
+  procedure are complete.
+- **V1 selected:** Vault KV stays delivered with proposed governance and
+  conditional 1.0 membership, both on **HOLD** pending the required procedure.
+
+This selection grants no review waiver or alternate route, approves no Vault
+promotion or deferral, and changes no social A7 decision. Cross-provider review
+remains SKIPPED, not CLEAN. The coordinator may record these explicit holds;
+the candidate is not ready to freeze on their strength. Any later change must
+have its own scoped owner instruction and qualifying evidence. The table
+retains the original choices for that future decision; only T1 and V1 are
+selected here.
 
 | Choice | Concrete owner action | Consequence |
 | --- | --- | --- |
@@ -150,7 +166,8 @@ HOLD; it does not make a candidate ready to freeze.
    the exact evidence. Transit pointers belong to #26, encryption #14,
    permission #15 and tenant isolation #23; Vault's gate expressly names #26
    and its deployment seam is owned by #28. Preserve unrelated obligations
-   on shared tickets. This task posts no issue comments or owner decisions.
+   on shared tickets. This task records the owner's instruction above; it
+   posts no issue comments or new owner rulings.
 5. The release-scope coordinator consumes the resulting decision links and
    updates its canonical records. Qualification then selects and tests its
    own final integrated candidate. Source checks, governance approval,
@@ -169,7 +186,8 @@ because no executable or persistence surface changed. Historical hosted runs
 above cannot qualify a later integrated candidate.
 
 Cross-provider amendment review remains **SKIPPED**, never CLEAN. Transit and
-Vault closeout remain **HOLD** pending the independent decisions above.
+Vault closeout remain **HOLD** under the selected T1 + V1 disposition, pending
+qualifying evidence or a later explicit scoped owner instruction.
 Ordinary PR review, hosted feedback and maintainer merge remain separate;
 this assignment authorizes a reviewable PR, not merge or release. An offline
 HTML companion is a local-only chat deliverable, outside committed paths.

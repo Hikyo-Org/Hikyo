@@ -20,8 +20,8 @@
 > by merged [PR #965](https://github.com/Hikyo-Org/Hikyo/pull/965). The owner's
 > promotion and delivered implementation remain recorded. The owed amendment
 > review remains **HOLD** before freeze: no qualifying review or Transit-scoped
-> owner disposition was found in the inspected records. Unavailable
-> cross-provider review is **SKIPPED**, not CLEAN. Implementation delivery does
+> owner disposition discharging the gate was found in the inspected records.
+> Unavailable cross-provider review is **SKIPPED**, not CLEAN. Implementation delivery does
 > not discharge it, and exceptions for other amendments do not transfer. The
 > [governance packet](../handoff/156-162-589-capability-governance.md) binds the
 > evidence and the exact remaining decision.
