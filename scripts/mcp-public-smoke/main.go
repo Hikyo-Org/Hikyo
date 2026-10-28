@@ -43,6 +43,21 @@ type options struct {
 	projectID         string
 	revocationTimeout time.Duration
 	status            io.Writer
+	evidence          io.Writer
+}
+
+// This receipt describes this endpoint smoke only. Source/image/deployment
+// custody and committed revocation require independently bound evidence.
+type smokeEvidence struct {
+	Scope                        string    `json:"scope"`
+	Protocol                     string    `json:"protocol"`
+	StartedAt                    time.Time `json:"started_at_utc"`
+	RotatingProvedLiveAt         time.Time `json:"rotating_proved_live_at_utc"`
+	RevokedDenialObservedAt      time.Time `json:"revoked_denial_observed_at_utc"`
+	ReplacementVerifiedAt        time.Time `json:"replacement_verified_at_utc"`
+	RevocationObservation        string    `json:"revocation_observation"`
+	RevocationPollIntervalMillis int64     `json:"revocation_poll_interval_ms"`
+	Passed                       bool      `json:"passed"`
 }
 
 type rpcResponse struct {
@@ -68,14 +83,19 @@ type publicDefinition struct {
 
 func main() {
 	var opts options
+	var jsonOutput bool
 	flag.StringVar(&opts.endpoint, "url", "", "canonical public HTTPS MCP URL")
 	flag.StringVar(&opts.tokenEnv, "token-env", "HIKYO_MCP_TOKEN", "environment variable holding the live credential")
 	flag.StringVar(&opts.rotatingTokenEnv, "rotating-token-env", "HIKYO_MCP_ROTATING_TOKEN", "environment variable holding the still-live credential that will be revoked during this run")
 	flag.StringVar(&opts.orgID, "org", "", "organization immutable ID")
 	flag.StringVar(&opts.projectID, "project", "", "project immutable ID")
 	flag.DurationVar(&opts.revocationTimeout, "revocation-timeout", defaultRevocationTimeout, "maximum time to observe revocation")
+	flag.BoolVar(&jsonOutput, "json", false, "emit a redacted endpoint-smoke receipt instead of the success message")
 	flag.Parse()
 	opts.status = os.Stderr
+	if jsonOutput {
+		opts.evidence = os.Stdout
+	}
 
 	client := &http.Client{
 		Timeout: mcpserver.ToolExecutionTimeout + 5*time.Second,
@@ -87,7 +107,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "MCP public smoke failed:", err)
 		os.Exit(1)
 	}
-	fmt.Println("MCP public smoke passed: discovery, catalog, authorized read, invalid token, and revoked token")
+	if !jsonOutput {
+		fmt.Println("MCP public smoke passed: discovery, catalog, authorized read, invalid token, revoked token, and replacement read after revocation")
+	}
 }
 
 func run(opts options, client *http.Client) error {
@@ -103,6 +125,10 @@ func run(opts options, client *http.Client) error {
 		return errors.New("live and rotating credentials must differ")
 	}
 	client = noRedirectClient(client)
+	evidence := smokeEvidence{
+		Scope: "endpoint_smoke_only", Protocol: mcpserver.ProtocolVersion, StartedAt: time.Now().UTC(),
+		RevocationObservation: "polling_only_no_commit_receipt", RevocationPollIntervalMillis: revocationPollInterval.Milliseconds(),
+	}
 
 	discovery, sessionID, err := invoke(client, opts.endpoint, "server/discover", "", nil, "")
 	if err != nil || discovery.Error != nil {
@@ -141,6 +167,7 @@ func run(opts options, client *http.Client) error {
 	if err := requireStateless("pre-revocation safe read", sessionID); err != nil {
 		return err
 	}
+	evidence.RotatingProvedLiveAt = time.Now().UTC()
 	if opts.status != nil {
 		fmt.Fprintln(opts.status, "MCP rotating credential proved live; revoke it now")
 	}
@@ -186,7 +213,27 @@ func run(opts options, client *http.Client) error {
 			if err := requireUnauthenticated("revoked credential", rotated); err != nil {
 				return err
 			}
-			return requireSameDenial("revoked credential", rotated, invalid)
+			if err := requireSameDenial("revoked credential", rotated, invalid); err != nil {
+				return err
+			}
+			evidence.RevokedDenialObservedAt = time.Now().UTC()
+			// The initial live call cannot prove replacement availability after
+			// revocation. Recheck authority using a fresh request at this boundary.
+			replacement, sessionID, err := invoke(client, opts.endpoint, "tools/call", mcpserver.ToolListDefinitions, args, live)
+			if err != nil || replacement.Error != nil || !successfulToolResult(replacement.Result, opts.orgID, opts.projectID) {
+				return fmt.Errorf("replacement credential after revocation: %w", responseError(err, replacement.Error))
+			}
+			if err := requireStateless("replacement credential after revocation", sessionID); err != nil {
+				return err
+			}
+			evidence.ReplacementVerifiedAt = time.Now().UTC()
+			evidence.Passed = true
+			if opts.evidence != nil {
+				if err := json.NewEncoder(opts.evidence).Encode(evidence); err != nil {
+					return errors.New("could not write redacted smoke receipt")
+				}
+			}
+			return nil
 		}
 		decoded, err := rotated.rpc()
 		if err != nil || decoded.Error != nil || !successfulToolResult(decoded.Result, opts.orgID, opts.projectID) {
