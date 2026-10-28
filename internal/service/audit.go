@@ -700,9 +700,10 @@ func (s *Audits) export(
 		})
 		if err != nil {
 			if isDenial(err) {
-				// Authorization lost at a page boundary: the stream stops,
-				// the flushed denial event records the probe, and the
-				// started event stands unpaired (see ErrExportUnpaired).
+				// Authentication or authorization lost at a page boundary:
+				// stop without minting another proof. A grant refusal records
+				// its denial; the started event remains unpaired in either
+				// case (see ErrExportUnpaired).
 				receipt.RowsStreamed, receipt.Outcome = streamed, ExportRevoked
 				return receipt, fmt.Errorf("%w: %w", ErrExportUnpaired, err)
 			}
@@ -758,5 +759,5 @@ func (s *Audits) export(
 }
 
 func isDenial(err error) bool {
-	return err != nil && (errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized))
+	return err != nil && (errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrUnauthorized) || errors.Is(err, domain.ErrUnauthenticated))
 }

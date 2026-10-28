@@ -212,6 +212,31 @@ func TestAuditExportReceiptWire(t *testing.T) {
 	forEngines(t, runAuditExportReceiptWire)
 }
 
+func TestAuditExportSessionRevocationWire(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		e := newAccessWireEnv(t, db)
+		execRaw(t, db, fmt.Sprintf(
+			"INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_session_receipt_ar', '%s', 'audit-read', '%s', NULL, NULL, %s)",
+			e.admin, e.org, ts))
+		seedOrigins(t, db)
+		srv := newAuditExportServer(t, e, func(w http.ResponseWriter) http.ResponseWriter {
+			return &firstWriteHook{ResponseWriter: w, after: func() {
+				if err := e.auth.Logout(t.Context(), e.token); err != nil {
+					t.Errorf("logout during export: %v", err)
+				}
+			}}
+		})
+		got := getAuditExport(t, srv, e.token, api.PathPrefix+"/orgs/"+e.org+"/audit/export?receipt=v1")
+		r := wantReceipt(t, got, apigen.AuditExportReceiptOutcomeRevoked, "", false)
+		if r.RowsStreamed == 0 || r.RowsStreamed > 500 {
+			t.Fatalf("session revocation delivered %d rows; must stop after its committed first page", r.RowsStreamed)
+		}
+		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='audit.export_completed' AND correlation_id='"+r.StartedEventId+"'"); n != 0 {
+			t.Fatal("revoked session recorded an unauthorized terminal outcome")
+		}
+	})
+}
+
 func runAuditExportReceiptWire(t *testing.T, db *store.DB) {
 	e := newAccessWireEnv(t, db)
 	execRaw(t, db, fmt.Sprintf(
@@ -271,6 +296,15 @@ func runAuditExportReceiptWire(t *testing.T, db *store.DB) {
 		}
 		if completedFor(t, e, r.StartedEventId, "success") != 1 {
 			t.Fatalf("no success export_completed paired with %s", r.StartedEventId)
+		}
+	})
+
+	t.Run("requested_upper_bound_and_timezone", func(t *testing.T) {
+		srv := newAuditExportServer(t, e, nil)
+		got := getAuditExport(t, srv, e.token, orgPath+"?receipt=v1&to=2025-01-01T01%3A00%3A00%2B01%3A00")
+		r := wantReceipt(t, got, apigen.AuditExportReceiptOutcomeSuccess, "", true)
+		if !r.SnapshotTime.Equal(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)) || r.RowsStreamed != 0 {
+			t.Fatalf("requested extent not honored: %+v", r)
 		}
 	})
 

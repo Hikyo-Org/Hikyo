@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { auditExportUrl, downloadAuditExport, emptyAuditFilter, verifiedAuditExportBlob, type AuditScope } from './audit.ts';
 
+beforeEach(() => vi.stubGlobal('window', { location: { origin: 'https://hikyo.test' } }));
 afterEach(() => vi.unstubAllGlobals());
 
 const orgScope: AuditScope = { org: 'org_1' };
@@ -109,5 +110,21 @@ describe('verified browser audit downloads', () => {
   it('surfaces cancellation and transport failures', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new DOMException('Cancelled', 'AbortError')));
     await expect(downloadAuditExport('/audit/export')).rejects.toThrow('Cancelled');
+  });
+
+  it('cancels an over-limit export without returning a partial Blob', async () => {
+    const event = new TextEncoder().encode(JSON.stringify({
+      seq: 1, id: 'evt_large', type: 'future.event', schema_version: 1,
+      occurred_at: snapshot, occurred_asserted: false, recorded_at: snapshot,
+      actor_class: 'system', scope_class: 'instance', outcome: 'success', origin: 'system',
+      payload: { text: 'x'.repeat(128 * 1024) },
+    }) + '\n');
+    let cancelled = false;
+    const body = new ReadableStream({
+      pull(controller) { controller.enqueue(event); },
+      cancel() { cancelled = true; },
+    });
+    await expect(verifiedAuditExportBlob(new Response(body, { headers: receiptHeaders }))).rejects.toThrow('64 MiB');
+    expect(cancelled).toBe(true);
   });
 });
