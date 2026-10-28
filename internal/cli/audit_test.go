@@ -2,12 +2,32 @@ package cli_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 )
+
+func TestAuditExportRedirectPreservesPolicyRefusal(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("audit export followed a redirect and forwarded credentials")
+	}))
+	t.Cleanup(target.Close)
+	exports := 0
+	ios, stdout, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		exports++
+		if r.URL.Path != "/api/v1/instance/audit/export" || r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("export request = %s, auth %q", r.URL, r.Header.Get("Authorization"))
+		}
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	code := cli.Run(t.Context(), ios, []string{"audit", "export", "--instance", "local", "--instance-scope"})
+	if code != cli.ExitRefused || stdout.Len() != 0 || exports != 1 {
+		t.Fatalf("export exit=%d stdout=%s calls=%d stderr=%s", code, stdout, exports, stderr)
+	}
+}
 
 func TestAuditQueryDispatch(t *testing.T) {
 	for _, tc := range []struct {

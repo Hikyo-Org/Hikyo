@@ -148,6 +148,10 @@ func (c *Client) ExportAudit(ctx context.Context, path string, dst io.Writer) (r
 	req.Header.Set("Authorization", "Bearer "+c.Bearer)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
+		var refusal *Error
+		if asCLIError(err, &refusal) {
+			return refusal
+		}
 		return failf(ExitUnavailable, "audit export: %v", err)
 	}
 	defer resp.Body.Close()

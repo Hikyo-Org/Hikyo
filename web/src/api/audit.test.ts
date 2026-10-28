@@ -1,9 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { auditExportFilename, auditExportUrl, downloadAuditExport, emptyAuditFilter, verifiedAuditExportBlob, type AuditScope } from './audit.ts';
+import { blockSessionEpoch, installSessionFence } from './sessionEpoch.ts';
 
-beforeEach(() => vi.stubGlobal('window', { location: { origin: 'https://hikyo.test' } }));
-afterEach(() => vi.unstubAllGlobals());
+let removeSessionFence: (() => void) | undefined;
+beforeEach(() => {
+  vi.stubGlobal('window', { location: { origin: 'https://hikyo.test' } });
+  vi.stubGlobal('document', { cookie: '__Host-hikyo-csrf=original' });
+  removeSessionFence = installSessionFence(blockSessionEpoch, () => undefined);
+});
+afterEach(() => {
+  removeSessionFence?.();
+  vi.unstubAllGlobals();
+});
 
 const orgScope: AuditScope = { org: 'org_1' };
 
@@ -79,6 +88,30 @@ const emptyReceipt = JSON.stringify({ export_receipt: {
 } }) + '\n';
 
 describe('verified browser audit downloads', () => {
+  it('rejects a replaced cookie before its cross-tab notification arrives', async () => {
+    let release: ((response: Response) => void) | undefined;
+    const response = new Promise<Response>((resolve) => { release = resolve; });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockReturnValue(response));
+    const download = downloadAuditExport('/api/v1/instance/audit/export');
+    const rejected = expect(download).rejects.toThrow('browser session changed');
+    document.cookie = '__Host-hikyo-csrf=replacement';
+    if (release === undefined) throw new Error('Response resolver was not initialized');
+    release(new Response(emptyReceipt, { headers: receiptHeaders }));
+    await rejected;
+  });
+
+  it('rejects a session change during the stream even when transport completes', async () => {
+    const stream = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = stream.writable.getWriter();
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(stream.readable, { headers: receiptHeaders })));
+    const download = downloadAuditExport('/api/v1/instance/audit/export');
+    const rejected = expect(download).rejects.toThrow('browser session changed');
+    await writer.write(new TextEncoder().encode(emptyReceipt));
+    blockSessionEpoch();
+    await writer.close();
+    await rejected;
+  });
+
   it('negotiates on the URL and returns a Blob only after verified empty success', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(emptyReceipt, { headers: receiptHeaders }));
     vi.stubGlobal('fetch', fetcher);
@@ -92,7 +125,11 @@ describe('verified browser audit downloads', () => {
     expect(call[0]).toBeInstanceOf(URL);
     expect(String(call[0])).toContain('receipt=v1');
     expect(String(call[0])).toContain('operation=grant.*');
-    expect(call[1]).toMatchObject({ signal: controller.signal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+    expect(call[1]).toMatchObject({ credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+    const signal = call[1]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    controller.abort();
+    expect(signal?.aborted).toBe(true);
   });
 
   it.each([

@@ -4,6 +4,7 @@ import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from
 import type { z } from 'zod';
 
 import { parsed } from './client.ts';
+import { captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
 import { consumeAuditExport } from '../../../clients/ts/src/auditExport.ts';
 
 /** Browser downloads are deliberately capped. CLI/collector staging streams to disk. */
@@ -18,8 +19,22 @@ export async function downloadAuditExport(url: string, signal?: AbortSignal): Pr
   const target = new URL(url, window.location.origin);
   if (target.origin !== window.location.origin) throw new Error('Audit export must use this server.');
   target.searchParams.set('receipt', 'v1');
-  const response = await fetch(target, { signal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
-  return verifiedAuditExportBlob(response);
+  const epoch = captureSessionEpoch();
+  const ownerSignal = sessionEpochSignal(epoch);
+  const requestSignal = signal === undefined ? ownerSignal : AbortSignal.any([signal, ownerSignal]);
+  requestSignal.throwIfAborted();
+  const response = await fetch(target, { signal: requestSignal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+  try {
+    await reconcileSessionResponse(epoch);
+    if (response.status === 401) checkSessionRefusal();
+    const blob = await verifiedAuditExportBlob(response);
+    await reconcileSessionResponse(epoch);
+    requestSignal.throwIfAborted();
+    return blob;
+  } catch (error) {
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Response seam for generated-client consumers and transport regression tests. */
