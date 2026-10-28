@@ -1,0 +1,24 @@
+{
+  "enabled": false,
+  "destination": "https://notifications.example.invalid/hikyo/security",
+  "receiver": "isolated-security-receiver",
+  "token_env": "HIKYO_SECURITY_NOTIFICATION_TOKEN",
+  "escalation_owner": "operator-security-oncall",
+  "sources": [
+    {
+      "id": "project-audit",
+      "instance": "isolated-hikyo",
+      "trail": "tenant",
+      "org": "00000000-0000-7000-8000-000000000001",
+      "project": "00000000-0000-7000-8000-000000000002",
+      "database": "operator-evidence/project.db"
+    },
+    {
+      "id": "instance-audit",
+      "instance": "isolated-hikyo",
+      "trail": "instance",
+      "database": "operator-evidence/instance.db"
+    }
+  ],
+  "watched_credentials": []
+}
