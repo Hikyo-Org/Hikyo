@@ -17,6 +17,7 @@ var wireRegistry = map[string]wireEntry{
 	"cli:adapter":                         {Class: ClassTenant},
 	"cli:admin":                           {Class: ClassSystem, Events: []audit.EventType{audit.EventAuthAuthorityMinted, audit.EventAuthCredentialResetIssued, audit.EventBreakGlassGrant, audit.EventPrivacySubjectCorrected, audit.EventPrivacySubjectExported, audit.EventPrivacySubjectRestricted, audit.EventPrivacySubjectReleased, audit.EventPrivacySubjectErased}},
 	"cli:approval":                        {Class: ClassTenant},
+	"cli:audit":                           {Class: ClassInstance},
 	"cli:backup":                          {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped}},
 	"cli:cert":                            {Class: ClassTenant},
 	"cli:compose":                         {Class: ClassTenant},

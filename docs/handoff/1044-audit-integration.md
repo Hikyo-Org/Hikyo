@@ -95,3 +95,15 @@ machine-artifact contract is preserved, with no test exemption or gate removal.
 Final both-engine and owner results are recorded on the PR; this restores an
 existing accepted contract and introduces no new artifact class or broad
 collector authority.
+
+## CLI classification closure
+
+The next full merge-group run passed 45 jobs but failed classification totality:
+the implemented `audit` CLI verb had no wire-registry entry. The unchanged
+invariant reproduced that failure locally. The canonical generator input now
+classifies the mixed tenant/instance verb as instance, matching the existing
+`access` convention. Regenerated output adds only that entry. Individual tenant
+routes keep their stronger confinement classification, and no authorization
+formula, grant, audit disposition or invariant is changed. Generator checks,
+registry invariants and both-engine audit/authority results are recorded on the
+PR; fresh current-base full merge-group proof remains required.

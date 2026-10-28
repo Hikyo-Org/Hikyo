@@ -313,9 +313,13 @@ var reviewedWireExtras = wireExtras{
 			"EventAdapterPushIntent", "EventAdapterPushOutcome",
 		}},
 		"cli:approval": {Class: "ClassTenant"},
-		"cli:backup":   {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
-		"cli:cert":     {Class: "ClassTenant"},
-		"cli:compose":  {Class: "ClassTenant"},
+		// `audit` reaches both tenant and explicitly selected instance readers.
+		// Like `access`, the verb carries the instance probe contract; each
+		// tenant route retains its own uniform-nonexistent classification.
+		"cli:audit":   {Class: "ClassInstance"},
+		"cli:backup":  {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		"cli:cert":    {Class: "ClassTenant"},
+		"cli:compose": {Class: "ClassTenant"},
 		// `context` is entirely client-local: the trust store and the named
 		// contexts live on this box and reach no server.
 		"cli:context": {Class: "ClassUnauthenticated"},
