@@ -78,6 +78,28 @@ diagnostics() {
 			kubectl --namespace "$NAMESPACE" logs "$pod" --container "$container" --previous --tail=80 >&2 || true
 		done
 	done < <(kubectl --namespace "$NAMESPACE" get pods --selector app.kubernetes.io/name=hikyo --output=name 2>/dev/null)
+	# A running init helper has no error log. Retain its blocked operation and
+	# cgroup pressure before teardown, instead of retrying a silent timeout.
+	local stalled_id stalled_pid node cgroup
+	node=$(kind get nodes --name "$CLUSTER" 2>/dev/null | head -n 1)
+	while IFS= read -r pod; do
+		stalled_id=$(kubectl --namespace "$NAMESPACE" get "$pod" -o json |
+			jq -r '.status.initContainerStatuses[]? | select(.name=="tls-stage" and .state.running != null) | .containerID')
+		[[ -n "$stalled_id" && -n "$node" ]] || continue
+		stalled_id=${stalled_id#containerd://}
+		stalled_pid=$(docker exec "$node" crictl inspect "$stalled_id" 2>/dev/null | jq -r '.info.pid // empty')
+		[[ "$stalled_pid" =~ ^[1-9][0-9]*$ ]] || continue
+		echo "chart-kind: stalled TLS helper PID $stalled_pid" >&2
+		docker exec "$node" cat "/proc/$stalled_pid/wchan" >&2 || true
+		docker exec "$node" cat "/proc/$stalled_pid/status" >&2 || true
+		cgroup=$(docker exec "$node" cat "/proc/$stalled_pid/cgroup" | sed -n 's/^0:://p')
+		docker exec "$node" sh -c 'for file in cpu.stat memory.current memory.events memory.pressure; do cat "/sys/fs/cgroup$1/$file"; done' sh "$cgroup" >&2 || true
+		# The rollout has already failed. SIGQUIT records the Go stack, then
+		# exits this owned helper; no successful run is interrupted.
+		docker exec "$node" kill -QUIT "$stalled_pid" >&2 || true
+		sleep 1
+		kubectl --namespace "$NAMESPACE" logs "$pod" --container tls-stage --tail=300 >&2 || true
+	done < <(kubectl --namespace "$NAMESPACE" get pods --selector app.kubernetes.io/name=hikyo --output=name 2>/dev/null)
 	# Bootstrap Jobs print private credentials; diagnostics only reads the
 	# server Deployment and PostgreSQL logs, never those Job pods.
 	kubectl --namespace "$NAMESPACE" logs deployment/postgres --tail=80 >&2 || true
