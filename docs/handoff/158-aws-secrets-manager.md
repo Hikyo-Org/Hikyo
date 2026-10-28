@@ -15,7 +15,70 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Current status, 2026-10-27
+## Current status, 2026-10-28
+
+Issue #158 remains unfinished. The c11 owner-assisted attempt is closed after
+failed real AWS acceptance and independently verified cleanup. Reusable
+controller qualification remains #1057. No further AWS attempt, resource,
+reservation, window or application merge is authorized by the closed attempt.
+
+Run [40600194878](https://github.com/Hikyo-Org/Hikyo/actions/runs/40600194878),
+attempt 1, tested application `361e02e3915eef840429d88589c39689f4a58dfb`
+with trusted workflow/main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
+All 46 expected records are terminal: 43 passed and three failed. There is one
+failed leaf, PostgreSQL lifecycle; the other failures are its lifecycle and
+suite parents. Assertion 227 means "durable AWS target did not converge:
+conflict". The bounded evidence does not identify its exact lifecycle point.
+Its evidence SHA-256 is
+`fc7845e26914f43a0fea943fc8375f9e9d5152c58895e2c42c3c6f689f38e398`.
+Other recorded web-identity and replay leaves passed. The whole AWS gate failed.
+
+All 27 acknowledged ARNs and two unacknowledged reserved names independently
+returned strict NotFound. Complete regional inventory including planned
+deletion was empty after 335.922 seconds of terminal quiescence and in final
+readback. The eight exact roles, owned issuer, boundary, alias and nine consumed
+protected variables are absent. Original setup v5 is restored; v2-v5 and their
+dates are preserved, with actual new v11 retained nondefault. Setup identity,
+MFA and its sole attachment are unchanged. The seventh new key is
+PendingDeletion for `2026-11-03T23:50:52.008Z`, not physically deleted.
+Every prior schedule remains unchanged. The canonical closure SHA-256 is
+`72867f7734ad0c74551ec75b75f705c9ba90570b6361b331c17a4775c468d041`.
+
+The c10 reassigned pool remains charged: 29 creation attempts and three unused
+slots closed without refund or automatic reassignment, zero new reservation
+charge and 304 lifetime charges. Its sole hosted attempt is consumed. All prior
+reserves remain. The final timestamped billing proof retained a USD 6.19 usage
+projection within the approved USD 6.30 ceiling; it is not a settled final bill.
+
+A local service/adapter reproduction found that one or two stale consent-tag
+observations after an acknowledged manual tag update produce the same conflict
+assertion on both engines. This matches the failure category; it does not prove
+the precise cause of the c11 failure. The fixture now observes the one consent
+write before draining the queued retry. It reads only the recorded ARN, at most
+three times within the same 15-second deadline covering tag and observation.
+It preserves owner, current-version, Hikyo-marker, key and deletion witnesses.
+Persistent staleness, a changed witness, provider refusal and cancellation fail
+loudly. It never repeats the tag mutation.
+
+The local protocol emulator also now models AWS's automatic AWSPREVIOUS move
+when PutSecretValue moves AWSCURRENT. Its signed-wire regression covers default
+and explicit current staging, idempotent replay and a custom staged version.
+All provider traffic in these reproductions is loopback-only. The final local
+fixture selection passed 208 terminal records with SQLite and PostgreSQL,
+including bounded negative controls, with no failures or skips. The affected
+adapter/emulator consumer selection passed 218 terminal records. Production
+adapter code, dependency locks, the closed provider API, genuine expiry,
+46-record hosted contract and creation accounting are unchanged.
+
+Five of five model reviews remain consumed, with no independent CLEAN or sixth
+review claimed. The correction needs concrete owner source disposition before
+any further AWS run. Any such run also needs a fresh explicit grant for its
+consumed attempt, key, reservation and budget limits, followed by the retained
+Ready, exact-policy-hash and pending-deployment gates. Final current-base CI,
+the separate human application merge decision and actual issue closure remain
+outstanding. No new clock starts from this source repair.
+
+## Prior c09 result and repair, 2026-10-27
 
 Issue #158 remains unfinished. The c09 attempt is closed after failed real AWS
 acceptance and independently verified cleanup. Reusable controller qualification

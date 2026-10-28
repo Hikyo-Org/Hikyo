@@ -305,8 +305,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		if len(sec.versions) == 0 && !slices.Contains(stages, "AWSCURRENT") {
 			stages = append(stages, "AWSCURRENT")
 		}
+		previous := ""
+		if slices.Contains(stages, "AWSCURRENT") {
+			for versionID, prior := range sec.versions {
+				if slices.Contains(prior.stages, "AWSCURRENT") {
+					previous = versionID
+				}
+			}
+		}
 		sec.versions[token] = &version{value: value}
 		moveStages(sec, token, stages...)
+		if previous != "" {
+			moveStages(sec, previous, "AWSPREVIOUS")
+		}
 		writeJSON(w, map[string]string{"ARN": sec.arn, "VersionId": token})
 	case "UpdateSecretVersionStage":
 		sec, ok := s.secrets[id]

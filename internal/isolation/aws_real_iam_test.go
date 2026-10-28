@@ -148,7 +148,12 @@ func (h *realAWSDurable) partialConflict(targetID, prefix string) {
 		lease.Release()
 		t.Fatal("unexpected consent module")
 	}
-	err = module.API.TagSecret(t.Context(), meta.ARN, map[string]string{awssm.VersionTag: current})
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	err = module.API.TagSecret(ctx, meta.ARN, map[string]string{awssm.VersionTag: current})
+	if err == nil {
+		_, err = readRealAWSConsentMetadata(ctx, module.API, meta, current)
+	}
+	cancel()
 	lease.Release()
 	if err != nil {
 		t.Fatal("explicit version consent failed")
@@ -160,4 +165,30 @@ func (h *realAWSDurable) partialConflict(targetID, prefix string) {
 	if h.s.value(t, name) != "partial desired alpha" || !realAWSAddedVersion(refused, h.metadata(name), targetID, alphaAttempts[alphaPuts:]) || !realAWSSameCurrent(sharedDelivered, h.metadata(prefix+"SHARED_KEY")) || len(h.s.recordedPutTokens(sharedBefore.ARN)) != len(sharedAttempts) {
 		t.Fatal("partial retry duplicated the successful sibling or failed the consented key")
 	}
+}
+
+// Observe the one acknowledged consent tag before draining its queued retry.
+// Only exact-ARN metadata reads repeat, within the caller's existing deadline.
+// A changed owner, current version, marker, key or deletion state stops at once.
+func readRealAWSConsentMetadata(ctx context.Context, api awssm.API, before awssm.SecretMetadata, approved string) (awssm.SecretMetadata, error) {
+	marker, unique := realAWSStageVersion(before, awssm.CurrentStage)
+	if before.ARN == "" || before.Name == "" || approved == "" || realAWSCurrentVersion(before) != approved || before.Tags[adapter.SentinelName] == "" || before.Deleted || !unique || marker == "" {
+		return awssm.SecretMetadata{}, errors.New("invalid explicit consent witness")
+	}
+	sameWitness := func(meta awssm.SecretMetadata) bool {
+		actualMarker, actualUnique := realAWSStageVersion(meta, awssm.CurrentStage)
+		return meta.Deleted == before.Deleted && meta.KMSKeyID == before.KMSKeyID &&
+			meta.Tags[adapter.SentinelName] == before.Tags[adapter.SentinelName] &&
+			realAWSCurrentVersion(meta) == approved && actualUnique && actualMarker == marker
+	}
+	meta, err := readRealAWSMetadataWhere(ctx, api, before.Name, before.ARN, func(meta awssm.SecretMetadata) bool {
+		return !sameWitness(meta) || meta.Tags[awssm.VersionTag] == approved
+	})
+	if err != nil {
+		return awssm.SecretMetadata{}, err
+	}
+	if !sameWitness(meta) || meta.Tags[awssm.VersionTag] != approved {
+		return awssm.SecretMetadata{}, errors.New("explicit consent metadata did not settle")
+	}
+	return meta, nil
 }
