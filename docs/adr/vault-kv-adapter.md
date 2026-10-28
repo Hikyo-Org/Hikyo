@@ -2,6 +2,18 @@
 
 > **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, adversarial cross-model review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
 
+> **Delivery and governance reconciliation (2026-10-28, no new amendment):**
+> [PR #823](https://github.com/Hikyo-Org/Hikyo/pull/823) delivered the compiled-in
+> adapter and #162 is closed. The gate above is a governance condition, not a
+> claim that the implementation is absent or protected by a runtime feature
+> switch. No Vault KV-specific completion of that procedure was found in the
+> inspected records. This ADR remains **proposed** and 1.0 membership remains
+> **conditional / HOLD**, separately from the read-only import-source role.
+> Cross-provider review is **SKIPPED**, not CLEAN; existing fixture tests and
+> issue closure do not approve the amendment. The
+> [governance packet](../handoff/156-162-589-capability-governance.md) supplies
+> the evidence and owner choices without selecting a new scope.
+
 Context: the [deployment-adapter](./deployment-adapter.md) ADR fixes the four-operation seam, the durable outbox, ledger ownership, adoption, and teardown. The [github-adapter](./github-adapter.md) ADR shows how a sibling adapter composes with it: **constraints transfer wholesale, mechanisms are re-derived per provider.** The [import-paths](./import-paths.md) ADR already admits Vault/OpenBao as an **import source** (file and live, read-only). This ADR adds Vault/OpenBao KV v2 as a **sync destination** and fixes what differs. Where it is silent, the deployment-adapter ADR's rule applies verbatim.
 
 ## Scope
