@@ -1,3 +1,29 @@
+{{- /* Helm --reuse-values may retain defaults from before networkPolicy existed. */ -}}
+{{- $policy := .Values.networkPolicy | default dict -}}
+{{- $ingress := $policy.ingress | default dict -}}
+{{- $egress := $policy.egress | default dict -}}
+{{- /* Kubernetes also requires endPort >= port; JSON Schema cannot compare fields. */ -}}
+{{- $rules := $egress.extraRules | default list -}}
+{{- range $name := list "dns" "datastore" "identityProviders" "adapters" "collector" -}}
+{{- $rules = append $rules (index $egress $name | default dict) -}}
+{{- end -}}
+{{- range $rule := $rules -}}
+{{- range $port := $rule.ports -}}
+{{- if and (hasKey $port "endPort") (lt (int $port.endPort) (int $port.port)) -}}
+{{- fail "networkPolicy egress endPort must be greater than or equal to port" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $peers := list -}}
+{{- if $ingress.restricted -}}
+{{- $peers = $ingress.from -}}
+{{- if and $ingress.allowOperator .Values.operator.enabled -}}
+{{- $peers = append $peers (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" (printf "%s-operator" (include "hikyo.name" .)) "app.kubernetes.io/instance" .Release.Name))) -}}
+{{- end -}}
+{{- if not $peers -}}
+{{- fail "networkPolicy.ingress.restricted requires at least one peer in networkPolicy.ingress.from or the chart operator" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -11,11 +37,35 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   policyTypes:
     - Ingress
+    {{- if $egress.restricted }}
+    - Egress
+    {{- end }}
   ingress:
-    # The application listener remains reachable through the Service and from
-    # ordinary cluster clients. Port 8081 is intentionally absent: Kubernetes
-    # node-originated probes remain permitted, while workload pods cannot read
-    # unauthenticated readiness or metrics directly from the pod IP.
+    # Port 8081 is intentionally absent: Kubernetes node-originated probes
+    # remain permitted, while workload pods cannot read unauthenticated
+    # readiness or metrics directly from the pod IP. Without
+    # networkPolicy.ingress.restricted, any source may reach port 8080.
     - ports:
         - protocol: TCP
           port: 8080
+      {{- with $peers }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if $egress.restricted }}
+  egress:
+    {{- range $name := list "dns" "datastore" "identityProviders" "adapters" "collector" }}
+    {{- $destination := index $egress $name }}
+    {{- if $destination.to }}
+    - to:
+        {{- toYaml $destination.to | nindent 8 }}
+      {{- with $destination.ports }}
+      ports:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with $egress.extraRules }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
