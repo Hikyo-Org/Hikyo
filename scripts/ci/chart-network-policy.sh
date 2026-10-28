@@ -94,8 +94,10 @@ http_probe() {
     # attempt, and require the final positive controls below as well.
     [[ "$expected" == deny || "$name" == recovered-* ]] && limit=15
     for ((attempt=1; attempt<=limit; attempt++)); do
+        # Hikyo serves its SPA only for an explicit HTML Accept header.
         if result=$(kubectl -n "$namespace" exec "$source" -c "$container" -- \
             curl --silent --insecure --connect-timeout 2 --max-time 4 \
+            --header 'Accept: text/html' \
             --output /dev/null --write-out '%{http_code}' "$@" "$url" 2>"$work/curl-error"); then
             rc=0
         else
@@ -231,7 +233,7 @@ for _ in {1..30}; do
     [[ -z "$app_port" || -z "$ops_port" ]] || break
     sleep 1
 done
-curl --fail --silent --insecure "https://127.0.0.1:$app_port/" >/dev/null
+curl --fail --silent --insecure --header 'Accept: text/html' "https://127.0.0.1:$app_port/" >/dev/null
 curl --fail --silent "http://127.0.0.1:$ops_port/metrics" >/dev/null
 echo 'network-policy: PASS authenticated-cluster port-forward recovery and loopback metrics'
 
