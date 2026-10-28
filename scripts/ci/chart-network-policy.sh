@@ -60,7 +60,15 @@ for role in idp adapter remote collector management; do
         --image="$HIKYO_NETWORK_POLICY_FIXTURE_IMAGE" --image-pull-policy=Never \
         --overrides="$(jq -cn --argjson security "$security" --arg image "$HIKYO_NETWORK_POLICY_FIXTURE_IMAGE" '{spec:{automountServiceAccountToken:false,containers:[{name:"target",image:$image,imagePullPolicy:"Never",securityContext:$security,env:[{name:"POD_NAMESPACE",valueFrom:{fieldRef:{fieldPath:"metadata.namespace"}}}]}]}}')" >/dev/null
 done
-kubectl -n "$targets" wait --for=condition=Ready pods --all --timeout=90s >/dev/null
+if ! kubectl -n "$targets" wait --for=condition=Ready pods --all --timeout=90s; then
+    kubectl -n "$targets" get pods -o json >"$evidence/targets-failure.json"
+    jq '[.items[] | {name:.metadata.name,status:.status.containerStatuses}]' "$evidence/targets-failure.json" >&2
+    kubectl -n "$targets" get events --sort-by=.lastTimestamp >&2 || true
+    for role in idp adapter remote collector management; do
+        kubectl -n "$targets" logs "$role" --tail=30 >&2 || true
+    done
+    exit 1
+fi
 for role in idp adapter remote collector management; do
     kubectl -n "$targets" expose pod "$role" --port=8080 >/dev/null
 done

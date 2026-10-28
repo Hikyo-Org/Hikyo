@@ -623,8 +623,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH="$target_arch" go test -p 2 -c \
     -o "$work/network-fixture/functional.test" ./internal/isolation
 cat >"$work/network-fixture/Dockerfile" <<'EOF'
 FROM scratch
-COPY fixture /fixture
-COPY functional.test /functional.test
+COPY --chown=65532:65532 --chmod=0555 fixture /fixture
+COPY --chown=65532:65532 --chmod=0555 functional.test /functional.test
 USER 65532:65532
 ENTRYPOINT ["/fixture"]
 EOF
@@ -634,6 +634,10 @@ if docker image inspect "$fixture_image" >/dev/null 2>&1; then
 fi
 docker build --tag "$fixture_image" "$work/network-fixture" >/dev/null
 fixture_image_created=true
+docker run --rm --read-only --network none --cap-drop ALL \
+    --security-opt no-new-privileges --entrypoint /functional.test "$fixture_image" \
+    '-test.list=^TestNetworkPolicySyntheticProviderCleanup$' |
+    grep -Fx TestNetworkPolicySyntheticProviderCleanup
 kind load docker-image --name "$CLUSTER" "$fixture_image"
 HIKYO_NETWORK_POLICY_FIXTURE_IMAGE="$fixture_image" \
     scripts/ci/chart-network-policy.sh "$NAMESPACE" "$RELEASE" "$work/network-policy"
