@@ -428,7 +428,9 @@ var reviewedWireExtras = wireExtras{
 		// Their system-proof mint sites are enumerated in systemSites; the probe
 		// contract is network unreachability, which the totality check asserts
 		// by finding no HTTP route for them.
-		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		// The server owns the refusal sealer's startup and joined timer worker;
+		// it is not an adapter outbox job or a separate network entry point.
+		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped", "EventRequestRefused"}},
 		// SSH user certificates (#155): client transport for the tenant-scoped
 		// CA, profile and certificate routes and nothing wider.
 		"cli:ssh-ca":      {Class: "ClassTenant"},

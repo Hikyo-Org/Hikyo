@@ -7,6 +7,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 
@@ -66,6 +67,9 @@ type (
 // tenant-isolation ADR already records engine-internal microtiming as the
 // accepted residual; everything above it is equal.
 func (a *TxAuthorizer) authenticateMachine(ctx context.Context, presented string, now time.Time) (Identity, error) {
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, err
+	}
 	cred, credErr := a.r.MachineCredentialByVerifier(ctx, crypto.ArtifactVerifier(presented))
 	if credErr != nil && !errors.Is(credErr, domain.ErrNotFound) {
 		return Identity{}, credErr
@@ -182,6 +186,9 @@ func coveredBy(grants []domain.Grant, cap domain.Capability, at domain.Scope) bo
 // uniformity is within the leg, not across legs, and a caller cannot choose
 // which leg runs without already knowing the artifact type they typed.
 func (a *TxAuthorizer) authenticateInstanceConnection(ctx context.Context, presented string, now time.Time) (Identity, error) {
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, err
+	}
 	conn, connErr := a.r.InstanceConnectionByVerifier(ctx, crypto.ArtifactVerifier(presented))
 	if connErr != nil && !errors.Is(connErr, domain.ErrNotFound) {
 		return Identity{}, connErr

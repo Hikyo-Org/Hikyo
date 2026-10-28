@@ -18,10 +18,11 @@ import (
 // closure and can only mint proofs through it — the resolver itself is never
 // exposed.
 type TxAuthorizer struct {
-	r          *authn.Resolver
-	tok        *TxToken
-	denials    []Denial
-	captureErr error // a denial that could not even be captured — fail-closed at settle
+	r                *authn.Resolver
+	tok              *TxToken
+	denials          []Denial
+	captureErr       error // a denial that could not even be captured; fail closed at settle
+	dedicatedRefusal bool  // tentative until the transaction owner confirms commit
 	// object attributes captured denials to the object they addressed; see
 	// AttributeDenials. Empty means the envelope carries no object, which is
 	// every path that has not asked for one.

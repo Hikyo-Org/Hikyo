@@ -27,6 +27,7 @@ describe('OpsDiagnosticBanners', () => {
         { code: 'data-volume', severity: 'unknown', message: 'Check storage on the remote database host.' },
         { code: 'root-escrow', severity: 'warn', message: 'Verify <current> root escrow.' },
         { code: 'reencrypt', severity: 'error', message: 'Re-encryption needs attention.' },
+        { code: 'data-volume-critical', severity: 'error', message: 'Unrelated 38777499648 bytes available.' },
         { code: 'pin-expiry', severity: 'ok', message: 'Hidden healthy finding.' },
       ],
     });
@@ -38,14 +39,16 @@ describe('OpsDiagnosticBanners', () => {
     // session rather than interrupting one.
     expect(container.querySelector('[role="alert"]')).toBeNull();
     const alerts = [...container.querySelectorAll('[role="status"]')];
-    expect(alerts).toHaveLength(3);
+    expect(alerts).toHaveLength(4);
     expect(alerts.map((alert) => alert.getAttribute('data-severity'))).toEqual([
       'unknown',
       'warn',
       'error',
+      'error',
     ]);
     expect(alerts.map((alert) => alert.querySelector('.alert__glyph')?.getAttribute('data-glyph'))).toEqual([
       'question',
+      'warn',
       'warn',
       'warn',
     ]);
@@ -53,6 +56,14 @@ describe('OpsDiagnosticBanners', () => {
     expect(alerts[1]?.textContent).toContain('Warning: Verify <current> root escrow.');
     expect(alerts[1]?.querySelector('current')).toBeNull();
     expect(alerts[2]?.textContent).toContain('Error: Re-encryption needs attention.');
+    expect(alerts[3]?.textContent).toContain('Unrelated 38777499648 bytes available.');
+    health.diagnostics = [{
+      code: 'data-volume', severity: 'error',
+      message: 'Datastore volume 96.1% used; 38777499648 bytes available; at or above the 90% critical storage threshold',
+    }];
+    expect(renderToStaticMarkup(<OpsDiagnosticBanners health={health} />)).toContain(
+      'Datastore volume 96.1% used; 36.11 GiB available; at or above the 90% critical storage threshold',
+    );
     expect(container.textContent).not.toContain('Hidden healthy finding.');
     expect(renderToStaticMarkup(<OpsDiagnosticBanners health={null} />)).toBe('');
   });

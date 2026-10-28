@@ -290,6 +290,21 @@ FAST_FEEDBACK_BASE="$release_admission_base" refuse 'fixture release admission f
 FAST_FEEDBACK_BASE="$release_admission_base" run_feedback --working-tree --lane=go --go-scope=application
 rm -r scripts/ci/release-admission
 
+# The external collector owns a finite Python suite in the tooling lane.
+collector_base=$(git rev-parse HEAD)
+mkdir -p scripts/ops/audit-collector
+cat >scripts/ops/audit-collector/test_receiver.py <<'EOF'
+import unittest
+class CollectorFixture(unittest.TestCase):
+    def test_receiver(self):
+        self.fail('fixture collector failure')
+EOF
+FAST_FEEDBACK_BASE="$collector_base" run_feedback --working-tree --plan
+jq -e '.auditCollector == true and .web == false and .client == false and .go == false' "$work/output" >/dev/null
+FAST_FEEDBACK_BASE="$collector_base" refuse 'fixture collector failure' --working-tree --lane=go --go-scope=tooling
+FAST_FEEDBACK_BASE="$collector_base" run_feedback --working-tree --lane=go --go-scope=application
+rm -r scripts/ops
+
 # AWS-runner-only edits must select both sides of the evidence contract.
 # Commit the inert consumer before the comparison base so its path cannot
 # accidentally be the reason the new selection passes.

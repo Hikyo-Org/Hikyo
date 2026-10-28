@@ -138,7 +138,7 @@ func (s *Auth) ResetCredential(ctx context.Context, actor Actor, targetPrincipal
 		} else if _, err := az.Authorize(ctx, caller, authz.OpCredentialResetInstance, domain.Scope{}); err != nil {
 			return err
 		}
-		out, err = s.mintResetAuthority(ctx, az, account, "credential-reset", "network", delivery, authorityID, verifier, now)
+		out, err = s.mintResetAuthority(ctx, az, caller.Principal, account, "credential-reset", "network", delivery, authorityID, verifier, now)
 		return err
 	})
 	if err != nil {
@@ -211,7 +211,7 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 		if err != nil {
 			return err
 		}
-		out, err = s.mintResetAuthority(ctx, az, account, "break-glass", "local-host", delivery, authorityID, verifier, now)
+		out, err = s.mintResetAuthority(ctx, az, "", account, "break-glass", "local-host", delivery, authorityID, verifier, now)
 		return err
 	})
 	if err != nil {
@@ -223,10 +223,10 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 
 // mintResetAuthority is the shared write both tiers run inside their own locked
 // transaction: sweep the target's outstanding authorities (B12), mint the new
-// one, advance the generation and revoke every session, then audit the issuance
-// and the mint. The verifier is the caller-held value's hash; the value never
-// touches this layer.
-func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, issuedBy, authority, delivery, authorityID string, verifier []byte, now time.Time) (ResetResult, error) {
+// one, advance the generation and revoke every session and developer delegation,
+// then audit revocation, issuance and mint with the acting operator. The verifier
+// is the caller-held value's hash; the value never touches this layer.
+func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, account authz.Account, issuedBy, authority, delivery, authorityID string, verifier []byte, now time.Time) (ResetResult, error) {
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
 		return ResetResult{}, err
@@ -252,18 +252,29 @@ func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, a
 	if err := az.RevokeAllSessionsFor(ctx, account.PrincipalID); err != nil {
 		return ResetResult{}, err
 	}
+	// Global security revocation includes bounded developer delegations. The
+	// generation check already denies their use; persist terminal revocation
+	// and its attributed audit outcome so listings and incident reconciliation
+	// do not report unrevoked custody after a successful reset.
+	if err := revokeDeveloperScope(ctx, az, actor, account.PrincipalID, domain.Scope{}, "credential-reset", now); err != nil {
+		return ResetResult{}, err
+	}
 	// The authority coming into existence is its own record (factors MEDIUM-7):
 	// audit consumers that watch authority issuance must see every mint.
-	minted, err := newAuditEvent(ctx, audit.EventAuthAuthorityMinted, account.PrincipalID,
+	minted, err := newAuditEvent(ctx, audit.EventAuthAuthorityMinted, actor,
 		audit.Object{Type: "authority", ID: authorityID}, audit.OutcomeSuccess, "",
 		audit.Payload{"authority_id": authorityID, "account_id": account.ID, "issued_by": issuedBy, "delivery": delivery})
 	if err != nil {
 		return ResetResult{}, err
 	}
+	if actor == "" {
+		minted.Actor.Class = audit.ActorBreakGlass
+		minted.Origin = audit.OriginCLI
+	}
 	if err := az.RecordAuthEvent(ctx, minted); err != nil {
 		return ResetResult{}, err
 	}
-	e, err := newAuditEvent(ctx, audit.EventAuthCredentialResetIssued, account.PrincipalID,
+	e, err := newAuditEvent(ctx, audit.EventAuthCredentialResetIssued, actor,
 		audit.Object{Type: "account", ID: account.ID}, audit.OutcomeSuccess, "",
 		audit.Payload{
 			"target_principal": string(account.PrincipalID), "target_account": account.ID,
@@ -272,6 +283,10 @@ func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, a
 		})
 	if err != nil {
 		return ResetResult{}, err
+	}
+	if actor == "" {
+		e.Actor.Class = audit.ActorBreakGlass
+		e.Origin = audit.OriginCLI
 	}
 	if err := az.RecordAuthEvent(ctx, e); err != nil {
 		return ResetResult{}, err

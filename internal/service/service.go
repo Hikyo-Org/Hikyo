@@ -9,6 +9,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -179,12 +180,18 @@ func (a Actor) resolve(ctx context.Context, az *authz.TxAuthorizer, now time.Tim
 		}
 	} else if a.pairedProof != "" {
 		identity, err = az.AuthenticatePairedConnection(ctx, a.bearer, a.pairedProof, now)
+		if errors.Is(err, domain.ErrUnauthenticated) {
+			audit.NoteRefusal(ctx, audit.RefusalProof)
+		}
 	} else if a.bearer != "" {
 		identity, err = az.AuthenticateCaller(ctx, a.bearer, now)
 	} else {
 		err = domain.ErrUnauthenticated
 	}
 	if err != nil {
+		if errors.Is(err, domain.ErrUnauthenticated) {
+			audit.NoteRefusal(ctx, audit.RefusalArtifact)
+		}
 		return authz.Identity{}, err
 	}
 	if err := az.AdmitOperation(ctx, identity); err != nil {

@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -184,23 +185,33 @@ func execute(o options) (r receipt, err error) {
 		return r, errors.New("supplied executable version command failed")
 	}
 	r.BinaryVersion = string(v)
-	for _, engine := range []string{"sqlite", "postgres"} {
-		b := backendResult{Engine: engine, Cleanup: "not-started"}
-		if engine == "postgres" && o.postgres == "" {
-			for _, id := range mandatoryCases {
-				b.Cases = append(b.Cases, caseResult{ID: id, Status: "skipped", Expected: "executed on PostgreSQL", Observed: "no DSN supplied"})
-			}
-			r.Backends = append(r.Backends, b)
-			return r, errors.New("PostgreSQL DSN required for complete profile")
-		}
-		if runErr := runBackend(ctx, o, &b); runErr != nil {
-			r.Backends = append(r.Backends, b)
-			return r, runErr
-		}
-		r.Backends = append(r.Backends, b)
+	r.Backends, err = runBackends(ctx, o, runBackend)
+	if err != nil {
+		return r, err
 	}
 	r.Status = "passed"
 	return r, nil
+}
+
+// runBackends retains one result per independent datastore and joins every
+// campaign's owned cleanup before returning deterministic receipt order.
+func runBackends(ctx context.Context, o options, run func(context.Context, options, *backendResult) error) ([]backendResult, error) {
+	backends := []backendResult{{Engine: "sqlite", Cleanup: "not-started"}, {Engine: "postgres", Cleanup: "not-started"}}
+	errs := make([]error, len(backends))
+	var workers sync.WaitGroup
+	for i := range backends {
+		b := &backends[i]
+		if b.Engine == "postgres" && o.postgres == "" {
+			for _, id := range mandatoryCases {
+				b.Cases = append(b.Cases, caseResult{ID: id, Status: "skipped", Expected: "executed on PostgreSQL", Observed: "no DSN supplied"})
+			}
+			errs[i] = errors.New("PostgreSQL DSN required for complete profile")
+			continue
+		}
+		workers.Go(func() { errs[i] = run(ctx, o, b) })
+	}
+	workers.Wait()
+	return backends, errors.Join(errs...)
 }
 
 func record(b *backendResult, id, expected string, assertions int, fn func() error) error {

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Page } from '@playwright/test';
-import { zLoginResult } from '@hikyo/zod';
-import { fixtureApiCall as call, fixtureBearer } from '../fixtures/api.ts';
+import { zLoginResult, zPublishResult } from '@hikyo/zod';
+import { fixtureApiCall as call, fixtureBearer, zFixtureStaged } from '../fixtures/api.ts';
 import { browserApi } from '../fixtures/api.ts';
 import { ADMIN } from '../fixtures/instance.ts';
 import { totpCode } from '../fixtures/seed.ts';
@@ -15,10 +15,24 @@ const zSecuritySeed = z.object({
   project: z.string(), dev: z.string(), prod: z.string(),
   token: z.string(), otpauth: z.string(), lastTotpStep: z.number(),
 });
-type SecuritySeed = z.infer<typeof zSecuritySeed>;
+export type SecuritySeed = z.infer<typeof zSecuritySeed>;
 
 export function readSecuritySeed(): SecuritySeed {
   return zSecuritySeed.parse(JSON.parse(readFileSync(SECURITY_SEEDED, 'utf8')));
+}
+
+/** Prepare all hostile values before the real source-window handoff barrier. */
+export async function seedStoredContent(page: Page, seed: SecuritySeed, payloads: readonly string[]): Promise<void> {
+  const versions: string[] = [];
+  for (const [index, value] of payloads.entries()) {
+    const name = `SECURITY_CANARY_${String(index)}`;
+    await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`, z.object({ id: z.string() }), {
+      name, classification: 'config', declaration: { rule: { type: 'string' } },
+    });
+    const staged = await browserApi(page, 'PUT', `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/values/${name}`, zFixtureStaged, { value });
+    versions.push(staged.version_id);
+  }
+  await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/publish`, zPublishResult, { version_ids: versions });
 }
 
 /** Only the native-auth tenant and settings needed by the security campaign.

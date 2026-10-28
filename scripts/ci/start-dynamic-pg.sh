@@ -16,7 +16,7 @@ ready=0
 created=0
 cleanup() {
 	if [ "$created" = 1 ] && [ "$ready" != 1 ]; then
-		docker rm -f "$container_id" >/dev/null 2>&1 || true
+		docker rm -fv "$container_id" >/dev/null 2>&1 || true
 	fi
 	rm -rf "$dir"
 }
@@ -27,6 +27,10 @@ openssl req -new -x509 -days 2 -nodes \
 	-subj "/CN=127.0.0.1" -addext "subjectAltName=IP:127.0.0.1" >/dev/null 2>&1
 chmod 600 "$dir/server.key"
 printf '%s\n' 'local all all trust' 'hostssl all all all scram-sha-256' 'hostnossl all all all reject' >"$dir/pg_hba.conf"
+# The daemon copies these as root, while PostgreSQL reads them as postgres.
+# OpenSSL and a private caller umask can create the public files as 0600.
+# Keep only the private key restricted; the certificate and HBA have no secrets.
+chmod 644 "$dir/server.crt" "$dir/pg_hba.conf"
 
 # Copy into the disposable container before startup. Ownership is set inside
 # it, so this works without sudo or host/container UID assumptions on macOS.

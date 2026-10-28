@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 // Transport bounds belong to the HTTP layer. Streaming handlers replace the
@@ -27,6 +28,7 @@ func boundPublicRequests(next http.Handler) http.Handler {
 			defer func() { <-slots }()
 			next.ServeHTTP(w, r)
 		default:
+			audit.NoteRefusal(r.Context(), audit.RefusalAdmission)
 			// An in-flight cap has no window that says when a slot frees, so
 			// this refusal carries the fixed admission.RetryAfter hint.
 			writeError(w, wirePolicyForCode(apigen.ErrorCodeTooManyRequests), "")

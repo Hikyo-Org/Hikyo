@@ -20,7 +20,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -79,7 +78,7 @@ func remoteOriginSource(a *API) func(*http.Request) []string {
 			return nil
 		}
 		ctx := audit.WithContext(r.Context(), audit.Context{SourceIP: a.sourceIP(r), UserAgent: r.UserAgent(), Origin: audit.OriginAPI})
-		ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
+		ctx = a.withRequestAdmission(ctx, audit.FromContext(ctx).SourceIP)
 		origins, err := a.Remotes.RemoteOrigins(ctx, service.Bearer(cookie.Value))
 		if err != nil {
 			return nil
@@ -101,6 +100,9 @@ func NewPublic(a *API, ui fs.FS, publicOptions PublicOptions) http.Handler {
 	// remote takes effect without a restart — belongs to the SPA writer below,
 	// which is the only response that can use it.
 	r.Use(securityHeaders(publicOptions.HSTS))
+	if a != nil && a.Refusals != nil {
+		r.Use(a.observeRefusals)
+	}
 	// Observe at router scope so unmatched API paths, unsupported methods, and
 	// CORS preflights contribute to RED totals as class=other. Route-group
 	// middleware never sees those requests because chi has not selected a route.

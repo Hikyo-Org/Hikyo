@@ -2813,6 +2813,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ReadAuthRefusalWindow",
+    "annotation": "authn-resolution",
+    "hash": "7ed53af7b243297b417b890bf773ae993a63a7fef6cefef82c583e50510edf80",
+    "reason": "singleton pre-auth refusal accounting reads datastore time and bounded state under its transaction owner"
+  },
+  {
+    "engine": "postgres",
     "name": "RebindSAMLExternalIdentityProvider",
     "annotation": "authn-resolution",
     "hash": "5e7e022bd30f720586e24fc548d35032553ac795430e1caab2335a93b3cfb635"
@@ -2992,6 +2999,13 @@
     "name": "ResolveProjectChain",
     "annotation": "authn-resolution",
     "hash": "5987f3b6b5f15c366598fc6bd4f53aff29afb1bc4f8906e3ea035100b9c8bc7f"
+  },
+  {
+    "engine": "postgres",
+    "name": "RestoreAuthRefusalSeedOccupied",
+    "annotation": "authn-resolution",
+    "hash": "13eb6efbb0389dab5097f186a99ae96d7d8559691212fefad8211b6180a4f7d8",
+    "reason": "restore target admission preserves pending authentication refusal evidence"
   },
   {
     "engine": "postgres",
@@ -3195,6 +3209,13 @@
     "name": "SampleSecretValueEntry",
     "annotation": "instance-scoped",
     "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
+  },
+  {
+    "engine": "postgres",
+    "name": "SaveAuthRefusalWindow",
+    "annotation": "authn-resolution",
+    "hash": "48b41cad3a0c3ffb70103ea03f44ced3e86b5b4fa37e1b6171045f01c8b6b415",
+    "reason": "approved refusal writer atomically advances only the singleton accumulator"
   },
   {
     "engine": "postgres",
@@ -6253,6 +6274,13 @@
   },
   {
     "engine": "sqlite",
+    "name": "ReadAuthRefusalWindow",
+    "annotation": "authn-resolution",
+    "hash": "867db55a85f70df583535e9c253fbddc81a390ac824fd3f198098cdfaa3ee501",
+    "reason": "singleton pre-auth refusal accounting reads datastore time and bounded state under its transaction owner"
+  },
+  {
+    "engine": "sqlite",
     "name": "RebindSAMLExternalIdentityProvider",
     "annotation": "authn-resolution",
     "hash": "5e7e022bd30f720586e24fc548d35032553ac795430e1caab2335a93b3cfb635"
@@ -6628,6 +6656,13 @@
     "name": "SampleSecretValueEntry",
     "annotation": "instance-scoped",
     "hash": "8188209f082c079d8c067bbf1a85d4616b35007b5a0837a174cbe84875046319"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SaveAuthRefusalWindow",
+    "annotation": "authn-resolution",
+    "hash": "3e9fedb830aa9a4388258bbdd68f1f0f038782426d3d32acb729e7bda279077c",
+    "reason": "approved refusal writer atomically advances only the singleton accumulator"
   },
   {
     "engine": "sqlite",

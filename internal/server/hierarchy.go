@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
@@ -96,6 +97,10 @@ func (a *API) writeRequestError(w http.ResponseWriter, r *http.Request, _ error)
 func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refusal *scimproto.Error) {
 	org, binding := chi.URLParam(r, "org"), chi.URLParam(r, "binding")
 	err := a.afterAuth(r.Context(), org, binding, refusal)
+	if errors.Is(err, admission.ErrOverloaded) {
+		a.writeHandlerError(w, r, err)
+		return
+	}
 	e := scimError(err)
 	w.Header().Set("Content-Type", scimproto.MediaType)
 	w.WriteHeader(e.Status)

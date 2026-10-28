@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
@@ -1247,6 +1248,10 @@ func (a *TxAuthorizer) UpdateOAuth2Provider(ctx context.Context, u OAuth2Provide
 // UpdateProvider compare-and-swaps a provider; false means the row moved.
 func (a *TxAuthorizer) UpdateProvider(ctx context.Context, u ProviderUpdate) (bool, error) {
 	return a.r.UpdateProvider(ctx, u)
+}
+
+func (a *TxAuthorizer) UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (int64, error) {
+	return a.r.UpdateRequestRefusals(ctx, sample)
 }
 
 // UpdateSAMLProvider compare-and-swaps a provider configuration.

@@ -2,6 +2,7 @@
 # Port discovery must preserve exact container ownership and fail closed before
 # exporting an unusable or non-loopback target to subsequent CI steps.
 set -euo pipefail
+umask 077
 # This fixture replaces Docker with a stub, so it must not configure a daemon.
 export GITHUB_ACTIONS=false
 root=$(git rev-parse --show-toplevel)
@@ -16,7 +17,18 @@ case "$1" in
     [[ " $* " == *' -p 127.0.0.1::5432 '* ]] || exit 90
     printf 'owned-fixture-id\n'
     ;;
-  cp) [[ "$3" == owned-fixture-id:/tmp/* ]] || exit 91 ;;
+  cp)
+    [[ "$3" == owned-fixture-id:/tmp/* ]] || exit 91
+    case "$3" in
+      */server.crt|*/pg_hba.conf)
+        if [[ "$(find "$2" -type f -perm -004)" != "$2" ]]; then
+          printf 'public TLS fixture files must be readable by postgres\n' >&2
+          exit 99
+        fi
+        ;;
+      */server.key) [[ -z "$(find "$2" -type f -perm -004)" ]] || exit 100 ;;
+    esac
+    ;;
   start) [[ "$2" == owned-fixture-id ]] || exit 92 ;;
   port)
     [[ "$2" == owned-fixture-id && "$3" == 5432/tcp ]] || exit 93
@@ -32,7 +44,7 @@ case "$1" in
     [[ "$2" == owned-fixture-id ]] || exit 96
     ;;
   rm)
-    [[ "$2" == -f && "$3" == owned-fixture-id ]] || exit 97
+    [[ "$2" == -fv && "$3" == owned-fixture-id ]] || exit 97
     touch "$DYNAMIC_PG_TEST_REMOVED"
     ;;
   *) exit 98 ;;
@@ -44,7 +56,10 @@ export RUNNER_TEMP="$work"
 export GITHUB_ENV="$work/github-env"
 export DYNAMIC_PG_TEST_REMOVED="$work/removed"
 export DYNAMIC_PG_TEST_BINDING=127.0.0.1:49157
-"$root/scripts/ci/start-dynamic-pg.sh" >"$work/success.log" 2>&1
+if ! "$root/scripts/ci/start-dynamic-pg.sh" >"$work/success.log" 2>&1; then
+  cat "$work/success.log" >&2
+  exit 1
+fi
 grep -Fx 'HIKYO_TEST_DYNAMIC_PG_DSN=postgres://leaseadmin@127.0.0.1:49157/app' "$GITHUB_ENV" >/dev/null
 grep -Fx 'HIKYO_TEST_DYNAMIC_PG_CONTAINER=owned-fixture-id' "$GITHUB_ENV" >/dev/null
 grep -Fx 'HIKYO_DYNAMIC_PG_REQUIRED=1' "$GITHUB_ENV" >/dev/null
