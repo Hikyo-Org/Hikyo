@@ -212,6 +212,8 @@ pod=$(kubectl -n "$ns" get pods -l "app.kubernetes.io/name=hikyo,app.kubernetes.
 attach_probe
 http_probe restricted-reboot "$approved" proxy probe 200 "$server"
 http_probe reboot-loopback-collector "$ns" "$pod" np-probe 200 http://127.0.0.1:8081/metrics
+http_probe reboot-denied-ingress "$ns" unapproved probe deny "$server"
+http_probe reboot-denied-management "$ns" "$pod" np-probe deny "http://management.$targets.svc:8080/"
 
 kubectl -n "$ns" port-forward "deployment/$release-hikyo" :8080 :8081 >"$work/forward.log" 2>&1 &
 forward_pid=$!
