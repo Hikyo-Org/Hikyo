@@ -88,6 +88,11 @@ func TestConsume(t *testing.T) {
 			t.Fatal("failed destination accepted")
 		}
 	})
+	t.Run("staging_short_write", func(t *testing.T) {
+		if _, err := Consume(testResponse(valid), shortWriter{}); !errors.Is(err, io.ErrShortWrite) {
+			t.Fatalf("short staging write = %v", err)
+		}
+	})
 }
 
 type failingReader struct{}
@@ -97,3 +102,7 @@ func (failingReader) Read([]byte) (int, error) { return 0, errors.New("transport
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+type shortWriter struct{}
+
+func (shortWriter) Write(line []byte) (int, error) { return len(line) - 1, nil }
