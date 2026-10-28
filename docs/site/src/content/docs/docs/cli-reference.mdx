@@ -131,6 +131,9 @@ instance and scope to move retained ciphertext and retire superseded versions.
 It is chunked and resumable: a failed run is incomplete; re-run the same command.
 A subsequent successful run moves zero rows. Existing human authentication,
 second-factor assurance and separate rotation/re-encryption capabilities apply.
+Both scopes require MFA assurance in the current session, such as a completed
+passkey login. A password-only session is refused even if the account owns a
+passkey; sign in with MFA before retrying.
 
 Project selectors can also resolve from the usual environment, pin file and
 named context. Explicit `--instance-scope` ignores those inherited project

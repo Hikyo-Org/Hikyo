@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http/httptest"
 	"testing"
 
@@ -76,7 +77,14 @@ func TestDEKCLICompletesRotation(t *testing.T) {
 			run(t, cli.ExitAuth, args...)
 		}
 		dev := webauthntest.New(waRPID, waOrigin)
-		setSession(enrolPasskeyAndStepUp(t, admin.auth, t.Context(), admin.token, admin.password, dev))
+		// Keep two live sessions for the same account: owning a passkey must
+		// not elevate the password-only session's recorded assurance.
+		passwordSession := enrolPasskey(t, admin.auth, t.Context(), admin.token, admin.password, dev)
+		passkey, err := discoverableLogin(t, admin.auth, t.Context(), dev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		setSession(passkey.SessionToken)
 		// The project exists, but not under this org. Neither verb may mint a
 		// phantom DEK or fall back to the instance key on a malformed chain.
 		keysBefore := queryInt(t, db, "SELECT COUNT(*) FROM tier3_keys")
@@ -99,6 +107,54 @@ func TestDEKCLICompletesRotation(t *testing.T) {
 					selectors = []string{"--org", cOrg, "--project", cPrj}
 					org, project = cOrg, cPrj
 				}
+				passwordRefused := func(t *testing.T, verb string) {
+					t.Helper()
+					identity, err := admin.auth.Identity(t.Context(), passwordSession)
+					if err != nil {
+						t.Fatalf("password session must still authenticate: %v", err)
+					}
+					if len(identity.Assurance.Factors) != 1 || identity.Assurance.Factors[0] != "password" || identity.EnrolmentRequired {
+						t.Fatalf("expected an unrestricted password-only session: %+v", identity)
+					}
+					keysBefore := queryInt(t, db, "SELECT COUNT(*) FROM tier3_keys")
+					statesBefore, err := queryTier3StatesPurpose(db, t.Context(), scope, org, project)
+					if err != nil {
+						t.Fatal(err)
+					}
+					ciphertextQuery := "SELECT verifier FROM password_credentials ORDER BY account_id LIMIT 1"
+					if scope == "project" {
+						ciphertextQuery = "SELECT ciphertext FROM value_entries WHERE key_id='" + cKeyPw + "'"
+					}
+					ciphertextBefore := reencReadBlob(t, db, t.Context(), ciphertextQuery)
+					trail := "instance"
+					if scope == "project" {
+						trail = "tenant"
+					}
+					completedQuery := "SELECT COUNT(*) FROM audit_" + trail + "_events WHERE type='crypto.reencrypt_completed'"
+					completedBefore := queryInt(t, db, completedQuery)
+					chunks := 0
+					reencrypt.AfterChunk = func(context.Context, string) error { chunks++; return nil }
+					t.Cleanup(func() { reencrypt.AfterChunk = nil; setSession(passkey.SessionToken) })
+					setSession(passwordSession)
+					args := append([]string{verb}, selectors...)
+					if verb == "rotate-dek" {
+						args = append(args, "--yes")
+					}
+					run(t, cli.ExitRefused, args...)
+					statesAfter, err := queryTier3StatesPurpose(db, t.Context(), scope, org, project)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if queryInt(t, db, "SELECT COUNT(*) FROM tier3_keys") != keysBefore || !maps.Equal(statesBefore, statesAfter) || chunks != 0 {
+						t.Fatalf("password refusal mutated keys or walked ciphertext: before %v, after %v, chunks %d", statesBefore, statesAfter, chunks)
+					}
+					if !bytes.Equal(ciphertextBefore, reencReadBlob(t, db, t.Context(), ciphertextQuery)) || queryInt(t, db, completedQuery) != completedBefore {
+						t.Fatal("password refusal changed ciphertext or emitted completion")
+					}
+				}
+				if !t.Run("password-only-rotate", func(t *testing.T) { passwordRefused(t, "rotate-dek") }) {
+					return
+				}
 				var rotated apigen.DEKRotation
 				raw := run(t, cli.ExitOK, append([]string{"rotate-dek", "--yes"}, selectors...)...)
 				if err := json.Unmarshal(raw, &rotated); err != nil {
@@ -113,6 +169,9 @@ func TestDEKCLICompletesRotation(t *testing.T) {
 				}
 				if before[1] != "retiring" || before[2] != "active" {
 					t.Fatalf("rotation alone retired data key: %v", before)
+				}
+				if !t.Run("password-only-reencrypt", func(t *testing.T) { passwordRefused(t, "reencrypt") }) {
+					return
 				}
 				if scope == "project" {
 					// Fail after an earlier chunk committed. The CLI must report

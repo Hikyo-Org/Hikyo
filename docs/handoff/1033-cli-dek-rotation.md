@@ -37,8 +37,13 @@ The old boolean `--instance` collided with the common string selector and
 never executed successfully. This pre-stable repair uses the existing
 `--instance-scope` collision spelling and updates the canonical spelling spec,
 CLI help and JSON goldens, public CLI reference, HA reference and UI examples.
-It does not change the encryption ADR, wire contracts, crypto formats,
+It does not change the encryption ADR, request routes or bodies, crypto formats,
 capability formulas or re-encryption algorithms, and grants no ADR waiver.
+The owner also explicitly authorized restoring the two existing capabilities'
+MFA gates to the accepted human-auth ADR.
+For that repair, main was rechecked at
+`1c7a0d0bdb5f8e4f9bd9c71f0a67219cd8f72736`; its capability set still omitted
+both gates. This repair retains the existing branch and signed history.
 
 ## API owner and completion
 
@@ -55,6 +60,12 @@ key; retrying the same scope resumes committed chunks. A successful walk
 retires superseded keys only after the service's ciphertext-reference gate.
 A subsequent successful invocation moves zero rows.
 
+Both scopes require adequate MFA assurance in the current human session.
+A password-only session is refused even if the same account owns a passkey.
+Complete a passkey login or another accepted MFA ceremony before retrying.
+The server enforces this at the existing authorization chokepoint, rather than
+trusting CLI state or an account's enrolled-factor inventory.
+
 ## Regression evidence
 
 | Test | Property |
@@ -65,7 +76,9 @@ A subsequent successful invocation moves zero rows.
 | `TestDEKRotationInstanceTarget` | Explicit selection wins over another trusted ambient instance; typos reach neither server; both scopes |
 | `TestDEKRotationAuthenticationAndConfirmation` | Required `--yes`; authentication, capability and incomplete-walk errors propagate without success output |
 | `TestDEKRotationCredentialRefusals` | Logged-out, machine-only and origin-mismatched credentials cannot mutate |
-| `TestDEKCLICompletesRotation` | Real CLI/API/service on SQLite and PostgreSQL; invalid bearer and wrong-chain refusal, interrupted/resumed project walk, both key retirements, zero-row re-run and readable data/login afterward |
+| `TestDEKCLICompletesRotation` | Real CLI/API/service on SQLite and PostgreSQL; live password-only refusal and passkey success at both scopes, invalid bearer and wrong-chain refusal, interrupted/resumed project walk, both key retirements, zero-row re-run and readable data/login afterward |
+| `TestDEKOperationsRequireMFA` | Password-only refusal, passkey acceptance and the existing session-less local-authority exemption for operations using either capability, including token-key and scanning-key rotation |
+| `TestMFAMandatorySetMatchesTheADR` | Independent capability inventory includes both restored gates |
 
 Focused local CLI regressions pass. A source overlay of current main reproduces
 both original `flag redefined: instance` panics. New negative controls also
@@ -85,12 +98,25 @@ sensitive custody, session handling and result lifetime are unchanged. The
 review note and source hash are refreshed together. Independent maintainer
 security review is still required by #1033.
 
-Real service validation also reproduced a pre-existing MFA gap on this PR and
-current main: `rotate-dek` and `reencrypt` are absent from the mandatory-MFA
-capability set, although the accepted human-auth ADR requires every instance
-capability to be gated. A password-only operator can rotate a DEK. A focused
-scope decision is pending: restore these two gates here, or retain a maintainer
-HOLD for separate repair. No authorization change has been made implicitly.
+Real service validation reproduced a pre-existing MFA gap on this PR and
+current main: `rotate-dek` and `reencrypt` were absent from the mandatory-MFA
+capability set. The owner explicitly authorized restoring both gates in this
+PR, as required by the accepted [human-auth ADR](../adr/human-auth.md).
+The repair adds only these two capabilities to the canonical MFA set and its
+independent fixture. OpenAPI and generated Go/TypeScript clients declare the
+existing forbidden response for all affected routes. Operations sharing
+`rotate-dek`, including token-key and
+scanning-key rotation, receive the same required human-session assurance gate.
+The existing session-less local-authority exemption remains intact.
+
+The real CLI regression retains two valid sessions for the same passkey-owning
+account. At both project and instance scope, the password-only session receives
+the existing forbidden response (CLI exit 4), without new keys, key-state
+changes, ciphertext rewrites, walk chunks or completion events. The independent
+passkey session then completes rotation and re-encryption. Refused re-encryption
+is tested while old-key ciphertext is still present, so a no-op cannot hide an
+authorization bypass. Before the gate repair, the negative control rotated
+both scopes successfully on both engines. No ADR amendment or waiver is needed.
 
 Cross-provider review is SKIPPED because the authorized Anthropic subscription
 path is unavailable; no paid or alternate provider was substituted. This is
@@ -111,7 +137,9 @@ the isolation harness creates its sibling `_isolation` database.
 
 ```sh
 go test -p 2 ./internal/cli -count=1
+go test -p 2 ./internal/authz ./internal/server ./internal/service -count=1
 go test -p 2 -parallel 2 ./internal/isolation -run '^TestDEKCLICompletesRotation$' -count=1
+go test -p 2 -parallel 2 ./internal/isolation -run '^TestMFAMandatorySetMatchesTheADR$' -count=1
 scripts/ci/fast-feedback.sh --working-tree --plan
 scripts/ci/fast-feedback.sh --working-tree
 scripts/ci/check-dco.sh hikyo-upstream/main HEAD
