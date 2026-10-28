@@ -239,7 +239,12 @@ does not isolate the separate operator pod's outbound Kubernetes API traffic.
 
 1. Keep the installation's existing values, exact image and upgrade custody.
    Both restriction flags default to false; omitting them preserves the
-   ingress-only TCP 8080 rule and unrestricted egress.
+   ingress-only TCP 8080 rule and unrestricted egress. The TLS staging/watcher
+   memory ceiling is now 128Mi, with the existing 50m CPU ceiling and requests.
+   Review namespace ResourceQuota/LimitRange before upgrading. If reusing older
+   values that retain 32Mi, explicitly qualify and set
+   `tls.reloaderResources.limits.memory: 128Mi` before the policy rehearsal.
+   Establish healthy boot with both restriction flags false first.
 2. Inventory every direct client of port 8080, outbound destination and pending
    provider cleanup. Review actual namespace/pod selectors, DNS, datastore,
    IdP discovery/token/JWKS endpoints, adapter endpoints, remote instances,
@@ -260,7 +265,8 @@ does not isolate the separate operator pod's outbound Kubernetes API traffic.
    connectivity, restore the reviewed prior policy values, or explicitly set
    both `restricted` flags false using the same chart and exact image. This
    deliberately restores broad access. Do not use a binary/schema rollback
-   as a substitute for a policy-only recovery.
+   as a substitute for a policy-only recovery. Keep the qualified TLS helper
+   budget when restoring the policy values.
 
 Keep each adapter and dynamic secret destination allowed until you remove its
 integrations and the provider cleanup finishes. Otherwise revocation and
