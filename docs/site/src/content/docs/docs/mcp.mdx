@@ -178,7 +178,7 @@ describe credential channels; a listed profile is not a passing client claim.
 | Client | Pinned profile | Credential channel |
 | --- | --- | --- |
 | Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.8.0` | HTTP transport injects an environment-loaded bearer |
-| MCP Inspector | `@modelcontextprotocol/inspector 2.10.1` | Transient Authorization header, not a saved catalog |
+| MCP Inspector | `@modelcontextprotocol/inspector 2.11.0` | Transient Authorization header, not a saved catalog |
 | Codex CLI | `0.160.1`, `/mcp/codex` | `bearer_token_env_var` |
 | Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
 | OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
@@ -212,7 +212,7 @@ calls plus validation and staging. All seven tools were advertised, but only
 those four were invoked. The measured initialization and subsequent protocol
 headers were `2025-06-18`. Typed config/secret checks and all-frame canary/token
 exclusion passed. This does not establish public HTTPS or final-candidate
-acceptance. Current Go SDK `v1.8.0` and Inspector `2.10.1` are source pins, not
+acceptance. Current Go SDK `v1.8.0` and Inspector `2.11.0` are source pins, not
 new deployed passes. Current Claude and Responses remain unverified. See the
 [current client support table and evidence](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/reports/mcp-current-client-651.md).
 
@@ -301,7 +301,7 @@ server only after reviewing the expanded URL and tool catalog.
 
 Inspector's CLI header is a command-line value, so expanding a production
 credential there can expose it to process inspection. For a manual smoke,
-start Inspector `2.10.1`, choose Streamable HTTP, set the URL from
+start Inspector `2.11.0`, choose Streamable HTTP, set the URL from
 `HIKYO_MCP_URL`, and set Protocol Era to **Modern**. Paste the bearer into the
 transient Authorization field from the secret manager, call
 `hikyo_list_definitions`, then clear the field and do not save the server
@@ -359,8 +359,10 @@ hikyo sa credential mint \
 Start the public checker with both credentials. It proves the predecessor is
 live, prints a safe prompt, and then polls for at most two minutes. In another
 terminal, revoke that exact credential. The first process proves the same
-credential changed from authorized to tenant-safe denial without ever writing
-the bearer, response body, or tool result:
+credential changed from authorized to tenant-safe denial and then rechecks the
+replacement with a fresh authorized read. It never writes the bearer, response
+body, or tool result. Add `--json` for a redacted receipt of the UTC phase
+observations; its scope is endpoint smoke only:
 
 ```bash
 export HIKYO_MCP_TOKEN="$(</run/credentials/hikyo-mcp-token-next)"
@@ -381,9 +383,14 @@ hikyo sa credential revoke \
 ```
 
 The check proves unauthenticated discovery, the closed tool catalog, one
-authorized safe read, invalid-token denial, immediate revoked-token denial,
-and absence of an MCP session ID. Invalid and revoked credentials must return
-the same uniform `401`.
+authorized safe read, invalid-token denial, observed revoked-token denial,
+replacement success after that denial, and absence of an MCP session ID.
+Invalid and revoked credentials must return the same uniform `401`.
+The two-second polling observation does not prove zero propagation delay or
+identify the first request after committed revocation. Record the supported
+writer's commit completion and a known subsequent probe to each actual process
+separately. The JSON receipt explicitly says `polling_only_no_commit_receipt`;
+it contains no image or deployment binding and does not close #651.
 
 ## Conformance, replicas, and shutdown
 

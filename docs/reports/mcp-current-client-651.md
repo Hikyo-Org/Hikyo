@@ -1,5 +1,12 @@
 # Current native Codex evidence for #651
 
+28 October preparation: the
+[external acceptance packet](../handoff/651-mcp-external-acceptance.md)
+records current availability and pending support decisions. Inspector is now
+pinned to 2.11.0 in source; the 16 October observations and table below retain
+their historical scope. Neither this report nor preparation is final external
+acceptance.
+
 16 October 2026. [Issue #651](https://github.com/Hikyo-Org/Hikyo/issues/651)
 remains open. These measurements cover actual `codex-cli 0.160.1` against local
 in-process HTTP handlers on SQLite and PostgreSQL. They do not establish a

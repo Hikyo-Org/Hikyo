@@ -1,5 +1,10 @@
 # #651 MCP production proof
 
+For 28 October preparation, current client availability, single-fixture custody,
+checker repair and the pending scoped support decision, use the
+[external acceptance packet](651-mcp-external-acceptance.md). The observations
+below retain their original dates and do not certify a final candidate.
+
 ## Current status, 16 October 2026
 
 #651 remains open. The additive native-client test now proves actual Codex

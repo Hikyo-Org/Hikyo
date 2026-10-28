@@ -1,0 +1,149 @@
+{
+  "schema": "hikyo.dev/mcp-651-preparation/v1",
+  "recorded_at_utc": "2026-10-28T10:04:18.920871Z",
+  "issue": 651,
+  "scope": "source_preparation_only",
+  "inspected_main_commit": "24e198b32a3ffd8d4013207b2f974d76ec49be6f",
+  "checker_patch": {
+    "method": "SHA-256 of git diff --no-ext-diff --binary inspected_main_commit -- followed by paths",
+    "paths": [
+      "scripts/mcp-public-smoke/main.go",
+      "scripts/mcp-public-smoke/main_test.go"
+    ],
+    "sha256": "a60def09e169e73149a20c8004bb1309bb40040699ff8b8e7b0520cf7a15c116"
+  },
+  "availability": {
+    "go_toolchain": "go1.27.3 darwin/arm64",
+    "official_go_sdk_pin": "v1.8.0",
+    "inspector_source_pin": "2.11.0",
+    "installed_global_codex": "0.164.0",
+    "required_codex": "0.160.1",
+    "required_codex_preparation": "PASS: isolated codex-cli 0.160.1 acquired; executable version confirmed; no model turn or new native tool execution",
+    "installed_claude": "2.1.292",
+    "historical_claude_profile": "2.1.261",
+    "claude_execution": "NOTRUN: no authorized subscription or paid fallback",
+    "installed_openai_python_sdk": "2.37.0",
+    "responses_execution": "NOTRUN: no authorized API credential or provider recipient",
+    "inspector_preparation": "PASS: frozen 2.11.0 installed; tenant-free Inspector CLI catalog probe passed"
+  },
+  "fixture_custody": {
+    "historical_named_containers_present": false,
+    "historical_documented_custody_directories_present": false,
+    "configured_mcp_endpoint": false,
+    "configured_live_or_rotating_credential": false,
+    "configured_postgres_fixture_dsn": false,
+    "existing_authorized_reusable_fixture_established": false,
+    "new_release_deployments_created": 0,
+    "private_secret_material_read": false,
+    "single_fixture_owner": "651",
+    "production_installation_inventory_owner": "1055",
+    "status": "HOLD: exact candidate and resource-specific authorization/custody packet required"
+  },
+  "final_candidate": {
+    "status": "HOLD: integrated source/trust/governance selection pending",
+    "commit": null,
+    "image_repo_digest": null,
+    "verified_admission_bundle_manifest_sha256": null,
+    "deployment_revision": null,
+    "public_https_endpoint": null
+  },
+  "local_checks": [
+    {
+      "check": "TestRunRequiresReplacementAfterRevocation before repair",
+      "status": "EXPECTED_FAILURE",
+      "observation": "checker returned nil while replacement was denied after predecessor revocation"
+    },
+    {
+      "check": "go test -p 2 ./scripts/mcp-public-smoke -count=1",
+      "status": "PASS",
+      "scope": "TLS checker regressions only"
+    },
+    {
+      "check": "go test -p 2 -parallel 2 -race ./scripts/mcp-public-smoke ./scripts/mcp-production-client ./internal/mcpserver",
+      "status": "PASS"
+    },
+    {
+      "check": "go vet -p 2 ./scripts/mcp-public-smoke ./scripts/mcp-production-client",
+      "status": "PASS"
+    },
+    {
+      "check": "scripts/ci/check-mcp-conformance.sh",
+      "status": "PASS_WITH_UNCHANGED_BASELINE",
+      "scope": "tenant-free fixture, not authenticated production acceptance",
+      "scenarios": {
+        "server-stateless": {
+          "passed": 25,
+          "failed": 0
+        },
+        "tools-list": {
+          "passed": 3,
+          "failed": 0
+        },
+        "caching": {
+          "passed": 4,
+          "expected_failures": 3
+        }
+      },
+      "baseline_changes": false
+    },
+    {
+      "check": "scripts/ci/fast-feedback.sh --working-tree",
+      "status": "PASS",
+      "planned_domains": {
+        "go": true,
+        "docs": true,
+        "web": false,
+        "client": false,
+        "workflows": false,
+        "shell": false,
+        "releaseAdmission": false
+      },
+      "scope": "complete working-tree diff; Go format/package compile and read-only docs validation; no full-suite proof"
+    },
+    {
+      "check": "node docs/site/scripts/prepare-content.mjs --check",
+      "status": "PASS"
+    },
+    {
+      "check": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "support_decision": {
+    "status": "PENDING_OWNER_DECISION",
+    "recommended": "A: require Go v1.8.0, Inspector 2.11.0 and Codex 0.160.1 final-candidate proof; Claude and Responses not verified for 1.0",
+    "alternative": "B: keep all five mandatory, retain HOLD until authorized execution",
+    "adr_waiver": false
+  },
+  "review": {
+    "self_review": "Completed source/spec inspection; no independent review claimed",
+    "cross_provider": "SKIPPED: Anthropic subscription unavailable; no substitute authorized",
+    "maintainer_review": "PENDING_PR"
+  },
+  "external_gates": {
+    "public_candidate_smoke": "NOTRUN",
+    "named_clients_authenticated_on_candidate": "NOTRUN",
+    "two_actual_postgres_server_processes": "NOTRUN",
+    "cursor_continuation_and_current_authority": "NOTRUN",
+    "committed_revocation_first_post_commit_probe_and_restoration": "NOTRUN",
+    "public_proxy_cancellation_and_drain": "NOTRUN",
+    "shared_claim_release": "NOTRUN",
+    "final_support_table": "HOLD"
+  },
+  "claim_limit": "No published image/admission/deployment binding, public HTTPS, provider request, final-candidate execution, merge or #651 closure. Local tests and version inventory do not satisfy external gates.",
+  "local_validation_queue": {
+    "job_id": 2572,
+    "status": "PASS",
+    "exit_code": 0
+  },
+  "cleanup": {
+    "owned_release_deployments": 0,
+    "conformance_fixture": "process and temporary files removed by script trap; verified no listener remains",
+    "retained": [
+      "isolated pinned Codex runtime for future authorized qualification",
+      "frozen Inspector dependency installation",
+      "offline HTML companion and local validation evidence"
+    ],
+    "retention_condition": "Keep exact client preparation until qualification or task cancellation, then remove only task-owned runtime files; preserve reports and shared package caches."
+  }
+}
