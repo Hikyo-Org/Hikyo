@@ -65,6 +65,8 @@ fixture_image_created=false
 candidate_image_created=false
 diagnostics() {
 	echo "chart-kind: collecting failed deployment diagnostics" >&2
+    kubectl --namespace kube-system get pods --selector k8s-app=calico-node --output=wide >&2 || true
+    kubectl --namespace kube-system logs daemonset/calico-node --tail=50 >&2 || true
 	kubectl --namespace "$NAMESPACE" get deployments,pods --output=wide >&2 || true
 	kubectl --namespace "$NAMESPACE" get pods --output=json |
 		jq '[.items[] | {name:.metadata.name,phase:.status.phase,conditions:.status.conditions,init:.status.initContainerStatuses,containers:.status.containerStatuses}]' >&2 || true
@@ -82,6 +84,7 @@ diagnostics() {
 }
 cleanup() {
 	local status=$?
+    trap - EXIT HUP INT TERM
 	if [[ "$status" != 0 && "$created" == true ]]; then
 		diagnostics
 	fi
@@ -90,21 +93,29 @@ cleanup() {
 		wait "$port_forward_pid" >/dev/null 2>&1 || true
 	fi
 	if [[ "$created" == true ]]; then
-		kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
+		if ! kind delete cluster --name "$CLUSTER" >/dev/null 2>&1; then
+            echo "chart-kind: cleanup failed for cluster $CLUSTER" >&2
+            status=1
+        fi
 	fi
 	if [[ "$registry_created" == true ]]; then
-		docker rm --force "$REGISTRY_NAME" >/dev/null 2>&1 || true
+		if ! docker rm --force "$REGISTRY_NAME" >/dev/null 2>&1; then
+            echo "chart-kind: cleanup failed for registry $REGISTRY_NAME" >&2
+            status=1
+        fi
 	fi
     if [[ "$fixture_image_created" == true ]]; then
-        docker image rm "$fixture_image" >/dev/null
+        docker image rm "$fixture_image" >/dev/null || status=1
     fi
     if [[ "$candidate_image_created" == true ]]; then
-        docker image rm "$IMAGE_TAG" >/dev/null
+        docker image rm "$IMAGE_TAG" >/dev/null || status=1
     fi
 	rm -rf "$work"
 	return "$status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' HUP TERM
 
 cat >"$kind_config" <<'EOF'
 kind: Cluster
