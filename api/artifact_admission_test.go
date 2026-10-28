@@ -42,6 +42,14 @@ func TestAuthorizationOperationArtifactEligibilityDerivesFromEmbeddedContract(t 
 		{"remote.list", ArtifactInstanceCredential, false},
 		{"delivery.fetch", ArtifactMachineCredential, true},
 		{"delivery.fetch", ArtifactHumanSession, false},
+		{"audit.query-project", ArtifactMachineCredential, true},
+		{"audit.export-project", ArtifactMachineCredential, true},
+		{"audit.query-env", ArtifactMachineCredential, true},
+		{"audit.export-env", ArtifactMachineCredential, true},
+		{"audit.query-org", ArtifactMachineCredential, false},
+		{"audit.export-org", ArtifactMachineCredential, false},
+		{"audit.instance-query", ArtifactMachineCredential, false},
+		{"audit.instance-export", ArtifactMachineCredential, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.operation+"/"+tt.artifact, func(t *testing.T) {
@@ -66,6 +74,10 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 	// delivery's post-release presence-only behavior is proved end-to-end in
 	// TestWorkloadRevealHistoryPinSQLite/Postgres.
 	wantMachine := map[string]string{
+		"queryProjectAudit":          "metadata audit reader; audit-read is automation-only",
+		"exportProjectAudit":         "metadata audit export; audit-read is automation-only",
+		"queryEnvAudit":              "metadata audit reader; audit-read is automation-only",
+		"exportEnvAudit":             "metadata audit export; audit-read is automation-only",
 		"listEnvironments":           "non-value-bearing environment metadata",
 		"getEnvironment":             "non-value-bearing environment metadata",
 		"createEnvironment":          "not reachable with workload read",

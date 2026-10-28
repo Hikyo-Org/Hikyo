@@ -1,4 +1,4 @@
-import { queryEnvAuditOp, queryOrgAuditOp, queryProjectAuditOp } from '@hikyo/operations';
+import { queryEnvAuditOp, queryInstanceAuditOp, queryOrgAuditOp, queryProjectAuditOp } from '@hikyo/operations';
 import { zAuditPage } from '@hikyo/zod';
 import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -40,24 +40,31 @@ export type AuditPage = z.infer<typeof zAuditPage>;
 export type AuditEvent = AuditPage['items'][number];
 
 /**
- * AuditScope names the trail being read (#572). The org trail holds every
- * event; the project and environment trails are the SERVER's scoped slices,
+ * AuditScope names the trail being read. The instance and tenant trails are
+ * separate; project and environment trails are the server's tenant slices,
  * each behind its own `audit-read` proof at that scope, so a project-level
  * holder reads the project trail without an org-level grant. Environment is
  * only meaningful under a project.
  */
 export type AuditScope = {
+  readonly instance?: false;
   readonly org: string;
   readonly project?: string;
   readonly environment?: string;
+} | {
+  readonly instance: true;
+  readonly org?: never;
+  readonly project?: never;
+  readonly environment?: never;
 };
 
 /**
  * exportPath is the scope's export route, spelled as one literal per route so
  * the parity registry's path evidence (api/parity.yaml `reach: path`) can see
- * each of the three operations reached from this module.
+ * each of the four operations reached from this module.
  */
 function exportPath(scope: AuditScope): string {
+  if (scope.instance === true) return '/api/v1/instance/audit/export';
   const org = encodeURIComponent(scope.org);
   if (scope.project === undefined || scope.project === '') {
     return `/api/v1/orgs/${org}/audit/export`;
@@ -68,6 +75,12 @@ function exportPath(scope: AuditScope): string {
   }
   const environment = encodeURIComponent(scope.environment);
   return `/api/v1/orgs/${org}/projects/${project}/environments/${environment}/audit/export`;
+}
+
+/** Keep the server's scope-qualified filename when saving a verified Blob. */
+export function auditExportFilename(scope: AuditScope): string {
+  const parts = scope.instance === true ? ['instance'] : [scope.org, scope.project ?? '', scope.environment ?? ''].filter((part) => part !== '');
+  return `hikyo-audit-${parts.join('-')}.jsonl`;
 }
 
 /**
@@ -116,14 +129,13 @@ export const emptyAuditFilter: AuditFilter = {
   correlationId: '',
 };
 
-/** How many rows a page scans; the server clamps its own ceiling. */
+/** Target matching rows per page; the server also bounds its scan budget. */
 const AUDIT_PAGE_LIMIT = 100;
 
 /**
  * auditQuery renders the filter as the operation's query object, dropping every
  * empty field so unset filters never appear in the URL. A datetime-local value
- * carries no zone; treat it as UTC so the bound the operator picked is the
- * bound the server compares against, not one shifted by the browser's zone.
+ * carries no zone; interpret it in the browser's local zone, then send UTC.
  */
 function auditQuery(filter: AuditFilter): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {};
@@ -188,10 +200,11 @@ function safeSeq(seq: bigint): number {
 }
 
 const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
-  ['audit', scope.org, scope.project ?? '', scope.environment ?? '', filter] as const;
+  ['audit', scope, filter] as const;
 
-/** queryScoped calls the one operation the scope addresses; the three share a response contract. */
+/** queryScoped calls the one operation the scope addresses; all share a response contract. */
 function queryScoped(scope: AuditScope, query: Record<string, string | number | string[]>): Promise<AuditPage> {
+  if (scope.instance === true) return parsed(queryInstanceAuditOp, { query });
   if (scope.project === undefined || scope.project === '') {
     return parsed(queryOrgAuditOp, { path: { org: scope.org }, query });
   }
@@ -239,10 +252,10 @@ export function useAuditTrail(
 }
 
 /**
- * auditExportUrl is the JSONL download URL for the current filter. It is a plain
- * same-origin GET so the browser streams the bytes to disk under the session
- * cookie, nothing is buffered in the SPA and no token rides the URL. Paging
- * fields are omitted: the export streams the whole filtered slice.
+ * auditExportUrl addresses the whole filtered slice, omitting query cursors.
+ * downloadAuditExport negotiates and verifies completion before the UI saves
+ * the event Blob. The same-origin request uses the session cookie; no token
+ * rides the URL.
  */
 export function auditExportUrl(scope: AuditScope, filter: AuditFilter): string {
   const params = new URLSearchParams();

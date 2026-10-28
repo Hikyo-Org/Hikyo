@@ -391,6 +391,7 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			DisplayName: optional(id.DisplayName),
 		},
 		Capabilities: apigen.PrincipalCapabilities{
+			InstanceAuditRead:   &id.InstanceAuditRead,
 			InstanceOperator:    id.InstanceOperator,
 			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},

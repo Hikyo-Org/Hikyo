@@ -243,6 +243,9 @@ type Identity struct {
 	// update status) require. It is a reflection of the caller's own grant, not
 	// an authorization — every one of those reads is still judged per request.
 	InstanceOperator bool
+	// InstanceAuditRead gates audit navigation independently of instance-config.
+	// It reflects the caller's own grant; every read still authorizes normally.
+	InstanceAuditRead bool
 	// DeliveryReportGrant is a disclosure-safe UI hint: where the caller may
 	// grant `report-delivery-status`. No human holds that atom, so every grant
 	// of it is an unheld grant, and this is exactly the grant-unheld rule's
@@ -991,6 +994,11 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			return err
 		}
 		out.InstanceOperator = operator
+		auditReader, err := az.HoldsInstanceCapability(ctx, id, authz.OpAuditInstanceQuery)
+		if err != nil {
+			return err
+		}
+		out.InstanceAuditRead = auditReader
 		// The caller's own grant rows, read without an operation or an audit
 		// record, the same footing as the check above: the grant dialog gates
 		// its report-delivery-status offer on this rather than probing the org

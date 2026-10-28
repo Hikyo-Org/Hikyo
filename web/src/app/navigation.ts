@@ -219,6 +219,14 @@ export const SURFACES = defineSurfaceRegistry([
     chrome: 'shell',
   },
   {
+    id: 'instance-audit',
+    path: '/instance/audit',
+    label: 'Instance audit',
+    section: 'instance',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
+  {
     id: 'instance-members',
     path: '/instance/members',
     label: 'Instance members',

@@ -388,3 +388,38 @@ with `instance-config apply`. [Manage Hikyo with Hikyo](/docs/managed-configurat
 covers adoption, per-node convergence, independent remote projects and rollback,
 and [configuration rollouts](/docs/configuration-rollouts/) covers the controlled
 bootstrap rollouts for settings that need a restart.
+
+## Audit query and export
+
+`audit query` reads one bounded page. `audit export` verifies a complete JSONL
+export before publishing event rows to stdout. Both accept the same scope and
+filter choices as the browser audit view:
+
+```sh
+hikyo audit query --instance NAME --instance-scope --operation 'auth.*' -o json
+hikyo audit query --org ORG --project PROJECT --env ENV --limit 100 -o json
+hikyo audit export --instance NAME --instance-scope --outcome failure > instance-audit.jsonl
+hikyo audit export --org ORG --project PROJECT > project-audit.jsonl
+```
+
+Choose explicit `--instance-scope` for authentication and instance security
+events. Login failures do not appear in organisation or project trails. This
+scope overrides tenant selections from contexts and environment variables;
+combining it with explicit tenant flags is refused. `--instance NAME` selects
+the server, separately from the trail scope.
+
+Filters are `--from` and `--to` (RFC3339), `--actor` (principal ID),
+`--actor-name`, `--operation`, `--object-type`, `--object-id` (the same `*`
+wildcards as the API), `--correlation-id`, and repeatable `--outcome`. Query
+pages return `next_after_seq`, `upper_seq` and `exhausted`. Continue with
+`--after-seq` and the original `--to-seq` ceiling. Interactive pages are
+allocation ordered; concurrent PostgreSQL commits can require a fresh query
+to recover earlier allocated rows. Exports use the existing gap-free commit
+order and a fixed snapshot. Public sequence numbers are not export checkpoints.
+
+A human session needs `audit-read` at the addressed scope and a second factor.
+There is no extra reveal ceremony. Project automation may export only its
+project subtree with project `audit-read`; it cannot collect organisation-wide
+or instance history. Use encrypted backups for routine broader off-box copies.
+Every query is audited, and exports preserve their INTENT and OUTCOME records.
+An export error is nonzero and must never advance a collector's checkpoint.

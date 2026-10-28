@@ -226,6 +226,20 @@ func (a *API) QueryEnvAudit(ctx context.Context, req apigen.QueryEnvAuditRequest
 	return apigen.QueryEnvAudit200JSONResponse(wire), nil
 }
 
+func (a *API) QueryInstanceAudit(ctx context.Context, req apigen.QueryInstanceAuditRequestObject) (apigen.QueryInstanceAuditResponseObject, error) {
+	p := req.Params
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
+	page, err := a.Audits.InstanceQueryActor(ctx, service.Bearer(bearer(ctx)), f)
+	if err != nil {
+		return nil, err
+	}
+	wire, err := wireAuditPage(page)
+	if err != nil {
+		return nil, err
+	}
+	return apigen.QueryInstanceAudit200JSONResponse(wire), nil
+}
+
 // --- export handlers ---
 
 func (a *API) ExportOrgAudit(ctx context.Context, req apigen.ExportOrgAuditRequestObject) (apigen.ExportOrgAuditResponseObject, error) {
@@ -261,6 +275,18 @@ func (a *API) ExportEnvAudit(ctx context.Context, req apigen.ExportEnvAuditReque
 		},
 		filename: auditFilename(req.Org, req.Project, req.Environment),
 		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportEnvAuditParamsReceiptV1,
+	}, nil
+}
+
+func (a *API) ExportInstanceAudit(ctx context.Context, req apigen.ExportInstanceAuditRequestObject) (apigen.ExportInstanceAuditResponseObject, error) {
+	p := req.Params
+	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
+	return auditExportStream{
+		export: func(w io.Writer) (service.ExportReceipt, error) {
+			return a.Audits.InstanceExportActorReceipt(ctx, service.Bearer(bearer(ctx)), f, auditExportPageSize, w)
+		},
+		filename: auditFilename("instance"),
+		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportInstanceAuditParamsReceiptV1,
 	}, nil
 }
 
@@ -342,6 +368,10 @@ func (s auditExportStream) VisitExportProjectAuditResponse(w http.ResponseWriter
 }
 
 func (s auditExportStream) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+	return s.visit(w)
+}
+
+func (s auditExportStream) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
 	return s.visit(w)
 }
 

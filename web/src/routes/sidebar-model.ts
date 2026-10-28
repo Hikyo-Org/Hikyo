@@ -73,6 +73,7 @@ export function sidebarModel(input: {
   readonly projectId: string;
   readonly remote: string;
   readonly isInstanceOperator: boolean;
+  readonly canReadInstanceAudit?: boolean;
   /**
    * The Hikyo system organisation and project (the self-configuration
    * binding), or null while unknown. The protected profile refuses machine
@@ -94,6 +95,7 @@ export function sidebarModel(input: {
     projectId,
     remote,
     isInstanceOperator,
+    canReadInstanceAudit = false,
     systemScope,
     projects,
     onOrgPage,
@@ -124,11 +126,13 @@ export function sidebarModel(input: {
       ),
   };
 
-  const instanceBlock: SidebarBlock | null = isInstanceOperator
+  const instanceBlock: SidebarBlock | null = isInstanceOperator || canReadInstanceAudit
     ? {
         kind: 'instance',
         title: 'Instance',
-        links: sectionsFor('instance').map((item) => link(item, item.path)),
+        links: sectionsFor('instance')
+          .filter((item) => isInstanceOperator || item.id === 'instance-audit')
+          .map((item) => link(item, item.path)),
       }
     : null;
 

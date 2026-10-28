@@ -4,7 +4,8 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
-import { Audit } from './Audit.tsx';
+import * as auditApi from '../api/audit.ts';
+import { Audit, InstanceAudit } from './Audit.tsx';
 
 // The page reads the current principal id (for the "Self" filter shortcut) from
 // the auth context; stub it so the route renders without the full provider.
@@ -12,7 +13,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'usr_self' } } }),
 }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const event = {
   seq: 1,
@@ -29,7 +30,7 @@ const event = {
   payload: {},
 };
 
-async function renderAudit(items: readonly (typeof event)[]) {
+async function renderAudit(items: readonly (typeof event)[], instance = false) {
   let release: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -39,8 +40,8 @@ async function renderAudit(items: readonly (typeof event)[]) {
     return Response.json({ items, count: items.length, next_after_seq: 0, upper_seq: 0, exhausted: true });
   });
   const rendered = await renderForm(
-    <MemoryRouter initialEntries={['/orgs/acme/audit']}>
-      <Routes><Route path="/orgs/:org/audit" element={<Audit />} /></Routes>
+    <MemoryRouter initialEntries={[instance ? '/instance/audit' : '/orgs/acme/audit']}>
+      <Routes><Route path="/orgs/:org/audit" element={<Audit />} /><Route path="/instance/audit" element={<InstanceAudit />} /></Routes>
     </MemoryRouter>,
   );
   return { ...rendered, release };
@@ -97,7 +98,8 @@ it('shows the actor name in the row while retaining its ID in event details', as
   } finally { await unmount(); }
 });
 
-it('fills the principal field with the session id via Self, and carries checked outcomes to the export link', async () => {
+it('fills Self and carries applied outcomes to the verified export consumer, surfacing its failure', async () => {
+  const download = vi.spyOn(auditApi, 'downloadAuditExport').mockRejectedValue(new Error('incomplete receipt'));
   const { container, release, unmount } = await renderAudit([]);
   try {
     await act(async () => release());
@@ -120,10 +122,14 @@ it('fills the principal field with the session id via Self, and carries checked 
     await act(async () => apply?.click());
     await settleTask();
 
-    const href = container.querySelector<HTMLAnchorElement>('a[download]')?.getAttribute('href') ?? '';
+    const exportButton = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Export JSONL');
+    await act(async () => exportButton?.click());
+    await settleTask();
+    const href = download.mock.calls[0]?.[0] ?? '';
     const params = new URL(href, 'https://x').searchParams;
     expect(params.get('actor')).toBe('usr_self');
     expect(params.getAll('outcomes')).toEqual(['denied', 'failure']);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('No download was saved');
   } finally {
     await unmount();
   }
@@ -145,6 +151,76 @@ it.each([
   const alert = rendered.container.querySelector('[role="alert"]')?.textContent ?? '';
   expect(alert).toContain('This trail is not available, or you may not read it.');
   expect(alert).toContain(`audit-read grant on ${where}`);
-  expect(alert).toContain('No role template includes audit-read');
+  expect(alert).toContain('A member manager can grant it under Members.');
   await rendered.unmount();
+});
+
+it('loads the instance trail independently of tenant selection and shows source attribution', async () => {
+  const sourced = { ...event, scope_class: 'instance', actor_id: 'usr_self', source_ip: '192.0.2.7', user_agent: 'audit-fixture', actor_credential_id: 'cred_fixture' };
+  const { container, release, unmount } = await renderAudit([sourced], true);
+  try {
+    expect(container.querySelector('h1')?.textContent).toBe('Instance audit');
+    expect(container.querySelector('#audit-events [role="status"]')?.textContent).toBe('Loading events…');
+    await act(async () => release());
+    await settleTask();
+    const row = container.querySelector<HTMLButtonElement>('button.audit__row');
+    await act(async () => row?.click());
+    const detail = container.querySelector('aside[aria-label="Event detail"]')?.textContent ?? '';
+    expect(detail).toContain('Source IP192.0.2.7');
+    expect(detail).toContain('User agentaudit-fixture');
+    expect(detail).toContain('Credentialcred_fixture');
+    expect(detail).toContain('Actor classuser');
+  } finally { await unmount(); }
+});
+
+it('names instance authority on denial and disables export', async () => {
+  vi.stubGlobal('fetch', async () => Response.json({ error: { code: 'forbidden', message: 'forbidden' } }, { status: 403 }));
+  const { container, unmount } = await renderForm(<MemoryRouter><InstanceAudit /></MemoryRouter>);
+  try {
+    await settleTask();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('audit-read grant on this instance');
+    const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Export JSONL');
+    expect(button?.disabled).toBe(true);
+    expect(container.querySelector('.audit__empty')).toBeNull();
+  } finally { await unmount(); }
+});
+
+it('pins the instance query ceiling across browser pages', async () => {
+  const calls: string[] = [];
+  vi.stubGlobal('fetch', async (request: Request) => {
+    calls.push(request.url);
+    return Response.json({ items: [], count: 0, next_after_seq: 7, upper_seq: 19, exhausted: calls.length > 1 });
+  });
+  const { container, unmount } = await renderForm(<MemoryRouter><InstanceAudit /></MemoryRouter>);
+  try {
+    await settleTask();
+    const more = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Load more');
+    await act(async () => more?.click());
+    await settleTask();
+    expect(calls).toHaveLength(2);
+    const url = new URL(calls[1] ?? '', 'https://hikyo.example');
+    expect(url.pathname).toBe('/api/v1/instance/audit');
+    expect(url.searchParams.get('after_seq')).toBe('7');
+    expect(url.searchParams.get('to_seq')).toBe('19');
+    expect(container.querySelector('.audit__empty')?.textContent).toContain('No events match this filter.');
+  } finally { await unmount(); }
+});
+
+it('does not announce the end of the trail when a later page loses authority', async () => {
+  let calls = 0;
+  vi.stubGlobal('fetch', async () => {
+    calls++;
+    return calls === 1
+      ? Response.json({ items: [event], count: 1, next_after_seq: 1, upper_seq: 19, exhausted: false })
+      : Response.json({ error: { code: 'forbidden', message: 'forbidden' } }, { status: 403 });
+  });
+  const { container, unmount } = await renderForm(<MemoryRouter><InstanceAudit /></MemoryRouter>);
+  try {
+    await settleTask();
+    const more = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Load more');
+    await act(async () => more?.click());
+    await settleTask();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('audit-read grant on this instance');
+    expect(container.querySelector('.audit__end')).toBeNull();
+  } finally { await unmount(); }
 });

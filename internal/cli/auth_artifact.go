@@ -57,6 +57,7 @@ type authRuleRow struct {
 // listed, including local/pre-auth commands, so a new command defaults denied
 // until its eligibility is chosen here.
 var authRuleRows = []authRuleRow{
+	{Kinds: humanOrMachine, Operations: authOperations("audit query", "audit export")},
 	{Kinds: humanOrMachine | authAllowsDeveloperCredential, Operations: authOperations("run")},
 	{Kinds: authAllowsUnauthenticated, Operations: authOperations(
 		"login",
