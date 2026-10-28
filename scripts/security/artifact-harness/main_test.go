@@ -10,9 +10,131 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// Exercise the real request sender: ordinary authenticated reads share the
+// source allowance with authentication and MCP, including across case boundaries.
+func TestTargetPacesSourceRequestsBeforeSending(t *testing.T) {
+	var received atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		received.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	target := &target{ctx: t.Context(), base: server.URL, client: server.Client()}
+	for range 50 {
+		if r, err := target.request(http.MethodGet, "/api/v1/orgs", "synthetic-session", nil); err != nil || r.status != http.StatusNoContent {
+			t.Fatalf("source allowance positive control: status=%d err=%v", r.status, err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
+	t.Cleanup(cancel)
+	target.ctx = ctx
+	if _, err := target.request(http.MethodGet, "/api/v1/orgs", "synthetic-session", nil); err == nil || received.Load() != 50 {
+		t.Fatalf("exhausted source allowance sent a request: received=%d err=%v", received.Load(), err)
+	}
+}
+
+func TestBackendCampaignsOverlapAndJoin(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	done := make(chan struct{})
+	sqliteFailure := errors.New("SQLite campaign failed")
+	postgresFailure := errors.New("PostgreSQL cleanup failed")
+	var results []backendResult
+	var resultErr error
+	go func() {
+		defer close(done)
+		results, resultErr = runBackends(ctx, options{postgres: "synthetic configured DSN"}, func(ctx context.Context, _ options, b *backendResult) error {
+			started <- b.Engine
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-release:
+			}
+			b.Cleanup = "complete"
+			if b.Engine == "sqlite" {
+				return sqliteFailure
+			}
+			return postgresFailure
+		})
+	}()
+	defer func() { cancel(); <-done }()
+	for range 2 {
+		select {
+		case <-started:
+		case <-ctx.Done():
+			t.Fatal("datastore campaigns did not overlap within their shared deadline")
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatal("second datastore only started after the first exhausted the deadline")
+	}
+	close(release)
+	<-done
+	if len(results) != 2 || results[0].Engine != "sqlite" || results[1].Engine != "postgres" {
+		t.Fatalf("receipt datastore order changed: %+v", results)
+	}
+	if !errors.Is(resultErr, sqliteFailure) || !errors.Is(resultErr, postgresFailure) || results[0].Cleanup != "complete" || results[1].Cleanup != "complete" {
+		t.Fatalf("returned before cleanup or discarded a datastore failure: %+v, %v", results, resultErr)
+	}
+}
+
+func TestBackendCampaignCancellationJoinsCleanup(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	started := make(chan struct{}, 2)
+	done := make(chan struct{})
+	var results []backendResult
+	var resultErr error
+	go func() {
+		defer close(done)
+		results, resultErr = runBackends(ctx, options{postgres: "synthetic configured DSN"}, func(ctx context.Context, _ options, b *backendResult) error {
+			started <- struct{}{}
+			<-ctx.Done()
+			b.Cleanup = "complete"
+			return ctx.Err()
+		})
+	}()
+	defer func() { cancel(); <-done }()
+	for range 2 {
+		select {
+		case <-started:
+		case <-ctx.Done():
+			t.Fatal("datastore campaign failed to start")
+		}
+	}
+	cancel()
+	<-done
+	if !errors.Is(resultErr, context.Canceled) || len(results) != 2 || results[0].Cleanup != "complete" || results[1].Cleanup != "complete" {
+		t.Fatalf("cancellation lost cleanup or errors: %+v, %v", results, resultErr)
+	}
+}
+
+func TestBackendCampaignRequiresPostgres(t *testing.T) {
+	var unconfiguredAttempt atomic.Bool
+	results, err := runBackends(t.Context(), options{}, func(_ context.Context, _ options, b *backendResult) error {
+		if b.Engine != "sqlite" {
+			unconfiguredAttempt.Store(true)
+			return errors.New("attempted an unconfigured datastore")
+		}
+		b.Cleanup = "complete"
+		return nil
+	})
+	if unconfiguredAttempt.Load() || err == nil || len(results) != 2 || results[1].Engine != "postgres" || len(results[1].Cases) != len(mandatoryCases) {
+		t.Fatalf("missing mandatory datastore was accepted: %+v, %v", results, err)
+	}
+	for _, c := range results[1].Cases {
+		if c.Status != "skipped" {
+			t.Fatalf("unconfigured datastore claimed execution: %+v", c)
+		}
+	}
+}
 
 func TestOwnedDisposableDatabaseIdentifier(t *testing.T) {
 	valid := "hikyo_security_0123456789abcdef01234567"

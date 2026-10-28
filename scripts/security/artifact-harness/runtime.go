@@ -74,6 +74,7 @@ type target struct {
 	done              chan error
 	authTimes         []time.Time
 	mcpTimes          []time.Time
+	sourceTimes       []time.Time
 }
 
 func unusedAddress() (string, error) {
@@ -404,6 +405,13 @@ func (t *target) requestWithHeaders(method, path, token string, body any, header
 		}
 		r.Header.Set("Mcp-Method", mirror.Method)
 		r.Header.Set("Mcp-Name", mirror.Params.Name)
+	}
+	// All credential resolution now spends the same production source allowance.
+	// Pace ordinary API reads and mutations too, leaving headroom below sixty
+	// requests per minute without retrying a mutation or changing server limits.
+	// Record this last so an earlier ceremony wait cannot undercount sent work.
+	if err := pace(t.ctx, &t.sourceTimes, 50); err != nil {
+		return response{}, err
 	}
 	rsp, err := t.client.Do(r)
 	if err != nil {

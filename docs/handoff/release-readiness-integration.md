@@ -52,8 +52,9 @@ The storage banner source and component regression are byte-identical to
 #1086 at its frozen head. The original matched desktop/mobile captures use
 the same synthetic prototype state; the before image reconstructs the prior
 diagnostic message. Existing #1085 images show the terminal revocation consumer.
-The original #1086 screenshot-upload exception was expressly scoped to that PR;
-the integration must obtain its own evidence disposition before merge.
+The owner explicitly extended #1086's local-screenshot exception to #1087 on
+2026-10-28. The same matched desktop/mobile captures are approved for this
+combined PR; the rendered component and its regression remain unchanged.
 Do not commit local screenshots or HTML companions.
 
 ## Completion contract
@@ -68,3 +69,41 @@ and integrated 1.0 release qualification remain distinct work.
 Successful credential reset terminally revokes existing developer custody.
 The refusal-window migration also creates durable evidence. A source rollback
 does not restore revoked credentials and must not discard retained evidence.
+
+## Full-suite repair
+
+The first full queue run on merge-group
+`5562b43c8ce1bd6dc96dde1c644c24b6b682c98f` failed. It is preserved as failure
+evidence, not counted as a successful candidate. Current main
+`7309e83e99ddbf9b8ec88dc7257bde281e579ead` was then merged into this branch.
+
+The combined docs search payload exceeded the unchanged 4 MiB offline cache
+ceiling. Disabling unused field-sort indexes preserves complete ranked search
+results and offline search while reducing the actual payload from 4,197,282 to
+3,178,397 bytes. The cache ceiling and fatal warnings remain operative.
+
+Ordinary credential reads now spend the approved source allowance. The native
+artifact fixture therefore paces all requests below that allowance, in addition
+to its existing authentication and MCP pacing. The regression first reproduced
+an extra request being sent after the fixture window was spent, then proved
+cancellation returns without sending it. No mutation retry, production limiter
+change, campaign step reduction or campaign deadline extension is introduced.
+The two independent datastore targets run with two bounded workers inside the
+original deadline. Their receipts retain deterministic datastore order and
+return only after both campaigns and owned cleanup finish; all failures propagate.
+
+Fresh local repair results and final-head hosted/full queue proof are recorded
+in the PR. Existing release/provider/operational acceptance holds remain.
+
+The browser security fixture prepares all four hostile values through genuine
+authenticated setup before a real source-window handoff. Its owned controlled
+origin remains live through the worker; bounded atomic observations refuse
+missing, failed or unexpectedly closed listeners. Actual SPA, CSP, storage,
+reload, cross-origin and deliberately broken-oracle checks remain in place.
+
+The separate development-only flow fixture's existing source override is 2,000
+per minute. A completed lifecycle made 513 browser requests, and a measured
+60-second interval contained 980 browser requests before separate fixture API
+traffic was included. This bounded fixture setting prevents unrelated synthetic
+flows sharing loopback from throttling one another. The clean security profile
+and production configuration keep their original source limits and guards.

