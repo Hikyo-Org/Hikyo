@@ -13,7 +13,10 @@ and installs the pinned Calico v3.33.0 manifest, and calls
 `scripts/ci/chart-network-policy.sh`. It refuses an existing cluster/registry,
 uses synthetic local fixture trust, and tears down its owned runtime. It runs
 from the repository root with Helm v4.2.3, Go from `go.mod`, Node from `.nvmrc`,
-frozen web/client dependencies, a Docker daemon and kind/kubectl.
+frozen web/client dependencies, a Docker daemon and kind/kubectl. The default
+TLS helper ceiling is 128Mi, retaining its 50m CPU ceiling and 16Mi request.
+The full multicall binary initializes shared application packages even for
+hidden staging modes; 32Mi on a no-swap node can stall before the helper runs.
 
 Prepare a release-shaped candidate using the same source-owned ephemeral trust
 fixture as CI. Keep this directory private; it contains synthetic local keys.

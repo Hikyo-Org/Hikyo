@@ -126,7 +126,9 @@ tls:
       memory: 16Mi
     limits:
       cpu: 50m
-      memory: 32Mi
+      # The helper is the full multicall binary. Its package initialization
+      # needs headroom for code/file pages on nodes without swap.
+      memory: 128Mi
 
 service:
   port: 8080

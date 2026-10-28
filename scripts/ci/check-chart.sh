@@ -536,6 +536,12 @@ def assert_server_network(docs, mode, tls):
                 watcher = c
         if watcher is None or watcher.get("args") != ["__hikyo-stage-tls"]:
             fail(f"{mode}: TLS staging watcher missing or misconfigured")
+        tls_resources = {
+            "requests": {"cpu": "5m", "memory": "16Mi"},
+            "limits": {"cpu": "50m", "memory": "128Mi"},
+        }
+        if init.get("resources") != tls_resources or watcher.get("resources") != tls_resources:
+            fail(f"{mode}: TLS helpers lost the measured no-swap startup budget")
 
 # The operator container's env is an EXACT allowlist: only the operator's own
 # scoping/config vars, never database or listener config. Set equality catches

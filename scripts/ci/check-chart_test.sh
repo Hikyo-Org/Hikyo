@@ -145,4 +145,8 @@ refute 'empty egress peers and ports accepted' \
 	values.schema.json \
 	's/"minItems": 1, //g'
 
+refute 'TLS helper memory below the measured startup budget' \
+	values.yaml \
+	'/^  reloaderResources:/,/^service:/s/memory: 128Mi/memory: 32Mi/'
+
 printf 'Chart fixture: valid chart accepted; RBAC/env/args/hardening/network policy mutations refused\n'
