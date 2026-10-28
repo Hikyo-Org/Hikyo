@@ -9,6 +9,12 @@ Security results describe a particular revision and test profile. A green
 branch badge is not evidence that a different released binary passed those
 checks, and a signature authenticates an artifact rather than its behavior.
 
+Live installations use the separate
+[public deployment acceptance procedure](operations/public-deployment-acceptance.md).
+The native artifact harness accepts only owned local binaries and loopback
+scratch databases; it has no external-deployment mode. Its PASS evidence does
+not certify a public reverse proxy, deployed network policy or production data.
+
 ## Release validation
 
 Nightlies and stable/prerelease candidates require full source validation for
