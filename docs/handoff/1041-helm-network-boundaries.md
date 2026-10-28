@@ -52,16 +52,16 @@ binary and signed public fixture source: `8fb29fcfde45ad57ef14e705a7dea4c06e61f8
 | Source/schema/render | PASS: legacy and independent opt-ins, operator-only and disabled-operator modes, example values, legacy reused values, valid named/ranged/IPv6 peer shapes, invalid and implicit-open rules |
 | Chart hardening | PASS: existing exact hardening/RBAC/args/env assertions retained |
 | Chart mutation fixtures | PASS on `ce99168bb`: existing and new RBAC/env/args/hardening/network mutations refused; classifier fixtures pass |
-| Full-diff fast feedback | PASS on `ce1b4a69c`; final handoff revision is checked again before push |
+| Full-diff fast feedback | PASS on `6f4e5c690`; final handoff revision is checked again before push |
 | Enforcing CNI/runtime | PASS: 28/28 HTTP outcomes, seven denials, DNS UDP/TCP, PostgreSQL, restricted reboot, port-forward and policy-only recovery |
 | Functional synthetic provider | PASS on SQLite and PostgreSQL: value/sentinel readback, scrub deletion, released custody, credential revocation |
 | Published-guide consumer | PASS: docs preparation regression, Astro build, OSS policy and PWA gates on pinned Node 26.12.1 |
 | Hosted exact-head CI | PENDING after push |
 | Cross-provider review | SKIPPED: Anthropic subscription unavailable; no paid fallback authorized |
-| Maintainer security/adversarial review and merge | REQUIRED; no merge authorization |
+| Maintainer security/adversarial review and merge | REQUIRED; merge authorized after CI/review gates |
 | Production/deployed acceptance | HOLD under #1055; no production mutation |
 
-### Completed isolated runtime identity
+### Initial completed isolated runtime identity
 
 - Kubernetes v1.36.1, IPv4 kind fixture, Calico v3.33.0.
 - Cluster UID: `d38e972a-51e4-4b70-9689-3765fbf884e2`.
@@ -196,6 +196,38 @@ Repeatable commands and retained-evidence fields are in
 `docs/operations/network-policy-probes.md`; the installation guide is
 `docs/site/src/content/docs/docs/kubernetes-operator.mdx`.
 
+## CodeQL fixture repair and repeated qualification
+
+CodeQL on `5cc5608d673e3486b3ff2aa81f7f5f2400d68656` reported three
+`go/reflected-xss` paths ending at MCP/server response writers. The SARIF paths
+all start in the new synthetic provider's streaming JSON encoder. The scoped
+repair buffers a typed variable through `json.Marshal` before writing the HTTP
+response and adds `X-Content-Type-Options: nosniff`. Product response handlers
+are unchanged. No alert suppression, dismissal or check weakening is used.
+
+`TestVariableResponsesPreserveValuesAsSafeJSON` exercises POST, PUT and GET with
+HTML/script-like values. It requires JSON content type, nosniff, escaped wire
+characters and unchanged decoded values. The before check fails for absent
+nosniff; all cases pass after the repair. Hosted CodeQL must independently
+validate the pushed head before merge.
+
+The complete enforcing exercise was repeated on repair revision `6f4e5c690fdeb306ec98b8f882883df2b4d99941`
+with an empty recorded source patch. All 28 final HTTP outcomes, seven denials,
+DNS UDP/TCP, PostgreSQL, real password/TOTP CLI doctor, outage/recovery,
+restricted reboot, loopback collection, port-forward and policy-only recovery
+pass. Functional publication, value/sentinel readback, cleanup and credential
+revocation pass on both SQLite and PostgreSQL.
+
+- Cluster UID: `7775a71b-7b7e-4815-8dfd-fa5f923ef1d2`.
+- Same default/restricted/recovered policy UID: `e52a0dd7-687f-4474-ad6b-6cf38ba801a6`.
+- Fresh candidate image index: `sha256:ed25f26d7fb5a2fc1b3383a5e9243f9ea20cc2da7f4a800a58cb3119806f267b`.
+- Fresh application binary: `sha256:42af7e5f902abe7e8a103e431a5c1580df49c4236e647a31d627cd4cbef57793`.
+
+This candidate and its synthetic signed fixture were built from the repair
+revision. The earlier candidate identity above remains historical evidence.
+The Jev advisory model call is SKIPPED under the task's additional-model and
+paid-usage boundary; it is not a review or merge gate waiver.
+
 ## Cleanup
 
 The disposable cluster, registry and anonymous volume, candidate/helper images,
@@ -210,6 +242,7 @@ branch binding are preserved. The offline HTML companion is local-only.
 
 Maintainer security/adversarial review, current-head hosted feedback/invariants and the
 protected queue's full immutable head/base proof remain distinct requirements.
-No merge, release, publication or production application is authorized here.
+Merge-on-green is authorized after required reviews and protected queue proof.
+Release, publication and production application remain outside this assignment.
 Real provider endpoints, actual deployment values and cluster-admin recovery
 access require installation-specific acceptance under #1055.
