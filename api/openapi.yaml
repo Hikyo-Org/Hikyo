@@ -12236,6 +12236,8 @@ paths:
         It rides `rotate-dek`: the capability set is closed and names four
         rotation atoms for five rotation verbs, and the root token key is a
         tier-3 key alongside the DEKs.
+
+        Requires adequate MFA assurance in the current human session.
       x-hikyo-class: instance
       x-hikyo-operation: crypto.rotate-token-key
       x-hikyo-formula: [rotate-dek@instance]
@@ -12252,6 +12254,8 @@ paths:
                 $ref: "#/components/schemas/TokenKeyRotation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -12272,6 +12276,8 @@ paths:
 
         Its own capability, `rotate-dek`, never bundled - the post-compromise
         recovery order runs each rotation under a distinct authority.
+
+        Requires adequate MFA assurance in the current human session.
       x-hikyo-class: instance
       x-hikyo-operation: crypto.rotate-dek
       x-hikyo-formula: [rotate-dek@instance]
@@ -12296,6 +12302,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -12316,6 +12324,8 @@ paths:
         active instance DEK version and retires the superseded versions — the
         completion of an instance `rotate-dek`. Chunked and resumable; re-run to
         continue after an interruption.
+
+        Requires adequate MFA assurance in the current human session.
       x-hikyo-class: instance
       x-hikyo-operation: crypto.reencrypt-instance
       x-hikyo-formula: [reencrypt@instance]
@@ -12332,6 +12342,8 @@ paths:
                 $ref: "#/components/schemas/ReencryptResult"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -12443,6 +12455,8 @@ paths:
         adapter credentials) onto the active project DEK version and retires the
         superseded versions — the completion of a project `rotate-dek`. Chunked
         and resumable.
+
+        Requires adequate MFA assurance in the current human session.
       x-hikyo-class: tenant
       x-hikyo-operation: crypto.reencrypt-project
       x-hikyo-formula: [reencrypt@instance]
@@ -12459,6 +12473,8 @@ paths:
                 $ref: "#/components/schemas/ReencryptResult"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -12483,6 +12499,8 @@ paths:
 
         It rides `rotate-dek`, the same tier-3 rotation authority as
         `rotate-token-key`.
+
+        Requires adequate MFA assurance in the current human session.
       x-hikyo-class: instance
       x-hikyo-operation: crypto.rotate-scanning-key
       x-hikyo-formula: [rotate-dek@instance]
@@ -12499,6 +12517,8 @@ paths:
                 $ref: "#/components/schemas/ScanningKeyRotation"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":

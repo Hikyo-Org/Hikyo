@@ -167,11 +167,12 @@ revisions:                                         --env selects the environment
   hikyo approval request bypass <request> --reason R emergency-bypass a request's quorum
   hikyo rotate-token-key --yes                      new token key; one full fetch, no restart wave
   hikyo rotate-scanning-key --yes                   new scanning key; every dismissal is dropped
-  hikyo rotate-dek --instance --yes                 new instance DEK version (old stays readable)
+  hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
   hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
-  hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
+  hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
+    --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
 adapters:
   hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
