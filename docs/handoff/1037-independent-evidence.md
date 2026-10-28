@@ -109,6 +109,34 @@ maintainer security review and merge are not established by local results.
 Cross-provider review is **SKIPPED**, the configured Anthropic subscription is
 unavailable and no paid/provider fallback is authorized. This is never CLEAN.
 
+### PR monitoring follow-up
+
+The owner authorized monitoring, review repairs and merge when green, without
+changing the operational acceptance gates below. At head
+`e78124983da05855e523d8e1e4411d4ebc94b542`, hosted
+[invariant run 40670430654, attempt 1](https://github.com/Hikyo-Org/Hikyo/actions/runs/40670430654)
+failed in `Repository invariant tests`: the new supply-chain rehearsal step was
+not represented in the frozen coverage-conservation contract. This was a real
+integration failure, not a waived advisory finding.
+
+The repair preserves `scripts/ci/testdata/full-suite-baseline.json` unchanged.
+It requires exactly the unconditional, fail-closed receiver rehearsal before
+normalizing that exact additive step for comparison with the historical inventory.
+Mutation coverage rejects removal, duplication, renaming, skipping, conditions,
+fail-open changes, narrowed/wrong suites, ambient imports, bytecode writes,
+environment/directory changes and removal of an existing baseline check.
+Focused coverage owner tests pass. Full invariant and complete-diff feedback
+validation were submitted as agent-heavy job **2604** and remained queued when
+the focused repair was pushed. Their pending status is not a pass; current-head
+hosted invariants and protected merge-group proof are still required. The PR
+records subsequent validation results against the exact repair head.
+
+CodeRabbit reported its free-review quota exhausted, with no substantive review;
+that is **SKIPPED**, not CLEAN. Independent human security review remains required
+by `CONTRIBUTING.md`, including for maintainer-authored delivery-path changes.
+Protected queue admission and full current-base group proof remain separate
+from both local tests and the owner's merge authorization.
+
 ## Claim proposal, not an acceptance waiver
 
 Recommended wording after protected-destination and prerequisite acceptance:
