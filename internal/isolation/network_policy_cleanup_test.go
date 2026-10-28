@@ -34,6 +34,8 @@ func TestNetworkPolicySyntheticProviderCleanup(t *testing.T) {
 		t.Fatal("network policy lifecycle requires the cluster-local synthetic provider")
 	}
 	forEngines(t, func(t *testing.T, db *store.DB) {
+		// Keep provider custody separate even if one engine fails before scrub.
+		prefix := "NP_" + strings.ToUpper(t.Name()[strings.LastIndex(t.Name(), "/")+1:]) + "_"
 		execRaw(t, db, "INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('np_manage','usr_alice','manage-adapters','org_a','prj_a1',NULL,"+ts+")")
 		execRaw(t, db, "INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('np_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',"+ts+")")
 		keyring := probeKeyring(t, db)
@@ -53,7 +55,7 @@ func TestNetworkPolicySyntheticProviderCleanup(t *testing.T) {
 		scope := domain.Scope{Org: orgA, Project: prjA1}
 		created, err := svc.Create(t.Context(), service.LocalPrincipal(alice), scope, service.CreateAdapterRequest{
 			Provider: string(adapter.GitLabProvider), Origin: cfg.origin, Credential: []byte(cfg.token), CABundlePEM: cfg.caBundle,
-			Target: service.AdapterTargetInput{EnvironmentID: string(envA1), DestinationKind: string(adapter.Repository), DestinationOwner: "fixture", DestinationName: "project", NamePrefix: "NP_", KeyIDs: []string{keyA1}},
+			Target: service.AdapterTargetInput{EnvironmentID: string(envA1), DestinationKind: string(adapter.Repository), DestinationOwner: "fixture", DestinationName: "project", NamePrefix: prefix, KeyIDs: []string{keyA1}},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -90,10 +92,13 @@ func TestNetworkPolicySyntheticProviderCleanup(t *testing.T) {
 		}
 		drain()
 		destination := adapter.Destination{Kind: adapter.Repository, NumericID: 42, Owner: "fixture", Name: "project"}
-		if observed := gitLabObserve(t, cfg, destination, "NP_SHARED_KEY", "*"); observed.Value != "synthetic-owned-value" {
+		if observed := gitLabObserve(t, cfg, destination, prefix+"SHARED_KEY", "*"); observed.Value != "synthetic-owned-value" {
 			t.Fatal("provider readback did not match published value")
 		}
-		if got := queryInt(t, db, fmt.Sprintf("SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'", target.ID)); got != 1 {
+		if observed := gitLabObserve(t, cfg, destination, prefix+adapter.SentinelName, "*"); observed.Value != adapter.SentinelName {
+			t.Fatal("provider readback did not match ownership sentinel")
+		}
+		if got := queryInt(t, db, fmt.Sprintf("SELECT COUNT(*) FROM adapter_ledger WHERE target_id='%s' AND state='owned'", target.ID)); got != 2 {
 			t.Fatalf("owned ledger entries = %d", got)
 		}
 		// Scrub while the provider credential and destination remain usable.
@@ -102,8 +107,10 @@ func TestNetworkPolicySyntheticProviderCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 		drain()
-		if status, _ := gitLabGet(t, cfg, destination, "NP_SHARED_KEY", "*"); status != http.StatusNotFound {
-			t.Fatalf("cleanup provider readback returned HTTP %d, want 404", status)
+		for _, name := range []string{prefix + "SHARED_KEY", prefix + adapter.SentinelName} {
+			if status, _ := gitLabGet(t, cfg, destination, name, "*"); status != http.StatusNotFound {
+				t.Fatalf("cleanup provider readback for %s returned HTTP %d, want 404", name, status)
+			}
 		}
 		if got := queryInt(t, db, fmt.Sprintf("SELECT COUNT(*) FROM adapter_outbox WHERE target_id='%s' AND kind='scrub' AND state='succeeded'", target.ID)); got != 1 {
 			t.Fatalf("successful cleanup jobs = %d", got)
