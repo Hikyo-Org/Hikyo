@@ -66,10 +66,39 @@ Its checkout base was the inspected main above, with uncommitted #1037 work.
 That file digest, rather than the shared base SHA alone, identifies the tested
 receiver bytes. Requalify against #1037's final committed revision before launch.
 
-Full-diff fast feedback, race validation and vet are submitted together as shared
-queue job 2592. Their result and exact validated revision belong in the PR's
-current evidence record; queue admission itself is not a pass. Hosted checks,
+Initial full-diff fast feedback passed. The hosted invariant run
+`40670840883`, attempt 1, at `dcf2c59303bf992c38bd3980cbdde007e534bb5f`
+then rejected the unregistered external receiver driver/SQL ownership. Job 2592
+was cancelled and replaced by job 2607 for the repair, reviewed-pin generation,
+complete lint owner tests, route race/consumer tests, vet and full-diff feedback.
+Their result and exact validated revision belong in the PR's current evidence
+record; queue admission itself is not a pass. Hosted checks,
 maintainer security review, merge and operational acceptance are separate gates.
+
+## External receiver ownership repair
+
+The external receiver snapshot is isolated in
+`scripts/security/alert-route/collector_snapshot.go:readCollectorSnapshot`.
+The canonical handle inventory admits that exact file and package only. The
+canonical raw-SQL inventory pins the read-only snapshot function, all reachable
+helper bodies and constants, and its sole `loadSource` caller. The protocol opens
+only a read-only URI, verifies the configured independent stream binding, and
+reads three receiver journal records. It returns bounded bytes and row count,
+never engine handles, and imports no Hikyo generated-store package. This does
+not authorize ordinary Hikyo data queries or alter their sqlc/proof boundary.
+
+Typed mutation tests reject a write-capable URI, application-table query,
+removed binding/failure guard, helper drift, another SQL function/caller,
+neighboring source/test files, similar packages and application/generated-query
+imports. The existing module-wide handle and raw-SQL checks remain enabled.
+Maintainer security review must assess the exact new protocol registration;
+the pin generator does not confer review approval.
+
+The focused typed guard/mutation tests and frozen receiver-consumer route suite
+pass locally after this repair. Complete-PR fast feedback also passes. Every
+pre-existing query, protocol, helper and build-context pin remains byte-for-byte
+unchanged. Module-wide lint and race proof remain pending in job 2607 until
+its actual completion; fresh hosted invariants must validate the pushed head.
 
 ## Remaining gates and owners
 
