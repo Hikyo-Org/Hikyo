@@ -20,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func refusalStorageSample(t *testing.T) audit.RefusalSample {
@@ -293,6 +294,41 @@ func TestRequestRefusalUnavailableDatabaseKeepsEarlyRefusal(t *testing.T) {
 		h.ServeHTTP(w, r)
 		if w.Code != http.StatusUnauthorized || s.RefusalHealth().Healthy || s.RefusalHealth().Failures != 1 {
 			t.Fatalf("sink outage changed refusal or hid accounting uncertainty: %d %+v", w.Code, s.RefusalHealth())
+		}
+	})
+}
+
+func TestRequestRefusalBlockedDatastoreHonorsDeadline(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		var release func()
+		if db.Engine() == store.EngineSQLite {
+			held, err := db.BeginSQLite(t.Context(), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release = func() { _ = held.Rollback() }
+		} else {
+			held, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			release = func() { _ = held.Rollback(t.Context()) }
+			defer release()
+			if _, err := held.Exec(t.Context(), "SELECT id FROM auth_refusal_window WHERE id=1 FOR UPDATE"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		defer release()
+		signals := service.NewRefusalSignals(db)
+		start := time.Now()
+		err := signals.Record(t.Context(), refusalStorageSample(t))
+		elapsed := time.Since(start)
+		release()
+		if err == nil || elapsed > time.Second || signals.RefusalHealth().Failures != 1 || signals.RefusalHealth().InFlight != 0 {
+			t.Fatalf("blocked sink escaped deadline/ownership: elapsed=%s err=%v health=%+v", elapsed, err, signals.RefusalHealth())
+		}
+		if state := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1"); state != `{"counts":[0,0,0,0,0],"samples":[]}` {
+			t.Fatal("timed-out blocked update committed after returning")
 		}
 	})
 }
