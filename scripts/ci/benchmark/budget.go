@@ -54,6 +54,11 @@ func jobMinutes(j job, cutoff time.Time) (int, error) {
 	}
 	if !macro {
 		if j.Name == "Track main performance" || j.Name == "Requested PR walltime" {
+			// A browser-only authorized request intentionally skips the paid
+			// job. GitHub need not populate runner labels for an unassigned job.
+			if j.Status == "completed" && j.Conclusion == "skipped" && j.RunnerName == "" {
+				return 0, nil
+			}
 			return 0, fmt.Errorf("walltime job %d has no approved Macro label", j.ID)
 		}
 		return 0, nil

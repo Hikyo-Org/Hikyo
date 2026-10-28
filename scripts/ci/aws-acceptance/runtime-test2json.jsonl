@@ -1,0 +1,57 @@
+{"Action":"start","Package":"example.invalid/assertion-probe"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke","Output":"=== RUN   TestAWSSecretsManagerRealSmoke\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/lifecycle\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/sqlite"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/sqlite","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/lifecycle/sqlite\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/sqlite","Output":"    aws_real_durable_test.go:371: durable AWS target did not converge\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/sqlite","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/lifecycle/sqlite (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/sqlite"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/lifecycle/postgres\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres","Output":"    aws_real_durable_test.go:479: durable AWS target did not converge\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres","Output":"        synthetic-private-credential-never-publish\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/lifecycle/postgres (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle/postgres"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/lifecycle (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/lifecycle"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/role-auth\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/role-auth/assume-role\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite","Output":"    aws_real_durable_test.go:52: durable AWS target did not converge\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role/sqlite"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/role-auth/assume-role (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/assume-role"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/role-auth/web-identity\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite","Output":"    aws_real_durable_test.go:52: durable AWS target did not converge\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity/sqlite"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/role-auth/web-identity (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth/web-identity"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/role-auth (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/role-auth"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/adoption-witness\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt\n"}
+{"Action":"run","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres","Output":"=== RUN   TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres","Output":"    aws_real_adoption_test.go:134: stale adoption consent overwrote an unreviewed AWS resource/version\n"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt/postgres"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness/version-before-adopt"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke/adoption-witness (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke/adoption-witness"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke","Output":"--- FAIL: TestAWSSecretsManagerRealSmoke (0.00s)\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe","Test":"TestAWSSecretsManagerRealSmoke"}
+{"Action":"output","Package":"example.invalid/assertion-probe","Output":"FAIL\n"}
+{"Action":"fail","Package":"example.invalid/assertion-probe"}

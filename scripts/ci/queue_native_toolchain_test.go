@@ -138,7 +138,7 @@ if [[ "$*" == 'env GOVERSION GOHOSTARCH' ]]; then
  printf '%s\n%s\n' "$BOOT" "$BOOT_ARCH"
 elif [[ "$*" == 'env GOVERSION' ]]; then
  case "$SELECTED" in failure) exit 1;; hang) exec sleep 10;; *) printf '%s\n' "$SELECTED";; esac
-elif [[ "$*" == "build -o $RUNNER_TEMP/queue-publisher ./scripts/ci/pr-gate" ]]; then
+elif [[ "$*" == "build -gcflags=all=-dwarf=false -ldflags=-w -o $RUNNER_TEMP/queue-publisher ./scripts/ci/pr-gate" ]]; then
  printf '#!/bin/sh\nexit 0\n' > "$RUNNER_TEMP/queue-publisher"
 else exit 1; fi
 `

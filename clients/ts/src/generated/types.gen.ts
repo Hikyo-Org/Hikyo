@@ -1192,7 +1192,9 @@ export type Error = {
          * Present on `bad_request` and `unprocessable`, where it names
          * the offending request member, and on a `conflict` whose refusal
          * names the caller's own state or, for a key folder move that
-         * widens access, what `widening` carries. `null` and absent are
+         * widens access, what `widening` carries. On
+         * `cli_login_factor_required`, it carries sign-in guidance.
+         * `null` and absent are
          * equivalent; every other error code omits the member entirely.
          *
          */
@@ -1252,7 +1254,7 @@ export type ScanFinding = {
 /**
  * Closed response-code set. Clients branch on this, not on prose.
  */
-export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
+export type ErrorCode = 'bad_request' | 'cli_login_factor_required' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
 
 /**
  * An exact closed allowlist. `additionalProperties: false` is the
@@ -7056,9 +7058,9 @@ export type LocalLoginResponses = {
      * carries a single-use, expiring login challenge that must be
      * satisfied at `/api/v1/auth/login/challenge/{id}/...` before a
      * session exists. The factor is never skippable (human-auth ADR
-     * § Assurance). Only a `browser` artifact request receives this; a
-     * `cli` request mints a `password`-assurance session and steps up on
-     * demand at the authorization chokepoint.
+     * § Assurance). Only a `browser` artifact request receives this;
+     * an enrolled account's `cli` request is refused with guidance to
+     * use browser or device CLI login and complete the enrolled factor.
      *
      */
     202: LoginChallenge;

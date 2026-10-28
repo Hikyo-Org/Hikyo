@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -34,15 +35,49 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		base := time.Now().UTC()
 		clk := base
 		admin.auth.Now = func() time.Time { return clk }
-		elevated := enrolTOTPAndStepUp(t, admin.auth, t.Context(), base, &clk, admin.password)
+		initial, err := admin.auth.LocalLogin(t.Context(), "factor-admin", admin.password, service.ArtifactCLI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		uri, err := admin.auth.EnrolTOTPStart(t.Context(), initial.SessionToken, admin.password)
+		if err != nil {
+			t.Fatal(err)
+		}
+		confirmed, err := admin.auth.EnrolTOTPConfirm(t.Context(), initial.SessionToken, totpCode(t, uri, clk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		clk = clk.Add(30 * time.Second)
+		elevated, err := admin.auth.StepUpTOTP(t.Context(), confirmed.SessionToken, totpCode(t, uri, clk))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Keep the original under-assured instance-list refusal as a separate
+		// optional-policy, unenrolled operator control.
+		grants := &service.Grants{DB: db, Auth: admin.auth, Now: func() time.Time { return clk }}
+		weak, err := grants.InviteMember(t.Context(), service.Bearer(elevated.SessionToken), service.InviteSpec{
+			Username: "skew-unenrolled", Template: domain.TemplateOperator, Delivery: "response",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := admin.auth.EstablishCredential(t.Context(), weak.Authority, admin.password); err != nil {
+			t.Fatal(err)
+		}
+		// Two unspent steps fit the production skew allowance at this fixed
+		// clock. HTTP workers never mutate the clock or the factor ledger.
+		clk = clk.Add(30 * time.Second)
 		// The clock stops changing before HTTP workers start.
 		httpServer := httptest.NewServer(server.New(&server.API{
 			Auth: admin.auth, Orgs: &service.Orgs{DB: db}, Version: "current-server-skew-fixture",
 		}, nil))
 		defer httpServer.Close()
-		input, err := json.Marshal(map[string]string{
+		admin.auth.ExternalOrigin = httpServer.URL
+		input, err := json.Marshal(map[string]any{
 			"origin": httpServer.URL, "username": "factor-admin", "password": admin.password,
-			"elevated": elevated, "principal": string(admin.boot.PrincipalID),
+			"elevated": elevated.SessionToken, "principal": string(admin.boot.PrincipalID),
+			"codes":         []string{totpCode(t, uri, clk), totpCode(t, uri, clk.Add(30*time.Second))},
+			"weak_username": "skew-unenrolled",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -53,6 +88,9 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			t.Fatalf("frozen generated client failed: %v\n%s", err, output)
 		} else {
 			t.Log(string(output))
+			if queryInt(t, db, "SELECT COUNT(*) FROM reauth_windows") != 0 {
+				t.Fatal("login handoff created operation proof")
+			}
 		}
 	})
 }

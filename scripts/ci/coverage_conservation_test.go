@@ -126,12 +126,22 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		"uses": "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903",
 		"with": map[string]any{"node-version-file": ".nvmrc"},
 	}
+	// #1046 adds mandatory trusted-release fixtures. Require their complete
+	// unconditional, fail-closed setup and execution before omitting this exact
+	// addition from the unchanged historical execution inventory.
+	expectedRelease := map[string]any{
+		"name": "Trusted release admission contract fixtures",
+		"run": "python3 -m venv \"$RUNNER_TEMP/release-admission-checks\"\n" +
+			"\"$RUNNER_TEMP/release-admission-checks/bin/pip\" install -r scripts/ci/release-admission/requirements.txt\n" +
+			"\"$RUNNER_TEMP/release-admission-checks/bin/python\" -B scripts/ci/release-admission/run_checks.py --unit\n",
+	}
 	lintSteps, ok := workflow.Jobs["lint"]["steps"].([]any)
 	if !ok {
 		return fmt.Errorf("lint lost feedback fixture tooling")
 	}
 	keptLint := make([]any, 0, len(lintSteps))
 	pinnedNode := false
+	trustedRelease := false
 	for _, value := range lintSteps {
 		step, ok := value.(map[string]any)
 		if !ok {
@@ -142,6 +152,11 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 				return fmt.Errorf("feedback fixtures require exactly one unconditional pinned Node setup")
 			}
 			pinnedNode = true
+		} else if step["name"] == expectedRelease["name"] {
+			if trustedRelease || !reflect.DeepEqual(step, expectedRelease) {
+				return fmt.Errorf("trusted release fixtures require exactly one unconditional fail-closed setup and execution step")
+			}
+			trustedRelease = true
 		} else {
 			if step["name"] == "Fast feedback refusal and deadline fixtures" && !pinnedNode {
 				return fmt.Errorf("pinned Node must precede feedback fixture execution")
@@ -151,6 +166,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	}
 	if !pinnedNode {
 		return fmt.Errorf("feedback fixtures lost pinned Node setup")
+	}
+	if !trustedRelease {
+		return fmt.Errorf("lint lost mandatory trusted release admission contract fixtures")
 	}
 	workflow.Jobs["lint"]["steps"] = keptLint
 	// PR886 moves the same five-package benchmark smoke into required core
@@ -344,6 +362,108 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 	}
 	if err = requireBaselineCoverage(raw, baseline); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTrustedReleaseFixtureCoverageAdditionIsExact(t *testing.T) {
+	baseline, original := readCoverageBaseline(t)
+	for _, mutation := range []string{
+		"unmutated", "removed", "duplicated", "renamed", "skipped", "conditional",
+		"fail-open step", "fail-open command", "missing setup", "missing pinned install",
+		"unpinned install", "runner Python", "missing unit mode", "narrowed checks",
+		"duplicated command", "setup after install", "changed environment", "changed directory",
+		"skipped job", "fail-open job", "removed baseline check",
+	} {
+		t.Run(mutation, func(t *testing.T) {
+			var workflow struct {
+				Jobs map[string]map[string]any `yaml:"jobs"`
+			}
+			if err := yaml.Unmarshal(original, &workflow); err != nil {
+				t.Fatal(err)
+			}
+			job := workflow.Jobs["lint"]
+			steps := job["steps"].([]any)
+			index := -1
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Trusted release admission contract fixtures" {
+					if index != -1 {
+						t.Fatal("fixture owner is duplicated")
+					}
+					index = i
+				}
+			}
+			if index == -1 {
+				t.Fatal("fixture owner is missing")
+			}
+			step := steps[index].(map[string]any)
+			run := step["run"].(string)
+			lines := strings.Split(strings.TrimSuffix(run, "\n"), "\n")
+			if len(lines) != 3 {
+				t.Fatal("expected setup, pinned install, and unit execution")
+			}
+			switch mutation {
+			case "unmutated":
+			case "removed":
+				job["steps"] = append(steps[:index], steps[index+1:]...)
+			case "duplicated":
+				job["steps"] = append(steps, step)
+			case "renamed":
+				step["name"] = "Renamed release fixtures"
+			case "skipped":
+				step["if"] = "false"
+			case "conditional":
+				step["if"] = "github.event_name == 'pull_request'"
+			case "fail-open step":
+				step["continue-on-error"] = true
+			case "fail-open command":
+				step["run"] = strings.TrimSuffix(run, "\n") + " || true\n"
+			case "missing setup":
+				step["run"] = strings.Join(lines[1:], "\n") + "\n"
+			case "missing pinned install":
+				step["run"] = lines[0] + "\n" + lines[2] + "\n"
+			case "unpinned install":
+				step["run"] = strings.Replace(run, "-r scripts/ci/release-admission/requirements.txt", "PyYAML jsonschema cryptography", 1)
+			case "runner Python":
+				step["run"] = strings.Replace(run, `"$RUNNER_TEMP/release-admission-checks/bin/python"`, "python3", 1)
+			case "missing unit mode":
+				step["run"] = strings.Replace(run, " --unit", "", 1)
+			case "narrowed checks":
+				step["run"] = strings.Replace(run, "run_checks.py --unit", "test_trusted_source.py", 1)
+			case "duplicated command":
+				step["run"] = run + lines[2] + "\n"
+			case "setup after install":
+				step["run"] = lines[1] + "\n" + lines[0] + "\n" + lines[2] + "\n"
+			case "changed environment":
+				step["env"] = map[string]any{"PYTHONPATH": "untrusted"}
+			case "changed directory":
+				step["working-directory"] = "scripts/ci/release-admission"
+			case "skipped job":
+				job["if"] = "false"
+			case "fail-open job":
+				job["continue-on-error"] = true
+			case "removed baseline check":
+				for i, value := range steps {
+					if value.(map[string]any)["name"] == "Actionlint" {
+						job["steps"] = append(steps[:i], steps[i+1:]...)
+						break
+					}
+				}
+			default:
+				t.Fatal("unknown mutation")
+			}
+			raw, err := yaml.Marshal(workflow)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = requireBaselineCoverage(raw, baseline)
+			if mutation == "unmutated" {
+				if err != nil {
+					t.Fatalf("exact mandatory addition must conserve baseline: %v", err)
+				}
+			} else if err == nil {
+				t.Fatal("release fixture mutation escaped the frozen execution inventory")
+			}
+		})
 	}
 }
 

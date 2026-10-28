@@ -350,6 +350,10 @@ func (t *target) stop() error {
 	}
 }
 func (t *target) request(method, path, token string, body any) (response, error) {
+	return t.requestWithHeaders(method, path, token, body, nil)
+}
+
+func (t *target) requestWithHeaders(method, path, token string, body any, headers http.Header) (response, error) {
 	// Account ceremony starts and finishes share production's ten-attempt
 	// rolling source-IP allowance. Stay below it before sending, without
 	// replaying a mutation or changing the server's limiter configuration.
@@ -381,6 +385,9 @@ func (t *target) request(method, path, token string, body any) (response, error)
 	r.Header.Set("X-Hikyo-API-Revision", "3")
 	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
+	}
+	for key, values := range headers {
+		r.Header[key] = values
 	}
 	if path == "/mcp" {
 		r.Header.Set("MCP-Protocol-Version", "2026-07-28")

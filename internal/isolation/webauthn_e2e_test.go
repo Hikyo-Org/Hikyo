@@ -868,9 +868,9 @@ func runWebAuthnLifecycle(t *testing.T, auth *service.Auth, ctx context.Context,
 	if _, err := discoverableLogin(t, auth, ctx, a); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("lifecycle clone must refuse, got %v", err) // passkey_cloned; kills sessions
 	}
-	// The clone advanced the generation, so re-login for a fresh session, then
-	// remove the surviving passkey with the password proof.
-	relog, err := auth.LocalLogin(ctx, username, password, service.ArtifactCLI)
+	// The clone advanced the generation. Sign in with the surviving passkey,
+	// then authorize its removal with the independent password proof.
+	relog, err := discoverableLogin(t, auth, ctx, b)
 	if err != nil {
 		t.Fatalf("lifecycle re-login: %v", err)
 	}

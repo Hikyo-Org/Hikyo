@@ -32,6 +32,32 @@ grep -Fx "         intel: \"$intel_sha\"" "$output" >/dev/null
 grep -Fx '  url "https://github.com/Hikyo-Org/Hikyo/releases/download/v#{version}/hikyo_#{version}_Darwin_#{arch}.dmg"' "$output" >/dev/null
 grep -Fx '  binary "hikyo"' "$output" >/dev/null
 
+nightly_version=0.0.1-nightly.20261024.92.gaaaaaaaa
+for arch in arm64 x86_64; do
+	cp "$bundle/hikyo_1.2.3_Darwin_$arch.dmg" "$bundle/hikyo_${nightly_version}_Darwin_$arch.dmg"
+done
+jq --arg version "$nightly_version" '
+  .schema = "hikyo.dev/nightly-manifest/v1" | .profile = "nightly/v1" |
+  .version = $version | .tag = ("v" + $version) |
+  (.artifacts[].name) |= sub("1.2.3"; $version)
+' "$bundle/release-manifest.json" >"$bundle/nightly-manifest.json"
+"$(dirname "$0")/render-homebrew-cask.sh" --nightly \
+	"$bundle/nightly-manifest.json" "$bundle" "$fixture_dir/hikyo@nightly.rb" Hikyo-Org/Hikyo
+grep -Fx 'cask "hikyo@nightly" do' "$fixture_dir/hikyo@nightly.rb" >/dev/null
+grep -Fx '  conflicts_with cask: "hikyo"' "$fixture_dir/hikyo@nightly.rb" >/dev/null
+grep -Fx "  version \"$nightly_version\"" "$fixture_dir/hikyo@nightly.rb" >/dev/null
+# Channel confusion must never render a stable cask from nightly metadata.
+for scenario in stable-as-nightly nightly-as-stable; do
+	case "$scenario" in
+		stable-as-nightly) set -- --nightly "$bundle/release-manifest.json" ;;
+		nightly-as-stable) set -- "$bundle/nightly-manifest.json" ;;
+	esac
+	if "$(dirname "$0")/render-homebrew-cask.sh" "$@" "$bundle" "$fixture_dir/$scenario.rb" Hikyo-Org/Hikyo >"$fixture_dir/$scenario.out" 2>&1; then
+		printf 'homebrew cask fixture: accepted channel confusion %s\n' "$scenario" >&2; exit 1
+	fi
+	[ ! -e "$fixture_dir/$scenario.rb" ]
+done
+
 cp "$bundle/release-manifest.json" "$fixture_dir/missing.json"
 jq 'del(.artifacts[] | select(.name | contains("x86_64")))' \
 	"$fixture_dir/missing.json" >"$fixture_dir/missing-one.json"

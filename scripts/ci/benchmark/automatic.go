@@ -2,7 +2,6 @@ package benchmark
 
 import (
 	"fmt"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,54 +13,12 @@ type changedFile struct {
 }
 
 func performancePath(name string) bool {
-	if name == "" || strings.HasSuffix(name, ".md") {
-		return false
-	}
-	if name == "go.mod" || name == "go.sum" || name == "sqlc.yaml" || name == ".nvmrc" || strings.HasPrefix(name, "api/") {
-		return true
-	}
-	if strings.HasPrefix(name, "internal/") || strings.HasPrefix(name, "cmd/") {
-		// Embedded assets and benchmark fixtures can change measured behavior
-		// without a Go source edit, so include the runtime tree conservatively.
-		return strings.HasPrefix(name, "internal/") || path.Ext(name) == ".go" || path.Ext(name) == ".sql"
-	}
-	if strings.HasPrefix(name, "web/") || strings.HasPrefix(name, "clients/ts/") {
-		// Storybook fixtures and unit tests do not affect the measured app.
-		if strings.Contains(name, ".stories.") || strings.Contains(name, ".test.") {
-			return false
-		}
-		return true
-	}
-	return strings.HasPrefix(name, "scripts/bench/") || strings.HasPrefix(name, "scripts/ci/benchmark/") ||
-		name == "scripts/ci/install-corepack.sh" ||
-		name == ".github/workflows/codspeed.yml" || name == ".github/workflows/pr-benchmark.yml" ||
-		name == ".github/workflows/matrix-performance.yml" || name == ".github/workflows/benchmark-control.yml"
+	return pathWorkloads(name) != 0
 }
 
 func performanceChanges(repository string, pr pull) (bool, error) {
-	// GitHub's files endpoint is capped at 3,000. Never silently classify a
-	// truncated or incomplete response as documentation-only.
-	if pr.ChangedFiles <= 0 || pr.ChangedFiles > 3000 {
-		return false, fmt.Errorf("cannot classify %d changed files safely; request the benchmark manually", pr.ChangedFiles)
-	}
-	var pages [][]changedFile
-	if err := api(fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repository, pr.Number), &pages); err != nil {
-		return false, err
-	}
-	count, relevant := 0, false
-	for _, page := range pages {
-		for _, file := range page {
-			if file.Filename == "" {
-				return false, fmt.Errorf("changed file has no name")
-			}
-			count++
-			relevant = relevant || performancePath(file.Filename) || performancePath(file.PreviousFilename)
-		}
-	}
-	if count != pr.ChangedFiles {
-		return false, fmt.Errorf("incomplete changed files: received %d of %d", count, pr.ChangedFiles)
-	}
-	return relevant, nil
+	selected, err := changedWorkloads(repository, pr)
+	return selected != 0, err
 }
 
 func skipAutomatic(repository string, pr pull, c comment, reason string) error {

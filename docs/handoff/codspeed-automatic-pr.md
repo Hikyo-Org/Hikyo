@@ -22,6 +22,12 @@ rerun is added to the merge queue by this change.
   completion. It validates the live run, current PR head, paginated changed
   files, and the benchmark workflows against `main` before requesting a rerun.
   Renames consider both filenames; incomplete file lists fail closed.
+- If either protected benchmark workflow differs from current `main`, automatic
+  admission reports **not run** and completes without requesting a measurement.
+  Updating the PR from `main`, or first merging intentional workflow changes,
+  restores workflow compatibility. Explicit manual requests still fail on a
+  mismatch. API failures, malformed responses and missing content identities
+  remain errors in both modes.
 - Stale heads and already-claimed requests do not start another automatic
   measurement. Admission rechecks state after reading usage.
 - A checked manual request owns the control comment and is preserved by

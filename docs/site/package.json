@@ -46,7 +46,7 @@
     "sharp": "0.35.5",
     "tailwindcss": "4.3.3",
     "takumi-js": "2.10.0",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
