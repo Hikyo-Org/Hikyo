@@ -9,8 +9,11 @@ Continue the original PR and its signed history. This lane owns the instance
 transport, audit CLI dispatch, browser navigation and controls, and their
 negative controls. Merge #1044 before #1045. Its shared completion consumers
 and instance producer seam are integrated from signed commit
-`1a19f61065bd5d4274a6a84fa7cd146b32237b9a`; later dependency repairs must be
-integrated and retested before merge.
+`1a19f61065bd5d4274a6a84fa7cd146b32237b9a`, including follow-ups through
+`220b53a5e86001e9807d9dc840717f0ca784c164`. The PR is stacked on #1044's
+original branch for scoped review. After #1044 merges, retarget #1045 to main,
+refresh the tested base/head pair and run its queue gates. Later dependency
+repairs must be integrated and retested before merge.
 
 #1036 owns the completion protocol. #1034 owns additional authentication
 refusal signals. #1037 owns independent collection/destination acceptance.
@@ -85,13 +88,17 @@ Before repair, `TestAuditQueryDispatch` reproduced exit 2, unknown command
 desktop/mobile before screenshots were reconstructed from signed merge
 `7d86f389` of the original PR head and main `24e198b32`.
 
-Final integrated validation is pending. Required commands include:
+Focused validation passes: CLI audit dispatch/refusal/incomplete-publication
+tests and help golden, TypeScript checking, 43 audit/browser-navigation unit
+tests, the real instance API/CLI suite on SQLite and PostgreSQL, and the new
+instance PostgreSQL commit-order/snapshot barrier regression. Broad owner and
+native browser validation remain pending. Required commands include:
 
 ```sh
 scripts/ci/fast-feedback.sh --working-tree --plan
 scripts/ci/fast-feedback.sh --working-tree
-go test -p 2 -parallel 2 ./internal/cli ./internal/server ./internal/authz ./api/... ./internal/auditexport
-go test -p 2 -parallel 2 ./internal/isolation -run '^(TestInstanceAuditWire|TestAuditCore|TestPostgresAuditExportCommitOrder|TestArtifactClassAdmissionWire|TestAuditExportReceiptWire|TestAccessWireUniformity)$' -count=1
+go test -p 2 -parallel 2 ./internal/cli ./internal/server ./internal/service ./internal/authz ./api/... ./internal/auditexport
+go test -p 2 -parallel 2 ./internal/isolation -run '^(TestInstanceAuditWire|TestAuditCore|TestPostgresAuditExportCommitOrder|TestPostgresInstanceAuditExportCommitOrder|TestArtifactClassAdmissionWire|TestAuditExportReceiptWire|TestAccessWireUniformity)$' -count=1
 pnpm --dir web exec playwright test --project=desktop --grep 'instance audit security trail'
 pnpm --dir web exec playwright test --project=mobile --grep 'instance audit security trail'
 ```

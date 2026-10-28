@@ -42,7 +42,7 @@ describe('sidebarModel', () => {
       '/orgs/org_1/scim',
       '/orgs/org_1/audit',
     ]);
-    expect(model.instance?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/members']);
+    expect(model.instance?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/audit', '/instance/members']);
     expect(model.account.links.map((l) => l.to)).toEqual(['/settings']);
   });
 
@@ -106,7 +106,7 @@ describe('sidebarModel', () => {
   it('makes the instance block the context on an instance route and does not repeat it', () => {
     const model = sidebarModel({ ...base, surface: surfaceById('instance-members') });
     expect(model.context?.kind).toBe('instance');
-    expect(model.context?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/members']);
+    expect(model.context?.links.map((l) => l.to)).toEqual(['/instance', '/instance/config', '/instance/audit', '/instance/members']);
     expect(model.instance).toBeNull();
     expect(model.organisation).not.toBeNull();
   });

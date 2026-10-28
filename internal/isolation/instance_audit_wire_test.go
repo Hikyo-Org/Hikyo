@@ -2,6 +2,7 @@ package isolation
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -378,6 +379,21 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		}
 		_ = getAuditPage(t, wire, queryPath+"?limit=1")
 	})
+
+	t.Run("instance_export_reauthorizes_a_revoked_session", func(t *testing.T) {
+		w := &hookWriter{onFirst: func() {
+			if err := wire.auth.Logout(t.Context(), wire.token); err != nil {
+				t.Fatal(err)
+			}
+		}}
+		receipt, err := (&service.Audits{DB: db}).InstanceExportActorReceipt(t.Context(), service.Bearer(wire.token), service.AuditFilter{}, 1, w)
+		if !errors.Is(err, service.ErrExportUnpaired) || receipt.Outcome != service.ExportRevoked || receipt.OutcomeRecorded || receipt.RowsStreamed != 1 {
+			t.Fatalf("session-revoked instance export: receipt=%+v err=%v", receipt, err)
+		}
+		if n := countInstance("type='audit.export_completed' AND correlation_id='" + receipt.StartedEventID + "'"); n != 0 {
+			t.Fatal("session revocation wrote a terminal outcome without authority")
+		}
+	})
 }
 
 func getAuditPage(t *testing.T, wire accessWireEnv, path string) apigen.AuditPage {
@@ -400,4 +416,72 @@ func decodeWireError(t *testing.T, body []byte) apigen.ErrorCode {
 		t.Fatalf("error body is not JSON: %v (%s)", err, body)
 	}
 	return payload.Error.Code
+}
+
+// The instance reader has separate SQL from the tenant reader. Keep its
+// commit-order and fixed-snapshot promise under the same adversarial schedule.
+func TestPostgresInstanceAuditExportCommitOrder(t *testing.T) {
+	db := seededDB(t, openPostgres)
+	insert := `INSERT INTO audit_instance_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,outcome,origin,payload)
+	VALUES ($1,'auth.login',1,clock_timestamp(),FALSE,clock_timestamp(),'usr_root','human','success','cli','{}') RETURNING seq`
+	low, err := db.PG().Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = low.Rollback(context.Background()) })
+	var lowSeq, highSeq int64
+	if err := low.QueryRow(t.Context(), insert, "instance_gap_low").Scan(&lowSeq); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.PG().QueryRow(t.Context(), insert, "instance_gap_high").Scan(&highSeq); err != nil {
+		t.Fatal(err)
+	}
+	if lowSeq >= highSeq {
+		t.Fatal("fixture did not reverse allocation and commit order")
+	}
+	firstByte := make(chan struct{})
+	w := &hookWriter{onFirst: func() { close(firstByte) }}
+	done := make(chan error, 1)
+	go func() {
+		done <- (&service.Audits{DB: db}).InstanceExport(t.Context(), root, service.AuditFilter{}, 1, w)
+	}()
+	deadline := time.After(5 * time.Second)
+	for queryInt(t, db, `SELECT COUNT(*) FROM pg_locks WHERE locktype='advisory' AND classid=1464159830 AND objid=85 AND NOT granted`) == 0 {
+		select {
+		case err := <-done:
+			t.Fatalf("instance export ended before the barrier: %v", err)
+		case <-deadline:
+			t.Fatal("instance export never reached the in-flight barrier")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	select {
+	case <-firstByte:
+		t.Fatal("instance export streamed before settling its fixed snapshot")
+	default:
+	}
+	if err := low.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("instance export did not finish after commit")
+	}
+	var gap []exportLineForTest
+	for _, line := range strings.Split(strings.TrimSpace(w.buf.String()), "\n") {
+		var event exportLineForTest
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.ID == "instance_gap_low" || event.ID == "instance_gap_high" {
+			gap = append(gap, event)
+		}
+	}
+	if len(gap) != 2 || gap[0].ID != "instance_gap_high" || gap[0].Seq != highSeq || gap[1].ID != "instance_gap_low" || gap[1].Seq != lowSeq {
+		t.Fatalf("instance commit-order export = %+v", gap)
+	}
 }

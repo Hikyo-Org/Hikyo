@@ -1337,6 +1337,11 @@ test.describe('project audit', () => {
     await page.getByRole('button', { name: 'Clear' }).click();
     await expect(page.getByLabel('Environment')).toHaveValue('');
     await expect(exportLink).toBeEnabled();
+    const clearedRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`);
+    const clearedDownload = page.waitForEvent('download');
+    await exportLink.click();
+    await clearedRequest;
+    await clearedDownload;
   });
 
   for (const scheme of COLOR_SCHEMES) {
