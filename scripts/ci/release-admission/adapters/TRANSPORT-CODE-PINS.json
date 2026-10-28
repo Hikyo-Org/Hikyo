@@ -1,0 +1,123 @@
+{
+  "files": {
+    "SOURCE-CONTRACT.json": {
+      "bytes": 9044,
+      "sha256": "a8dbe3b2736d741b7a84efcad5428869f8d37f8b17c60469bdb0e9d9e6219347"
+    },
+    "build_derivative.py": {
+      "bytes": 11779,
+      "sha256": "19c52af24f52f85b0648459941eb99da564bd28e970516e06067f6e3175201c5"
+    },
+    "channel.cjs": {
+      "bytes": 2439,
+      "sha256": "c97c62fff662982cf4c85b00e2c5f97278224a581dfd92f546f6cd86218f975a"
+    },
+    "checkpoint-pins.json": {
+      "bytes": 18613,
+      "sha256": "620ffbeef1b86fa96693ee6ad7e47b9e5f2438072331319a98815c5916b37555"
+    },
+    "client.cjs": {
+      "bytes": 5738,
+      "sha256": "9eb5c3fc3954c12cffa914022c00b418545dc39a67ab69db82c01500ae3fe5d7"
+    },
+    "contracts.cjs": {
+      "bytes": 1029,
+      "sha256": "bbdd4df38c2e2afa0964b59f61e172462010953aa35f810d2f9ec66a1c78866d"
+    },
+    "controller.cjs": {
+      "bytes": 3970,
+      "sha256": "f4c7b7256f29c98186e485d1a4aeee13328117cd8170c4155e2af676cde17cec"
+    },
+    "correction-checkpoint.json": {
+      "bytes": 700,
+      "sha256": "c8ae7d7143fa913a140cf1975ee22a680952794a9170c95f8c773309a234b704"
+    },
+    "custody_sibling.py": {
+      "bytes": 7566,
+      "sha256": "9c7bda0f8b3bf412b6c816eaf6259341b722f2b14a4eaa4b45179257b4598e38"
+    },
+    "loader.cjs": {
+      "bytes": 3277,
+      "sha256": "7337740d06a5ca2d02c81ab547614089c147e89ad4a1fd0ee2439decb05d08c0"
+    },
+    "output.cjs": {
+      "bytes": 808,
+      "sha256": "6bdea549f5c288142d4837c7cbc1964b7a7c2972e664cea7ce9222506843198d"
+    },
+    "owner-capture-suppression.patch": {
+      "bytes": 18302,
+      "sha256": "04602061733cc94b81c0fefeb124163aa00071423d88ddbb45b7ecc89b2315bc"
+    },
+    "owner.cjs": {
+      "bytes": 2728,
+      "sha256": "1c8b26636d5bade9fbd6deabf267f31d8c1d482c06fe00357f20f278c7abb8bd"
+    },
+    "package-pins.json": {
+      "bytes": 28241,
+      "sha256": "f6df90f566bbb5360aa9ac161945b56fb85f3864823fb6eeb7454f3b2786c5c3"
+    },
+    "process_groups.cjs": {
+      "bytes": 498,
+      "sha256": "290f30bf9de787660fce4823a6ea51f227a0173a1f50e624aa199b4922a69f81"
+    },
+    "profile-provenance.json": {
+      "bytes": 536,
+      "sha256": "d5d96c21f65fc6e96a9171db6c74bce2c8d470865018abd747a9bd7d4265e471"
+    },
+    "protocol.cjs": {
+      "bytes": 5510,
+      "sha256": "01681ed894a411899c5a1ea96afacca7ba08b3042b344cbdb4f8a382b3c66593"
+    },
+    "receipt-canonicalization-vectors.json": {
+      "bytes": 1632,
+      "sha256": "2f297c2837ccd6437339f9cc5e7bf4778c4f601daa14e13a163dec0be899de1b"
+    },
+    "runtime-pins.cjs": {
+      "bytes": 12336,
+      "sha256": "0052f3587e0adfcf751bf4cc65650bdc5c1b8812b0bd1cf04865b5d1074a400b"
+    },
+    "seal_source.py": {
+      "bytes": 1087,
+      "sha256": "6963838a8b4de6230be33c7d23ffb8a9ea6452b1339ed6af17a9d90419e29550"
+    },
+    "security.cjs": {
+      "bytes": 1772,
+      "sha256": "13113f2e38afcccabf329aca83f43c7774db8acb880b5de027364279b96260e1"
+    },
+    "server.cjs": {
+      "bytes": 3764,
+      "sha256": "a0074266225c1186d3efb814a5f4c8c9f2469be64c86451da66eedfbb10ad24c"
+    },
+    "service.cjs": {
+      "bytes": 8183,
+      "sha256": "d13d1db0cbae3c1ff101de56f953967b497b94f047f1379c4ddbbfd73fe07757"
+    },
+    "start.cjs": {
+      "bytes": 4478,
+      "sha256": "bcbdfaa757006700cc6870a56ddc6b618e1614677b65d8b711a9a77c901b64f7"
+    },
+    "supervisor.cjs": {
+      "bytes": 4362,
+      "sha256": "c40a419f2067e2094414795fd64a08be51d756d7473db2e710d0acdcbc2b9be8"
+    },
+    "test_persistent.cjs": {
+      "bytes": 50122,
+      "sha256": "6cc1c7a3472344f47bba8dced5d996732d97e3e8b10f9c5a963ec59e0f8a9fd1"
+    },
+    "test_source.py": {
+      "bytes": 14971,
+      "sha256": "c8d8102926693009b0885d2572f2b75dd53a71bb699f2b57ee7ceaf345bcff60"
+    },
+    "test_support.cjs": {
+      "bytes": 5579,
+      "sha256": "d771cead6af02ac8d7fbcc931426bcf0cb452355601fe8df601d54f7a985d015"
+    },
+    "verify_public_only.py": {
+      "bytes": 3804,
+      "sha256": "9fcb6d2524bbeec9d975a6eee8a920bce89ddf513b0a8739622dbd34fe55e9f2"
+    }
+  },
+  "protocolRevision": "r2-actual-snippet-exchange-capacity",
+  "schema": "hikyo-158/create-holder-persistent-r2-code-pins/v1",
+  "sourceCheckpointRawSHA256": "b265c26918e55612ca3a6eea171430ad04da86afa6674496e598ca9a6acd01f2"
+}

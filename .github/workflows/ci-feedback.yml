@@ -149,5 +149,12 @@ jobs:
           tar -xJf "$archive" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
           INSTALL_SHELLCHECK
+      - name: Prepare trusted release contract dependencies
+        if: matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).releaseAdmission
+        run: |
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" python3 -m venv "$RUNNER_TEMP/release-admission-checks"
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$RUNNER_TEMP/release-admission-checks/bin/python" -m pip install -r scripts/ci/release-admission/requirements.txt
+          echo "$RUNNER_TEMP/release-admission-checks/bin" >> "$GITHUB_PATH"
       - name: Run fast feedback
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane == 'tooling' && 'go' || matrix.lane }} --go-scope=${{ matrix.lane == 'go' && 'application' || matrix.lane == 'tooling' && 'tooling' || 'all' }}

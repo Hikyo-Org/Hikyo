@@ -3,13 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
+	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +33,10 @@ type issued struct {
 	Credential entity `json:"credential"`
 }
 type login struct {
+	Session struct {
+		ID       string `json:"id"`
+		Artifact string `json:"artifact"`
+	} `json:"session"`
 	Token     string `json:"session_token"`
 	Principal entity `json:"principal"`
 }
@@ -47,21 +56,21 @@ func (f *fixture) projectPath() string { return "/api/v1/orgs/" + f.org + "/proj
 func (f *fixture) envPath() string     { return f.projectPath() + "/environments/" + f.environment }
 func (f *fixture) forbidden() []string { return []string{f.secret, f.metadata, f.sibling, f.foreign} }
 func (f *fixture) login(t *target) error {
+	if f.device != nil {
+		return f.browserLogin(t)
+	}
 	var out login
 	if err := t.expect("POST", "/api/v1/auth/local/login", "", map[string]string{"username": "artifact-admin", "password": f.password, "artifact": "cli"}, 200, &out); err != nil {
 		return err
 	}
-	if out.Token == "" {
-		return errors.New("native login omitted token")
+	if out.Token == "" || out.Session.Artifact != "cli" || out.Session.ID == "" {
+		return errors.New("native bootstrap login returned invalid CLI artifact")
 	}
 	f.admin = out.Token
 	if out.Principal.ID == "" {
 		return errors.New("native login omitted principal identity")
 	}
 	f.adminPrincipal = out.Principal.ID
-	if f.device != nil {
-		return f.stepUp(t)
-	}
 	return nil
 }
 
@@ -79,20 +88,130 @@ func (f *fixture) assert(t *target, path string, body any, out any) error {
 	if err := t.expect("POST", path+"/start", f.admin, body, 200, &options); err != nil {
 		return err
 	}
+	assertion, err := f.signedAssertion(options)
+	if err != nil {
+		return err
+	}
+	return t.expect("POST", path+"/finish", f.admin, json.RawMessage(assertion), 200, out)
+}
+
+func (f *fixture) signedAssertion(options json.RawMessage) (string, error) {
 	parsed, err := vw.ParseAssertionOptions(string(options))
 	if err != nil {
-		return errors.New("native assertion options invalid")
+		return "", errors.New("native assertion options invalid")
 	}
 	f.device.credential.Counter++
-	// credProps belongs to registration. Assertions must not replay that
-	// output when their options did not request an extension result.
+	// Registration-only extension outputs must not be replayed at assertion.
 	assertionOptions := f.device.opts
 	assertionOptions.ClientExtensionResults = nil
 	authenticator := vw.NewAuthenticatorWithOptions(assertionOptions)
 	authenticator.AddCredential(f.device.credential)
-	assertion := vw.CreateAssertionResponse(f.device.rp, authenticator, f.device.credential, *parsed)
-	return t.expect("POST", path+"/finish", f.admin, json.RawMessage(assertion), 200, out)
+	return vw.CreateAssertionResponse(f.device.rp, authenticator, f.device.credential, *parsed), nil
 }
+
+// Enrolled local accounts authenticate in a browser first. Approval copies
+// login assurance into a distinct CLI session, never an operation proof.
+func (f *fixture) browserLogin(t *target) (err error) {
+	var challenge struct {
+		ID      string   `json:"challenge_id"`
+		Factors []string `json:"factors"`
+	}
+	if err = t.expect("POST", "/api/v1/auth/local/login", "", map[string]string{
+		"username": "artifact-admin", "password": f.password, "artifact": "browser",
+	}, 202, &challenge); err != nil {
+		return err
+	}
+	if challenge.ID == "" || !slices.Contains(challenge.Factors, "webauthn") {
+		return errors.New("native login omitted enrolled WebAuthn challenge")
+	}
+	path := "/api/v1/auth/login/challenge/" + challenge.ID + "/webauthn"
+	var options json.RawMessage
+	if err = t.expect("POST", path+"/start", "", map[string]any{}, 200, &options); err != nil {
+		return err
+	}
+	assertion, err := f.signedAssertion(options)
+	if err != nil {
+		return err
+	}
+	completed, err := t.request("POST", path+"/finish", "", json.RawMessage(assertion))
+	if err != nil {
+		return err
+	}
+	var browser login
+	if completed.status != 200 || json.Unmarshal(completed.body, &browser) != nil || browser.Token != "" || browser.Session.Artifact != "browser" || browser.Session.ID == "" {
+		return errors.New("native browser login returned invalid artifact")
+	}
+	headers := make(http.Header)
+	var csrf string
+	var session bool
+	for _, cookie := range (&http.Response{Header: completed.headers}).Cookies() {
+		if cookie.Name == "__Host-hikyo" || cookie.Name == "__Host-hikyo-csrf" {
+			headers.Add("Cookie", cookie.Name+"="+cookie.Value)
+		}
+		if cookie.Name == "__Host-hikyo" {
+			session = cookie.Value != ""
+		}
+		if cookie.Name == "__Host-hikyo-csrf" {
+			csrf = cookie.Value
+		}
+	}
+	if !session || csrf == "" {
+		return errors.New("native browser login omitted session or CSRF cookie")
+	}
+	headers.Set("X-Hikyo-CSRF", csrf)
+	defer func() {
+		logout, cleanupErr := t.requestWithHeaders("POST", "/api/v1/auth/logout", "", nil, headers)
+		if cleanupErr == nil && logout.status != 204 {
+			cleanupErr = errors.New("native browser logout failed")
+		}
+		err = errors.Join(err, cleanupErr)
+	}()
+	stateBytes, verifierBytes := make([]byte, 32), make([]byte, 32)
+	if _, err = cryptorand.Read(stateBytes); err != nil {
+		return err
+	}
+	if _, err = cryptorand.Read(verifierBytes); err != nil {
+		return err
+	}
+	state, verifier := base64.RawURLEncoding.EncodeToString(stateBytes), base64.RawURLEncoding.EncodeToString(verifierBytes)
+	digest := sha256.Sum256([]byte(verifier))
+	const redirect = "http://127.0.0.1:41234/callback"
+	var started struct {
+		State string `json:"state"`
+	}
+	if err = t.expect("POST", "/api/v1/auth/cli-login/start", "", map[string]string{
+		"transport": "loopback", "state": state, "pkce_challenge": base64.RawURLEncoding.EncodeToString(digest[:]), "redirect_uri": redirect,
+	}, 201, &started); err != nil {
+		return err
+	}
+	if started.State != state {
+		return errors.New("native CLI start binding mismatch")
+	}
+	approval, err := t.requestWithHeaders("POST", "/api/v1/auth/cli-login/approve", "", map[string]string{"reference": state}, headers)
+	if err != nil {
+		return err
+	}
+	var approved struct {
+		State    string `json:"state"`
+		Code     string `json:"code"`
+		Redirect string `json:"redirect_uri"`
+	}
+	if approval.status != 200 || json.Unmarshal(approval.body, &approved) != nil || approved.State != state || approved.Redirect != redirect || approved.Code == "" {
+		return errors.New("native CLI approval binding mismatch")
+	}
+	var cli login
+	if err = t.expect("POST", "/api/v1/auth/cli-login/redeem", "", map[string]string{
+		"code": approved.Code, "pkce_verifier": verifier, "redirect_uri": redirect,
+	}, 200, &cli); err != nil {
+		return err
+	}
+	if cli.Token == "" || cli.Principal.ID == "" || cli.Principal.ID != browser.Principal.ID || cli.Session.Artifact != "cli" || cli.Session.ID == "" || cli.Session.ID == browser.Session.ID {
+		return errors.New("native CLI redemption returned invalid artifact")
+	}
+	f.admin, f.adminPrincipal = cli.Token, cli.Principal.ID
+	return nil
+}
+
 func (f *fixture) stepUp(t *target) error {
 	var elevated login
 	if err := f.assert(t, "/api/v1/auth/webauthn/step-up", map[string]any{}, &elevated); err != nil {

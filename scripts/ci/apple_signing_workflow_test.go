@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +15,22 @@ func TestAppleSigningFixtures(t *testing.T) {
 	cmd := exec.Command("sh", "../release/sign-apple-artifacts_test.sh")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Apple signing fixtures: %v\n%s", err, output)
+	}
+}
+
+// TestAppleTicketNetworkFixtures preserves hosted-only networking and cleanup failure gates.
+func TestAppleTicketNetworkFixtures(t *testing.T) {
+	cmd := exec.Command("sh", "../release/with-apple-ticket-network_test.sh")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Apple ticket network fixtures: %v\n%s", err, output)
+	}
+}
+
+// TestHomebrewNightlyPublisherFixtures requires authenticated local and matching public DMGs before tap writes.
+func TestHomebrewNightlyPublisherFixtures(t *testing.T) {
+	cmd := exec.Command("sh", "../release/publish-homebrew-nightly_test.sh")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Homebrew nightly publisher fixtures: %v\n%s", err, output)
 	}
 }
 
@@ -65,7 +82,7 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
 			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
 		}
-		if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || len(apple.Permissions) != 1 || apple.Permissions["contents"] != "read" {
+		if apple.RunsOn != "macos-15" || apple.Environment != "apple-signing" || !reflect.DeepEqual(apple.Permissions, applePhasePermissions(name)) {
 			t.Fatal("Apple signing must use macOS without repository mutation or OIDC permissions")
 		}
 	}
@@ -100,7 +117,7 @@ func TestAppleSigningGatesFinalReleaseBytes(t *testing.T) {
 					}
 				}
 			}
-			if step.Run == "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+			if step.Run == "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 				notarySteps++
 				if name != "apple-notarize" || step.If != "" || step.Env["APPLE_NOTARY_KEY_P8"] != "${{ secrets.APPLE_NOTARY_KEY_P8 }}" {
 					t.Fatal("stable notarization must be unconditional in its separate credential-isolated job")

@@ -85,8 +85,10 @@ export const establishCredential = <ThrowOnError extends boolean = false>(option
  * their own storage, lifetime, audit identity and revocation surface,
  * and neither value is ever re-retrievable:
  *
- * - **CLI session** (default): a replayable bearer credential returned
- * in the response body, presented on `Authorization: Bearer`.
+ * - **CLI session** (default): for an unenrolled account, a replayable
+ * bearer credential returned in the response body, presented on
+ * `Authorization: Bearer`. An enrolled account is refused with `400`
+ * and guidance to complete the existing browser or device CLI login.
  * - **Browser session**: delivered ONLY on the `__Host-hikyo` HttpOnly
  * cookie, never in the body, so injected same-origin script cannot
  * read it. Its synchronizer token rides the `__Host-hikyo-csrf`
@@ -333,6 +335,12 @@ export const showCliLoginTransaction = <ThrowOnError extends boolean = false>(op
 
 /**
  * First-party CLI login approveCLILogin.
+ *
+ * A valid request refused because the browser lacks an enrolled local
+ * factor returns HTTP 400 with `cli_login_factor_required`. Clients use
+ * this code for sign-in recovery; `detail` is display text. Invalid,
+ * expired, consumed, and already-approved references retain HTTP 403.
+ *
  */
 export const approveCliLogin = <ThrowOnError extends boolean = false>(options: Options<ApproveCliLoginData, ThrowOnError>) => (options.client ?? client).post<ApproveCliLoginResponses, ApproveCliLoginErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

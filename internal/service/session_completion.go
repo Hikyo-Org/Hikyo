@@ -54,6 +54,7 @@ const (
 	// whose answer is the shared pre-auth 429: the `signup` budget overflow
 	// of a federated sign-up (#607).
 	sessionRefusedOverloaded
+	sessionRefusedCLIFactorRequired
 )
 
 // err turns a committed refusal into the error returned to the caller. A
@@ -70,6 +71,8 @@ func (r sessionRefusal) err() error {
 		return ErrAlreadyLinked
 	case sessionRefusedOverloaded:
 		return admission.ErrOverloaded
+	case sessionRefusedCLIFactorRequired:
+		return cliLoginFactorRequired{}
 	default:
 		return fmt.Errorf("%w: unknown committed session refusal", domain.ErrInvalid)
 	}

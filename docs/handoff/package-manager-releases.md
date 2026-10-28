@@ -38,6 +38,45 @@ compromise can replace the hook, key, URL, and checksum together. The cask is
 therefore a downstream convenience channel. Signed-bundle verification remains
 the official fail-closed installation path.
 
+## Nightly Homebrew publication
+
+The development channel uses `Casks/hikyo@nightly.rb`; `Casks/hikyo.rb` remains
+stable-only. Both consume the architecture-specific signed, notarized and
+stapled DMGs, and each cask declares a conflict with the other because they
+install the same `hikyo` executable.
+
+After a nightly containing **both** DMGs is public, download its complete
+bundle into an empty directory. From the repository root, with the pinned Go
+toolchain, `gh`, `jq`, GitHub tap write access and recovery-authorized
+`release/trust` files available, run:
+
+```sh
+# Set tag to the exact published nightly tag and bundle to its complete download.
+: "${tag:?Set tag to the published nightly tag}" "${bundle:?Set bundle to an empty download directory}"
+gh release download "$tag" --repo Hikyo-Org/Hikyo --dir "$bundle"
+scripts/release/publish-homebrew-cask.sh --nightly \
+  Hikyo-Org/Hikyo "$tag" "$bundle" Hikyo-Org/homebrew-tap
+```
+
+`HIKYO_HOMEBREW_TRUST_DIR` may select an independently pinned public trust
+directory. The publisher requires a public nightly prerelease, authenticates
+the entire bundle using the existing nightly verifier, and checks each DMG
+against the authenticated manifest. Missing images, tampering or failed
+authentication refuse publication before any tap mutation. The publisher also
+downloads both DMGs from that public release and compares them with the
+authenticated hashes. A missing or replaced public asset refuses the tap PR
+even when the retained local bundle is valid. Existing branch
+protection and the tap PR review remain in force. After that PR is merged:
+
+```sh
+brew install --cask hikyo-org/tap/hikyo@nightly
+```
+
+Nightly publication does not update the stable cask or merge the tap PR. The
+nightly workflow does not gain a tap token. Publication is an explicit operator
+step, as for stable casks. A nightly without accepted DMGs cannot update this
+convenience channel.
+
 ## Validation
 
 ```text

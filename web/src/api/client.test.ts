@@ -111,6 +111,7 @@ describe('parsed', () => {
     await expect(parsed(getMetaOp, transport)).rejects.toMatchObject({
       name: 'ApiError',
       status: 400,
+      code: 'bad_request',
       detail: 'key "LOG_LEVEL" is invalid in environment env_prod',
     } satisfies Partial<ApiError>);
   });
@@ -136,6 +137,7 @@ describe('parsed', () => {
     await expect(parsed(getMetaOp, transport)).rejects.toMatchObject({
       name: 'ApiError',
       status: 400,
+      code: undefined,
       detail: undefined,
     } satisfies Partial<ApiError>);
   });

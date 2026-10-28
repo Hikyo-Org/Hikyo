@@ -321,9 +321,13 @@ func prepareSecurityDeveloperMint(t *testing.T, db *store.DB, fixture *ceremonyE
 	for _, key := range preview.Keys {
 		ids = append(ids, key.KeyID)
 	}
-	login, err := fixture.admin.auth.LocalLogin(t.Context(), username, ceremonyPassword, service.ArtifactCLI)
+	browser, err := discoverableLogin(t, fixture.admin.auth, t.Context(), fixture.device)
 	if err != nil {
 		t.Fatal(err)
+	}
+	login := cliLoginFromBrowser(t, fixture.admin.auth, browser)
+	if login.Principal != fixture.admin.boot.PrincipalID {
+		t.Fatalf("CLI sign-in selected the wrong principal for %s", username)
 	}
 	stepUpOptions, err := fixture.admin.auth.StepUpPasskeyStart(t.Context(), login.SessionToken)
 	if err != nil {
