@@ -1301,21 +1301,18 @@ test.describe('project audit', () => {
   test('reads the project trail, narrows it to one environment, and exports each scope', async () => {
     const rows = page.locator('.audit__row');
     await expect(rows.first()).toBeVisible();
-    const exportLink = page.getByRole('link', { name: 'Export JSONL' });
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
-    );
+    const exportLink = page.getByRole('button', { name: 'Export JSONL' });
+    const projectRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`);
+    const projectDownload = page.waitForEvent('download');
+    await exportLink.click();
+    await projectRequest;
+    await projectDownload;
 
     // The environment picker narrows the trail to that environment's slice and
     // the export follows it; the seeded value publishes make it non-empty.
     await page.getByLabel('Environment').selectOption(seed.dev);
     await page.getByRole('button', { name: 'Apply filter' }).click();
     await expect(rows.first()).toBeVisible();
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`,
-    );
     await rows.first().click();
     const detail = page.getByRole('complementary', { name: 'Event detail' });
     await expect(detail).toContainText(seed.dev);
@@ -1324,7 +1321,9 @@ test.describe('project audit', () => {
     await expect(detail).toBeHidden();
 
     const download = page.waitForEvent('download');
+    const environmentRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`);
     await exportLink.click();
+    await environmentRequest;
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/\.jsonl$/);
     const body = readFileSync(await file.path(), 'utf8').trim();
@@ -1337,10 +1336,7 @@ test.describe('project audit', () => {
     // Clear restores the whole project and the project export route.
     await page.getByRole('button', { name: 'Clear' }).click();
     await expect(page.getByLabel('Environment')).toHaveValue('');
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
-    );
+    await expect(exportLink).toBeEnabled();
   });
 
   for (const scheme of COLOR_SCHEMES) {

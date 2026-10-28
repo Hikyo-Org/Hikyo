@@ -1,5 +1,5 @@
 import { isDemo } from '../demo/config.ts';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router';
 
 import { formatWhen } from '../lib/formatWhen.ts';
@@ -7,6 +7,7 @@ import { useProjectEnvironments } from '../api/adapters.ts';
 import {
   AUDIT_OUTCOMES,
   auditExportUrl,
+  downloadAuditExport,
   emptyAuditFilter,
   useAuditTrail,
   type AuditEvent,
@@ -46,17 +47,15 @@ function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
 function refusalText(error: unknown, scope: AuditScope): string {
   if (error instanceof ApiError) {
     if (error.status === 404 || error.status === 403) {
-      // `audit-read` is its own grant (audit-model ADR): no template seeds
-      // it, the organisation `admin` template included. Name the exact grant
-      // and where it is made, so the holder of everything else is not left
-      // guessing which capability this is.
       const where =
-        scope.project === undefined
+        scope.instance === true
+          ? 'this instance'
+          : scope.project === undefined
           ? 'this organisation'
-          : scope.environment === ''
+          : scope.environment === undefined || scope.environment === ''
             ? 'this project'
             : 'this environment';
-      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session. No role template includes audit-read; a member manager grants it under Members.`;
+      return `This trail is not available, or you may not read it. Reading it needs the audit-read grant on ${where} with a second factor in this session. A member manager can grant it under Members.`;
     }
     if (error.status === 400) {
       return error.detail ?? 'The filter is not valid.';
@@ -86,10 +85,14 @@ export function Audit() {
   return <AuditTrail key={`${org}/${project}`} org={org} project={project} />;
 }
 
+export function InstanceAudit() {
+  return <AuditTrail org="" project="" instance />;
+}
+
 /** The text filter fields: every field but the `outcomes` set, which has its own toggle. */
 type AuditTextField = Exclude<keyof AuditFilter, 'outcomes'>;
 
-function AuditTrail({ org, project }: { readonly org: string; readonly project: string }) {
+function AuditTrail({ org, project, instance = false }: { readonly org: string; readonly project: string; readonly instance?: boolean }) {
   const auth = useAuth();
   const selfId = auth.identity?.principal.id ?? '';
   const [draft, setDraft] = useState<AuditFilter>(emptyAuditFilter);
@@ -97,7 +100,11 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
   const [environmentDraft, setEnvironmentDraft] = useState('');
   const [environment, setEnvironment] = useState('');
   const [selected, setSelected] = useState<AuditEvent | null>(null);
-  const scope: AuditScope = project === '' ? { org } : { org, project, environment };
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => exportAbort.current?.abort(), []);
+  const scope: AuditScope = instance ? { instance: true } : project === '' ? { org } : { org, project, environment };
   const trail = useAuditTrail(scope, applied);
   const environments = useProjectEnvironments({ org, project }, project !== '');
 
@@ -111,6 +118,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
   );
 
   function apply(next: AuditFilter, nextEnvironment = environmentDraft) {
+    exportAbort.current?.abort();
+    setExporting(false);
+    setExportError(null);
     setSelected(null);
     setDraft(next);
     setApplied(next);
@@ -121,6 +131,27 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     apply(draft);
+  }
+
+  async function exportTrail() {
+    const controller = new AbortController();
+    exportAbort.current = controller;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const blob = await downloadAuditExport(auditExportUrl(scope, applied), controller.signal);
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = instance ? 'hikyo-audit-instance.jsonl' : 'hikyo-audit.jsonl';
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      if (!controller.signal.aborted) setExportError('Export could not be completed and verified. No download was saved. Check your audit-read grant and second factor, then retry. Use the CLI for exports larger than 64 MiB.');
+    } finally {
+      if (!controller.signal.aborted) setExporting(false);
+    }
   }
 
   function set(key: AuditTextField, value: string) {
@@ -139,12 +170,15 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
 
   return (
     <div className="page page--chrome page--audit">
-      <h1>{project === '' ? 'Audit' : 'Project audit'}</h1>
+      <h1>{instance ? 'Instance audit' : project === '' ? 'Audit' : 'Project audit'}</h1>
       <p className="page__lede">
-        {project === ''
+        {instance
+          ? 'Authentication and instance security events, oldest first. Reading the trail is itself audited. An instance audit-read grant and a second factor are required.'
+          : project === ''
           ? 'Every recorded event in this organisation, oldest first. Reading the trail is itself audited.'
           : 'Every recorded event in this project, oldest first, or one environment of it. Reading the trail is itself audited.'}
       </p>
+      {instance ? <p>Tenant activity stays in organisation and project trails. Project automation cannot collect this instance trail.</p> : <p>Login failures and other instance security events are available in Instance settings, under Instance audit.</p>}
 
       <Panel id="audit-filter" title="Filter">
       <form className="audit__filter" onSubmit={onSubmit} aria-label="Filter the audit trail">
@@ -265,17 +299,16 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           {/* Clear lives in ONE place: here while there are events, inside the
               empty state when the filter matched nothing. */}
           {emptyResult ? null : clearButton}
-          {/* A plain same-origin GET: the browser streams the JSONL to disk under
-              the session cookie, so the SPA never holds the trail in memory and no
-              token rides the URL. */}
           {isDemo ? <Button type="button" disabled title="Export is not available in the demo">Export JSONL</Button> : (
-            <a className="btn" href={auditExportUrl(scope, applied)} download>
-              Export JSONL
-            </a>
+            <Button type="button" disabled={exporting || trail.isPending || trail.isError} onClick={() => void exportTrail()}>
+              {exporting ? 'Verifying export…' : 'Export JSONL'}
+            </Button>
           )}
         </div>
       </form>
       </Panel>
+      {exporting ? <p role="status">Verifying the complete export before download…</p> : null}
+      {exportError === null ? null : <Alert>{exportError}</Alert>}
 
       <Panel id="audit-events" title="Events">
         {trail.isPending ? <p role="status">Loading events…</p> : null}
@@ -348,6 +381,11 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <AuditFact label="Principal" value={selected.actor_name ?? selected.actor_id ?? 'absent'} />
             {selected.actor_name !== undefined ? <AuditFact label="Principal ID" value={selected.actor_id ?? 'absent'} /> : null}
             <AuditFact label="Actor class" value={selected.actor_class} />
+            <AuditFact label="Credential" value={selected.actor_credential_id ?? 'absent'} />
+            <AuditFact label="Source IP" value={selected.source_ip ?? 'absent'} />
+            <AuditFact label="User agent" value={selected.user_agent ?? 'absent'} />
+            <AuditFact label="Origin" value={selected.origin} />
+            <AuditFact label="Authority" value={selected.authority_id ?? 'absent'} />
             <AuditFact label="Scope" value={selected.scope_class} />
             <AuditScopeFacts event={selected} />
             {selected.object_type !== undefined ? (

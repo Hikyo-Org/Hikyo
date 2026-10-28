@@ -409,14 +409,14 @@ operations:
 
   # audit
   queryOrgAudit:               {webui: audit}
+  queryInstanceAudit:          {webui: instance-audit}
+  exportInstanceAudit:         {webui: instance-audit, reach: path}
   # A plain same-origin download link; the browser streams the JSONL itself.
   exportOrgAudit:              {webui: audit, reach: path}
   queryProjectAudit:           {webui: project-audit}
   exportProjectAudit:          {webui: project-audit, reach: path}
   queryEnvAudit:               {webui: project-audit}
   exportEnvAudit:              {webui: project-audit, reach: path}
-  queryInstanceAudit:          {issue: 1035}
-  exportInstanceAudit:         {issue: 1035}
 
   # instance
   rotateTokenKey:              {webui: instance-admin}

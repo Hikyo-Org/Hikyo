@@ -403,7 +403,11 @@ func writeLine(w io.Writer, e store.AuditEvent) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(append(b, '\n'))
+	b = append(b, '\n')
+	n, err := w.Write(b)
+	if err == nil && n != len(b) {
+		return io.ErrShortWrite
+	}
 	return err
 }
 
@@ -417,6 +421,40 @@ func writeLine(w io.Writer, e store.AuditEvent) error {
 // writer alone (amendment part 4). Stated as a deviation in the handoff.
 var ErrExportUnpaired = fmt.Errorf("service: audit export stopped by authorization loss; started event has no completed pair")
 
+// ExportOutcome is how one export run ended. The first three are the outcome
+// of its terminal export_completed event; ExportRevoked has no terminal event
+// (see ErrExportUnpaired).
+type ExportOutcome string
+
+const (
+	ExportSucceeded    ExportOutcome = "success"
+	ExportFailed       ExportOutcome = "failure"
+	ExportDisconnected ExportOutcome = "disconnected"
+	ExportRevoked      ExportOutcome = "revoked"
+)
+
+// ExportReceipt is the run's own account of an export whose INTENT is
+// durable: the started event, the rows written to the sink, and how the run
+// ended. OutcomeRecorded tells whether the paired export_completed event is
+// durable. The receipt counts rows; it does not attest that the trail has no
+// sequence gaps. A zero StartedEventID means the export stopped before its
+// INTENT committed, so nothing was streamed.
+type ExportReceipt struct {
+	StartedEventID  string
+	SnapshotTime    time.Time
+	RowsStreamed    int
+	Outcome         ExportOutcome
+	Cause           string
+	OutcomeRecorded bool
+}
+
+// ExportMetadataWriter optionally binds a streaming sink to its durable INTENT
+// and effective inclusive recorded_at upper bound, before the first event byte.
+// Calling this method does not authorize any further trail disclosure.
+type ExportMetadataWriter interface {
+	BeginAuditExport(startedEventID string, snapshotTime time.Time)
+}
+
 // Export streams the addressed slice of the tenant trail as JSONL:
 // export_started durable BEFORE the first byte; each page read in its own
 // transaction under a fresh proof (revoking audit-read stops the stream at
@@ -424,32 +462,33 @@ var ErrExportUnpaired = fmt.Errorf("service: audit export stopped by authorizati
 // export_completed on success, page failure and sink disconnect. pageSize
 // bounds each page read (the ops spec owns defaults).
 func (s *Audits) Export(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter, pageSize int, w io.Writer) error {
-	return s.ExportActor(ctx, LocalPrincipal(principal), scope, f, pageSize, w)
+	_, err := s.ExportActor(ctx, LocalPrincipal(principal), scope, f, pageSize, w)
+	return err
 }
 
 // ExportActor re-resolves the bearer and its assurance at every page boundary.
-func (s *Audits) ExportActor(ctx context.Context, actor Actor, scope domain.Scope, f store.AuditFilter, pageSize int, w io.Writer) error {
+func (s *Audits) ExportActor(ctx context.Context, actor Actor, scope domain.Scope, f store.AuditFilter, pageSize int, w io.Writer) (ExportReceipt, error) {
 	op, err := auditExportOp(scope)
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	if pageSize <= 0 {
-		return fmt.Errorf("service: export page size must be positive")
+		return ExportReceipt{}, fmt.Errorf("service: export page size must be positive")
 	}
 	// § 179 / § 20 expensive-path budget: 5/min per principal, 2 concurrent per
 	// org, 6 per instance. Acquired here, at entry, and held for the whole
 	// stream — a running export occupies its concurrency slot until it ends.
 	release, err := s.Budget.acquire(budgetValuesExport, budgetKeys{Org: scope.Org})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	defer release()
 	principal, err := s.authorizeAuditActor(ctx, actor, op, scope)
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	if _, err := s.Budget.acquire(budgetExportRate, budgetKeys{Principal: principal}); err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	insertTenant := func(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
 		return r.Audit().InsertTenant(ctx, p, ev)
@@ -467,8 +506,15 @@ func (s *Audits) InstanceExport(ctx context.Context, principal domain.PrincipalI
 
 // InstanceExportActor is InstanceExport with transaction-local bearer resolution.
 func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.AuditFilter, pageSize int, w io.Writer) error {
+	_, err := s.InstanceExportActorReceipt(ctx, actor, f, pageSize, w)
+	return err
+}
+
+// InstanceExportActorReceipt is the instance route's completion-protocol seam.
+// It uses exactly the same receipt, paging and authorization owner as tenant exports.
+func (s *Audits) InstanceExportActorReceipt(ctx context.Context, actor Actor, f store.AuditFilter, pageSize int, w io.Writer) (ExportReceipt, error) {
 	if pageSize <= 0 {
-		return fmt.Errorf("service: export page size must be positive")
+		return ExportReceipt{}, fmt.Errorf("service: export page size must be positive")
 	}
 	// Instance export has no org: it is bounded by 5/min per principal and the
 	// 6-per-instance concurrency only (budgetExportInstance), never the 2-per-org
@@ -476,15 +522,15 @@ func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.A
 	// bucket.
 	release, err := s.Budget.acquire(budgetExportInstanceConcurrency, budgetKeys{})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	defer release()
 	principal, err := s.authorizeAuditActor(ctx, actor, authz.OpAuditInstanceExport, domain.Scope{})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	if _, err := s.Budget.acquire(budgetExportRate, budgetKeys{Principal: principal}); err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	insertInstance := func(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
 		return r.Audit().InsertInstance(ctx, p, ev)
@@ -522,7 +568,7 @@ func (s *Audits) export(
 	w io.Writer,
 	insert func(context.Context, store.Repos, authz.Proof, audit.Event) error,
 	page func(context.Context, store.ReadRepos, authz.Proof, store.AuditFilter) ([]store.AuditEvent, error),
-) error {
+) (ExportReceipt, error) {
 	// The page cap is the same store.AuditMaxPageSize the store enforces; clamp
 	// here so the loop's end-of-data test (len(rows) < pageSize) uses the bound
 	// the reader actually applied, never the caller's larger request. Without
@@ -533,7 +579,7 @@ func (s *Audits) export(
 	}
 	snapshotTime, err := s.DB.AuditExportSnapshotTime(ctx)
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	f.RetentionSnapshot = snapshotTime
 	if f.To.IsZero() || f.To.After(snapshotTime) {
@@ -541,7 +587,7 @@ func (s *Audits) export(
 	}
 	started, err := newAuditEvent(ctx, audit.EventAuditExportStarted, principal, audit.Object{}, audit.OutcomeIntent, "", f.Normalized())
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 
 	// INTENT: export_started, durable before the first byte. Postgres assigns
@@ -560,7 +606,7 @@ func (s *Audits) export(
 		return insert(ctx, r, p, started)
 	})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 
 	// The terminal OUTCOME must be able to commit even when the request
@@ -601,6 +647,24 @@ func (s *Audits) export(
 	// back when the page is filtered after commit. Same disclosure rule as the
 	// interactive query — only names on rows this proof already admitted.
 	names := newPrincipalNames()
+	receipt := ExportReceipt{StartedEventID: started.ID, SnapshotTime: f.To.UTC()}
+	if metadata, ok := w.(ExportMetadataWriter); ok {
+		metadata.BeginAuditExport(receipt.StartedEventID, receipt.SnapshotTime)
+	}
+	// finish writes the terminal OUTCOME and fills the receipt from it. If the
+	// terminal event cannot commit, the receipt says so, and a clean stream
+	// reports failure: the receipt never claims more than the trail holds.
+	finish := func(outcome audit.Outcome, cause string) error {
+		receipt.RowsStreamed, receipt.Outcome, receipt.Cause = streamed, ExportOutcome(outcome), cause
+		if err := completed(outcome, cause, streamed); err != nil {
+			if outcome == audit.OutcomeSuccess {
+				receipt.Outcome, receipt.Cause = ExportFailed, "outcome-write-failed"
+			}
+			return err
+		}
+		receipt.OutcomeRecorded = true
+		return nil
+	}
 	for {
 		// Each page: its own transaction, its own freshly minted proof —
 		// #15's re-authorize-before-every-sensitive-step and #23's
@@ -639,14 +703,15 @@ func (s *Audits) export(
 				// Authorization lost at a page boundary: the stream stops,
 				// the flushed denial event records the probe, and the
 				// started event stands unpaired (see ErrExportUnpaired).
-				return fmt.Errorf("%w: %w", ErrExportUnpaired, err)
+				receipt.RowsStreamed, receipt.Outcome = streamed, ExportRevoked
+				return receipt, fmt.Errorf("%w: %w", ErrExportUnpaired, err)
 			}
 			// Internal page failure: terminal OUTCOME with cause, under the
 			// still-held authorization.
-			if cerr := completed(audit.OutcomeFailure, "page-read-failed", streamed); cerr != nil {
-				return fmt.Errorf("service: export failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, err))
+			if cerr := finish(audit.OutcomeFailure, "page-read-failed"); cerr != nil {
+				return receipt, fmt.Errorf("service: export failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, err))
 			}
-			return err
+			return receipt, err
 		}
 		// Only committed page data is ever emitted: rows left the read
 		// transaction after its commit, so no byte crosses the response
@@ -668,25 +733,26 @@ func (s *Audits) export(
 				continue
 			}
 			if werr := writeLine(w, e); werr != nil {
-				if cerr := completed(audit.OutcomeDisconnected, "sink-error", streamed); cerr != nil {
-					return fmt.Errorf("service: export sink failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, werr))
+				if cerr := finish(audit.OutcomeDisconnected, "sink-error"); cerr != nil {
+					return receipt, fmt.Errorf("service: export sink failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, werr))
 				}
-				return fmt.Errorf("service: export sink: %w", werr)
+				return receipt, fmt.Errorf("service: export sink: %w", werr)
 			}
 			streamed++
 		}
 		if len(rows) < pageSize {
 			if !writersSettled {
 				if err := s.DB.AwaitAuditExportWriters(ctx); err != nil {
-					if cerr := completed(audit.OutcomeFailure, "writer-barrier-failed", streamed); cerr != nil {
-						return fmt.Errorf("service: export writer barrier failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, err))
+					if cerr := finish(audit.OutcomeFailure, "writer-barrier-failed"); cerr != nil {
+						return receipt, fmt.Errorf("service: export writer barrier failed and its terminal event failed too: %w", fmt.Errorf("%w; %w", cerr, err))
 					}
-					return err
+					return receipt, err
 				}
 				writersSettled = true
 				continue
 			}
-			return completed(audit.OutcomeSuccess, "", streamed)
+			err := finish(audit.OutcomeSuccess, "")
+			return receipt, err
 		}
 	}
 }

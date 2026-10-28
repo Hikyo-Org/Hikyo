@@ -1,9 +1,40 @@
-import { queryEnvAuditOp, queryOrgAuditOp, queryProjectAuditOp } from '@hikyo/operations';
+import { queryEnvAuditOp, queryInstanceAuditOp, queryOrgAuditOp, queryProjectAuditOp } from '@hikyo/operations';
 import { zAuditPage } from '@hikyo/zod';
 import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { parsed } from './client.ts';
+import { consumeAuditExport } from '../../../clients/ts/src/auditExport.ts';
+
+/** Browser downloads are deliberately capped. CLI/collector staging streams to disk. */
+export const AUDIT_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Resolve a plain-event JSONL Blob only after negotiated success and clean EOF.
+ * Rejection means no verified download; callers must surface it and never save
+ * a partial Blob. A native download link cannot validate terminal completion.
+ */
+export async function downloadAuditExport(url: string, signal?: AbortSignal): Promise<Blob> {
+  const target = new URL(url, window.location.origin);
+  if (target.origin !== window.location.origin) throw new Error('Audit export must use this server.');
+  target.searchParams.set('receipt', 'v1');
+  const response = await fetch(target, { signal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+  return verifiedAuditExportBlob(response);
+}
+
+/** Response seam for generated-client consumers and transport regression tests. */
+export async function verifiedAuditExportBlob(response: Response): Promise<Blob> {
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  let bytes = 0;
+  await consumeAuditExport(response, (line) => {
+    bytes += line.byteLength;
+    if (bytes > AUDIT_DOWNLOAD_MAX_BYTES) {
+      throw new Error('Audit export exceeds the 64 MiB browser limit. Use the CLI with a restricted staging file.');
+    }
+    parts.push(line);
+  });
+  return new Blob(parts, { type: 'application/x-ndjson' });
+}
 
 export type AuditPage = z.infer<typeof zAuditPage>;
 export type AuditEvent = AuditPage['items'][number];
@@ -16,9 +47,15 @@ export type AuditEvent = AuditPage['items'][number];
  * only meaningful under a project.
  */
 export type AuditScope = {
+  readonly instance?: false;
   readonly org: string;
   readonly project?: string;
   readonly environment?: string;
+} | {
+  readonly instance: true;
+  readonly org?: never;
+  readonly project?: never;
+  readonly environment?: never;
 };
 
 /**
@@ -27,6 +64,7 @@ export type AuditScope = {
  * each of the three operations reached from this module.
  */
 function exportPath(scope: AuditScope): string {
+  if (scope.instance === true) return '/api/v1/instance/audit/export';
   const org = encodeURIComponent(scope.org);
   if (scope.project === undefined || scope.project === '') {
     return `/api/v1/orgs/${org}/audit/export`;
@@ -157,10 +195,11 @@ function safeSeq(seq: bigint): number {
 }
 
 const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
-  ['audit', scope.org, scope.project ?? '', scope.environment ?? '', filter] as const;
+  ['audit', scope, filter] as const;
 
 /** queryScoped calls the one operation the scope addresses; the three share a response contract. */
 function queryScoped(scope: AuditScope, query: Record<string, string | number | string[]>): Promise<AuditPage> {
+  if (scope.instance === true) return parsed(queryInstanceAuditOp, { query });
   if (scope.project === undefined || scope.project === '') {
     return parsed(queryOrgAuditOp, { path: { org: scope.org }, query });
   }

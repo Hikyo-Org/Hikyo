@@ -164,6 +164,7 @@ func Run(ctx context.Context, io IO, args []string) int {
 // dispatches on it and Verbs (exit.go) is derived from its keys, so a verb
 // cannot exist here without main's dispatch gate admitting it.
 var verbHandlers = map[string]func(context.Context, IO, []string) error{
+	"audit":               runAudit,
 	"login":               runLogin,
 	"logout":              runLogout,
 	"whoami":              runWhoami,
@@ -272,6 +273,16 @@ managed configuration:
   hikyo instance-config test-email --revision N --expected-generation N --to ADDRESS
 
 diagnostics:
+  hikyo audit query (--instance-scope | --org O [--project P [--env E]]) [-o table|json]
+      [--limit N] [--after-seq N --to-seq N]
+      Filters: --from/--to RFC3339, --actor ID, --actor-name GLOB,
+      --operation GLOB, --outcome VALUE (repeatable), --object-type GLOB,
+      --object-id GLOB, --correlation-id ID. Login failures are instance events.
+  hikyo audit export (--instance-scope | --org O [--project P [--env E]])
+      emits JSONL to stdout; instance collection requires a human session
+      Filters: --from/--to RFC3339, --actor ID, --actor-name GLOB,
+      --operation GLOB, --outcome VALUE (repeatable), --object-type GLOB,
+      --object-id GLOB, --correlation-id ID. Login failures are instance events.
   hikyo doctor [--instance REF] [-o table|json] [--evidence]
                                                  report health or JSON collection evidence
   hikyo update channel stable|nightly|off           choose local release track

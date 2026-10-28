@@ -1,7 +1,9 @@
 package isolation
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,9 +11,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -28,13 +32,18 @@ func TestInstanceAuditWire(t *testing.T) {
 
 func runInstanceAuditWire(t *testing.T, db *store.DB) {
 	wire := newAccessWireEnv(t, db)
-	srv := httptest.NewServer(server.New(&server.API{Auth: wire.auth, Audits: &service.Audits{DB: db}}, nil))
+	srv := httptest.NewTLSServer(server.New(&server.API{Auth: wire.auth, Audits: &service.Audits{DB: db}, Grants: &service.Grants{DB: db}, Workspace: wire.workspace, Version: "wire"}, nil))
 	t.Cleanup(srv.Close)
 	wire.srv = srv
 
 	queryPath := api.PathPrefix + "/instance/audit"
 	exportPath := queryPath + "/export"
 	admin := string(wire.admin)
+	const otherOrg = "org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0aa0"
+	const otherProject = "prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0aa1"
+	const siblingProject = "prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0aa2"
+	execRaw(t, db, "INSERT INTO orgs (id, name, active, metadata, created_at) VALUES ('"+otherOrg+"', 'other-audit-org', TRUE, '{}', "+ts+")")
+	execRaw(t, db, "INSERT INTO projects (id, org_id, name, created_at) VALUES ('"+otherProject+"', '"+otherOrg+"', 'other-audit-project', "+ts+"), ('"+siblingProject+"', '"+wire.org+"', 'sibling-audit-project', "+ts+")")
 	countInstance := func(where string) int64 {
 		return queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE "+where)
 	}
@@ -51,6 +60,17 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		seedOrigins(t, db)
 	}
 
+	t.Run("missing_and_invalid_artifacts", func(t *testing.T) {
+		for _, token := range []string{"", "invalid-token"} {
+			for _, path := range []string{queryPath, exportPath} {
+				code, body := wire.callAs(t, token, http.MethodGet, path, nil)
+				if code != http.StatusUnauthorized {
+					t.Fatalf("GET %s = %d %s", path, code, body)
+				}
+			}
+		}
+	})
+
 	// Project automation that legitimately holds audit-read in its own project:
 	// the scheduled tenant export the audit-model ADR allows.
 	scope := domain.Scope{Org: domain.OrgID(wire.org), Project: domain.ProjectID(wire.project)}
@@ -66,6 +86,32 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	grant("g_ia_sa_ar", string(sa.Principal), wire.org, wire.project)
+
+	t.Run("project_automation_remains_tenant_confined", func(t *testing.T) {
+		own := api.PathPrefix + "/orgs/" + wire.org + "/projects/" + wire.project + "/audit"
+		if code, body := wire.callAs(t, minted.Value, http.MethodGet, own, nil); code != http.StatusOK {
+			t.Fatalf("project collector cannot query its own trail: %d %s", code, body)
+		}
+		for _, path := range []string{own, api.PathPrefix + "/orgs/" + wire.org + "/projects/" + wire.project + "/environments/" + wire.env + "/audit"} {
+			got := getAuditExport(t, srv, minted.Value, path+"/export?receipt=v1")
+			if got.receipt == nil || got.receipt.Outcome != apigen.AuditExportReceiptOutcomeSuccess || !got.receipt.OutcomeRecorded {
+				t.Fatalf("own-subtree collection did not complete: %+v", got.receipt)
+			}
+		}
+		// Both outside scopes really exist and use schema-valid HTTP IDs.
+		for _, path := range []string{
+			api.PathPrefix + "/orgs/" + otherOrg + "/projects/" + otherProject + "/audit",
+			api.PathPrefix + "/orgs/" + wire.org + "/projects/" + siblingProject + "/audit",
+			api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0bb0/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0bb1/audit",
+		} {
+			for _, suffix := range []string{"", "/export"} {
+				code, body := wire.callAs(t, minted.Value, http.MethodGet, path+suffix, nil)
+				if code != http.StatusNotFound || decodeWireError(t, body) != apigen.ErrorCodeNotFound {
+					t.Fatalf("collector escaped its project: %d %s", code, body)
+				}
+			}
+		}
+	})
 
 	// The artifact gate refuses a machine credential before authorization, with
 	// the uniform nonexistent shape and the cause on the instance trail.
@@ -110,6 +156,116 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 	})
 
 	grant("g_ia_admin_inst_ar", admin, "", "")
+
+	t.Run("actual_cli_query_and_export", func(t *testing.T) {
+		stateDir, workDir := t.TempDir(), t.TempDir()
+		var stdout, stderr bytes.Buffer
+		ios := cli.IO{Stdout: &stdout, Stderr: &stderr, Workdir: workDir, Env: cli.Env{Getenv: func(key string) string {
+			if key == "HIKYO_STATE_DIR" {
+				return stateDir
+			}
+			return ""
+		}}}
+		state, err := cli.NewState(ios.Env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := state.Trust().Put(cli.TrustEntry{Name: "fixture", Origin: srv.URL, SPKIPin: cli.SPKIFingerprint(srv.Certificate())}); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.PutSession(cli.SessionArtifact{Instance: "fixture", Origin: srv.URL, Token: wire.token, SessionID: "fixture-cli", Principal: admin, ExpiresAt: "2030-01-01T00:00:00Z"}); err != nil {
+			t.Fatal(err)
+		}
+		if code := cli.Run(t.Context(), ios, []string{"audit", "query", "--instance", "fixture", "--instance-scope", "--operation", "auth.login", "-o", "json"}); code != cli.ExitOK {
+			t.Fatalf("CLI query exit=%d: %s", code, stderr.String())
+		}
+		var page apigen.AuditPage
+		if err := json.Unmarshal(stdout.Bytes(), &page); err != nil || page.Count == 0 {
+			t.Fatalf("CLI page=%s err=%v", stdout.String(), err)
+		}
+		stdout.Reset()
+		stderr.Reset()
+		if code := cli.Run(t.Context(), ios, []string{"audit", "export", "--instance", "fixture", "--instance-scope", "--operation", "auth.login"}); code != cli.ExitOK {
+			t.Fatalf("CLI export exit=%d: %s", code, stderr.String())
+		}
+		if stdout.Len() == 0 || strings.Contains(stdout.String(), "export_receipt") {
+			t.Fatalf("CLI export did not publish validated event JSONL: %s", stdout.String())
+		}
+		get := ios.Env.Getenv
+		ios.Env.Getenv = func(key string) string {
+			if key == "HIKYO_TOKEN" {
+				return minted.Value
+			}
+			return get(key)
+		}
+		stdout.Reset()
+		stderr.Reset()
+		if code := cli.Run(t.Context(), ios, []string{"audit", "export", "--instance", "fixture", "--org", wire.org, "--project", wire.project, "--auth", "machine"}); code != cli.ExitOK || stdout.Len() == 0 {
+			t.Fatalf("project automation CLI exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+		}
+		stdout.Reset()
+		stderr.Reset()
+		if code := cli.Run(t.Context(), ios, []string{"audit", "export", "--instance", "fixture", "--org", otherOrg, "--project", otherProject, "--auth", "machine"}); code != cli.ExitNotFound || stdout.Len() != 0 {
+			t.Fatalf("cross-org CLI exit=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+		}
+	})
+
+	t.Run("failed_local_login_is_visible_with_source", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+api.PathPrefix+"/auth/local/login", strings.NewReader(`{"username":"`+waAdmin+`","password":"incorrect synthetic password"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "hikyo-instance-audit-test")
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("failed local login status = %d", resp.StatusCode)
+		}
+		page := getAuditPage(t, wire, queryPath+"?operation=auth.login&outcomes=failure")
+		found := false
+		for _, event := range page.Items {
+			if event.UserAgent != nil && *event.UserAgent == "hikyo-instance-audit-test" {
+				found = true
+				if event.SourceIp == nil || *event.SourceIp == "" || event.ActorClass == "" || event.Origin == "" {
+					t.Fatalf("source metadata missing: %+v", event)
+				}
+				if event.ActorId != nil || event.ActorClass != "unauthenticated" {
+					t.Fatalf("failed login was attributed to an authenticated actor: %+v", event)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("failed local login absent from instance trail: %+v", page.Items)
+		}
+	})
+
+	t.Run("instance_security_mutation_is_visible", func(t *testing.T) {
+		const target = "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0cc0"
+		execRaw(t, db, "INSERT INTO principals (id, kind, created_at) VALUES ('"+target+"', 'human', "+ts+")")
+		path := api.PathPrefix + "/instance/grants"
+		code, body := wire.call(t, http.MethodPost, path, map[string]string{"principal": target, "capability": "read"})
+		if code != http.StatusOK {
+			t.Fatalf("grant mutation = %d %s", code, body)
+		}
+		page := getAuditPage(t, wire, queryPath+"?operation=grant.created&actor="+admin)
+		found := false
+		for _, event := range page.Items {
+			if event.ActorId != nil && *event.ActorId == admin && event.ScopeClass == "instance" && event.Outcome == "success" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("instance grant mutation is absent or misattributed")
+		}
+		code, body = wire.call(t, http.MethodDelete, path+"?principal="+target+"&capability=read", nil)
+		if code != http.StatusNoContent {
+			t.Fatalf("revoke synthetic grant = %d %s", code, body)
+		}
+	})
 
 	t.Run("query_pages_under_a_stable_ceiling", func(t *testing.T) {
 		before := countInstance("type = 'audit.query' AND actor_id = '" + admin + "'")
@@ -183,6 +339,44 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type LIKE 'audit.export_%' AND actor_id = '"+admin+"'"); n != 0 {
 			t.Fatalf("instance export wrote %d events to the tenant trail", n)
 		}
+	})
+
+	t.Run("instance_export_reauthorizes_bearer_at_page_boundary", func(t *testing.T) {
+		// Read the real instance export owner with the transport's bearer. A
+		// one-row page makes the revocation boundary deterministic on both engines.
+		w := &hookWriter{onFirst: func() {
+			execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_ia_admin_inst_ar'")
+			execRaw(t, db, "DELETE FROM grants WHERE id = 'g_ia_admin_inst_ar'")
+		}}
+		err := (&service.Audits{DB: db}).InstanceExportActor(t.Context(), service.Bearer(wire.token), service.AuditFilter{To: time.Now().UTC()}, 1, w)
+		if !errors.Is(err, service.ErrExportUnpaired) || w.buf.Len() == 0 {
+			t.Fatalf("revoked instance export = %v, bytes = %d", err, w.buf.Len())
+		}
+		startedID := queryString(t, db, "SELECT id FROM audit_instance_events WHERE type = 'audit.export_started' ORDER BY seq DESC LIMIT 1")
+		if n := countInstance("type = 'audit.export_completed' AND correlation_id = '" + startedID + "'"); n != 0 {
+			t.Fatal("revocation fabricated an authorized terminal outcome")
+		}
+		if n := countInstance("type = 'grant.denied' AND payload LIKE '%audit.instance-export%'"); n == 0 {
+			t.Fatal("revocation lacks durable denial")
+		}
+		grant("g_ia_admin_inst_ar", admin, "", "")
+	})
+
+	t.Run("audit_reader_needs_no_instance_configuration_grant", func(t *testing.T) {
+		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config')")
+		execRaw(t, db, "DELETE FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config'")
+		code, body := wire.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("audit-only whoami = %d %s", code, body)
+		}
+		var identity apigen.WhoAmI
+		if err := json.Unmarshal(body, &identity); err != nil {
+			t.Fatal(err)
+		}
+		if identity.Capabilities.InstanceOperator || identity.Capabilities.InstanceAuditRead == nil || !*identity.Capabilities.InstanceAuditRead {
+			t.Fatalf("audit-only hints = %+v", identity.Capabilities)
+		}
+		_ = getAuditPage(t, wire, queryPath+"?limit=1")
 	})
 }
 

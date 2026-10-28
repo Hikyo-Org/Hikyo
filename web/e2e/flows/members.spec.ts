@@ -1144,12 +1144,11 @@ test.describe('audit trail', () => {
     await expect(page.locator('.audit__row')).toHaveCount(0);
     await expect(page.locator('.audit__empty')).toBeVisible();
 
-    // Clear, then export the current filter. The download is a same-origin GET
-    // under the session cookie; the browser streams JSONL to disk.
+    // Clear, then verify the complete same-origin export before saving JSONL.
     await page.getByRole('button', { name: 'Clear' }).click();
     await expect(page.locator('.audit__row').first()).toBeVisible();
     const download = page.waitForEvent('download');
-    await page.getByRole('link', { name: 'Export JSONL' }).click();
+    await page.getByRole('button', { name: 'Export JSONL' }).click();
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/\.jsonl$/);
     const path = await file.path();

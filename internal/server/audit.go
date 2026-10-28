@@ -246,10 +246,11 @@ func (a *API) ExportOrgAudit(ctx context.Context, req apigen.ExportOrgAuditReque
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
-		export: func(w io.Writer) error {
+		export: func(w io.Writer) (service.ExportReceipt, error) {
 			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), domain.Scope{Org: domain.OrgID(req.Org)}, f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org),
+		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportOrgAuditParamsReceiptV1,
 	}, nil
 }
 
@@ -257,10 +258,11 @@ func (a *API) ExportProjectAudit(ctx context.Context, req apigen.ExportProjectAu
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
-		export: func(w io.Writer) error {
+		export: func(w io.Writer) (service.ExportReceipt, error) {
 			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), projectScope(req.Org, req.Project), f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org, req.Project),
+		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportProjectAuditParamsReceiptV1,
 	}, nil
 }
 
@@ -268,10 +270,11 @@ func (a *API) ExportEnvAudit(ctx context.Context, req apigen.ExportEnvAuditReque
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
-		export: func(w io.Writer) error {
+		export: func(w io.Writer) (service.ExportReceipt, error) {
 			return a.Audits.ExportActor(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), f, auditExportPageSize, w)
 		},
 		filename: auditFilename(req.Org, req.Project, req.Environment),
+		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportEnvAuditParamsReceiptV1,
 	}, nil
 }
 
@@ -279,10 +282,11 @@ func (a *API) ExportInstanceAudit(ctx context.Context, req apigen.ExportInstance
 	p := req.Params
 	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
-		export: func(w io.Writer) error {
-			return a.Audits.InstanceExportActor(ctx, service.Bearer(bearer(ctx)), f, auditExportPageSize, w)
+		export: func(w io.Writer) (service.ExportReceipt, error) {
+			return a.Audits.InstanceExportActorReceipt(ctx, service.Bearer(bearer(ctx)), f, auditExportPageSize, w)
 		},
 		filename: auditFilename("instance"),
+		receipt:  p.Receipt != nil && *p.Receipt == apigen.ExportInstanceAuditParamsReceiptV1,
 	}, nil
 }
 
@@ -297,34 +301,62 @@ func auditFilename(parts ...string) string {
 // auditExportStream streams the service export straight to the response body,
 // so neither the server nor (via a native browser download) the client holds
 // the whole trail in memory. The export writes its own INTENT/OUTCOME audit
-// events regardless; a mid-stream failure leaves the 200 already sent and its
-// cause durable in the trail, while a pre-stream refusal (authorization or
-// budget) becomes the normal status because no byte was written yet.
+// events regardless; a pre-stream refusal (authorization or budget) becomes
+// the normal status because no byte was written yet. After the 200 is sent, a
+// client that opted in with `receipt=v1` gets one final receipt line that
+// tells how the export ended; without the opt-in, a mid-stream failure leaves
+// the body truncated and its cause durable only in the trail.
 type auditExportStream struct {
-	export   func(w io.Writer) error
+	export   func(w io.Writer) (service.ExportReceipt, error)
 	filename string
+	receipt  bool
 }
 
 func (s auditExportStream) visit(w http.ResponseWriter) error {
-	tw := &auditExportWriter{w: w, filename: s.filename}
-	err := s.export(tw)
-	if err != nil {
-		if !tw.wrote {
-			// Pre-stream refusal: no byte on the wire yet, so the usual status
-			// mapping still applies.
-			writeError(w, wireErrorFor(err), "")
-			return nil
-		}
-		// Mid-stream failure: the header is already 200 and the terminal audit
-		// event recorded the cause. Nothing safe to add to the wire.
+	tw := &auditExportWriter{w: w, filename: s.filename, receipt: s.receipt}
+	receipt, err := s.export(tw)
+	if err != nil && !tw.wrote {
+		// Pre-stream refusal: no byte on the wire yet, so the usual status
+		// mapping still applies.
+		writeError(w, wireErrorFor(err), "")
 		return nil
 	}
-	if !tw.wrote {
-		// A successful export that matched nothing still owes the caller the
-		// headers and an empty 200 body.
-		tw.writeHeader()
+	if !s.receipt {
+		if !tw.wrote {
+			// A successful export that matched nothing still owes the caller
+			// the headers and an empty 200 body.
+			tw.writeHeader()
+		}
+		return nil
 	}
+	line, err := receiptLine(receipt)
+	if err != nil {
+		return err
+	}
+	// Best effort: after a sink failure this write fails too, and the missing
+	// receipt is itself the client's truncation signal.
+	_, _ = tw.Write(line)
 	return nil
+}
+
+func receiptLine(r service.ExportReceipt) ([]byte, error) {
+	wire := apigen.AuditExportReceipt{
+		Version:         apigen.AuditExportReceiptV1,
+		StartedEventId:  r.StartedEventID,
+		SnapshotTime:    r.SnapshotTime,
+		RowsStreamed:    int64(r.RowsStreamed),
+		Outcome:         apigen.AuditExportReceiptOutcome(r.Outcome),
+		OutcomeRecorded: r.OutcomeRecorded,
+	}
+	if r.Cause != "" {
+		cause := apigen.AuditExportReceiptCause(r.Cause)
+		wire.Cause = &cause
+	}
+	b, err := json.Marshal(apigen.AuditExportReceiptLine{ExportReceipt: wire})
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 func (s auditExportStream) VisitExportOrgAuditResponse(w http.ResponseWriter) error {
@@ -347,9 +379,16 @@ func (s auditExportStream) VisitExportInstanceAuditResponse(w http.ResponseWrite
 // byte, so a refusal the service raises before it streams anything can still
 // set a non-200 status.
 type auditExportWriter struct {
-	w        http.ResponseWriter
-	filename string
-	wrote    bool
+	w         http.ResponseWriter
+	filename  string
+	receipt   bool
+	wrote     bool
+	startedID string
+	snapshot  time.Time
+}
+
+func (a *auditExportWriter) BeginAuditExport(id string, snapshot time.Time) {
+	a.startedID, a.snapshot = id, snapshot
 }
 
 func (a *auditExportWriter) writeHeader() {
@@ -357,6 +396,11 @@ func (a *auditExportWriter) writeHeader() {
 	a.w.Header().Set("Content-Type", "application/x-ndjson")
 	a.w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", a.filename))
 	a.w.Header().Set("X-Content-Type-Options", "nosniff")
+	if a.receipt {
+		a.w.Header().Set("Hikyo-Audit-Receipt", string(apigen.AuditReceiptV1))
+		a.w.Header().Set("Hikyo-Audit-Export-ID", a.startedID)
+		a.w.Header().Set("Hikyo-Audit-Snapshot-Time", a.snapshot.UTC().Format(time.RFC3339Nano))
+	}
 	a.w.WriteHeader(http.StatusOK)
 }
 

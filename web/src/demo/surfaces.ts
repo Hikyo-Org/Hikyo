@@ -19,6 +19,7 @@ export const DEMO_SURFACE_POLICIES = {
   scim: { mode: 'read-only' },
   audit: { mode: 'read-only', audit: true },
   'instance-admin': { mode: 'excluded', reason: 'Instance administration requires a full Hikyo installation.' },
+  'instance-audit': { mode: 'excluded', reason: 'Instance security events require a full Hikyo installation.' },
   'instance-config': { mode: 'excluded', reason: 'Server configuration requires a full Hikyo installation.' },
   'instance-members': { mode: 'excluded', reason: 'Instance membership administration requires a full Hikyo installation.' },
   settings: { mode: 'read-only' },

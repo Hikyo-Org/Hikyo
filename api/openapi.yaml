@@ -12008,6 +12008,21 @@ paths:
         disconnect. Authorization lost mid-stream stops it at the next page
         boundary — a truncated download whose cause is durable in the trail. No
         value material is ever in the trail, so none can be in the stream.
+
+        A client that sends `receipt=v1` gets the `Hikyo-Audit-Receipt: v1`
+        response header, and the stream ends with one `AuditExportReceiptLine`
+        after the last event line. The receipt names the
+        `audit.export_started` event, the number of event lines written and
+        how the export ended. Require version 1, identity and snapshot matching
+        the Hikyo-Audit-Export-ID and Hikyo-Audit-Snapshot-Time response headers,
+        the exact received event count, success, outcome_recorded=true and no
+        cause. Require clean transport EOF immediately after the receipt LF.
+        A missing/invalid receipt, failed transport or any uncertain outcome
+        makes the export incomplete even with HTTP 200 and valid event JSONL.
+        Stage bytes privately; publish evidence and collection state only after
+        validation. The receipt counts rows; it does not attest that the trail
+        has no sequence gaps or provide a resumable public seq checkpoint.
+        Without the opt-in, the body is plain JSONL with no receipt line.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-org
       x-hikyo-formula: [audit-read@org]
@@ -12024,11 +12039,28 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -12053,7 +12085,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: audit.query-project
       x-hikyo-formula: [audit-read@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       parameters:
         - $ref: "#/components/parameters/AuditFrom"
@@ -12093,12 +12125,13 @@ paths:
       tags: [audit]
       summary: Stream the project's audit trail as JSONL.
       description: |
-        The project-scoped JSONL export. Same shape and INTENT/OUTCOME
-        contract as `exportOrgAudit`, refined to the project chain.
+        The project-scoped JSONL export. Same shape, INTENT/OUTCOME
+        contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+        project chain.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-project
       x-hikyo-formula: [audit-read@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       parameters:
         - $ref: "#/components/parameters/AuditFrom"
@@ -12111,11 +12144,28 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -12141,7 +12191,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: audit.query-env
       x-hikyo-formula: [audit-read@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       parameters:
         - $ref: "#/components/parameters/AuditFrom"
@@ -12182,12 +12232,13 @@ paths:
       tags: [audit]
       summary: Stream the environment's audit trail as JSONL.
       description: |
-        The environment-scoped JSONL export. Same shape and INTENT/OUTCOME
-        contract as `exportOrgAudit`, refined to the environment chain.
+        The environment-scoped JSONL export. Same shape, INTENT/OUTCOME
+        contract and `receipt` opt-in as `exportOrgAudit`, refined to the
+        environment chain.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-env
       x-hikyo-formula: [audit-read@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       parameters:
         - $ref: "#/components/parameters/AuditFrom"
@@ -12200,11 +12251,28 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
+            Hikyo-Audit-Receipt:
+              required: false
+              description: |
+                Present, with the requested version, only when the server honors
+                the `receipt` opt-in. The stream then ends with one
+                `AuditExportReceiptLine`.
+              schema:
+                type: string
+                enum: [v1]
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -12278,7 +12346,9 @@ paths:
         time, and it resolves the session again and mints a fresh proof for
         each page, so a revoked grant or session stops the stream at the next
         page boundary. The `audit.export_started` and `audit.export_completed`
-        events go to the instance trail.
+        events go to the instance trail. The optional `receipt=v1` completion
+        protocol and response identity/snapshot headers are the same as
+        `exportOrgAudit`; supported consumers require verified completion.
 
         Authorization and artifact eligibility are as for
         `queryInstanceAudit`. Instance exports have no organization, so the
@@ -12300,11 +12370,22 @@ paths:
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
+        - $ref: "#/components/parameters/AuditReceipt"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
         "200":
           description: The instance trail as a JSONL byte stream.
+          headers:
+            Hikyo-Audit-Receipt:
+              description: Present as v1 when the completion protocol was negotiated.
+              schema: {type: string, enum: [v1]}
+            Hikyo-Audit-Export-ID:
+              description: Durable export_started identity, matched by the terminal receipt.
+              schema: {type: string}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at cutoff, matched by the terminal receipt.
+              schema: {type: string, format: date-time}
           content:
             application/x-ndjson:
               schema: {type: string}
@@ -15699,6 +15780,16 @@ components:
       schema:
         type: string
         maxLength: 64
+    AuditReceipt:
+      name: receipt
+      in: query
+      required: false
+      description: |
+        Opt in to the export completion receipt at this version. The stream
+        then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+      schema:
+        type: string
+        enum: [v1]
 
     TransitKeyName:
       name: transit_key
@@ -17836,6 +17927,12 @@ components:
         evaluated per request at the server chokepoint.
       required: [instance_operator, delivery_report_grant]
       properties:
+        instance_audit_read:
+          type: boolean
+          description: >-
+            True when the caller holds instance audit-read. This navigation
+            hint does not imply instance-config or replace per-request authority
+            and MFA checks. Absent on older servers.
         instance_operator:
           type: boolean
           description: >-
@@ -24643,6 +24740,71 @@ components:
             than the limit). While false, more pages remain even if `items` is
             empty for a sparse filter.
 
+    AuditExportReceiptLine:
+      type: object
+      additionalProperties: false
+      required: [export_receipt]
+      description: |
+        The last line of an export stream when the client sent `receipt=v1`.
+        Event lines never carry the `export_receipt` member, so a reader tells
+        the two apart by that key.
+      properties:
+        export_receipt:
+          $ref: "#/components/schemas/AuditExportReceipt"
+    AuditExportReceipt:
+      type: object
+      additionalProperties: false
+      required: [version, started_event_id, snapshot_time, rows_streamed, outcome, outcome_recorded]
+      description: |
+        How one export ended, as the export run saw it. Completion requires
+        success, outcome_recorded=true, no cause, exact event count, identity
+        and snapshot matching the response headers, and clean EOF immediately
+        after this line. The receipt counts rows; it does not attest that the
+        trail has no sequence gaps. Consumers bound each line to 1 MiB including
+        LF and fail closed on larger lines. Event fields remain extensible.
+      properties:
+        version:
+          type: integer
+          enum: [1]
+          x-enum-varnames: [AuditExportReceiptV1]
+        started_event_id:
+          type: string
+          minLength: 1
+          description: |
+            The id of this export's `audit.export_started` event. The
+            `audit.export_completed` event, when recorded, carries it as its
+            correlation id.
+        snapshot_time:
+          type: string
+          format: date-time
+          description: |
+            Effective inclusive recorded_at upper bound, capped by the server's
+            fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+            Together with the request's filters this names the selected extent,
+            not a resumable seq cursor or a promise of gapless sequence numbers.
+        rows_streamed:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The number of event lines written before this receipt.
+        outcome:
+          type: string
+          enum: [success, failure, disconnected, revoked]
+          description: |
+            `success`: the export read to its snapshot. `failure`: a server
+            fault stopped it, or its terminal audit event did not commit.
+            `disconnected`: a write to the client failed. `revoked`: the
+            caller lost `audit-read` at a page boundary.
+        cause:
+          type: string
+          enum: [page-read-failed, sink-error, writer-barrier-failed, outcome-write-failed]
+          x-enum-varnames: [AuditExportCausePageReadFailed, AuditExportCauseSinkError, AuditExportCauseWriterBarrierFailed, AuditExportCauseOutcomeWriteFailed]
+          description: Why the export did not succeed. Absent on success and on revocation.
+        outcome_recorded:
+          type: boolean
+          description: |
+            True when the matching `audit.export_completed` event is durable in
+            the trail. A revoked export never records one.
 
     AdapterFinding:
       type: object

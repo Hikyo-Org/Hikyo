@@ -133,6 +133,16 @@ describe('sidebarModel', () => {
     expect(model.instance).toBeNull();
   });
 
+  it('offers the audit reader only its instance trail without granting configuration navigation', () => {
+    const model = sidebarModel({
+      ...base,
+      surface: surfaceById('settings'),
+      isInstanceOperator: false,
+      canReadInstanceAudit: true,
+    });
+    expect(model.instance?.links.map((item) => item.id)).toEqual(['instance-audit']);
+  });
+
   it('links back to the last-opened project on a page with no context block and no org-page fallback (account settings)', () => {
     const model = sidebarModel({
       ...base,

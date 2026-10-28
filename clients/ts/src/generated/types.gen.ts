@@ -1474,6 +1474,10 @@ export type WhoAmI = {
  */
 export type PrincipalCapabilities = {
     /**
+     * True when the caller holds instance audit-read. This navigation hint does not imply instance-config or replace per-request authority and MFA checks. Absent on older servers.
+     */
+    instance_audit_read?: boolean;
+    /**
      * True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
      */
     instance_operator: boolean;
@@ -6211,6 +6215,66 @@ export type AuditPage = {
     exhausted: boolean;
 };
 
+/**
+ * The last line of an export stream when the client sent `receipt=v1`.
+ * Event lines never carry the `export_receipt` member, so a reader tells
+ * the two apart by that key.
+ *
+ */
+export type AuditExportReceiptLine = {
+    export_receipt: AuditExportReceipt;
+};
+
+/**
+ * How one export ended, as the export run saw it. Completion requires
+ * success, outcome_recorded=true, no cause, exact event count, identity
+ * and snapshot matching the response headers, and clean EOF immediately
+ * after this line. The receipt counts rows; it does not attest that the
+ * trail has no sequence gaps. Consumers bound each line to 1 MiB including
+ * LF and fail closed on larger lines. Event fields remain extensible.
+ *
+ */
+export type AuditExportReceipt = {
+    version: 1;
+    /**
+     * The id of this export's `audit.export_started` event. The
+     * `audit.export_completed` event, when recorded, carries it as its
+     * correlation id.
+     *
+     */
+    started_event_id: string;
+    /**
+     * Effective inclusive recorded_at upper bound, capped by the server's
+     * fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+     * Together with the request's filters this names the selected extent,
+     * not a resumable seq cursor or a promise of gapless sequence numbers.
+     *
+     */
+    snapshot_time: string;
+    /**
+     * The number of event lines written before this receipt.
+     */
+    rows_streamed: number;
+    /**
+     * `success`: the export read to its snapshot. `failure`: a server
+     * fault stopped it, or its terminal audit event did not commit.
+     * `disconnected`: a write to the client failed. `revoked`: the
+     * caller lost `audit-read` at a page boundary.
+     *
+     */
+    outcome: 'success' | 'failure' | 'disconnected' | 'revoked';
+    /**
+     * Why the export did not succeed. Absent on success and on revocation.
+     */
+    cause?: 'page-read-failed' | 'sink-error' | 'writer-barrier-failed' | 'outcome-write-failed';
+    /**
+     * True when the matching `audit.export_completed` event is durable in
+     * the trail. A revoked export never records one.
+     *
+     */
+    outcome_recorded: boolean;
+};
+
 export type AdapterFinding = {
     surface: 'secret' | 'variable';
     effective_name: string;
@@ -6877,6 +6941,13 @@ export type AuditObjectId = string;
  *
  */
 export type AuditCorrelationId = string;
+
+/**
+ * Opt in to the export completion receipt at this version. The stream
+ * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+ *
+ */
+export type AuditReceipt = 'v1';
 
 /**
  * The transit key's name, unique among the environment's live keys.
@@ -27468,6 +27539,12 @@ export type ExportOrgAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/audit/export';
 };
@@ -27768,6 +27845,12 @@ export type ExportProjectAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/projects/{project}/audit/export';
 };
@@ -28076,6 +28159,12 @@ export type ExportEnvAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export';
 };
@@ -28358,6 +28447,12 @@ export type ExportInstanceAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/instance/audit/export';
 };
