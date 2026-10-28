@@ -172,6 +172,7 @@ revisions:                                         --env selects the environment
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
   hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
+    --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
 adapters:
   hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment

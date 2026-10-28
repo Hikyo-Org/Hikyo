@@ -31,12 +31,15 @@ func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	if err := flags.checkNoPositionals("reencrypt"); err != nil {
 		return err
 	}
+	if err := checkDEKScopeFlags(flags.Flags, instanceScope, "reencrypt"); err != nil {
+		return err
+	}
 
 	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
 	if err != nil {
 		return err
 	}
-	org, project, err := dekScope(resolved, flags, instanceScope, "reencrypt")
+	org, project, err := dekScope(resolved, instanceScope)
 	if err != nil {
 		return err
 	}

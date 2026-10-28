@@ -32,12 +32,15 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 	if err := flags.checkNoPositionals("rotate-dek"); err != nil {
 		return err
 	}
+	if err := checkDEKScopeFlags(flags.Flags, instanceScope, "rotate-dek"); err != nil {
+		return err
+	}
 
 	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
 	if err != nil {
 		return err
 	}
-	org, project, err := dekScope(resolved, flags, instanceScope, "rotate-dek")
+	org, project, err := dekScope(resolved, instanceScope)
 	if err != nil {
 		return err
 	}
@@ -76,15 +79,25 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 	})
 }
 
+// checkDEKScopeFlags rejects contradictory selectors before context lookup or
+// authentication, so malformed usage has the same exit regardless of state.
+func checkDEKScopeFlags(flags Flags, instanceScope bool, verb string) error {
+	if flags.Env != "" {
+		return failf(ExitUsage,
+			"hikyo %s: --env cannot select a DEK; use --org/--project for the entire project or --instance-scope", verb)
+	}
+	if instanceScope && (flags.Org != "" || flags.Project != "") {
+		return failf(ExitUsage,
+			"hikyo %s: --instance-scope and --org/--project name two different scopes; choose one", verb)
+	}
+	return nil
+}
+
 // dekScope picks the DEK scope for rotate-dek and reencrypt: the instance
 // under --instance-scope, otherwise the resolved org and project. --instance
 // stays the shared instance reference and never selects a scope.
-func dekScope(resolved Resolved, flags commonFlags, instanceScope bool, verb string) (org, project string, err error) {
+func dekScope(resolved Resolved, instanceScope bool) (org, project string, err error) {
 	if instanceScope {
-		if flags.Org != "" || flags.Project != "" || flags.Env != "" {
-			return "", "", failf(ExitUsage,
-				"hikyo %s: --instance-scope and --org/--project/--env name two different scopes; choose one", verb)
-		}
 		return "", "", nil
 	}
 	if org, err = resolved.Require(DimOrg); err != nil {

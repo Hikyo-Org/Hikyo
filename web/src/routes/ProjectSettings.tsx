@@ -408,7 +408,7 @@ function ProjectCryptoMaintenance({
           </span>
         </div>
         <span className="settings-row__spacer" />
-        <code className="instance-cli">$ hikyo rotate-dek --org &lt;org&gt; --project &lt;project&gt;</code>
+        <code className="instance-cli">$ hikyo rotate-dek --instance &lt;instance&gt; --org &lt;org&gt; --project &lt;project&gt; --yes</code>
         <Button type="button" disabled={disabled} onClick={() => { setDialogFailure(null); setConfirmRotate(true); }}>
           Rotate the project DEK
         </Button>
@@ -422,7 +422,7 @@ function ProjectCryptoMaintenance({
           </span>
         </div>
         <span className="settings-row__spacer" />
-        <code className="instance-cli">$ hikyo reencrypt --org &lt;org&gt; --project &lt;project&gt;</code>
+        <code className="instance-cli">$ hikyo reencrypt --instance &lt;instance&gt; --org &lt;org&gt; --project &lt;project&gt;</code>
         <Button type="button" disabled={disabled || drain.running} onClick={drain.run}>
           {drain.running ? 'Re-encrypting…' : 'Re-encrypt the project'}
         </Button>
