@@ -2,6 +2,7 @@
 
 Parent: [#79](https://github.com/Hikyo-Org/Hikyo/issues/79).
 Owner: [#1069](https://github.com/Hikyo-Org/Hikyo/issues/1069).
+PR: [#1078](https://github.com/Hikyo-Org/Hikyo/pull/1078).
 Inspected baseline: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, 2026-10-28.
 
 ## Disposition and patch selection
@@ -82,7 +83,7 @@ threshold, timeout, or security check is removed or relaxed.
 | Chromium Storybook, light | PASS: 143 files / 857 tests |
 | Production SPA build and development-code isolation | PASS; emitted JavaScript contains neither advisory handler/accessor marker |
 | Design export and production Storybook build with generated Docs inventory | PASS: 143 modules, 857 stories, 143 generated Docs |
-| Built Storybook theme switching, Docs controls/fixtures and lifetime consumer | PENDING |
+| Built Storybook theme switching, Docs controls/fixtures and lifetime consumer | PASS: 4 tests, 1 worker |
 
 A local synthetic probe also exercises the installed public mocker APIs:
 manual-mock URLs and quoted export names remain data while exports resolve;
@@ -110,6 +111,14 @@ policy. No persistence code changes are made, so a separate SQLite/PostgreSQL
 run is NOTRUN for this dependency-only task. Native Windows exploit acceptance
 is NOTRUN. Hosted CI results and the exact PR head must be checked separately;
 local passes do not establish merge-queue/full-candidate or release acceptance.
+
+The initial source head `bd43e070de2f5c51f97faa9750a7866f5edfe08a` passed all
+three hosted feedback lanes in
+[run 40670361677, attempt 1](https://github.com/Hikyo-Org/Hikyo/actions/runs/40670361677).
+The closeout changes only this handoff. Its final head still needs its own
+hosted feedback and maintainer review; consult the PR for current results.
+Validated manifest blob: `b18a7aa779d1d42026ffbefe24671dc681eb6982`.
+Validated lockfile blob: `f94bb39360de36b27c479bd1460cbcfef5fabf7e`.
 
 ## Maintainer closeout
 
