@@ -115,8 +115,15 @@ func TestManualIncidentContainmentCLI(t *testing.T) {
 		if status, _ := e.callAs(t, orgOperator, http.MethodPost, "/api/v1/accounts/"+string(e.admin)+"/credential-reset", nil); status != http.StatusUnauthorized {
 			t.Fatalf("org-only reset holder reached a fully swept target: HTTP %d", status)
 		}
+		liveAtReset := sessionWithWindows(t, db, e.admin)
+		if authenticateCaller(t, db, liveAtReset).Principal != e.admin {
+			t.Fatal("reset-time negative control needs a live target session after the sweep")
+		}
 		authorityFile := filepath.Join(t.TempDir(), "authority")
 		out := run("account", "reset-credential", string(e.admin), "--output-file", authorityFile)
+		if authenticateCaller(t, db, liveAtReset).Principal != "" {
+			t.Fatal("CLI reset retained a live session before credential establishment")
+		}
 		delivered, err := os.ReadFile(authorityFile)
 		if err != nil {
 			t.Fatalf("read private reset authority: %v", err)
@@ -135,7 +142,7 @@ func TestManualIncidentContainmentCLI(t *testing.T) {
 		if err := e.auth.EstablishCredential(ctx, authority, "independently delivered CLI replacement"); err != nil {
 			t.Fatalf("consume the private-file authority: %v", err)
 		}
-		for _, bearer := range []string{targetSession, delegation} {
+		for _, bearer := range []string{targetSession, delegation, liveAtReset} {
 			if authenticateCaller(t, db, bearer).Principal != "" {
 				t.Fatal("CLI workflow left an affected artifact live")
 			}
