@@ -64,7 +64,7 @@ repair an absent fence. On any uncertainty, keep isolation and report `HOLD`.
 | Action | Existing owner and required authority | Refusal / recovery consequence |
 | --- | --- | --- |
 | List/remove grants and rules | `manage-members` at the addressed scope, adequate human-session assurance; rule management must cover its entire selector | Project authority cannot remove an ancestor or outside selector. Revoke only the origins this owner controls. |
-| Network reset | `credential-reset` at the permitted org/instance scope, MFA-mandatory session assurance | Org scope reaches only org-bounded targets. Instance-capability holders have no network reset path. Do not widen capability to avoid refusal. |
+| Network reset | `credential-reset` at the permitted org/instance scope, MFA-mandatory session assurance | Org scope reaches targets with grants in exactly one org. A target with no grants, including after the complete sweep, needs an instance-scope holder. Instance-capability holders have no network reset path. Do not widen capability to avoid refusal. |
 | Host reset | Existing `hikyo admin reset-credential`, approved local datastore/root authority, stopped server or the documented protected local operator path | Never expose it as a network route. This establishes a credential only; it does not log in, remove factors, or confer assurance. |
 | Developer revoke | Owner self-revoke, or project `manage-identities` human session | Self `--all` covers the caller only. An operator inventories/revokes other principals' project credentials; never borrows their bearer. Reset additionally retires all target delegations. |
 | Last manager | Existing grant lockout census and origin owners | Assign and verify a clean independent manager first. A last-manager refusal or SCIM lockout-retention row is unresolved authority, never success. |
@@ -203,7 +203,12 @@ Use a new private output file in approved custody. The command creates the
 display-once authority with restrictive permissions; do not print it to logs.
 Network reset uses `hikyo account reset-credential affected-principal` with the
 same private-file delivery policy and a clean MFA-capable `credential-reset`
-session. An instance-capability target must use the host tier. Reset revokes
+session. After the complete sweep the target has no grants, so the final network
+reset requires an existing instance-scope `credential-reset` holder. An org-only
+holder receives the uniform refusal even if they could reset the target before
+its last org grant was removed. Use the existing instance-scope holder or the
+host tier; do not widen or restore grants to get around the refusal. An
+instance-capability target must use the host tier. Reset revokes
 target sessions and developer delegations atomically; it does not replace the
 password until establishment and does not remove all authentication methods.
 
@@ -387,8 +392,11 @@ New real-owner regressions in
   races final reset; any successful earlier mint is unusable on completion.
 - `TestManualIncidentContainmentCLI`: the documented grant/rule inventory,
   exact-scope removal and private-file network reset commands traverse the real
-  TLS router, service authorization and both engines, followed by old-artifact
-  refusal. The tests above cover fresh-login authorization negatives.
+  TLS router, service authorization and both engines. An org-only reset holder
+  is refused after the complete sweep, while the existing instance holder can
+  finish it. The private file has restrictive permissions and contains a usable
+  establishment authority that is absent from stdout. Old artifacts remain
+  refused. The tests above cover fresh-login authorization negatives.
 - `TestManualIncidentDynamicCleanupResumes`: missing local provider custody
   leaves revocation pending without a provider call; a restarted worker loads
   replacement custody, records ambiguous cleanup as unknown, and reconciles it

@@ -3,7 +3,9 @@ package isolation
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -30,6 +33,10 @@ func TestManualIncidentContainmentCLI(t *testing.T) {
 		if _, err := grants.Create(ctx, service.LocalPrincipal(root), service.GrantSpec{Target: root, Capability: domain.CapManageMembers, Scope: domain.Scope{Org: domain.OrgID(e.org)}}); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := grants.Create(ctx, service.LocalPrincipal(root), service.GrantSpec{Target: alice, Capability: domain.CapCredentialReset, Scope: domain.Scope{Org: domain.OrgID(e.org)}}); err != nil {
+			t.Fatal(err)
+		}
+		orgOperator := sessionWithWindows(t, db, alice)
 		operator := sessionWithWindows(t, db, root)
 		rules := &service.Rules{DB: db}
 		rule, err := rules.Create(ctx, service.Bearer(operator), service.RuleSpec{Target: e.admin, Capability: domain.CapRead, Org: domain.OrgID(e.org), Where: domain.Where{Projects: []domain.ProjectID{domain.ProjectID(e.project)}, EnvMode: domain.AxisAll, KeyMode: domain.AxisAll}})
@@ -45,6 +52,7 @@ func TestManualIncidentContainmentCLI(t *testing.T) {
 			Version:              "incident-fixture",
 		}, nil))
 		t.Cleanup(srv.Close)
+		e.srv = srv
 		stateDir, workdir := t.TempDir(), t.TempDir()
 		env := cli.Env{Getenv: func(key string) string {
 			if key == "HIKYO_STATE_DIR" {
@@ -102,9 +110,30 @@ func TestManualIncidentContainmentCLI(t *testing.T) {
 			t.Fatalf("rule inventory: %+v, %v", ruleList, err)
 		}
 		run("access", "rule", "remove", rule.ID, "--org", e.org)
-		out := run("account", "reset-credential", string(e.admin), "--output-file", filepath.Join(t.TempDir(), "authority"))
-		if bytes.Contains(out, []byte("hik_1_")) {
+		// A zero-grant target is no longer org-bounded. The final network
+		// reset requires the existing instance holder, not a widened org grant.
+		if status, _ := e.callAs(t, orgOperator, http.MethodPost, "/api/v1/accounts/"+string(e.admin)+"/credential-reset", nil); status != http.StatusUnauthorized {
+			t.Fatalf("org-only reset holder reached a fully swept target: HTTP %d", status)
+		}
+		authorityFile := filepath.Join(t.TempDir(), "authority")
+		out := run("account", "reset-credential", string(e.admin), "--output-file", authorityFile)
+		delivered, err := os.ReadFile(authorityFile)
+		if err != nil {
+			t.Fatalf("read private reset authority: %v", err)
+		}
+		authority := strings.TrimSpace(string(delivered))
+		if err := crypto.ParseArtifact(authority, crypto.ArtifactBootstrap); err != nil {
+			t.Fatal("CLI reset did not deliver a valid establishment authority")
+		}
+		info, err := os.Stat(authorityFile)
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("CLI reset authority file must have private permissions: %v", err)
+		}
+		if bytes.Contains(out, []byte(authority)) || bytes.Contains(out, []byte("hik_1_")) {
 			t.Fatal("CLI reset printed the establishment authority")
+		}
+		if err := e.auth.EstablishCredential(ctx, authority, "independently delivered CLI replacement"); err != nil {
+			t.Fatalf("consume the private-file authority: %v", err)
 		}
 		for _, bearer := range []string{targetSession, delegation} {
 			if authenticateCaller(t, db, bearer).Principal != "" {
