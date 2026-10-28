@@ -2,8 +2,10 @@
 
 28 October preparation: the
 [external acceptance packet](../handoff/651-mcp-external-acceptance.md)
-records current availability and pending support decisions. Inspector is now
-pinned to 2.11.0 in source; the 16 October observations and table below retain
+records current availability and the owner's approved option A: Go v1.8.0,
+Inspector 2.11.0 and Codex 0.160.1 require final-candidate proof; Claude and
+Responses remain not verified for 1.0, outside the mandatory matrix. Inspector
+is now pinned to 2.11.0 in source; the 16 October observations and table below retain
 their historical scope. Neither this report nor preparation is final external
 acceptance.
 

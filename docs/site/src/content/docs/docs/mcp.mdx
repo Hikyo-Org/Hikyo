@@ -172,16 +172,23 @@ store or an owner-only runtime file, never in Helm values, Compose YAML,
 
 ## Client profiles
 
-The interoperability gate pins these profiles. Configuration examples below
-describe credential channels; a listed profile is not a passing client claim.
+On 28 October 2026, the owner approved the scoped option A for #651: require
+final-candidate proof for Go, Inspector and Codex on the exact pins below.
+Claude and Responses remain **not verified for 1.0**, outside the mandatory
+matrix. Public HTTPS, exact-image, two-process, revocation and cancellation/drain
+gates remain required. This decision authorizes no deployment, provider call
+or review waiver. See the
+[approved decision record](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/handoff/651-mcp-external-acceptance.md#scoped-support-decision-approved-by-the-owner).
+Configuration examples describe credential channels; a listed profile is not
+a passing client claim.
 
-| Client | Pinned profile | Credential channel |
-| --- | --- | --- |
-| Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.8.0` | HTTP transport injects an environment-loaded bearer |
-| MCP Inspector | `@modelcontextprotocol/inspector 2.11.0` | Transient Authorization header, not a saved catalog |
-| Codex CLI | `0.160.1`, `/mcp/codex` | `bearer_token_env_var` |
-| Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
-| OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
+| Client | Pinned profile | 1.0 acceptance scope | Credential channel |
+| --- | --- | --- | --- |
+| Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.8.0` | Required final-candidate proof | HTTP transport injects an environment-loaded bearer |
+| MCP Inspector | `@modelcontextprotocol/inspector 2.11.0` | Required final-candidate proof | Transient Authorization header, not a saved catalog |
+| Codex CLI | `0.160.1`, `/mcp/codex` | Required final-candidate proof | `bearer_token_env_var` |
+| Claude Code | `2.1.261` historical profile | Not verified for 1.0; outside mandatory matrix | `.mcp.json` environment expansion in `headers` |
+| OpenAI Responses API | remote MCP tool | Not verified for 1.0; outside mandatory matrix | request-time `authorization`, restricted `allowed_tools` |
 
 The 5 September 2026 rehearsal used the actual server image at source
 `9827af64962a36e2e31906b48906fd59c7a36c1c`, two PostgreSQL-backed replicas, and

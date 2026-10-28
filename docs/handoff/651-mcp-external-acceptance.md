@@ -48,8 +48,8 @@ external message or release publication was performed.
 | OpenAI Responses remote MCP | Not yet verified | No authorized provider call or authenticated tool execution. |
 
 This table makes no supported final-candidate claim. A measured incompatibility
-is distinct from missing runtime evidence; option A below proposes an explicit
-release disposition for the two unexecutable profiles.
+is distinct from missing runtime evidence; the approved option A below records
+the release disposition for the two unexecutable profiles.
 
 **Single-fixture owner:** #651 owns the isolated release fixture and its image
 binding. #1055 inventories existing public installations separately and should
@@ -76,7 +76,7 @@ custody and authorization packet through protected channels:
    organization/project, credential recipients, custodian, allowed mutations
    and cleanup owner. Retain mode-0700 runtime/mode-0600 secret custody. Transfer
    missing secrets through `request_secret`, never chat or process arguments.
-5. Explicit client support disposition below and any separately authorized
+5. The approved client support disposition below and any separately authorized
    provider recipient. A fixture deployment authorization alone does not
    authorize Responses or Claude credential transfer or paid execution.
 
@@ -85,10 +85,10 @@ Dependencies here are the accepted source/trust/scope lane outcomes, not an
 inferred final candidate from launch order. Recheck the coordinator's current
 index before selection or execution.
 
-## Scoped support decision awaiting the owner
+## Scoped support decision approved by the owner
 
-**Recommendation A:** limit the 1.0 named-client acceptance claim to official
-Go SDK v1.8.0, Inspector 2.11.0 Modern `/mcp` and Codex CLI 0.160.1
+**Approved option A, 28 October 2026:** limit the 1.0 named-client acceptance
+claim to official Go SDK v1.8.0, Inspector 2.11.0 Modern `/mcp` and Codex CLI 0.160.1
 `/mcp/codex`. Require actual authenticated final-candidate tool execution for
 each, with measured negotiated protocol and canary exclusion. Leave Claude
 Code and OpenAI Responses explicitly **not verified for 1.0**. Do not describe
@@ -97,14 +97,21 @@ failure. Do not imply T3 desktop acceptance from native Codex acceptance.
 
 | Owner choice | Consequence |
 | --- | --- |
-| A, recommended: approve this precise narrower client claim | Record an explicit #651 release/ADR disposition amending the mandatory client matrix before final qualification. Keep transport, scope, canary, current-authority, two-process, cancellation, drain and public-candidate gates unchanged. Existing governance/review obligations still apply. |
-| B: retain the full mandatory client matrix | #651 and the full named-client 1.0 claim stay HOLD until authorized Claude execution and Responses credential/recipient custody exist. No paid/provider fallback is authorized by choosing B. |
+| A, approved: this precise narrower client claim | This owner decision is the scoped #651 release/ADR disposition amending the mandatory client matrix for 1.0. Keep transport, scope, canary, current-authority, two-process, cancellation, drain and public-candidate gates unchanged. Existing governance/review obligations still apply. |
+| B, not selected: retain the full mandatory client matrix | Would retain Claude and Responses as mandatory until authorized execution and credential/recipient custody exist. No paid/provider fallback would follow from choosing B. |
 
-**Decision status: PENDING.** Approval of stabilization work does not select A.
-This proposal neither edits the locked ADR nor waives any review. Record the
-owner's exact choice, its issue/ADR scope, date and review disposition before
-changing release claims. Unavailable cross-provider review is SKIPPED, never
-CLEAN. The recommendation does not extend an earlier issue-specific waiver.
+**Decision status: APPROVED A.** Marc Went explicitly replied
+"A: Approve the scoped narrower matrix" in this task conversation on
+28 October 2026. This approval changes only #651's mandatory named-client
+acceptance matrix for 1.0. Claude and Responses are not verified for 1.0 and
+are outside that mandatory matrix; neither acquires a passing result. The
+three required profiles still need actual final-candidate proof.
+
+The locked protocol/authority ADRs and all other acceptance gates remain in
+force. No deployment, provider recipient/call, paid fallback, merge or review
+waiver is authorized. Maintainer review remains required. Unavailable
+cross-provider review is SKIPPED, never CLEAN; this decision does not extend
+an earlier issue-specific waiver.
 
 ## Checker repair and bounded receipt
 
@@ -166,7 +173,7 @@ bindings. Do not commit secret/response dumps or private tenant identifiers.
 | Admission and HTTPS | Verify published bytes/provenance/admission against selected source, actual deployed revision and TLS origin before sending a bearer. Fail closed on mismatch, redirect or unverified ingress. |
 | Public checker | Tenant-free discovery and exact closed catalog; a nonempty scoped production definitions result; invalid/missing uniform denial; proven-live predecessor later revoked; fresh replacement success. The checker permits empty definitions, so separately assert the seeded fixture is nonempty. |
 | Committed revocation | Supported writer commits; record completion; the very next known request to each process denies. Compare denial bytes/challenge without publishing bodies. Two-second polling alone is insufficient. |
-| Named clients | Actual Go, Inspector and Codex authenticated calls on their exact pins. Record requested/negotiated wire versions and tool outcome separately from discovery. Any still-mandatory Claude/Responses row remains HOLD until actually executed or explicitly dispositioned. |
+| Named clients | Actual Go v1.8.0, Inspector 2.11.0 and Codex 0.160.1 authenticated calls on the final candidate. Record requested/negotiated wire versions and tool outcome separately from discovery. Under approved option A, Claude/Responses remain not verified for 1.0 and outside the mandatory matrix; do not advertise either as supported. |
 | Cursor/current authority | Two actual PostgreSQL-backed server processes; alternate successive calls and cursor continuation without stickiness/session ID. Commit grant removal, prove the same bearer denied on both, restore via the supported writer and prove both recover. Preserve scoped/wrong-scope/ungranted refusal and canary exclusion. |
 | Cancellation and drain | Observe an admitted operation on each process, cancel through the actual public proxy and verify context/store work ends and shared claim releases. Retain direct TLS versus proxy behavior separately. If streaming is claimed, exercise actual streaming without proxy buffering. SIGTERM must complete/cancel within the unchanged drain budget, release claims and preserve the peer. |
 | Support and cleanup | Redacted support table for every exact profile, including failures/unavailable execution; fixture teardown verified against exact owned resources. Retain recovery evidence and protected custody only for the agreed review window. |
@@ -185,7 +192,8 @@ head and checks are reported in the PR/chat handoff. No merge is authorized.
 Cross-provider review is SKIPPED because Anthropic access is unavailable and
 no substitute was authorized.
 
-The next human-only decision is A or B above. Independently, the coordinator
-must select the integrated candidate and obtain the resource-specific fixture
-authorization/custody packet before external execution. This is a HOLD with
-concrete inputs, not a request for a broad deployment or provider permission.
+The client-matrix decision is recorded as approved option A. The coordinator
+must still select the integrated candidate and obtain the resource-specific
+fixture authorization/custody packet before external execution. External
+acceptance remains HOLD; this approval supplies neither final proof nor broad
+deployment/provider permission.

@@ -110,15 +110,56 @@
     }
   ],
   "support_decision": {
-    "status": "PENDING_OWNER_DECISION",
-    "recommended": "A: require Go v1.8.0, Inspector 2.11.0 and Codex 0.160.1 final-candidate proof; Claude and Responses not verified for 1.0",
-    "alternative": "B: keep all five mandatory, retain HOLD until authorized execution",
-    "adr_waiver": false
+    "status": "APPROVED_A",
+    "selected_option": "A",
+    "approved_by": "Marc Went",
+    "approved_on": "2026-10-28",
+    "approval_source": "Explicit owner response in the #651 task conversation",
+    "approval_quote": "A: Approve the scoped narrower matrix",
+    "scope": "#651 mandatory named-client acceptance matrix for 1.0 only",
+    "required_final_candidate_profiles": [
+      {
+        "client": "official Go SDK",
+        "version": "v1.8.0",
+        "endpoint": "/mcp",
+        "protocol": "2026-07-28"
+      },
+      {
+        "client": "Inspector",
+        "version": "2.11.0",
+        "endpoint": "/mcp",
+        "profile": "Modern",
+        "protocol": "2026-07-28"
+      },
+      {
+        "client": "Codex CLI",
+        "version": "0.160.1",
+        "endpoint": "/mcp/codex",
+        "protocol": "2025-06-18"
+      }
+    ],
+    "not_verified_for_1_0_outside_mandatory_matrix": [
+      "Claude Code",
+      "OpenAI Responses"
+    ],
+    "preserved_gates": [
+      "public HTTPS",
+      "published exact-image/admission/deployment binding",
+      "two actual PostgreSQL-backed server processes",
+      "scoped current authority and canary exclusion",
+      "committed revocation and restoration",
+      "cursors",
+      "cancellation and drain",
+      "shared claim release"
+    ],
+    "adr_waiver": false,
+    "review_waiver": false,
+    "authorized_external_actions": []
   },
   "review": {
     "self_review": "Completed source/spec inspection; no independent review claimed",
     "cross_provider": "SKIPPED: Anthropic subscription unavailable; no substitute authorized",
-    "maintainer_review": "PENDING_PR"
+    "maintainer_review": "PENDING: PR #1075"
   },
   "external_gates": {
     "public_candidate_smoke": "NOTRUN",
