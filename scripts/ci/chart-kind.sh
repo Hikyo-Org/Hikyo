@@ -99,7 +99,7 @@ cleanup() {
         fi
 	fi
 	if [[ "$registry_created" == true ]]; then
-		if ! docker rm --force "$REGISTRY_NAME" >/dev/null 2>&1; then
+		if ! docker rm --force --volumes "$REGISTRY_NAME" >/dev/null 2>&1; then
             echo "chart-kind: cleanup failed for registry $REGISTRY_NAME" >&2
             status=1
         fi
