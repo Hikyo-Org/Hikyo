@@ -176,7 +176,21 @@ type NewWebAuthnCeremony = authn.NewWebAuthnCeremony
 // its durable record does not complete — the same durability discipline
 // domain writes follow.
 func (a *TxAuthorizer) RecordAuthEvent(ctx context.Context, e audit.Event) error {
-	return a.r.WriteAuthEvent(ctx, e, audit.TrailInstance)
+	if e.CorrelationID == "" {
+		e.CorrelationID = audit.RefusalRequestID(ctx)
+	}
+	err := a.r.WriteAuthEvent(ctx, e, audit.TrailInstance)
+	if err == nil && audit.IsDedicatedRefusal(e) {
+		a.dedicatedRefusal = true
+	}
+	return err
+}
+
+// CommittedRefusalReceipt is called only after the owning transaction commits.
+func (a *TxAuthorizer) CommittedRefusalReceipt(ctx context.Context) {
+	if a.dedicatedRefusal {
+		audit.MarkDedicatedRefusal(ctx)
+	}
 }
 
 // OAuth2 uses its own profile and nonce-free transaction carriers.

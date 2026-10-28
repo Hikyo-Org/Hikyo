@@ -310,7 +310,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 79, while the
+// The runtime-created fixture includes migrations 45 through 80, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -330,10 +330,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+35 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 79 only")
+	if len(current.Entries) != len(legacy.Entries)+36 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 80 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -350,6 +350,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	}
 	for _, query := range []string{
 		"SELECT COUNT(*) FROM backup_state WHERE last_prune_attempt_at IS NOT NULL OR last_prune_attempt_id <> '' OR prune_failure_reason <> '' OR retained_expired_archives <> 0 OR last_artifact_sha256 <> ''",
+		// 00080: only the untouched refusal seed is disposable.
+		`SELECT COUNT(*) FROM auth_refusal_window WHERE window_start <> 0 OR state <> '{"counts":[0,0,0,0,0],"samples":[]}'`,
 		"SELECT COUNT(*) FROM audit_retention_policy",
 		"SELECT COUNT(*) FROM principals WHERE privacy_state <> 'active'",
 		"SELECT COUNT(*) FROM self_config_binding",
@@ -639,11 +641,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
+		"DROP TABLE auth_refusal_window",
 		// Reverse 00056 (second factor at sign-in): the login challenge table and
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80)",
 	} {
 		drillExec(t, db, query)
 	}

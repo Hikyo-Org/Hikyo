@@ -9,10 +9,10 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 cat >"$fixture_dir/curl" <<'EOF'
 #!/bin/sh
 write_content_type=0
+write_effective_url=0
 for argument do
-	if [ "$argument" = '%{content_type}' ]; then
-		write_content_type=1
-	fi
+	case "$argument" in *'%{content_type}'*) write_content_type=1 ;; esac
+	case "$argument" in *'%{url_effective}'*) write_effective_url=1 ;; esac
 	url=$argument
 done
 case "$url" in
@@ -89,10 +89,19 @@ case "$url" in
 			'Canonical: https://hikyo.app/.well-known/security.txt'
 		;;
 	*/security/)
-		printf '%s\n' 'The default embargo is 90 days from the report itself.'
+		printf '%s\n' 'The default embargo is 90 days from the report itself.' \
+			'security@developwent.io' \
+			'Reports are acknowledged within 7 days.' \
+			'critical: 14 days;' 'high: 30 days;' \
+			'medium or low: the next scheduled release.' \
+			'Latest patch release of the latest minor' 'All older stable releases'
 		;;
 	*/support/)
-		printf '%s\n' 'Hikyo supports exactly one version: latest only.'
+		printf '%s\n' 'Hikyo supports exactly one version' \
+			'end-of-life on the same day a new minor is released' 'Prereleases are never supported.'
+		if [ "${FAKE_STALE_SUPPORT:-0}" -eq 0 ]; then
+			printf '%s\n' 'Hikyo does not maintain backport branches.'
+		fi
 		;;
 	*/governance/)
 		if [ "${FAKE_STALE_GOVERNANCE:-0}" -eq 1 ]; then
@@ -100,7 +109,15 @@ case "$url" in
 		else
 			printf '%s\n' \
 				'may be amended only by reopening its originating ticket' \
-				'Twelve consecutive months without maintainer response'
+				'Twelve consecutive months without maintainer response' \
+				'benevolent dictator for life (BDFL)' \
+				'Every capability required to run Hikyo in production is and will remain open' \
+				'OBL-REPOSITORY-TRANSFER'
+		fi
+		;;
+	*/implementation-status/)
+		if [ "${FAKE_STALE_CAPABILITIES:-0}" -eq 0 ]; then
+			printf '%s\n' 'CAP-RUNTIME-STORAGE' 'OBL-REPOSITORY-TRANSFER' 'sole mutable authority'
 		fi
 		;;
 	*/trademark/)
@@ -110,7 +127,9 @@ case "$url" in
 		printf '%s\n' 'Developer Certificate of Origin'
 		;;
 	*/license/)
-		printf '%s\n' 'Mozilla Public License Version 2.0'
+		if [ "${FAKE_STALE_LICENSE:-0}" -eq 0 ]; then
+			printf '%s\n' 'Mozilla Public License Version 2.0'
+		fi
 		;;
 	*cloudflare-dns.com*)
 		if [ "${FAKE_NO_MX:-0}" -eq 1 ]; then
@@ -126,12 +145,37 @@ case "$url" in
 		exit 1
 		;;
 esac
+case "$url" in
+	https://hikyo.app/ | https://hikyo.app/\?* | */docs/ | */docs/\?* | */security/ | */support/ | */governance/ | */implementation-status/ | */trademark/ | */contributing/ | */license/)
+		canonical=${url%%\?*}
+		if [ "${FAKE_WRONG_CANONICAL:-0}" -eq 1 ]; then
+			canonical=https://example.invalid/
+		fi
+		printf '<link rel="canonical" href="%s">\n' "$canonical"
+		;;
+esac
+if [ "$write_effective_url" -eq 1 ]; then
+	if [ "${FAKE_REDIRECT_PATH:-}" = "${url#https://hikyo.app}" ]; then
+		printf '\nhttps://example.invalid/copied-page/'
+	else
+		printf '\n%s' "$url"
+	fi
+fi
 EOF
 chmod +x "$fixture_dir/curl"
 
 CURL_BIN="$fixture_dir/curl" \
 	"$repo_root/scripts/ci/check-docs-live.sh" \
 	https://hikyo.app security@developwent.io
+
+for origin in http://hikyo.app https://hikyo.app.example.invalid https://hikyo.app/docs; do
+	if CURL_BIN="$fixture_dir/curl" "$repo_root/scripts/ci/check-docs-live.sh" \
+		"$origin" security@developwent.io >"$fixture_dir/origin-refusal.log" 2>&1; then
+		printf 'live docs fixture failed: noncanonical origin %s was accepted\n' "$origin" >&2
+		exit 1
+	fi
+	grep -F 'DOCS_ORIGIN must be canonical https://hikyo.app' "$fixture_dir/origin-refusal.log" >/dev/null
+done
 
 if FAKE_NO_MX=1 CURL_BIN="$fixture_dir/curl" \
 	"$repo_root/scripts/ci/check-docs-live.sh" \
@@ -196,3 +240,29 @@ if FAKE_STALE_BASE=1 DOCS_ATTEMPTS=2 DOCS_RETRY_DELAY_SECONDS=0 \
 	printf 'live docs fixture failed: persistent stale deployment was accepted\n' >&2
 	exit 1
 fi
+
+for mutation in FAKE_WRONG_CANONICAL FAKE_STALE_SUPPORT FAKE_STALE_CAPABILITIES FAKE_STALE_LICENSE; do
+	case "$mutation" in
+		FAKE_WRONG_CANONICAL) reason='<link rel="canonical"' ;;
+		FAKE_STALE_SUPPORT) reason='Hikyo does not maintain backport branches.' ;;
+		FAKE_STALE_CAPABILITIES) reason='CAP-RUNTIME-STORAGE' ;;
+		FAKE_STALE_LICENSE) reason='Mozilla Public License Version 2.0' ;;
+	esac
+	if env "$mutation=1" CURL_BIN="$fixture_dir/curl" \
+		"$repo_root/scripts/ci/check-docs-live.sh" \
+		https://hikyo.app security@developwent.io >"$fixture_dir/failure.log" 2>&1; then
+		printf 'live docs fixture failed: %s was accepted\n' "$mutation" >&2
+		exit 1
+	fi
+	grep -F "$reason" "$fixture_dir/failure.log" >/dev/null
+done
+
+for path in / /security/ /_astro/landing.css /pwa-192x192.png; do
+	if FAKE_REDIRECT_PATH="$path" CURL_BIN="$fixture_dir/curl" \
+		"$repo_root/scripts/ci/check-docs-live.sh" \
+		https://hikyo.app security@developwent.io >"$fixture_dir/failure.log" 2>&1; then
+		printf 'live docs fixture failed: redirect from %s was accepted\n' "$path" >&2
+		exit 1
+	fi
+	grep -F 'resolved to a different endpoint' "$fixture_dir/failure.log" >/dev/null
+done

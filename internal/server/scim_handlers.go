@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -27,6 +29,11 @@ import (
 // corrected to match, because a body whose `status` member disagreed with the
 // HTTP status is exactly the disagreement this function exists to remove.
 func scimRefusal[T any](err error, pick map[int]func(scimBody) T) T {
+	// Overload uses the common 429 + Retry-After response already declared by
+	// every SCIM operation. Protocol errors retain their RFC 7644 envelope.
+	if errors.Is(err, admission.ErrOverloaded) {
+		return pick[http.StatusTooManyRequests](nil)
+	}
 	e := scimError(err)
 	body := e.Body()
 	if f, ok := pick[e.Status]; ok {
@@ -457,6 +464,9 @@ func strPtr[T ~string](p *T) *string {
 
 func scimServiceProviderConfigRefusal(err error) apigen.ScimServiceProviderConfigResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimServiceProviderConfigResponseObject{
+		429: func(scimBody) apigen.ScimServiceProviderConfigResponseObject {
+			return apigen.ScimServiceProviderConfig429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimServiceProviderConfigResponseObject {
 			return apigen.ScimServiceProviderConfig401ApplicationScimPlusJSONResponse(b)
 		},
@@ -471,6 +481,9 @@ func scimServiceProviderConfigRefusal(err error) apigen.ScimServiceProviderConfi
 
 func scimResourceTypesRefusal(err error) apigen.ScimResourceTypesResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimResourceTypesResponseObject{
+		429: func(scimBody) apigen.ScimResourceTypesResponseObject {
+			return apigen.ScimResourceTypes429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimResourceTypesResponseObject {
 			return apigen.ScimResourceTypes401ApplicationScimPlusJSONResponse(b)
 		},
@@ -485,6 +498,9 @@ func scimResourceTypesRefusal(err error) apigen.ScimResourceTypesResponseObject 
 
 func scimSchemasRefusal(err error) apigen.ScimSchemasResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimSchemasResponseObject{
+		429: func(scimBody) apigen.ScimSchemasResponseObject {
+			return apigen.ScimSchemas429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimSchemasResponseObject {
 			return apigen.ScimSchemas401ApplicationScimPlusJSONResponse(b)
 		},
@@ -499,6 +515,9 @@ func scimSchemasRefusal(err error) apigen.ScimSchemasResponseObject {
 
 func scimListUsersRefusal(err error) apigen.ScimListUsersResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimListUsersResponseObject{
+		429: func(scimBody) apigen.ScimListUsersResponseObject {
+			return apigen.ScimListUsers429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimListUsersResponseObject {
 			return apigen.ScimListUsers400ApplicationScimPlusJSONResponse(b)
 		},
@@ -519,6 +538,9 @@ func scimListUsersRefusal(err error) apigen.ScimListUsersResponseObject {
 
 func scimCreateUserRefusal(err error) apigen.ScimCreateUserResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimCreateUserResponseObject{
+		429: func(scimBody) apigen.ScimCreateUserResponseObject {
+			return apigen.ScimCreateUser429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimCreateUserResponseObject {
 			return apigen.ScimCreateUser400ApplicationScimPlusJSONResponse(b)
 		},
@@ -542,6 +564,9 @@ func scimCreateUserRefusal(err error) apigen.ScimCreateUserResponseObject {
 
 func scimGetUserRefusal(err error) apigen.ScimGetUserResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimGetUserResponseObject{
+		429: func(scimBody) apigen.ScimGetUserResponseObject {
+			return apigen.ScimGetUser429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimGetUserResponseObject {
 			return apigen.ScimGetUser401ApplicationScimPlusJSONResponse(b)
 		},
@@ -556,6 +581,9 @@ func scimGetUserRefusal(err error) apigen.ScimGetUserResponseObject {
 
 func scimReplaceUserRefusal(err error) apigen.ScimReplaceUserResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimReplaceUserResponseObject{
+		429: func(scimBody) apigen.ScimReplaceUserResponseObject {
+			return apigen.ScimReplaceUser429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimReplaceUserResponseObject {
 			return apigen.ScimReplaceUser400ApplicationScimPlusJSONResponse(b)
 		},
@@ -579,6 +607,9 @@ func scimReplaceUserRefusal(err error) apigen.ScimReplaceUserResponseObject {
 
 func scimPatchUserRefusal(err error) apigen.ScimPatchUserResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimPatchUserResponseObject{
+		429: func(scimBody) apigen.ScimPatchUserResponseObject {
+			return apigen.ScimPatchUser429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimPatchUserResponseObject {
 			return apigen.ScimPatchUser400ApplicationScimPlusJSONResponse(b)
 		},
@@ -602,6 +633,9 @@ func scimPatchUserRefusal(err error) apigen.ScimPatchUserResponseObject {
 
 func scimDeleteUserRefusal(err error) apigen.ScimDeleteUserResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimDeleteUserResponseObject{
+		429: func(scimBody) apigen.ScimDeleteUserResponseObject {
+			return apigen.ScimDeleteUser429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimDeleteUserResponseObject {
 			return apigen.ScimDeleteUser401ApplicationScimPlusJSONResponse(b)
 		},
@@ -616,6 +650,9 @@ func scimDeleteUserRefusal(err error) apigen.ScimDeleteUserResponseObject {
 
 func scimListGroupsRefusal(err error) apigen.ScimListGroupsResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimListGroupsResponseObject{
+		429: func(scimBody) apigen.ScimListGroupsResponseObject {
+			return apigen.ScimListGroups429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimListGroupsResponseObject {
 			return apigen.ScimListGroups400ApplicationScimPlusJSONResponse(b)
 		},
@@ -636,6 +673,9 @@ func scimListGroupsRefusal(err error) apigen.ScimListGroupsResponseObject {
 
 func scimCreateGroupRefusal(err error) apigen.ScimCreateGroupResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimCreateGroupResponseObject{
+		429: func(scimBody) apigen.ScimCreateGroupResponseObject {
+			return apigen.ScimCreateGroup429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimCreateGroupResponseObject {
 			return apigen.ScimCreateGroup400ApplicationScimPlusJSONResponse(b)
 		},
@@ -659,6 +699,9 @@ func scimCreateGroupRefusal(err error) apigen.ScimCreateGroupResponseObject {
 
 func scimGetGroupRefusal(err error) apigen.ScimGetGroupResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimGetGroupResponseObject{
+		429: func(scimBody) apigen.ScimGetGroupResponseObject {
+			return apigen.ScimGetGroup429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimGetGroupResponseObject {
 			return apigen.ScimGetGroup401ApplicationScimPlusJSONResponse(b)
 		},
@@ -673,6 +716,9 @@ func scimGetGroupRefusal(err error) apigen.ScimGetGroupResponseObject {
 
 func scimReplaceGroupRefusal(err error) apigen.ScimReplaceGroupResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimReplaceGroupResponseObject{
+		429: func(scimBody) apigen.ScimReplaceGroupResponseObject {
+			return apigen.ScimReplaceGroup429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimReplaceGroupResponseObject {
 			return apigen.ScimReplaceGroup400ApplicationScimPlusJSONResponse(b)
 		},
@@ -696,6 +742,9 @@ func scimReplaceGroupRefusal(err error) apigen.ScimReplaceGroupResponseObject {
 
 func scimPatchGroupRefusal(err error) apigen.ScimPatchGroupResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimPatchGroupResponseObject{
+		429: func(scimBody) apigen.ScimPatchGroupResponseObject {
+			return apigen.ScimPatchGroup429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		400: func(b scimBody) apigen.ScimPatchGroupResponseObject {
 			return apigen.ScimPatchGroup400ApplicationScimPlusJSONResponse(b)
 		},
@@ -719,6 +768,9 @@ func scimPatchGroupRefusal(err error) apigen.ScimPatchGroupResponseObject {
 
 func scimDeleteGroupRefusal(err error) apigen.ScimDeleteGroupResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimDeleteGroupResponseObject{
+		429: func(scimBody) apigen.ScimDeleteGroupResponseObject {
+			return apigen.ScimDeleteGroup429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimDeleteGroupResponseObject {
 			return apigen.ScimDeleteGroup401ApplicationScimPlusJSONResponse(b)
 		},
@@ -733,6 +785,9 @@ func scimDeleteGroupRefusal(err error) apigen.ScimDeleteGroupResponseObject {
 
 func scimBulkRefusal(err error) apigen.ScimBulkResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimBulkResponseObject{
+		429: func(scimBody) apigen.ScimBulkResponseObject {
+			return apigen.ScimBulk429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimBulkResponseObject {
 			return apigen.ScimBulk401ApplicationScimPlusJSONResponse(b)
 		},
@@ -750,6 +805,9 @@ func scimBulkRefusal(err error) apigen.ScimBulkResponseObject {
 
 func scimMeRefusal(err error) apigen.ScimMeResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimMeResponseObject{
+		429: func(scimBody) apigen.ScimMeResponseObject {
+			return apigen.ScimMe429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimMeResponseObject {
 			return apigen.ScimMe401ApplicationScimPlusJSONResponse(b)
 		},
@@ -767,6 +825,9 @@ func scimMeRefusal(err error) apigen.ScimMeResponseObject {
 
 func scimSearchUsersRefusal(err error) apigen.ScimSearchUsersResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimSearchUsersResponseObject{
+		429: func(scimBody) apigen.ScimSearchUsersResponseObject {
+			return apigen.ScimSearchUsers429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimSearchUsersResponseObject {
 			return apigen.ScimSearchUsers401ApplicationScimPlusJSONResponse(b)
 		},
@@ -784,6 +845,9 @@ func scimSearchUsersRefusal(err error) apigen.ScimSearchUsersResponseObject {
 
 func scimSearchGroupsRefusal(err error) apigen.ScimSearchGroupsResponseObject {
 	return scimRefusal(err, map[int]func(scimBody) apigen.ScimSearchGroupsResponseObject{
+		429: func(scimBody) apigen.ScimSearchGroupsResponseObject {
+			return apigen.ScimSearchGroups429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
+		},
 		401: func(b scimBody) apigen.ScimSearchGroupsResponseObject {
 			return apigen.ScimSearchGroups401ApplicationScimPlusJSONResponse(b)
 		},

@@ -11,12 +11,14 @@ import (
 // Exact source-owned exceptions. Being inside store, a fixture package or the
 // migration package does not grant new files ambient raw-driver authority.
 const artifactHarnessRuntimeFile = "scripts/security/artifact-harness/runtime.go"
+const alertCollectorSnapshotFile = "scripts/security/alert-route/collector_snapshot.go"
 
 var driverFiles = map[string]bool{
 	"internal/store/migrate/authorization_pending_indexes_test.go": true, // exact historical-schema fixture measures complete query plans and unchanged row/uniqueness behavior
 	"internal/service/advisory_benchmark_test.go":                  true, // signed-admitted benchmark seeds isolated session/grant fixtures and counts actual driver transactions
 
 	artifactHarnessRuntimeFile:                                   true, // blackbox fixture creates/drops its owned disposable PostgreSQL database only
+	alertCollectorSnapshotFile:                                   true, // exact read-only snapshot protocol for the independently administered external receiver; no Hikyo store handles
 	"internal/store/self_config_test.go":                         true, // admitted, isolated both-engine protected hierarchy/activation fixtures
 	"internal/isolation/floor_bench_test.go":                     true, // signed-admitted bulk fixture and independent committed-chunk observation only
 	"internal/isolation/ops_floor_test.go":                       true, // isolated admitted SQLite health accounting for native O2 acceptance
@@ -148,6 +150,9 @@ func permittedHandlePosition(p *packages.Package, base string, pos token.Pos) bo
 	filename := filepath.ToSlash(p.Fset.Position(pos).Filename)
 	if base == Module+"/scripts/security/artifact-harness" && strings.HasSuffix(filename, "/"+artifactHarnessRuntimeFile) {
 		return driverFiles[artifactHarnessRuntimeFile]
+	}
+	if base == Module+"/scripts/security/alert-route" && strings.HasSuffix(filename, "/"+alertCollectorSnapshotFile) {
+		return driverFiles[alertCollectorSnapshotFile]
 	}
 	index := strings.LastIndex(filename, "/internal/")
 	if index < 0 {

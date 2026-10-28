@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -73,6 +74,7 @@ type target struct {
 	done              chan error
 	authTimes         []time.Time
 	mcpTimes          []time.Time
+	sourceTimes       []time.Time
 }
 
 func unusedAddress() (string, error) {
@@ -404,6 +406,13 @@ func (t *target) requestWithHeaders(method, path, token string, body any, header
 		r.Header.Set("Mcp-Method", mirror.Method)
 		r.Header.Set("Mcp-Name", mirror.Params.Name)
 	}
+	// All credential resolution now spends the same production source allowance.
+	// Pace ordinary API reads and mutations too, leaving headroom below sixty
+	// requests per minute without retrying a mutation or changing server limits.
+	// Record this last so an earlier ceremony wait cannot undercount sent work.
+	if err := pace(t.ctx, &t.sourceTimes, 50); err != nil {
+		return response{}, err
+	}
 	rsp, err := t.client.Do(r)
 	if err != nil {
 		return response{}, errors.New("target HTTP request unavailable")
@@ -555,7 +564,18 @@ func sameDenial(got, twin response, status int, canaries []string) error {
 	if err := noResponseCanary(got, canaries); err != nil {
 		return err
 	}
-	if !maps.EqualFunc(denialHeaders(got.headers), denialHeaders(twin.headers), func(a, b []string) bool { return slices.Equal(a, b) }) {
+	if err := noResponseCanary(twin, canaries); err != nil {
+		return err
+	}
+	gotHeaders, err := denialHeaders(got.headers)
+	if err != nil {
+		return err
+	}
+	twinHeaders, err := denialHeaders(twin.headers)
+	if err != nil {
+		return err
+	}
+	if !maps.EqualFunc(gotHeaders, twinHeaders, func(a, b []string) bool { return slices.Equal(a, b) }) {
 		return errors.New("denial response headers differ from missing twin")
 	}
 	if !bytes.Equal(bytes.TrimSpace(got.body), bytes.TrimSpace(twin.body)) {
@@ -564,18 +584,31 @@ func sameDenial(got, twin response, status int, canaries []string) error {
 	return nil
 }
 
-func denialHeaders(headers http.Header) map[string][]string {
+// denialHeaders normalizes transport Date and valid server correlation only.
+// Correlation presence and every other header remain part of denial equivalence.
+func denialHeaders(headers http.Header) (map[string][]string, error) {
 	out := map[string][]string{}
 	for name, values := range headers {
 		key := strings.ToLower(name)
 		if key == "date" {
 			continue
 		}
+		if key == "x-hikyo-request-id" {
+			if len(values) != 1 {
+				return nil, errors.New("denial correlation must have one UUIDv7")
+			}
+			id, err := uuid.Parse(values[0])
+			if err != nil || id.Version() != 7 || id.Variant() != uuid.RFC4122 || id.String() != values[0] {
+				return nil, errors.New("denial correlation must be a canonical UUIDv7")
+			}
+			out[key] = []string{"uuidv7"}
+			continue
+		}
 		copy := append([]string(nil), values...)
 		slices.Sort(copy)
 		out[key] = copy
 	}
-	return out
+	return out, nil
 }
 func successfulRPC(r response, required string) error {
 	if r.status != 200 {

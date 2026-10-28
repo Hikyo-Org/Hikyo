@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
@@ -12,6 +13,7 @@ import (
 // txForwarded is the explicitly permitted resolver surface.
 // Additions require review of the transaction authority boundary.
 type txForwarded interface {
+	UpdateRequestRefusals(ctx context.Context, sample *audit.RefusalSample) (int64, error)
 	ClaimRemotePairingAttempt(ctx context.Context, id string, now time.Time) (bool, error)
 	CreateRemotePairingInvite(ctx context.Context, i RemotePairingInvite) error
 	RemotePairingInviteByCapability(ctx context.Context, v []byte) (RemotePairingInvite, error)

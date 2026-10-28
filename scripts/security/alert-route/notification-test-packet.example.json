@@ -1,0 +1,72 @@
+{
+  "issue": 1038,
+  "status": "HOLD",
+  "claim": "External reference route with synthetic local validation only",
+  "authorization": {
+    "state": "NOT_AUTHORIZED",
+    "required": "Owner authorizes one isolated synthetic notification exercise for the exact destination, independent receiver and acknowledgment operator below, after prerequisite contracts and reviews pass. No production use or paid usage.",
+    "destination": null,
+    "receiver_owner": null,
+    "acknowledgment_operator": null,
+    "escalation_channel_owner": null,
+    "fixture_identity": null,
+    "credential_reference": null,
+    "approved_by": null,
+    "approved_at": null
+  },
+  "bindings": {
+    "application_sha": null,
+    "alert_route_sha": null,
+    "collector_sha": null,
+    "datastore_engine": null,
+    "instance_source_id": null,
+    "org_id": null,
+    "project_id": null,
+    "configuration_sha256": null
+  },
+  "cases": [
+    {"case": "failed-login-burst", "expected": "Five same-source real failures in a fixed five-minute bucket alert with attributable event references", "external_status": "NOTRUN"},
+    {"case": "password-spray", "expected": "Same-source multi-account failures alert; unknown-account distinctness and distributed spray remain unsupported", "external_status": "NOTRUN"},
+    {"case": "revoked-token-replay", "expected": "Real retained refusal signal from the accepted #1034 contract triggers its qualified rule", "external_status": "HOLD", "hold": "Current accepted ADR preserves ordinary revoked bearer silence; no producer or replay rule is invented here"},
+    {"case": "suspicious-success", "expected": "Synthetic watched credential reveals a key, causing watched-disclosure with actor, credential and scope references", "external_status": "NOTRUN"},
+    {"case": "disclosure-burst", "expected": "Twenty successful per-key online disclosure events in one scope/bucket alert; nineteen do not", "external_status": "NOTRUN"},
+    {"case": "sensitive-change", "expected": "Real scoped grant, credential or provider change alerts with event/object and actor references", "external_status": "NOTRUN"},
+    {"case": "benign-negative", "expected": "Below-threshold failures, login success and ordinary reads do not alert; approved admin mutation intentionally alerts", "external_status": "NOTRUN"},
+    {"case": "redaction", "expected": "Planted secret, token, username, user-agent and arbitrary error canaries absent from every decision, state, request, receipt and report", "external_status": "NOTRUN"},
+    {"case": "duplicate-out-of-order-restart", "expected": "Replayed events and restart preserve one alert identity; late rows within lookback use recorded_at buckets", "external_status": "NOTRUN"},
+    {"case": "source-failure-stale-partial", "expected": "Missing authority, receive failure, stale heartbeat, invalid completion and partial stream produce collector-unavailable and independent supervisor evidence", "external_status": "NOTRUN"},
+    {"case": "destination-timeout", "expected": "Uncertain state, stable idempotency key and bounded retry; no received claim without matching durable receipt", "external_status": "NOTRUN"},
+    {"case": "destination-outage", "expected": "Terminal/exhausted state and separately qualified escalation, with uncertain IDs reconciled after recovery", "external_status": "NOTRUN"},
+    {"case": "broken-detector-negative", "expected": "Stopped detector or deliberately broken rule fails the expected-alert oracle and independent supervisor pages its operator", "external_status": "NOTRUN"},
+    {"case": "operator-acknowledgment", "expected": "Actual human acknowledges exact alert and destination receipt; missing ack escalates after five minutes", "external_status": "NOTRUN"}
+  ],
+  "receipt_chain_template": {
+    "case": null,
+    "source_event_ids": [],
+    "protected_collection_batch_id": null,
+    "protected_collection_sha256": null,
+    "receiver_received_at": null,
+    "analyzer_rule": null,
+    "alert_id": null,
+    "delivery_attempts": [],
+    "destination_receipt_id": null,
+    "destination_received_at": null,
+    "operator_acknowledgment_reference": null,
+    "operator_acknowledged_at": null,
+    "independent_escalation_receipt": null,
+    "result": "NOTRUN"
+  },
+  "owner_disposition": {
+    "owner": "Hikyo maintainer / release-scope owner",
+    "state": "REQUIRED",
+    "recommendation": "Keep integrated-alerting launch acceptance and full #1038 open until prerequisite signal/reader/collector proof and actual event-to-operator receipts pass. Any narrower launch claim requires explicit owner disposition with remaining work owner.",
+    "decision_reference": null
+  },
+  "cleanup": {
+    "fixture_resources": [],
+    "notification_credential_revoked": "NOTRUN",
+    "retained_evidence_owner": null,
+    "approved_retention": null,
+    "disposable_resources_removed": "NOTRUN"
+  }
+}

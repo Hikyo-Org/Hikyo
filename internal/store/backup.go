@@ -1009,6 +1009,16 @@ var migrationSeededTables = map[string]bool{
 // that the target holds nothing but the rows the migrations seed.
 func assertOnlyMigrationSeeds(ctx context.Context, tx pgx.Tx, tables []string) error {
 	for _, table := range tables {
+		if table == "auth_refusal_window" {
+			occupied, err := pggen.New(tx).RestoreAuthRefusalSeedOccupied(ctx)
+			if err != nil {
+				return fmt.Errorf("store: check restore refusal seed: %w", err)
+			}
+			if occupied {
+				return fmt.Errorf("%w: %s has pending refusal evidence", ErrTargetNotEmpty, table)
+			}
+			continue
+		}
 		if table == "ops_diagnostics" {
 			// Only the migration's untouched public metadata row is replaceable.
 			// A later escrow verification or reencrypt completion is real state.

@@ -6,24 +6,51 @@ Normative clauses remain in [mvp-boundary](../adr/mvp-boundary.md) sections 1.2/
 
 ## Current candidate: pending
 
-Preparation source: `6769ee55dcd4087eeaf42547e9abde01c4f0818c`, 2026-10-16.
+Scope/dependency source: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, 2026-10-28.
 The criterion outcomes and artifact hashes below remain the September 5 record.
 No row is promoted to a current PASS by this documentation update. Preserve the
 full CI/E2E/UI criterion inventory and both-engine obligations while collecting
-new evidence under the [release plan](release-plan-1.0.md).
+new evidence under the [release plan](release-plan-1.0.md) and the
+[current dependency handoff](../handoff/79-527-release-scope-roadmap.md).
 
-[#936 / PR #937](https://github.com/Hikyo-Org/Hikyo/pull/937) merged at this
-source on 2026-10-16T16:40:31Z.
-[Run 38929885843](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
-has 48 successful jobs at that SHA with event `merge_group`. That result proves
-its stated validation scope; it neither refreshes every historical/external row
-nor satisfies `require-green-main.sh`'s separate exact-main workflow selection.
-No other pending implementation is marked merged by this snapshot.
+Current source advertises API revision **12** in [api/spec.go](../../api/spec.go).
+The highest migration filename on both engines is `00079_remote_pairing.sql`
+([SQLite](../../internal/store/migrations/sqlite/00079_remote_pairing.sql),
+[PostgreSQL](../../internal/store/migrations/postgres/00079_remote_pairing.sql)).
+This is not a deployed-schema measurement, migration count or artifact identity.
+
+The approved stabilization set is #1033/#1034/#1035/#1036/#1039/#1040/#1041,
+plus development-tool vulnerability disposition, governance/trust preparation
+and existing final/external acceptance. Continue existing PRs #1042/#1043/#1044/#1045.
+#1037/#1038 retain explicit operational-claim decisions and full acceptance;
+#1055 retains a separate deployed-installation authorization/evidence boundary.
+Native collection/detection features are not silently promoted into 1.0.
+
+**Accepted release exclusion:** #158 AWS acceptance, PR #969 and controller
+follow-up #1057 are outside 1.0. This supersedes the older conditional AWS
+membership here for this release. Preserve shipped code/tests and historical
+results; no live-AWS support or acceptance is inferred. #805, #161, #148 and
+broad #1051 remain deferred under their existing dispositions.
+
+[PR #1014](https://github.com/Hikyo-Org/Hikyo/pull/1014) merged on
+2026-10-20T21:44:09Z as `0de713d2df6acbb9a3e344fbfba4827b31f86501`, an ancestor
+of inspected main. This satisfies #71/#8's recorded amendment merge condition.
+Its owner-approved review exception is #1014-only; cross-provider review stays
+SKIPPED. TLS #966, Transit and conditional governance remain separate lanes.
+TLS implementation #1004 is delivered; final exact-contract approval, scoped
+review disposition and signed-consumer closure remain HOLD pending the TLS
+owner's handoff. Closed #966/#25 alone does not discharge those obligations.
+
+The October 16 preparation source `6769ee55dcd4087eeaf42547e9abde01c4f0818c`
+and [merge-group run 38929885843](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
+retain their historical 48-job result. That event neither refreshes the ledger
+nor supplies `require-green-main.sh`'s qualifying exact-main proof. No fresh
+candidate, provider, publication or runtime acceptance is claimed here.
 
 | Final gate | Required evidence | Snapshot disposition |
 | --- | --- | --- |
 | Candidate and inventory | One final clean source/tree, API revision, actual migration/artifact identities; all baseline and operative additional obligations mapped | Pending after combined implementation/review; the source-only revision/migration inventory is not a runtime measurement. |
-| Complete internal checks | Full exact-main graph, both engines, isolation/race, browser registry, client, deployment and native resource evidence | Pending. Latest passing merge-group evidence retains its own event/SHA. |
+| Complete internal checks | Full exact-main graph, both engines, isolation/race, browser registry, client, deployment and native resource evidence | Pending. Every historical merge-group result retains its own event/SHA. |
 | Operations and recovery | ops-spec fail-closed checklist and native floor backup/destroy/restore/reconcile with independent test custody sources | Pending final source; retain every restore/refusal/readability/RTO assertion and #930/#941 interaction. |
 | API/CLI freeze | Reviewed goldens, oasdiff fixtures, parity, enum/minimum-revision audit and client skew; immutable stable tag | Pre-freeze preparation pending. Dormant guard/rehearsal cannot claim frozen-tag acceptance; tag is a separate ceremony. |
 | Public interfaces | [Final self-hoster reassertion](self-hoster-candidate.md) with selected binary, image and chart | Pending, including actual install/admin/import/delivery/upgrade/recovery journeys. |
@@ -31,11 +58,13 @@ No other pending implementation is marked merged by this snapshot.
 | Docs and security channels | Live O4-O6 assertions and actual current PVR/fallback notification receipts | Pending candidate review; GET/MX checks do not establish notification acknowledgement. |
 | Official release | Recovery-authorized stable policy, signed immutable tag, reviewed complete signed artifacts and verified public downloads/OCI signatures | Ceremony pending; no tag, publication or production deployment is authorized by preparatory implementation. |
 
-The A7 historical POST-1.0 row records release membership, not a current claim
-that social sign-in is absent. #589 owns its narrow scope-text reconciliation;
-retain the row/reference inventory until that coordinated change lands. #15
-owns the capability ledger and #527 the roadmap. Their scoped approvals and
-#612's approved review route do not certify completion or waive unrelated gates.
+The A7 historical POST-1.0 row records release membership, not absence of
+implemented social sign-in. The accepted #589 synthesis/RFC8628 reconciliation
+merged in PRs #945/#946; its post-1.0 A7 ruling remains. Developer credential
+administration merged in #942 and Transit WebUI in #965. These are source merge
+facts, not final qualification or discharge of Transit's separate review debt.
+The capability ledger remains owned by #15's canonical records and the roadmap
+by #527. Scoped review approvals never waive unrelated gates.
 
 The old 49-row inventory does not automatically cover later operative capability
 additions. Reconcile each owning ADR, acceptance/review record and implementation
@@ -70,16 +99,18 @@ candidate acceptance; execution evidence belongs to the tested source.
 | Temporary access (#152) | C-ACC current row above | Operative amendment 7 is additional to change approvals and cannot be absorbed into the old count. |
 | Private PKI (#154) | [PKI ADR](../adr/pki.md), [PKI lifecycle](../../internal/isolation/pki_e2e_test.go), [PKI CLI](../../internal/isolation/pki_cli_e2e_test.go) | Bind amendment's implementing-PR condition to recorded merge evidence, then issuer/profile lifecycle, CSR/display-once key, rotation, CRL, restore and node proof; no public CA/ACME/OCSP or HSM claim. |
 | SSH user certificates (#155) | [MVP boundary](../adr/mvp-boundary.md), [SSH lifecycle](../../internal/isolation/ssh_e2e_test.go), [real OpenSSH](../../internal/sshca/openssh_e2e_test.go) | Operative user-certificate scope: requester/grant revocation, expiry, KRL and key overlap; no remote shell, bastion or host-certificate promotion. |
-| Transit (#156) | [transit ADR](../adr/transit.md), [lifecycle](../../internal/isolation/transit_e2e_test.go), [conformance](../../internal/transit/conformance_test.go) | Bind implementing-PR condition to recorded merge evidence; closed algorithms, custody, rotation/rewrap/data keys and fail-closed lifecycle. #820 browser administration is separate pending work. |
+| Transit (#156) | [transit ADR](../adr/transit.md), [lifecycle](../../internal/isolation/transit_e2e_test.go), [conformance](../../internal/transit/conformance_test.go) | Bind implementing-PR condition to recorded merge evidence; closed algorithms, custody, rotation/rewrap/data keys and fail-closed lifecycle. #820 browser administration merged via PR #965; its delivered UI still needs final-candidate proof, and the ADR amendment-review debt stays with the governance owner. |
 | Multi-target providers / GitLab (#157/#159) | [deployment seam](../adr/deployment-adapter.md), [GitLab ADR](../adr/gitlab-adapter.md), [GitLab handoff](../handoff/159-gitlab-adapter.md) | Amendment admits GitLab; preserve provider-specific no-read, ownership, replay and actual external consumer proof. Existing historical runs retain their own identity. |
 | Vault/OpenBao KV destination (#162) | [Vault KV ADR](../adr/vault-kv-adapter.md) | Distinct from M5 import. Its proposed banner requires #26 reopening, governance review and recorded amendment before operative status. Preserve CAS/ownership/loop/replay/no-read criteria; implementation alone does not discharge governance. |
-| AWS Secrets Manager (#158) | [MVP amendment 8](../adr/mvp-boundary.md), [AWS handoff](../handoff/158-aws-secrets-manager.md), [external harness](../../internal/isolation/aws_external_e2e_test.go) | Promoted In conditionally on implementing PR merge and adversarial review. The [recorded audit correction](https://github.com/Hikyo-Org/Hikyo/issues/158#issuecomment-6220607066) labels this release:1.0 plus release:decision to expose conditional relevance; the unchanged title/milestone still need reconciliation by its owner. This is no final promotion, acceptance or review waiver. Real provider proof remains separate. |
+| AWS Secrets Manager (#158) | [MVP amendment 8](../adr/mvp-boundary.md), [AWS handoff](../handoff/158-aws-secrets-manager.md), [external harness](../../internal/isolation/aws_external_e2e_test.go) | **Outside 1.0 by the accepted October 28 release instruction**, including PR #969 and #1057. The earlier conditional inclusion is superseded for this release only. Preserve shipped-code tests and failed/partial provider evidence. No AWS acceptance, production-support claim or general review waiver follows. |
 | Explicit v1.1 destinations (#161/#163/#164) | [MVP amendments 5, 6 and 9](../adr/mvp-boundary.md), [sealed webhook](../spec/sealed-webhook.md), [file handoff](../handoff/164-generic-file-sync.md) | Cloudflare, sealed webhook and generic files do not automatically join 1.0. File scope is one-shot/poll-until-current, not a resident watch daemon; #819 UI has its own owner. |
-| Developer credentials (#807) | [developer credentials ADR](../adr/developer-credentials.md), MVP owner-locked banner | Scoped promotion becomes operative upon implementation PR merge; pending PR #942 is not satisfaction. Preserve exclusions of JIT deploy tokens, automation renewals and unattended human sessions. |
-| Publish/pin notification (#805) | [accepted notification issue](https://github.com/Hikyo-Org/Hikyo/issues/805) | Corrected A and scoped review approval cover only the accepted contract; refresh final API counts and actual notification proof after implementation merge. |
-| Scheduled rotation (#148) | [owning issue](https://github.com/Hikyo-Org/Hikyo/issues/148) | Preserve design, review, implementation and resource gates; no new rotation/provider policy inferred. |
+| Developer credentials (#807) | [developer credentials ADR](../adr/developer-credentials.md), MVP owner-locked banner | The implementing PR #942 merged as `35db63eb030da144a867bc4c7ddb5a3b9ec7a00b`, a current-main ancestor, satisfying the scoped implementation-merge condition. Final lifecycle and consumer proof remain required. Preserve exclusions of JIT deploy tokens, automation renewals and unattended human sessions. |
+| Publish/pin notification (#805) | [accepted notification issue](https://github.com/Hikyo-Org/Hikyo/issues/805) | Explicitly deferred beyond 1.0. Its accepted contract/review disposition is retained; no final-candidate notification proof or implementation merge is inferred, and this is not a prerequisite to existing Compose pull delivery. |
+| Scheduled rotation (#148) | [owning issue](https://github.com/Hikyo-Org/Hikyo/issues/148) | Explicitly deferred beyond 1.0. Preserve design, review, implementation and resource gates; internal key rotation and scoped incident recovery remain relevant. |
 | MCP (#631/#651) | [MCP interface](../adr/mcp-server.md), [release-plan proof](release-plan-1.0.md#3-complete-external-and-self-hoster-evidence) | Approved no-OAuth scope does not replace #651 exact-image HTTPS, two-process and named-client evidence or authorize a narrower release claim. |
-| Social registration (#589) | [social specification](../spec/social-signin.md), A7 historical row | #589 owns the coordinated disposition; approved review route is not a merge or blanket waiver. Preserve historical A7 until that owner change lands. |
+| Social registration (#589) | [social specification](../spec/social-signin.md), A7 historical row | #589 synthesis PR #945 and RFC8628 governance PR #946 are merged current-main ancestors. Preserve the accepted post-1.0 A7 ruling and historical row. Implementation does not promote social registration or waive other reviews. |
+| Member access rules (#15) | [member-access ADR](../adr/member-access-rules.md), [review disposition](../handoff/15-member-access-review.md) | Preserve the operative scoped-rule model, implemented subset and remaining target slices. #15's accepted review disposition is issue-specific, with its unavailable cross-provider pass still skipped. Do not infer a blanket waiver or acceptance of unimplemented targets. |
+| Multi-instance and manual pairing (#71/#8) | [multi-instance ADR](../adr/multi-instance.md), [pairing ADR](../adr/remote-instance-pairing.md), [workspace handoff](../handoff/71-multi-instance-workspace.md) | PR #1014 merged as `0de713d2df6acbb9a3e344fbfba4827b31f86501`, satisfying the amendment's merge condition; #71/#8 closure is amendment bookkeeping only. Preserve directory-only pairing, independent remote human authentication, no value proxy, TLS identity and the #1014-only review exception. Reassert final candidate evidence. |
 | Signed upgrades and reporting (#638/#791) | [signed upgrade contract](../adr/signed-upgrade-compatibility.md), [reporting ADR](../adr/k8s-condition-reporting.md), [reporting isolation suite](../../internal/isolation/k8s_reporting_e2e_test.go) | These have designs/source, not an undrawn map. Reassert compatibility, applied-release ledger, target-binary gate and reporting claims on the final source, including #941. Disabled platform apply remains disabled until its own acceptance. |
 
 ## Historical evidence rules

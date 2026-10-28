@@ -25,6 +25,7 @@ import (
 	sqlite "modernc.org/sqlite"
 	sqlitelib "modernc.org/sqlite/lib"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
@@ -303,7 +304,12 @@ func settleDenials(ctx context.Context, db *store.DB, az *authz.TxAuthorizer, at
 	return settleDenialResult(ctx, db.Engine(), az, attemptErr, func(ctx context.Context, denials []authz.Denial) error { return flushOnce(ctx, db, denials) })
 }
 
+// settleDenialResult confirms committed dedicated ownership, or durably flushes
+// captured refusals after rollback. Retryable attempts receive no commit receipt.
 func settleDenialResult(ctx context.Context, engine store.Engine, az *authz.TxAuthorizer, attemptErr error, flush func(context.Context, []authz.Denial) error) error {
+	if attemptErr == nil {
+		az.CommittedRefusalReceipt(ctx)
+	}
 	if attemptErr != nil && retryable(engine, attemptErr) {
 		return attemptErr // the retry re-runs authorize() and re-captures
 	}
@@ -325,6 +331,11 @@ func settleDenialResult(ctx context.Context, engine store.Engine, az *authz.TxAu
 		// the response layer render the uniform denial after all — exactly
 		// the unrecorded-denial answer fail-closed forbids.
 		return fmt.Errorf("tx: denial audit record not durable — refusing to answer (flush: %w; suppressed outcome: %v)", flushErr, attemptErr)
+	}
+	for _, denial := range denials {
+		if audit.IsDedicatedRefusal(denial.Event) {
+			audit.MarkDedicatedRefusal(ctx)
+		}
 	}
 	return attemptErr
 }

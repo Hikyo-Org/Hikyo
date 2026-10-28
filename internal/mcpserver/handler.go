@@ -19,8 +19,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
 const (
@@ -185,6 +187,8 @@ type requestMeta struct {
 	Name string         `json:"name"`
 }
 
+// ServeHTTP validates transport and protocol metadata, applies discovery or call
+// bounds, and dispatches through the closed registry with shared refusal context.
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == CodexPath {
 		h.serveCodex(w, r)
@@ -291,8 +295,17 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.WithContext(r.Context(), audit.Context{
 		SourceIP: sourceIP, UserAgent: r.UserAgent(), Origin: audit.OriginMCP, RequestOrigin: r.Header.Get("Origin"),
 	})
+	if h.admission != nil {
+		ctx = operation.WithPreauthenticationAdmission(ctx, func() error {
+			if !h.admission.AllowDiscovery(sourceIP) {
+				return admission.ErrOverloaded
+			}
+			return nil
+		})
+	}
 	if envelope.Method == "server/discover" || envelope.Method == "tools/list" {
 		if h.admission != nil && !h.admission.AllowDiscovery(sourceIP) {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
 			// Every MCP refusal advertises 60 s, an upper bound on each windowed
 			// limiter behind it: the one-minute discovery window, the 1 s token
 			// refill, and the 35 s lease TTL. It can overshoot but never names an
@@ -323,12 +336,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case h.slots <- struct{}{}:
 		defer func() { <-h.slots }()
 	default:
+		audit.NoteRefusal(ctx, audit.RefusalAdmission)
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return
 	}
 	bearer, ok := parseBearer(r.Header.Values("Authorization"))
 	if !ok {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
 		writeUnauthorized(w)
 		return
 	}
