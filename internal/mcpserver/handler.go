@@ -19,8 +19,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
 const (
@@ -293,6 +295,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.WithContext(r.Context(), audit.Context{
 		SourceIP: sourceIP, UserAgent: r.UserAgent(), Origin: audit.OriginMCP, RequestOrigin: r.Header.Get("Origin"),
 	})
+	if h.admission != nil {
+		ctx = operation.WithPreauthenticationAdmission(ctx, func() error {
+			if !h.admission.AllowDiscovery(sourceIP) {
+				return admission.ErrOverloaded
+			}
+			return nil
+		})
+	}
 	if envelope.Method == "server/discover" || envelope.Method == "tools/list" {
 		if h.admission != nil && !h.admission.AllowDiscovery(sourceIP) {
 			audit.NoteRefusal(ctx, audit.RefusalAdmission)

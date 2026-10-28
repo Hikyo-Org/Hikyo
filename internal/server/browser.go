@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -145,6 +146,9 @@ func (a *API) requireCSRF(next http.Handler) http.Handler {
 		}
 		presented := r.Header.Get(csrfHeader)
 		switch err := a.Auth.VerifyBrowserCSRF(audit.WithRefusalArtifactProbe(r.Context()), session.Value, presented); {
+		case errors.Is(err, admission.ErrOverloaded):
+			a.writeHandlerError(w, r, err)
+			return
 		case errors.Is(err, domain.ErrUnauthenticated):
 			// The cookie resolves to nothing. Not a cookie leg — let the
 			// request through and let the chokepoint judge it, which for an
