@@ -3,6 +3,7 @@ package isolation
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -101,8 +102,8 @@ func TestNetworkPolicySyntheticProviderCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 		drain()
-		if gitLabExists(t, cfg, destination, "NP_SHARED_KEY", "*") {
-			t.Fatal("provider retained deleted value")
+		if status, _ := gitLabGet(t, cfg, destination, "NP_SHARED_KEY", "*"); status != http.StatusNotFound {
+			t.Fatalf("cleanup provider readback returned HTTP %d, want 404", status)
 		}
 		if got := queryInt(t, db, fmt.Sprintf("SELECT COUNT(*) FROM adapter_outbox WHERE target_id='%s' AND kind='scrub' AND state='succeeded'", target.ID)); got != 1 {
 			t.Fatalf("successful cleanup jobs = %d", got)
