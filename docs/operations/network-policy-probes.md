@@ -165,11 +165,20 @@ The probe must fail with exit code 28 or 7. Kubelet probes still reach port
 
 ## 5. Egress probes from the server pod network
 
-The server image has no shell. An ephemeral debug container shares the pod
-network namespace, so the server NetworkPolicy also applies to it:
+The server image has no shell. A restricted ephemeral container shares the
+pod network, so the server NetworkPolicy also applies to it. Keep the chart's
+UID, read-only filesystem, seccomp profile and dropped capabilities:
 
 ```sh
-kubectl -n "$ns" debug "pod/$pod" -it --image="$probe_image" --target=server -- sh
+np_debug_profile=$(mktemp)
+trap 'rm -f "$np_debug_profile"' EXIT HUP INT TERM
+cat >"$np_debug_profile" <<'JSON'
+{"securityContext":{"runAsNonRoot":true,"runAsUser":65532,"runAsGroup":65532,"readOnlyRootFilesystem":true,"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]},"seccompProfile":{"type":"RuntimeDefault"}}}
+JSON
+kubectl -n "$ns" debug "pod/$pod" -it --container=np-manual \
+  --image="$probe_image" --profile=restricted --custom="$np_debug_profile" -- sh
+rm -f "$np_debug_profile"
+trap - EXIT HUP INT TERM
 ```
 
 Run these commands in the debug shell. Replace the datastore host and port
