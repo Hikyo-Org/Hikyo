@@ -36,9 +36,9 @@ case "$docs_retry_delay_seconds" in
 esac
 
 case "$docs_origin" in
-	https://*) ;;
+	https://hikyo.app) ;;
 	*)
-		printf 'live docs gate: DOCS_ORIGIN must use HTTPS\n' >&2
+		printf 'live docs gate: DOCS_ORIGIN must be canonical https://hikyo.app\n' >&2
 		exit 2
 		;;
 esac
@@ -88,8 +88,38 @@ if [ "$docs_attempts" -gt 1 ]; then
 fi
 
 fetch() {
-	"$CURL_BIN" --fail --location --silent --show-error \
-		--proto '=https' --tlsv1.2 --max-time 20 "$1"
+	requested_url=$1
+	response=$("$CURL_BIN" --fail --location --silent --show-error \
+		--proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 20 \
+		--write-out '\n%{url_effective}' "$requested_url") || return 1
+	effective_url=$(printf '%s\n' "$response" | tail -n 1)
+	[ "$effective_url" = "$requested_url" ] || {
+		printf 'live docs gate: %s resolved to a different endpoint: %s\n' \
+			"$requested_url" "$effective_url" >&2
+		return 1
+	}
+	printf '%s\n' "$response" | sed '$d'
+}
+
+fetch_page() {
+	page=$(fetch "$1") || return 1
+	require_response_text "$page" "<link rel=\"canonical\" href=\"$2\">"
+	printf '%s\n' "$page"
+}
+
+content_type_at_endpoint() {
+	requested_url=$1
+	metadata=$("$CURL_BIN" --fail --location --silent --show-error \
+		--proto '=https' --proto-redir '=https' --tlsv1.2 --max-time 20 \
+		--output /dev/null --write-out '%{content_type}\n%{url_effective}' \
+		"$requested_url") || return 1
+	effective_url=$(printf '%s\n' "$metadata" | tail -n 1)
+	[ "$effective_url" = "$requested_url" ] || {
+		printf 'live docs gate: %s resolved to a different endpoint: %s\n' \
+			"$requested_url" "$effective_url" >&2
+		return 1
+	}
+	printf '%s\n' "$metadata" | head -n 1
 }
 
 require_response_text() {
@@ -147,9 +177,7 @@ require_asset() {
 			exit 1
 			;;
 	esac
-	content_type=$("$CURL_BIN" --fail --location --silent --show-error \
-		--proto '=https' --tlsv1.2 --max-time 20 --output /dev/null \
-		--write-out '%{content_type}' "$docs_origin$asset_path")
+	content_type=$(content_type_at_endpoint "$docs_origin$asset_path")
 	case "$kind:$content_type" in
 		stylesheet:text/css* | module:application/javascript* | module:text/javascript*) ;;
 		*)
@@ -167,7 +195,7 @@ if [ -n "$docs_cache_bust" ]; then
 	docs_url="${docs_url}?deployment=$docs_cache_bust"
 fi
 
-landing_page=$(fetch "$landing_url")
+landing_page=$(fetch_page "$landing_url" "$docs_origin/")
 require_response_text "$landing_page" '<title>Hikyo'
 require_response_text "$landing_page" '<link rel="manifest" href="/manifest.webmanifest">'
 require_response_text "$landing_page" 'navigator.serviceWorker.register("/sw.js"'
@@ -177,7 +205,7 @@ landing_module=$(extract_asset_path "$landing_page" module)
 require_asset "$landing_stylesheet" stylesheet
 require_asset "$landing_module" module
 
-docs_page=$(fetch "$docs_url")
+docs_page=$(fetch_page "$docs_url" "$docs_origin/docs/")
 require_response_text "$docs_page" '<title>Hikyo documentation'
 reject_response_text "$docs_page" '="/hikyo/'
 docs_stylesheet=$(extract_asset_path "$docs_page" stylesheet)
@@ -208,9 +236,7 @@ service_worker=$(fetch "$docs_origin/sw.js")
 require_response_text "$service_worker" 'docs/getting-started/index.html'
 require_response_text "$service_worker" 'pwa-512x512.png'
 for icon_path in /pwa-192x192.png /pwa-512x512.png; do
-	content_type=$("$CURL_BIN" --fail --location --silent --show-error \
-		--proto '=https' --tlsv1.2 --max-time 20 --output /dev/null \
-		--write-out '%{content_type}' "$docs_origin$icon_path")
+	content_type=$(content_type_at_endpoint "$docs_origin$icon_path")
 	case "$content_type" in
 	image/png*) ;;
 	*)
@@ -238,23 +264,41 @@ if (!Number.isFinite(expiry) || expiry <= Date.now()) process.exit(1);
 	exit 1
 }
 
-security_page=$(fetch "$docs_origin/security/")
+security_page=$(fetch_page "$docs_origin/security/" "$docs_origin/security/")
 require_response_text "$security_page" 'The default embargo is 90 days from the report itself.'
+require_response_text "$security_page" "$fallback_email"
+require_response_text "$security_page" 'Reports are acknowledged within 7 days.'
+require_response_text "$security_page" 'critical: 14 days;'
+require_response_text "$security_page" 'high: 30 days;'
+require_response_text "$security_page" 'medium or low: the next scheduled release.'
+require_response_text "$security_page" 'Latest patch release of the latest minor'
+require_response_text "$security_page" 'All older stable releases'
 
-support_page=$(fetch "$docs_origin/support/")
+support_page=$(fetch_page "$docs_origin/support/" "$docs_origin/support/")
 require_response_text "$support_page" 'Hikyo supports exactly one version'
+require_response_text "$support_page" 'end-of-life on the same day a new minor is released'
+require_response_text "$support_page" 'Hikyo does not maintain backport branches.'
+require_response_text "$support_page" 'Prereleases are never supported.'
 
-governance_page=$(fetch "$docs_origin/governance/")
+governance_page=$(fetch_page "$docs_origin/governance/" "$docs_origin/governance/")
 require_response_text "$governance_page" 'may be amended only by reopening its originating ticket'
 require_response_text "$governance_page" 'Twelve consecutive months without maintainer response'
+require_response_text "$governance_page" 'benevolent dictator for life (BDFL)'
+require_response_text "$governance_page" 'Every capability required to run Hikyo in production is and will remain open'
+require_response_text "$governance_page" 'OBL-REPOSITORY-TRANSFER'
 
-trademark_page=$(fetch "$docs_origin/trademark/")
+implementation_page=$(fetch_page "$docs_origin/implementation-status/" "$docs_origin/implementation-status/")
+require_response_text "$implementation_page" 'CAP-RUNTIME-STORAGE'
+require_response_text "$implementation_page" 'OBL-REPOSITORY-TRANSFER'
+require_response_text "$implementation_page" 'sole mutable authority'
+
+trademark_page=$(fetch_page "$docs_origin/trademark/" "$docs_origin/trademark/")
 require_response_text "$trademark_page" 'Permission is required to offer a hosted or packaged service'
 
-contributing_page=$(fetch "$docs_origin/contributing/")
+contributing_page=$(fetch_page "$docs_origin/contributing/" "$docs_origin/contributing/")
 require_response_text "$contributing_page" 'Developer Certificate of Origin'
 
-license_page=$(fetch "$docs_origin/license/")
+license_page=$(fetch_page "$docs_origin/license/" "$docs_origin/license/")
 require_response_text "$license_page" 'Mozilla Public License Version 2.0'
 
 mx_response=$("$CURL_BIN" --fail --location --silent --show-error \
@@ -275,4 +319,5 @@ fi
 	exit 1
 }
 
-printf 'live docs gate: root, docs, PWA, policy, security.txt, and fallback MX passed\n'
+printf 'live docs gate: canonical endpoints, docs, PWA, O4-O6 policy, security.txt, and fallback MX passed\n'
+printf 'live docs gate: GET/MX checks do not prove notification delivery or acknowledgement\n'
