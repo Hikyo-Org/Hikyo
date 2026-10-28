@@ -95,9 +95,12 @@ Story-only follow-up `47fa9abb998bbb84e21fd4a067e48159349941a9` passed the
 focused two-theme story suite, typecheck, lint and API/boundary checks.
 Later edits correct a Storybook wait across the existing authentication remount
 and update this handoff; application and Go source bytes are unchanged. Main was rechecked
-at `970ac0db7c6024f91dedcefe34db7ca560b247e3`; its changes after product
-baseline `24e198b32a3ffd8d4013207b2f974d76ec49be6f` are documentation only.
-The updated TLS governance record remains HOLD and grants no exception here.
+at `1c7a0d0bdb5f8e4f9bd9c71f0a67219cd8f72736`. Since the earlier
+`970ac0db7` check, it adds community/governance documentation and MCP smoke
+tooling. Its diff from product baseline `24e198b32a3ffd8d4013207b2f974d76ec49be6f`
+leaves API, client, internal, web, Go manifests and the Node pin unchanged.
+Retargeting still requires fresh integration proof. The TLS governance record
+remains HOLD and grants no exception here.
 
 | Evidence | Local result |
 | --- | --- |
@@ -174,23 +177,34 @@ deployment, live-provider and external-destination acceptance are NOTRUN here.
 
 ## Evidence upload and cleanup handoff
 
-The PR remains draft/HOLD until the required matched desktop/mobile before/after
-images are attached in its description. The original API-only baseline is
-reconstructed honestly as described above. Additional instance filter, event
-and detail captures accompany it. The GitHub CLI can update the PR, but the
-shared browser lacks an authenticated GitHub upload session, and no existing
-approved artifact store was found. The one focused human requirement is to sign
-in to GitHub for attachment upload, or identify that approved store. Do not send
-passwords or tokens in chat. The local review packet contains the exact image
-bytes, SHA-256 manifest and insertion instructions; no attachment URL is invented.
-Screenshots and the complete offline HTML companion remain ignored local
-artifacts. Do not stage them or put machine paths in this handoff.
+The ten required screenshots are uploaded to GitHub and embedded in the PR
+description only. Each attachment loaded at its original dimensions. The
+matched desktop/mobile settings pairs retain their reconstructed API-only
+baseline; additional instance filter, event and detail views supplement them.
+The local PNG bytes retain the source/viewport/SHA-256 manifest. Screenshots
+and the complete offline HTML companion remain ignored local artifacts; no
+image or local evidence path is committed. The temporary upload draft was
+cleared without posting a comment, and the sign-in/upload tab was closed.
+
+At source-identical head `abb544df94f881343d59114c14e7150ffd48111d`, all three
+hosted feedback lanes and repository invariants passed. Both candidate and
+queue-admission checks refused the non-default base, as their source guards
+require. Those checks remain HOLD for the approved stack; they are not test
+assertion failures. Keep #1044 first, then retarget to current main and obtain
+fresh exact-head feedback, admission and full merge-group proof. The ready
+#1044 dependency remains bound to `194aaaece59f8eec1ce44858fed224da27ba9850`.
+
+The completed evidence packet is ready for scoped security review. Maintainer
+security review and, for maintainer-authored changes, adversarial security
+review remain required by CONTRIBUTING.md. Automated checks do not substitute
+for independent human review. Cross-provider review remains SKIPPED, with no
+new review waiver or paid fallback. No merge is recorded by this handoff.
 
 Cleanup is verified: the disposable PostgreSQL container and its anonymous
 volume are absent; native fixtures have torn down and all five owned ports
 refuse connections. The baseline archive, task-built embedded SPA output and
 synthetic session files were removed. Shared tool caches and the existing
 PostgreSQL image remain. Local review deliverables and failed-attempt logs are
-retained for review/upload; the task's exact recovery stash remains until the
-reviewed stack is integrated, then can be discarded by its recorded identity.
+retained for security review and integration; the task's exact recovery stash
+remains until the reviewed stack is integrated, then can be discarded by its recorded identity.
 No production or external destination was touched.
