@@ -245,6 +245,11 @@ does not isolate the separate operator pod's outbound Kubernetes API traffic.
    values that retain 32Mi, explicitly qualify and set
    `tls.reloaderResources.limits.memory: 128Mi` before the policy rehearsal.
    Establish healthy boot with both restriction flags false first.
+   Plain `--reuse-values` can retain defaults from a chart without any
+   `networkPolicy` settings; that still renders the legacy policy. Before
+   opting in, use Helm's `--reset-then-reuse-values` with the reviewed values
+   to merge the new chart defaults and retain prior user configuration.
+   Inspect the full render because this also refreshes other chart defaults.
 2. Inventory every direct client of port 8080, outbound destination and pending
    provider cleanup. Review actual namespace/pod selectors, DNS, datastore,
    IdP discovery/token/JWKS endpoints, adapter endpoints, remote instances,

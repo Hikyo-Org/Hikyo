@@ -49,6 +49,21 @@ render_mode() {
 render_mode cluster-wide \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b,sa-shared}'
+# Helm --reuse-values replaces new chart defaults with the old coalesced map.
+# Exercise that map shape, rather than merging an old values file into new defaults.
+cp -R "$chart" "$tmp/legacy-chart"
+python3 - "$tmp/legacy-chart/values.yaml" <<'PY'
+import sys, yaml
+from pathlib import Path
+path = Path(sys.argv[1])
+values = yaml.safe_load(path.read_text())
+values.pop("networkPolicy", None)
+path.write_text(yaml.safe_dump(values, sort_keys=False))
+PY
+current_chart=$chart
+chart="$tmp/legacy-chart"
+render_mode network-legacy-reused
+chart=$current_chart
 render_mode network-restricted \
 	--set networkPolicy.ingress.restricted=true \
 	--set-json 'networkPolicy.ingress.from=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"ingress-nginx"}},"podSelector":{"matchLabels":{"app.kubernetes.io/name":"ingress-nginx"}}}]' \
@@ -71,7 +86,7 @@ if render_mode network-no-peers --set operator.enabled=false \
 	fail 'restricted ingress accepted no peers with the operator disabled'
 fi
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" "$tmp/network-operator-only.yaml" "$tmp/network-egress-only.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/network-restricted.yaml" "$tmp/network-restricted-no-operator.yaml" "$tmp/network-operator-only.yaml" "$tmp/network-egress-only.yaml" "$tmp/network-legacy-reused.yaml" <<'PY' || exit 1
 import sys, yaml
 
 def policy(path):
@@ -101,6 +116,7 @@ legacy = policy(sys.argv[1])
 assert legacy["policyTypes"] == ["Ingress"], "default must keep the ingress-only policy"
 assert legacy["ingress"] == [{"ports": APP_PORT}], "default must keep the legacy port 8080 rule"
 assert "egress" not in legacy, "default must not limit egress"
+assert policy(sys.argv[6]) == legacy, "reused pre-networkPolicy defaults must preserve legacy behavior"
 
 restricted = policy(sys.argv[2])
 assert restricted["policyTypes"] == ["Ingress", "Egress"]
