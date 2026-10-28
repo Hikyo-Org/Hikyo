@@ -66,3 +66,13 @@ still required by CONTRIBUTING.md. Automated reviews are compensating evidence,
 not independent human approval. Cross-provider review is SKIPPED because the
 approved subscription is unavailable; no paid fallback or new waiver is granted.
 No release, deployment, live-provider or external collector acceptance is claimed.
+
+## Section-tab story consumer repair
+
+Full current-base merge validation found one additional stale consumer:
+`InstanceAdmin.stories.tsx` still expected the pre-Audit section inventory.
+The real Chromium story reproduced the exact extra `Audit` tab, with the other
+nine stories passing. The strict ordered inventory now includes the intended
+Audit section; the existing selected-Certificates and single-selection checks
+remain intact. No product navigation, assertion strength or timeout was changed.
+Final dark/light story results and refreshed hosted proof are recorded on #1044.

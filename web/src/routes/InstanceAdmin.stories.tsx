@@ -119,7 +119,7 @@ export const SectionTabs: Story = {
   parameters: { app: { ...app(populated), path: '/instance#instance-pki-profiles', routePath: '/instance' } },
   play: async ({ canvas }) => {
     await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
-      'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Developer credentials',
+      'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Audit', 'Developer credentials',
       'Identity providers', 'GitHub sign-in', 'SAML', 'Federation', 'Certificates',
       'Retention health', 'Keys & crypto',
     ]);
