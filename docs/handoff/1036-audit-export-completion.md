@@ -97,6 +97,12 @@ reconciliation case. Its receipt says `revoked`, `outcome_recorded=false` and
 contains only its own export metadata/count. This is not a new proof-free writer
 or a waiver of the audit ADR's existing review obligations.
 
+Bearer revocation/expiry is authentication loss (`ErrUnauthenticated`), not an
+internal page-read failure. The export treats it as revoked at the next page
+boundary, just like grant loss, and never attempts an unauthorized completion
+write. Grant denial can record a denial event; authentication loss does not
+invent an authenticated actor or a new proof-free audit writer.
+
 ## Collection recipe
 
 Use the supported CLI command from #1035 once the dependency is integrated.
