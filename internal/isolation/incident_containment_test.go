@@ -140,6 +140,8 @@ func TestManualIncidentContainment(t *testing.T) {
 	})
 }
 
+// assertIncidentAuthorityAbsent requires a successful fresh login while proving
+// that delivery, developer delegation and self-regrant authority remain absent.
 func assertIncidentAuthorityAbsent(t *testing.T, db *store.DB, auth *service.Auth, token string) {
 	t.Helper()
 	ctx := t.Context()
@@ -158,6 +160,8 @@ func assertIncidentAuthorityAbsent(t *testing.T, db *store.DB, auth *service.Aut
 	}
 }
 
+// TestCredentialResetTerminallyRevokesDeveloperCustody checks both reset tiers
+// for durable revocation and attributed audit evidence after repeated resets.
 func TestCredentialResetTerminallyRevokesDeveloperCustody(t *testing.T) {
 	for _, network := range []bool{false, true} {
 		name := "host"
@@ -168,6 +172,8 @@ func TestCredentialResetTerminallyRevokesDeveloperCustody(t *testing.T) {
 	}
 }
 
+// testIncidentResetCustody exercises the selected reset tier on both engines,
+// preserving network target bounds and checking terminal custody and actors.
 func testIncidentResetCustody(t *testing.T, network bool) {
 	t.Helper()
 	forEngines(t, func(t *testing.T, db *store.DB) {
@@ -263,6 +269,8 @@ func testIncidentResetCustody(t *testing.T, network bool) {
 	})
 }
 
+// TestCredentialResetConcurrentDeveloperMint races real passkey delegation mint
+// with reset, then proves any issued bearer is unusable after reset completes.
 func TestCredentialResetConcurrentDeveloperMint(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
@@ -326,6 +334,8 @@ func TestCredentialResetConcurrentDeveloperMint(t *testing.T) {
 	})
 }
 
+// TestManualIncidentContainmentAllowedIdPCannotRemintAuthority keeps upstream
+// login available while proving a swept target cannot recover local authority.
 func TestManualIncidentContainmentAllowedIdPCannotRemintAuthority(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
@@ -381,6 +391,8 @@ func TestManualIncidentContainmentAllowedIdPCannotRemintAuthority(t *testing.T) 
 	})
 }
 
+// TestManualIncidentDynamicCleanupResumes preserves pending or unknown cleanup
+// until replacement provider custody and reconciliation confirm revocation.
 func TestManualIncidentDynamicCleanupResumes(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()

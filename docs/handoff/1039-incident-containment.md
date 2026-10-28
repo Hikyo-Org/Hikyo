@@ -445,3 +445,18 @@ Full #1039 acceptance remains conditional on integrated #1033 CLI proof, the
 maintainer security review, and separately authorized installation/provider/
 notification evidence for any such claimed scope. Cross-provider review
 unavailability is `SKIPPED`, never `CLEAN`; this task grants no ADR waiver.
+
+### Final automated review disposition
+
+CodeRabbit approved runtime head `d3f8938e29ec785a896cda7b6428e17b6b71fd24`
+after the reset-time session regression. All five original review findings are
+addressed and their threads resolved. Its summary also warned about missing
+function documentation and incomplete full-issue acceptance. The follow-up
+documents the remaining containment test helpers and the reset owner's terminal
+revocation contract; executable Go tokens are unchanged.
+
+The linked-issue warning describes the existing acceptance boundary above.
+This source PR does not close #1039 or establish the integrated rotation and
+recovery rehearsal. That acceptance still requires its own reviewed evidence.
+Source review and a bot approval do not replace fresh current-head feedback or
+mandatory current-base merge-group validation.

@@ -223,9 +223,9 @@ func (s *Auth) BreakGlassResetCredential(ctx context.Context, targetPrincipal, d
 
 // mintResetAuthority is the shared write both tiers run inside their own locked
 // transaction: sweep the target's outstanding authorities (B12), mint the new
-// one, advance the generation and revoke every session, then audit the issuance
-// and the mint. The verifier is the caller-held value's hash; the value never
-// touches this layer.
+// one, advance the generation and revoke every session and developer delegation,
+// then audit revocation, issuance and mint with the acting operator. The verifier
+// is the caller-held value's hash; the value never touches this layer.
 func (s *Auth) mintResetAuthority(ctx context.Context, az *authz.TxAuthorizer, actor domain.PrincipalID, account authz.Account, issuedBy, authority, delivery, authorityID string, verifier []byte, now time.Time) (ResetResult, error) {
 	epoch, err := az.CredentialEpoch(ctx)
 	if err != nil {
