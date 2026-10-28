@@ -4579,15 +4579,18 @@ export const zAuditPage = z.object({
 });
 
 /**
- * How one export ended, as the export run saw it. Only `outcome:
- * success` means the stream holds every event the filter selected up to
- * the server's snapshot. The receipt counts rows; it does not attest that
- * the trail has no sequence gaps.
+ * How one export ended, as the export run saw it. Completion requires
+ * success, outcome_recorded=true, no cause, exact event count, identity
+ * and snapshot matching the response headers, and clean EOF immediately
+ * after this line. The receipt counts rows; it does not attest that the
+ * trail has no sequence gaps. Consumers bound each line to 1 MiB including
+ * LF and fail closed on larger lines. Event fields remain extensible.
  *
  */
 export const zAuditExportReceipt = z.object({
     version: z.literal(1),
-    started_event_id: z.string(),
+    started_event_id: z.string().min(1),
+    snapshot_time: z.iso.datetime(),
     rows_streamed: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     outcome: z.enum([
         'success',

@@ -5449,10 +5449,12 @@ type AuditEvent struct {
 	UserAgent *string `json:"user_agent,omitempty"`
 }
 
-// AuditExportReceipt How one export ended, as the export run saw it. Only `outcome:
-// success` means the stream holds every event the filter selected up to
-// the server's snapshot. The receipt counts rows; it does not attest that
-// the trail has no sequence gaps.
+// AuditExportReceipt How one export ended, as the export run saw it. Completion requires
+// success, outcome_recorded=true, no cause, exact event count, identity
+// and snapshot matching the response headers, and clean EOF immediately
+// after this line. The receipt counts rows; it does not attest that the
+// trail has no sequence gaps. Consumers bound each line to 1 MiB including
+// LF and fail closed on larger lines. Event fields remain extensible.
 type AuditExportReceipt struct {
 	// Cause Why the export did not succeed. Absent on success and on revocation.
 	Cause *AuditExportReceiptCause `json:"cause,omitempty"`
@@ -5469,6 +5471,12 @@ type AuditExportReceipt struct {
 
 	// RowsStreamed The number of event lines written before this receipt.
 	RowsStreamed int64 `json:"rows_streamed"`
+
+	// SnapshotTime Effective inclusive recorded_at upper bound, capped by the server's
+	// fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+	// Together with the request's filters this names the selected extent,
+	// not a resumable seq cursor or a promise of gapless sequence numbers.
+	SnapshotTime time.Time `json:"snapshot_time"`
 
 	// StartedEventId The id of this export's `audit.export_started` event. The
 	// `audit.export_completed` event, when recorded, carries it as its
@@ -5493,10 +5501,12 @@ type AuditExportReceiptVersion int
 // Event lines never carry the `export_receipt` member, so a reader tells
 // the two apart by that key.
 type AuditExportReceiptLine struct {
-	// ExportReceipt How one export ended, as the export run saw it. Only `outcome:
-	// success` means the stream holds every event the filter selected up to
-	// the server's snapshot. The receipt counts rows; it does not attest that
-	// the trail has no sequence gaps.
+	// ExportReceipt How one export ended, as the export run saw it. Completion requires
+	// success, outcome_recorded=true, no cause, exact event count, identity
+	// and snapshot matching the response headers, and clean EOF immediately
+	// after this line. The receipt counts rows; it does not attest that the
+	// trail has no sequence gaps. Consumers bound each line to 1 MiB including
+	// LF and fail closed on larger lines. Event fields remain extensible.
 	ExportReceipt AuditExportReceipt `json:"export_receipt"`
 }
 
@@ -52741,7 +52751,9 @@ type ExportOrgAuditResponseObject interface {
 }
 
 type ExportOrgAudit200ResponseHeaders struct {
-	HikyoAuditReceipt *string
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
 }
 
 type ExportOrgAudit200ApplicationxNdjsonResponse struct {
@@ -52756,8 +52768,14 @@ func (response ExportOrgAudit200ApplicationxNdjsonResponse) VisitExportOrgAuditR
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
 	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
 	if response.Headers.HikyoAuditReceipt != nil {
 		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 
@@ -57281,7 +57299,9 @@ type ExportProjectAuditResponseObject interface {
 }
 
 type ExportProjectAudit200ResponseHeaders struct {
-	HikyoAuditReceipt *string
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
 }
 
 type ExportProjectAudit200ApplicationxNdjsonResponse struct {
@@ -57296,8 +57316,14 @@ func (response ExportProjectAudit200ApplicationxNdjsonResponse) VisitExportProje
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
 	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
 	if response.Headers.HikyoAuditReceipt != nil {
 		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 
@@ -61219,7 +61245,9 @@ type ExportEnvAuditResponseObject interface {
 }
 
 type ExportEnvAudit200ResponseHeaders struct {
-	HikyoAuditReceipt *string
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
 }
 
 type ExportEnvAudit200ApplicationxNdjsonResponse struct {
@@ -61234,8 +61262,14 @@ func (response ExportEnvAudit200ApplicationxNdjsonResponse) VisitExportEnvAuditR
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
 	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
 	if response.Headers.HikyoAuditReceipt != nil {
 		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 

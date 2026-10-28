@@ -6222,10 +6222,12 @@ export type AuditExportReceiptLine = {
 };
 
 /**
- * How one export ended, as the export run saw it. Only `outcome:
- * success` means the stream holds every event the filter selected up to
- * the server's snapshot. The receipt counts rows; it does not attest that
- * the trail has no sequence gaps.
+ * How one export ended, as the export run saw it. Completion requires
+ * success, outcome_recorded=true, no cause, exact event count, identity
+ * and snapshot matching the response headers, and clean EOF immediately
+ * after this line. The receipt counts rows; it does not attest that the
+ * trail has no sequence gaps. Consumers bound each line to 1 MiB including
+ * LF and fail closed on larger lines. Event fields remain extensible.
  *
  */
 export type AuditExportReceipt = {
@@ -6237,6 +6239,14 @@ export type AuditExportReceipt = {
      *
      */
     started_event_id: string;
+    /**
+     * Effective inclusive recorded_at upper bound, capped by the server's
+     * fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+     * Together with the request's filters this names the selected extent,
+     * not a resumable seq cursor or a promise of gapless sequence numbers.
+     *
+     */
+    snapshot_time: string;
     /**
      * The number of event lines written before this receipt.
      */

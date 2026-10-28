@@ -403,7 +403,11 @@ func writeLine(w io.Writer, e store.AuditEvent) error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(append(b, '\n'))
+	b = append(b, '\n')
+	n, err := w.Write(b)
+	if err == nil && n != len(b) {
+		return io.ErrShortWrite
+	}
 	return err
 }
 
@@ -437,10 +441,18 @@ const (
 // INTENT committed, so nothing was streamed.
 type ExportReceipt struct {
 	StartedEventID  string
+	SnapshotTime    time.Time
 	RowsStreamed    int
 	Outcome         ExportOutcome
 	Cause           string
 	OutcomeRecorded bool
+}
+
+// ExportMetadataWriter optionally binds a streaming sink to its durable INTENT
+// and effective inclusive recorded_at upper bound, before the first event byte.
+// Calling this method does not authorize any further trail disclosure.
+type ExportMetadataWriter interface {
+	BeginAuditExport(startedEventID string, snapshotTime time.Time)
 }
 
 // Export streams the addressed slice of the tenant trail as JSONL:
@@ -494,8 +506,15 @@ func (s *Audits) InstanceExport(ctx context.Context, principal domain.PrincipalI
 
 // InstanceExportActor is InstanceExport with transaction-local bearer resolution.
 func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.AuditFilter, pageSize int, w io.Writer) error {
+	_, err := s.InstanceExportActorReceipt(ctx, actor, f, pageSize, w)
+	return err
+}
+
+// InstanceExportActorReceipt is the instance route's completion-protocol seam.
+// It uses exactly the same receipt, paging and authorization owner as tenant exports.
+func (s *Audits) InstanceExportActorReceipt(ctx context.Context, actor Actor, f store.AuditFilter, pageSize int, w io.Writer) (ExportReceipt, error) {
 	if pageSize <= 0 {
-		return fmt.Errorf("service: export page size must be positive")
+		return ExportReceipt{}, fmt.Errorf("service: export page size must be positive")
 	}
 	// Instance export has no org: it is bounded by 5/min per principal and the
 	// 6-per-instance concurrency only (budgetExportInstance), never the 2-per-org
@@ -503,15 +522,15 @@ func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.A
 	// bucket.
 	release, err := s.Budget.acquire(budgetExportInstanceConcurrency, budgetKeys{})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	defer release()
 	principal, err := s.authorizeAuditActor(ctx, actor, authz.OpAuditInstanceExport, domain.Scope{})
 	if err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	if _, err := s.Budget.acquire(budgetExportRate, budgetKeys{Principal: principal}); err != nil {
-		return err
+		return ExportReceipt{}, err
 	}
 	insertInstance := func(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
 		return r.Audit().InsertInstance(ctx, p, ev)
@@ -519,8 +538,7 @@ func (s *Audits) InstanceExportActor(ctx context.Context, actor Actor, f store.A
 	page := func(ctx context.Context, r store.ReadRepos, p authz.Proof, pf store.AuditFilter) ([]store.AuditEvent, error) {
 		return r.Audit().PageInstance(ctx, p, pf)
 	}
-	_, err = s.export(ctx, actor, principal, authz.OpAuditInstanceExport, domain.Scope{}, f, pageSize, w, insertInstance, page)
-	return err
+	return s.export(ctx, actor, principal, authz.OpAuditInstanceExport, domain.Scope{}, f, pageSize, w, insertInstance, page)
 }
 
 func (s *Audits) authorizeAuditActor(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (domain.PrincipalID, error) {
@@ -629,7 +647,10 @@ func (s *Audits) export(
 	// back when the page is filtered after commit. Same disclosure rule as the
 	// interactive query — only names on rows this proof already admitted.
 	names := newPrincipalNames()
-	receipt := ExportReceipt{StartedEventID: started.ID}
+	receipt := ExportReceipt{StartedEventID: started.ID, SnapshotTime: f.To.UTC()}
+	if metadata, ok := w.(ExportMetadataWriter); ok {
+		metadata.BeginAuditExport(receipt.StartedEventID, receipt.SnapshotTime)
+	}
 	// finish writes the terminal OUTCOME and fills the receipt from it. If the
 	// terminal event cannot commit, the receipt says so, and a clean stream
 	// reports failure: the receipt never claims more than the trail holds.
@@ -730,7 +751,8 @@ func (s *Audits) export(
 				writersSettled = true
 				continue
 			}
-			return receipt, finish(audit.OutcomeSuccess, "")
+			err := finish(audit.OutcomeSuccess, "")
+			return receipt, err
 		}
 	}
 }

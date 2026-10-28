@@ -317,6 +317,7 @@ func receiptLine(r service.ExportReceipt) ([]byte, error) {
 	wire := apigen.AuditExportReceipt{
 		Version:         apigen.AuditExportReceiptV1,
 		StartedEventId:  r.StartedEventID,
+		SnapshotTime:    r.SnapshotTime,
 		RowsStreamed:    int64(r.RowsStreamed),
 		Outcome:         apigen.AuditExportReceiptOutcome(r.Outcome),
 		OutcomeRecorded: r.OutcomeRecorded,
@@ -348,10 +349,16 @@ func (s auditExportStream) VisitExportEnvAuditResponse(w http.ResponseWriter) er
 // byte, so a refusal the service raises before it streams anything can still
 // set a non-200 status.
 type auditExportWriter struct {
-	w        http.ResponseWriter
-	filename string
-	receipt  bool
-	wrote    bool
+	w         http.ResponseWriter
+	filename  string
+	receipt   bool
+	wrote     bool
+	startedID string
+	snapshot  time.Time
+}
+
+func (a *auditExportWriter) BeginAuditExport(id string, snapshot time.Time) {
+	a.startedID, a.snapshot = id, snapshot
 }
 
 func (a *auditExportWriter) writeHeader() {
@@ -361,6 +368,8 @@ func (a *auditExportWriter) writeHeader() {
 	a.w.Header().Set("X-Content-Type-Options", "nosniff")
 	if a.receipt {
 		a.w.Header().Set("Hikyo-Audit-Receipt", string(apigen.AuditReceiptV1))
+		a.w.Header().Set("Hikyo-Audit-Export-ID", a.startedID)
+		a.w.Header().Set("Hikyo-Audit-Snapshot-Time", a.snapshot.UTC().Format(time.RFC3339Nano))
 	}
 	a.w.WriteHeader(http.StatusOK)
 }

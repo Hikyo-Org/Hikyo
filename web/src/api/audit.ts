@@ -4,6 +4,37 @@ import { useInfiniteQuery, type UseInfiniteQueryResult, type InfiniteData } from
 import type { z } from 'zod';
 
 import { parsed } from './client.ts';
+import { consumeAuditExport } from '../../../clients/ts/src/auditExport.ts';
+
+/** Browser downloads are deliberately capped. CLI/collector staging streams to disk. */
+export const AUDIT_DOWNLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Resolve a plain-event JSONL Blob only after negotiated success and clean EOF.
+ * Rejection means no verified download; callers must surface it and never save
+ * a partial Blob. A native download link cannot validate terminal completion.
+ */
+export async function downloadAuditExport(url: string, signal?: AbortSignal): Promise<Blob> {
+  const target = new URL(url, window.location.origin);
+  if (target.origin !== window.location.origin) throw new Error('Audit export must use this server.');
+  target.searchParams.set('receipt', 'v1');
+  const response = await fetch(target, { signal, credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
+  return verifiedAuditExportBlob(response);
+}
+
+/** Response seam for generated-client consumers and transport regression tests. */
+export async function verifiedAuditExportBlob(response: Response): Promise<Blob> {
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  let bytes = 0;
+  await consumeAuditExport(response, (line) => {
+    bytes += line.byteLength;
+    if (bytes > AUDIT_DOWNLOAD_MAX_BYTES) {
+      throw new Error('Audit export exceeds the 64 MiB browser limit. Use the CLI with a restricted staging file.');
+    }
+    parts.push(line);
+  });
+  return new Blob(parts, { type: 'application/x-ndjson' });
+}
 
 export type AuditPage = z.infer<typeof zAuditPage>;
 export type AuditEvent = AuditPage['items'][number];

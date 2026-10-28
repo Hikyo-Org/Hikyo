@@ -12013,9 +12013,15 @@ paths:
         response header, and the stream ends with one `AuditExportReceiptLine`
         after the last event line. The receipt names the
         `audit.export_started` event, the number of event lines written and
-        how the export ended. A stream that ends without a receipt is
-        truncated, for example because the connection dropped. The receipt
-        counts rows; it does not attest that the trail has no sequence gaps.
+        how the export ended. Require version 1, identity and snapshot matching
+        the Hikyo-Audit-Export-ID and Hikyo-Audit-Snapshot-Time response headers,
+        the exact received event count, success, outcome_recorded=true and no
+        cause. Require clean transport EOF immediately after the receipt LF.
+        A missing/invalid receipt, failed transport or any uncertain outcome
+        makes the export incomplete even with HTTP 200 and valid event JSONL.
+        Stage bytes privately; publish evidence and collection state only after
+        validation. The receipt counts rows; it does not attest that the trail
+        has no sequence gaps or provide a resumable public seq checkpoint.
         Without the opt-in, the body is plain JSONL with no receipt line.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.export-org
@@ -12040,6 +12046,12 @@ paths:
         "200":
           description: The trail as a JSONL byte stream.
           headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
             Hikyo-Audit-Receipt:
               required: false
               description: |
@@ -12139,6 +12151,12 @@ paths:
         "200":
           description: The trail as a JSONL byte stream.
           headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
             Hikyo-Audit-Receipt:
               required: false
               description: |
@@ -12240,6 +12258,12 @@ paths:
         "200":
           description: The trail as a JSONL byte stream.
           headers:
+            Hikyo-Audit-Export-ID:
+              description: Durable INTENT identity when receipt=v1. Must match started_event_id.
+              schema: {type: string, minLength: 1}
+            Hikyo-Audit-Snapshot-Time:
+              description: Effective inclusive recorded_at upper bound when receipt=v1. Must match snapshot_time.
+              schema: {type: string, format: date-time}
             Hikyo-Audit-Receipt:
               required: false
               description: |
@@ -24611,12 +24635,14 @@ components:
     AuditExportReceipt:
       type: object
       additionalProperties: false
-      required: [version, started_event_id, rows_streamed, outcome, outcome_recorded]
+      required: [version, started_event_id, snapshot_time, rows_streamed, outcome, outcome_recorded]
       description: |
-        How one export ended, as the export run saw it. Only `outcome:
-        success` means the stream holds every event the filter selected up to
-        the server's snapshot. The receipt counts rows; it does not attest that
-        the trail has no sequence gaps.
+        How one export ended, as the export run saw it. Completion requires
+        success, outcome_recorded=true, no cause, exact event count, identity
+        and snapshot matching the response headers, and clean EOF immediately
+        after this line. The receipt counts rows; it does not attest that the
+        trail has no sequence gaps. Consumers bound each line to 1 MiB including
+        LF and fail closed on larger lines. Event fields remain extensible.
       properties:
         version:
           type: integer
@@ -24624,10 +24650,19 @@ components:
           x-enum-varnames: [AuditExportReceiptV1]
         started_event_id:
           type: string
+          minLength: 1
           description: |
             The id of this export's `audit.export_started` event. The
             `audit.export_completed` event, when recorded, carries it as its
             correlation id.
+        snapshot_time:
+          type: string
+          format: date-time
+          description: |
+            Effective inclusive recorded_at upper bound, capped by the server's
+            fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+            Together with the request's filters this names the selected extent,
+            not a resumable seq cursor or a promise of gapless sequence numbers.
         rows_streamed:
           type: integer
           format: int64

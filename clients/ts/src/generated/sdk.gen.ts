@@ -4950,9 +4950,15 @@ export const queryOrgAudit = <ThrowOnError extends boolean = false>(options: Opt
  * response header, and the stream ends with one `AuditExportReceiptLine`
  * after the last event line. The receipt names the
  * `audit.export_started` event, the number of event lines written and
- * how the export ended. A stream that ends without a receipt is
- * truncated, for example because the connection dropped. The receipt
- * counts rows; it does not attest that the trail has no sequence gaps.
+ * how the export ended. Require version 1, identity and snapshot matching
+ * the Hikyo-Audit-Export-ID and Hikyo-Audit-Snapshot-Time response headers,
+ * the exact received event count, success, outcome_recorded=true and no
+ * cause. Require clean transport EOF immediately after the receipt LF.
+ * A missing/invalid receipt, failed transport or any uncertain outcome
+ * makes the export incomplete even with HTTP 200 and valid event JSONL.
+ * Stage bytes privately; publish evidence and collection state only after
+ * validation. The receipt counts rows; it does not attest that the trail
+ * has no sequence gaps or provide a resumable public seq checkpoint.
  * Without the opt-in, the body is plain JSONL with no receipt line.
  *
  */

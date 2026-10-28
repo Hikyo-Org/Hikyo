@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/auditexport"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -84,6 +86,7 @@ func newAuditExportServer(t *testing.T, e accessWireEnv, wrap func(http.Response
 
 type exportResponse struct {
 	header http.Header
+	body   []byte
 	events []string
 	// receipt is the final line when it parses as a receipt line.
 	receipt *apigen.AuditExportReceipt
@@ -108,7 +111,29 @@ func getAuditExport(t *testing.T, srv *httptest.Server, token, path string) expo
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("export %s = %d %s, want 200", path, resp.StatusCode, body)
 	}
-	out := exportResponse{header: resp.Header}
+	out := exportResponse{header: resp.Header, body: body}
+	// Run the supported CLI/collector consumer against the actual wire bytes.
+	// Only publish staged evidence after it confirms terminal success and EOF.
+	if strings.Contains(path, "receipt=v1") {
+		var staged bytes.Buffer
+		receipt, consumeErr := auditexport.Consume(&http.Response{
+			StatusCode: resp.StatusCode, Header: resp.Header,
+			Body: io.NopCloser(bytes.NewReader(body)),
+		}, &staged)
+		var terminal struct {
+			ExportReceipt apigen.AuditExportReceipt `json:"export_receipt"`
+		}
+		lines := bytes.Split(bytes.TrimSuffix(body, []byte("\n")), []byte("\n"))
+		last := lines[len(lines)-1]
+		_ = json.Unmarshal(last, &terminal)
+		wantSuccess := terminal.ExportReceipt.Outcome == apigen.AuditExportReceiptOutcomeSuccess && terminal.ExportReceipt.OutcomeRecorded
+		if (consumeErr == nil) != wantSuccess {
+			t.Fatalf("supported consumer: receipt=%+v err=%v, wire success=%v", receipt, consumeErr, wantSuccess)
+		}
+		if consumeErr == nil && !bytes.Equal(staged.Bytes(), body[:len(body)-len(last)-1]) {
+			t.Fatal("supported consumer did not stage exactly the event bytes")
+		}
+	}
 	if len(body) > 0 && body[len(body)-1] != '\n' {
 		t.Fatalf("export body does not end on a line boundary: %q", body[max(0, len(body)-80):])
 	}
@@ -150,6 +175,12 @@ func wantReceipt(t *testing.T, got exportResponse, outcome apigen.AuditExportRec
 		t.Fatalf("stream ended without a receipt after %d event lines", len(got.events))
 	}
 	r := *got.receipt
+	if id := got.header.Get("Hikyo-Audit-Export-ID"); id == "" || id != r.StartedEventId {
+		t.Fatalf("response export identity = %q, receipt identity = %q", id, r.StartedEventId)
+	}
+	if r.SnapshotTime.IsZero() || got.header.Get("Hikyo-Audit-Snapshot-Time") != r.SnapshotTime.Format(time.RFC3339Nano) {
+		t.Fatalf("response snapshot does not match receipt: %v", r.SnapshotTime)
+	}
 	if r.Version != apigen.AuditExportReceiptV1 || r.StartedEventId == "" {
 		t.Fatalf("receipt version/started = %d/%q", r.Version, r.StartedEventId)
 	}
