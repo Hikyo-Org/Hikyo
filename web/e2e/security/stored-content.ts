@@ -62,6 +62,9 @@ export async function startStoredContent(path = recordPath): Promise<{
     const errors: Error[] = [];
     try { await canary.close(); }
     catch (error) { errors.push(new Error('stored-content canary listener cleanup failed', { cause: error })); }
+    if (canary.hits.length !== 0) {
+      errors.push(new Error('stored-content canary observed forbidden egress'));
+    }
     if (failure !== undefined) errors.push(failure);
     canary.server.off('request', publish);
     canary.server.off('error', fail);

@@ -19,7 +19,7 @@ function record(): string {
   return join(directory, 'observation.json');
 }
 
-it('publishes real hits atomically and joins the owned listener on cleanup', async () => {
+it('publishes real hits atomically and refuses egress after joining the owned listener', async () => {
   const path = record();
   const owned = await startStoredContent(path);
   let closed = false;
@@ -31,13 +31,32 @@ it('publishes real hits atomically and joins the owned listener on cleanup', asy
     await fetch(`${before.origin}/forbidden-egress`);
     expect(readStoredContent(path).hits).toBe(1);
     expect(existsSync(`${path}.tmp`)).toBe(false);
-    await owned.close();
     closed = true;
+    await expect(owned.close()).rejects.toThrow('stored-content canary failed');
     expect(existsSync(path)).toBe(false);
     await expect(fetch(before.origin)).rejects.toThrow();
   } finally {
     if (!closed) await owned.close();
   }
+});
+
+it('refuses a real hit that arrives after the last observation while joining the listener', async () => {
+  const original = canaryModule.startCanary;
+  vi.spyOn(canaryModule, 'startCanary').mockImplementation(async () => {
+    const canary = await original();
+    return {
+      ...canary,
+      close: async () => {
+        await fetch(`${canary.origin}/late-forbidden-egress`);
+        await canary.close();
+      },
+    };
+  });
+  const path = record();
+  const owned = await startStoredContent(path);
+  expect(readStoredContent(path).hits).toBe(0);
+  await expect(owned.close()).rejects.toThrow('stored-content canary failed');
+  expect(existsSync(path)).toBe(false);
 });
 
 it('invalidates observations and fails cleanup after a listener error', async () => {
