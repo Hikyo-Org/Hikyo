@@ -6,6 +6,7 @@ import { formatWhen } from '../lib/formatWhen.ts';
 import { useProjectEnvironments } from '../api/adapters.ts';
 import {
   AUDIT_OUTCOMES,
+  auditExportFilename,
   auditExportUrl,
   downloadAuditExport,
   emptyAuditFilter,
@@ -144,7 +145,7 @@ function AuditTrail({ org, project, instance = false }: { readonly org: string; 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = instance ? 'hikyo-audit-instance.jsonl' : 'hikyo-audit.jsonl';
+      anchor.download = auditExportFilename(scope);
       anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch {
@@ -352,7 +353,7 @@ function AuditTrail({ org, project, instance = false }: { readonly org: string; 
           >
             {trail.isFetchingNextPage ? 'Scanning…' : 'Load more'}
           </Button>
-        ) : events.length > 0 ? (
+        ) : events.length > 0 && !trail.isError ? (
           <p className="audit__end" role="status">
             End of the trail.
           </p>

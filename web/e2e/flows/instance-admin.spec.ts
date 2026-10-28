@@ -1439,6 +1439,7 @@ test.describe('instance audit security trail', () => {
 
   test('navigates from settings, inspects source, handles empty and verified export', async ({ page }, testInfo) => {
     await page.goto('/instance');
+    await expect(page.getByRole('heading', { name: 'Instance settings', level: 1 })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`instance-settings-after-${testInfo.project.name}.png`), fullPage: true });
     await page.getByRole('tab', { name: 'Audit', exact: true }).click();
     await page.getByRole('link', { name: 'Open instance audit', exact: true }).click();
@@ -1446,12 +1447,16 @@ test.describe('instance audit security trail', () => {
     const rows = page.locator('.audit__row');
     await expect(rows.first()).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`instance-audit-after-${testInfo.project.name}.png`), fullPage: true });
+    await page.locator('#audit-events').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`instance-audit-events-after-${testInfo.project.name}.png`), fullPage: true });
     await rows.first().focus();
     await page.keyboard.press('Enter');
     const detail = page.getByRole('complementary', { name: 'Event detail' });
     await expect(detail.getByText('Actor class', { exact: true })).toBeVisible();
     await expect(detail.getByText('Source IP', { exact: true })).toBeVisible();
     await expect(detail.getByText('User agent', { exact: true })).toBeVisible();
+    await detail.getByText('Source IP', { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`instance-audit-detail-after-${testInfo.project.name}.png`), fullPage: true });
     await page.keyboard.press('Escape');
     await expect(detail).toBeHidden();
     await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('synthetic.no-such-event');

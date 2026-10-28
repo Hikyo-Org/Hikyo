@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { auditExportUrl, downloadAuditExport, emptyAuditFilter, verifiedAuditExportBlob, type AuditScope } from './audit.ts';
+import { auditExportFilename, auditExportUrl, downloadAuditExport, emptyAuditFilter, verifiedAuditExportBlob, type AuditScope } from './audit.ts';
 
 beforeEach(() => vi.stubGlobal('window', { location: { origin: 'https://hikyo.test' } }));
 afterEach(() => vi.unstubAllGlobals());
 
 const orgScope: AuditScope = { org: 'org_1' };
+
+it('keeps exported filenames qualified by their selected scope', () => {
+  expect(auditExportFilename({ instance: true })).toBe('hikyo-audit-instance.jsonl');
+  expect(auditExportFilename(orgScope)).toBe('hikyo-audit-org_1.jsonl');
+  expect(auditExportFilename({ org: 'org_1', project: 'proj_1', environment: 'env_1' })).toBe('hikyo-audit-org_1-proj_1-env_1.jsonl');
+});
 
 // auditExportUrl runs the same auditQuery the interactive pages send, so it is
 // the public surface that pins filter serialization: empty fields drop, the

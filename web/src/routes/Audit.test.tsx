@@ -205,3 +205,22 @@ it('pins the instance query ceiling across browser pages', async () => {
     expect(container.querySelector('.audit__empty')?.textContent).toContain('No events match this filter.');
   } finally { await unmount(); }
 });
+
+it('does not announce the end of the trail when a later page loses authority', async () => {
+  let calls = 0;
+  vi.stubGlobal('fetch', async () => {
+    calls++;
+    return calls === 1
+      ? Response.json({ items: [event], count: 1, next_after_seq: 1, upper_seq: 19, exhausted: false })
+      : Response.json({ error: { code: 'forbidden', message: 'forbidden' } }, { status: 403 });
+  });
+  const { container, unmount } = await renderForm(<MemoryRouter><InstanceAudit /></MemoryRouter>);
+  try {
+    await settleTask();
+    const more = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Load more');
+    await act(async () => more?.click());
+    await settleTask();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('audit-read grant on this instance');
+    expect(container.querySelector('.audit__end')).toBeNull();
+  } finally { await unmount(); }
+});

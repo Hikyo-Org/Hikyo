@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
-import { Audit } from './Audit.tsx';
+import { Audit, InstanceAudit } from './Audit.tsx';
 
 import { expectLeftAlignedPage } from '../../.storybook/layout.ts';
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -112,6 +112,49 @@ export const ProjectNoSectionTabs: Story = {
     await waitFor(() => expect(canvas.getByRole('heading', { name: 'Filter' })).toBeVisible());
     await waitFor(() => expect(canvas.getByRole('heading', { name: 'Events' })).toBeVisible());
     await expect(canvas.queryByRole('tablist')).toBeNull();
+  },
+};
+
+const instanceEvent = { ...event, scope_class: 'instance', actor_class: 'human', source_ip: '192.0.2.7', user_agent: 'Instance audit fixture', actor_credential_id: 'cred_fixture' };
+
+export const InstanceSecurity: Story = {
+  render: () => <InstanceAudit />,
+  parameters: {
+    app: {
+      auth: true, path: '/instance/audit', routePath: '/instance/audit',
+      responses: [trail({ body: page([instanceEvent]) })],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('heading', { name: 'Instance audit', level: 1 })).toBeVisible();
+    await userEvent.click(await canvas.findByRole('button', { name: /Dana Jacobs/ }));
+    const panel = canvas.getByRole('complementary', { name: 'Event detail' });
+    await expect(within(panel).getByText('192.0.2.7')).toBeVisible();
+    await expect(within(panel).getByText('Instance audit fixture')).toBeVisible();
+    await expect(within(panel).getByText('cred_fixture')).toBeVisible();
+  },
+};
+
+export const InstancePhone: Story = {
+  ...InstanceSecurity,
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};
+
+export const InstanceExportFailure: Story = {
+  render: InstanceSecurity.render,
+  parameters: {
+    app: {
+      auth: true, path: '/instance/audit', routePath: '/instance/audit',
+      responses: [
+        trail({ body: page([instanceEvent]) }),
+        { url: /\/instance\/audit\/export/, status: 500, body: { error: { code: 'internal', message: 'Synthetic export failure' } } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await canvas.findByRole('button', { name: /Dana Jacobs/ });
+    await userEvent.click(canvas.getByRole('button', { name: 'Export JSONL' }));
+    await expect(await canvas.findByRole('alert')).toHaveTextContent('No download was saved.');
   },
 };
 
