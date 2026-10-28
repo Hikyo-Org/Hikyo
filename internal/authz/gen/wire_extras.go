@@ -262,6 +262,7 @@ var reviewedWireExtras = wireExtras{
 		"http:PUT /api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration": {Ops: []string{"OpKeySecretRuleChange"}},
 	},
 	Entries: map[string]wireRow{
+		"job:auth-refusal-seal":                  {Class: "ClassSystem", Events: []string{"EventRequestRefused"}},
 		"cli:dev":                                {Class: "ClassTenant", Events: []string{"EventDeveloperCredentialMinted", "EventDeveloperCredentialMintRefused", "EventDeveloperCredentialRevoked", "EventDeveloperCredentialsListed"}},
 		"cli:" + multicall.RootKeyStage:          {Class: "ClassSystem"},
 		"cli:" + multicall.TLSStage:              {Class: "ClassSystem"},

@@ -1,8 +1,8 @@
 # #1034 authentication refusal signals: decision packet
 
-Status: **HOLD for the specific audit amendment and its required review.**
-This packet proposes a contract. It does not amend an accepted ADR, register an
-event, claim an implemented security floor, or close #1034.
+Status: **Exact contract approved by the owner on 2026-10-28; producer implemented, final validation in progress.**
+The owner explicitly waived cross-provider review for #1034 only. Maintainer
+security review and the human merge gate remain. This does not close #1034.
 
 Source inspected: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, the live
 `Hikyo-Org/Hikyo` main on 2026-10-28. Scope: refusal producer, vocabulary,
@@ -11,7 +11,7 @@ belong to [#1035](https://github.com/Hikyo-Org/Hikyo/issues/1035); admission
 enforcement belongs to [#1040](https://github.com/Hikyo-Org/Hikyo/issues/1040).
 No release ledger, deployment, production fixture or notification is changed.
 
-## Decision that prevents activation
+## Recorded owner decision
 
 [Issue #1034](https://github.com/Hikyo-Org/Hikyo/issues/1034) explicitly requires
 an amendment before replacing silent invalid bearer authentication with a
@@ -23,22 +23,22 @@ aggregation licence does not select a storage schema or loss policy.
 reopening the locked decision's ticket, the same adversarial cross-model review,
 and recording the amendment in the ADR. The audit decision is
 [#24](https://github.com/Hikyo-Org/Hikyo/issues/24), with MCP propagation to
-[#627](https://github.com/Hikyo-Org/Hikyo/issues/627). No amendment is recorded
-here. Approval of the overall stabilization recommendations is not this
-decision or a waiver of its review requirement.
+[#627](https://github.com/Hikyo-Org/Hikyo/issues/627). The specific owner approval now records this amendment in the canonical ADR.
+The earlier overall stabilization approval alone did not authorize it.
 
-Cross-provider review is **SKIPPED**, because the approved Anthropic subscription
-path is unavailable. No paid API or replacement provider was authorized. Ordinary
-source inspection and local tests do not satisfy that gate. Maintainer security
-review and the later human merge instruction also remain required.
+The owner subsequently approved this exact packet and explicitly waived
+cross-provider review for #1034 only. No cross-provider review was performed;
+no paid fallback was authorized. The approval is recorded in the canonical
+[audit amendment](../adr/auth-refusal-signals.md), operative on implementation
+merge. Maintainer security review and the later human merge instruction remain.
 
 ## Real route and artifact matrix
 
-The table separates current ownership from proposed coverage. Grammar is a
+The table separates existing ownership from generic producer coverage. Grammar is a
 caller claim, never evidence of a principal. A refusal is not an authorization
 denial merely because it occurred on a protected route.
 
-| Entry and artifact | Current owner and result | Proposed generic producer responsibility |
+| Entry and artifact | Baseline owner and result | Implemented generic producer responsibility |
 | --- | --- | --- |
 | `POST /api/v1/auth/local/login`, browser or CLI password | `service.Auth.LocalLogin`; durable `auth.login` failure, no attempted username payload | Preserve dedicated login event; no second refusal event |
 | `GET /api/v1/auth/whoami`, ordinary `br` cookie or `cli` bearer; account-security siblings | `authz.authenticateSession` and `authenticateResolvedSession`; missing/malformed cheap rejection; unknown, expired, revoked, generation/epoch stale return unauthenticated | Generic artifact refusal after final resolution; retain identical unknown/dead response and read-work classes |
@@ -71,9 +71,9 @@ uses the transaction's capture/flush protocol; the returned nonexistent sentinel
 from `refuseAdmission` is not itself the persistence receipt. Do not infer
 success or failure of persistence merely from its ignored return value.
 
-## Recommended amendment, proposed only
+## Approved summary contract
 
-Choose a **durable bounded summary**, `auth.request_refused` schema v1, in the
+The owner approved a **durable bounded summary**, `auth.request_refused` schema v1, in the
 instance security trail. This replaces only the generic silent authentication
 and named early-refusal cases above. It is neither a mirror of existing audit
 events to stdout nor a per-source Prometheus label.
@@ -95,10 +95,10 @@ events to stdout nor a per-source Prometheus label.
    accumulator to start a new one. The implementation must prove this protocol
    on both engines before it is operative.
 4. Bound signal work separately: eight writers in flight, at most 64 waiting,
-   and a 100 ms total deadline including queue acquisition. These are proposed
+   and a 100 ms total deadline including queue acquisition. These are approved
    signal-work bounds, not changes to #1040 source budgets. Request cancellation
-   cannot create an unbounded background task. Numeric defaults require the
-   same review as the contract; no implementation benchmark is claimed here.
+   cannot create an unbounded background task. The owner approval includes these numeric defaults; no implementation
+   benchmark is claimed here.
 5. Sampling is deliberately bounded: at most the first 32 accepted samples per
    window. Retain exact durable counters for accepted updates, not an exact
    record for every flood request. Samples retain canonical source IP, a
@@ -123,8 +123,9 @@ events to stdout nor a per-source Prometheus label.
    operational health so empty results cannot imply no recent refusals.
 8. Sink, queue or deadline failure preserves the original refusal status/body
    and cannot authenticate anyone. It increments a closed, label-bounded health
-   counter and makes signal health degraded. Such requests are explicitly
-   **not durably counted**. No claim of lossless recording during datastore
+   counter and makes signal health degraded. Such calls have **no confirmed durability receipt**; an interrupted commit can
+   have an uncertain outcome. The failure counter counts unconfirmed accounting
+   calls, including seals, rather than an exact number of lost network requests. No claim of lossless recording during datastore
    outage is made. This exception to the no-silent-loss aspiration must be
    accepted explicitly, including the independent collector's health alert.
    Never emit arbitrary sink errors or request data to logs.
@@ -139,8 +140,8 @@ events to stdout nor a per-source Prometheus label.
     sample. The current `audit.Context` carries source, user agent and origin,
     but no request correlation; new correlation must have one canonical owner.
 
-The explicit loss boundary in item 8 is why this design cannot be silently
-inferred from an existing aggregation licence. If exact durable accounting for
+The owner explicitly accepted the loss boundary in item 8 as part of the
+exact contract approval. It was not inferred from the aggregation licence. If exact durable accounting for
 every network refusal, including sink failure, is required, this recommendation
 does not meet it; that alternative requires a separately reviewed available
 durable admission/spool design and its resource budget. Per-request append-only
@@ -159,6 +160,11 @@ request rate and are not recommended.
   These are coordination reports, not validated changes in this packet's base.
   Generic observation must key the existing overload sentinel before any
   resolver state is known, including at those sibling transports.
+  The dependency is PR #1084 at `f5faf05fcb61e69327db3bf492c5a0c9ca0d40cc`.
+  Its owner reports exact-head hosted feedback, CodeQL and full repository
+  invariants passing; local lint hit its unchanged aggregate deadline. It is
+  unmerged and still requires maintainer security review. Combined-source
+  runtime proof will be recorded separately from this lane's own head.
 - **#1035:** consume sealed instance security events through its existing
   instance proof, query and export owners. Add filter vocabulary only through
   canonical generated contracts if required. Operator tests must correlate an
@@ -169,77 +175,63 @@ request rate and are not recommended.
   failed signal accounting from an absence of attacks. No external messages or
   new collector credentials are authorized by this packet.
 
-## Evidence and required acceptance
+## Implementation and validation
 
-`TestAuthenticationRefusalWireCompatibility` uses the production HTTP router,
-real services and both datastore fixtures. It compares missing/malformed,
-unknown/expired/revoked browser and CLI sessions, generation/epoch staleness and
-unknown/expired/revoked machine credentials; checks live controls and conflicting
-channels; preserves one dedicated wrong-artifact refusal; and inspects complete
-captured response headers/bodies, Debug logs, metrics and both audit exports for
-bearer and request-path/query canaries. It asserts that unauthenticated failures
-do not become `grant.denied`. It does not pin silence as a permanent invariant.
+The source producer observes explicit outcomes from authentication, transport and
+admission owners. It settles the pending signal before final response headers.
+Successful SPA documents and incidental dead-cookie CSRF probes do not invent a
+failure. The shared receipt suppresses a generic signal only after the dedicated
+transaction or rollback-settlement flush commits. A failed dedicated write keeps
+its existing fail-closed error and cannot suppress generic fallback accounting.
 
-This is compatibility coverage, **not implemented refusal signal acceptance**.
+The dedicated singleton writer and system sealer use the ordinary transaction
+owner. PostgreSQL row locking and SERIALIZABLE retries, or SQLite's write owner,
+coordinate nodes. Audit inserts, staging reset and the next increment commit
+atomically. Migrations 80 add only the bounded mutable row on both engines. The
+normal sqlc/authz generators and development schema-identity generator own the
+checked-in outputs. Backup inventory includes staging automatically; PostgreSQL
+restore may replace only the untouched seed, never pending refusal evidence.
 
-Validation on source commit `92cfbe8c1b0d58a36913cc92e493e5c2cf146144`:
+The operator guide is
+[authentication-refusal-signals.md](../operations/authentication-refusal-signals.md).
+It explains publication delay, retention, sample correlation, unsampled counts,
+fixed health series and commit-outcome uncertainty. No reader route or
+admission-enforcement repair is included in this PR.
 
-- Complete-diff `fast-feedback.sh --working-tree --plan` selected Go only;
-  the shared driver passed whitespace, changed-Go formatting and compilation
-  in 179 seconds. No frontend prerequisite or unrelated language check was
-  selected locally.
-- `TestAuthenticationRefusalWireCompatibility`, `TestAuditCore`,
-  `TestMachineAuthIsUniform`,
-  `TestDeveloperUnknownCredentialFloodBoundsDurableRefusals`, and
-  `TestMCPToolsEndToEndCanaryAndDenial` passed on both SQLite and PostgreSQL.
-  The MCP test exercised both modern and Codex profiles.
-- Full `internal/server`, `internal/audit` and `internal/admission` package tests
-  passed. The aggregate validation command returned zero and ran through the
-  shared heavy queue. The isolated PostgreSQL fixture was disposable.
-- Every generic session/machine refusal observed by the new test returned 401
-  with zero new instance events, reproducing the producer gap. Existing
-  artifact-class refusal and authenticated denial each remained exactly one
-  event; captured credential and request-data canaries were absent.
-- GitHub reported the source commit Verified and all three hosted feedback
-  lanes passed. This is not full candidate CI, independent review, release or
-  deployed evidence. Subsequent documentation-only updates do not change the
-  tested Go blob `6c4b16ffac204522aaa06e1dc59e461a4babd24d`.
+The prior compatibility-only head `bc7ea467520c89c956e755197a2cb3202db3741c`
+reproduced generic silence on main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
+Its local/hosted results do not qualify the producer added afterward. Canonical
+main was rechecked at `970ac0db7c6024f91dedcefe34db7ca560b247e3`; the intervening
+changes were documentation only.
 
-The following remain **NOTRUN** until the amendment is operative and a producer
-exists:
+Current producer checks exercise the real router and services on SQLite and
+PostgreSQL, including modern/Codex MCP. They cover browser/CLI/machine dead and
+unknown artifacts, stale generation/epoch, connection/workspace/SCIM siblings,
+CSRF/DPoP/channel refusals, dedicated developer/federation/SCIM/login ownership,
+retained revoked replay correlation, bounded source floods and concurrent nodes,
+startup recovery, sink and seal failures, public cap observation and complete
+wire/log/metrics/audit canaries. Exact final source and results will be recorded
+below after validation completes. No hosted producer CI result is claimed yet.
 
-- Real generic revoked-token replay to retained source/correlation record through
-  the #1035 API, CLI and browser interfaces; MCP entry points and early-cap path.
-- Missing/malformed DPoP, live CSRF mismatch, developer/federation/SCIM dedicated
-  event receipt suppression and sink failure without duplicate events.
-- Distributed-source floods exceeding sample capacity; constant staging size,
-  at most five sealed events/window, bounded writers/waiters/deadline, exact
-  accepted totals and explicit unsampled/failed-accounting counts.
-- Two-node concurrent rotation, crash/restart, quiet-window flush, seal failure,
-  unavailable sink and integer overflow on both engines. Preserve old pending
-  windows rather than overwriting evidence under pressure.
-- Complete-output canaries for request bodies, passwords, attempted usernames,
-  forwarding/request-ID spoofing and proof contents through those producers.
-- Existing `TestAuditCore`, dedicated-owner suites, admission shared-backend
-  tests, closed registry/redaction checks, full lint and generated contracts
-  after the final implementation.
+Cross-provider review is **SKIPPED**, under the explicit #1034-only waiver.
+Maintainer security review, protected merge-group proof and a later explicit
+human merge instruction remain **HOLD**. Hosted/local source checks do not prove
+publication, deployment, live-provider acceptance or real collector delivery.
 
-## Executable continuation
+## Executable handoff
 
-1. Obtain the specific contract decision and satisfy the locked ADR amendment
-   process, or record an explicitly bounded owner change to that process. Do not
-   interpret general 1.0 approval as either. Reopen #24 and record approved
-   propagation in the canonical audit ADR only after the gate is satisfied.
-2. Implement through the existing audit/authentication/transport owners, with
-   SQLite and PostgreSQL migrations and the structured-sample validator. Add
-   generator inputs, then regenerate affected registries/contracts. Recheck
-   final #1040 and #1035 heads before integrating; do not repair their readers
-   or admission algorithms in this lane.
-3. Add failing real-path signal tests, implement the producer and sealer, then
-   prove the acceptance negatives above. Select local checks from the complete
-   PR diff with `scripts/ci/fast-feedback.sh --working-tree --plan`; run them
-   through the shared heavy queue where required. Use disposable databases.
-4. Update this handoff with the tested revision, exact local/hosted proof and
-   remaining review gates. Sign and DCO every commit, verify the full PR range
-   before pushing and GitHub verification afterward. Keep the PR unmerged
-   pending the later explicit maintainer merge instruction.
+1. Validate this PR's complete diff using
+   `scripts/ci/fast-feedback.sh --working-tree --plan`, then the selected shared
+   driver and affected owner/consumer suites. Persistence proof requires both
+   datastores. Keep unavailable or failed checks explicit.
+2. Integrate with #1040 PR #1084 and #1035 PR #1045 at pinned heads. Exercise an
+   isolated revoked replay through the supported reader after the window seals;
+   match `X-Hikyo-Request-ID` to the payload sample rather than the summary's
+   envelope correlation. Prove canonical overload without a second source charge.
+3. Obtain maintainer security review on the final signed/DCO PR head. Fresh
+   hosted feedback/invariants and protected current-base merge proof remain
+   separate requirements. Do not merge without a later explicit instruction.
+4. Before release acceptance, #1037/#1038 owners must collect these sealed
+   records and the five health series, and provide their own resource-specific
+   external collection/alert receipts. This source PR does not authorize external
+   messages, production mutation, paid usage or publication.

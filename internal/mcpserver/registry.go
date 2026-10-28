@@ -14,6 +14,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
@@ -256,6 +257,7 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 				},
 			}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 				ctx = operation.WithContract(ctx, spec.Contract)
+				audit.SetRefusalOperation(ctx, spec.Contract.ID)
 				bearer, _ := ctx.Value(bearerContextKey{}).(Bearer)
 				output, err := handler(ctx, bearer, input)
 				if err != nil {

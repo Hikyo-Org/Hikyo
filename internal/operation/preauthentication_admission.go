@@ -3,6 +3,8 @@ package operation
 import (
 	"context"
 	"sync"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 type preauthenticationAdmissionKey struct{}
@@ -27,5 +29,8 @@ func AdmitPreauthentication(ctx context.Context) error {
 		return nil
 	}
 	a.once.Do(func() { a.err = a.charge() })
+	if a.err != nil {
+		audit.NoteRefusal(ctx, audit.RefusalAdmission)
+	}
 	return a.err
 }

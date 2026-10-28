@@ -480,6 +480,7 @@ var wireRegistry = map[string]wireEntry{
 	"http:PUT /api/v1/orgs/{org}/scim/v2/{binding}/Groups/{id}":                                                              {Class: ClassTenant, Ops: []Operation{OpSCIMGroupReplace}},
 	"http:PUT /api/v1/orgs/{org}/scim/v2/{binding}/Users/{id}":                                                               {Class: ClassTenant, Ops: []Operation{OpSCIMUserReplace}},
 	"job:activate":                  {Class: ClassSystem, Ops: []Operation{OpAdapterConfigure}, Events: []audit.EventType{audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome}},
+	"job:auth-refusal-seal":         {Class: ClassSystem, Events: []audit.EventType{audit.EventRequestRefused}},
 	"job:converge":                  {Class: ClassSystem, Ops: []Operation{OpAdapterPush}, Events: []audit.EventType{audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterKeyDelivered, audit.EventAdapterAbort}},
 	"job:scrub":                     {Class: ClassSystem, Ops: []Operation{OpAdapterPush}, Events: []audit.EventType{audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterScrub}},
 	"mcp:initialize":                {Class: ClassUnauthenticated},

@@ -451,6 +451,12 @@ type AuthInstanceState struct {
 	ReactivatedAt   sql.NullString
 }
 
+type AuthRefusalWindow struct {
+	ID          int64
+	WindowStart int64
+	State       string
+}
+
 type BackupState struct {
 	ID                      int64
 	LastSuccessAt           sql.NullString

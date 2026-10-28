@@ -35,6 +35,8 @@ const (
 	KindObject
 	// KindFreeTextMap is a bounded public config map with sanitized keys and values.
 	KindFreeTextMap
+	// KindObjectList is a bounded list of closed-schema objects.
+	KindObjectList
 )
 
 // FieldSpec declares one payload field.
@@ -96,6 +98,18 @@ func (s Schema) validate(t EventType, p Payload) error {
 			}
 			if err := spec.ObjectSchema.validate(t, object); err != nil {
 				return fmt.Errorf("audit: %s: payload field %q: %w", t, name, err)
+			}
+			continue
+		}
+		if spec.Kind == KindObjectList {
+			objects, ok := v.([]Payload)
+			if !ok || spec.MaxLen <= 0 || len(objects) > spec.MaxLen || spec.ObjectSchema == nil {
+				return fmt.Errorf("audit: %s: invalid bounded object list %q", t, name)
+			}
+			for _, object := range objects {
+				if err := spec.ObjectSchema.validate(t, object); err != nil {
+					return err
+				}
 			}
 			continue
 		}

@@ -3,6 +3,7 @@ package isolation
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -24,17 +26,18 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
-// These are compatibility controls for #1034's proposed audit amendment, not
-// acceptance of a new refusal producer. In particular, a 401 does not prove
-// that an operator can find a retained, correlated refusal record.
+// The real refusal producer preserves wire responses and dedicated event
+// ownership while accumulating bounded, correlated summaries on both engines.
 func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		identityFixtures(t, db)
 		auth := authService(t, db)
 		metrics := server.NewMetrics(nil)
+		signals := service.NewRefusalSignals(db)
+		metrics.SetRefusalSource(signals)
 		var logs bytes.Buffer
 		handler := server.New(&server.API{
-			Auth: auth, Settings: &service.ProjectSettings{DB: db, Auth: auth},
+			Refusals: signals, Auth: auth, Settings: &service.ProjectSettings{DB: db, Auth: auth},
 			Metrics: metrics, Log: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		}, nil)
 		const settings = api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings"
@@ -84,8 +87,7 @@ func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
 			if count("grant.denied") != before {
 				t.Fatalf("%s: unauthenticated request emitted an authorization denial", label)
 			}
-			// Report the current producer gap without making silence an invariant
-			// that a later approved producer would have to break to add coverage.
+			// A summary is pending in durable staging until its database window seals.
 			t.Logf("%s: 401, instance event delta %d", label,
 				queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events")-eventsBefore)
 		}
@@ -188,11 +190,55 @@ func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
 				refused("machine/epoch", settings, liveMachine, false)
 			}
 		}
+		// A currently unknown developer credential has its own durable event.
+		// Its failed authentication must not also increment the generic stage.
+		stateBefore := queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")
+		dev, _, err := crypto.NewArtifact(crypto.ArtifactDeveloper)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tokens = append(tokens, dev)
+		dedicatedBefore := count("auth.artifact_class_refused")
+		refused("developer/dedicated", settings, dev, false)
+		if count("auth.artifact_class_refused") != dedicatedBefore+1 || queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1") != stateBefore {
+			t.Fatal("dedicated developer refusal lost or duplicated")
+		}
+		// Flooding changes neither storage shape nor telemetry labels. Each
+		// request gets a new server request id, independent of spoofed input.
+		acceptedBefore := signals.RefusalHealth().Failures
+		for i := 0; i < 96; i++ {
+			request(http.MethodGet, api.PathPrefix+"/auth/whoami", "", false, func(r *http.Request) {
+				r.RemoteAddr = fmt.Sprintf("192.0.2.%d:12345", i+1)
+				r.Header.Set("X-Request-ID", secret)
+			})
+		}
+		var staged audit.RefusalWindow
+		if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &staged); err != nil {
+			t.Fatal(err)
+		}
+		if len(staged.Samples) > audit.RefusalSampleLimit {
+			t.Fatalf("sample count %d", len(staged.Samples))
+		}
+		if signals.RefusalHealth().Failures != acceptedBefore {
+			t.Fatal("serial flood unexpectedly failed accounting")
+		}
+		start := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id=1")
+		execRaw(t, db, fmt.Sprintf("UPDATE auth_refusal_window SET window_start=%d WHERE id=1", start-60))
+		if err := signals.Seal(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.request_refused'"); got < 4 {
+			t.Fatalf("sealed %d stage summaries, need artifact/conflict/proof/csrf", got)
+		}
+		if pending := signals.RefusalHealth().PendingSince; pending != 0 {
+			t.Fatalf("sealed window still pending: %d", pending)
+		}
 		// Vary secret-shaped paths and queries through the real router. RED
 		// telemetry must keep its closed class labels and never echo either.
 		for i := 0; i < 32; i++ {
 			request(http.MethodGet, api.PathPrefix+"/"+secret+fmt.Sprint(i)+"?secret="+secret, "", false, nil)
 		}
+		request(tokens[0], api.PathPrefix+"/auth/whoami", "", false, nil)
 		op := server.NewOperational(nil, mcpOperationalHealth{}, metrics)
 		scrape := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 		scrape.RemoteAddr = "127.0.0.1:12345"
