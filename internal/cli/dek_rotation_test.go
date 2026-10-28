@@ -184,6 +184,54 @@ func TestDEKRotationScopeRefusals(t *testing.T) {
 	}
 }
 
+// An empty explicit selector cannot silently inherit a target or broader scope.
+func TestDEKRotationEmptyExplicitSelectors(t *testing.T) {
+	for _, verb := range []string{"rotate-dek", "reencrypt"} {
+		for _, scope := range []string{"instance", "project"} {
+			for _, selector := range []string{"instance", "context", "org", "project", "env"} {
+				for _, form := range []string{"separate", "equals"} {
+					t.Run(verb+"/"+scope+"/"+selector+"/"+form, func(t *testing.T) {
+						ios, stderr, calls := dekRefusalIO(t)
+						getenv := ios.Env.Getenv
+						ios.Env.Getenv = func(key string) string {
+							switch key {
+							case "HIKYO_INSTANCE":
+								return "local"
+							case "HIKYO_ORG":
+								return "org_70"
+							case "HIKYO_PROJECT":
+								return "prj_70"
+							case "HIKYO_ENV":
+								return "env_70"
+							default:
+								return getenv(key)
+							}
+						}
+						args := []string{verb}
+						if verb == "rotate-dek" {
+							args = append(args, "--yes")
+						}
+						if scope == "instance" {
+							args = append(args, "--instance-scope")
+						}
+						if form == "equals" {
+							args = append(args, "--"+selector+"=")
+						} else {
+							args = append(args, "--"+selector, "")
+						}
+						if code := cli.Run(t.Context(), ios, args); code != cli.ExitUsage {
+							t.Errorf("exit %d, want usage; stderr=%s", code, stderr)
+						}
+						if calls.Load() != 0 {
+							t.Fatalf("empty explicit selector fell back to ambient scope: %d HTTP requests", calls.Load())
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 // An explicit instance must win over another trusted instance selected by the
 // environment. A typo must fail closed rather than falling back to either one.
 func TestDEKRotationInstanceTarget(t *testing.T) {

@@ -150,3 +150,43 @@ Run broad checks through the shared heavy queue per the contributor environment
 policy. Keep signing and the fail-closed pre-push hook enabled. Fetch and compare
 the existing PR branch before a normal fast-forward push; another writer's work
 must not be overwritten. The T3 workspace branch stays bound to this checkout.
+
+## Current-main integration and readiness refresh
+
+The existing PR history is preserved at integrated source
+`2dbaf3e7214d289e7362c72cfad583d10446cb46`, including main
+`3ca472243967fb92843c9653f15fdbe42a1ef897` without manual conflicts.
+#969 remains excluded. The existing owner instruction to merge on green
+remains authorization for merge once the named readiness requirements are met.
+
+A fresh automated Standards review found no actionable issue. The separate
+Spec review found that explicitly empty selectors were discarded by resolution
+and could silently inherit an ambient instance or tenant. Actual dispatcher
+regressions reproduced HTTP access after `--instance=`, empty org/project and
+empty environment/context selectors. The common parser now records supplied
+flag names, and only the DEK scope validator uses that metadata to reject empty
+explicit selectors and any explicit environment flag before resolution.
+Omitted dimensions retain the existing inheritance rules. Both verbs, both
+scopes and both empty-value spellings are covered by zero-HTTP regressions.
+
+Initial integrated-source feedback passed all 218 web files / 2,047 tests,
+67 client tests, typechecks, lint, compilation and docs/import checks. The full
+CLI/authz/server/service/API owner suites passed. Actual CLI rotation,
+re-encryption, current-session MFA refusal/success, interrupted/resumed walks,
+retirement and readable-data/login consumers passed on both SQLite and
+PostgreSQL (4.610 seconds). Final results after the empty-selector repair are
+recorded on the PR; initial results are not substituted for final-source proof.
+
+All eight existing before/after command-hint captures have been uploaded to
+GitHub and embedded in #1042's description. Their original checksum manifest
+is verified. The rendered components are unchanged by the main integration
+and empty-selector repair. The captures use synthetic fixture state and
+reconstruct only the before command text, as described above. Screenshots and
+offline HTML remain outside Git.
+
+Independent maintainer security review for this bot-origin contribution still
+requires explicit disposition. Automated review is compensating evidence,
+not independent human review. No new review waiver is inferred from merge
+permission, and no provider, production mutation, release or deployment is
+included. Fresh current-head hosted checks and full merge-queue proof remain
+required before main integration.

@@ -1894,6 +1894,8 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 
 type commonFlags struct {
 	Flags
+	// provided distinguishes an empty explicit selector from an omitted flag.
+	provided  map[string]bool
 	operation AuthOperation
 	kinds     AuthKinds
 	Auth      string
@@ -1975,6 +1977,8 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 		return nil, commonFlags{}, err
 	}
 	c.positionals = positional
+	c.provided = make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { c.provided[f.Name] = true })
 	if c.Auth != "" && c.Auth != "human" && c.Auth != "machine" {
 		return nil, commonFlags{}, failf(ExitUsage, "--auth must be human or machine, got %q", c.Auth)
 	}

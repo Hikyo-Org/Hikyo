@@ -31,7 +31,7 @@ func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	if err := flags.checkNoPositionals("reencrypt"); err != nil {
 		return err
 	}
-	if err := checkDEKScopeFlags(flags.Flags, instanceScope, "reencrypt"); err != nil {
+	if err := checkDEKScopeFlags(flags, instanceScope, "reencrypt"); err != nil {
 		return err
 	}
 

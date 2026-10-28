@@ -32,7 +32,7 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 	if err := flags.checkNoPositionals("rotate-dek"); err != nil {
 		return err
 	}
-	if err := checkDEKScopeFlags(flags.Flags, instanceScope, "rotate-dek"); err != nil {
+	if err := checkDEKScopeFlags(flags, instanceScope, "rotate-dek"); err != nil {
 		return err
 	}
 
@@ -81,10 +81,18 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 
 // checkDEKScopeFlags rejects contradictory selectors before context lookup or
 // authentication, so malformed usage has the same exit regardless of state.
-func checkDEKScopeFlags(flags Flags, instanceScope bool, verb string) error {
-	if flags.Env != "" {
+func checkDEKScopeFlags(flags commonFlags, instanceScope bool, verb string) error {
+	if flags.provided["env"] || flags.Env != "" {
 		return failf(ExitUsage,
 			"hikyo %s: --env cannot select a DEK; use --org/--project for the entire project or --instance-scope", verb)
+	}
+	for _, selector := range []struct{ name, value string }{
+		{"instance", flags.Instance}, {"context", flags.Context},
+		{"org", flags.Org}, {"project", flags.Project},
+	} {
+		if flags.provided[selector.name] && selector.value == "" {
+			return failf(ExitUsage, "hikyo %s: --%s must not be empty; omit it to use inherited selection", verb, selector.name)
+		}
 	}
 	if instanceScope && (flags.Org != "" || flags.Project != "") {
 		return failf(ExitUsage,
