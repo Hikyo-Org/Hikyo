@@ -94,6 +94,50 @@ func TestOracleRejectsExistenceHeader(t *testing.T) {
 	}
 }
 
+func TestDenialCorrelationHeader(t *testing.T) {
+	const first = "019a2b3c-4d5e-7000-8000-000000000001"
+	const second = "019a2b3c-4d5e-7000-8000-000000000002"
+	for _, status := range []int{http.StatusNotFound, http.StatusOK} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			body := []byte(`{"error":{"code":"not_found"}}`)
+			if status == http.StatusOK {
+				body = []byte(`{"jsonrpc":"2.0","id":1,"result":{"isError":true}}`)
+			}
+			denial := func(values []string) response {
+				return response{status: status, body: body, headers: http.Header{"X-Hikyo-Request-Id": values}}
+			}
+			got, twin := denial([]string{first}), denial([]string{second})
+			if err := sameDenial(got, twin, status, nil); err != nil {
+				t.Fatalf("independent server correlation changed denial equivalence: %v", err)
+			}
+			for _, values := range [][]string{
+				nil, {""}, {"protected-canary"}, {strings.ToUpper(first)},
+				{"019a2b3c-4d5e-4000-8000-000000000001"},
+				{"019a2b3c-4d5e-7000-0000-000000000001"}, {first, second},
+			} {
+				bad := denial(values)
+				if sameDenial(bad, twin, status, nil) == nil || sameDenial(got, bad, status, nil) == nil {
+					t.Fatalf("invalid correlation accepted: %q", values)
+				}
+			}
+			missing := twin
+			missing.headers = nil
+			if sameDenial(got, missing, status, nil) == nil || sameDenial(missing, twin, status, nil) == nil {
+				t.Fatal("correlation presence difference accepted")
+			}
+			for _, canary := range []string{first, second} {
+				if sameDenial(got, twin, status, []string{canary}) == nil {
+					t.Fatal("normalization hid a protected correlation canary")
+				}
+			}
+			got.headers.Set("X-Object-Exists", "true")
+			if sameDenial(got, twin, status, nil) == nil {
+				t.Fatal("valid correlation hid another header difference")
+			}
+		})
+	}
+}
+
 func TestAuditOracleRequiresMatchingDurableEvent(t *testing.T) {
 	for _, body := range []string{`{"items":[],"note":"grant.denied"}`, `{"items":[{"type":"grant.denied","actor_id":"wrong-principal","org_id":"org","project_id":"project","origin":"mcp","outcome":"denied","payload":{"operation":"key.list"}}]}`} {
 		if requireDenialAudit(response{status: 200, body: []byte(body)}, "principal", "org", "project") == nil {

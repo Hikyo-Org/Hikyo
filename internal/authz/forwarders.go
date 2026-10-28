@@ -2,9 +2,9 @@ package authz
 
 import (
 	"context"
-	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"

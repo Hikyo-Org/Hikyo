@@ -268,11 +268,19 @@ func TestRequestRefusalSharedNodesCountEveryCommittedUpdate(t *testing.T) {
 		}
 		wg.Wait()
 		close(seals)
+		var failedSeals uint64
 		for err := range seals {
 			if err != nil {
-				t.Errorf("concurrent seal: %v", err)
+				failedSeals++
 			}
 		}
+		// Contending transactions can exhaust the approved 100 ms budget.
+		// Those calls must be visible as unconfirmed accounting, while a quiet
+		// worker recovers the same pending window without losing or resealing it.
+		if got := nodes[0].RefusalHealth().Failures + nodes[1].RefusalHealth().Failures; got != uint64(64-accepted)+failedSeals {
+			t.Fatalf("concurrent seal failure accounting: %d want %d", got, uint64(64-accepted)+failedSeals)
+		}
+		waitForRefusalSeal(t, db, service.NewRefusalSignals(db), accepted)
 		if got := sealedRefusalCount(t, db); got != accepted {
 			t.Fatalf("shared seal lost or duplicated committed counts: %d want %d", got, accepted)
 		}
@@ -348,28 +356,34 @@ func TestRequestRefusalWorkerRecoversQuietPendingWindow(t *testing.T) {
 			t.Fatal(err)
 		}
 		expireRefusalWindow(t, db)
-		restarted := service.NewRefusalSignals(db)
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan struct{})
-		go func() { defer close(done); restarted.Run(ctx) }()
-		defer func() { cancel(); <-done }()
-		deadline := time.NewTimer(3 * time.Second)
-		defer deadline.Stop()
-		tick := time.NewTicker(10 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			health := restarted.RefusalHealth()
-			if health.Healthy && health.PendingSince == 0 {
-				if sealedRefusalCount(t, db) != 1 {
-					t.Fatal("quiet startup seal lost or duplicated evidence")
-				}
-				return
-			}
-			select {
-			case <-tick.C:
-			case <-deadline.C:
-				t.Fatalf("startup sealer did not recover pending evidence: %+v", health)
-			}
-		}
+		waitForRefusalSeal(t, db, service.NewRefusalSignals(db), 1)
 	})
+}
+
+// waitForRefusalSeal exercises startup and timer recovery through the real worker.
+// Every individual attempt retains its production deadline; the worker is joined.
+func waitForRefusalSeal(t *testing.T, db *store.DB, restarted *service.RefusalSignals, want int64) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { defer close(done); restarted.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		health := restarted.RefusalHealth()
+		if health.Healthy && health.PendingSince == 0 {
+			if got := sealedRefusalCount(t, db); got != want {
+				t.Fatalf("quiet worker lost or duplicated evidence: %d want %d", got, want)
+			}
+			return
+		}
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			t.Fatalf("startup sealer did not recover pending evidence: %+v", health)
+		}
+	}
 }

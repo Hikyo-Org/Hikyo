@@ -262,7 +262,6 @@ var reviewedWireExtras = wireExtras{
 		"http:PUT /api/v1/orgs/{org}/projects/{project}/keys/{key}/declaration": {Ops: []string{"OpKeySecretRuleChange"}},
 	},
 	Entries: map[string]wireRow{
-		"job:auth-refusal-seal":                  {Class: "ClassSystem", Events: []string{"EventRequestRefused"}},
 		"cli:dev":                                {Class: "ClassTenant", Events: []string{"EventDeveloperCredentialMinted", "EventDeveloperCredentialMintRefused", "EventDeveloperCredentialRevoked", "EventDeveloperCredentialsListed"}},
 		"cli:" + multicall.RootKeyStage:          {Class: "ClassSystem"},
 		"cli:" + multicall.TLSStage:              {Class: "ClassSystem"},
@@ -429,7 +428,9 @@ var reviewedWireExtras = wireExtras{
 		// Their system-proof mint sites are enumerated in systemSites; the probe
 		// contract is network unreachability, which the totality check asserts
 		// by finding no HTTP route for them.
-		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		// The server owns the refusal sealer's startup and joined timer worker;
+		// it is not an adapter outbox job or a separate network entry point.
+		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped", "EventRequestRefused"}},
 		// SSH user certificates (#155): client transport for the tenant-scoped
 		// CA, profile and certificate routes and nothing wider.
 		"cli:ssh-ca":      {Class: "ClassTenant"},

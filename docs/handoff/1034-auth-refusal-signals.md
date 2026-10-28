@@ -322,6 +322,60 @@ Maintainer security review, protected merge-group proof and a later explicit
 human merge instruction remain **HOLD**. Hosted/local source checks do not prove
 publication, deployment, live-provider acceptance or real collector delivery.
 
+## Merge-group validation follow-up
+
+[Trusted merge run 40700171393, attempt 1](https://github.com/Hikyo-Org/Hikyo/actions/runs/40700171393)
+tested merge candidate `ea2d64df406e93048bcd21efe9e2fc88cb3a40bb`, combining
+main `1655d9dffc72aacdef89127719142ebe22cb64bd` with producer head
+`1a52c1ee2a05eb270d4ca4761100b29d44f84b07`. Its failed preflight, isolation
+shard 1 and native artifact campaign were reproduced locally. The aggregate
+failure remains historical evidence; passing PR feedback did not supersede it.
+
+- Group the added audit import correctly in `forwarders.go`; the pinned import
+  checker now passes for all handwritten Go files.
+- Attach `EventRequestRefused` to the existing `cli:server` entry, whose runtime
+  starts and joins the sealer. The sealer is not an adapter outbox job. Remove
+  the invented `job:auth-refusal-seal` entry and regenerate the registry. Keep
+  classification totality and audit linkage invariants intact.
+- Pin the five new annotated SQL queries: singleton read/update on both engines
+  and the PostgreSQL restore seed guard. Existing pins are unchanged. The
+  reviewed SQL remains restricted to the singleton and the existing transaction
+  owner; no authority, query or exception was widened for this repair.
+- Teach the native artifact oracle that independent requests have independent
+  `X-Hikyo-Request-ID` values. Normalize only one canonical RFC UUIDv7 on each
+  response, retaining header-presence parity. Validate both responses for canaries
+  before normalization. Reject malformed, repeated and noncanonical ids, other
+  header differences, response-body differences and false successful MCP results.
+  Real REST and MCP positive/negative controls cover this distinction.
+
+The broader local run also exposed an incorrect concurrency-test assumption:
+two contending seals need not both finish inside the approved 100 ms deadline.
+The test now requires exact accounting for each unconfirmed seal, then runs and
+joins the real quiet-window worker and requires the exact committed count once.
+The worker recovery test retains its existing three-second observation budget.
+No production deadline, worker interval, queue bound or retry policy changed.
+
+The repaired import check, normal generator, oracle negatives and complete-diff
+feedback pass. All isolation invariants and refusal suites pass on SQLite and
+PostgreSQL in a separate 67.864-second run. Native stamped-artifact validation
+and fresh hosted checks are recorded separately in the PR; a failed or pending
+merge candidate is never treated as passing proof. The earlier aggregate local
+timeouts remain HOLD. Maintainer security review and the explicit human merge
+instruction remain required.
+
+Useful focused reproductions, in addition to the existing handoff commands:
+
+```sh
+scripts/ci/check-go-imports.sh
+go test -p 2 -count=1 ./internal/isolation -run '^TestInvariant'
+go test -p 2 -count=1 ./scripts/security/artifact-harness
+```
+
+The canonical `source-artifact-security` job in `.github/workflows/ci.yml`
+builds the stamped UI fixture and runs the full native campaign on both engines.
+Its receipt is source/local or hosted fixture proof, not a published release,
+live-provider, collector or deployed-instance acceptance receipt.
+
 ## Executable handoff
 
 Run commands from the repository root with pinned prerequisites and an
