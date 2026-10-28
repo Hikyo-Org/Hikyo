@@ -1,4 +1,4 @@
--- hikyo:reason singleton pre-auth refusal accounting locks before reading database time and bounded state
+-- hikyo:reason singleton pre-auth refusal accounting reads datastore time and bounded state under its transaction owner
 -- hikyo:authn-resolution
 -- name: ReadAuthRefusalWindow :one
 SELECT window_start, state, floor(extract(epoch FROM clock_timestamp()))::bigint AS now_seconds

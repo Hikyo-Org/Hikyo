@@ -228,6 +228,15 @@
         "postgres": "8f528edd0e5b37fd212cb0465750c14047bf93831158043585d4780e501359c4"
       }
     },
+    "RestoreAuthRefusalSeedOccupied": {
+      "authority": "#1034 PostgreSQL restore transaction, under held target-table locks, may replace only the untouched migration seed. Any pending window, counts or samples refuse restore. SQLite restore publishes a fresh database file and does not replace migrated target tables. TestRestoreOnlyReplacesUntouchedRefusalSeed exercises both the pristine seed and non-seed evidence. Maintainer security review remains required.",
+      "sql_hash": {
+        "postgres": "13eb6efbb0389dab5097f186a99ae96d7d8559691212fefad8211b6180a4f7d8"
+      },
+      "api_hash": {
+        "postgres": "a6d263a0323887a7a229240f63b45a7c35e6aaf6ee5d529d5cb40187f99172e0"
+      }
+    },
     "RestoreDiagnosticsSeedOccupied": {
       "authority": "Recovery-authorized restore transaction checks only installation diagnostics against migration seed defaults under target table locks, refusing non-seed metadata before replacement.",
       "sql_hash": {
@@ -1006,8 +1015,8 @@
       "reason": "Historical restored-schema catalog counts the two optional post-legacy credential tables before selecting the appropriate existing generated epoch query; no tenant rows are read by this probe."
     },
     "internal/store/backup.go:assertOnlyMigrationSeeds": {
-      "hash": "2023c313a355a66a850644bb718ed574118aa0ea87091c8bb44ca37ffd02fa2f",
-      "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. Static ops_diagnostics and developer_credential_policy seed checks use generated RestoreDiagnosticsSeedOccupied and RestoreDeveloperPolicySeedOccupied; only the untouched developer policy default may be replaced.",
+      "hash": "0d72d1b019ba79160f172dee5d6f2623834ac9db3240cd714b40fefcae7d5d1c",
+      "reason": "Archive restoration checks dynamically discovered historical target tables for non-seed rows under held table locks. Static ops_diagnostics and developer_credential_policy seed checks use generated RestoreDiagnosticsSeedOccupied and RestoreDeveloperPolicySeedOccupied; only the untouched developer policy default may be replaced. The #1034 auth_refusal_window seed is replaceable only with zero window_start and the exact pristine bounded state, using generated RestoreAuthRefusalSeedOccupied; pending refusal evidence prevents replacement.",
       "callers": {
         "internal/store/backup.go:restorePostgresChecked": "4ebe47db6593ab6f1aeadc8406b0bf0e47c8d4f7e4c0e04cf254bd44faab54de"
       },
@@ -1615,6 +1624,11 @@
       "dependencies": [
         "internal/audit/audit.go:NewEventID",
         "internal/audit/audit.go:Validate",
+        "internal/audit/refusal.go:RefusalSample.Validate",
+        "internal/audit/refusal.go:RefusalStages",
+        "internal/audit/refusal.go:refusalInt",
+        "internal/audit/refusal.go:refusalStageIndex",
+        "internal/audit/refusal.go:validateRefusalSummary",
         "internal/audit/sanitize.go:SanitizeFreeText",
         "internal/audit/sanitize.go:checkSanitized",
         "internal/audit/schema.go:Schema.validate",
@@ -2688,10 +2702,15 @@
   },
   "helpers": {
     "internal/audit/audit.go:NewEventID": "bc4a2d8b1969be909dcfcb73fc5b4b75e6161fa8d2358cc7546212781dcc1a20",
-    "internal/audit/audit.go:Validate": "4517bfa4685572a7b84ae852a56d35dc4eea7c4f3a64337d9741ab2e1c82168f",
+    "internal/audit/audit.go:Validate": "fe477a29a20580233c267cde6e9940904a11629e69f4218813bd78ecd45f620b",
+    "internal/audit/refusal.go:RefusalSample.Validate": "309b202828164cea68d042ba22bbba29c8cd0e8183fb70ebbd6a353de471a122",
+    "internal/audit/refusal.go:RefusalStages": "436d12b7bd01c5b5a56c2d34fa660ad7f82a68101c8115d17ca80b27a5d0d117",
+    "internal/audit/refusal.go:refusalInt": "cc4885167d544e23258a5c6033f7b813e16fe9c75b8c2c70bbf5a1f60d59d2f8",
+    "internal/audit/refusal.go:refusalStageIndex": "8afc792652036c511a29f00d6ae32852f90f543a2ce4e288cb12616d6feb88e6",
+    "internal/audit/refusal.go:validateRefusalSummary": "518265c29127d8f229dc99ee529b5e6ef4b44ed01c53ea8806dcfc5bc0b78135",
     "internal/audit/sanitize.go:SanitizeFreeText": "b47e32976e66a058d830146f2bbce42c9b057bf9401c3b454a7684bd272b3207",
     "internal/audit/sanitize.go:checkSanitized": "2d9f318da587f3b0ddffd1a2fea2be9229e2521e9709bb4caf55e00c5ec3d32c",
-    "internal/audit/schema.go:Schema.validate": "61e7022c6a604225b84d425e7356eb2877f912a9419fff7cd218ee33f240dcd8",
+    "internal/audit/schema.go:Schema.validate": "086ada89ad592dce40382e830afc6c829375c8a21c683e694899f0663e735c93",
     "internal/audit/schema.go:checkConstraints": "0299a8fb2abf6ab691b62773b49b76d8527605cca94ab65624cf547b239a92b7",
     "internal/audit/schema.go:checkInt": "e92863c80707f3cd507551a591efc38e7835ceb5dae1853d286cb573d73da6e2",
     "internal/audit/schema.go:checkKind": "185a35388bf04a97c4d8b651c7d7304fbe17fc23da75d9fc4091665ae5ab2668",

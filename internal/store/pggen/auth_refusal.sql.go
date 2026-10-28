@@ -20,7 +20,7 @@ type ReadAuthRefusalWindowRow struct {
 	NowSeconds  int64
 }
 
-// hikyo:reason singleton pre-auth refusal accounting locks before reading database time and bounded state
+// hikyo:reason singleton pre-auth refusal accounting reads datastore time and bounded state under its transaction owner
 // hikyo:authn-resolution
 func (q *Queries) ReadAuthRefusalWindow(ctx context.Context) (ReadAuthRefusalWindowRow, error) {
 	row := q.db.QueryRow(ctx, readAuthRefusalWindow)
