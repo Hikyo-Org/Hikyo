@@ -76,3 +76,22 @@ nine stories passing. The strict ordered inventory now includes the intended
 Audit section; the existing selected-Certificates and single-selection checks
 remain intact. No product navigation, assertion strength or timeout was changed.
 Final dark/light story results and refreshed hosted proof are recorded on #1044.
+
+## Canonical automation grantability repair
+
+Inspection of failed steps inside the cancelled queue run found a second real
+failure: the machine-artifact contract could not satisfy the four project/env
+audit operations. The audit-model ADR's declared amendment part 3 already admits
+`audit-read` for project automation, but the domain allowlist omitted it.
+The prior wire fixture inserted its machine grant directly and hid the public
+grant writer's refusal. Replacing that seed with an authenticated grant POST
+reproduced HTTP 409 before repair.
+
+The canonical allowlist now admits only automation's declared audit capability.
+The independent owning-project, scope-depth and human-assurance gates are
+unchanged. The real grant writer and router tests cover project/environment
+success, workload refusal, and org/instance/foreign-project refusal. The strict
+machine-artifact contract is preserved, with no test exemption or gate removal.
+Final both-engine and owner results are recorded on the PR; this restores an
+existing accepted contract and introduces no new artifact class or broad
+collector authority.

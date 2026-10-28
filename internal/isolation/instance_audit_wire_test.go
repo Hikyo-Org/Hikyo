@@ -86,7 +86,14 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	grant("g_ia_sa_ar", string(sa.Principal), wire.org, wire.project)
+	// Use the public grant writer: a seeded row would hide an allowlist that
+	// advertises project collection but prevents operators from granting it.
+	grantPath := api.PathPrefix + "/orgs/" + wire.org + "/projects/" + wire.project + "/grants"
+	if code, body := wire.call(t, http.MethodPost, grantPath, map[string]string{
+		"principal": string(sa.Principal), "capability": "audit-read",
+	}); code != http.StatusOK {
+		t.Fatalf("grant project audit-read to automation = %d %s, want 200", code, body)
+	}
 
 	t.Run("project_automation_remains_tenant_confined", func(t *testing.T) {
 		own := api.PathPrefix + "/orgs/" + wire.org + "/projects/" + wire.project + "/audit"
@@ -101,6 +108,7 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		}
 		// Both outside scopes really exist and use schema-valid HTTP IDs.
 		for _, path := range []string{
+			api.PathPrefix + "/orgs/" + wire.org + "/audit",
 			api.PathPrefix + "/orgs/" + otherOrg + "/projects/" + otherProject + "/audit",
 			api.PathPrefix + "/orgs/" + wire.org + "/projects/" + siblingProject + "/audit",
 			api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0bb0/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0bb1/audit",
