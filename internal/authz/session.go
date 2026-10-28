@@ -196,6 +196,8 @@ func (a *TxAuthorizer) authenticateSession(ctx context.Context, presented string
 	return id, err
 }
 
+// resolveSession checks admitted artifact grammar before the existing uniform
+// session resolution path. The calling wrapper owns final refusal observation.
 func (a *TxAuthorizer) resolveSession(ctx context.Context, presented string, now time.Time, admits ...crypto.ArtifactType) (Identity, error) {
 	if presented == "" {
 		return Identity{}, domain.ErrUnauthenticated
@@ -250,6 +252,8 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 	return id, err
 }
 
+// resolveCaller selects the transaction-local resolver from artifact grammar;
+// only resolved state establishes identity and caller activity.
 func (a *TxAuthorizer) resolveCaller(ctx context.Context, presented string, now time.Time) (Identity, error) {
 	if presented == "" {
 		return Identity{}, domain.ErrUnauthenticated
@@ -301,6 +305,8 @@ func (a *TxAuthorizer) AuthenticateSCIMCaller(ctx context.Context, presented str
 	return id, binding, err
 }
 
+// resolveSCIMCaller checks credential liveness and epoch without deciding the
+// route binding. The SCIM wire owner applies that match after admission.
 func (a *TxAuthorizer) resolveSCIMCaller(ctx context.Context, presented string, now time.Time) (Identity, string, error) {
 	if err := crypto.ParseArtifact(presented, crypto.ArtifactSCIM); err != nil {
 		return Identity{}, "", domain.ErrUnauthenticated

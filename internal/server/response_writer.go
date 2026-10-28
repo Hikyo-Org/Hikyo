@@ -16,6 +16,8 @@ func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	return &responseWriter{ResponseWriter: w, status: http.StatusOK}
 }
 
+// WriteHeader forwards informational responses and commits one final status.
+// The final-header hook settles accounting before any final bytes reach the wire.
 func (w *responseWriter) WriteHeader(code int) {
 	if w.wroteHeader {
 		return

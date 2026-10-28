@@ -31,14 +31,18 @@ type RefusalHealth struct {
 	InFlight, Waiting int
 }
 
+// NewRefusalSignals creates a bounded accounting owner for the application runtime.
 func NewRefusalSignals(db *store.DB) *RefusalSignals {
 	return &RefusalSignals{db: db, slots: make(chan struct{}, 8), waiters: make(chan struct{}, 64)}
 }
 
+// RefusalHealth exposes the last accounting result and current bounded work.
 func (s *RefusalSignals) RefusalHealth() RefusalHealth {
 	return RefusalHealth{Healthy: s.healthy.Load(), Failures: s.failures.Load(), PendingSince: s.pending.Load(), InFlight: len(s.slots), Waiting: len(s.waiters)}
 }
 
+// update bounds queue acquisition and the durable transaction by one deadline.
+// Health records unconfirmed results without changing authentication responses.
 func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, RefusalDeadline)
 	defer cancel()
@@ -81,13 +85,19 @@ func (s *RefusalSignals) update(ctx context.Context, sample *audit.RefusalSample
 	return err
 }
 
+// Record durably stages one request sample or exposes accounting failure.
 func (s *RefusalSignals) Record(ctx context.Context, sample audit.RefusalSample) error {
 	return s.update(ctx, &sample)
 }
+
+// Seal checks and atomically publishes expired staging under the writer owner.
 func (s *RefusalSignals) Seal(ctx context.Context) error { return s.update(ctx, nil) }
 
 // Run flushes quiet windows and recovers pending staging on startup. Every
 // attempt is synchronous and deadline-bound; cancellation joins this worker.
+// Each tick exercises the locked writer path even when staging is empty. A
+// read-only pre-check would change that health probe and add another datastore
+// protocol; the approved minimum keeps one bounded attempt per second.
 func (s *RefusalSignals) Run(ctx context.Context) {
 	if ctx.Err() != nil {
 		return

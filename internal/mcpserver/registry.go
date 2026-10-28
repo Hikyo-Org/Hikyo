@@ -145,6 +145,8 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 	return registerWithOptions(registry, spec, inputSchemaOptions(), handler)
 }
 
+// registerWithOptions validates tool/schema declarations and binds their exact
+// operation metadata before invoking the ordinary service handler.
 func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaOptions *jsonschema.ForOptions, handler func(context.Context, Bearer, In) (Out, error)) error {
 	if registry == nil {
 		return errors.New("mcpserver: nil registry")

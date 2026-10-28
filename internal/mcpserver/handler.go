@@ -185,6 +185,8 @@ type requestMeta struct {
 	Name string         `json:"name"`
 }
 
+// ServeHTTP validates transport and protocol metadata, applies discovery or call
+// bounds, and dispatches through the closed registry with shared refusal context.
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == CodexPath {
 		h.serveCodex(w, r)

@@ -296,6 +296,27 @@ cookie-authenticated API; #1035 owns rendered-UI acceptance and screenshots.
 On the producer-only branch the supported-reader test reports NOTRUN because
 those routes are absent, rather than silently claiming reader delivery.
 
+### Automated review disposition
+
+The [CodeRabbit review of source `0e9b0863b8e90d61aedc7f448c885d1b145f3a69`](https://github.com/Hikyo-Org/Hikyo/pull/1074#pullrequestreview-5682815002)
+contained a documentation-coverage warning and one trivial, explicitly
+unverified performance suggestion. Function comments now explain the changed
+Go owners, validation bounds, commit receipts and sealer lifecycle. A lexical
+comparison confirms that the executable token streams are unchanged in every
+modified Go file; this follow-up changes documentation only. Focused audit and
+service regressions, SQL-contract validation and complete-diff feedback pass.
+The local source inventory finds function comments on all 51 touched,
+non-generated complex Go functions; this is not a claim about a new bot review.
+
+The sealer observation is correct: every node enters the bounded locked writer
+path once per second, even when no window needs sealing. No contention failure
+was demonstrated. The approved minimum retains that protocol and its writer
+health probe. A read-only pre-check would add another datastore read protocol
+and skip the writer probe on quiet ticks. It is not required to repair a
+correctness or observed availability failure. No runtime optimization, new
+storage/authority seam, provider review or paid benchmark was introduced for
+this unverified suggestion. Maintainer security review remains required.
+
 Cross-provider review is **SKIPPED**, under the explicit #1034-only waiver.
 Maintainer security review, protected merge-group proof and a later explicit
 human merge instruction remain **HOLD**. Hosted/local source checks do not prove

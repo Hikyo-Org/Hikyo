@@ -60,6 +60,8 @@ func newRunningGeneration(graph *applicationGeneration) *runningGeneration {
 	return &runningGeneration{graph: graph, requestContext: ctx, cancelRequests: cancel}
 }
 
+// start launches the generation workers under one cancellation and join owner.
+// Refusal accounting shares its bounded service across generation replacements.
 func (g *runningGeneration) start(ctx context.Context) {
 	ctx, g.cancelWorkers = context.WithCancel(ctx)
 	g.workersDone = make(chan struct{})

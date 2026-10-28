@@ -284,6 +284,8 @@ func bearer(ctx context.Context) string {
 // Meta
 // ---------------------------------------------------------------------------
 
+// GetMeta applies the public discovery allowance before returning the closed,
+// tenant-free protocol capability and instance-identity response.
 func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apigen.GetMetaResponseObject, error) {
 	// Under the instance-wide pre-auth admission limits like every other
 	// pre-auth path, with its own looser per-IP allowance: `login` calls this
@@ -853,6 +855,8 @@ func (a *API) validateAgainstContract(next http.Handler) http.Handler {
 	return a.validateAgainstContractWith(api.MatchRequest, next)
 }
 
+// validateAgainstContractWith matches once and shares that trusted operation
+// across SCIM handling, refusal attribution and request-shape validation.
 func (a *API) validateAgainstContractWith(
 	matchRequest func(*http.Request) (*api.MatchedRequest, error),
 	next http.Handler,

@@ -31,11 +31,15 @@ func (m *Metrics) SetRefusalSource(source RefusalHealthSource) {
 	}}
 	m.registry.MustRegister(c)
 }
+
+// Describe publishes only the five fixed, label-free accounting descriptors.
 func (c *refusalCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, d := range c.desc {
 		ch <- d
 	}
 }
+
+// Collect snapshots bounded process health without request-derived labels.
 func (c *refusalCollector) Collect(ch chan<- prometheus.Metric) {
 	s := c.source.RefusalHealth()
 	healthy := 0.0

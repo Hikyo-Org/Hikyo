@@ -25,6 +25,7 @@ const (
 	RefusalAdmission RefusalStage = "admission"
 )
 
+// RefusalStages returns the closed stage order used by durable counters.
 func RefusalStages() []RefusalStage {
 	return []RefusalStage{RefusalArtifact, RefusalConflict, RefusalProof, RefusalCSRF, RefusalAdmission}
 }
@@ -40,6 +41,8 @@ type RefusalSample struct {
 
 var refusalOperation = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9._:/-]{0,127}$`)
 
+// Validate checks canonical, bounded metadata. Operation membership is supplied
+// by the transport registry; this validator enforces its safe wire shape.
 func (s RefusalSample) Validate() error {
 	if refusalStageIndex(s.Stage) < 0 {
 		return fmt.Errorf("audit: invalid refusal stage")
@@ -58,6 +61,7 @@ func (s RefusalSample) Validate() error {
 	return nil
 }
 
+// refusalStageIndex maps a stage to its durable counter slot, or -1 if unknown.
 func refusalStageIndex(stage RefusalStage) int {
 	for i, value := range RefusalStages() {
 		if stage == value {
@@ -74,10 +78,12 @@ type RefusalWindow struct {
 	Samples []RefusalSample `json:"samples"`
 }
 
+// NewRefusalWindow initializes every counter and the bounded sample collection.
 func NewRefusalWindow() RefusalWindow {
 	return RefusalWindow{Counts: make([]int64, 5), Samples: []RefusalSample{}}
 }
 
+// Validate rejects malformed window bounds and samples not covered by a count.
 func (w RefusalWindow) Validate() error {
 	if len(w.Counts) != 5 || len(w.Samples) > RefusalSampleLimit {
 		return fmt.Errorf("audit: invalid refusal window bounds")
@@ -97,6 +103,8 @@ func (w RefusalWindow) Validate() error {
 	return nil
 }
 
+// Add increments an initialized, validated window and retains its first samples.
+// Invalid metadata and counter saturation fail without advancing the counter.
 func (w *RefusalWindow) Add(s RefusalSample) error {
 	if err := s.Validate(); err != nil {
 		return err
@@ -112,6 +120,7 @@ func (w *RefusalWindow) Add(s RefusalSample) error {
 	return nil
 }
 
+// Empty reports whether any committed refusal count remains to be sealed.
 func (w RefusalWindow) Empty() bool {
 	for _, n := range w.Counts {
 		if n != 0 {
@@ -149,15 +158,19 @@ func WithRefusalArtifactProbe(ctx context.Context) context.Context {
 	return context.WithValue(ctx, refusalArtifactProbeKey{}, true)
 }
 
+// WithRefusalReceipt installs shared request attribution before transport dispatch.
 func WithRefusalReceipt(ctx context.Context, source, requestID string) context.Context {
 	return context.WithValue(ctx, refusalReceiptKey{}, &refusalReceipt{sample: RefusalSample{SourceIP: source, RequestID: requestID, Operation: "unmatched"}})
 }
 
+// requestReceipt retrieves the shared candidate and durable ownership receipt.
 func requestReceipt(ctx context.Context) *refusalReceipt {
 	r, _ := ctx.Value(refusalReceiptKey{}).(*refusalReceipt)
 	return r
 }
 
+// NoteRefusal retains one candidate stage, with admission taking precedence.
+// Incidental artifact probes cannot claim the final authentication outcome.
 func NoteRefusal(ctx context.Context, stage RefusalStage) {
 	if probe, _ := ctx.Value(refusalArtifactProbeKey{}).(bool); probe && stage == RefusalArtifact {
 		return
@@ -181,6 +194,7 @@ func SetRefusalOperation(ctx context.Context, operation string) {
 	}
 }
 
+// RefusalRequestID returns server correlation without copying credential data.
 func RefusalRequestID(ctx context.Context) string {
 	if r := requestReceipt(ctx); r != nil {
 		r.mu.Lock()
@@ -190,6 +204,7 @@ func RefusalRequestID(ctx context.Context) string {
 	return ""
 }
 
+// PendingRefusal snapshots the candidate unless a dedicated event committed.
 func PendingRefusal(ctx context.Context) (RefusalSample, bool) {
 	if r := requestReceipt(ctx); r != nil {
 		r.mu.Lock()
@@ -208,6 +223,8 @@ func MarkDedicatedRefusal(ctx context.Context) {
 	}
 }
 
+// IsDedicatedRefusal classifies validated events that own a dedicated refusal.
+// Suppression still requires the transaction owner to confirm durable commit.
 func IsDedicatedRefusal(e Event) bool {
 	if e.Type == EventAuthArtifactClassRefused || e.Type == EventFederationRefused || e.Type == EventSCIMCredentialRefused {
 		return true
@@ -215,6 +232,7 @@ func IsDedicatedRefusal(e Event) bool {
 	return e.Type != EventRequestRefused && e.Outcome == OutcomeFailure && strings.HasPrefix(string(e.Type), "auth.")
 }
 
+// refusalInt accepts registered integer payload kinds and rejects others with -1.
 func refusalInt(value any) int64 {
 	switch n := value.(type) {
 	case int64:
@@ -225,6 +243,8 @@ func refusalInt(value any) int64 {
 	return -1
 }
 
+// validateRefusalSummary checks the system envelope, window/count relationships
+// and canonical samples after the registered payload schema has been validated.
 func validateRefusalSummary(e Event) error {
 	p := e.Payload
 	start, end, count, unsampled := refusalInt(p["window_start"]), refusalInt(p["window_end"]), refusalInt(p["count"]), refusalInt(p["unsampled_count"])

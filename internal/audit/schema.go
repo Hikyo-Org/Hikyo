@@ -74,6 +74,8 @@ const sha256HexLen = 64
 // Schema is one event type's closed payload field set.
 type Schema map[string]FieldSpec
 
+// validate enforces the closed field schema, required fields and typed bounds,
+// recursively checking each declared structured member.
 func (s Schema) validate(t EventType, p Payload) error {
 	for name := range p {
 		if _, ok := s[name]; !ok {

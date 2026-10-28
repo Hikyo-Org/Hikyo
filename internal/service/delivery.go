@@ -736,6 +736,8 @@ func (s *Delivery) callerActor(ctx context.Context, presented string) (Actor, er
 	return actor, err
 }
 
+// resolveDeliveryActor routes assertion-shaped input to federation validation;
+// ordinary artifacts remain unresolved until the transactional chokepoint.
 func (s *Delivery) resolveDeliveryActor(ctx context.Context, presented string) (Actor, error) {
 	if !oidcfed.LooksLikeToken(presented) {
 		return Bearer(presented), nil

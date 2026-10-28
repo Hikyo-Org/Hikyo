@@ -304,6 +304,8 @@ func settleDenials(ctx context.Context, db *store.DB, az *authz.TxAuthorizer, at
 	return settleDenialResult(ctx, db.Engine(), az, attemptErr, func(ctx context.Context, denials []authz.Denial) error { return flushOnce(ctx, db, denials) })
 }
 
+// settleDenialResult confirms committed dedicated ownership, or durably flushes
+// captured refusals after rollback. Retryable attempts receive no commit receipt.
 func settleDenialResult(ctx context.Context, engine store.Engine, az *authz.TxAuthorizer, attemptErr error, flush func(context.Context, []authz.Denial) error) error {
 	if attemptErr == nil {
 		az.CommittedRefusalReceipt(ctx)
