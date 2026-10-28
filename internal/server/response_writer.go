@@ -6,15 +6,18 @@ import "net/http"
 // panic recovery. A bare Write or Flush commits 200, matching net/http.
 type responseWriter struct {
 	http.ResponseWriter
-	status      int
-	wroteHeader bool
-	unmatched   bool
+	status       int
+	wroteHeader  bool
+	unmatched    bool
+	beforeHeader func(int)
 }
 
 func newResponseWriter(w http.ResponseWriter) *responseWriter {
 	return &responseWriter{ResponseWriter: w, status: http.StatusOK}
 }
 
+// WriteHeader forwards informational responses and commits one final status.
+// The final-header hook settles accounting before any final bytes reach the wire.
 func (w *responseWriter) WriteHeader(code int) {
 	if w.wroteHeader {
 		return
@@ -27,6 +30,9 @@ func (w *responseWriter) WriteHeader(code int) {
 	}
 	w.status = code
 	w.wroteHeader = true
+	if w.beforeHeader != nil {
+		w.beforeHeader(code)
+	}
 	w.ResponseWriter.WriteHeader(code)
 }
 

@@ -6,6 +6,30 @@
 
 The ops-spec inventory carries **two rows numbered 15** (the secret-scanning post-lock insertion collided with plans/pins/grants). Rows are referenced by *name* throughout the corpus, so no reference is ambiguous; renumbering the locked ADR's inventory is an editorial amendment under the oss-mechanics procedure, not a synthesis act — recorded here and in [open-items.md](./open-items.md), values untouched.
 
+## Authentication refusal summaries (#1034)
+
+Owner-approved 2026-10-28; operative with the
+[refusal signal amendment](../adr/auth-refusal-signals.md). These are signal-work
+bounds, not changes to authentication or #1040 admission quotas.
+
+| Entry | Value | Scope |
+| --- | --- | --- |
+| Datastore summary window | 60 seconds | fixed |
+| Durable staging rows | one instance singleton | fixed |
+| Staging state size | 16,384 bytes | fixed |
+| Source/request/operation samples | 32 across the whole window | fixed |
+| Sealed events | at most five per window, one per nonempty stage | fixed |
+| Sealer tick | one second, plus immediate startup recovery | fixed |
+| Signal writers | eight in flight and 64 waiting per process | fixed |
+| Signal-work deadline | 100 ms including queue acquisition | fixed |
+| Retention | existing instance security retention | instance-config |
+
+The [operator guide](../operations/authentication-refusal-signals.md) names the
+five fixed health series, sample/correlation lookup and explicit uncertainty on
+failed accounting. Pending evidence is never overwritten to start another
+window. Existing dedicated refusals and authenticated denials keep their own
+durability and cardinality.
+
 ## SAML (defaults fixed in [saml-sp.md](../adr/saml-sp.md); catalogued here as tunable entries)
 
 | Entry | Default | Scope |

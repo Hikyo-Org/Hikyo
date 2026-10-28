@@ -132,6 +132,8 @@ func checkNoSyncCommitDowngrade(repoRoot string) []string {
 // build failure behind it. See docs/handoff/47-first-slice.md, which routes
 // the wording to human disposition.
 var ResolutionSurfaceWriters = map[string]bool{
+	// #1034 approved bounded singleton accounting, with atomic append-only seals.
+	"UpdateRequestRefusals":        true,
 	"ClaimRemotePairingAttempt":    true,
 	"CreateRemotePairingInvite":    true,
 	"RevokeRemotePairingInvite":    true,

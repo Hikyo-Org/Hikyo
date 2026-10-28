@@ -37,6 +37,7 @@ type applicationGeneration struct {
 	auth                              *service.Auth
 	limiter                           *admission.Limiter
 	retention                         *service.Retention
+	refusals                          *service.RefusalSignals
 	certificate                       *managedCertificate
 	closeIdleConnections              func()
 	publicHandler, operationalHandler http.Handler
@@ -217,6 +218,11 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
 	metrics := server.NewMetrics(limiter)
+	if owner.refusals == nil {
+		owner.refusals = service.NewRefusalSignals(db)
+	}
+	refusals := owner.refusals
+	metrics.SetRefusalSource(refusals)
 	// Secret-change approvals (#151): the two label-free approval gauges read
 	// their counts at scrape time under scheduler authority (#151, mirroring the
 	// storage high-water gauge's shared-door read).
@@ -348,6 +354,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Admission:      limiter,
 		RequestBudget:  budget,
 		Metrics:        metrics,
+		Refusals:       refusals,
 		Version:        Version,
 		Log:            log,
 		TrustedProxies: proxies,
@@ -414,6 +421,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		auth:        authSvc,
 		limiter:     limiter,
 		retention:   retentionSvc,
+		refusals:    refusals,
 		certificate: certificate,
 		closeIdleConnections: func() {
 			updateHTTP.CloseIdleConnections()

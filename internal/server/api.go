@@ -161,6 +161,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	Refusals     RefusalRecorder
 	Runtime      RuntimeStatusSource
 	SelfConfig   *service.SelfConfig
 	Mail         MailService
@@ -283,6 +284,8 @@ func bearer(ctx context.Context) string {
 // Meta
 // ---------------------------------------------------------------------------
 
+// GetMeta applies the public discovery allowance before returning the closed,
+// tenant-free protocol capability and instance-identity response.
 func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apigen.GetMetaResponseObject, error) {
 	// Under the instance-wide pre-auth admission limits like every other
 	// pre-auth path, with its own looser per-IP allowance: `login` calls this
@@ -291,6 +294,7 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// throttles the client.
 	if a.Admission != nil {
 		if err := a.Admission.AdmitDiscovery(audit.FromContext(ctx).SourceIP); err != nil {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
 			return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		}
 	}
@@ -798,6 +802,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 		}
 		if value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "DPoP "); ok {
 			if r.Method != http.MethodGet || r.URL.Path != "/api/v1/instance/directory" || len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("DPoP")) != 1 || strings.TrimSpace(r.Header.Get("DPoP")) == "" {
+				audit.NoteRefusal(r.Context(), audit.RefusalProof)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
@@ -815,6 +820,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 		// contracts; accepting both would let a caller pick which contract
 		// applies. The refusal is uniform.
 		if headerVal != "" && cookieVal != "" {
+			audit.NoteRefusal(r.Context(), audit.RefusalConflict)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
@@ -849,6 +855,8 @@ func (a *API) validateAgainstContract(next http.Handler) http.Handler {
 	return a.validateAgainstContractWith(api.MatchRequest, next)
 }
 
+// validateAgainstContractWith matches once and shares that trusted operation
+// across SCIM handling, refusal attribution and request-shape validation.
 func (a *API) validateAgainstContractWith(
 	matchRequest func(*http.Request) (*api.MatchedRequest, error),
 	next http.Handler,
@@ -876,6 +884,7 @@ func (a *API) validateAgainstContractWith(
 		// pre-authentication Hikyo 400 describing the request — which is the
 		// thing the wire must never do.
 		operation := match.Operation()
+		audit.SetRefusalOperation(r.Context(), operation.ID)
 		if api.IsSCIMWireOperation(operation.ID) {
 			if !a.scimBodyIsOneValue(w, r) {
 				return

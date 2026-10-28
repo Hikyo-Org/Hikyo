@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -143,7 +144,7 @@ func (a *API) requireCSRF(next http.Handler) http.Handler {
 			return
 		}
 		presented := r.Header.Get(csrfHeader)
-		switch err := a.Auth.VerifyBrowserCSRF(r.Context(), session.Value, presented); {
+		switch err := a.Auth.VerifyBrowserCSRF(audit.WithRefusalArtifactProbe(r.Context()), session.Value, presented); {
 		case errors.Is(err, domain.ErrUnauthenticated):
 			// The cookie resolves to nothing. Not a cookie leg — let the
 			// request through and let the chokepoint judge it, which for an
@@ -152,12 +153,14 @@ func (a *API) requireCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		case err != nil:
+			audit.NoteRefusal(r.Context(), audit.RefusalCSRF)
 			refuseUnauthenticated(w)
 			return
 		}
 		companion, cerr := r.Cookie(browserCSRFCookie)
 		if cerr != nil ||
 			subtle.ConstantTimeCompare([]byte(presented), []byte(companion.Value)) != 1 {
+			audit.NoteRefusal(r.Context(), audit.RefusalCSRF)
 			refuseUnauthenticated(w)
 			return
 		}

@@ -215,6 +215,9 @@ func Validate(e Event, trail Trail, scope domain.Scope) error {
 	if err := spec.Schema.validate(e.Type, e.Payload); err != nil {
 		return err
 	}
+	if e.Type == EventRequestRefused {
+		return validateRefusalSummary(e)
+	}
 	return nil
 }
 

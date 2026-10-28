@@ -729,6 +729,16 @@ func resetDeliveryAttempt(out *FetchResult) { *out = FetchResult{} }
 // instance-wide write outage — the exact self-inflicted failure the ADR's
 // stale-but-valid rule exists to avoid.
 func (s *Delivery) callerActor(ctx context.Context, presented string) (Actor, error) {
+	actor, err := s.resolveDeliveryActor(ctx, presented)
+	if errors.Is(err, domain.ErrUnauthenticated) {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
+	}
+	return actor, err
+}
+
+// resolveDeliveryActor routes assertion-shaped input to federation validation;
+// ordinary artifacts remain unresolved until the transactional chokepoint.
+func (s *Delivery) resolveDeliveryActor(ctx context.Context, presented string) (Actor, error) {
 	if !oidcfed.LooksLikeToken(presented) {
 		return Bearer(presented), nil
 	}
