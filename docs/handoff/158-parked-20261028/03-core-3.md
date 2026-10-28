@@ -1,0 +1,32 @@
+# Parked #158 handoff: 3. Actual AWS attempts and closed setup continuations
+
+
+The complete hosted workflow inventory contains ten runs: nine failed and one historical run was cancelled. Every run is terminal and used attempt 1. No combination of partial passing leaves from different runs is a successful acceptance result. Later c05-c12 grants forbid automatic retry, rerun and cancellation; that rule must not erase the historical cancelled result.
+
+| Attempt | Exact hosted result | Interpretation and followup |
+| --- | --- | --- |
+| 18 October, run 39158333194 | Application3856fcca58c86e972ea54c493e50c277f78d09aa; 46 expected,11 pass/35 fail, none skipped/missing | Genuine identity/expiry passed; functional acceptance failed. Missing metadata CreateSecret token and fixture clock defects repaired afterward. 21/32 reservation charges retained; artifact13 ARNs plus8 recovered responses required separate absence evidence. |
+| 19 October, run 39221282489 | Application2682f59f4dbd7680c6647f6979c4270f230d37c5; workflow 911efa1e7eb85e43f5ab681625383911ccaaf93d;24 pass/22 fail,46 records | Led to bounded first-version visibility/promotion repairs. EvidenceSHA2561e3b5c372a924cc71a221a3c469dc2d5d650cf7dd56f56ea2d5aeedd16a821e4.27 new conservative reservations plus21prior=48 charged against53then approved. |
+| 19 October, runs39334716444 and39336083859 | Workflow01914e3274a93b83fb5868daa46bed26212c8ce9; both failed at exact-approval check before candidate checkout/federation | Protected admission failures, not additional successful or completed real suites. Run numbers3and4. |
+| 19 October, run 39338286913 | Same workflow 01914e...; run 5cancelled, sandbox has no steps | Historical pending protected job. Cancellation is retained as an observed result, not generalized into future cancellation authority. |
+| 20 October, run 39495071346 | Workflowe09fcf887040935ebd0a75959ced7727ec139e0d; run 6failed in private-session/expiry/both-engine step | Committed history records failure before the real suite. Do not fabricate46terminal functional records for this failure. The parent had reported preparation ready and requested actual human protected-deployment approval. |
+| c05,26October | Key64224f0e-697e-4090-9978-ea153625f6d9 created; no hosted acceptance | Native empty-response/task and once-control defects, ARN namespace separator and source review findings. Exact cleanup scheduled key deletion. |
+| c06,26October | Key4005b859-369d-4fa5-a96c-7b8e865ee712 created; zero IAM forwards, fixture roles, secret creations or dispatches | Native serializer emitted empty Tags= on CreatePolicy and UI Delete needed dialog scoping. Owner adopted exact transport fixes, but continuation held/closed and key retired. |
+| c07 initial and renewed,26October | Same keyb8806a19-57c8-4d77-9d1d-39c611a933a1; initial CLI/provisioning delay, then one separately approved same-key renewal | Renewal changed only approved times/owned setup version and boundary, not a new key or reservation pool. |
+| renewed c07 run 40390662284 | Application327dec159d680fab7b33a251ab46a2d1c16e9fa1; trusted workflowa25091501268b83ffff92aa558fce3207c868544;35 pass/11 fail,29creation attempts,27recorded ARNs | Lifecycle/sqlite, AssumeRole/sqlite, WebIdentity/sqlite and version-before-adopt/postgres leaves failed. Original evidence lacked safe assertion identifiers, prompting diagnostics proposal/review. All32slots stayed charged at208lifetime; three unused slots closed. |
+| c08 run 40485386416,27October | Application327dec159d680fab7b33a251ab46a2d1c16e9fa1; workflow 9d620dd451a56408ccab8360283dfeef0320eac7;40 pass/6 fail | Two failed leaves: SQLite lifecycle assertion 066 and PostgreSQL replacement-after-adopt assertion 013. Local scheduled-retry/exact-ARN visibility fixtures repaired afterward. 29 attempts,32 charged/240 lifetime. |
+| c09 run 40510334025,27October | Applicationf44f9fd717c1980fddc11ac6690a8a6e6e311104; workflow 9d620dd451a56408ccab8360283dfeef0320eac7;34 pass/12 fail | Four failed leaves: PostgreSQL lifecycle/WebIdentity assertion 066, PostgreSQL version-before-adopt assertion 017, SQLite marker-refusal replay assertion 160. Both replacement-after-adopt leaves passed. Actual causes were not established by identifiers. 29 attempts,32 charged/272 lifetime. |
+| c10,27October | Key03dcf56b-9687-4173-97d5-6f4925d08797; partial IAM bootstrap, no fixture or dispatch | Official CLI authorization timed out past fixed provisioning cutoff. No silent window shift. Restorev5, remove exact boundary/alias, retain newv10nondefault and schedule deletion.32 new charges raised lifetime304; all 32unattempted slots and one unused attempt closed pending an explicit later reassignment. |
+| c11 run 40600194878,27October | Application361e02e3915eef840429d88589c39689f4a58dfb; workflow 24e198b32a3ffd8d4013207b2f974d76ec49be6f;43 pass/3 fail | One failed leaf: PostgreSQL lifecycle assertion 227, durable convergence conflict. Other WebIdentity/replay leaves passed. Owner explicitly reassigned only c10's32unattempted charged slots and sole unused attempt; zero new charge,304 lifetime.29 attempts/3 unused closed. |
+| c12,28October | Applicationc253ff9; no key/window/bootstrap/fixture/dispatch | One fresh charged32pool raises lifetime336. Auth hold followed by explicit owner parking. Current source has no complete genuine pass. |
+
+Current known bounded evidence hashes:
+
+| Run | evidence.json SHA256 | ZIP SHA256 |
+| --- | --- | --- |
+|40390662284|63323f856fd4913874a3bdc26bedb116a2ec4d13ded1ba604851a00f90893bb3|7f6f38850bfdbf2b7cfa1ba34397f0cc33221a29c93d1a4f64d13a3667fffa2e|
+|40485386416|59d3c54de2686fb60066bdf3717095bb8fd982b9e21fb57c37e491ab146bb7df|e35c8f4b3414d7b9fe5541e2d34834283df61cf3ba284d3de9cce4dda06d1ee8|
+|40510334025|122be28ffe19fd13600e3b5e9da9a7f64ceff8a2381ef5ae1ae584d6ca70f85f|871c0828cc36ec1b0ad12c3b0d29d4dc145e42dffab7b32dbfe3590b2a30c3d4|
+|40600194878|fc7845e26914f43a0fea943fc8375f9e9d5152c58895e2c42c3c6f689f38e398|c840ced5f53b12f85980e227b3c64543227ef996e62956ba334d5e1fe138cbfc|
+
+Validated nonsecret evidence, terminal record maps and final cleanup receipts are reproduced in following comments. Artifacts expire after14 days, so the ticket copies are intentional. Never fetch or publish private raw runner logs, session projection, credentials, environment dumps or provider messages as a substitute. Evidence with `complete_creation_ledger=false` remains incomplete; the independent extra reserved-name checks are part of cleanup, not a fabricated complete creation ledger.
