@@ -67,6 +67,10 @@ inventory was generated, never that the candidate passed. It includes:
   race owners. Build-tagged Kubernetes/recovery/floor tests name their dedicated
   job and explicitly disclose exclusion from the default race planner; no race
   execution is inferred for them. Unknown build constraints fail mapping.
+  Package discovery explicitly uses Linux/AMD64 with cgo enabled, matching the
+  hosted planner jobs rather than inheriting a macOS workstation's build-file
+  selection. Native ARM64 and cross-platform jobs retain their separate owners.
+  Compare these preparation assignments with the actual hosted planner output.
 - Explicit dependency holds, approved exclusions, executable dispatch/readback
   instructions where applicable and the actual evidence each gate must retain.
   Commands in the JSON are instructions only; the generator never runs them.

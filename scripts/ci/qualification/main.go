@@ -203,7 +203,7 @@ func prepare(root string) (*inventory, error) {
 		return nil, err
 	}
 	i.Dirty = status != ""
-	for _, path := range []string{"scripts/ci/qualification/main.go", "scripts/ci/qualification/plans.go", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-isolation-race.sh", "scripts/ci/check-api-freeze.sh", "scripts/ci/check-client-skew.sh", "scripts/release/require-green-main.sh", "scripts/ci/assert-doctor-findings.jq"} {
+	for _, path := range []string{"go.mod", "go.sum", "scripts/ci/qualification/main.go", "scripts/ci/qualification/plans.go", "scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-isolation-race.sh", "scripts/ci/check-api-freeze.sh", "scripts/ci/check-client-skew.sh", "scripts/release/require-green-main.sh", "scripts/ci/assert-doctor-findings.jq"} {
 		if _, err := read(path); err != nil {
 			return nil, err
 		}

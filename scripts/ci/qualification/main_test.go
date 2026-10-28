@@ -9,6 +9,19 @@ import (
 	"testing"
 )
 
+func TestPlanningEnvironmentReplacesAmbientPlatform(t *testing.T) {
+	actual := withEnvironment([]string{"PATH=/tools", "GOOS=darwin", "GOARCH=arm64", "CGO_ENABLED=0"}, map[string]string{"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "1"})
+	joined := strings.Join(actual, ",")
+	for _, expected := range []string{"PATH=/tools", "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=1"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("missing planner environment %s: %s", expected, joined)
+		}
+	}
+	if strings.Count(joined, "GOOS=") != 1 || strings.Contains(joined, "darwin") || strings.Contains(joined, "arm64") {
+		t.Fatalf("ambient platform leaked into planning: %s", joined)
+	}
+}
+
 func TestRegistryRefusesMissingAndUnregisteredJobs(t *testing.T) {
 	registry := map[string]json.RawMessage{"test": nil, "race": nil}
 	for _, graph := range []map[string]job{

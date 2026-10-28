@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -151,12 +152,16 @@ func planShards(root string, workflows map[string]map[string]job) (plans map[str
 	planner := filepath.Join(work, "planner")
 	build := exec.Command("go", "build", "-p", "2", "-o", planner, "./scripts/ci/analysis-shards-go")
 	build.Dir = root
+	build.Env = withEnvironment(os.Environ(), map[string]string{"GOOS": runtime.GOOS, "GOARCH": runtime.GOARCH, "CGO_ENABLED": "0"})
 	if raw, err := build.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("build planner: %w: %s", err, raw)
 	}
 	invoke := func(args ...string) ([]byte, error) {
 		c := exec.Command(planner, args...)
 		c.Dir = root
+		// These planner jobs run on Ubuntu AMD64 with native cgo enabled.
+		// Execute the planner natively, but enumerate the hosted build inputs.
+		c.Env = withEnvironment(os.Environ(), map[string]string{"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "1"})
 		raw, err := c.Output()
 		if err != nil {
 			var failure *exec.ExitError
@@ -225,5 +230,19 @@ func planShards(root string, workflows map[string]map[string]job) (plans map[str
 	if err != nil {
 		return nil, err
 	}
-	return map[string]json.RawMessage{"ci-main": full, "reliability-race": encoded}, nil
+	return map[string]json.RawMessage{"ci-main": full, "reliability-race": encoded, "planning-environment": json.RawMessage(`{"goos":"linux","goarch":"amd64","cgo_enabled":"1","execution":"source planning only; compare with actual hosted planner output"}`)}, nil
+}
+
+func withEnvironment(base []string, values map[string]string) []string {
+	result := []string{}
+	for _, entry := range base {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, replaced := values[key]; !replaced {
+			result = append(result, entry)
+		}
+	}
+	for key, value := range values {
+		result = append(result, key+"="+value)
+	}
+	return result
 }
