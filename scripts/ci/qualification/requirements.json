@@ -1,0 +1,128 @@
+{
+  "requirements": [
+    {
+      "id": "baseline-and-C-ACC",
+      "authority": "docs/adr/mvp-boundary.md",
+      "sources": ["docs/release/acceptance-1.0.md", "docs/adr/flat-model.md", "api/acceptance_ledger_test.go", "internal/isolation/access_e2e_test.go", "web/e2e/registry.ts"],
+      "gates": ["full-main", "isolation-race", "browser-client"],
+      "required_evidence": "Every owning C/A/K/S/M/O, SAML/SCIM/scanning and GitHub criterion, including named C-ACC, plus every operative amendment. Both-engine assertions, desktop/mobile coverage, actual failures and skips. Historical statuses are not imported."
+    },
+    {
+      "id": "ha-dynamic",
+      "authority": "docs/adr/ops-spec.md",
+      "sources": ["internal/app/scheduler_ha_integration_test.go", "internal/isolation/dynamic_audit_e2e_test.go", "internal/dynamic/postgres/postgres_integration_test.go"],
+      "gates": ["full-main", "isolation-race", "packaged-journeys"],
+      "required_evidence": "PostgreSQL-only single-region HA fencing/shared coordination, SQLite refusal; real isolated TLS PostgreSQL lease lifecycle and renewal/TTL ceilings. No cross-region or new provider claim."
+    },
+    {
+      "id": "pki-ssh-transit",
+      "authority": "docs/adr/mvp-boundary.md",
+      "sources": ["docs/adr/pki.md", "docs/adr/transit.md", "internal/isolation/pki_e2e_test.go", "internal/isolation/ssh_e2e_test.go", "internal/sshca/openssh_e2e_test.go", "internal/isolation/transit_e2e_test.go", "internal/transit/conformance_test.go", "api/parity.yaml"],
+      "gates": ["full-main", "isolation-race", "browser-client", "packaged-journeys"],
+      "required_evidence": "Reconcile operative implementing-PR and governance conditions. Private issuer/profile/CSR/key/CRL/restore, SSH requester/grant revocation/expiry/KRL/overlap and actual OpenSSH, closed Transit algorithms/custody/rotation/rewrap/data keys and browser administration. No public CA, host certificates or HSM claim."
+    },
+    {
+      "id": "providers-and-conditional-governance",
+      "authority": "docs/adr/deployment-adapter.md",
+      "sources": ["docs/adr/gitlab-adapter.md", "docs/adr/vault-kv-adapter.md", "internal/isolation/adapter_multi_target_e2e_test.go", "internal/isolation/forgejo_e2e_test.go", "internal/adapter/githubactions/contract_external_test.go"],
+      "gates": ["full-main", "isolation-race", "external"],
+      "required_evidence": "Multi-target/GitLab no-read/ownership/replay and actual consumer evidence; refresh Forgejo source/provider binding. GH-E2E/GH-CONTRACT need real API and byte-exact workflow consumption with distinct negative/minimum-permission credentials. Vault KV destination governance is separate from M5 import. AWS/Cloudflare exclusion does not remove shipped-code tests."
+    },
+    {
+      "id": "developer-social-upgrades-reporting",
+      "authority": "docs/adr/developer-credentials.md",
+      "sources": ["docs/spec/social-signin.md", "docs/adr/signed-upgrade-compatibility.md", "docs/adr/k8s-condition-reporting.md", "internal/isolation/k8s_reporting_e2e_test.go", "internal/upgradegate/cli_process_test.go"],
+      "gates": ["full-main", "isolation-race", "browser-client", "packaged-journeys"],
+      "required_evidence": "Final #807 contract and actual expiry/revocation; consume social scope disposition without rewriting historical A7. Authenticated compatibility/catalog, applied-release ledger, target-binary migration/refusal and reporting. Disabled platform apply stays disabled. Deferred #805 is not promoted."
+    },
+    {
+      "id": "stabilization-integration",
+      "authority": "docs/adr/api-cli-surface.md",
+      "sources": ["internal/cli/rotation.go", "internal/authz/verify.go", "internal/authz/machine.go", "docs/spec/self-hoster-checklist.md"],
+      "gates": ["full-main", "isolation-race", "browser-client", "deployment-doctor", "packaged-journeys"],
+      "required_evidence": "After required PR merges, reassert CLI rotation/reencrypt actual targeting, negotiated audit completion and clients, pre-auth budgets/refusals, instance audit, scoped containment/recovery and restrictive chart behavior. Collect #1037/#1038/#1055 dispositions from their owners. Refresh references after integration."
+    }
+  ],
+  "gates": [
+    {
+      "id": "full-main",
+      "workflow": ".github/workflows/ci.yml",
+      "jobs": ["ci-required", "changes", "analysis_shards", "test_core", "isolation_shard", "race_shard", "fuzz_shard", "headline-guarantee", "floor-bench", "source-artifact-security"],
+      "commands": ["gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main", "scripts/release/require-green-main.sh Hikyo-Org/Hikyo CANDIDATE_SHA"],
+      "required_evidence": "ONLY AFTER integration: exact clean main commit/tree, ci-main workflow_dispatch run ID/attempt/path/event/tested SHA, all registered full domains and every supporting/matrix job. Capture changes full plan and planner outputs, all jobs/steps/logs/artifacts and failed jobs even in cancelled runs. Complete graph success and SQLite/PostgreSQL execution/skip evidence are separate from queue admission."
+    },
+    {
+      "id": "isolation-race",
+      "workflow": ".github/workflows/reliability.yml",
+      "jobs": ["plan", "race-isolation", "race-analyzers"],
+      "commands": ["gh workflow run reliability.yml --repo Hikyo-Org/Hikyo --ref main -f suite=race"],
+      "required_evidence": "Separate full isolation race: every planner target exactly once, all eight nonempty race shards plus analyzer job, SQLite/PostgreSQL. Retain isolation-race-timings artifacts, failures/skips, run/attempt/SHA. Ordinary race excludes isolation."
+    },
+    {
+      "id": "native-recovery-operator",
+      "workflow": ".github/workflows/release-acceptance.yml",
+      "jobs": ["floor-backup-restore", "operator-floor"],
+      "commands": ["gh workflow run release-acceptance.yml --repo Hikyo-Org/Hikyo --ref main -f suite=all"],
+      "required_evidence": "HOLD until independently stored dedicated TEST FLOOR_BACKUP_CUSTODY and FLOOR_ROOT_CUSTODY are authorized/available. Native ARM64 Linux cgroup-v2, 4 CPU/4 GiB/zero swap; backup/destroy/restore/reconcile, readable values, credential/RTO/refusal assertions. Separate production operator process under shipped limits with 50-resource phases/RSS. Preserve provenance, result.json, cli-drill.json, logs, cgroup/resource verification and exact executable hashes. No production custody or emulation substitution."
+    },
+    {
+      "id": "ops-floor",
+      "workflow": ".github/workflows/ops-floor.yml",
+      "jobs": ["ops-floor"],
+      "commands": ["gh workflow run ops-floor.yml --repo Hikyo-Org/Hikyo --ref main"],
+      "required_evidence": "Both native architectures: AMD64 2 CPU and ARM64 4 CPU, 4 GiB/zero swap. Eight doctor states, selected bound checks, provenance/result/log/container state and executable hashes. No emulated or physical-Pi claim."
+    },
+    {
+      "id": "required-floor-benchmark",
+      "workflow": ".github/workflows/floor-bench.yml",
+      "jobs": ["measure"],
+      "commands": ["Inspect the floor-bench / measure job in the exact ci-main run; floor-bench.yml is reusable and has no manual dispatch."],
+      "required_evidence": "Required native ARM64 measurement, unchanged workload/readback/thresholds, 4 CPU/4 GiB/zero swap and committed CPU factor 4.0/memory 1.0 unless separately calibrated. Exact executable/artifact hashes and raw versus estimated measurements. No paid benchmark runner."
+    },
+    {
+      "id": "deployment-doctor",
+      "workflow": ".github/workflows/ci.yml",
+      "jobs": ["compose-demo", "k8s-e2e"],
+      "commands": ["Inspect exact ci-main compose-demo and k8s-e2e jobs and their authenticated doctor assertions."],
+      "required_evidence": "Actual authenticated Compose SQLite and installed chart PostgreSQL doctor findings, all 12 required families via assert-doctor-findings.jq. Native ops-floor does not substitute. Capture raw redacted JSON if available; otherwise identify exact assertion/log evidence and disclose missing JSON."
+    },
+    {
+      "id": "browser-client",
+      "workflow": ".github/workflows/ci.yml",
+      "jobs": ["web", "web-closure", "client", "preflight", "web-go", "storybook", "scan-xplat"],
+      "commands": ["Inspect all desktop/mobile x groups 1..4 flow-log artifacts, web-closure and client jobs in exact ci-main.", "scripts/ci/check-api-freeze.sh", "scripts/ci/check-client-skew.sh"],
+      "required_evidence": "Browser registry state/viewport/async/error closure; both-engine generated client and CLI minimum-revision refusal; API diff/negative fixtures, enum/minimum revisions, parity and reviewed CLI goldens. Before stable tag: DORMANT freeze guard and pre-freeze-rehearsal skew only. Recheck remote tag before final selection; local ref absence is not remote evidence."
+    },
+    {
+      "id": "packaged-journeys",
+      "commands": ["Execute docs/spec/self-hoster-checklist.md and docs/release/self-hoster-candidate.md against the selected binary/packages, image and chart, recording each journey."],
+      "required_evidence": "Native/Compose/chart packaged install with UI/version/persistence; setup/admin/credential recovery; import and identity/grant/workload delivery; authenticated upgrade/backup/drain/migrate/health/restart and restore/readability/reconciliation. Record API meta and actual SQLite/PostgreSQL migration runtime identities separately from filename 00079. Source tree equivalence never substitutes for binary/archive byte hashes or image/chart digests. Development/nightly/draft/public/deployed evidence remain separate."
+    },
+    {
+      "id": "external",
+      "commands": ["Consume scoped GitHub, MCP #651, disclosure O4-O6 and public-deployment owner packets; independently verify final candidate identities and current receipts."],
+      "required_evidence": "Real required provider consumption; exact published MCP RepoDigest/source/public HTTPS/two-process PostgreSQL/named clients; actual disclosure/fallback receipts, live docs and support claims. Missing fixture/secrets/permission stays HOLD/NOTRUN; no unauthorized writes, spending, messages or production mutation."
+    },
+    {
+      "id": "trust-freeze-publication",
+      "commands": ["Consume the stable-trust owner's reviewed ceremony packet. This preparation command never activates policy, signs with a recovery key, tags, builds a draft or publishes."],
+      "required_evidence": "Stable-policy/trust source changes must land before final source selection. Later separately authorized immutable signed tag, complete signed draft manifest/SBOM/provenance, exact image/chart subjects and independent public download/OCI verification. Apple UUID/stapling/Gatekeeper/clean supported architecture proof binds retained bytes. Rebuilds change identity even for equal source trees. No final tag/draft/publication packet is justified by preparation."
+    }
+  ],
+  "dependency_holds": [
+    "#1033 / PR #1042: rotation CLI and real handler/target/completion validation, then human merge.",
+    "#1036 / PR #1044: negotiated audit completion and all supported consumers, then human merge.",
+    "#1040: real resolver pre-auth budget repair; #1034 attributable refusals; #1035 / PR #1045 instance audit; #1039 containment/recovery; #1041 / PR #1043 chart boundaries. Required implementation/review/merge proof remains pending.",
+    "Development dependency alerts #104/#105: patched Vitest toolchain/disposition and integration.",
+    "#79/#527 scope owner / PR #1070: current accepted release membership and API/migration inventory; #966 TLS and #156 Transit plus conditional Vault/social governance owners: recorded operative decisions/review route. No general ADR waiver.",
+    "#1037 independent evidence, #1038 alerts and #1055 deployment owners: consume concrete scoped launch dispositions and any resulting required changes.",
+    "#651 MCP and real GitHub contract owners: isolated authorized fixture/credentials and final-candidate consumer proof; disclosure owner: actual current private/fallback receipts.",
+    "Stable trust owner: reviewed recovery-authorized setup and custody requirements. No stable policy activation or recovery-private-key access under this task. Required source-changing trust PR must merge before final selection.",
+    "All required stabilization/governance/trust changes, including this preparation PR, need human merge. Refresh execution index and live PR heads/merge SHAs; no final acceptance on the baseline.",
+    "Final clean main required: refresh commit/tree/API/migration inputs, run complete internal graph and separate acceptance, retain failures/skips. Actual source, hosted, live-provider, byte/digest and publication identities stay distinct."
+  ],
+  "exclusions": [
+    "#158 AWS acceptance, PR #969 and extracted controller #1057 are outside this 1.0. Existing shipped-code tests remain in the full planners.",
+    "Accepted deferrals #805, #161, #148 and broad #1051 remain out; no production mutation, cloud spending, Apple submission, release tag, stable-policy activation, draft registry push or publication is authorized."
+  ]
+}
