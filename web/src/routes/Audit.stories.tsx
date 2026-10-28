@@ -126,7 +126,7 @@ export const InstanceSecurity: Story = {
     },
   },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByRole('heading', { name: 'Instance audit', level: 1 })).toBeVisible();
+    await waitFor(() => expect(canvas.getByRole('heading', { name: 'Instance audit', level: 1 })).toBeVisible());
     await userEvent.click(await canvas.findByRole('button', { name: /Dana Jacobs/ }));
     const panel = canvas.getByRole('complementary', { name: 'Event detail' });
     await expect(within(panel).getByText('192.0.2.7')).toBeVisible();
