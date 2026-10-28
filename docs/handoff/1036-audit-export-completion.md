@@ -14,8 +14,8 @@ This handoff grants no unattended instance authority or destination access.
 
 The supported integration seams are:
 
-- Go: `internal/auditexport.Consume(resp *http.Response, dst io.Writer)
-  (apigen.AuditExportReceipt, error)`. The caller closes the response and owns
+- Go: `auditexport.Consume(*http.Response, io.Writer) (apigen.AuditExportReceipt, error)`
+  in `internal/auditexport`. The caller closes the response and owns
   private staging. Only success allows publishing the staged plain-event JSONL.
 - Browser: `downloadAuditExport(url: string, signal?: AbortSignal): Promise<Blob>`
   in `web/src/api/audit.ts`. Save the returned Blob only after resolution; surface
@@ -129,13 +129,60 @@ wrote event lines are insufficient proof.
 
 ## Validation and remaining gates
 
-The baseline identity regression failed because the draft response lacked
-`Hikyo-Audit-Export-ID`. Follow-up validation records belong here after execution.
-The integration commit is deliberately available before final validation so
-#1035 can exercise the actual commands and UI without duplicating this protocol.
+Validated implementation revision: `220b53a5e86001e9807d9dc840717f0ca784c164`,
+against product baseline `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
+The subsequent main change inspected during this task only reconciled release
+scope documentation. Documentation-only handoff updates do not change these
+validated producer, consumer, generated-contract or test bytes.
 
-Maintainer security review remains required before merge. Cross-provider review
-is SKIPPED under the current unavailable subscription boundary, never CLEAN.
-Hosted current-head feedback and full merge-candidate proof are separate from
-local tests. No merge, release, deployment, live-provider or external-destination
-acceptance is authorized or established by this source change.
+- PASS: Go consumer, server, service and API suites.
+- PASS on SQLite and PostgreSQL 18.6: `TestAuditCore`,
+  `TestAuditExportReceiptWire`, `TestAuditExportSessionRevocationWire`,
+  `TestPostgresAuditExportCommitOrder`, `TestPostgresAuditExportCutoffRegistration`,
+  `TestAuditExportDoesNotTruncateAboveThePageCap`, `TestAuditRetention*` and
+  `TestAccessWireUniformity`. Both engine legs executed without skips.
+- PASS: 67 TypeScript client tests, including actual generated-SDK streaming
+  and a real HTTP 200 partial-body negative; 15 focused browser API tests,
+  including cancellation at the 64 MiB limit.
+- PASS: full-diff `fast-feedback.sh --working-tree`, including Go formatting and
+  compilation, both typechecks, web lint and all 217 web test files / 2,045 tests.
+- PASS: repository boundary suite. Local and hosted feedback are distinct evidence
+  classes; current exact-head hosted results remain on the PR.
+
+The original response-identity assertion failed before the repair. A second
+real-HTTP regression failed after session logout between pages: it reported
+`failure`, not `revoked`. The same SQLite flow passed after authentication loss
+joined the authority-loss branch; the both-engine suite above also passed.
+
+The first supplemental whole-package lint run timed out at its unchanged
+10-minute package alarm during `TestProofForgeryCatchesViolations/ui`, with no
+assertion failure reported. It omitted the compiler-cache prerequisite that
+`.github/workflows/ci-invariants.yml` and `scripts/ci/test-core-packages.sh`
+explicitly run before that alarm. Preserve this failed attempt as failure
+evidence. The complete prepared retry uses the same suite and timeout, without
+sharding or removing assertions. Its result, vet, documentation checks and
+current-head hosted status are recorded on the PR rather than inferred from
+compilation or the passing owner tests.
+
+From the repository root with the pinned contributor tools and frozen client/web
+dependencies, the remaining invariant sequence is:
+
+```sh
+set -eu
+go run ./scripts/ci/prepare-lint-cache
+go test -p 2 -parallel 2 -count=1 ./internal/lint
+go vet -p 2 ./internal/auditexport ./internal/server ./internal/service
+node docs/site/scripts/prepare-content.mjs --check
+```
+
+Run expensive validation through the applicable local resource scheduler. The
+both-engine audit command additionally needs an authorized disposable PostgreSQL
+18 fixture in `HIKYO_TEST_POSTGRES_DSN`; the isolation harness creates a derived
+database and resets its schema. Never point it at durable application storage.
+
+Maintainer security review and required adversarial security review remain
+pending before merge; automated checks do not establish independent human review.
+Cross-provider review is SKIPPED under current reviewer unavailability, never
+CLEAN. Full merge-candidate CI, final #1035 command/UI integration, and #1037 live
+destination acceptance remain separate gates. No merge, release, deployment,
+live-provider or external-destination acceptance is established by this change.
