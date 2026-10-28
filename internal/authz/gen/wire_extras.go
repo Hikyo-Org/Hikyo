@@ -316,7 +316,13 @@ var reviewedWireExtras = wireExtras{
 		// `audit` reaches both tenant and explicitly selected instance readers.
 		// Like `access`, the verb carries the instance probe contract; each
 		// tenant route retains its own uniform-nonexistent classification.
-		"cli:audit":   {Class: "ClassInstance"},
+		// Link every addressed reader so its audit disposition is inherited
+		// from the operation owner rather than duplicated or exemption-pinned.
+		"cli:audit": {Class: "ClassInstance", Ops: []string{
+			"OpAuditQueryOrg", "OpAuditQueryProject", "OpAuditQueryEnv",
+			"OpAuditExportOrg", "OpAuditExportProject", "OpAuditExportEnv",
+			"OpAuditInstanceQuery", "OpAuditInstanceExport",
+		}},
 		"cli:backup":  {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
 		"cli:cert":    {Class: "ClassTenant"},
 		"cli:compose": {Class: "ClassTenant"},

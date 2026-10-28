@@ -107,3 +107,11 @@ routes keep their stronger confinement classification, and no authorization
 formula, grant, audit disposition or invariant is changed. Generator checks,
 registry invariants and both-engine audit/authority results are recorded on the
 PR; fresh current-base full merge-group proof remains required.
+
+The following full run exposed a missing second half of that entry: its audit
+operation linkage. The unchanged audit-completeness invariant reproduced the
+failure. The generator input now names all eight query/export operations across
+org, project, environment and instance scopes, inheriting their existing audit
+dispositions. No exemption is added, and no event or authorization owner changes.
+All isolation `TestInvariant*` checks run together for this repair, alongside
+generator and complete-diff feedback checks, before refreshed hosted validation.
