@@ -155,9 +155,11 @@ func AssuranceRank(a Assurance) int {
 // Authenticate resolves a presented artifact into a live identity inside this
 // transaction.
 //
-// Resolution failures return domain.ErrUnauthenticated and nothing else:
+// Credential-liveness failures return domain.ErrUnauthenticated:
 // absent, malformed, unknown, expired, generation-superseded and
-// epoch-superseded artifacts are indistinguishable. On HTTP requests a live
+// epoch-superseded artifacts are indistinguishable. Grammatical artifacts
+// first spend the transport's source allowance; its overload and datastore
+// faults propagate independently of credential liveness. On HTTP requests a live
 // identity is then admitted against the attached OpenAPI operation; an excluded
 // class returns the uniform domain.ErrNotFound and records the named refusal.
 func (a *TxAuthorizer) Authenticate(ctx context.Context, presented string, now time.Time) (Identity, error) {
@@ -201,6 +203,9 @@ func (a *TxAuthorizer) authenticateSession(ctx context.Context, presented string
 	}
 	if !grammatical {
 		return Identity{}, domain.ErrUnauthenticated
+	}
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, err
 	}
 
 	// From here every presentation performs the SAME THREE READS in the same
@@ -280,6 +285,9 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 func (a *TxAuthorizer) AuthenticateSCIMCaller(ctx context.Context, presented string, now time.Time) (Identity, string, error) {
 	if err := crypto.ParseArtifact(presented, crypto.ArtifactSCIM); err != nil {
 		return Identity{}, "", domain.ErrUnauthenticated
+	}
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, "", err
 	}
 	row, err := a.SCIMCredentialByVerifier(ctx, crypto.ArtifactVerifier(presented))
 	if errors.Is(err, domain.ErrNotFound) {

@@ -20,7 +20,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
-	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -79,7 +78,7 @@ func remoteOriginSource(a *API) func(*http.Request) []string {
 			return nil
 		}
 		ctx := audit.WithContext(r.Context(), audit.Context{SourceIP: a.sourceIP(r), UserAgent: r.UserAgent(), Origin: audit.OriginAPI})
-		ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
+		ctx = a.withRequestAdmission(ctx, audit.FromContext(ctx).SourceIP)
 		origins, err := a.Remotes.RemoteOrigins(ctx, service.Bearer(cookie.Value))
 		if err != nil {
 			return nil

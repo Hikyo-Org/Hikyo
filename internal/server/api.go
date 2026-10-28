@@ -658,13 +658,19 @@ func (a *API) Middleware() []func(http.Handler) http.Handler {
 
 func (a *API) admitAuthenticatedRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := operation.WithRequestAdmission(r.Context(), a.RequestBudget.AdmitAuthenticatedAPI)
-		if a.Admission != nil {
-			sourceIP := audit.FromContext(r.Context()).SourceIP
-			ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
-		}
+		ctx := a.withRequestAdmission(r.Context(), audit.FromContext(r.Context()).SourceIP)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// withRequestAdmission also covers authenticated SPA policy reads outside the
+// API route group. Only accounting is shared; each resolver still reads live.
+func (a *API) withRequestAdmission(ctx context.Context, sourceIP string) context.Context {
+	ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
+	if a.Admission != nil {
+		ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
+	}
+	return ctx
 }
 
 // requestKey carries the raw request so the OIDC handlers can read cookies (the
