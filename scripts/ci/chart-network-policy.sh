@@ -64,6 +64,8 @@ kubectl -n "$targets" wait --for=condition=Ready pods --all --timeout=90s >/dev/
 for role in idp adapter remote collector management; do
     kubectl -n "$targets" expose pod "$role" --port=8080 >/dev/null
 done
+kubectl -n "$targets" patch service adapter --type=merge --patch \
+    '{"spec":{"ports":[{"name":"http","port":8080,"targetPort":8080},{"name":"tls","port":8443,"targetPort":8443}]}}' >/dev/null
 pod=$(kubectl -n "$ns" get pods -l "app.kubernetes.io/name=hikyo,app.kubernetes.io/instance=$release" -o jsonpath='{.items[0].metadata.name}')
 pod_ip=$(kubectl -n "$ns" get pod "$pod" -o jsonpath='{.status.podIP}')
 server="https://$release-hikyo.$ns.svc:8080/"
@@ -108,6 +110,12 @@ http_probe() {
     return 1
 }
 snapshot() {
+    kubectl get networkpolicy --all-namespaces -o json >"$evidence/$1-all-standard-policies.json"
+    kubectl get globalnetworkpolicies.crd.projectcalico.org -o json >"$evidence/$1-calico-global-policies.json"
+    kubectl get networkpolicies.crd.projectcalico.org --all-namespaces -o json >"$evidence/$1-calico-policies.json"
+    # An unexpected administrative allowance invalidates this isolated proof.
+    jq -e '.items | length == 0' "$evidence/$1-calico-global-policies.json" >/dev/null
+    jq -e '.items | length == 0' "$evidence/$1-calico-policies.json" >/dev/null
     kubectl -n "$ns" get networkpolicy -o json >"$evidence/$1-policies.json"
     jq -e --arg name "$release-hikyo-server" \
         '.items | length == 1 and .[0].metadata.name == $name' "$evidence/$1-policies.json" >/dev/null
