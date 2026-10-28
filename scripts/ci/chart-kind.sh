@@ -108,7 +108,7 @@ cleanup() {
 	local status=$?
     trap - EXIT HUP INT TERM
 	if [[ "$status" != 0 && "$created" == true ]]; then
-		diagnostics
+		diagnostics || true
 	fi
 	if [[ -n "$port_forward_pid" ]]; then
 		kill "$port_forward_pid" >/dev/null 2>&1 || true
