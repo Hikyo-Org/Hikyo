@@ -178,10 +178,12 @@ func TestConsolidatedWorkflowTrustAndCoverage(t *testing.T) {
 			}
 		}
 		if name == "reliability" {
-			expectedJobs = append(expectedJobs, "race-isolation")
-			needs, err := workflowNeeds(workflow.Jobs["race-isolation"].Needs)
-			if err != nil || !reflect.DeepEqual(needs, []string{"plan"}) || workflow.Jobs["race-isolation"].If != "" {
-				t.Fatal("race shards must depend on successful selected planner")
+			for _, jobName := range []string{"race-isolation", "race-analyzers"} {
+				expectedJobs = append(expectedJobs, jobName)
+				needs, err := workflowNeeds(workflow.Jobs[jobName].Needs)
+				if err != nil || !reflect.DeepEqual(needs, []string{"plan"}) || workflow.Jobs[jobName].If != "" {
+					t.Fatalf("%s must depend on successful selected planner", jobName)
+				}
 			}
 		}
 		var actualJobs []string

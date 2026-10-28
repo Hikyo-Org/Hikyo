@@ -28,6 +28,15 @@ printf '# Fixture\n' >README.md
 printf '26.7.0\n' >.nvmrc
 printf '{"packageManager":"pnpm@11.24.0"}\n' >package.json
 printf 'module example.invalid/feedback-fixture\n\ngo 1.27.2\n' >go.mod
+# Keep the imported library unchanged relative to base: changed-file linting
+# must follow it even when it is not listed as a changed ShellCheck input.
+# Its incomplete function deliberately fails parsing only when followed.
+mkdir -p scripts/ci
+cat >scripts/ci/source-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+fixture_message() { printf 'source fixture reached\n'; }
+fixture_invalid() {
+EOF
 commit_fixture
 base=$(git rev-parse HEAD)
 export FAST_FEEDBACK_BASE="$base"
@@ -51,6 +60,21 @@ run_feedback --working-tree
 printf 'untracked whitespace \n' >dirty.txt
 refuse 'untracked file whitespace differs' --working-tree
 rm dirty.txt
+
+cat >scripts/ci/import-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+# shellcheck source=scripts/ci/source-fixture.sh
+source ./scripts/ci/source-fixture.sh
+fixture_message
+EOF
+commit_fixture
+refuse 'SC1094 (warning): Parsing of sourced file failed.'
+# ShellCheck attaches sourced-file parse failures to the importing statement.
+# Require that statement and its diagnostic together, not just any failure.
+grep -F -A1 'source ./scripts/ci/source-fixture.sh' "$work/output" |
+	grep -F 'SC1094 (warning): Parsing of sourced file failed.' >/dev/null
+rm scripts/ci/import-fixture.sh
+commit_fixture
 
 printf 'whitespace \n' >README.md
 commit_fixture
@@ -252,6 +276,49 @@ for path in SECURITY.md SUPPORT.md GOVERNANCE.md TRADEMARK.md CONTRIBUTING.md LI
 	fi
 	jq -e '.docs == true' "$work/output" >/dev/null
 done
+
+# New Python contracts select their finite owner suite and propagate failure.
+release_admission_base=$(git rev-parse HEAD)
+mkdir -p scripts/ci/release-admission
+cat >scripts/ci/release-admission/run_checks.py <<'EOF'
+raise SystemExit('fixture release admission failure')
+EOF
+FAST_FEEDBACK_BASE="$release_admission_base" run_feedback --working-tree --plan
+jq -e '.releaseAdmission == true and .web == false and .client == false and .go == false' "$work/output" >/dev/null
+FAST_FEEDBACK_BASE="$release_admission_base" refuse 'fixture release admission failure' --working-tree --lane=go
+FAST_FEEDBACK_BASE="$release_admission_base" refuse 'fixture release admission failure' --working-tree --lane=go --go-scope=tooling
+FAST_FEEDBACK_BASE="$release_admission_base" run_feedback --working-tree --lane=go --go-scope=application
+rm -r scripts/ci/release-admission
+
+# AWS-runner-only edits must select both sides of the evidence contract.
+# Commit the inert consumer before the comparison base so its path cannot
+# accidentally be the reason the new selection passes.
+mkdir -p scripts/ci/release-admission scripts/ci/aws-acceptance
+cat >scripts/ci/release-admission/run_checks.py <<'EOF'
+import unittest
+print("fixture consumer checked")
+suite = unittest.defaultTestLoader.discover("scripts/ci/aws-acceptance")
+raise SystemExit(not unittest.TextTestRunner().run(suite).wasSuccessful())
+EOF
+cat >scripts/ci/aws-acceptance/test_runner.py <<'EOF'
+import unittest
+
+class FixtureAWSRunnerTests(unittest.TestCase):
+    def test_projection(self):
+        self.fail("fixture AWS runner failure")
+EOF
+commit_fixture
+aws_runner_base=$(git rev-parse HEAD)
+printf '# Only the AWS owner changed.\n' >>scripts/ci/aws-acceptance/test_runner.py
+FAST_FEEDBACK_BASE="$aws_runner_base" run_feedback --working-tree --plan
+jq -e '.releaseAdmission == true and .web == false and .client == false and .go == false' "$work/output" >/dev/null
+FAST_FEEDBACK_BASE="$aws_runner_base" refuse 'fixture AWS runner failure' --working-tree --lane=go --go-scope=tooling
+grep -F 'fixture consumer checked' "$work/output" >/dev/null
+printf 'import unittest\n\nclass FixtureAWSRunnerTests(unittest.TestCase):\n    def test_projection(self):\n        self.assertTrue(True)\n' >scripts/ci/aws-acceptance/test_runner.py
+FAST_FEEDBACK_BASE="$aws_runner_base" run_feedback --working-tree --lane=go --go-scope=tooling
+grep -F 'Ran 1 test' "$work/output" >/dev/null
+rm -r scripts/ci/release-admission scripts/ci/aws-acceptance
+commit_fixture
 
 printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'
 

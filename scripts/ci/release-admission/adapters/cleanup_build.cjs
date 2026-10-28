@@ -1,0 +1,35 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),vm=require('node:vm');
+const {checkSharedWindow}=require('./dependencies/shared-window.cjs'),{cleanupDOM}=require('./public-dom.cjs'),{cleanupBinding}=require('./binding.cjs'),{cleanupStep}=require('./page-operation.cjs');
+const pins=require('./native-pins.json');const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
+const literal=value=>({kind:'literal',value}),en=values=>({kind:'enum',values}),obj=fields=>({kind:'object',fields}),pattern=(p,maxLength=2048)=>({kind:'pattern',pattern:p,maxLength}),integer={kind:'integer',min:0,max:Number.MAX_SAFE_INTEGER};
+const hash=pattern('^[a-f0-9]{64}$',64),bool={kind:'boolean'},text=pattern('^[\\s\\S]*$'),time=pattern('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$',40);
+const id=pattern('^[A-Za-z0-9._:-]{1,256}$',256),url=pattern('^https://eu-central-1\\.console\\.aws\\.amazon\\.com/kms/home\\?region=eu-central-1#/[A-Za-z0-9/:%?=._-]+$',512),uuid=pattern('^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$',36);
+const identity=obj({targetId:id,targetType:literal('page'),targetURL:url,browserContextId:id,mainFrameId:id,loaderId:id,frameURL:pattern('^https://eu-central-1\\.console\\.aws\\.amazon\\.com/kms/home\\?region=eu-central-1(?:#[A-Za-z0-9/:%?=._-]+)?$',512),frameURLRelation:en(['same-url','target-url-without-fragment'])});
+// Protocol field names exclude periods. Native pin maps are emitted as one fixed
+// literal JSON string and restored losslessly before the closed G binding gate.
+const pinsJSON=literal(JSON.stringify(Object.fromEntries(Object.entries(pins).sort())));
+const request=obj({KeyId:uuid,PendingWindowInDays:literal(7)});
+const intentFields={attemptTrustBindingSHA256:hash,schema:literal('hikyo-158/partial-cleanup-intent/v1'),operation:literal('ScheduleKeyDeletion'),request,maximumForwards:literal(1),preparationSHA256:hash,originalClaimSHA256:hash,originalHeadSHA256:hash,armedAt:time,cleanupUntil:time,reconciliationSHA256:hash,keyCreateCustodySHA256:hash,currentNewKeyMetadataSHA256:hash,oldKeysClosureSHA256:hash,newBoundaryCustodySHA256:hash,reviewedDocumentSHA256JSON:pattern('^(?:null|"[a-f0-9]{64}")$',66),ownerContextSHA256:hash,nativeSourcePinsJSON:pinsJSON,executionAuthorization:literal(false)};
+const inputRefs={newKeyARN:pattern('^arn:aws:kms:eu-central-1:099256073061:key/[a-f0-9-]{36}$',100),newKeyId:uuid,originalCreateCustodySHA256:hash,reviewedCurrentWholeKeyMetadataSHA256:hash,oldKeysClosureSHA256:hash,cleanupIntentSHA256:hash,reviewedPreparationSHA256:hash,cleanupReconciliationSHA256:hash,guardSourceSHA256:literal(pins['native_partial_kms_deletion_guard.source-only.js']),helperSourceSHA256:literal(pins['native_partial_kms_deletion_prepare.source-only.mjs']),notBeforeMS:integer,expiresAtMS:integer,captureTimeoutMS:literal(20000)};
+const manifest=obj({schema:literal('hikyo-158/partial-kms-deletion-manifest/v1'),account:literal('099256073061'),region:literal('eu-central-1'),endpoint:literal('https://kms.eu-central-1.amazonaws.com/'),publicMainSHA256:literal('20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2'),...inputRefs,requestBodySHA256:hash,requestBodyBytes:integer,maximumNativeScheduleForwards:literal(1),maximumNativeDescribeForwardsPerKey:literal(2),helperPreparationSHA256:hash});
+const intent=obj(intentFields),ticket=obj({attemptTrustBindingSHA256:hash,schema:literal('hikyo-158/partial-cleanup-native-contract/v1'),operation:literal('ScheduleKeyDeletion'),request,intentSHA256:hash,issuedAt:time,maximumForwards:literal(1),requiredNativePreparation:intent,nativeSourcePinsJSON:pinsJSON,executionAuthorization:literal(false),nativeHelperInput:obj(inputRefs)});
+const readback=obj({schema:literal('hikyo-158/next-key-observer-manifest/v1'),mode:literal('readback'),account:literal('099256073061'),region:literal('eu-central-1'),endpoint:literal('https://kms.eu-central-1.amazonaws.com/'),publicMainSHA256:literal('20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2'),preparationSHA256:hash,ownerContextSHA256:hash,intentSHA256:hash,claimId:id,wireBodySHA256:hash,wireBodyBytes:integer,notBeforeMS:integer,expiresAtMS:integer,newKeyARN:inputRefs.newKeyARN,createReceiptSHA256:hash});
+const actions=['inspect','set-seven','confirm','install','arm','schedule','status','readback-install','navigate','readback-collect'];
+function build(){
+ const root=__dirname,template=fs.readFileSync(path.join(root,'operator-template.js'),'utf8'),scripts=[];
+ const guard=fs.readFileSync(path.join(root,'dependencies/native_partial_kms_deletion_guard.source-only.js'),'utf8').trim(),reader=fs.readFileSync(path.join(root,'dependencies/native_next_key_custody_prearm_observer.source-only.js'),'utf8').trim();
+ for(const action of ['closed']){
+  const id='new-key-cleanup-v1',file='reviewed-scripts/'+id+'.js';
+  let source=template;for(const [token,value]of Object.entries({'/*ACTION*/':'input.action','/*PINS*/':JSON.stringify(pins),'/*WINDOW*/':checkSharedWindow.toString(),'/*DOM*/':cleanupDOM.toString(),'/*BINDING*/':cleanupBinding.toString(),'/*STEP*/':cleanupStep.toString(),'/*GUARD*/':guard,'/*READER*/':reader}))source=source.replaceAll(token,()=>value);
+
+  if(Buffer.byteLength(source)>65536)throw Error('script-cap');new vm.Script('('+source+')');fs.writeFileSync(path.join(root,file),source);
+  const fields={action:en(actions),expected:identity,binding:obj({intent,ticket}),preparation:obj({manifest,approvedBody:pattern('^\\{"KeyId":"[a-f0-9-]{36}","PendingWindowInDays":7\\}$',100)})};
+  fields.readbackManifest=readback;
+  fields.choice=en(['none','managedKeys','new','old1','old2','old3','old4','keyPolicy','keyRotation','aliases']);
+  fields.slot=en(['none','new.DescribeKey','new.GetKeyPolicy','new.GetKeyRotationStatus','new.ListAliases','old1.DescribeKey','old2.DescribeKey','old3.DescribeKey','old4.DescribeKey']);
+  scripts.push({id,file,sha256:sha(source),effect:['inspect','status','readback-collect'].includes(action)?'read':'mutation',arguments:obj(fields),result:obj({schema:literal('hikyo-158/new-key-cleanup-ui/v1'),action:en(actions),outcome:en(['captured','held']),partialEffect:en(['native-schedule-may-have-forwarded','local-public-input-may-have-changed','native-navigation-may-have-started','observer-state-may-have-changed','effect-uncertain-reconcile-before-any-replay']),beforeJSON:text,afterJSON:text,publicCaptureParts:{kind:'array',items:text,maxItems:64},controlLeaseClaimed:literal(false),exclusiveControlVerifiedByAdapter:literal(false),writeAuthorityGranted:literal(false),providerOutcomeProven:literal(false),externalAuthenticityVerified:literal(false)})});
+ }
+ const fragment={schema:'hikyo-158/reviewed-owner-scripts/v1',scripts},raw=JSON.stringify(fragment)+'\n';if(Buffer.byteLength(raw)>262144||scripts.length>64)throw Error('registry-cap');fs.writeFileSync(path.join(root,'cleanup-registry.json'),raw);return {scripts:scripts.length,registryBytes:Buffer.byteLength(raw),maximumScriptBytes:Math.max(...scripts.map(s=>fs.statSync(path.join(root,s.file)).size))};
+}
+module.exports={build,actions};if(require.main===module)console.log(JSON.stringify(build()));

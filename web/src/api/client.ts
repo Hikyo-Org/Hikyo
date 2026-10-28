@@ -4,7 +4,7 @@ import {
 } from '@hikyo/operations';
 import { assertSessionEpoch, captureSessionEpoch, checkSessionRefusal, reconcileSessionResponse, sessionEpochSignal } from './sessionEpoch.ts';
 
-import type { ScanFinding, WideningRefusal } from '@hikyo/client';
+import type { ErrorCode, ScanFinding, WideningRefusal } from '@hikyo/client';
 import type { BodylessOperation, BodyOperation, Options, TDataShape } from '@hikyo/operations';
 import { client } from '@hikyo/runtime';
 import { zError, zLoginResult, zRecoveryCodesResult } from '@hikyo/zod';
@@ -114,7 +114,7 @@ client.interceptors.request.use((request: Request) => {
 
 /**
  * ApiError is every refusal the SPA can render. Most callers branch only on
- * `status`. `detail` is present only when the generated error contract parsed
+ * `status` or the parsed `code`. `detail` is present only when the generated error contract parsed
  * an explicitly caller-safe detail from the server; malformed bodies and
  * uniform refusals cannot smuggle arbitrary prose through this boundary.
  */
@@ -144,6 +144,8 @@ export class ApiError extends Error {
     widening?: WideningRefusal,
     /** The operation that returned this HTTP refusal, distinct from session reconciliation. */
     readonly operation?: object,
+    /** Machine-readable refusal code, only from the validated error envelope. */
+    readonly code?: ErrorCode,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -208,6 +210,7 @@ function refusal(response: Response, error: unknown, operation: object): ApiErro
     parsed.success ? parsed.data.error.findings ?? [] : [],
     parsed.success && response.status === 409 ? parsed.data.error.widening : undefined,
     operation,
+    parsed.success ? parsed.data.error.code : undefined,
   );
 }
 

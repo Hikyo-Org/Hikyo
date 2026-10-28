@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import secrets
 import select
 import shlex
@@ -580,8 +581,11 @@ class Fixture:
 
     def login(self):
         self.token = ""
-        result = self.request("POST", "/auth/local/login", {"username": "rollout-doctor", "password": self.password})
+        ceremony = runpy.run_path(str(Path(__file__).with_name("fixture_cli_login.py")))["login"]
+        result = ceremony(self.origin, "rollout-doctor", self.password, self.code)
         self.token = result["session_token"]
+        # Keep the caller's independent fresh factor step; login handoff does
+        # not establish any purpose-bound operation proof window.
         result = self.request("POST", "/auth/totp/step-up", {"code": self.code()})
         self.token = result["session_token"]
         return result

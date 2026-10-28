@@ -123,7 +123,11 @@ all_go=false
 go_files=()
 go_packages=()
 shell_files=()
+release_admission=false
 while IFS= read -r -d '' path; do
+	case "$path" in
+		scripts/ci/release-admission/* | scripts/ci/aws-acceptance/* | .github/workflows/aws-acceptance.yml) release_admission=true ;;
+	esac
 	case "$path" in
 		web/*) web=true ;;
 		clients/ts/* | api/openapi.yaml) client=true; web=true ;;
@@ -154,9 +158,9 @@ while IFS= read -r -d '' path; do
 done <"$work/changed"
 
 if [ "$plan_only" = true ]; then
-	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s}\n' \
+	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s,"releaseAdmission":%s}\n' \
 		"$web" "$client" "$workflows" "$([ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ] && printf true || printf false)" \
-		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)" "$docs"
+		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)" "$docs" "$release_admission"
 	exit 0
 fi
 
@@ -198,6 +202,10 @@ else
 fi
 
 go_checks() {
+if [ "$release_admission" = true ] && [ "$go_scope" != application ]; then
+	need python3
+	run python3 -B scripts/ci/release-admission/run_checks.py --unit
+fi
 if [ "${#go_files[@]}" -gt 0 ]; then
 	need go
 	gofmt="$(go env GOROOT)/bin/gofmt"
@@ -228,7 +236,7 @@ if [ "${#shell_files[@]}" -gt 0 ] || [ "$workflows" = true ]; then
 	shellcheck --version | grep -Fx 'version: 0.11.0' >/dev/null || fail 'ShellCheck 0.11.0 is required, matching CI'
 fi
 if [ "${#shell_files[@]}" -gt 0 ]; then
-	run shellcheck -- "${shell_files[@]}"
+	run shellcheck -x -- "${shell_files[@]}"
 fi
 if [ "$workflows" = true ]; then
 	need go

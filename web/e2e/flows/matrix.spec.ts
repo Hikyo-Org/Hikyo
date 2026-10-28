@@ -27,6 +27,7 @@ import {
 import { BrowserApiError, browserApi, fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
 import {
   BASE_URL,
+  nextTotpCode,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
@@ -791,9 +792,12 @@ test.describe('catalogue declaration detail', () => {
   test.use({ storageState: STORAGE_STATE });
 
   let keyId = '';
+  // One real MFA/PKCE session owns this serial group's catalogue setup,
+  // inspections and cleanup. None of those edits revokes its authority.
+  let token = '';
 
   test.beforeAll(async ({}, testInfo) => {
-    const token = await fixtureBearer('key-detail fixture');
+    token = await fixtureBearer('key-detail fixture', nextTotpCode);
     const created = await fixtureApiCall(
       token,
       'POST',
@@ -812,7 +816,9 @@ test.describe('catalogue declaration detail', () => {
 
   test.afterAll(async () => {
     if (keyId === '') return;
-    const token = await fixtureBearer('key-detail cleanup');
+    // Catalogue edits do not revoke this setup session. Reuse its real MFA
+    // bearer for exact cleanup instead of spending another shared TOTP step
+    // just before the next journey authenticates.
     await fixtureApiCall(
       token,
       'DELETE',
@@ -827,7 +833,6 @@ test.describe('catalogue declaration detail', () => {
     // the seeded names are all wide enough to hide it: PORT is the shortest
     // name the catalogue accepts that is narrower than 44px in mono.
     test.skip(testInfo.project.name !== 'mobile', 'the touch floor is a coarse-pointer rule');
-    const token = await fixtureBearer('short key fixture');
     const created = await fixtureApiCall(
       token,
       'POST',
@@ -899,7 +904,6 @@ test.describe('catalogue declaration detail', () => {
     page,
   }) => {
     const keyPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`;
-    const token = await fixtureBearer('rules edit');
     await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${keyId}`);
     const panel = page.locator('.key-detail');
     await expect(panel.getByRole('heading', { name: 'Edit value rules & presence' })).toBeVisible();
@@ -944,7 +948,6 @@ test.describe('catalogue declaration detail', () => {
   });
 
   test('sets and clears the key’s group membership', async ({ page }, testInfo) => {
-    const token = await fixtureBearer('group membership');
     const group = await fixtureApiCall(
       token,
       'POST',
@@ -1025,7 +1028,6 @@ test.describe('catalogue declaration detail', () => {
     // Two root keys sharing a prefix get a folder proposed; the lone one stays
     // at the root unless typed. Names are unique per project leg.
     const suffix = testInfo.project.name.toUpperCase();
-    const token = await fixtureBearer('folder cleanup');
     const keysPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys`;
     const declare = (name: string) =>
       fixtureApiCall(token, 'POST', keysPath, zCreatedKey, {
@@ -1156,7 +1158,7 @@ test.describe('catalogue declaration lifecycle', () => {
   }, testInfo) => {
     const startName = `LIFECYCLE_${testInfo.project.name.toUpperCase()}`;
     const renamed = `${startName}_RENAMED`;
-    const token = await fixtureBearer('lifecycle fixture');
+    const token = await fixtureBearer('lifecycle fixture', nextTotpCode);
     const created = await fixtureApiCall(
       token,
       'POST',
@@ -1212,9 +1214,8 @@ test.describe('catalogue declaration lifecycle', () => {
       deleted = true;
     } finally {
       if (!deleted) {
-        const cleanup = await fixtureBearer('lifecycle cleanup');
         await fixtureApiCall(
-          cleanup,
+          token,
           'DELETE',
           `/api/v1/orgs/${seed.org}/projects/${seed.project}/keys/${keyId}`,
           z.object({}),
@@ -1443,6 +1444,12 @@ test.describe('change approvals', () => {
 
   const CA_PATH = `/orgs/${seed.org}/projects/${seed.project}/change-approvals`;
   const projectBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+  let token = '';
+  test.beforeAll(async () => {
+    // Policy state is isolated per case below; authentication belongs to this
+    // serial group and is independent of each operation's passkey proof.
+    token = await fixtureBearer('approval policy fixture', nextTotpCode);
+  });
 
   // Each approval case owns only its dev policy changes and grants it adds to
   // its newly invited reviewer. Restore them before later flow files execute.
@@ -1458,13 +1465,13 @@ test.describe('change approvals', () => {
   });
   const policyTest = test.extend<{
     approvalState: {
+      token: string;
       ensurePolicy: () => Promise<ApprovalPolicy>;
       grantReviewer: (principal: string, capability: string) => Promise<void>;
     };
   }>({
     approvalState: [
       async ({ passkeyPage }, use) => {
-        const token = await fixtureBearer('isolated approval policy');
         const initial = await fixtureApiCall(
           token,
           'GET',
@@ -1481,6 +1488,9 @@ test.describe('change approvals', () => {
         let bodyFailure: unknown;
         try {
           await use({
+            // Setup and body share this MFA-approved CLI session. Protected
+            // operations still prove their own reauth through passkeyPage.
+            token,
             ensurePolicy: async () => {
               if (ownedPolicy !== undefined) return ownedPolicy;
               const input: ApprovalPolicyInput = {
@@ -1577,7 +1587,7 @@ test.describe('change approvals', () => {
 
   policyTest('a covered publish stages a request the review queue shows', async ({ page, approvalState }) => {
     await approvalState.ensurePolicy();
-    const token = await fixtureBearer('approvals propose');
+    const token = approvalState.token;
     const staged = await fixtureApiCall(
       token,
       'PUT',
@@ -1610,7 +1620,7 @@ test.describe('change approvals', () => {
     const suffix = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     const username = `approval-${suffix}`;
     const password = `correct horse battery staple ${suffix}`;
-    const adminToken = await fixtureBearer('approval browser administrator');
+    const adminToken = approvalState.token;
     const invitation = await browserApi(
       adminPage,
       'POST',
@@ -1850,7 +1860,7 @@ test.describe('temporary access', () => {
     const suffix = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     const username = `access-${suffix}`;
     const password = `correct horse battery staple ${suffix}`;
-    const adminToken = await fixtureBearer('temporary access administrator');
+    const adminToken = await fixtureBearer('temporary access administrator', nextTotpCode);
     const invitation = await browserApi(
       adminPage,
       'POST',

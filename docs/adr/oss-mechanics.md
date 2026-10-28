@@ -46,6 +46,13 @@ The load-bearing property is **one tag = one ceremony**: a release tag produces 
 
 **Metadata-only ecosystem repositories are the sole exception.** `Hikyo-Org/homebrew-tap` contains generated Homebrew definitions, repository policy, and licensing only. It receives no Hikyo binary, build job, private key, signature, independent tag, or version authority. The canonical release ceremony may open or refresh a protected tap PR only after it has published and reverified the signed stable release; it cannot merge that PR. The tap may lag or fail without changing Hikyo release state. This preserves one tag and one signing ceremony while keeping ecosystem-specific review and discovery where Homebrew expects them.
 
+The separate `hikyo@nightly` convenience cask follows the same metadata-only
+boundary for public signed nightlies. Its publisher authenticates the complete
+nightly bundle against recovery-authorized trust before opening a protected tap
+PR, and requires both signed, notarized and stapled DMGs. It cannot update the
+stable `hikyo` cask or merge either cask's PR. A nightly without the DMG pair
+does not update Homebrew.
+
 **One version, everywhere, by normative table** — for release version `X.Y.Z` (prerelease: `X.Y.Z-rc.N`, the suffix carried identically in every position):
 
 | Artifact | Identity |

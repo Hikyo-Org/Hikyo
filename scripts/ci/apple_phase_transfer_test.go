@@ -50,7 +50,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 	}
 	helperIndex := findStep(t, "notarize")
 	diagnosticsIndex := findStep(t, "Retain Apple notarization diagnostics")
-	if notary.Steps[helperIndex].Run != "./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
+	if notary.Steps[helperIndex].Run != "./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist" {
 		t.Fatal("notarize outcome must belong to the actual notarization helper")
 	}
 	t.Run("helper outcome output binding", func(t *testing.T) {
@@ -123,7 +123,7 @@ func TestNightlyPublicationRequiresSigningButAllowsNotarizationFailure(t *testin
 				}
 			}
 			expression := strings.ReplaceAll(workflow.Jobs["publish"].If, "'", "\"")
-			for name, value := range map[string]string{"github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]], "needs.apple-notarize.outputs.diagnostics_outcome": outputs[notary.Outputs["diagnostics_outcome"]]} {
+			for name, value := range map[string]string{"needs.apple-notarize.outputs.fallback_authorized": "true", "needs.apple-acceptance.result": "success", "needs.apple-notarize.outputs.recovery_pending": "false", "github.ref": tc.ref, "needs.validation.result": tc.validation, "needs.build-artifacts.result": tc.build, "needs.apple-sign.result": tc.sign, "needs.apple-notarize.result": tc.notary, "needs.build-artifacts.outputs.skip": tc.skip, "needs.apple-notarize.outputs.inputs_verified": tc.verified, "needs.apple-notarize.outputs.notarize_outcome": outputs[notary.Outputs["notarize_outcome"]], "needs.apple-notarize.outputs.diagnostics_outcome": outputs[notary.Outputs["diagnostics_outcome"]]} {
 				expression = strings.ReplaceAll(expression, name, strconv.Quote(value))
 			}
 			expression = strings.ReplaceAll(expression, "always()", "true")
@@ -315,6 +315,9 @@ func TestNightlyNotarizationOutcomeControlsPublishedDMGs(t *testing.T) {
 				if err := os.Chmod(filepath.Join(dir, "scripts/release/create-nightly-manifest.sh"), 0700); err != nil {
 					t.Fatal(err)
 				}
+				// The evidence binder has its own byte-binding tests. Keep this
+				// inventory-selection fixture stopped at that explicit seam.
+				write("scripts/release/apple_notary_state.py", "import sys\nassert sys.argv[1] == 'append-evidence'\n")
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", stage.Run)
 				cmd.Dir = dir
 				cmd.Env = append(os.Environ(), "VERSION="+version, "COMMIT="+strings.Repeat("a", 40), "GITHUB_RUN_NUMBER=1", "RUNNER_TEMP="+filepath.Join(dir, "temp"), "APPLE_NOTARIZATION_RESULT="+outcome)

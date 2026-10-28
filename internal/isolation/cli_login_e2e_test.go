@@ -40,6 +40,20 @@ func loginApprove(t *testing.T, auth *service.Auth, browser, state string) servi
 	}
 	return approval
 }
+
+// cliLoginFromBrowser uses the same approved join as the CLI now requires for
+// enrolled accounts. Login assurance crosses it; operation proof does not.
+func cliLoginFromBrowser(t *testing.T, auth *service.Auth, browser service.LoginResult) service.LoginResult {
+	t.Helper()
+	state, _ := pkcePair("fixture-cli-login-" + browser.SessionID)
+	start, verifier := loginStart(t, auth, state)
+	approved := loginApprove(t, auth, browser.SessionToken, start.State)
+	cli, err := auth.RedeemCLILogin(t.Context(), approved.Code, verifier, loginRedirect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cli
+}
 func assertCLISnapshot(t *testing.T, auth *service.Auth, db *store.DB, browser, cli service.LoginResult) {
 	t.Helper()
 	ctx := t.Context()

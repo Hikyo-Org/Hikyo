@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       allowed: ${{ steps.request.outputs.allowed || steps.initial.outputs.allowed }}
+      go: ${{ steps.request.outputs.go }}
+      browser: ${{ steps.request.outputs.browser }}
     steps:
       # Initial runs are discovery-only, including the bootstrap PR before
       # trusted main contains the verifier. Only admitted reruns execute it.
@@ -50,7 +52,7 @@ jobs:
   benchmarks:
     name: Requested PR walltime
     needs: request
-    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'
+    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true' && needs.request.outputs.go == 'true'
     runs-on: codspeed-macro-arm64-graviton-ubuntu-22-04
     timeout-minutes: 15
     steps:
@@ -72,7 +74,8 @@ jobs:
       - name: Refuse a reused or stale request
         env:
           ALLOWED: ${{ steps.request.outputs.allowed }}
-        run: test "$ALLOWED" = true
+          GO_MEASUREMENT: ${{ steps.request.outputs.go }}
+        run: test "$ALLOWED" = true && test "$GO_MEASUREMENT" = true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -83,18 +86,23 @@ jobs:
           cache: false
       - name: Benchmark the exact PR head and upload public CodSpeed results
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        env:
+          CODSPEED_PERF_UNWINDING_MODE: fp
         with:
           mode: walltime
-          run: >-
-            go test -bench=.
-            ./internal/crypto/
-            ./internal/dotenv/
-            ./internal/scanning/
-            ./internal/server/
-            ./internal/service/
+          go-runner-version: '1.3.0'
+          # The verifier emits only closed, fixed workload commands from trusted
+          # main. Each completes before the next starts; any failure propagates.
+          run: |
+            set -euo pipefail
+            benchmark_log=$(mktemp)
+            {
+              ${{ steps.request.outputs.command }}
+            } | tee "$benchmark_log"
+            go run ./scripts/ci/codspeed-verify --log "$benchmark_log" --results "$CODSPEED_PROFILE_FOLDER/results"
 
   matrix:
     name: Requested PR browser performance
     needs: request
-    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true'
+    if: github.event_name == 'pull_request' && needs.request.outputs.allowed == 'true' && needs.request.outputs.browser == 'true'
     uses: ./.github/workflows/matrix-performance.yml

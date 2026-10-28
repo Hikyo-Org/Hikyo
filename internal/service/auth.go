@@ -307,8 +307,9 @@ type LoginChallengeIssued struct {
 // The shape is dictated by the enumeration rule. An unknown account traverses
 // the same admission budget, the same per-account backoff bucket and a
 // bounded dummy-verifier derivation, so neither the response nor the timing
-// distinguishes it from a wrong password on a real account. Every refusal
-// answers domain.ErrUnauthenticated.
+// distinguishes it from a wrong password on a real account. Credential refusals
+// answer domain.ErrUnauthenticated. A verified password on an enrolled account
+// requesting a CLI artifact instead receives browser sign-in guidance.
 func (s *Auth) LocalLogin(ctx context.Context, username, password string, artifact Artifact) (LoginResult, error) {
 	// The caller states which artifact it wants; the server never infers it
 	// from a header. An unrecognised value is a caller error, refused before
@@ -513,16 +514,21 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 			attempt.refused = sessionRefusedUnauthenticated
 			return nil
 		}
-		// A factor that stands is never skippable: a browser password login on an
-		// enrolled account issues a login challenge instead of a session, and the
-		// second factor is presented against it before any cookie is set (#760).
-		// The CLI keeps today's behaviour (O1): it mints a [password] session and
-		// the chokepoint refuses MFA-mandatory capabilities until it steps up.
+		// A standing local factor is required at sign-in for both artifacts.
+		// Browser challenges remain browser-bound. CLI users complete the same
+		// browser ceremonies through the existing loopback or device handoff.
 		factors, err := s.enrolledFactors(ctx, az, account.ID)
 		if err != nil {
 			return err
 		}
-		if len(factors) > 0 && artifact == ArtifactBrowser {
+		if len(factors) > 0 {
+			if artifact == ArtifactCLI {
+				if err := s.failLogin(ctx, az, now, account.ID, true, artifact, "second-factor-required"); err != nil {
+					return err
+				}
+				attempt.refused = sessionRefusedCLIFactorRequired
+				return nil
+			}
 			issued, err := s.issueLoginChallenge(ctx, az, account, factors, now)
 			if err != nil {
 				return err

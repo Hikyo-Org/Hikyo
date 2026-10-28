@@ -128,7 +128,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if !pinnedBase || !buildReader || !runnerABI || buildReaders != 1 {
 		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
-	shellcheckInstallers := 0
+	shellcheckInstallers, releasePythonInstallers := 0, 0
 	for index, step := range job.Steps {
 		if strings.Contains(step.Run, "fast-feedback_test.sh") || strings.Contains(step.Run, "fast-feedback-deadline_test.sh") {
 			return fmt.Errorf("refusal and deadline self-tests belong to mandatory full lint, not the per-commit budget")
@@ -158,6 +158,16 @@ func requireFeedbackWorkflow(raw []byte) error {
 				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
 			}
 		}
+		if step.Name == "Prepare trusted release contract dependencies" {
+			releasePythonInstallers++
+			if step.If != "matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).releaseAdmission" || step.Continue ||
+				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60`) ||
+				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" python3 -m venv "$RUNNER_TEMP/release-admission-checks"`) ||
+				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$RUNNER_TEMP/release-admission-checks/bin/python" -m pip install -r scripts/ci/release-admission/requirements.txt`) ||
+				!strings.Contains(step.Run, `echo "$RUNNER_TEMP/release-admission-checks/bin" >> "$GITHUB_PATH"`) {
+				return fmt.Errorf("release contracts require pinned dependencies in their tooling lane within the original setup budget")
+			}
+		}
 		if strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh") || (strings.Contains(step.Uses, "cache/restore@") && step.Name != "Restore bounded feedback Go cache") || step.Name == "Select explicit pnpm cache path and ABI" {
 			if !strings.HasPrefix(step.If, "matrix.lane == 'frontend' && ") {
 				return fmt.Errorf("frontend dependency preparation must not compete with Go/tooling")
@@ -179,6 +189,9 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if shellcheckInstallers != 1 {
 		return fmt.Errorf("feedback requires exactly one pinned ShellCheck installer")
 	}
+	if releasePythonInstallers != 1 {
+		return fmt.Errorf("feedback requires exactly one selected release-contract dependency setup")
+	}
 	return nil
 }
 
@@ -188,6 +201,24 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]func(map[string]any){
+		"release dependencies wrong lane": func(j map[string]any) {
+			mutateReleasePython(j, "if", "matrix.lane == 'frontend'")
+		},
+		"release dependencies fail open": func(j map[string]any) {
+			mutateReleasePython(j, "continue-on-error", true)
+		},
+		"release dependencies omit budget and PATH": func(j map[string]any) {
+			mutateReleasePython(j, "run", "python3 -m pip install -r scripts/ci/release-admission/requirements.txt")
+		},
+		"release dependencies missing": func(j map[string]any) {
+			steps := j["steps"].([]any)
+			for i, value := range steps {
+				if value.(map[string]any)["name"] == "Prepare trusted release contract dependencies" {
+					j["steps"] = append(steps[:i], steps[i+1:]...)
+					return
+				}
+			}
+		},
 		"missing compact compiler ABI": func(j map[string]any) { delete(j["env"].(map[string]any), "GOFLAGS") },
 		"workflow-only loses shellcheck": func(j map[string]any) {
 			mutateFeedbackShellcheck(j, "if", "matrix.lane == 'go' && fromJSON(steps.plan.outputs.plan).shell")
@@ -261,6 +292,16 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 				t.Fatal("unsafe feedback configuration escaped actual workflow contract")
 			}
 		})
+	}
+}
+
+func mutateReleasePython(j map[string]any, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == "Prepare trusted release contract dependencies" {
+			step[key] = value
+			return
+		}
 	}
 }
 
