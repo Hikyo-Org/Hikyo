@@ -49,3 +49,16 @@ if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	printf 'fallback fixture failed: receipt outside acknowledgement window was accepted\n' >&2
 	exit 1
 fi
+
+# Exactly 93 days is accepted; one second later must be stale. Keep the UTC
+# time as well as the date so a calendar-day calculation cannot extend custody.
+HIKYO_FALLBACK_TEST_NOW=2026-11-02T10:05:00Z \
+	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
+	"$fixture_dir/passed.json" security@developwent.io
+if HIKYO_FALLBACK_TEST_NOW=2026-11-02T10:05:01Z \
+	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
+	"$fixture_dir/passed.json" security@developwent.io >"$fixture_dir/stale-boundary.log" 2>&1; then
+	printf 'fallback fixture failed: receipt older than 93 days was accepted\n' >&2
+	exit 1
+fi
+grep -F 'notification test is older than one quarter' "$fixture_dir/stale-boundary.log" >/dev/null
