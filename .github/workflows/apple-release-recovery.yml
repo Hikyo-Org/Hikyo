@@ -1,0 +1,31 @@
+name: apple-release-recovery
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows: [nightly-release]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: apple-release-recovery
+  cancel-in-progress: false
+
+jobs:
+  continue-original-nightly:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'failure'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Continue only bound pending stages from trusted main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release/apple_notary_state.py recover

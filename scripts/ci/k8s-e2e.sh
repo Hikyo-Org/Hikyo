@@ -93,13 +93,13 @@ if [ "$(uname -s)" = Linux ]; then
 	node_archive="$tool_dir/node.tar.xz"
 	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
 		--retry 4 --retry-delay 2 --retry-all-errors \
-		https://nodejs.org/dist/v26.7.0/node-v26.7.0-linux-x64.tar.xz \
+		https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.xz \
 		--output "$node_archive"
 	printf '%s  %s\n' \
-		982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee \
+		6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd \
 		"$node_archive" | sha256sum --check --strict
 	tar -xJf "$node_archive" -C "$tool_dir"
-	export PATH="$tool_dir/node-v26.7.0-linux-x64/bin:$PATH"
+	export PATH="$tool_dir/node-v26.12.1-linux-x64/bin:$PATH"
 
 	helm_archive="$tool_dir/helm.tar.gz"
 	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \

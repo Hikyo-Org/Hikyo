@@ -1,0 +1,425 @@
+{
+  "schema": "hikyo-1046/historical-archive-index/v1",
+  "files": {
+    "aws-acceptance-39158333194/evidence.json": {
+      "bytes": 7955,
+      "rawSHA256": "7343dc9e422ed737fff8efd7e43b37075365869fb1b11413362326d86e90f718"
+    },
+    "aws-next-fixture-state/claim.once.json": {
+      "bytes": 2885,
+      "rawSHA256": "27f3c046820df9d8ceacf67cdeb1578851a8132f4579fc7a4d722c0d487c7204"
+    },
+    "aws-next-fixture-state/event-0001.once.json": {
+      "bytes": 339,
+      "rawSHA256": "f844ef06c93dee9dfb1a2323fdbacbd547ee8ce24206840f8b43b2b275f8d30b"
+    },
+    "aws-next-fixture-state/event-0002.once.json": {
+      "bytes": 1324,
+      "rawSHA256": "ab49c9a9601216c44d6fb7e1493460c94aa9e7deb6adf678978876d3b99025ca"
+    },
+    "aws-next-fixture-state/event-0003.once.json": {
+      "bytes": 1315,
+      "rawSHA256": "efb96df7fa495aaeba715933efdcef3333dd437113ef131ed883d0588f06456f"
+    },
+    "aws-next-fixture-state/held.once.json": {
+      "bytes": 210,
+      "rawSHA256": "9d1d062c59a9a1c7fc4d01f51948b7b3a10203a9977c7055cee72fc00b8cef94"
+    },
+    "aws-next-fixture-state/owner-CreateKey-intent.once.json": {
+      "bytes": 924,
+      "rawSHA256": "15b5234941e8ed117b9f1c18a5dae129c6761e612dfdbc41ef2c51f3b6239439"
+    },
+    "aws-recovery-20261020/after-held-approved-run-20261021/owner-approval.actual.json": {
+      "bytes": 2033,
+      "rawSHA256": "fc5addb180bb28f271b5168ddc590613c6c71280e2228c55d9ce1affb012bb2c"
+    },
+    "aws-recovery-20261020/after-held-approved-run-20261021/owner-directive-context.actual.json": {
+      "bytes": 3680,
+      "rawSHA256": "d88610d61fa3fe303e5ace3dd8a8097da6a0d4b0d80cf5c72043c679f69c800b"
+    },
+    "aws-recovery-20261020/after-held-approved-run-20261021/owner-directive.original-native-payload.json": {
+      "bytes": 19718,
+      "rawSHA256": "de6571a54dbbb7ef55d81f000145c7bbfda8f6498b5f6384b4634e79ab832bac"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/event-schema.query.graphql": {
+      "bytes": 101,
+      "rawSHA256": "3d08748c76a55a777b43437984e24220a19b483cde25f3e1e7513b7c81c9b381"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/event-schema.response.actual.json": {
+      "bytes": 540,
+      "rawSHA256": "ab82959d75c1e84dcd173076d5d214ece712addbe30e24bae2ddd8b6bef31f44"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/manifest.json": {
+      "bytes": 7145,
+      "rawSHA256": "681aa78c79d5b3fb5656445c1110f4650bce8a1673b344871abee08cbd0933a0"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/post-head.completion.seq2941945.payload.raw.json": {
+      "bytes": 8864,
+      "rawSHA256": "5197fcecd0023c0f5e20df5cd94483153a38fa6138cf3a149d015cc7874ffd9c"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/post-head.start.seq2941943.payload.raw.json": {
+      "bytes": 1514,
+      "rawSHA256": "40fb9bd4d18c2baec0ad4f089e4692d1c159a91bf92125bfa4dccda8c6d55394"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/pre-head.completion.seq2941864.payload.raw.json": {
+      "bytes": 32938,
+      "rawSHA256": "2d24636704a76a14a9e5c4933059288962f7bca3570f9e14518054414d0d62a6"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/pre-head.start.seq2941862.payload.raw.json": {
+      "bytes": 1009,
+      "rawSHA256": "65de5e57bbcedc7efebbf553fc5b045d4eba6f3194ed321b77db87c3e3569b14"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/queue-entry.completion.seq2941956.payload.raw.json": {
+      "bytes": 2619,
+      "rawSHA256": "a3301dc5ff757de82dc99206ec7e6a9d0c6013a6ec126aab0a53512421683e94"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/historical-tool-custody/queue-entry.start.seq2941952.payload.raw.json": {
+      "bytes": 1566,
+      "rawSHA256": "5d831e8b838a28a37fed331bee4da593cffb4c1de7317fe5e3d43eb03a580895"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/rest-timeline-pagination-page1.capture.actual.json": {
+      "bytes": 466,
+      "rawSHA256": "44c41e1ab0f01795f74422697daf9aa46ed8e552923ad3fec10303008fbf4c06"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/rest-timeline-pagination-page1.response.actual.json": {
+      "bytes": 86515,
+      "rawSHA256": "340375d763f9c458b886ef05b50de2a3186fd9cc7f92b68a90019a2b00a6ead6"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/rest-timeline-pagination-page2.capture.actual.json": {
+      "bytes": 791,
+      "rawSHA256": "58105c301d2986111348d5ad0b51bc275f01bbb8b34bd0302eff9a1b2241a189"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/rest-timeline-pagination-page2.response.actual.json": {
+      "bytes": 2,
+      "rawSHA256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/whole-timeline.capture.actual.json": {
+      "bytes": 1463,
+      "rawSHA256": "c55f77363d5334c3e612374cd00feecb836a8e8acd00df109b70b98b8128c9b5"
+    },
+    "aws-recovery-20261020/bootstrap-1017-provider-schema-readback-20261021/whole-timeline.response.actual.json": {
+      "bytes": 3220,
+      "rawSHA256": "a6f00e330b8720be37e518c2d413d7d52eb952618a3de2c3cba618c1c465a856"
+    },
+    "aws-recovery-20261020/failed-hosted-secret-absence-proof.actual.json": {
+      "bytes": 1047,
+      "rawSHA256": "6c511ade068f754d13baa1f039048f582a7fcb672dbe8ea3d82b82563a706d66"
+    },
+    "aws-recovery-20261020/final-gross-billing-review.actual.json": {
+      "bytes": 589,
+      "rawSHA256": "2e8373b866b7bf5e33cfd2166059fff77740df81955f78c48be27dd04cd7ec6d"
+    },
+    "aws-recovery-20261020/final-iam-cleanup-and-retained-identity.actual.json": {
+      "bytes": 19129,
+      "rawSHA256": "db68fea715bb66ee6b5b883b91073c573047d06444ce14ea3a3a0a5f045e7ba7"
+    },
+    "aws-recovery-20261020/final-kms-deletion-inventory.actual.json": {
+      "bytes": 3045,
+      "rawSHA256": "92da2a9d614b94e76748afa7af1fd0fd8a3f6dc2a43733a12fd5d723550f2158"
+    },
+    "aws-recovery-20261020/github-consumed-settings-cleanup-complete.actual.json": {
+      "bytes": 2167,
+      "rawSHA256": "181aa6b80d1dd673060d645eb0b10224fddc71d50c730984d21bed02c3424cd7"
+    },
+    "aws-recovery-20261020/kms-readonly-live-diagnostic-20261021T2040/healthy-console-after-diagnostic.original-native-payload.json": {
+      "bytes": 1746,
+      "rawSHA256": "a134e9a6f1aaa1dc0a74dd1fa8db82296cf81782acdcad2693d294f1e16cf45a"
+    },
+    "aws-recovery-20261020/kms-readonly-live-diagnostic-20261021T2040/held-guard-before-navigation.original-native-payload.json": {
+      "bytes": 2568,
+      "rawSHA256": "a425fa0ee769bd2b01cd1e769f508b90878e994b47043c86aed21ffc6f2398ee"
+    },
+    "aws-recovery-20261020/kms-readonly-live-diagnostic-20261021T2040/held-preserved-after-diagnostic.actual.json": {
+      "bytes": 387,
+      "rawSHA256": "7aa3f6ee0d4992e06c6cd3736b8a4ccd75de93117318abd35c487e6b6c7033bb"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/SOURCE-PIN-MANIFEST.json": {
+      "bytes": 12785,
+      "rawSHA256": "05fcccbaef163485ca131fecd7f688ca0349505eef6e0bd17579164154d8b19f"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/admission_assembly.source-only.py": {
+      "bytes": 19248,
+      "rawSHA256": "aa5294d3a8c2c7b4bfedf2abdfcb78064ae3dbb2a827885b495ea620e3ba5db8"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/completed-attempt-history.source-reference.json": {
+      "bytes": 29774,
+      "rawSHA256": "52026c76c7143db8a1d85081f64b156c21e11adb23314c30fe51f34d1b23fed7"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/driver/future_driver.source-only.py": {
+      "bytes": 5681,
+      "rawSHA256": "203be0dd201027d79a6435b835900f1dda533fdbfdf5a42962fec58ce6619a62"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/driver/future_native_lock.source-only.py": {
+      "bytes": 19067,
+      "rawSHA256": "07b0f58c3a2343f850aec095d396166fe4d8a37510768be2f82c0d68efbe0960"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/driver/test_future_driver.py": {
+      "bytes": 15163,
+      "rawSHA256": "10c4f8fbcbb9037024656718eb06046c328dc35a6492e703a4e7359b110a2563"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/driver/test_future_native_lock.py": {
+      "bytes": 20276,
+      "rawSHA256": "5782ce8cbd7623d1b7cac65a630b91f0ac7dc77aaf5c9e3acfc2b0e9c3461c9a"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/future_key_guard_deadline.source-only.py": {
+      "bytes": 12058,
+      "rawSHA256": "07b66eebe60f13d1ad042f8728da0ebb77e9bba34a5cbc5b55a79513d37ee45b"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_historical_describe_observer_per_preparation.source-only.js": {
+      "bytes": 15541,
+      "rawSHA256": "7e127ae676b4c8c16e7105881f429a18e4e28f2232e14b549603c67ea60120fd"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_historical_describe_transport_gate_per_preparation.source-only.js": {
+      "bytes": 10349,
+      "rawSHA256": "12583c98990def7f73dd63e06f7e3ca2f40f4e08b6934f265bd14b04fd7d8ffb"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_next_fixture_iam_guard.source-only.js": {
+      "bytes": 19039,
+      "rawSHA256": "2f79843da8df75977874d1bfdd416f5b3124e875b041c1634ffcb489adae781f"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_next_inventory_prearm_observer.source-only.js": {
+      "bytes": 27020,
+      "rawSHA256": "aded6e0d94d0733b7ff2108e36bb1bbcae3e7984ddf5843b07c1808eb3564966"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_next_key_custody_prearm_observer.source-only.js": {
+      "bytes": 12422,
+      "rawSHA256": "5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_owner_kms_xhr_guard.source-only.js": {
+      "bytes": 10526,
+      "rawSHA256": "6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_partial_kms_deletion_guard.source-only.js": {
+      "bytes": 13501,
+      "rawSHA256": "aee32b7cca291edc42a33d78f2cf3831bc281d65a5b2dbd4a407e2ad06ac11be"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_partial_kms_deletion_prepare.source-only.mjs": {
+      "bytes": 2488,
+      "rawSHA256": "bb806cc3090fdab4f46c4ea0acf72fdb3db324e89583bf03174976a8486411fb"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_setup_version_operations_guard.source-only.js": {
+      "bytes": 15640,
+      "rawSHA256": "577ed656f42e56072decf6dc58a0c5c35f4b3dff2062a930e022c1a35ec8944f"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/native_setup_whole_read_prearm_observer.source-only.js": {
+      "bytes": 12401,
+      "rawSHA256": "c2ee8aa79631fbc08dcb18696f7c40736bd6429e63ad31cefb7b645d342ec914"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native/test_four_key_native.source-only.mjs": {
+      "bytes": 52853,
+      "rawSHA256": "70285b2be5f0b8ed1d1c2402fec9ca4bb7d127a0093dbb86cf90cda571f2f962"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native_boundary_default_projection.source-only.mjs": {
+      "bytes": 10014,
+      "rawSHA256": "fb973afc0551498440b3ba2edd81af6b00b577ece14a5de32e26b72c3c28ba78"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/native_iam_write_response_observer.source-only.js": {
+      "bytes": 16141,
+      "rawSHA256": "35ef5567fcec9654909c3316cd9cb88dad38b8485eabfe40b2cd344b178a33d7"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_fixture_execution.source-only.py": {
+      "bytes": 68322,
+      "rawSHA256": "94451726fcf69c9c4746ce380ea3723025fe2368ef5aa3d7ce8b7c1f61f74a8b"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_fixture_iam_operations.source-only.mjs": {
+      "bytes": 10424,
+      "rawSHA256": "3ce2f92883d62c4cc9ba46b0d56def2a7a67fd5a063c514ecf58639b5bfcfa0e"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_fixture_ledger.source-only.py": {
+      "bytes": 7306,
+      "rawSHA256": "214921d6828c73e7bcdf25880e9ead8e7bb69805d58f8584d640015bbd70fc9e"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_fixture_model.source-only.py": {
+      "bytes": 111672,
+      "rawSHA256": "21a15eaf72e1507f13ad90241a33d463b97af40c5151f3a533e3f0aef6880b53"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_fixture_runtime_bridge.source-only.py": {
+      "bytes": 23872,
+      "rawSHA256": "9ec2d569ca712061efa343f422fd229e8ef689140f018506f7f4b1bf319489fe"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_github_ci_collector.source-only.py": {
+      "bytes": 22422,
+      "rawSHA256": "6378a85f6c850741a0e8117b78440a6378df0c08d14e4576e94c7f33494a5bb3"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_hosted_result.source-only.py": {
+      "bytes": 34370,
+      "rawSHA256": "d2cf3ea2a11f02ab544d39262345017800a57c794226a47e2943a29221ba41b6"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_operator_orchestration.source-only.py": {
+      "bytes": 24088,
+      "rawSHA256": "45fc08edf5421c908a1abece2590a7b3bdf40f424ff532d6bf076cd9b07b5d35"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_operator_orchestration_stdout.source-only.py": {
+      "bytes": 25750,
+      "rawSHA256": "a64e63eac0b03c6bf15c4469d51d5ecc5ec4a12027936a4ddf491fdb74f1c164"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/next_owner_finalization.source-only.py": {
+      "bytes": 28267,
+      "rawSHA256": "1e492f8b9d45a2a2f1a1973f3d9628087acc46db5a9de89baca570f72f254a73"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/normalize_key_origin_cleanup_only.source-only.py": {
+      "bytes": 17018,
+      "rawSHA256": "4a2cbe1e053a72b74ade594ddfb429c3ee323ece5ecfb63a3128bdc162ec0dae"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/normalize_next_inventory.source-only.py": {
+      "bytes": 34450,
+      "rawSHA256": "9fbe10b6284c259c80e2138d99de1d041ed27f19fa8c3f4fe5d789705eb03299"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/normalize_next_key_custody.source-only.py": {
+      "bytes": 14252,
+      "rawSHA256": "4d4feac986adbd13550ed89e5f959f828e479d043db1cdc6f9670d7cc10d5d34"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/normalize_setup_whole_reads.source-only.py": {
+      "bytes": 13685,
+      "rawSHA256": "2b70d44ec3cf19e5893e5f7c7b6578762536c28c514cffeb218076d7d2829221"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/partial_metadata_bridge.source-only.py": {
+      "bytes": 30566,
+      "rawSHA256": "79940fc3d90ce8bb553c90f67eec679ff692536e53279dff2ab08099094a692b"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/partial_readonly_cli.source-only.py": {
+      "bytes": 14935,
+      "rawSHA256": "51d8c2df6cdb48a841079df1f470115a38d032ef7485a3935c46a0db08256bdf"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/partial_setup_cleanup_inventory.source-only.py": {
+      "bytes": 74513,
+      "rawSHA256": "ae8a04365d344a5419cf8bc9cf340b8201eb54f04129be30bca2fa7115925458"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/project_pending_job.source-only.py": {
+      "bytes": 18627,
+      "rawSHA256": "e0c6bd3fe96c6120fc4efbd74c4144a32315d96156fe555f7bf0d6a661999636"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/run_offline_validation.source-only.py": {
+      "bytes": 2321,
+      "rawSHA256": "2eab027a9047201de17683e574c1e0b2dde6753e6668bef139a7b48db94550d2"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/setup_version_operations.source-only.mjs": {
+      "bytes": 11380,
+      "rawSHA256": "dd64d90d4ba15066fe0716092fe692f3df9dad3838af247f54c73617f33e1ec8"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/source_prepared_entrypoint.source-only.py": {
+      "bytes": 4004,
+      "rawSHA256": "68834fafe68bfb7dc5e55a95fef61df4afafb75e4bc0083e1f2a2a057147d0e2"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_admission_assembly.py": {
+      "bytes": 12249,
+      "rawSHA256": "51b71533ebde8e2ad0ede6eb217ea525d1871bf7867040c1355f6d260550e5c0"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_banked_series_authorization.py": {
+      "bytes": 9760,
+      "rawSHA256": "19f1f4f7d30b25a5ffd711822e6a19e10a8168bcd32ade6e9b8227c35b226ff1"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_future_key_guard_deadline.py": {
+      "bytes": 14844,
+      "rawSHA256": "54da1eeafdca113e2b8a2fc0f38f6ba80ca96e3ca31ef51b6c250e2b264e453c"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_future_package.py": {
+      "bytes": 20831,
+      "rawSHA256": "ad1a4e374362e384178b6fc3c41a2f65504c45f82dbde763a7c8842d4c4d873a"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_key_origin_cleanup_only.py": {
+      "bytes": 8106,
+      "rawSHA256": "35de28d80fe1f1f5363301008fdfdf6be3c2d1be5d77e2c22f1191af3118d3de"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_native_boundary_default_projection.source-only.mjs": {
+      "bytes": 10467,
+      "rawSHA256": "4a850bda6ce64f077a664fbcd87d4d7262536a81eb3af9373544bcd4466f4ab2"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_native_iam_write_response_observer.source-only.mjs": {
+      "bytes": 22345,
+      "rawSHA256": "7d2148b1f2dabb77006ebda70ca12fe1c04586583a4f64a90698817b6431356d"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_fixture_execution.py": {
+      "bytes": 44613,
+      "rawSHA256": "a7bea15fea654aa657e1e4bef7a758defcee1a6da6c9232066cc47f9bc6c7fbf"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_fixture_iam_operations.source-only.mjs": {
+      "bytes": 32583,
+      "rawSHA256": "3788b503fb22bb6bd3b7debd9155dd7deabe10e2922894a7816f80c2690c5b74"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_fixture_model.py": {
+      "bytes": 110040,
+      "rawSHA256": "8999035d1a900b2ceb8af4d6c6159e7b2db5ebe3b59fffb0bb9191c4e9e3d7c3"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_fixture_runtime_bridge.py": {
+      "bytes": 16811,
+      "rawSHA256": "3fa70ec2ab80a0d347a19d7f7d619b148aa0b0abbd9fb30c98b0822e8c30ebdb"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_github_ci_collector.py": {
+      "bytes": 16074,
+      "rawSHA256": "7bf882c3a1ed53169ffa938089d22ee01c487ff37ddb76d616328a72236da197"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_hosted_result.py": {
+      "bytes": 23315,
+      "rawSHA256": "74779248e4cf39b4ec992d247d4cfa389054f378734ce104793580957444c35e"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_operator_orchestration.py": {
+      "bytes": 33487,
+      "rawSHA256": "1621718aa4f1b810521611c3dabb52a5b3f94cf1ad3706d9ff825be0f205ae58"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_next_owner_finalization.py": {
+      "bytes": 16262,
+      "rawSHA256": "57d4ddeb87e330248f89e5b670118cc990de405bd5e8071c2aecea089ed5ee95"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_normalize_next_inventory.py": {
+      "bytes": 25567,
+      "rawSHA256": "02a0309b6718043c2e88f83fd0d29496a1754ca7c202c254bf6e2e91002e2407"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_normalize_next_key_custody.py": {
+      "bytes": 12113,
+      "rawSHA256": "c1e64f4aa2a83f893b62463cd349f6c385cadc6cd80cedf3b24e8de2c1fa9f62"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_normalize_setup_whole_reads.py": {
+      "bytes": 9946,
+      "rawSHA256": "a9ffbe7d51064ea05417a50299a48e61afc68f480e02eceffaabb60fbc7f33a5"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_operator_stdout.py": {
+      "bytes": 7165,
+      "rawSHA256": "eaf28ed0642d1c2affb1c7a4143d5bae7aec7e6dcb79ce48a489cce33edcc5a9"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_partial_abort_metadata.py": {
+      "bytes": 25989,
+      "rawSHA256": "e176b6752b744d6a944e348f6fc76080e12095e1192eb77386f91c26f2a89080"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_partial_setup_cleanup.py": {
+      "bytes": 40667,
+      "rawSHA256": "898db526095176cb9232842ac0572b3c25c4e503747cb1dcfb4b6e2e7fbeb8fd"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_project_pending_job.py": {
+      "bytes": 19052,
+      "rawSHA256": "357544387142103cd802424b20bfe33682b8feca5780aea7cb1da75e0c5a8d1d"
+    },
+    "aws-recovery-20261020/next-run-source-preparation/banked-series-first-attempt-source/test_setup_version_operations.source-only.mjs": {
+      "bytes": 20910,
+      "rawSHA256": "2b046ea8f70627c36e3144201ddfcdf41496e307a36649f0faef19c8a31244d4"
+    },
+    "aws-recovery-20261020/next-single-bounded-run-owner-approval.actual.json": {
+      "bytes": 1481,
+      "rawSHA256": "2fc1a61e1e02e8e00de795ea273815f0d504ab83e95e95803b7dc3f7ea0daf0c"
+    },
+    "aws-recovery-20261020/recovery-claim.once.json": {
+      "bytes": 764,
+      "rawSHA256": "c2054c82ed1ae043ce83e6ffed4c9c8ba37d47f29a5512307c26d50ad37ad5ae"
+    },
+    "aws-recovery-20261020/recovery-plan.reviewed.json": {
+      "bytes": 60317,
+      "rawSHA256": "61e8cdda8a52a48084914c4645e68bb995e98d3d92c4ac8ae1874cef0cbd78db"
+    },
+    "aws-reuse-20261019c/active-epoch.json": {
+      "bytes": 3690,
+      "rawSHA256": "52eee2a4f4bfad3850377a2c3d31c3bda8fc9a6383cd02eec64c50707d3f402c"
+    },
+    "aws-reuse-20261019c/first-provision-bundle/plan.json": {
+      "bytes": 55958,
+      "rawSHA256": "844056f35279ff50c6e7b2406082a130a4760d62b54323bf156df5a9ba24c2b2"
+    },
+    "aws-revalidation-20261018b/next-approval-20be2b5eb24e47197459185f945d48fd8e8d13156e322f5cdcf22e3fbec25719.once.json": {
+      "bytes": 2885,
+      "rawSHA256": "27f3c046820df9d8ceacf67cdeb1578851a8132f4579fc7a4d722c0d487c7204"
+    },
+    "aws-revalidation-20261018b/resource-ledger.json": {
+      "bytes": 54089,
+      "rawSHA256": "c105c9c1385b4e163db570e7f27360f67d05a76afda4efeeb5211d176fa9957d"
+    }
+  }
+}

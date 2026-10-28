@@ -1161,13 +1161,13 @@ func runCLIDisclosureHandoffPasskeyBinding(t *testing.T, db *store.DB) {
 	auth.ReauthHardCap = time.Hour
 	scope := scopeEnv(orgA, prjA1, envA1)
 	keyA, keyB := "key_"+ceremonySecretA, "key_"+ceremonySecretB
-	// The CLI session: same account, a second CLI login, stepped up with the
-	// passkey the way a terminal user would be (the redeemed window is the
-	// only thing the handoff adds).
-	cliLogin, err := auth.LocalLogin(ctx, "handoff-zero", ceremonyPassword, service.ArtifactCLI)
+	// Sign in through the existing browser handoff. Login assurance does not
+	// grant an operation window; the disclosure handoff must still supply it.
+	browser, err := discoverableLogin(t, auth, ctx, dev)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cliLogin := cliLoginFromBrowser(t, auth, browser)
 	sopts, err := auth.StepUpPasskeyStart(ctx, cliLogin.SessionToken)
 	if err != nil {
 		t.Fatal(err)

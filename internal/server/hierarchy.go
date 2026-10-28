@@ -136,7 +136,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 	// A service refusal may carry a caller-safe detail (the clone abort names
 	// the stranded keys; a duplicate-item refusal names the duplicate; the
 	// protected-destination refusal names the caller's own destination id).
-	// errorBody honours it only for bad_request, conflict and unprocessable, so
+	// errorBody honours it only for policies that explicitly allow safe detail, so
 	// a detail on any other code is dropped — and detail is only ever set by an explicit
 	// SafeDetail carrier, so a plain refusal on those codes still stays uniform.
 	// A Surface-2 secret-scanning refusal (#74) carries a typed findings array

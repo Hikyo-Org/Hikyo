@@ -19,5 +19,5 @@ client="$work/clients/ts"
 printf 'client skew: mode=%s baseline=%s server=%s\n' "$mode" "$commit" "$(git rev-parse HEAD)"
 CI=true HIKYO_FROZEN_CLIENT_ROOT="$client" go test -count=1 -json \
 	./internal/isolation -run '^TestFrozenGeneratedClientAgainstCurrentServer$' | tee "$work/result.jsonl"
-node --test scripts/ci/check-client-skew-evidence.test.mjs
+node --test scripts/ci/check-client-skew-evidence.test.mjs scripts/ci/frozen-client-cleanup.test.mjs
 node scripts/ci/check-client-skew-evidence.mjs "$work/result.jsonl"

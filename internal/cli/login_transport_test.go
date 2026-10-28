@@ -205,8 +205,9 @@ func TestLoginProviderResolutionPrecedesBrowser(t *testing.T) {
 }
 
 func TestLoginDispatchAndSessionCustody(t *testing.T) {
-	for _, local := range []bool{false, true} {
-		t.Run(map[bool]string{false: "browser", true: "local"}[local], func(t *testing.T) {
+	for _, scenario := range []string{"browser", "local", "local-mfa"} {
+		t.Run(scenario, func(t *testing.T) {
+			local := scenario != "browser"
 			var start apigen.CLILoginStartRequest
 			passwordRead := false
 			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +223,11 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 					_ = json.NewDecoder(r.Body).Decode(&login)
 					if !local || login.Username != "admin" || login.Password != "local-secret" {
 						t.Error("local login changed its credential transport")
+					}
+					if scenario == "local-mfa" {
+						w.WriteHeader(http.StatusBadRequest)
+						_, _ = w.Write([]byte(`{"error":{"code":"bad_request","message":"the request does not satisfy the API contract","detail":"an enrolled factor is required; use hikyo login <instance-url> or hikyo login <instance-url> --device and complete browser sign-in"}}`))
+						return
 					}
 					_ = json.NewEncoder(w).Encode(loginTestResult())
 				case api.PathPrefix + "/auth/cli-login/redeem":
@@ -260,12 +266,23 @@ func TestLoginDispatchAndSessionCustody(t *testing.T) {
 			if local {
 				args = append(args, "--local", "--as", "admin")
 			}
-			if code := Run(t.Context(), ios, args); code != ExitOK {
+			wantExit := ExitOK
+			if scenario == "local-mfa" {
+				wantExit = ExitRefused
+			}
+			if code := Run(t.Context(), ios, args); code != wantExit {
 				t.Fatalf("exit=%d stderr=%s", code, stderr.String())
 			}
 			sessions, err := state.Sessions()
-			if err != nil || len(sessions) != 1 || sessions["login"].Token != loginTestToken || passwordRead != local {
+			wantSessions := 1
+			if scenario == "local-mfa" {
+				wantSessions = 0
+			}
+			if err != nil || len(sessions) != wantSessions || (wantSessions == 1 && sessions["login"].Token != loginTestToken) || passwordRead != local {
 				t.Fatalf("session custody failed: count=%d password=%v err=%v", len(sessions), passwordRead, err)
+			}
+			if scenario == "local-mfa" && (!strings.Contains(stderr.String(), "hikyo login <instance-url>") || !strings.Contains(stderr.String(), "--device")) {
+				t.Fatalf("MFA refusal lost browser guidance: %s", stderr.String())
 			}
 			if stdout.Len() != 0 || strings.Contains(stderr.String(), loginTestToken) || strings.Contains(stderr.String(), "local-secret") || (start.State != "" && strings.Contains(stderr.String(), start.State)) {
 				t.Fatal("login disclosed an authentication secret in output")

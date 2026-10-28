@@ -1,0 +1,2766 @@
+{
+  "schema": "hikyo-158/reviewed-owner-scripts/v1",
+  "scripts": [
+    {
+      "id": "native-create-install-v1",
+      "file": "reviewed-scripts/native-create-install-v1.js",
+      "sha256": "3977912c6000d5091303b5be185e39e236b4ae147ef4ed0700d937ff60e2920b",
+      "effect": "mutation",
+      "arguments": {
+        "kind": "object",
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "pattern": "^[a-f0-9]{64}$",
+            "maxLength": 64
+          },
+          "expected": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "window": {
+            "kind": "object",
+            "fields": {
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              }
+            }
+          },
+          "manifest": {
+            "kind": "object",
+            "fields": {
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-key-observer-manifest/v1"
+              },
+              "mode": {
+                "kind": "literal",
+                "value": "create"
+              },
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "endpoint": {
+                "kind": "literal",
+                "value": "https://kms.eu-central-1.amazonaws.com/"
+              },
+              "publicMainSHA256": {
+                "kind": "literal",
+                "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+              },
+              "preparationSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "ownerContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "intentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "claimId": {
+                "kind": "literal",
+                "value": "next-owner-CreateKey"
+              },
+              "wireBodySHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "wireBodyBytes": {
+                "kind": "integer",
+                "min": 2,
+                "max": 32768
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "newKeyARN": {
+                "kind": "literal",
+                "value": null
+              },
+              "createReceiptSHA256": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "approvedBodyChunks": {
+            "kind": "array",
+            "items": {
+              "kind": "pattern",
+              "pattern": "^[\\s\\S]*$",
+              "maxLength": 2048
+            },
+            "maxItems": 32
+          }
+        }
+      },
+      "result": {
+        "kind": "object",
+        "fields": {
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/native-create-stage-readout/v1"
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "install"
+          },
+          "phase": {
+            "kind": "literal",
+            "value": "install"
+          },
+          "before": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "after": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "min": 0,
+            "max": 9007199254740991
+          },
+          "value": {
+            "kind": "object",
+            "fields": {
+              "observer": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-status/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "readySlots": {
+                    "kind": "array",
+                    "items": {
+                      "kind": "pattern",
+                      "pattern": "^[\\s\\S]*$",
+                      "maxLength": 2048
+                    },
+                    "maxItems": 0
+                  },
+                  "pendingCaptures": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "error": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "providerAPIsCalledByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "publicSourceAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "writeAuthorityGrantedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "full-navigation-controlled-tab-preserves-session"
+                  }
+                }
+              },
+              "installedBeforeGuard": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "writeAuthorityGranted": {
+            "kind": "literal",
+            "value": false
+          },
+          "providerOutcomeProven": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "id": "native-create-status-v1",
+      "file": "reviewed-scripts/native-create-status-v1.js",
+      "sha256": "535a20b8c2fe39117040d74e4288fdba5a6f2f4c2373623cd5844dbba51d4090",
+      "effect": "read",
+      "arguments": {
+        "kind": "object",
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "pattern": "^[a-f0-9]{64}$",
+            "maxLength": 64
+          },
+          "expected": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "window": {
+            "kind": "object",
+            "fields": {
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              }
+            }
+          },
+          "phase": {
+            "kind": "enum",
+            "values": [
+              "arm",
+              "finish"
+            ]
+          },
+          "manifest": {
+            "kind": "object",
+            "fields": {
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-key-observer-manifest/v1"
+              },
+              "mode": {
+                "kind": "literal",
+                "value": "create"
+              },
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "endpoint": {
+                "kind": "literal",
+                "value": "https://kms.eu-central-1.amazonaws.com/"
+              },
+              "publicMainSHA256": {
+                "kind": "literal",
+                "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+              },
+              "preparationSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "ownerContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "intentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "claimId": {
+                "kind": "literal",
+                "value": "next-owner-CreateKey"
+              },
+              "wireBodySHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "wireBodyBytes": {
+                "kind": "integer",
+                "min": 2,
+                "max": 32768
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "newKeyARN": {
+                "kind": "literal",
+                "value": null
+              },
+              "createReceiptSHA256": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          }
+        }
+      },
+      "result": {
+        "kind": "object",
+        "fields": {
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/native-create-stage-readout/v1"
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "status"
+          },
+          "phase": {
+            "kind": "enum",
+            "values": [
+              "arm",
+              "finish"
+            ]
+          },
+          "before": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "after": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "min": 0,
+            "max": 9007199254740991
+          },
+          "value": {
+            "kind": "object",
+            "fields": {
+              "guard": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-status/v1"
+                  },
+                  "phase": {
+                    "kind": "enum",
+                    "values": [
+                      "observing",
+                      "armed"
+                    ]
+                  },
+                  "claimConsumed": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendInvocations": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "blocked": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "activeReads": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "successfulReadProbes": {
+                    "kind": "integer",
+                    "min": 1,
+                    "max": 9007199254740991
+                  },
+                  "lastReadTarget": {
+                    "kind": "enum",
+                    "values": [
+                      "TrentService.ListKeys",
+                      "TrentService.ListKeysForService",
+                      "TrentService.ListAliases",
+                      "TrentService.DescribeKey",
+                      "TrentService.GetKeyPolicy",
+                      "TrentService.GetKeyRotationStatus",
+                      "TrentService.ListResourceTags"
+                    ]
+                  },
+                  "responseStatus": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "reason": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "responseEndpointMatched": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "durabilityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerIdentityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendCounterScope": {
+                    "kind": "literal",
+                    "value": "CreateKey-only-excludes-metadata-reads"
+                  },
+                  "loadedSourceBytesVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "redirectErrorSupported": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "close-controlled-tab"
+                  }
+                }
+              },
+              "observer": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-status/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "readySlots": {
+                    "kind": "array",
+                    "items": {
+                      "kind": "pattern",
+                      "pattern": "^[\\s\\S]*$",
+                      "maxLength": 2048
+                    },
+                    "maxItems": 0
+                  },
+                  "pendingCaptures": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "error": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "providerAPIsCalledByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "publicSourceAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "writeAuthorityGrantedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "full-navigation-controlled-tab-preserves-session"
+                  }
+                }
+              }
+            }
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "writeAuthorityGranted": {
+            "kind": "literal",
+            "value": false
+          },
+          "providerOutcomeProven": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "id": "native-create-inspect-v1",
+      "file": "reviewed-scripts/native-create-inspect-v1.js",
+      "sha256": "a784cccd494ed1fcbc910e6099117761cfeaf9acec7a42bd89b309d9ef4af1d0",
+      "effect": "read",
+      "arguments": {
+        "kind": "object",
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "pattern": "^[a-f0-9]{64}$",
+            "maxLength": 64
+          },
+          "expected": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "window": {
+            "kind": "object",
+            "fields": {
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              }
+            }
+          },
+          "phase": {
+            "kind": "literal",
+            "value": "inspect"
+          },
+          "manifest": {
+            "kind": "object",
+            "fields": {
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/next-key-observer-manifest/v1"
+              },
+              "mode": {
+                "kind": "literal",
+                "value": "create"
+              },
+              "account": {
+                "kind": "literal",
+                "value": "099256073061"
+              },
+              "region": {
+                "kind": "literal",
+                "value": "eu-central-1"
+              },
+              "endpoint": {
+                "kind": "literal",
+                "value": "https://kms.eu-central-1.amazonaws.com/"
+              },
+              "publicMainSHA256": {
+                "kind": "literal",
+                "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+              },
+              "preparationSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "ownerContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "intentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "claimId": {
+                "kind": "literal",
+                "value": "next-owner-CreateKey"
+              },
+              "wireBodySHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "wireBodyBytes": {
+                "kind": "integer",
+                "min": 2,
+                "max": 32768
+              },
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "newKeyARN": {
+                "kind": "literal",
+                "value": null
+              },
+              "createReceiptSHA256": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          }
+        }
+      },
+      "result": {
+        "kind": "object",
+        "fields": {
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/native-create-stage-readout/v1"
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "inspect"
+          },
+          "phase": {
+            "kind": "literal",
+            "value": "inspect"
+          },
+          "before": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "after": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "min": 0,
+            "max": 9007199254740991
+          },
+          "value": {
+            "kind": "object",
+            "fields": {
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/public-json-chunks/v1"
+              },
+              "chunks": {
+                "kind": "array",
+                "items": {
+                  "kind": "pattern",
+                  "pattern": "^[\\s\\S]*$",
+                  "maxLength": 2048
+                },
+                "maxItems": 32
+              }
+            }
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "writeAuthorityGranted": {
+            "kind": "literal",
+            "value": false
+          },
+          "providerOutcomeProven": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "id": "native-create-arm-v1",
+      "file": "reviewed-scripts/native-create-arm-v1.js",
+      "sha256": "0633bacef9ee025814ac390b601d5b43547f556e5b6cbe1c7e9d2980ee302ba2",
+      "effect": "mutation",
+      "arguments": {
+        "kind": "object",
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "pattern": "^[a-f0-9]{64}$",
+            "maxLength": 64
+          },
+          "expected": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "window": {
+            "kind": "object",
+            "fields": {
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              }
+            }
+          },
+          "phase": {
+            "kind": "literal",
+            "value": "arm"
+          },
+          "descriptor": {
+            "kind": "object",
+            "fields": {
+              "attemptTrustBindingSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/native-create-stage-preflight/v1"
+              },
+              "phase": {
+                "kind": "enum",
+                "values": [
+                  "arm",
+                  "finish"
+                ]
+              },
+              "issuedAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "effectBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "sharedWindow": {
+                "kind": "object",
+                "fields": {
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  }
+                }
+              },
+              "physicalWindow": {
+                "kind": "object",
+                "fields": {
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  }
+                }
+              },
+              "expectedIdentity": {
+                "kind": "object",
+                "fields": {
+                  "targetId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "browserContextId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "mainFrameId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "loaderId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "targetType": {
+                    "kind": "literal",
+                    "value": "page"
+                  },
+                  "targetURL": {
+                    "kind": "literal",
+                    "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                  },
+                  "frameURL": {
+                    "kind": "enum",
+                    "values": [
+                      "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                      "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                    ]
+                  },
+                  "frameURLRelation": {
+                    "kind": "enum",
+                    "values": [
+                      "same-url",
+                      "target-url-without-fragment"
+                    ]
+                  }
+                }
+              },
+              "sourcePins": {
+                "kind": "object",
+                "fields": {
+                  "documentSHA256": {
+                    "kind": "literal",
+                    "value": "81c5ee2e76e7c70703625e03460a3f3c3bf655b858e5dc781ed4e869232f636a"
+                  },
+                  "guardSHA256": {
+                    "kind": "literal",
+                    "value": "6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26"
+                  },
+                  "kernelSHA256": {
+                    "kind": "literal",
+                    "value": "4b015b1f7623deedbf7ff72248caf59020b136b272cd1e38bc0a95fc8ad751f5"
+                  },
+                  "modelSHA256": {
+                    "kind": "literal",
+                    "value": "f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19"
+                  },
+                  "modelTestSHA256": {
+                    "kind": "literal",
+                    "value": "f06b2e173ff499070ae8718d65870534510a585339b8fc451462baaea6dc5985"
+                  },
+                  "observerSHA256": {
+                    "kind": "literal",
+                    "value": "5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700"
+                  },
+                  "windowSHA256": {
+                    "kind": "literal",
+                    "value": "f72078c6663117c4cc82376af3b016a890f08dbeeb27c2d668132826f788739e"
+                  }
+                }
+              },
+              "holderContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "readyRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "lockWindowSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "holderIndexRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "preparationSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "claimSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "stateSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "intentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "normalizedIntentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "ticketSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "manifestBundleSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "preflightSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalSequence": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "guardManifest": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-manifest/v1"
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodyBytes": {
+                    "kind": "integer",
+                    "min": 2,
+                    "max": 32768
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "publicMainSHA256": {
+                    "kind": "literal",
+                    "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "timeoutMS": {
+                    "kind": "literal",
+                    "value": 20000
+                  },
+                  "redirectLimitationReviewed": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                }
+              },
+              "observerManifest": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-manifest/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "account": {
+                    "kind": "literal",
+                    "value": "099256073061"
+                  },
+                  "region": {
+                    "kind": "literal",
+                    "value": "eu-central-1"
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "publicMainSHA256": {
+                    "kind": "literal",
+                    "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+                  },
+                  "preparationSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "ownerContextSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "claimId": {
+                    "kind": "literal",
+                    "value": "next-owner-CreateKey"
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodyBytes": {
+                    "kind": "integer",
+                    "min": 2,
+                    "max": 32768
+                  },
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "newKeyARN": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "createReceiptSHA256": {
+                    "kind": "literal",
+                    "value": null
+                  }
+                }
+              },
+              "expectedGuardStatus": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-status/v1"
+                  },
+                  "phase": {
+                    "kind": "enum",
+                    "values": [
+                      "observing",
+                      "armed"
+                    ]
+                  },
+                  "claimConsumed": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendInvocations": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "blocked": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "activeReads": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "successfulReadProbes": {
+                    "kind": "integer",
+                    "min": 1,
+                    "max": 9007199254740991
+                  },
+                  "lastReadTarget": {
+                    "kind": "enum",
+                    "values": [
+                      "TrentService.ListKeys",
+                      "TrentService.ListKeysForService",
+                      "TrentService.ListAliases",
+                      "TrentService.DescribeKey",
+                      "TrentService.GetKeyPolicy",
+                      "TrentService.GetKeyRotationStatus",
+                      "TrentService.ListResourceTags"
+                    ]
+                  },
+                  "responseStatus": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "reason": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "responseEndpointMatched": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "durabilityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerIdentityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendCounterScope": {
+                    "kind": "literal",
+                    "value": "CreateKey-only-excludes-metadata-reads"
+                  },
+                  "loadedSourceBytesVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "redirectErrorSupported": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "close-controlled-tab"
+                  }
+                }
+              },
+              "expectedObserverStatus": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-status/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "readySlots": {
+                    "kind": "array",
+                    "items": {
+                      "kind": "pattern",
+                      "pattern": "^[\\s\\S]*$",
+                      "maxLength": 2048
+                    },
+                    "maxItems": 0
+                  },
+                  "pendingCaptures": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "error": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "providerAPIsCalledByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "publicSourceAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "writeAuthorityGrantedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "full-navigation-controlled-tab-preserves-session"
+                  }
+                }
+              },
+              "requiredRemainingMS": {
+                "kind": "literal",
+                "value": 60000
+              },
+              "maximumActionAgeMS": {
+                "kind": "literal",
+                "value": 2000
+              },
+              "writeAuthorityGranted": {
+                "kind": "literal",
+                "value": false
+              },
+              "externalAuthenticityVerified": {
+                "kind": "literal",
+                "value": false
+              },
+              "runtimeReady": {
+                "kind": "literal",
+                "value": false
+              }
+            }
+          }
+        }
+      },
+      "result": {
+        "kind": "object",
+        "fields": {
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/native-create-stage-readout/v1"
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "arm"
+          },
+          "phase": {
+            "kind": "enum",
+            "values": [
+              "arm",
+              "finish"
+            ]
+          },
+          "before": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "after": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "min": 0,
+            "max": 9007199254740991
+          },
+          "value": {
+            "kind": "object",
+            "fields": {
+              "guard": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-status/v1"
+                  },
+                  "phase": {
+                    "kind": "enum",
+                    "values": [
+                      "observing",
+                      "armed"
+                    ]
+                  },
+                  "claimConsumed": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendInvocations": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "blocked": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "activeReads": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "successfulReadProbes": {
+                    "kind": "integer",
+                    "min": 1,
+                    "max": 9007199254740991
+                  },
+                  "lastReadTarget": {
+                    "kind": "enum",
+                    "values": [
+                      "TrentService.ListKeys",
+                      "TrentService.ListKeysForService",
+                      "TrentService.ListAliases",
+                      "TrentService.DescribeKey",
+                      "TrentService.GetKeyPolicy",
+                      "TrentService.GetKeyRotationStatus",
+                      "TrentService.ListResourceTags"
+                    ]
+                  },
+                  "responseStatus": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "reason": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "responseEndpointMatched": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "durabilityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerIdentityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendCounterScope": {
+                    "kind": "literal",
+                    "value": "CreateKey-only-excludes-metadata-reads"
+                  },
+                  "loadedSourceBytesVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "redirectErrorSupported": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "close-controlled-tab"
+                  }
+                }
+              },
+              "armInvokedOnce": {
+                "kind": "literal",
+                "value": true
+              },
+              "providerOutcomeProven": {
+                "kind": "literal",
+                "value": false
+              }
+            }
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "writeAuthorityGranted": {
+            "kind": "literal",
+            "value": false
+          },
+          "providerOutcomeProven": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    },
+    {
+      "id": "native-create-finish-v1",
+      "file": "reviewed-scripts/native-create-finish-v1.js",
+      "sha256": "7d0cce8fa3c29b5ff44b60a43a70483830346ed2bbd27382dfb01616973dcfca",
+      "effect": "mutation",
+      "arguments": {
+        "kind": "object",
+        "fields": {
+          "attemptTrustBindingSHA256": {
+            "kind": "pattern",
+            "pattern": "^[a-f0-9]{64}$",
+            "maxLength": 64
+          },
+          "expected": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "window": {
+            "kind": "object",
+            "fields": {
+              "notBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "expiresAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              }
+            }
+          },
+          "phase": {
+            "kind": "literal",
+            "value": "finish"
+          },
+          "descriptor": {
+            "kind": "object",
+            "fields": {
+              "attemptTrustBindingSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "schema": {
+                "kind": "literal",
+                "value": "hikyo-158/native-create-stage-preflight/v1"
+              },
+              "phase": {
+                "kind": "enum",
+                "values": [
+                  "arm",
+                  "finish"
+                ]
+              },
+              "issuedAtMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "effectBeforeMS": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "sharedWindow": {
+                "kind": "object",
+                "fields": {
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  }
+                }
+              },
+              "physicalWindow": {
+                "kind": "object",
+                "fields": {
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  }
+                }
+              },
+              "expectedIdentity": {
+                "kind": "object",
+                "fields": {
+                  "targetId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "browserContextId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "mainFrameId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "loaderId": {
+                    "kind": "pattern",
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "maxLength": 256
+                  },
+                  "targetType": {
+                    "kind": "literal",
+                    "value": "page"
+                  },
+                  "targetURL": {
+                    "kind": "literal",
+                    "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+                  },
+                  "frameURL": {
+                    "kind": "enum",
+                    "values": [
+                      "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                      "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                    ]
+                  },
+                  "frameURLRelation": {
+                    "kind": "enum",
+                    "values": [
+                      "same-url",
+                      "target-url-without-fragment"
+                    ]
+                  }
+                }
+              },
+              "sourcePins": {
+                "kind": "object",
+                "fields": {
+                  "documentSHA256": {
+                    "kind": "literal",
+                    "value": "81c5ee2e76e7c70703625e03460a3f3c3bf655b858e5dc781ed4e869232f636a"
+                  },
+                  "guardSHA256": {
+                    "kind": "literal",
+                    "value": "6182330cb0a73fcc6e9f31dd5e5080b952e89735e40d0e9e3f961b5c9a145f26"
+                  },
+                  "kernelSHA256": {
+                    "kind": "literal",
+                    "value": "4b015b1f7623deedbf7ff72248caf59020b136b272cd1e38bc0a95fc8ad751f5"
+                  },
+                  "modelSHA256": {
+                    "kind": "literal",
+                    "value": "f40c07b2204c3305b434836015c99f30af4dfc893a0ce0e4f0318c17ea844a19"
+                  },
+                  "modelTestSHA256": {
+                    "kind": "literal",
+                    "value": "f06b2e173ff499070ae8718d65870534510a585339b8fc451462baaea6dc5985"
+                  },
+                  "observerSHA256": {
+                    "kind": "literal",
+                    "value": "5a68216b0e07b7fe207b1f361f2ab7192d3e28e2c13ae1adee8b20211e398700"
+                  },
+                  "windowSHA256": {
+                    "kind": "literal",
+                    "value": "f72078c6663117c4cc82376af3b016a890f08dbeeb27c2d668132826f788739e"
+                  }
+                }
+              },
+              "holderContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "readyRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "lockWindowSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "holderIndexRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "preparationSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "claimSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "stateSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "intentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "normalizedIntentSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "ticketSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "manifestBundleSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalRawSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusContextSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "preflightSHA256": {
+                "kind": "pattern",
+                "pattern": "^[a-f0-9]{64}$",
+                "maxLength": 64
+              },
+              "statusOriginalSequence": {
+                "kind": "integer",
+                "min": 0,
+                "max": 9007199254740991
+              },
+              "guardManifest": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-manifest/v1"
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodyBytes": {
+                    "kind": "integer",
+                    "min": 2,
+                    "max": 32768
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "publicMainSHA256": {
+                    "kind": "literal",
+                    "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "timeoutMS": {
+                    "kind": "literal",
+                    "value": 20000
+                  },
+                  "redirectLimitationReviewed": {
+                    "kind": "literal",
+                    "value": true
+                  }
+                }
+              },
+              "observerManifest": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-manifest/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "account": {
+                    "kind": "literal",
+                    "value": "099256073061"
+                  },
+                  "region": {
+                    "kind": "literal",
+                    "value": "eu-central-1"
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "publicMainSHA256": {
+                    "kind": "literal",
+                    "value": "20a50d3f9e11cdae453b0f764689073f2adc6c644e6ac2a08660be5b1b2227a2"
+                  },
+                  "preparationSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "ownerContextSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "claimId": {
+                    "kind": "literal",
+                    "value": "next-owner-CreateKey"
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodyBytes": {
+                    "kind": "integer",
+                    "min": 2,
+                    "max": 32768
+                  },
+                  "notBeforeMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "expiresAtMS": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "newKeyARN": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "createReceiptSHA256": {
+                    "kind": "literal",
+                    "value": null
+                  }
+                }
+              },
+              "expectedGuardStatus": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/native-kms-xhr-write-status/v1"
+                  },
+                  "phase": {
+                    "kind": "enum",
+                    "values": [
+                      "observing",
+                      "armed"
+                    ]
+                  },
+                  "claimConsumed": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendInvocations": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "blocked": {
+                    "kind": "integer",
+                    "min": 0,
+                    "max": 9007199254740991
+                  },
+                  "activeReads": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "successfulReadProbes": {
+                    "kind": "integer",
+                    "min": 1,
+                    "max": 9007199254740991
+                  },
+                  "lastReadTarget": {
+                    "kind": "enum",
+                    "values": [
+                      "TrentService.ListKeys",
+                      "TrentService.ListKeysForService",
+                      "TrentService.ListAliases",
+                      "TrentService.DescribeKey",
+                      "TrentService.GetKeyPolicy",
+                      "TrentService.GetKeyRotationStatus",
+                      "TrentService.ListResourceTags"
+                    ]
+                  },
+                  "responseStatus": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "reason": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "responseEndpointMatched": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "intentSHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "wireBodySHA256": {
+                    "kind": "pattern",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "maxLength": 64
+                  },
+                  "endpoint": {
+                    "kind": "literal",
+                    "value": "https://kms.eu-central-1.amazonaws.com/"
+                  },
+                  "durabilityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerIdentityVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "nativeSendCounterScope": {
+                    "kind": "literal",
+                    "value": "CreateKey-only-excludes-metadata-reads"
+                  },
+                  "loadedSourceBytesVerifiedByPage": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "redirectErrorSupported": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "close-controlled-tab"
+                  }
+                }
+              },
+              "expectedObserverStatus": {
+                "kind": "object",
+                "fields": {
+                  "schema": {
+                    "kind": "literal",
+                    "value": "hikyo-158/next-key-observer-status/v1"
+                  },
+                  "mode": {
+                    "kind": "literal",
+                    "value": "create"
+                  },
+                  "readySlots": {
+                    "kind": "array",
+                    "items": {
+                      "kind": "pattern",
+                      "pattern": "^[\\s\\S]*$",
+                      "maxLength": 2048
+                    },
+                    "maxItems": 0
+                  },
+                  "pendingCaptures": {
+                    "kind": "literal",
+                    "value": 0
+                  },
+                  "error": {
+                    "kind": "literal",
+                    "value": null
+                  },
+                  "providerAPIsCalledByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "ownerAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "publicSourceAuthenticatedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "writeAuthorityGrantedByObserver": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "coversOtherRealmsOrCapturedMethods": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "physicalHTTPHopBoundEstablished": {
+                    "kind": "literal",
+                    "value": false
+                  },
+                  "cleanup": {
+                    "kind": "literal",
+                    "value": "full-navigation-controlled-tab-preserves-session"
+                  }
+                }
+              },
+              "requiredRemainingMS": {
+                "kind": "literal",
+                "value": 60000
+              },
+              "maximumActionAgeMS": {
+                "kind": "literal",
+                "value": 2000
+              },
+              "writeAuthorityGranted": {
+                "kind": "literal",
+                "value": false
+              },
+              "externalAuthenticityVerified": {
+                "kind": "literal",
+                "value": false
+              },
+              "runtimeReady": {
+                "kind": "literal",
+                "value": false
+              }
+            }
+          }
+        }
+      },
+      "result": {
+        "kind": "object",
+        "fields": {
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/native-create-stage-readout/v1"
+          },
+          "kind": {
+            "kind": "literal",
+            "value": "finish"
+          },
+          "phase": {
+            "kind": "enum",
+            "values": [
+              "arm",
+              "finish"
+            ]
+          },
+          "before": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "after": {
+            "kind": "object",
+            "fields": {
+              "targetId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "browserContextId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "mainFrameId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "loaderId": {
+                "kind": "pattern",
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "maxLength": 256
+              },
+              "targetType": {
+                "kind": "literal",
+                "value": "page"
+              },
+              "targetURL": {
+                "kind": "literal",
+                "value": "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+              },
+              "frameURL": {
+                "kind": "enum",
+                "values": [
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+                  "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+                ]
+              },
+              "frameURLRelation": {
+                "kind": "enum",
+                "values": [
+                  "same-url",
+                  "target-url-without-fragment"
+                ]
+              }
+            }
+          },
+          "readAtMS": {
+            "kind": "integer",
+            "min": 0,
+            "max": 9007199254740991
+          },
+          "value": {
+            "kind": "object",
+            "fields": {
+              "clickDispatched": {
+                "kind": "literal",
+                "value": true
+              },
+              "providerOutcomeProven": {
+                "kind": "literal",
+                "value": false
+              }
+            }
+          },
+          "controlLeaseClaimed": {
+            "kind": "literal",
+            "value": false
+          },
+          "exclusiveControlVerifiedByAdapter": {
+            "kind": "literal",
+            "value": false
+          },
+          "writeAuthorityGranted": {
+            "kind": "literal",
+            "value": false
+          },
+          "providerOutcomeProven": {
+            "kind": "literal",
+            "value": false
+          }
+        }
+      }
+    }
+  ]
+}

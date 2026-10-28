@@ -39,4 +39,7 @@ done
 export PATH="${bootstrap_go%/*}:$PATH" GOTOOLCHAIN="go$pin"
 # Native Go downloads and verifies the exact toolchain without another SDK copy.
 [[ "$("$bootstrap_go" env GOVERSION)" == "go$pin" ]]
-"$bootstrap_go" build -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate
+# The publisher needs its executable and runtime stack information, not DWARF
+# debugger data. Avoid generating and compressing debug sections inside the
+# setup-inclusive work budget; toolchain identity and source checks stay exact.
+"$bootstrap_go" build -gcflags=all=-dwarf=false -ldflags=-w -o "$RUNNER_TEMP/queue-publisher" ./scripts/ci/pr-gate

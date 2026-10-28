@@ -4,6 +4,7 @@ authentication:
   hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--tls-mode spki|system-ca] [--trust-file PATH]
   hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]
                                                  terminal-native local login
+      Use browser login (default) or --device for enrolled TOTP or passkeys.
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 

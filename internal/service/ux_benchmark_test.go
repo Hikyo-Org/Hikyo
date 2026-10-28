@@ -70,102 +70,130 @@ func resetWorkflow(b *testing.B, f *workflowBenchmark) func() {
 }
 
 func BenchmarkPublishSingleDraftLargeProject(b *testing.B) {
-	f := newWorkflowBenchmarkDrafts(b, 1000, false)
-	projectScope := f.scope
-	projectScope.Env = ""
-	group, err := (&KeyGroups{DB: f.values.DB, Keyring: f.values.Keyring}).Create(b.Context(), f.actor, projectScope, "linked-settings", nil)
-	if err != nil {
-		b.Fatal(err)
-	}
-	keys := &Keys{DB: f.values.DB, Keyring: f.values.Keyring}
-	for _, name := range []string{"SETTING_0001", "SETTING_0002"} {
-		if _, err := keys.SetGroup(b.Context(), f.actor, projectScope, f.keyIDs[name], group.ID); err != nil {
-			b.Fatal(err)
-		}
-	}
-	// Five populated environments make whole-project work visible, even though
-	// the user selects one draft in one environment.
-	for i := 1; i < 5; i++ {
-		scope := f.scope
-		scope.Env = ""
-		env, err := (&Environments{DB: f.values.DB, Keyring: f.values.Keyring}).Create(b.Context(), f.actor, scope, fmt.Sprintf("environment-%d", i), nil)
+	b.Run("operation", func(b *testing.B) {
+		f := newWorkflowBenchmarkDrafts(b, 1000, false)
+		projectScope := f.scope
+		projectScope.Env = ""
+		group, err := (&KeyGroups{DB: f.values.DB, Keyring: f.values.Keyring}).Create(b.Context(), f.actor, projectScope, "linked-settings", nil)
 		if err != nil {
 			b.Fatal(err)
 		}
-		scope.Env = domain.EnvID(env.ID)
-		entries := make([]ImportEntry, f.count)
-		for j := range entries {
-			entries[j] = ImportEntry{Key: fmt.Sprintf("SETTING_%04d", j), Value: "published-value"}
+		keys := &Keys{DB: f.values.DB, Keyring: f.values.Keyring}
+		for _, name := range []string{"SETTING_0001", "SETTING_0002"} {
+			if _, err := keys.SetGroup(b.Context(), f.actor, projectScope, f.keyIDs[name], group.ID); err != nil {
+				b.Fatal(err)
+			}
 		}
-		if result, err := f.values.Import(b.Context(), f.actor, scope, ImportRequest{Entries: entries}); err != nil || len(result.Imported) != f.count {
-			b.Fatalf("populate environment: %v", err)
+		// Five populated environments make whole-project work visible, even though
+		// the user selects one draft in one environment.
+		for i := 1; i < 5; i++ {
+			scope := f.scope
+			scope.Env = ""
+			env, err := (&Environments{DB: f.values.DB, Keyring: f.values.Keyring}).Create(b.Context(), f.actor, scope, fmt.Sprintf("environment-%d", i), nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			scope.Env = domain.EnvID(env.ID)
+			entries := make([]ImportEntry, f.count)
+			for j := range entries {
+				entries[j] = ImportEntry{Key: fmt.Sprintf("SETTING_%04d", j), Value: "published-value"}
+			}
+			if result, err := f.values.Import(b.Context(), f.actor, scope, ImportRequest{Entries: entries}); err != nil || len(result.Imported) != f.count {
+				b.Fatalf("populate environment: %v", err)
+			}
 		}
-	}
-	change, err := f.values.Set(b.Context(), f.actor, f.scope, "SETTING_0001", "changed-value", nil)
-	if err != nil {
-		b.Fatal(err)
-	}
-	before, err := f.revisions.Show(b.Context(), f.actor, f.scope, 0)
-	if err != nil {
-		b.Fatal(err)
-	}
-	reset := resetWorkflow(b, &f)
-	b.ReportAllocs()
-	for b.Loop() {
-		b.StopTimer()
-		reset()
-		b.StartTimer()
-		result, err := f.revisions.PublishPlanned(b.Context(), f.actor, f.scope, PublishRequest{VersionIDs: []string{change.VersionID}})
-		if err != nil || len(result.Published) != 1 || len(result.Environments) != 1 || result.Environments[0].Revision != before.Revision+1 {
-			b.Fatalf("publish: %+v err=%v", result, err)
+		change, err := f.values.Set(b.Context(), f.actor, f.scope, "SETTING_0001", "changed-value", nil)
+		if err != nil {
+			b.Fatal(err)
 		}
-		b.StopTimer()
-		cell, err := f.values.Get(b.Context(), f.actor, f.scope, "SETTING_0001", false)
-		if err != nil || cell.Value != "changed-value" {
-			b.Fatalf("published value: %+v err=%v", cell, err)
+		before, err := f.revisions.Show(b.Context(), f.actor, f.scope, 0)
+		if err != nil {
+			b.Fatal(err)
 		}
-		b.StartTimer()
-	}
+		reset := resetWorkflow(b, &f)
+		verify := func() {
+			b.Helper()
+			cell, err := f.values.Get(b.Context(), f.actor, f.scope, "SETTING_0001", false)
+			if err != nil || cell.Value != "changed-value" {
+				b.Fatalf("published value: %+v err=%v", cell, err)
+			}
+		}
+		// Keep the operation as the final timed segment before Loop captures its
+		// sample. Verify each previous write before resetting, then verify the last
+		// write after Loop stops. A final StartTimer after readback makes CodSpeed
+		// Go 1.3 record that empty timer tail instead of the operation.
+		completed := false
+		b.ReportAllocs()
+		for b.Loop() {
+			b.StopTimer()
+			if completed {
+				verify()
+			}
+			reset()
+			b.StartTimer()
+			result, err := f.revisions.PublishPlanned(b.Context(), f.actor, f.scope, PublishRequest{VersionIDs: []string{change.VersionID}})
+			if err != nil || len(result.Published) != 1 || len(result.Environments) != 1 || result.Environments[0].Revision != before.Revision+1 {
+				b.Fatalf("publish: %+v err=%v", result, err)
+			}
+			completed = true
+		}
+		if completed {
+			verify()
+		}
+	})
 }
 
 func BenchmarkImportMixedExisting(b *testing.B) {
-	f := newWorkflowBenchmarkDrafts(b, 1000, false)
-	rules, err := scanning.Load()
-	if err != nil {
-		b.Fatal(err)
-	}
-	f.values.Scan = rules
-	entries := make([]ImportEntry, f.count)
-	overwrite := make([]string, 0, 200)
-	for i := range entries {
-		name := fmt.Sprintf("SETTING_%04d", i)
-		value := "replacement-value"
-		// A synthetic, non-live AWS key candidate exercises warn-not-block scanning.
-		if i == 1 {
-			value = "AKIAIOSFODNN7EXAMPLE"
+	b.Run("operation", func(b *testing.B) {
+		f := newWorkflowBenchmarkDrafts(b, 1000, false)
+		rules, err := scanning.Load()
+		if err != nil {
+			b.Fatal(err)
 		}
-		entries[i] = ImportEntry{Key: name, Value: value}
-		if i < 200 {
-			overwrite = append(overwrite, name)
+		f.values.Scan = rules
+		entries := make([]ImportEntry, f.count)
+		overwrite := make([]string, 0, 200)
+		for i := range entries {
+			name := fmt.Sprintf("SETTING_%04d", i)
+			value := "replacement-value"
+			// A synthetic, non-live AWS key candidate exercises warn-not-block scanning.
+			if i == 1 {
+				value = "AKIAIOSFODNN7EXAMPLE"
+			}
+			entries[i] = ImportEntry{Key: name, Value: value}
+			if i < 200 {
+				overwrite = append(overwrite, name)
+			}
 		}
-	}
-	reset := resetWorkflow(b, &f)
-	b.ReportAllocs()
-	for b.Loop() {
-		b.StopTimer()
-		reset()
-		b.StartTimer()
-		result, err := f.values.Import(b.Context(), f.actor, f.scope, ImportRequest{Entries: entries, Overwrite: overwrite})
-		if err != nil || len(result.Imported) != 200 || len(result.Skipped) != 800 || len(result.Findings) == 0 {
-			b.Fatalf("import: imported=%d skipped=%d findings=%d err=%v", len(result.Imported), len(result.Skipped), len(result.Findings), err)
+		reset := resetWorkflow(b, &f)
+		verify := func() {
+			b.Helper()
+			cell, err := f.values.Get(b.Context(), f.actor, f.scope, "SETTING_0006", false)
+			if err != nil || cell.Value != "replacement-value" {
+				b.Fatalf("imported value: %+v err=%v", cell, err)
+			}
 		}
-		b.StopTimer()
-		cell, err := f.values.Get(b.Context(), f.actor, f.scope, "SETTING_0006", false)
-		if err != nil || cell.Value != "replacement-value" {
-			b.Fatalf("imported value: %+v err=%v", cell, err)
+		// As in the publish benchmark, validate before the next fixture reset so
+		// the operation remains the final timed segment in each Loop sample.
+		completed := false
+		b.ReportAllocs()
+		for b.Loop() {
+			b.StopTimer()
+			if completed {
+				verify()
+			}
+			reset()
+			b.StartTimer()
+			result, err := f.values.Import(b.Context(), f.actor, f.scope, ImportRequest{Entries: entries, Overwrite: overwrite})
+			if err != nil || len(result.Imported) != 200 || len(result.Skipped) != 800 || len(result.Findings) == 0 {
+				b.Fatalf("import: imported=%d skipped=%d findings=%d err=%v", len(result.Imported), len(result.Skipped), len(result.Findings), err)
+			}
+			completed = true
 		}
-		b.StartTimer()
-	}
+		if completed {
+			verify()
+		}
+	})
 }
 
 func BenchmarkHistoryPageLongLived(b *testing.B) {

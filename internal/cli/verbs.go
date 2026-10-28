@@ -235,6 +235,7 @@ authentication:
   hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--tls-mode spki|system-ca] [--trust-file PATH]
   hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]
                                                  terminal-native local login
+      Use browser login (default) or --device for enrolled TOTP or passkeys.
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
@@ -795,7 +796,7 @@ exit codes:
 func runLogin(ctx context.Context, ios IO, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	fs.SetOutput(ios.Stderr)
-	local := fs.Bool("local", false, "terminal-native local login (password prompted, never argv)")
+	local := fs.Bool("local", false, "terminal password login for unenrolled accounts (password prompted, never argv)")
 	device := fs.Bool("device", false, "RFC 8628 device-code flow")
 	provider := fs.String("provider", "", "preselect a browser provider: kind:slug, or an unambiguous slug")
 	as := fs.String("as", "", "username to log in as")

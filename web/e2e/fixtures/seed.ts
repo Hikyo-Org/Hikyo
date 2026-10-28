@@ -228,12 +228,12 @@ const zWhoAmI = z.object({ principal: z.object({ id: z.string() }) });
  * Every TOTP code is single-use per (account, step), enrolment's confirming
  * code included, so two presentations in the same second cannot both succeed,
  * and a step two ahead of now is outside the server's accepted skew. The only
- * honest way through is to wait for the clock, which is what `consumeCode`
- * does: at most one 30-second step per presentation, in global setup, once.
+ * honest way through is to wait for the clock. `nextSeedCode` owns that wait
+ * for enrolment, step-up and enrolled browser sign-in in global setup.
  */
 let lastStep = -1;
 
-async function consumeCode(token: string, uri: string, path: string): Promise<string> {
+async function nextSeedCode(uri: string): Promise<string> {
   const step = () => Math.floor(Date.now() / 1000 / 30);
   // The next step nothing has spent. A code is single-use per (account, step),
   // so each presentation has to move forward.
@@ -246,15 +246,19 @@ async function consumeCode(token: string, uri: string, path: string): Promise<st
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   lastStep = want;
+  return totpCode(uri, new Date(want * 30_000 + 1_000));
+}
+
+async function consumeCode(token: string, uri: string, path: string): Promise<string> {
   const result = await call(token, 'POST', path, zRotated, {
-    code: totpCode(uri, new Date(want * 30_000 + 1_000)),
+    code: await nextSeedCode(uri),
   });
   return result.session_token;
 }
 
-/** signIn is a fresh password session, as a bearer artifact. */
-async function signIn(): Promise<string> {
-  return fixtureBearer('the seeding login');
+/** Enrolled sign-in spends the same ledger as enrolment and step-up. */
+async function signIn(uri?: string): Promise<string> {
+  return fixtureBearer('the seeding login', uri === undefined ? undefined : () => nextSeedCode(uri));
 }
 
 
@@ -411,11 +415,11 @@ export async function seedTenant(
   const { id: org } = await call(token, 'POST', '/api/v1/orgs', zCreated, {
     name: ORG_NAME,
   });
-  token = await consumeCode(await signIn(), uri, '/api/v1/auth/totp/step-up');
+  token = await signIn(uri);
   const { id: orgB } = await call(token, 'POST', '/api/v1/orgs', zCreated, {
     name: ORG_B_NAME,
   });
-  token = await consumeCode(await signIn(), uri, '/api/v1/auth/totp/step-up');
+  token = await signIn(uri);
 
   // The federation issuer is instance-scoped configuration, so it is
   // `instance-config` and belongs in this same stepped-up session. Static JWKS
@@ -537,11 +541,9 @@ export async function seedTenant(
   // scope where the threat model actually extends that trust.
   await grantReveal(token, principal);
 
-  // That grant killed the session with it. Nothing left to seed is
-  // MFA-mandatory, `manage-projects`, `definitions-edit`, `edit`, `publish`
-  // and `project-settings` are all ordinary capabilities, so a plain password
-  // session finishes the job with no further codes.
-  token = await signIn();
+  // That grant killed the session. Enrolled sign-in requires a fresh factor
+  // even though the remaining setup uses ordinary capabilities.
+  token = await signIn(uri);
 
   const secrets = ['DB_PASSWORD', 'STRIPE_SECRET_KEY', 'ROTATE_ME'];
   const rotatable = 'ROTATE_ME';

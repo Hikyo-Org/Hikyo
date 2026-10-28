@@ -23,6 +23,47 @@ const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 var ErrCLILoginInvalid = fmt.Errorf("%w: invalid or spent CLI login transaction", domain.ErrUnauthorized)
 
+// A successful password proof may disclose the remedy, but may never mint a
+// password-only CLI session for an enrolled account. Keep the existing browser
+// challenge artifact fixed instead of letting a finish request choose it.
+type cliLoginFactorRequired struct{}
+
+func (e cliLoginFactorRequired) Error() string { return "service: " + e.SafeDetail() }
+func (cliLoginFactorRequired) Unwrap() error   { return domain.ErrInvalid }
+func (cliLoginFactorRequired) SafeDetail() string {
+	return "an enrolled factor is required; use hikyo login <instance-url> or hikyo login <instance-url> --device and complete browser sign-in"
+}
+
+type cliLoginBrowserFactorRequired struct{}
+
+// ErrCLILoginBrowserFactorRequired permits recovery of a valid pending request
+// after fresh browser sign-in. Invalid references never return this refusal.
+var ErrCLILoginBrowserFactorRequired = cliLoginBrowserFactorRequired{}
+
+func (e cliLoginBrowserFactorRequired) Error() string { return "service: " + e.SafeDetail() }
+func (cliLoginBrowserFactorRequired) Unwrap() error   { return domain.ErrInvalid }
+func (cliLoginBrowserFactorRequired) SafeDetail() string {
+	return "Complete your enrolled authenticator or passkey before authorizing the CLI. Sign out and sign in again."
+}
+
+// requireCLILoginAssurance enforces the local password sign-in rule against
+// live enrollment. Provider methods retain their own assurance contract.
+// Call under the principal lock at approval AND mint, because enrollment may
+// change between them. Operation-specific fresh proof never crosses this join.
+func (s *Auth) requireCLILoginAssurance(ctx context.Context, az *authz.TxAuthorizer, accountID string, assurance authz.Assurance) error {
+	if assurance.Method != MethodLocalPassword || authz.AdequateAssurance(assurance) {
+		return nil
+	}
+	factors, err := s.enrolledFactors(ctx, az, accountID)
+	if err != nil {
+		return err
+	}
+	if len(factors) > 0 {
+		return ErrCLILoginInvalid
+	}
+	return nil
+}
+
 type CLILoginStart struct {
 	State, DeviceCode, UserCode, VerificationURI string
 	ExpiresAt                                    time.Time
@@ -167,6 +208,16 @@ func (s *Auth) ApproveCLILogin(ctx context.Context, actor Actor, reference strin
 		if !h.Live(now) || h.BrowserSessionID != "" {
 			return CLIReauthApproval{}, ErrCLILoginInvalid
 		}
+		account, err := az.AccountByPrincipal(ctx, caller.Principal)
+		if err != nil {
+			return CLIReauthApproval{}, err
+		}
+		if err := s.requireCLILoginAssurance(ctx, az, account.ID, caller.Assurance); err != nil {
+			if errors.Is(err, ErrCLILoginInvalid) {
+				return CLIReauthApproval{}, ErrCLILoginBrowserFactorRequired
+			}
+			return CLIReauthApproval{}, err
+		}
 		snapshot, err := json.Marshal(cliLoginSnapshot{Assurance: Assurance{Method: caller.Assurance.Method, Factors: caller.Assurance.Factors, AuthenticatedAt: caller.Assurance.AuthenticatedAt, CeremonyID: caller.Assurance.CeremonyID}, ProviderID: caller.ProviderID, OAuth2ProviderID: caller.OAuth2ProviderID, SAMLProviderID: caller.SAMLProviderID})
 		if err != nil {
 			return CLIReauthApproval{}, err
@@ -213,6 +264,12 @@ func (s *Auth) mintCLILogin(ctx context.Context, az *authz.TxAuthorizer, h authz
 	}
 	account, err := az.AccountByPrincipal(ctx, browser.Principal)
 	if err != nil {
+		return LoginResult{}, err
+	}
+	if err := s.requireCLILoginAssurance(ctx, az, account.ID, browser.Assurance); err != nil {
+		return LoginResult{}, err
+	}
+	if err := s.requireCLILoginAssurance(ctx, az, account.ID, authz.Assurance{Method: snapshot.Assurance.Method, Factors: snapshot.Assurance.Factors}); err != nil {
 		return LoginResult{}, err
 	}
 	consumed, err := az.ConsumeCLILogin(ctx, h.ID, now)
