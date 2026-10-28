@@ -1,4 +1,4 @@
-package postgres_test
+package postgres
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/dynamic"
-	"github.com/Hikyo-Org/hikyo/internal/dynamic/postgres"
 )
 
 // testAllowedCIDRs are the operator egress exceptions the integration target
@@ -46,7 +45,7 @@ func testAllowedCIDRs(t *testing.T) []netip.Prefix {
 // The admin must have CREATEROLE and membership of the grant role. It is
 // skipped locally when unset and fails loud under CI, exactly as the isolation
 // harness gates HIKYO_TEST_POSTGRES_DSN.
-func targetProvider(t *testing.T) (*postgres.Provider, string) {
+func targetProvider(t *testing.T) (*Provider, string) {
 	t.Helper()
 	dsn := os.Getenv("HIKYO_TEST_DYNAMIC_PG_DSN")
 	if dsn == "" {
@@ -71,7 +70,7 @@ func targetProvider(t *testing.T) (*postgres.Provider, string) {
 			t.Fatal("HIKYO_TEST_DYNAMIC_PG_CA contained no certificates")
 		}
 	}
-	p, err := postgres.New(postgres.Config{Origin: dsn, Password: password, RootCAs: roots, AllowedCIDRs: testAllowedCIDRs(t), Deadline: 10 * time.Second})
+	p, err := New(Config{Origin: dsn, Password: password, RootCAs: roots, AllowedCIDRs: testAllowedCIDRs(t), Deadline: 10 * time.Second})
 	if err != nil {
 		t.Fatalf("provider: %v", err)
 	}
@@ -90,7 +89,7 @@ func TestProviderEgressRefusedWithoutAllowance(t *testing.T) {
 		}
 		t.Skip("set HIKYO_TEST_DYNAMIC_PG_DSN to run the provider integration test")
 	}
-	p, err := postgres.New(postgres.Config{Origin: dsn, Password: os.Getenv("HIKYO_TEST_DYNAMIC_PG_PASSWORD"), Deadline: 5 * time.Second})
+	p, err := New(Config{Origin: dsn, Password: os.Getenv("HIKYO_TEST_DYNAMIC_PG_PASSWORD"), Deadline: 5 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +164,7 @@ func TestProviderUnreachableIsDefinite(t *testing.T) {
 	_ = grantRole
 	// A syntactically valid but unroutable target must classify as a definite
 	// unreachable failure, never ambiguous — nothing was sent.
-	p, err := postgres.New(postgres.Config{
+	p, err := New(Config{
 		Origin: "postgres://nobody@127.0.0.1:1/nodb", Password: "x", Deadline: 2 * time.Second,
 		AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
 	})
