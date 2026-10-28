@@ -48674,6 +48674,20 @@ func (response ReencryptInstance401JSONResponse) VisitReencryptInstanceResponse(
 	return err
 }
 
+type ReencryptInstance403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReencryptInstance403JSONResponse) VisitReencryptInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReencryptInstance404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ReencryptInstance404JSONResponse) VisitReencryptInstanceResponse(w http.ResponseWriter) error {
@@ -50002,6 +50016,20 @@ func (response RotateDEK401JSONResponse) VisitRotateDEKResponse(w http.ResponseW
 	return err
 }
 
+type RotateDEK403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RotateDEK403JSONResponse) VisitRotateDEKResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RotateDEK404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RotateDEK404JSONResponse) VisitRotateDEKResponse(w http.ResponseWriter) error {
@@ -50338,6 +50366,20 @@ func (response RotateScanningKey401JSONResponse) VisitRotateScanningKeyResponse(
 	return err
 }
 
+type RotateScanningKey403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RotateScanningKey403JSONResponse) VisitRotateScanningKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RotateScanningKey404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RotateScanningKey404JSONResponse) VisitRotateScanningKeyResponse(w http.ResponseWriter) error {
@@ -50427,6 +50469,20 @@ func (response RotateTokenKey401JSONResponse) VisitRotateTokenKeyResponse(w http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTokenKey403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RotateTokenKey403JSONResponse) VisitRotateTokenKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -74666,6 +74722,20 @@ func (response ReencryptProject401JSONResponse) VisitReencryptProjectResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReencryptProject403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReencryptProject403JSONResponse) VisitReencryptProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

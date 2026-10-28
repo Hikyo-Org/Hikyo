@@ -111,7 +111,37 @@ stored locally and are never printed as a login receipt.
 | `definitions`, `import` | Author and apply the reviewable catalogue, and stage values from other systems. |
 | `scan` | Scan files, staged changes, and Git history for credentials, locally, with the server's ruleset. See [Scan repositories and CI](/docs/repository-scanning/). |
 | `remote`, `remote-credential` | Peer instances and the credentials they present. |
-| `rotate-*`, `reencrypt` | Key rotation ceremonies and the re-encryption that completes a project rotation. |
+| `rotate-*`, `reencrypt` | Key rotation ceremonies and the re-encryption that completes a project or instance rotation. |
+
+### DEK rotation and re-encryption
+
+`--instance NAME` selects the trusted server. `--instance-scope` selects its
+instance data-encryption key; it is a separate boolean flag. For a project key,
+select both the organization and project on that server:
+
+```sh
+hikyo rotate-dek --instance production --instance-scope --yes
+hikyo reencrypt --instance production --instance-scope
+hikyo rotate-dek --instance production --org ORG --project PROJECT --yes
+hikyo reencrypt --instance production --org ORG --project PROJECT
+```
+
+Rotation appends a version for new writes. Run re-encryption with the same
+instance and scope to move retained ciphertext and retire superseded versions.
+It is chunked and resumable: a failed run is incomplete; re-run the same command.
+A subsequent successful run moves zero rows. Existing human authentication,
+second-factor assurance and separate rotation/re-encryption capabilities apply.
+Both scopes require MFA assurance in the current session, such as a completed
+passkey login. A password-only session is refused even if the account owns a
+passkey; sign in with MFA before retrying.
+
+Project selectors can also resolve from the usual environment, pin file and
+named context. Explicit `--instance-scope` ignores those inherited project
+defaults. It refuses explicit `--org` or `--project`; both commands refuse
+explicit `--env`, since a DEK operation covers the entire project, including
+all environments and retained history. There is no environment DEK. The old
+boolean `--instance` spelling collided with the shared target flag and never
+executed successfully. Use `--instance-scope` for that scope.
 
 Most list and show commands accept `-o table|json`. JSON shapes may gain fields;
 automation must ignore unknown fields.

@@ -5088,6 +5088,8 @@ export const exportInstanceAudit = <ThrowOnError extends boolean = false>(option
  * rotation atoms for five rotation verbs, and the root token key is a
  * tier-3 key alongside the DEKs.
  *
+ * Requires adequate MFA assurance in the current human session.
+ *
  */
 export const rotateTokenKey = <ThrowOnError extends boolean = false>(options?: Options<RotateTokenKeyData, ThrowOnError>) => (options?.client ?? client).post<RotateTokenKeyResponses, RotateTokenKeyErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -5105,6 +5107,8 @@ export const rotateTokenKey = <ThrowOnError extends boolean = false>(options?: O
  *
  * Its own capability, `rotate-dek`, never bundled - the post-compromise
  * recovery order runs each rotation under a distinct authority.
+ *
+ * Requires adequate MFA assurance in the current human session.
  *
  */
 export const rotateDek = <ThrowOnError extends boolean = false>(options: Options<RotateDekData, ThrowOnError>) => (options.client ?? client).post<RotateDekResponses, RotateDekErrors, ThrowOnError>({
@@ -5125,6 +5129,8 @@ export const rotateDek = <ThrowOnError extends boolean = false>(options: Options
  * active instance DEK version and retires the superseded versions — the
  * completion of an instance `rotate-dek`. Chunked and resumable; re-run to
  * continue after an interruption.
+ *
+ * Requires adequate MFA assurance in the current human session.
  *
  */
 export const reencryptInstance = <ThrowOnError extends boolean = false>(options?: Options<ReencryptInstanceData, ThrowOnError>) => (options?.client ?? client).post<ReencryptInstanceResponses, ReencryptInstanceErrors, ThrowOnError>({
@@ -5186,6 +5192,8 @@ export const rotateRootKey = <ThrowOnError extends boolean = false>(options: Opt
  * superseded versions — the completion of a project `rotate-dek`. Chunked
  * and resumable.
  *
+ * Requires adequate MFA assurance in the current human session.
+ *
  */
 export const reencryptProject = <ThrowOnError extends boolean = false>(options: Options<ReencryptProjectData, ThrowOnError>) => (options.client ?? client).post<ReencryptProjectResponses, ReencryptProjectErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -5207,6 +5215,8 @@ export const reencryptProject = <ThrowOnError extends boolean = false>(options: 
  *
  * It rides `rotate-dek`, the same tier-3 rotation authority as
  * `rotate-token-key`.
+ *
+ * Requires adequate MFA assurance in the current human session.
  *
  */
 export const rotateScanningKey = <ThrowOnError extends boolean = false>(options?: Options<RotateScanningKeyData, ThrowOnError>) => (options?.client ?? client).post<RotateScanningKeyResponses, RotateScanningKeyErrors, ThrowOnError>({

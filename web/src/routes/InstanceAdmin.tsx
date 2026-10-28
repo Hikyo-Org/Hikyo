@@ -357,13 +357,13 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Data-encryption key (instance)</span><span className="settings-row__detail">Appends a new instance DEK version. New writes seal under it immediately; existing ciphertext stays readable until you re-encrypt. A rotation is incomplete without the re-encryption below.</span></div>
-      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-dek --scope instance</code>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-dek --instance &lt;instance&gt; --instance-scope --yes</code>
       <Button type="button" onClick={() => open('dek-instance')}>Rotate the instance DEK</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones: the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
-      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt</code>
+      <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt --instance &lt;instance&gt; --instance-scope</code>
       <Button type="button" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</Button>
     </div>
     {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}

@@ -115,3 +115,15 @@ org, project, environment and instance scopes, inheriting their existing audit
 dispositions. No exemption is added, and no event or authorization owner changes.
 All isolation `TestInvariant*` checks run together for this repair, alongside
 generator and complete-diff feedback checks, before refreshed hosted validation.
+
+## Main refresh after DEK integration
+
+After #1042 merged, main advanced to
+`2b98bcf3565864d0858f2d40cc9ba4488a895790`. The sole textual conflict was
+the sensitivity inventory's review note and InstanceAdmin hash. The combined
+component was read in full: it retains Audit navigation and the corrected DEK
+target/scope examples, with no change to mutation handlers, confirmations or
+custody boundaries. Both review notes are retained and the combined source pin
+is refreshed. Shared CLI dispatch, audit/DEK authority and both-engine acceptance,
+the related stories and complete-diff feedback validate the integration before
+fresh current-base queue proof. No source history or security gate is removed.
