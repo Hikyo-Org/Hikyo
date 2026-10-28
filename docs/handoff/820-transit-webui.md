@@ -2,6 +2,20 @@
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/820
 
+## Current delivery record (2026-10-28)
+
+[#965](https://github.com/Hikyo-Org/Hikyo/pull/965) merged on October 18 as
+`6da8f57cb8c8aae4cb58b7cc65ec5971c1705e0c`, an ancestor of assessed main
+`24e198b32a3ffd8d4013207b2f974d76ec49be6f`; #820 is closed. Existing
+[trusted integration run 39137162163](https://github.com/Hikyo-Org/Hikyo/actions/runs/39137162163)
+succeeded on that exact merge. Current `api/parity.yaml` has all 15 Transit
+operations mapped to `webui: transit-keys`. This establishes delivery and
+historical hosted evidence, not a fresh candidate acceptance run.
+
+The [#156 amendment-review obligation](./156-162-589-capability-governance.md)
+remains **HOLD** independently. Keep the delivered UI closed while reconciling
+that governance debt. No source or UI change is requested by this record.
+
 ## Delivered behavior
 
 The project sidebar now opens **Transit keys**, scoped to one environment.
@@ -91,8 +105,8 @@ Cross-provider review was not run under the existing reviewer-availability rule.
 The historical #156 Transit amendment review debt is not closed by this WebUI
 change. No release, deployment or external custody-provider acceptance is claimed.
 
-Remote CI and protected merge have not yet completed. Do not close #820 until
-this change is reviewed and merged with its required checks satisfied.
+The original pre-merge wait is discharged by the verified merge and hosted
+integration recorded above. It does not discharge #156's amendment review.
 
 ## Repeat the focused checks
 

@@ -91,6 +91,10 @@ The application scope owns Go packages outside `scripts/` and module verificatio
 The tooling scope owns Go packages under `scripts/`, ShellCheck, Actionlint and
 read-only documentation validation. Their package and check unions match the
 unscoped Go lane. Unknown lanes/scopes fail, and frontend refuses Go scopes.
+Changes to `scripts/ops/audit-collector/` or its
+`docs/operations/audit-collector.md` runbook select the external receiver's
+standard-library Python rehearsal in the tooling lane (`auditCollector` in the
+plan). It uses disposable local fixtures, never a configured source or destination.
 The mandatory
 full-candidate lint job runs every refusal and deadline supervisor fixture;
 per-commit feedback spends its budget on the selected source checks.

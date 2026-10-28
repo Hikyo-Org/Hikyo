@@ -7,6 +7,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/pairing"
 )
 
@@ -20,6 +21,9 @@ const ReplayKeyLimit = 256
 func (a *TxAuthorizer) AuthenticatePairedConnection(ctx context.Context, token, proof string, now time.Time) (Identity, error) {
 	if crypto.ParseArtifact(token, crypto.ArtifactInstanceConn) != nil {
 		return Identity{}, domain.ErrUnauthenticated
+	}
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, err
 	}
 	c, err := a.r.InstanceConnectionByVerifier(ctx, crypto.ArtifactVerifier(token))
 	if err != nil {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,7 +18,59 @@ import (
 )
 
 func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
+	var receipt bytes.Buffer
+	if err := runPublicProfile(t, false, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	for _, protected := range []string{"live-runtime-token", "rot-token", "org_test", "prj_test", "definitions", "https://"} {
+		if strings.Contains(receipt.String(), protected) {
+			t.Fatalf("smoke receipt disclosed %s", protected)
+		}
+	}
+	var evidence smokeEvidence
+	if err := json.Unmarshal(receipt.Bytes(), &evidence); err != nil {
+		t.Fatal(err)
+	}
+	if !evidence.Passed || evidence.Scope != "endpoint_smoke_only" || evidence.Protocol != mcpserver.ProtocolVersion ||
+		evidence.RevocationObservation != "polling_only_no_commit_receipt" || evidence.RevocationPollIntervalMillis != 2000 {
+		t.Fatalf("receipt misclassified smoke evidence: %+v", evidence)
+	}
+	previous := time.Time{}
+	for _, timestamp := range []time.Time{evidence.StartedAt, evidence.RotatingProvedLiveAt, evidence.RevokedDenialObservedAt, evidence.ReplacementVerifiedAt} {
+		if timestamp.IsZero() || timestamp.Before(previous) || timestamp.Location() != time.UTC {
+			t.Fatal("smoke timestamps must be nonzero, ordered and in UTC")
+		}
+		previous = timestamp
+	}
+}
+
+func TestRunRequiresReplacementAfterRevocation(t *testing.T) {
+	var receipt bytes.Buffer
+	err := runPublicProfile(t, true, &receipt)
+	if err == nil || !strings.Contains(err.Error(), "replacement credential after revocation") {
+		t.Fatalf("replacement unavailable after revocation must fail: %v", err)
+	}
+	if receipt.Len() != 0 {
+		t.Fatal("failed rotation emitted a passing receipt")
+	}
+}
+
+type failedReceiptWriter struct{}
+
+func (failedReceiptWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestRunPropagatesReceiptFailure(t *testing.T) {
+	if err := runPublicProfile(t, false, failedReceiptWriter{}); err == nil || err.Error() != "could not write redacted smoke receipt" {
+		t.Fatalf("receipt write failure was not propagated: %v", err)
+	}
+}
+
+// Model the actual rotation boundary: both credentials work initially, then
+// revoking the predecessor accidentally also disables its replacement.
+func runPublicProfile(t *testing.T, loseReplacement bool, evidence io.Writer) error {
+	t.Helper()
 	var rotatingCalls atomic.Int32
+	var revoked atomic.Bool
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != mcpserver.Path || r.Header.Get("Mcp-Protocol-Version") != mcpserver.ProtocolVersion {
 			http.Error(w, "bad profile", http.StatusBadRequest)
@@ -38,11 +92,14 @@ func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
 			}
 			result = map[string]any{"tools": tools}
 		case "tools/call":
-			if r.Header.Get("Authorization") == "Bearer live-runtime-token" {
+			if r.Header.Get("Authorization") == "Bearer live-runtime-token" && !(loseReplacement && revoked.Load()) {
 				result = successfulDefinitionsResult()
 			} else if r.Header.Get("Authorization") == "Bearer rot-token" && rotatingCalls.Add(1) == 1 {
 				result = successfulDefinitionsResult()
 			} else {
+				if r.Header.Get("Authorization") == "Bearer rot-token" {
+					revoked.Store(true)
+				}
 				w.Header().Set("WWW-Authenticate", "Bearer")
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
@@ -57,15 +114,13 @@ func TestRunProvesPublicProfileWithoutPersistingCredentials(t *testing.T) {
 	t.Setenv("TEST_MCP_LIVE", "live-runtime-token")
 	t.Setenv("TEST_MCP_ROTATING", "rot-token")
 
-	err := run(options{
+	return run(options{
 		endpoint: server.URL + mcpserver.Path,
 		tokenEnv: "TEST_MCP_LIVE", rotatingTokenEnv: "TEST_MCP_ROTATING",
 		orgID: "org_test", projectID: "prj_test",
 		revocationTimeout: time.Second,
+		evidence:          evidence,
 	}, server.Client())
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func successfulDefinitionsResult() map[string]any {

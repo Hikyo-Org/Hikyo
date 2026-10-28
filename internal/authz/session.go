@@ -157,9 +157,11 @@ func AssuranceRank(a Assurance) int {
 // Authenticate resolves a presented artifact into a live identity inside this
 // transaction.
 //
-// Resolution failures return domain.ErrUnauthenticated and nothing else:
+// Credential-liveness failures return domain.ErrUnauthenticated:
 // absent, malformed, unknown, expired, generation-superseded and
-// epoch-superseded artifacts are indistinguishable. On HTTP requests a live
+// epoch-superseded artifacts are indistinguishable. Grammatical artifacts
+// first spend the transport's source allowance; its overload and datastore
+// faults propagate independently of credential liveness. On HTTP requests a live
 // identity is then admitted against the attached OpenAPI operation; an excluded
 // class returns the uniform domain.ErrNotFound and records the named refusal.
 func (a *TxAuthorizer) Authenticate(ctx context.Context, presented string, now time.Time) (Identity, error) {
@@ -191,6 +193,16 @@ func (a *TxAuthorizer) Authenticate(ctx context.Context, presented string, now t
 // to keep machine tokens out of the human session surface. A new
 // session-surface verb is workspace-proof unless someone opts it in.
 func (a *TxAuthorizer) authenticateSession(ctx context.Context, presented string, now time.Time, admits ...crypto.ArtifactType) (Identity, error) {
+	id, err := a.resolveSession(ctx, presented, now, admits...)
+	if errors.Is(err, domain.ErrUnauthenticated) {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
+	}
+	return id, err
+}
+
+// resolveSession checks admitted artifact grammar before the existing uniform
+// session resolution path. The calling wrapper owns final refusal observation.
+func (a *TxAuthorizer) resolveSession(ctx context.Context, presented string, now time.Time, admits ...crypto.ArtifactType) (Identity, error) {
 	if presented == "" {
 		return Identity{}, domain.ErrUnauthenticated
 	}
@@ -203,6 +215,9 @@ func (a *TxAuthorizer) authenticateSession(ctx context.Context, presented string
 	}
 	if !grammatical {
 		return Identity{}, domain.ErrUnauthenticated
+	}
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, err
 	}
 
 	// From here every presentation performs the SAME THREE READS in the same
@@ -237,6 +252,16 @@ func (a *TxAuthorizer) authenticateSession(ctx context.Context, presented string
 // trusts: a value whose prefix says `au` still resolves against whatever row
 // its verifier matches, and the row decides everything.
 func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string, now time.Time) (Identity, error) {
+	id, err := a.resolveCaller(ctx, presented, now)
+	if errors.Is(err, domain.ErrUnauthenticated) {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
+	}
+	return id, err
+}
+
+// resolveCaller selects the transaction-local resolver from artifact grammar;
+// only resolved state establishes identity and caller activity.
+func (a *TxAuthorizer) resolveCaller(ctx context.Context, presented string, now time.Time) (Identity, error) {
 	if presented == "" {
 		return Identity{}, domain.ErrUnauthenticated
 	}
@@ -280,8 +305,21 @@ func (a *TxAuthorizer) AuthenticateCaller(ctx context.Context, presented string,
 // match and last-used write after operation admission; generic HTTP routes need
 // only the trusted class so an excluded SCIM credential reaches that admission.
 func (a *TxAuthorizer) AuthenticateSCIMCaller(ctx context.Context, presented string, now time.Time) (Identity, string, error) {
+	id, binding, err := a.resolveSCIMCaller(ctx, presented, now)
+	if errors.Is(err, domain.ErrUnauthenticated) {
+		audit.NoteRefusal(ctx, audit.RefusalArtifact)
+	}
+	return id, binding, err
+}
+
+// resolveSCIMCaller checks credential liveness and epoch without deciding the
+// route binding. The SCIM wire owner applies that match after admission.
+func (a *TxAuthorizer) resolveSCIMCaller(ctx context.Context, presented string, now time.Time) (Identity, string, error) {
 	if err := crypto.ParseArtifact(presented, crypto.ArtifactSCIM); err != nil {
 		return Identity{}, "", domain.ErrUnauthenticated
+	}
+	if err := operation.AdmitPreauthentication(ctx); err != nil {
+		return Identity{}, "", err
 	}
 	row, err := a.SCIMCredentialByVerifier(ctx, crypto.ArtifactVerifier(presented))
 	if errors.Is(err, domain.ErrNotFound) {

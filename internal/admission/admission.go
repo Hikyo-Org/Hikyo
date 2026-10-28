@@ -31,6 +31,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
 
 // Ops-spec values (§ 4, pre-auth admission).
@@ -375,6 +377,11 @@ func (l *Limiter) Snapshot() Snapshot {
 // Order matters: the per-IP check happens before the semaphore, so a single
 // noisy source cannot occupy queue slots that a legitimate caller needs.
 func (l *Limiter) Enter(ctx context.Context, sourceIP string) (release func(), err error) {
+	defer func() {
+		if err != nil {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
+		}
+	}()
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
 	if wait := l.allowIP(sourceIP); wait > 0 {

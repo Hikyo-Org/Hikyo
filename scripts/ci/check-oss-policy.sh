@@ -174,6 +174,9 @@ require_text "$site_root/index.html" '<link rel="canonical" href="https://hikyo.
 require_text "$site_root/index.html" '<link rel="icon" type="image/png" sizes="48x48" href="/favicon-hikyo-48.png">'
 require_text "$site_root/index.html" '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">'
 require_text "$site_root/index.html" 'href="/docs/"'
+for page in docs security support governance implementation-status trademark contributing license; do
+	require_text "$site_root/$page/index.html" "<link rel=\"canonical\" href=\"https://hikyo.app/$page/\">"
+done
 reject_text "$site_root/index.html" 'href="/hikyo/'
 reject_text "$site_root/index.html" 'validated, inherited secrets'
 reject_text "$site_root/index.html" 'MIT licensed'

@@ -1,6 +1,6 @@
 # Hikyo API & CLI surface (ADR, locked 2026-08-02)
 
-> **Proposed amendment (prepared for owner approval 2026-10-19, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** The [explicit HTTPS trust amendment](#proposed-explicit-https-trust-amendment-966) below specifies the exact contract implemented by merged [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967), its narrowly scoped review-waiver proposal, and the remaining approval and publication gates. The owner selected preparation of this amendment and the scoped-waiver route; approval of this exact text remains pending. Historical requirements below remain authoritative until the owner approves the amendment and its documentation PR merges.
+> **Proposed amendment (approval record rechecked 2026-10-28, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** The [explicit HTTPS trust amendment](#proposed-explicit-https-trust-amendment-966) below specifies the exact contract implemented by merged [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967). Preparation [PR #1004](https://github.com/Hikyo-Org/Hikyo/pull/1004) also merged, and #966 and #25 closed, but the inspected owner history does not record final approval of this exact contract and its #966-only review exception. The [scoped closeout packet](../handoff/966-cli-system-ca-trust.md) separates those facts from publication and consumer evidence. Historical requirements below remain authoritative until explicit owner approval is recorded and the corrective documentation PR merges.
 
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** The closed artifact table adds developer-credential only to fetchDelivery. Human-only dev session mint/list/revoke and instance-config developer-credential-policy get/set provide delegation lifecycle. Mint requires controlling-terminal consent, fresh developer-specific TOTP or passkey reauthentication, and private custody outside the repository; bearer output is never printed. The own lifecycle routes have human ArtifactContracts and resolve current owner directly. Project incident routes require manage-identities and policy routes require instance-config. Mint and own lifecycle are an expressly CLI-only surface; project inspection/revocation and instance lifetime policy administration are available in their respective Web UI settings surfaces (#807). The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
@@ -96,22 +96,35 @@ Same-provider reviews do not constitute cross-provider review. This exception
 does not amend the general [governance procedure](../../GOVERNANCE.md#amendment-procedure)
 or apply to another decision.
 
-The originating ticket [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) must be
-reopened for the amendment record. Final owner approval must explicitly accept
-this contract and its scoped review exception. After that approval, mark this
-section and its banner as an owner-locked declared amendment, operative when
-this amendment PR merges. On merge, re-close #25 with the approval, review
-disposition and merge record. Until owner approval, this section remains
-proposed even though #967's implementation merged as
-`69e32a25a6431426e839cb463aafd78c781ef15d`.
+The originating ticket [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was
+[reopened for the amendment record](https://github.com/Hikyo-Org/Hikyo/issues/25#issuecomment-6262097215)
+on 2026-10-19. Preparation #1004 merged as
+`f3581e7bb6ec65cb416d5213f7e55819ef19782f` later that day; #25 and #966
+closed at that merge. Its text and [review record](https://github.com/Hikyo-Org/Hikyo/pull/1004#issuecomment-6262095983)
+still retained final owner approval. The original owner conversation selected
+preparation of the proposal and ended with an unanswered final approval
+request. Merge and closed issue state do not supply the missing explicit
+decision. This is an approval-record gap, not evidence of missing implementation.
 
-Keep #966 open until a signed CLI containing that implementation has been
-published and verified, the consumer's exact CLI version and protected bundle
-have been updated, and an isolated authenticated consumer check has succeeded.
-A verified signed nightly can satisfy the publication gate without waiting for
-stable 1.0. Approve this amendment before freezing a 1.0 candidate that includes
-the behavior. Release, downstream acceptance and production rollout retain
-their separate authorization and evidence requirements.
+Final owner approval must explicitly accept the unchanged five-clause contract
+above and its #966-only review exception. After that decision, record its
+reference, mark this section and banner as an owner-locked declared amendment,
+operative when the corrective documentation PR merges, and reconcile #25's
+closeout with that approval, review disposition and merge record. Until then,
+the amendment remains proposed and governance is **HOLD**. The existing
+implementation merge remains `69e32a25a6431426e839cb463aafd78c781ef15d`.
+
+The closed #966 also needs evidence for its publication and consumer criterion:
+a published, verified signed CLI containing that implementation, the consumer's
+exact CLI version and protected bundle, and a successful isolated authenticated
+consumer check. A verified signed nightly can satisfy publication before stable
+1.0; a signed commit or successful workflow alone cannot. Synthetic TLS tests
+must identify their fixture and cannot be reported as a named downstream CI
+update or production acceptance. The [closeout packet](../handoff/966-cli-system-ca-trust.md)
+records the current proof and remaining requirements without changing ticket
+state. Approve the amendment before freezing a 1.0 candidate that includes the
+behavior. Release, downstream acceptance and production rollout retain their
+separate authorization and evidence requirements.
 
 ## Version promise — `/api/v1`, additive-only after the freeze
 

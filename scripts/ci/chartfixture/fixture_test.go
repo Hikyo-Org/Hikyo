@@ -2,6 +2,7 @@ package chartfixture
 
 import (
 	"encoding/base64"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +82,23 @@ func TestWriteChartFixture(t *testing.T) {
 		if err := os.WriteFile(path, raw, 0644); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// These files are deliberately public and are copied into a node for a
+	// different, nonroot UID to read. A restrictive operator umask must not
+	// silently turn the public tree into owner-only files/directories.
+	if err := filepath.WalkDir(filepath.Join(output, "public"), func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		mode := fs.FileMode(0644)
+		if entry.IsDir() {
+			mode = 0755
+		} else if !entry.Type().IsRegular() {
+			return fs.ErrInvalid
+		}
+		return os.Chmod(path, mode)
+	}); err != nil {
+		t.Fatal(err)
 	}
 	bundle, err := upgradebundle.Load(t.Context(), filepath.Join(output, "public", "bundle"), fixture.Pinned, releaseidentity.SnapshotFloor{})
 	if err != nil {

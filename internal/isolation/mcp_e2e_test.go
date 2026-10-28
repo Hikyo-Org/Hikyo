@@ -418,7 +418,9 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		other := mcpProfile(setupMCPHandler(t, replicaSealer, replicaServices), codex)
+		otherTransport := mcpProfile(setupMCPHandler(t, replicaSealer, replicaServices), codex)
+		refusalSignals := service.NewRefusalSignals(db)
+		other := server.NewPublic(&server.API{Refusals: refusalSignals}, nil, server.PublicOptions{MCP: otherTransport})
 		first := mcpCall(t, handler, granted.token, mcpserver.ToolListDefinitions,
 			`{"org_id":"org_a","project_id":"prj_a1","page_size":1}`)
 		cursor := extractNextCursor(t, first.Body.Bytes())
@@ -476,6 +478,12 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 		// Revocation is uncached. The credential that just succeeded through both
 		// replicas is denied on the very next request, with the exact same public
 		// result as a token that never existed.
+		if refusalSignals.RefusalHealth().PendingSince != 0 {
+			expireRefusalWindow(t, db)
+			if err := refusalSignals.Seal(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
 		identities := &service.Identities{DB: db, Auth: auth}
 		if err := identities.RevokeCredential(ctx, service.LocalPrincipal(custodian), projectScope,
 			granted.AccountID, granted.CredentialID); err != nil {
@@ -491,5 +499,10 @@ func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 			t.Fatalf("revoked result differs from invalid-token result: revoked=%d %q invalid=%d %q",
 				revoked.Code, revoked.Body.String(), invalidAfterRevoke.Code, invalidAfterRevoke.Body.String())
 		}
+		expireRefusalWindow(t, db)
+		if err := refusalSignals.Seal(ctx); err != nil {
+			t.Fatal(err)
+		}
+		assertRetainedRefusalRequest(t, db, revoked.Header().Get(server.RefusalRequestIDHeader), "192.0.2.1")
 	})
 }

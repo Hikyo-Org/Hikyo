@@ -124,9 +124,13 @@ go_files=()
 go_packages=()
 shell_files=()
 release_admission=false
+audit_collector=false
 while IFS= read -r -d '' path; do
 	case "$path" in
 		scripts/ci/release-admission/* | scripts/ci/aws-acceptance/* | .github/workflows/aws-acceptance.yml) release_admission=true ;;
+	esac
+	case "$path" in
+		scripts/ops/audit-collector/* | docs/operations/audit-collector.md) audit_collector=true ;;
 	esac
 	case "$path" in
 		web/*) web=true ;;
@@ -158,9 +162,9 @@ while IFS= read -r -d '' path; do
 done <"$work/changed"
 
 if [ "$plan_only" = true ]; then
-	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s,"releaseAdmission":%s}\n' \
+	printf '{"web":%s,"client":%s,"workflows":%s,"go":%s,"shell":%s,"docs":%s,"releaseAdmission":%s,"auditCollector":%s}\n' \
 		"$web" "$client" "$workflows" "$([ "${#go_packages[@]}" -gt 0 ] || [ "$all_go" = true ] && printf true || printf false)" \
-		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)" "$docs" "$release_admission"
+		"$([ "${#shell_files[@]}" -gt 0 ] && printf true || printf false)" "$docs" "$release_admission" "$audit_collector"
 	exit 0
 fi
 
@@ -202,6 +206,10 @@ else
 fi
 
 go_checks() {
+if [ "$audit_collector" = true ] && [ "$go_scope" != application ]; then
+	need python3
+	run python3 -I -B -m unittest discover -s scripts/ops/audit-collector -p 'test_*.py'
+fi
 if [ "$release_admission" = true ] && [ "$go_scope" != application ]; then
 	need python3
 	run python3 -B scripts/ci/release-admission/run_checks.py --unit

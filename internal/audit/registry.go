@@ -58,8 +58,9 @@ const (
 	// — plus a boolean saying whether resolution happened at all. Source IP
 	// and user agent ride in the envelope, so incident response keeps the
 	// signal it actually needs.
-	EventAuthLogin  EventType = "auth.login"
-	EventAuthLogout EventType = "auth.logout"
+	EventAuthLogin      EventType = "auth.login"
+	EventRequestRefused EventType = "auth.request_refused"
+	EventAuthLogout     EventType = "auth.logout"
 	// auth.artifact_class_refused records a valid authenticated identity whose
 	// artifact class the addressed OpenAPI operation does not admit. The wire
 	// response remains the uniform nonexistent shape; the named distinction is
@@ -892,20 +893,16 @@ const (
 	// TWO of that category are deliberately unregistered, because neither has a
 	// moment at which this build could truthfully emit it.
 	//
-	// The first is remote.auth_failed, the AUTHENTICATION failure of a
-	// directory credential. A failed machine presentation today rides the SAME
-	// silent path a failed human session does at the chokepoint; giving machines
-	// a failure event humans do not have would claim an asymmetry the system
-	// does not implement. (An authenticated authorization DENIAL is a different
-	// thing and is already durable, per the locked catalogue's own split.) It
-	// lands with the pre-authentication admission wiring.
-	//
+	// The dedicated remote.auth_failed type remains unregistered. Rejected
+	// directory credentials use #1034's bounded auth.request_refused summaries
+	// at the canonical boundary; an extra remote event would duplicate them.
+
 	// The second, and this is the one acceptance
 	// criterion #71 does not meet: remote.workspace_session_expired. Expiry is
-	// passive — no scheduler or ticker exists in the binary, and a session
-	// authentication miss is deliberately silent at the chokepoint (a workspace
-	// bearer that has expired must be indistinguishable from one that never
-	// existed). There is therefore no moment at which this instance could
+	// passive, with no per-workspace expiry job. A session
+	// authentication miss now has a bounded generic summary, without claiming
+	// that an unverified artifact existed or passively expired. No moment
+	// exists at which this instance could
 	// truthfully emit it, and the closure invariant below refuses a type with
 	// no emitter — rightly, because registering it would be dead catalogue
 	// asserting a guarantee nothing upholds. It lands with a scheduler, the way
@@ -973,6 +970,22 @@ var pinMutationSchema = Schema{
 // the new type (completeness is CI invariant 2, wired to the
 // probe-classification registry).
 var registry = map[EventType]TypeSpec{
+	EventRequestRefused: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeFailure: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"window_start":    {Kind: KindInt, Required: true, NonNegative: true},
+			"window_end":      {Kind: KindInt, Required: true, NonNegative: true},
+			"stage":           {Kind: KindString, Required: true, Enum: []string{"artifact", "credential-conflict", "proof", "csrf", "admission"}},
+			"count":           {Kind: KindInt, Required: true, AtLeast: 1},
+			"unsampled_count": {Kind: KindInt, Required: true, NonNegative: true},
+			"samples": {Kind: KindObjectList, Required: true, MaxLen: RefusalSampleLimit, ObjectSchema: Schema{
+				"source_ip":  {Kind: KindString, Required: true, MaxBytes: 45},
+				"request_id": {Kind: KindString, Required: true, MaxBytes: 36},
+				"operation":  {Kind: KindString, Required: true, MaxBytes: 128},
+			}},
+		},
+	},
 	EventSelfConfigMigrated: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{
 		"migration_version": {Kind: KindInt, Required: true, NonNegative: true}, "owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, Required: true, NonNegative: true}, "generation": {Kind: KindInt, Required: true, NonNegative: true},
 	}},

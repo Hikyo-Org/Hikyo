@@ -11,6 +11,17 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
+## Release qualification
+
+The sections below describe implemented adapter interfaces. They do not certify
+live provider acceptance for a stable release. AWS Secrets Manager acceptance
+[#158](https://github.com/Hikyo-Org/Hikyo/issues/158), its PR #969 and controller
+follow-up #1057 are excluded from the 1.0 stabilization effort. Cloudflare
+acceptance [#161](https://github.com/Hikyo-Org/Hikyo/issues/161) remains deferred
+to 1.1. Neither adapter is claimed as production-qualified by 1.0. Their source,
+documentation and tests remain available. Real GitHub provider acceptance is a
+separate 1.0 gate; local contract fixtures alone do not establish it.
+
 The deployment adapters are one-way and value-blind. Forgejo and GitHub Actions
 write to repository, organization, or GitHub environment namespaces; GitLab
 writes project or group CI/CD variables. Cloudflare writes encrypted Workers

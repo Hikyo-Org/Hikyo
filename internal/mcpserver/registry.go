@@ -14,6 +14,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
@@ -144,6 +145,8 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 	return registerWithOptions(registry, spec, inputSchemaOptions(), handler)
 }
 
+// registerWithOptions validates tool/schema declarations and binds their exact
+// operation metadata before invoking the ordinary service handler.
 func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaOptions *jsonschema.ForOptions, handler func(context.Context, Bearer, In) (Out, error)) error {
 	if registry == nil {
 		return errors.New("mcpserver: nil registry")
@@ -256,6 +259,7 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 				},
 			}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 				ctx = operation.WithContract(ctx, spec.Contract)
+				audit.SetRefusalOperation(ctx, spec.Contract.ID)
 				bearer, _ := ctx.Value(bearerContextKey{}).(Bearer)
 				output, err := handler(ctx, bearer, input)
 				if err != nil {

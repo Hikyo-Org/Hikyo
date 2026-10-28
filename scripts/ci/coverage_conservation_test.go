@@ -189,6 +189,12 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 			"name": "Exercise every benchmark once",
 			"run":  "go test -run '^$' -bench . -benchtime=1x ./internal/crypto/ ./internal/dotenv/ ./internal/scanning/ ./internal/server/ ./internal/service/",
 		},
+		// #1037 adds the external receiver rehearsal. Require the exact
+		// unconditional command without replacing the historical job digest.
+		"supply-chain-checks": {
+			"name": "Independent audit receiver rehearsal",
+			"run":  "python3 -I -B -m unittest discover -s scripts/ops/audit-collector -p 'test_*.py'",
+		},
 	}
 	for jobName, expected := range additions {
 		steps, ok := workflow.Jobs[jobName]["steps"].([]any)

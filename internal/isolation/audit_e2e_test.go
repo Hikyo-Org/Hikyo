@@ -433,6 +433,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("every_registered_type_is_actually_emitted", func(t *testing.T) {
+		runRefusalAuditLifecycle(t, db)
 		runPrivacyAuditLifecycle(t, db)
 		// The registry-closure invariant is static: it proves declarations
 		// agree, not that an emitter exists. This runs last over the trails
