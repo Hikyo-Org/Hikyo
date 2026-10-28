@@ -126,7 +126,9 @@ tls:
       memory: 16Mi
     limits:
       cpu: 50m
-      memory: 32Mi
+      # The helper is the full multicall binary. Its package initialization
+      # needs headroom for code/file pages on nodes without swap.
+      memory: 128Mi
 
 service:
   port: 8080
@@ -136,6 +138,71 @@ network:
   trustedProxyCIDRs: []
   # Test/development escape hatch for an explicit http:// externalOrigin.
   allowPlaintextOrigin: false
+
+# NetworkPolicy for the server pods. Peers and rules use the Kubernetes
+# NetworkPolicy shapes (podSelector, namespaceSelector, ipBlock, ports).
+# Selectors in one peer are ANDed; separate peers are ORed. A podSelector
+# alone selects only this release namespace. Labels are not authentication:
+# restrict who can create/relabel pods and namespaces with Kubernetes RBAC.
+# Port 8081 never gets an ingress rule. NetworkPolicy cannot match DNS names,
+# so set provider destinations as CIDRs or use a CNI-specific FQDN policy.
+networkPolicy:
+  ingress:
+    # false keeps the legacy rule: any source may reach TCP 8080. Set true to
+    # allow TCP 8080 only from the peers below.
+    restricted: false
+    # Trusted clients: the Ingress controller or proxy, and each in-cluster
+    # client that calls the Service directly.
+    from: []
+    # Also allow this release's operator pods when operator.enabled.
+    allowOperator: true
+  egress:
+    # false keeps the legacy behavior: the chart limits no outbound traffic.
+    # Set true to allow only the destinations below. Each destination with an
+    # empty `to` list adds no rule. Configured destinations and extraRules
+    # require explicit, nonempty peers and ports, never implicit allow-all.
+    restricted: false
+    dns:
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Required when restricted: the PostgreSQL endpoint in HIKYO_DB.
+    datastore:
+      to: []
+      ports:
+        - protocol: TCP
+          port: 5432
+    # OIDC, SAML, social sign-in, and machine-identity federation issuers.
+    identityProviders:
+      to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # Deployment adapter origins, for example api.github.com or a Vault server.
+    adapters:
+      to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # The transport of a metrics collector in the same pod. The server itself
+    # sends no telemetry.
+    collector:
+      to: []
+      ports: []
+    # Complete NetworkPolicy egress rules for other destinations: the SMTP
+    # relay, GitHub for update checks and unattended upgrades, the kubelet for
+    # database.storageMonitoring, the Kubernetes API for rollout.enrolled,
+    # dynamic secret targets, and remote Hikyo instances.
+    extraRules: []
 
 updates:
   # Release notifications only; Hikyo never downloads or installs an update.
