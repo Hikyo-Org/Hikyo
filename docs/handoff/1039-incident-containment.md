@@ -279,10 +279,24 @@ New keys do not make a stolen readable copy unreadable.
 **CLI dependency: [#1033 / PR #1042](https://github.com/Hikyo-Org/Hikyo/pull/1042).**
 The inspected baseline panics because `rotate-dek` and `reencrypt` redefine the
 common `--instance` flag. Do not run or bless those baseline commands. This lane
-does not duplicate their patch. The intended dependency interface retains
-`--instance NAME` for target selection and uses `--instance-scope` for instance
-encryption scope; its exact verified revision, dispatch/completion evidence and
-commands must be recorded below before claiming a full CLI rehearsal.
+does not duplicate their patch. The dependency's verified source revision is
+`8ce0143782f516e63624732a3c14d7b5f39a51e6`, with its command and completion
+evidence in the [#1033 handoff](https://github.com/Hikyo-Org/Hikyo/blob/8ce0143782f516e63624732a3c14d7b5f39a51e6/docs/handoff/1033-cli-dek-rotation.md).
+It retains `--instance NAME` for target selection and uses `--instance-scope`
+for instance encryption scope:
+
+```sh
+hikyo rotate-dek --instance clean --instance-scope --yes
+hikyo reencrypt --instance clean --instance-scope
+hikyo rotate-dek --instance clean --org affected-org --project affected-project --yes
+hikyo reencrypt --instance clean --org affected-org --project affected-project
+```
+
+These spellings require that dependency, a trusted selected instance and an
+authorized current-session MFA ceremony. Its real CLI/API/service tests cover
+both engines, interruption, resume, retirement refusal and completed walks.
+That separate source proof is not an integrated #1039 rehearsal: record the
+integrated revision and completion evidence before claiming one.
 
 Until that dependency is integrated, the existing service owners are
 `Rotation.RotateRootKey(prepare, verify, finalize)`, `RotateMasterKey`,
@@ -383,6 +397,10 @@ New real-owner regressions in
   provider package: over the existing disposable TLS provider fixture, dropping
   the lease role refuses a new password login while an established connection
   can still execute `SELECT 1`. Consumer-session teardown is a separate act.
+  The integration tests and their shared fixture execute inside the existing
+  outbound-provider package boundary. The first hosted invariant run rejected
+  the external test package's raw connection; no driver allowlist or guard was
+  widened to repair that placement.
 - `scripts/ci/start-dynamic-pg_test.sh` forces a private caller umask and checks
   public certificate/HBA readability, private-key confidentiality, owned-volume
   cleanup and the seven existing invalid/error port-discovery refusals. The
