@@ -250,13 +250,7 @@ func TestRequestRefusalSharedNodesCountEveryCommittedUpdate(t *testing.T) {
 		if accepted == 0 {
 			t.Fatal("no progress under bounded contention")
 		}
-		var window audit.RefusalWindow
-		if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &window); err != nil {
-			t.Fatal(err)
-		}
-		if window.Counts[0]+sealedRefusalCount(t, db) != accepted || len(window.Samples) > 32 {
-			t.Fatalf("shared count %d accepted %d samples %d", window.Counts[0], accepted, len(window.Samples))
-		}
+		committed := assertRefusalCommittedAccounting(t, db, accepted, 64)
 		if uint64(64-accepted) != nodes[0].RefusalHealth().Failures+nodes[1].RefusalHealth().Failures {
 			t.Fatal("unaccounted failures")
 		}
@@ -280,11 +274,66 @@ func TestRequestRefusalSharedNodesCountEveryCommittedUpdate(t *testing.T) {
 		if got := nodes[0].RefusalHealth().Failures + nodes[1].RefusalHealth().Failures; got != uint64(64-accepted)+failedSeals {
 			t.Fatalf("concurrent seal failure accounting: %d want %d", got, uint64(64-accepted)+failedSeals)
 		}
-		waitForRefusalSeal(t, db, service.NewRefusalSignals(db), accepted)
-		if got := sealedRefusalCount(t, db); got != accepted {
-			t.Fatalf("shared seal lost or duplicated committed counts: %d want %d", got, accepted)
+		waitForRefusalSeal(t, db, service.NewRefusalSignals(db), committed)
+		if got := sealedRefusalCount(t, db); got != committed {
+			t.Fatalf("shared seal lost or duplicated committed counts: %d want %d", got, committed)
 		}
 	})
+}
+
+func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, attempts int64) int64 {
+	t.Helper()
+	var window audit.RefusalWindow
+	state := ""
+	var sealed int64
+	if db.Engine() == store.EnginePostgres {
+		var err error
+		state, sealed, err = readPostgresRefusalAccounting(t.Context(), db)
+		if err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		state = queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")
+		sealed = sealedRefusalCount(t, db)
+	}
+	if err := json.Unmarshal([]byte(state), &window); err != nil {
+		t.Fatal(err)
+	}
+	if err := window.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	committed := window.Counts[0] + sealed
+	// A failed COMMIT acknowledgement is unconfirmed accounting, not proof
+	// of rollback. Every acknowledged update must be durable; at most one
+	// update per attempt may commit. Sealing must preserve this exact durable
+	// count, including updates whose acknowledgement was lost.
+	if committed < accepted || committed > attempts || len(window.Samples) > 32 {
+		t.Fatalf("shared count %d accepted %d attempts %d samples %d", committed, accepted, attempts, len(window.Samples))
+	}
+	return committed
+}
+
+func readPostgresRefusalAccounting(ctx context.Context, db *store.DB) (string, int64, error) {
+	// Caller completion does not join an unacknowledged server-side COMMIT.
+	// The producer's singleton writer lock fences that settlement, and keeps
+	// staging and sealed counts coherent while the baseline is captured.
+	tx, err := db.PG().BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return "", 0, err
+	}
+	defer tx.Rollback(ctx)
+	var state string
+	if err := tx.QueryRow(ctx, "SELECT state FROM auth_refusal_window WHERE id=1 FOR UPDATE").Scan(&state); err != nil {
+		return "", 0, err
+	}
+	var sealed int64
+	if err := tx.QueryRow(ctx, "SELECT COALESCE(SUM((payload::jsonb->>'count')::bigint),0) FROM audit_instance_events WHERE type='auth.request_refused'").Scan(&sealed); err != nil {
+		return "", 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", 0, err
+	}
+	return state, sealed, nil
 }
 
 func TestRequestRefusalUnavailableDatabaseKeepsEarlyRefusal(t *testing.T) {
