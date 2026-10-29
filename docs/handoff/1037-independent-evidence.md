@@ -82,12 +82,15 @@ gaps over 90 seconds, below the gap left by a killed minute check.
 Read-only main at repair time is `f3e9ce2d5892d73f8f0dd357614c68cdf1e1c6e8`;
 it has not been selected as a final integrated release candidate.
 
-Light local validation: **44 Python controls PASS**, including three new
+Light local validation: **45 Python controls PASS**, including three new
 regressions reproduced against the earlier implementation, an ordinary
-65-second detector interval, a latched 100-second gap, unchanged 121-second
+65-second detector interval, a delayed healthy 85-second interval, a latched
+100-second gap, unchanged 121-second
 coverage, distinct submit keys and actual Git staging refusal. These supporting
 checks do not rerun the prior Go/product/Unix campaign or establish remote
 acceptance. Record independent review and exact pushed head/tree in the PR.
+The later 85-second test addresses a CodeRabbit coverage suggestion and fails
+under an in-memory 70-second detector limit; it changes no runtime behavior.
 The authorized LXC, cleanup requirement, specific connector 403 access question
 and #1038 notification HOLD remain unchanged. No source deployment, destination
 retry, alternate access route or merge is authorized by these source repairs.

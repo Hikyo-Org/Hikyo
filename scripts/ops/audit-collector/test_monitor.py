@@ -146,6 +146,15 @@ class MonitorTest(unittest.TestCase):
         self.state.write_text(json.dumps(state))
         self.assertTrue(self.check()["healthy"])
 
+    def test_delayed_interval_below_detector_limit_stays_healthy(self):
+        """A delayed minute check within the accepted margin stays healthy."""
+        self.complete()
+        self.assertTrue(self.check()["healthy"])
+        state = json.loads(self.state.read_bytes())
+        state["tenant"]["last_checked_ns"] -= 85_000_000_000
+        self.state.write_text(json.dumps(state))
+        self.assertTrue(self.check()["healthy"])
+
     def test_detector_setup_failure_then_fast_recovery_is_latched(self):
         self.complete()
         self.assertTrue(self.check()["healthy"])
