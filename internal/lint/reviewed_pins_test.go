@@ -65,3 +65,54 @@ func TestFailedReviewedPinDecodeExposesNoExceptions(t *testing.T) {
 		t.Fatal("failed metadata exposed query exceptions")
 	}
 }
+
+func TestReviewedProtocolBuildScopeIsAuthority(t *testing.T) {
+	const source = `{"protocols":{"protocol.go:execute":{"hash":"owner","reason":"engine protocol","build_contexts":["default","ui","darwin"]}}}`
+	before, err := parseReviewedPins([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contexts := range []string{`["unknown"]`, `["default","default"]`} {
+		if _, err := parseReviewedPins([]byte(strings.Replace(source, `["default","ui","darwin"]`, contexts, 1))); err == nil {
+			t.Fatal("invalid owner source context accepted", contexts)
+		}
+	}
+	for _, contexts := range []string{`["default","ui","darwin","windows"]`, `[]`, `["darwin"]`} {
+		after, err := parseReviewedPins([]byte(strings.Replace(source, `["default","ui","darwin"]`, contexts, 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if checkReviewedPinAuthorities(before, after) == nil {
+			t.Fatal("hash updater changed source authority", contexts)
+		}
+	}
+}
+
+func TestNativeHelperVariantsCannotOverrideCommonPins(t *testing.T) {
+	source := `{"helpers":{"helper.go:Read":"linux"},"build_helpers":{"darwin":{"helper.go:Read":"darwin"}},"protocols":{"common.go:run":{"hash":"body","reason":"common","dependencies":["helper.go:Read"]},"variant.go:run":{"hash":"body","reason":"variant","build_dependencies":{"default":["helper.go:Read"],"ui":["helper.go:Read"],"darwin":["helper.go:Read"]}}}}`
+	inventory, err := parseReviewedPins([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"linux", "darwin"} {
+		protocols, err := inventory.rawProtocolsForGOOS(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rawSQLProtocolDependencies(protocols["common.go:run"], "default")["helper.go:Read"]; got != "linux" {
+			t.Fatal("native OS override replaced a common dependency", got)
+		}
+		for _, context := range []string{"default", "ui", "darwin"} {
+			want := target
+			if context == "darwin" {
+				want = "darwin"
+			}
+			if got := rawSQLProtocolDependencies(protocols["variant.go:run"], context)["helper.go:Read"]; got != want {
+				t.Fatalf("%s/%s pin %s, want %s", target, context, got, want)
+			}
+		}
+	}
+	if _, err := inventory.rawProtocolsForGOOS("unknown"); err == nil {
+		t.Fatal("unknown native target accepted")
+	}
+}
