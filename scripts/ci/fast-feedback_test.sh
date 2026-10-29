@@ -53,6 +53,11 @@ refuse() {
 
 run_feedback
 grep -F 'selected checks passed' "$work/output" >/dev/null
+# A candidate copy cannot replace policy loaded beside the immutable driver.
+printf 'printf "candidate planning module executed\\n" >&2; exit 91\n' >scripts/ci/feedback-plan.sh
+run_feedback --working-tree --plan
+jq -e '.shell and (.lanes.tooling.checks | map(.id) | index("shellcheck") != null)' "$work/output" >/dev/null
+rm scripts/ci/feedback-plan.sh
 FAST_FEEDBACK_BASE=missing-feedback-ref refuse 'missing comparison base'
 printf 'uncommitted\n' >dirty.txt
 refuse 'checkout is dirty'
@@ -227,6 +232,8 @@ rm "$work/bin/shellcheck"
 # Tooling can come from a separate immutable checkout while workflow inputs
 # remain the tested checkout. Verify both the owner working directory and data.
 mkdir -p "$work/tooling/scripts/ci"
+FAST_FEEDBACK_TOOLS_DIR="$work/tooling/scripts/ci" refuse 'missing feedback planning module in tooling checkout' --plan
+cp "$script_dir/feedback-plan.sh" "$work/tooling/scripts/ci/"
 cat >"$work/tooling/scripts/ci/run-go-tool.sh" <<'EOF'
 #!/bin/sh
 test "$1" = actionlint
@@ -338,5 +345,6 @@ commit_fixture
 printf 'fast-feedback fixture: clean/ref/dirty/whitespace/Go/filename/dependency/deletion/workflow/docs failure cases passed\n'
 
 bash "$script_dir/fast-feedback-lanes_test.sh"
+bash "$script_dir/fast-feedback-plan_test.sh"
 bash "$script_dir/fast-feedback-deadline_test.sh"
 bash "$script_dir/dependency-compatibility_test.sh"

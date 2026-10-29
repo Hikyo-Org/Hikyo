@@ -29,22 +29,7 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := flags.checkNoPositionals("rotate-dek"); err != nil {
-		return err
-	}
-	if err := checkDEKScopeFlags(flags, instanceScope, "rotate-dek"); err != nil {
-		return err
-	}
-
-	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
-	if err != nil {
-		return err
-	}
-	org, project, err := dekScope(resolved, instanceScope)
-	if err != nil {
-		return err
-	}
-	client, _, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
+	client, org, project, err := prepareDEKTarget(st, ios, flags, instanceScope)
 	if err != nil {
 		return err
 	}
@@ -77,44 +62,6 @@ func runRotateDEK(ctx context.Context, ios IO, args []string) error {
 		Rows:    [][]string{{scope, target, strconv.FormatInt(out.KeyVersion, 10)}},
 		JSON:    out,
 	})
-}
-
-// checkDEKScopeFlags rejects contradictory selectors before context lookup or
-// authentication, so malformed usage has the same exit regardless of state.
-func checkDEKScopeFlags(flags commonFlags, instanceScope bool, verb string) error {
-	if flags.provided["env"] || flags.Env != "" {
-		return failf(ExitUsage,
-			"hikyo %s: --env cannot select a DEK; use --org/--project for the entire project or --instance-scope", verb)
-	}
-	for _, selector := range []struct{ name, value string }{
-		{"instance", flags.Instance}, {"context", flags.Context},
-		{"org", flags.Org}, {"project", flags.Project},
-	} {
-		if flags.provided[selector.name] && selector.value == "" {
-			return failf(ExitUsage, "hikyo %s: --%s must not be empty; omit it to use inherited selection", verb, selector.name)
-		}
-	}
-	if instanceScope && (flags.Org != "" || flags.Project != "") {
-		return failf(ExitUsage,
-			"hikyo %s: --instance-scope and --org/--project name two different scopes; choose one", verb)
-	}
-	return nil
-}
-
-// dekScope picks the DEK scope for rotate-dek and reencrypt: the instance
-// under --instance-scope, otherwise the resolved org and project. --instance
-// stays the shared instance reference and never selects a scope.
-func dekScope(resolved Resolved, instanceScope bool) (org, project string, err error) {
-	if instanceScope {
-		return "", "", nil
-	}
-	if org, err = resolved.Require(DimOrg); err != nil {
-		return "", "", err
-	}
-	if project, err = resolved.Require(DimProject); err != nil {
-		return "", "", err
-	}
-	return org, project, nil
 }
 
 // runRotateMasterKey is the operator's `rotate-master-key`. It warns that every
