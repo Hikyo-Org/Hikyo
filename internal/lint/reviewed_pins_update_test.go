@@ -59,7 +59,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 			}
 		}
 	}
-	protocols, err := inventory.rawProtocols()
+	protocols, err := inventory.rawProtocolsForGOOS("linux")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,12 @@ func TestUpdateReviewedPins(t *testing.T) {
 	dependencies := map[string]map[string]map[string]string{}
 	inventory.Helpers, inventory.BuildHelpers = map[string]string{}, map[string]map[string]string{}
 	for _, context := range Contexts {
-		pkgs, err := LoadRepoIn(context)
+		// The canonical default/ui pins must not depend on the updater host.
+		// Native consumers select their OS's exact reviewed helper variants.
+		if context.GOOS == "" {
+			context.GOOS = "linux"
+		}
+		pkgs, err := LoadIn(context, Module+"/...")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -160,7 +165,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 		}
 		inventory.Protocols[owner] = pin
 	}
-	protocols, err = inventory.rawProtocols()
+	protocols, err = inventory.rawProtocolsForGOOS("linux")
 	if err != nil {
 		t.Fatal(err)
 	}

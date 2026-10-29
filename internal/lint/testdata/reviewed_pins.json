@@ -2691,13 +2691,23 @@
         "scripts/acceptance/mcp-fixture/local.go:local": "c3b0dae8d21d413e7bda5df35235bf7e59018d9f3bad77a7a0f887b34a9e0de9"
       },
       "dependencies": [
-        "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting",
         "scripts/acceptance/mcp-fixture/local.go:wait",
         "scripts/acceptance/mcp-fixture/probe.go:probe.args",
         "scripts/acceptance/mcp-fixture/probe.go:probe.call",
         "scripts/acceptance/mcp-fixture/probe.go:receipt.event",
         "scripts/acceptance/mcp-fixture/probe.go:successful"
-      ]
+      ],
+      "build_dependencies": {
+        "darwin": [
+          "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting"
+        ],
+        "default": [
+          "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting"
+        ],
+        "ui": [
+          "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting"
+        ]
+      }
     },
     "scripts/acceptance/mcp-fixture/public.go:holdFixtureCatalogue": {
       "hash": "488968e249549547eeec9ab9bf652839c859e00c335c80496bc4d596d49fd70b",
@@ -3043,7 +3053,7 @@
     "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38",
     "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d",
     "scripts/acceptance/mcp-fixture/audit_seed.go:auditStoreConfig": "ac19433ec1e31be7af9851e78542283fa26f8864414b02c5605a0cd45e63ea67",
-    "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b",
+    "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c1a9de843f6d422726c459d63e5b000144a62a4a7f13b61ebec73327c85a2f9a",
     "scripts/acceptance/mcp-fixture/local.go:wait": "8f5f68350c2ac9fbced9a565092f22e39f1cd6eb30c0243a51e7e10d50186314",
     "scripts/acceptance/mcp-fixture/main.go:privatePath": "20d33614496344b681c2bfde779d356a01a63addcd4c7c79a9a02fff728e8093",
     "scripts/acceptance/mcp-fixture/main.go:privatePathModes": "47d5feaa828b5c5d143652bb1faab10e9512647758e3567c8735f19e50258d8b",
@@ -3059,6 +3069,9 @@
     "scripts/security/artifact-harness/runtime.go:ownedDisposableDatabaseIdentifier": "fd1bdf16828e043a8b228f131983e0ed407c4c4a4ce0c5188d506f1b5064f028"
   },
   "build_helpers": {
+    "darwin": {
+      "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b"
+    },
     "windows": {
       "internal/pathutil/contain.go:Within": "6a0888bc03ef1735122c13649979d0a3165265eb8a03dfc123d4e694c7cfb107"
     }

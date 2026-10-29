@@ -3,6 +3,7 @@ package lint
 import (
 	_ "embed"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
@@ -96,6 +97,16 @@ func queryContractPins(inventory reviewedPinInventory, err error) (map[string]ap
 // Expand helper names for the existing reachability checker. A shared hash
 // grants no raw execution and cannot override a common pin in a build context.
 func (inventory reviewedPinInventory) rawProtocols() (map[string]RawSQLProtocol, error) {
+	return inventory.rawProtocolsForGOOS(runtime.GOOS)
+}
+
+// Default/ui analysis follows the host, while reviewed metadata is generated
+// against Linux. A native OS's explicit build-helper pin also binds that exact
+// helper in native contexts. Common dependency pins cannot be overridden.
+func (inventory reviewedPinInventory) rawProtocolsForGOOS(nativeGOOS string) (map[string]RawSQLProtocol, error) {
+	if nativeGOOS != "linux" && nativeGOOS != "darwin" && nativeGOOS != "windows" {
+		return nil, fmt.Errorf("rawsql: unsupported native helper target %q", nativeGOOS)
+	}
 	protocols := map[string]RawSQLProtocol{}
 	used := map[string]bool{}
 	for owner, pin := range inventory.Protocols {
@@ -104,6 +115,13 @@ func (inventory reviewedPinInventory) rawProtocols() (map[string]RawSQLProtocol,
 			result := map[string]string{}
 			for _, name := range names {
 				hash := inventory.Helpers[name]
+				for _, target := range Contexts {
+					if target.Name == context && target.GOOS == "" {
+						if override := inventory.BuildHelpers[nativeGOOS][name]; override != "" {
+							hash = override
+						}
+					}
+				}
 				if override := inventory.BuildHelpers[context][name]; override != "" {
 					hash = override
 				}

@@ -151,6 +151,22 @@
     "typed_mutation_diagnostic_seconds": 2.074,
     "initial_local_full_lint": "TIMEOUT at unchanged default ten-minute deadline; repeated dependency loading repaired",
     "superseded_local_runs": "ABORTED; no PASS claim",
-    "full_lint_owner_seconds": 216.992
+    "full_lint_owner_seconds": 216.992,
+    "platform_binding_followup": {
+      "failed_head": "95dd5f53595c1ee89d9e5fab5adcce41fc98ce2b",
+      "failed_hosted_run": 40922866509,
+      "failed_hosted_job": 123620493453,
+      "cause": "listener helper body hash includes platform-specific syscall.ECONNREFUSED; prior native Darwin default was incorrectly treated as common",
+      "linux_errno": 111,
+      "darwin_errno": 61,
+      "linux_helper_sha256": "c1a9de843f6d422726c459d63e5b000144a62a4a7f13b61ebec73327c85a2f9a",
+      "darwin_helper_sha256": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b",
+      "scope": "exact build-helper selection, canonical Linux metadata generation and typed cross-target regression; fixture/runtime source unchanged",
+      "cross_target_regression": "PASS; Linux default/UI and Darwin default/UI/explicit profiles; wrong OS hash rejected",
+      "canonical_updater": "PASS; semantic idempotence on Darwin, no unrelated repinning",
+      "runtime_campaigns": "historical PASS for unchanged fixture bytes; not repeated",
+      "final_owner_recheck": "PASS; full native lint owner suite and vet",
+      "final_owner_seconds": 225.35
+    }
   }
 }

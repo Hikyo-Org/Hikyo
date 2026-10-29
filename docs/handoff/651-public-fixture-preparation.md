@@ -214,3 +214,19 @@ This removes redundant dependency loading without omitting cases or ignoring
 parse/type errors. The earlier local timeout remains a failure in the repair
 history. Fresh two-process MCP and both-engine audit seed receipts bind source,
 executable and fixture-asset identities; public acceptance remains NOTRUN.
+
+Hosted Linux invariants at `95dd5f535` subsequently found a platform binding
+error in the listener helper dependency. Its unchanged source compares
+`syscall.ECONNREFUSED`, whose resolved value is 111 on Linux and 61 on Darwin.
+Those values belong in the reviewed hash. The helper now has exact Linux and
+Darwin build-dependent pins; native default/UI analysis selects its OS variant,
+and common pins remain non-overridable. The explicit updater generates
+canonical default/UI metadata against Linux regardless of its host.
+
+Cross-target typed regressions check Linux default/UI, Darwin default/UI and
+explicit Darwin analysis, and reject the other OS's hash. A canonical update
+on Darwin is semantically idempotent, with no unrelated repinning. Prior
+native-local PASS receipts and zero-finding reviews remain historical for their
+recorded bytes; the Linux failure is retained. Fixture/runtime bytes and the
+three named-client pins are unchanged, so those local campaigns are not repeated.
+Fresh source review and hosted proof still gate protected integration.

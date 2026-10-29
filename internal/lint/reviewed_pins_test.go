@@ -87,3 +87,32 @@ func TestReviewedProtocolBuildScopeIsAuthority(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeHelperVariantsCannotOverrideCommonPins(t *testing.T) {
+	source := `{"helpers":{"helper.go:Read":"linux"},"build_helpers":{"darwin":{"helper.go:Read":"darwin"}},"protocols":{"common.go:run":{"hash":"body","reason":"common","dependencies":["helper.go:Read"]},"variant.go:run":{"hash":"body","reason":"variant","build_dependencies":{"default":["helper.go:Read"],"ui":["helper.go:Read"],"darwin":["helper.go:Read"]}}}}`
+	inventory, err := parseReviewedPins([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"linux", "darwin"} {
+		protocols, err := inventory.rawProtocolsForGOOS(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := rawSQLProtocolDependencies(protocols["common.go:run"], "default")["helper.go:Read"]; got != "linux" {
+			t.Fatal("native OS override replaced a common dependency", got)
+		}
+		for _, context := range []string{"default", "ui", "darwin"} {
+			want := target
+			if context == "darwin" {
+				want = "darwin"
+			}
+			if got := rawSQLProtocolDependencies(protocols["variant.go:run"], context)["helper.go:Read"]; got != want {
+				t.Fatalf("%s/%s pin %s, want %s", target, context, got, want)
+			}
+		}
+	}
+	if _, err := inventory.rawProtocolsForGOOS("unknown"); err == nil {
+		t.Fatal("unknown native target accepted")
+	}
+}
