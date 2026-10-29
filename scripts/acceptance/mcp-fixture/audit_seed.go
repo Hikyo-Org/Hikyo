@@ -115,7 +115,7 @@ func auditSeedConfigured(ctx context.Context, dir string) error {
 		return err
 	}
 	if cfg.Engine == "postgres" {
-		if err := requireEmptyPostgres(ctx, cfg.DSN); err != nil {
+		if err := requireEmptyPostgres(ctx, cfg.settings, true); err != nil {
 			return err
 		}
 	} else if _, err := os.Lstat(cfg.SQLitePath); !os.IsNotExist(err) {

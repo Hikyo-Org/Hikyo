@@ -21,6 +21,7 @@ type reviewedQueryPin struct {
 type rawSQLProtocolPin struct {
 	Hash              string              `json:"hash"`
 	Reason            string              `json:"reason"`
+	BuildContexts     []string            `json:"build_contexts,omitempty"`
 	Callers           map[string]string   `json:"callers,omitempty"`
 	Dependencies      []string            `json:"dependencies,omitempty"`
 	BuildDependencies map[string][]string `json:"build_dependencies,omitempty"`
@@ -98,7 +99,7 @@ func (inventory reviewedPinInventory) rawProtocols() (map[string]RawSQLProtocol,
 	protocols := map[string]RawSQLProtocol{}
 	used := map[string]bool{}
 	for owner, pin := range inventory.Protocols {
-		protocol := RawSQLProtocol{Hash: pin.Hash, Reason: pin.Reason, Callers: pin.Callers}
+		protocol := RawSQLProtocol{Hash: pin.Hash, Reason: pin.Reason, BuildContexts: pin.BuildContexts, Callers: pin.Callers}
 		expand := func(names []string, context string) (map[string]string, error) {
 			result := map[string]string{}
 			for _, name := range names {
@@ -153,6 +154,9 @@ func (inventory reviewedPinInventory) rawProtocols() (map[string]RawSQLProtocol,
 				return nil, fmt.Errorf("rawsql: unused or empty build helper %s in %s", name, context)
 			}
 		}
+	}
+	if _, err := rawSQLProtocolsInContext(protocols, Contexts[0].Name); err != nil {
+		return nil, err
 	}
 	return protocols, nil
 }

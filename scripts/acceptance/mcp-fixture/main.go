@@ -113,8 +113,8 @@ func run(ctx context.Context, args []string) error {
 			return errors.New("supported fixture mutation refused")
 		}
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
-	case "hold", "observe":
-		return storeObservation(ctx, db, args[0])
+	case "hold":
+		return holdFixtureCatalogue(ctx, db)
 	default:
 		return errors.New("unknown command")
 	}

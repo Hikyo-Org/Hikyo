@@ -41,17 +41,36 @@ func openFreshFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Key
 	if err := requireEmptyFixture(ctx, cfg); err != nil {
 		return nil, nil, err
 	}
-	return openFixture(ctx, cfg)
+	db, kr, err := openFixture(ctx, cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Admission may create the catalogue. Recheck before any supported seed
+	// writer, retaining the same pre-admission refusal for existing tenants.
+	if err := requireEmptyFixture(ctx, cfg); err != nil {
+		db.Close()
+		return nil, nil, err
+	}
+	return db, kr, nil
 }
 
 func requireEmptyFixture(ctx context.Context, cfg settings) error {
 	if err := validateDSN(cfg.DSN, cfg.Development); err != nil {
 		return err
 	}
-	return requireEmptyPostgres(ctx, cfg.DSN)
+	return requireEmptyPostgres(ctx, cfg, false)
 }
-func requireEmptyPostgres(ctx context.Context, dsn string) error {
-	connection, err := pgx.Connect(ctx, dsn)
+func requireEmptyPostgres(ctx context.Context, cfg settings, audit bool) error {
+	// The shared read-only preflight has two separate exact datastore guards.
+	// Audit custody does not broaden the MCP acceptance database guard.
+	if audit {
+		if _, _, err := auditStoreConfig(auditSeedSettings{settings: cfg, Engine: "postgres", Installation: "audit-pg-1037"}); err != nil {
+			return err
+		}
+	} else if err := validateDSN(cfg.DSN, cfg.Development); err != nil {
+		return err
+	}
+	connection, err := pgx.Connect(ctx, cfg.DSN)
 	if err != nil {
 		return errors.New("fresh datastore preflight unavailable")
 	}
@@ -175,12 +194,8 @@ func seed(ctx context.Context, dir string, db *store.DB, kr *crypto.Keyring) err
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
 		return errors.New("fixture custody already exists")
 	}
-	// Read-only refusal precedes bootstrap. All domain writes below use the
-	// supported service writers; no SQL recreates grants or principals.
-	var count int
-	if err := db.PG().QueryRow(ctx, "SELECT COUNT(*) FROM orgs").Scan(&count); err != nil || count != 0 {
-		return errors.New("refusing a nonempty fixture database")
-	}
+	// openFreshFixture refuses nonempty storage before this supported writer.
+	// No SQL recreates grants or principals.
 	auth := &service.Auth{DB: db, Keyring: kr, KDF: crypto.PasswordFloor}
 	admin, err := auth.BootstrapAdmin(ctx, "mcp-651-custodian", "Synthetic fixture custodian", "file")
 	if err != nil {

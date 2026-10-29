@@ -65,3 +65,25 @@ func TestFailedReviewedPinDecodeExposesNoExceptions(t *testing.T) {
 		t.Fatal("failed metadata exposed query exceptions")
 	}
 }
+
+func TestReviewedProtocolBuildScopeIsAuthority(t *testing.T) {
+	const source = `{"protocols":{"protocol.go:execute":{"hash":"owner","reason":"engine protocol","build_contexts":["default","ui","darwin"]}}}`
+	before, err := parseReviewedPins([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contexts := range []string{`["unknown"]`, `["default","default"]`} {
+		if _, err := parseReviewedPins([]byte(strings.Replace(source, `["default","ui","darwin"]`, contexts, 1))); err == nil {
+			t.Fatal("invalid owner source context accepted", contexts)
+		}
+	}
+	for _, contexts := range []string{`["default","ui","darwin","windows"]`, `[]`, `["darwin"]`} {
+		after, err := parseReviewedPins([]byte(strings.Replace(source, `["default","ui","darwin"]`, contexts, 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if checkReviewedPinAuthorities(before, after) == nil {
+			t.Fatal("hash updater changed source authority", contexts)
+		}
+	}
+}

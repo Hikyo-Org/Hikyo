@@ -2679,6 +2679,76 @@
         ]
       }
     },
+    "scripts/acceptance/mcp-fixture/lifecycle.go:probe.lifecycle": {
+      "hash": "13389bec04c22977ef9f1d1bf5b236ac23d377c2f5e75603b6df7366f70f5790",
+      "reason": "Owned local two-process PostgreSQL cancellation and SIGTERM rehearsal. Exact catalogue lock, shared claim and named backend observations are pinned with HTTP probe helpers. The reviewed local launcher alone supplies its guarded disposable admitted database and owned process identities; no tenant writes.",
+      "build_contexts": [
+        "default",
+        "ui",
+        "darwin"
+      ],
+      "callers": {
+        "scripts/acceptance/mcp-fixture/local.go:local": "c9de8e943824485998104d596a230feaff09baf964218115b48d3516c151aaa4"
+      },
+      "dependencies": [
+        "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting",
+        "scripts/acceptance/mcp-fixture/local.go:wait",
+        "scripts/acceptance/mcp-fixture/probe.go:probe.args",
+        "scripts/acceptance/mcp-fixture/probe.go:probe.call",
+        "scripts/acceptance/mcp-fixture/probe.go:receipt.event",
+        "scripts/acceptance/mcp-fixture/probe.go:successful"
+      ]
+    },
+    "scripts/acceptance/mcp-fixture/public.go:holdFixtureCatalogue": {
+      "hash": "730e2703c7936f7fe5fc1c082bd8c89217f1e16c50c79bbde728294b62f6ec1e",
+      "reason": "Twenty-second disposable MCP fixture catalogue lock for authorized public proxy cancellation/drain measurement. The reviewed dispatcher opens the guarded admitted fixture before invoking this bounded lock; stdin, cancellation or deadline releases it. No tenant writes.",
+      "build_contexts": [
+        "default",
+        "ui",
+        "darwin"
+      ],
+      "callers": {
+        "scripts/acceptance/mcp-fixture/main.go:run": "aaa178b82ca37a205e336698ca8396a2ba7f55f1280158e558b4994aa6c0ae43"
+      },
+      "dependencies": [
+        "internal/store/store.go:DB.PG",
+        "internal/store/store.go:postgresPool.raw"
+      ]
+    },
+    "scripts/acceptance/mcp-fixture/public.go:observeReadOnly": {
+      "hash": "0e9b1865bd3c0e50d34039ab5715fa59ac30b1c67d01fbf91ffa1f184857b312",
+      "reason": "Exact MCP fixture read-only cancellation observation, after the unchanged dedicated datastore guard. Counts committed in-flight claims and blocked catalogue queries on the two named fixture processes, without tenant rows or admission writes. Only the reviewed command dispatcher may invoke it.",
+      "build_contexts": [
+        "default",
+        "ui",
+        "darwin"
+      ],
+      "callers": {
+        "scripts/acceptance/mcp-fixture/main.go:run": "aaa178b82ca37a205e336698ca8396a2ba7f55f1280158e558b4994aa6c0ae43"
+      },
+      "dependencies": [
+        "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
+      ]
+    },
+    "scripts/acceptance/mcp-fixture/seed.go:requireEmptyPostgres": {
+      "hash": "6a7f2d3377e495953318cab6e6dfff7b6ce1c4b40284fbd27a84fd2de61a65d9",
+      "reason": "Read-only fresh datastore preflight, bounded to the separately guarded MCP acceptance or audit PostgreSQL installation. Exact DSN guards and read-only transaction are pinned; only the two reviewed fresh-seed callers may invoke it. No domain writes or grant recreation.",
+      "build_contexts": [
+        "default",
+        "ui",
+        "darwin"
+      ],
+      "callers": {
+        "scripts/acceptance/mcp-fixture/audit_seed.go:auditSeedConfigured": "fe2c08d05c7fef830531e5a324763f644d656d373e5b6281675caee64d2d6a4e",
+        "scripts/acceptance/mcp-fixture/seed.go:requireEmptyFixture": "5992f098735a8dda97b778ca462f0bfd948993e75d491db6e447fd96fb81d731"
+      },
+      "dependencies": [
+        "scripts/acceptance/mcp-fixture/audit_seed.go:auditStoreConfig",
+        "scripts/acceptance/mcp-fixture/main.go:privatePath",
+        "scripts/acceptance/mcp-fixture/main.go:privatePathModes",
+        "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
+      ]
+    },
     "scripts/security/alert-route/collector_snapshot.go:readCollectorSnapshot": {
       "hash": "36e4ccdcae876042e0edbff06f2788a07da7ae87f2a80c88daaf0d03cd296a7e",
       "reason": "Read-only snapshot/completion verification of the independently administered #1037 evidence receiver, never Hikyo application data. The exact URI mode, fixed stream binding, three journal reads, byte/row/freshness bounds and receiver refusal check are pinned with their helpers. No writes, generated-store imports or returned engine handles are admitted. Only the pinned loadSource caller may parse this unit.",
@@ -2895,12 +2965,14 @@
     "internal/store/recovery.go:RecoveryDB.Engine": "3ce2266b37a91e0c33fab6bcf52e6ec1ccb042f138d575c6c9ebf41c44bc5c81",
     "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot": "cc921f9eff01a60fedb875f0a219b9ce511f5d8a4ad706a3723e7fb4649a582c",
     "internal/store/store.go:DB.Close": "2adabeab5b29dbba1f6d5f93f178c14a9b9894bd845b9d3e3685c3cfdfeb5097",
+    "internal/store/store.go:DB.PG": "e2e4186e87d0bf1262fc077c2e68837f7374ba70ea3af2e6dd4666d3171aa4e2",
     "internal/store/store.go:PreparedPostgresPool.Close": "019b6c0981ea5d0eb22fcf1a0e04cde790cf9862e767aec81883b033b60d72fc",
     "internal/store/store.go:SQLiteDSN": "dec351809224219ad6c364efc304f4ee2e6f965c8408d3c7e2af548d0b66aa51",
     "internal/store/store.go:postgresPool.Acquire": "f9d5d3bd3a2f69add5517483604feb8d18cec186247ef1eea613779d896b2ebf",
     "internal/store/store.go:postgresPool.BeginTx": "25818c2f59be0b411fa1ffe1a42a388d56f55d48709fcb9ca26eea37a9677638",
     "internal/store/store.go:postgresPool.Close": "c8cae8c4aeda4414771661ffc72b18ea9d8bd0e7cac7323f8ec0ff482816d3ce",
     "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
+    "internal/store/store.go:postgresPool.raw": "d58a888e2dc2ab51a4f305123cc46f91f43335eb85688a18b5ac2a3051020463",
     "internal/store/store.go:postgresPool.retireLocked": "3b233cad77cb5026127b7a76055e8367f7c251296c7be5da7b206c660ef04414",
     "internal/store/store.go:rollbackPostgresSourceProof": "b205da554b3350237751826e7871f89f4cd21199737916e052ad03814b6641f6",
     "internal/store/store.go:sqliteReadDSN": "acc83922e07014cade2291fa1400ce7e2a5ef32321de9e82f15e0c65546f3acc",
@@ -2972,6 +3044,16 @@
     "internal/upgradecompat/plan.go:Plan.SourceSchemaDigest": "3a2b4959e2e0aea84a4821324f3c67f76f3b090abe845db43e8846abda1550cf",
     "internal/upgradecompat/plan.go:Plan.Target": "36c1ff6cf1ca3e7a8a6f98940cd2ae850311419211a1032e2b198c49080dae38",
     "internal/upgradecompat/plan.go:Plan.Valid": "e69771bedb97cae11c34d1794debb1cf19d66aca43645d0db0fed1c47db8078d",
+    "scripts/acceptance/mcp-fixture/audit_seed.go:auditStoreConfig": "ac19433ec1e31be7af9851e78542283fa26f8864414b02c5605a0cd45e63ea67",
+    "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting": "c338e1dabd997e89c20b02319506c81824f51d5870c975bd57c5ee696bce3e8b",
+    "scripts/acceptance/mcp-fixture/local.go:wait": "8f5f68350c2ac9fbced9a565092f22e39f1cd6eb30c0243a51e7e10d50186314",
+    "scripts/acceptance/mcp-fixture/main.go:privatePath": "20d33614496344b681c2bfde779d356a01a63addcd4c7c79a9a02fff728e8093",
+    "scripts/acceptance/mcp-fixture/main.go:privatePathModes": "47d5feaa828b5c5d143652bb1faab10e9512647758e3567c8735f19e50258d8b",
+    "scripts/acceptance/mcp-fixture/probe.go:probe.args": "5119760188523cbeac2e64fb3d92de443cada693773ff9ce4171b54dbe7b7a60",
+    "scripts/acceptance/mcp-fixture/probe.go:probe.call": "a37a8e7613f8557a3ac5a235e091a1c4dd6a9a90ea86cdd70862c5caa8f2b054",
+    "scripts/acceptance/mcp-fixture/probe.go:receipt.event": "afe3080b651d5a47fbae99c9562fb3dc2f0131fa0a92d3b268f4d963d335ff8e",
+    "scripts/acceptance/mcp-fixture/probe.go:successful": "4ab2839bfb99d4335b837132f24a33f34e1281cfec660a031cbb747bce9c90ce",
+    "scripts/acceptance/mcp-fixture/seed.go:validateDSN": "55a5c235e56dfe749a921a85a86d55667d4ae55c7b26d8a56ff228b0c6a578c1",
     "scripts/security/alert-route/collector_snapshot.go:binding": "e8c470ea6ae9fec13c93943c24a82a41ef30dbfbe59f809e751c1e3995aeba85",
     "scripts/security/alert-route/config.go:decode": "161a475815090c9065b475eac7d4fb6b26ab9715772b54c2dce938aa94108085",
     "scripts/security/alert-route/config.go:digest": "8e03bd89d9b32020248066e07ea5eda2acfe5ea18b12ebc6e1e5380a1566239b",

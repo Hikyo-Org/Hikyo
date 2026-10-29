@@ -181,3 +181,20 @@ allocation. Final cleanup enumerates/removes private scratch with propagated
 errors, and only then sets the outcome; an incomplete campaign cannot receive
 a passing receipt. Fault regressions cover missing identities, failed scratch
 enumeration and failed removal.
+
+The subsequent raw-driver/SQL invariant failure is repaired through the
+canonical reviewed inventory. Only four exact fixture source files may hold
+driver handles. Four named protocols bind fresh-store reads, claim/backend
+observation, the bounded catalogue lock and local cancellation/drain. Bodies,
+callers and reachable guard/probe helpers are pinned. The fresh-store check
+validates the separate MCP and audit datastore guards itself; nonempty refusal
+also runs after admission and before supported MCP seeding. No domain SQL
+writes or generated-query imports are admitted.
+
+Explicit protocol build contexts cover this Unix-only tool. Applicable source
+sets still require each owner; excluded sets receive no SQL authority, and
+unknown/duplicate contexts fail. Existing protocol/query identities and
+authorities are unchanged. Typed mutation regressions exercise query/write-mode
+drift, both datastore guards, new callers/aliases, neighboring source files,
+generated imports and unexpected SQL in an excluded build context. The hash
+updater cannot change the declared source authority.

@@ -312,38 +312,26 @@ func observeReadOnly(ctx context.Context, cfg settings) error {
 	return json.NewEncoder(os.Stdout).Encode(c)
 }
 
-func storeObservation(ctx context.Context, db *store.DB, action string) error {
-	if action == "hold" {
-		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		lock, err := db.PG().Begin(ctx)
-		if err != nil {
-			return errors.New("fixture lock unavailable")
-		}
-		defer lock.Rollback(context.Background())
-		if _, err := lock.Exec(ctx, "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE"); err != nil {
-			return errors.New("fixture lock refused")
-		}
-		fmt.Fprintln(os.Stdout, "LOCKED")
-		done := make(chan struct{})
-		go func() { _, _ = bufio.NewReader(os.Stdin).ReadByte(); close(done) }()
-		select {
-		case <-done:
-			return nil
-		case <-ctx.Done():
-			return errors.New("fixture lock expired")
-		}
+func holdFixtureCatalogue(ctx context.Context, db *store.DB) error {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	lock, err := db.PG().Begin(ctx)
+	if err != nil {
+		return errors.New("fixture lock unavailable")
 	}
-	c := storeCounts{Blocked: make([]int, 2)}
-	if err := db.PG().QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight").Scan(&c.Claims); err != nil {
-		return errors.New("claim observation failed")
+	defer lock.Rollback(context.Background())
+	if _, err := lock.Exec(ctx, "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return errors.New("fixture lock refused")
 	}
-	for i := 0; i < 2; i++ {
-		if err := db.PG().QueryRow(ctx, "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query LIKE '%ListKeysPage%'", fmt.Sprintf("hikyo-%d", i)).Scan(&c.Blocked[i]); err != nil {
-			return errors.New("store context observation failed")
-		}
+	fmt.Fprintln(os.Stdout, "LOCKED")
+	done := make(chan struct{})
+	go func() { _, _ = bufio.NewReader(os.Stdin).ReadByte(); close(done) }()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return errors.New("fixture lock expired")
 	}
-	return json.NewEncoder(os.Stdout).Encode(c)
 }
 
 func (c publicControl) counts(ctx context.Context) (storeCounts, error) {

@@ -345,3 +345,13 @@ linked into the product. Its exact package is declared in the store-importer
 allowlist, alongside existing disposable deployment fixtures. The boundary
 assertions and all other importers stay intact; handlers still cannot import
 the datastore. Domain writes remain supported service operations.
+
+Raw driver authority is limited to the exact `seed.go`, `local.go`,
+`lifecycle.go` and `public.go` files. Four named SQL protocols pin fresh-store
+checks, read-only claim/backend observations, the bounded catalogue lock and
+the local cancellation/drain exercise. Their function bodies, exact callers
+and reachable guard/probe helpers are recorded in the reviewed lint inventory.
+No generated-query imports or neighboring files gain authority. Explicit
+`default`, `ui` and `darwin` source contexts match this Unix-only command;
+the Windows context grants none of these protocols and still rejects any
+unexpected raw SQL. All pre-existing protocol scopes remain unchanged.

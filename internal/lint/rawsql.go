@@ -19,6 +19,7 @@ import (
 type RawSQLProtocol struct {
 	Hash              string                       `json:"hash"`
 	Reason            string                       `json:"reason"`
+	BuildContexts     []string                     `json:"build_contexts,omitempty"`
 	Callers           map[string]string            `json:"callers,omitempty"`
 	Dependencies      map[string]string            `json:"dependencies,omitempty"`
 	BuildDependencies map[string]map[string]string `json:"build_dependencies,omitempty"`
@@ -40,6 +41,11 @@ func CheckRawSQL(pkgs []*packages.Package, repoRoot, packagePrefix string, proto
 	}
 	if !knownContext || len(buildContext) > 1 {
 		return []string{fmt.Sprintf("rawsql: unknown or ambiguous build context %q", contextName)}
+	}
+	var err error
+	protocols, err = rawSQLProtocolsInContext(protocols, contextName)
+	if err != nil {
+		return []string{err.Error()}
 	}
 	seen := map[string]bool{}
 	declarations := map[string]bool{}
@@ -173,6 +179,30 @@ func CheckRawSQL(pkgs []*packages.Package, repoRoot, packagePrefix string, proto
 	}
 	slices.Sort(findings)
 	return findings
+}
+
+// An explicitly scoped owner is required in each selected source set and has
+// no SQL authority in the others. This keeps Unix-only acceptance tooling out
+// of the Windows source set without allowing an unexpected Windows writer.
+func rawSQLProtocolsInContext(protocols map[string]RawSQLProtocol, context string) (map[string]RawSQLProtocol, error) {
+	selected := map[string]RawSQLProtocol{}
+	for owner, protocol := range protocols {
+		seen := map[string]bool{}
+		for _, name := range protocol.BuildContexts {
+			known := false
+			for _, supported := range Contexts {
+				known = known || name == supported.Name
+			}
+			if !known || seen[name] {
+				return nil, fmt.Errorf("rawsql: %s has unknown or duplicate owner build context %q", owner, name)
+			}
+			seen[name] = true
+		}
+		if len(seen) == 0 || seen[context] {
+			selected[owner] = protocol
+		}
+	}
+	return selected, nil
 }
 
 // A helper that accepts caller-selected catalog names must not become a new

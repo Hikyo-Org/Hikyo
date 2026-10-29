@@ -72,8 +72,15 @@ func TestUpdateReviewedPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		loaded[context.Name] = pkgs
+		active, err := rawSQLProtocolsInContext(protocols, context.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
 		declarations := rawSQLDeclarations(pkgs, root, Module)
 		for owner, pin := range inventory.Protocols {
+			if _, applies := active[owner]; !applies {
+				continue
+			}
 			declaration, exists := declarations[owner]
 			if !exists {
 				t.Fatalf("protocol %s missing in %s", owner, context.Name)
@@ -82,7 +89,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if context.Name == Contexts[0].Name {
+			if len(dependencies[owner]) == 0 {
 				pin.Hash = hash
 			} else if pin.Hash != hash {
 				t.Fatalf("protocol body differs across builds: %s", owner)
@@ -96,7 +103,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if context.Name == Contexts[0].Name {
+				if len(dependencies[owner]) == 0 {
 					pin.Callers[caller] = hash
 				} else if pin.Callers[caller] != hash {
 					t.Fatalf("caller body differs across builds: %s", caller)
@@ -106,7 +113,7 @@ func TestUpdateReviewedPins(t *testing.T) {
 			if dependencies[owner] == nil {
 				dependencies[owner] = map[string]map[string]string{}
 			}
-			deps := rawSQLDependencies(owner, declarations, protocols, root)
+			deps := rawSQLDependencies(owner, declarations, active, root)
 			dependencies[owner][context.Name] = deps
 			for helper, hash := range deps {
 				if previous, exists := inventory.Helpers[helper]; !exists {
@@ -125,10 +132,17 @@ func TestUpdateReviewedPins(t *testing.T) {
 		pin.Dependencies = nil
 		pin.BuildDependencies = map[string][]string{}
 		common := map[string]bool{}
-		for helper, hash := range contexts[Contexts[0].Name] {
+		var first map[string]string
+		for _, context := range Contexts {
+			if deps, exists := contexts[context.Name]; exists {
+				first = deps
+				break
+			}
+		}
+		for helper, hash := range first {
 			same := true
-			for _, context := range Contexts {
-				same = same && contexts[context.Name][helper] == hash
+			for _, deps := range contexts {
+				same = same && deps[helper] == hash
 			}
 			if same {
 				common[helper] = true
