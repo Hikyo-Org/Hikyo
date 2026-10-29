@@ -99,31 +99,6 @@ func readSSHPrivateKey(ios IO, stdin bool, file string) (string, error) {
 	return string(raw), nil
 }
 
-type sshEnvTarget struct {
-	client *Client
-	base   string
-}
-
-func sshTarget(st *State, ios IO, flags commonFlags) (sshEnvTarget, error) {
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
-	if err != nil {
-		return sshEnvTarget{}, err
-	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return sshEnvTarget{}, err
-	}
-	project, err := resolved.Require(DimProject)
-	if err != nil {
-		return sshEnvTarget{}, err
-	}
-	env, err := resolved.Require(DimEnv)
-	if err != nil {
-		return sshEnvTarget{}, err
-	}
-	return sshEnvTarget{client: client, base: adapterBase(org, project) + "/environments/" + url.PathEscape(env)}, nil
-}
-
 func sshOnePositional(flags commonFlags, verb, what string) (string, error) {
 	if len(flags.positionals) != 1 || flags.positionals[0] == "" {
 		return "", failf(ExitUsage, "hikyo %s requires exactly one %s", verb, what)
@@ -180,7 +155,7 @@ func runSSHCA(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	target, err := sshTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -388,7 +363,7 @@ func runSSHProfile(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	target, err := sshTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -529,7 +504,7 @@ func runSSHCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			}
 		}
 	}
-	target, err := sshTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}

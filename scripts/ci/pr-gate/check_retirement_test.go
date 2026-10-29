@@ -531,14 +531,11 @@ func TestRetirementNoopRenewsRolesAfterEmptyOrTerminalInventory(t *testing.T) {
 						}
 					}
 				}
-				retired := true
-				err := f.q.reassess(context.Background(), func(ctx context.Context) error {
-					err := f.q.retiredHead(ctx)
-					retired = f.c.queueRefresh.verifiedRetired
-					return err
-				})
-				if err != nil || !injected || retired || !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
-					t.Fatalf("reused head bypassed blocking: retired=%t injected=%t checks=%+v err=%v", retired, injected, f.api.checks, err)
+				e := f.event
+				e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"admission"}]`, f.c.expectedHead)
+				err := f.q.runHead(context.Background(), "workflow_dispatch", e, "admission")
+				if err != nil && !onlyStaleHeadWork(err) || !injected || !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+					t.Fatalf("reused head bypassed blocking: injected=%t checks=%+v err=%v", injected, f.api.checks, err)
 				}
 			})
 		}
@@ -547,13 +544,66 @@ func TestRetirementNoopRenewsRolesAfterEmptyOrTerminalInventory(t *testing.T) {
 
 func TestRetiredDispositionCannotCarryAcrossRenewedLiveRole(t *testing.T) {
 	f, _ := retirementFixture(t, queueCheckName)
-	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{f.pr}
-	f.c.queueRefresh = &queueReassessment{verifiedRetired: true}
-	if err := f.q.retiredHead(context.Background()); err != nil {
+	f.api.checks[0].Status, f.api.checks[0].Conclusion = "completed", "success"
+	prior := f.api.checks[0]
+	f.pr.State = "closed"
+	f.refresh()
+	noRetirementRoles(f)
+	if err := f.q.execute(context.Background(), "workflow_dispatch", f.event); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.queueRefresh.verifiedRetired {
-		t.Fatal("retired disposition survived a renewed live role")
+	if len(f.api.writes) != 0 || f.api.checks[0] != prior {
+		t.Fatal("inactive head rewrote historical proof")
+	}
+	f.pr.State = "open"
+	f.refresh()
+	f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+		return policyDecision{}, errors.New("renewed role authority unavailable")
+	}
+	e := f.event
+	e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"admission"}]`, f.c.expectedHead)
+	if err := f.q.runHead(context.Background(), "workflow_dispatch", e, "admission"); err == nil {
+		t.Fatal("new invocation reused retired disposition instead of failing fresh authority")
+	}
+	if len(f.api.checks) != 2 || f.api.checks[0] != prior || !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+		t.Fatal("renewed live role retained effective historical green")
+	}
+}
+
+// One callback can route to several PRs at the held SHA. A later closed PR
+// must renew retirement after an earlier route already proved absence: that
+// earlier disposition cannot hide a newly active sibling's old green.
+func TestRetiredDispositionCannotSurviveRenewedRoleInSameCallback(t *testing.T) {
+	f, _ := retirementFixture(t, queueCheckName)
+	f.api.checks[0].Status, f.api.checks[0].Conclusion = "completed", "success"
+	prior := f.api.checks[0]
+	first, second, renewed := f.pr, f.pr, f.pr
+	second.Number, renewed.Number = 8, 9
+	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{first, second}
+	first.State, second.State = "closed", "closed"
+	f.api.responses[f.c.endpoint("pulls/7")] = first
+	f.api.responses[f.c.endpoint("pulls/8")] = second
+	renewedAfterRetirement := false
+	f.api.readHook = func(path string, n int) {
+		if n != 1 {
+			return
+		}
+		switch path {
+		case f.c.endpoint("pulls/7"):
+			noRetirementRoles(f)
+		case f.c.endpoint("pulls/8"):
+			history := f.c.endpoint(fmt.Sprintf("commits/%s/check-runs?check_name=%s&filter=all&per_page=100&page=1", f.c.expectedHead, queueCheckName))
+			renewedAfterRetirement = f.api.reads[history] == 2
+			f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{renewed}
+		}
+	}
+	e := f.event
+	e.Run = f.feedbackRun
+	if err := f.q.execute(context.Background(), "workflow_run", e); err != nil {
+		t.Fatal(err)
+	}
+	if !renewedAfterRetirement || len(f.api.checks) != 2 || f.api.checks[0] != prior || !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+		t.Fatal("earlier retirement disposition hid renewed same-head role or rewrote its historical proof")
 	}
 }
 
@@ -617,11 +667,12 @@ func TestLandedGroupRetirementPreservesEveryOpenPRRole(t *testing.T) {
 	f.api.responses[f.c.endpoint("pulls?state=open&per_page=100&page=1")] = []pull{p}
 	f.groupRefresh()
 	f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": f.c.expectedHead}}
-	f.c.queueRefresh = &queueReassessment{}
-	if err := f.q.retiredGroup(context.Background()); err != nil {
+	if err := f.q.reassess(context.Background(), func(ctx context.Context) error {
+		return f.q.reconciliation.retireHead(ctx, true)
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if f.c.queueRefresh.verifiedRetired || len(f.api.writes) != 0 || f.api.checks[0].Status != "queued" {
+	if len(f.api.writes) != 0 || f.api.checks[0].Status != "queued" {
 		t.Fatal("landed group exemption retired active same-SHA PR")
 	}
 }
@@ -638,17 +689,18 @@ func TestLandedGroupRetirementRenewsMainAfterInventory(t *testing.T) {
 	f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": f.c.expectedHead}}
 	injected := false
 	f.api.readHook = func(path string, n int) {
-		if strings.Contains(path, "/check-runs?") && n == 1 {
+		if strings.Contains(path, "/check-runs?") && n == 2 {
 			injected = true
 			f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": strings.Repeat("e", 40)}}
 		}
 	}
-	f.c.queueRefresh = &queueReassessment{}
-	if err := f.q.retiredGroup(context.Background()); err != nil {
+	if err := f.q.reassess(context.Background(), func(ctx context.Context) error {
+		return f.q.reconciliation.retireHead(ctx, true)
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if !injected || f.c.queueRefresh.verifiedRetired || len(f.api.writes) != 0 {
-		t.Fatal("landed-group disposition retained stale main proof")
+	if !injected || !blockingQueueCheck(newestQueueCheck(f.api.checks)) || len(f.api.checks) != 2 || f.api.checks[0].Conclusion != "success" {
+		t.Fatal("landed-group disposition retained stale main proof or changed historical verdict")
 	}
 }
 func TestGenericRetirementCannotUseLandedGroupException(t *testing.T) {

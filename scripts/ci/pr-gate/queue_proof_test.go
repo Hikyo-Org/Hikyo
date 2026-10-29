@@ -86,14 +86,13 @@ func (a *ambiguousVerdictAPI) write(ctx context.Context, method, path string, pa
 }
 func TestImmutableQueueUncertainTerminalWriteRechecksServerState(t *testing.T) {
 	f := newQueueFixture(t)
-	b := newBinding(f.c.repo.ID, f.pr, &f.feedbackRun)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	a := &ambiguousVerdictAPI{api: f.api, fake: f.api, cancel: cancel}
 	f.c.api = a
-	err := f.q.reassess(ctx, func(ctx context.Context) error {
-		return f.c.publish(ctx, f.pr, b, nil, outcome{Status: "completed", Conclusion: "success", Title: "verified", Summary: "current proof"})
-	})
+	e := f.event
+	e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"admission"}]`, f.pr.Head.SHA)
+	err := f.q.runHead(ctx, "workflow_dispatch", e, "admission")
 	if err == nil || !a.changed {
 		t.Fatal("uncertain server-side mutation was not exercised/refused")
 	}
@@ -116,7 +115,7 @@ func TestImmutableQueueQueuedNoopCannotHideRetainedCompletion(t *testing.T) {
 	v := check{ID: 99, Name: queueCheckName, HeadSHA: b.Head, ExternalID: b.externalID(), Status: "queued", CompletedAt: "2026-10-12T20:48:14Z"}
 	v.App.ID, v.App.Slug = actionsAppID, "github-actions"
 	v.Output.Title, v.Output.Summary = result.Title, result.Summary
-	if _, err := f.c.publishQueueRecord(context.Background(), f.pr, b, &v, result); err == nil {
+	if _, err := (&queueReconciliation{q: f.q}).publishRecord(context.Background(), f.pr, b, &v, result); err == nil {
 		t.Fatal("retained completion escaped through equality no-op")
 	}
 	if len(f.api.writes) != 0 {
@@ -124,15 +123,17 @@ func TestImmutableQueueQueuedNoopCannotHideRetainedCompletion(t *testing.T) {
 	}
 }
 
-func TestImmutableQueueAcknowledgedUnexpectedCreateRemainsKnown(t *testing.T) {
+func TestImmutableQueueUnexpectedCreateRechecksEffectiveBlockingRecord(t *testing.T) {
 	f := newQueueFixture(t)
-	b := newBinding(f.c.repo.ID, f.pr, &f.feedbackRun)
-	a := &unexpectedCreationAPI{api: f.api}
-	f.c.api = a
-	f.c.queueRefresh = &queueReassessment{}
-	written, err := f.c.publishQueueRecord(context.Background(), f.pr, b, nil, pending("current proof incomplete"))
-	if err == nil || written == nil || f.c.queueRefresh.latest == nil || f.c.queueRefresh.latest.ID != written.ID {
-		t.Fatal("acknowledged owned identity was lost before state rejection")
+	f.c.api = &unexpectedCreationAPI{api: f.api}
+	e := f.event
+	e.Inputs.Work = fmt.Sprintf(`[{"head":%q,"kind":"admission"}]`, f.pr.Head.SHA)
+	if err := f.q.runHead(context.Background(), "workflow_dispatch", e, "admission"); err == nil {
+		t.Fatal("contradictory creation response was accepted")
+	}
+	latest := newestQueueCheck(f.api.checks)
+	if len(f.api.writes) != 1 || f.api.writes[0]["method"] != "POST" || len(f.api.checks) != 1 || !blockingQueueCheck(latest) || !f.c.authenticatedQueueCheck(latest, f.pr.Head.SHA) {
+		t.Fatal("acknowledged invalid response lost the effective owned blocker or retried creation")
 	}
 }
 

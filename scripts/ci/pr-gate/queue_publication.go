@@ -32,10 +32,39 @@ func blockingQueueCheck(v *check) bool {
 	return false
 }
 
-// Callers must complete current source/authority/identity verification before
-// requesting a terminal verdict. Equality is publication deduplication only.
+// completeAdmission and completeGroup accept only this pass's freshly verified
+// source/authority/final-identity result. The owner repeats the appropriate
+// complete history authentication and selects the effective generation itself.
+// Equality below is publication deduplication, never cached proof.
+func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b binding, result outcome) error {
+	own, err := s.q.ownedChecks(ctx, p)
+	if err != nil {
+		return err
+	}
+	return s.publishVerified(ctx, p, b, newestQueueCheck(own), result)
+}
+
+func (s *queueReconciliation) completeGroup(ctx context.Context, p pull, b binding, result outcome) error {
+	own, err := s.q.groupChecks(ctx, p)
+	if err != nil {
+		return err
+	}
+	return s.publishVerified(ctx, p, b, newestQueueCheck(own), result)
+}
+
+func (s *queueReconciliation) publishVerified(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
+	_, err := s.publishRecord(ctx, p, b, selected, result)
+	if err == nil && result.Status == "completed" {
+		s.verifiedTerminal = true
+	}
+	return err
+}
+
 // A terminal verdict is never reset: transitions get a new queued record.
-func (c *controller) publishQueueRecord(ctx context.Context, p pull, b binding, selected *check, result outcome) (*check, error) {
+// All publication observations, including uncertain receipts, stay with the
+// owner that settles the pass. The lifecycle probe uses this same protocol.
+func (s *queueReconciliation) publishRecord(ctx context.Context, p pull, b binding, selected *check, result outcome) (*check, error) {
+	c := s.q.controller
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -92,23 +121,16 @@ func (c *controller) publishQueueRecord(ctx context.Context, p pull, b binding, 
 		payload["head_sha"] = b.Head
 		var written check
 		if err := c.api.write(ctx, "POST", c.endpoint("check-runs"), payload, &written); err != nil {
-			if c.queueRefresh != nil {
-				c.queueRefresh.uncertainCreate = true
-			}
+			s.uncertainCreate = true
 			return nil, err
 		}
 		if !c.authenticatedQueueCheck(&written, b.Head) || written.ExternalID != b.externalID() {
 			return nil, errors.New("queued creation returned foreign identity; no guessed-ID recovery")
 		}
 		selected = &written
-		if c.queueRefresh != nil {
-			c.queueRefresh.latest = selected
-		}
+		s.latest = selected
 		if written.Status != "queued" || written.Conclusion != "" || written.CompletedAt != "" {
 			return selected, errors.New("queued creation did not return a blocking record")
-		}
-		if c.queueRefresh != nil {
-			c.queueRefresh.latest = selected
 		}
 		if result.Status == "queued" {
 			return selected, nil
@@ -133,8 +155,6 @@ func (c *controller) publishQueueRecord(ctx context.Context, p pull, b binding, 
 	if written.Status != result.Status || written.Conclusion != result.Conclusion || result.Status == "queued" && written.CompletedAt != "" {
 		return &written, errors.New("queue update contradicted the requested result")
 	}
-	if c.queueRefresh != nil {
-		c.queueRefresh.latest = &written
-	}
+	s.latest = &written
 	return &written, nil
 }

@@ -599,18 +599,18 @@ func verifyPolicy(ctx context.Context, pr int, head string) (policyDecision, err
 }
 
 type controller struct {
-	api           api
-	verify        verifier
-	repoName      string
-	repo          repository
-	workflow      workflow
-	checkName     string
-	expectedHead  string
-	queueDeadline time.Time
-	queueRefresh  *queueReassessment
-	dryRun        bool
-	output        io.Writer
-	diagnostics   io.Writer
+	api            api
+	verify         verifier
+	repoName       string
+	repo           repository
+	workflow       workflow
+	checkName      string
+	expectedHead   string
+	queueDeadline  time.Time
+	reconciliation *queueReconciliation
+	dryRun         bool
+	output         io.Writer
+	diagnostics    io.Writer
 }
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
@@ -1417,11 +1417,13 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
 	if c.checkName == queueCheckName || c.checkName == lifecycleName {
-		_, err := c.publishQueueRecord(ctx, p, b, selected, result)
-		if err == nil && c.queueRefresh != nil && result.Status == "completed" {
-			c.queueRefresh.verifiedTerminal = true
+		session := c.reconciliation
+		if session == nil {
+			// The independently bounded admission refusal may publish outside
+			// a normal pass, using the same immutable publication protocol.
+			session = &queueReconciliation{q: &queueController{controller: c}}
 		}
-		return err
+		return session.publishVerified(ctx, p, b, selected, result)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
