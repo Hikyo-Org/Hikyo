@@ -147,3 +147,15 @@ asserts refusal, absent writes, released connections and host exclusion. Both
 focused Standards and Spec source reviews reported zero actionable findings;
 they are automated evidence, not independent human approval. Local race and
 consumer results and fresh full current-base validation are recorded on the PR.
+
+## Raw-SQL helper review pins
+
+The next test-core run caught the dependent raw-SQL helper pins for BeginSQLite
+and Commit. PreparedPostgresPool.Activate's SQLite branch reaches these through
+CheckAdmission. That consumer was reviewed: the original context now remains
+with the transaction; cancellation refuses readiness/activation through the
+existing rollback and settlement join. No raw SQL, caller, dependency grant or
+protocol exception changes. The two function hashes and the consumer's review
+reason are refreshed, with the unchanged raw-SQL guard exercised across default,
+UI, Darwin and Windows contexts. Production source bytes remain the reviewed
+SQLite repair; fresh full queue proof remains required.

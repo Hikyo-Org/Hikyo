@@ -1299,7 +1299,7 @@
     },
     "internal/store/store.go:PreparedPostgresPool.Activate": {
       "hash": "c641b81cc8c332c9821e1252d2531ae245b74dacd3714564d7091fdad3c53968",
-      "reason": "Pool custody protocol reads database/schema identity inside the replacement admission transaction before a candidate pool may become the runtime owner.",
+      "reason": "Pool custody protocol reads database/schema identity inside the replacement admission transaction before a candidate pool may become the runtime owner. SQLite cancellation follow-up: reviewed BeginSQLite retaining the original caller context and Commit refusing cancelled callers through the existing rollback/settlement owner. Readiness and activation remain fail-closed; native settlement and host exclusion still complete before release.",
       "dependencies": [
         "internal/store/admission.go:DB.BeginPostgres",
         "internal/store/admission.go:DB.BeginSQLite",
@@ -2857,12 +2857,12 @@
     "internal/schema/validate.go:trimRunes": "dee7829513b28c677bf890abfa73a583c105720d4575dd9113a7429bee0be096",
     "internal/schema/validate.go:truncateFailure": "9d5bf53aa8af06a2c6a4576ae984d551a1f9f33077feaf02ad10fb00a65af236",
     "internal/store/admission.go:DB.BeginPostgres": "2d578b409ceb664137581740d654cee047fe23959090ee44eea9493b02e41845",
-    "internal/store/admission.go:DB.BeginSQLite": "4758bf2bc2e859e3d8297b148d26808aa1eaee9ae1ef77ade02a39c5157c297e",
+    "internal/store/admission.go:DB.BeginSQLite": "3b9061f0e5602485fafade1cad3489d294aa50bd782c9aa762e2a7cddd3c1053",
     "internal/store/admission.go:DB.CheckAdmission": "3c4e56a02d3ffa03d9cbcc930c976a378fc6bdca854cf6d9a92823670863483a",
     "internal/store/admission.go:PostgresTransaction.Commit": "ae0e706188ba588241f9e72c6cc7277990cd068ce47ab18d0908cbd44384953c",
     "internal/store/admission.go:PostgresTransaction.Rollback": "55361fba7c12ec3de46269fd93fab7c74c4ace293606fce1ab1f0d1ea187fa9b",
     "internal/store/admission.go:PostgresTransaction.closeOwner": "4823c0cec4e1c619e15cd7ba234c660d3e9f4c1a341ceb23df854511e8a9fa36",
-    "internal/store/admission.go:SQLiteTransaction.Commit": "9a76a3f732b00d0400f6847491d68e347fe5ffb0f462f07aa880eb2b97515433",
+    "internal/store/admission.go:SQLiteTransaction.Commit": "b6c877e8fa055a3daa28b63d2c2b2e4f65bba906da2c264afdbe92a60e36cf5a",
     "internal/store/admission.go:SQLiteTransaction.Rollback": "ad8d474bf3f5765e58e4094c56d012f52881135fcadf2a314cca95e01c7e5294",
     "internal/store/admission.go:SQLiteTransaction.closeOwner": "f670794940ed730a6cbe01ffdc8f2578a90a898bd8b35274e6e789a39b320f87",
     "internal/store/admission.go:closeSQLiteConn": "3e2d3f419a328b038b0e49e7552f959c13407af47ff89d21483d12e9da7f9df8",
