@@ -403,3 +403,31 @@ Vault guard. Annotation kinds, census cardinality and every other entry are
 unchanged; no new exemption or test weakening is introduced. The focused
 pin invariant is required on the final repaired source. This is a concrete
 consumer failure from the protected run, not a new audit lane.
+
+## Current-main integration after G1 qualification
+
+Independent configured OpenAI gpt-6.1-sol/high Standards and Spec R9 are
+CLEAN on `6894ed09bcf51118e1a8f66fbfb79fae93c04fa9`, tree
+`b6d05256788de3c7df333cc0fe3e3e44a5b82964`. All 66 source bindings match;
+14 changed G1 paths and 52 unchanged bindings were verified. These are
+source-only reviews; cached local tests, actual provider receipts and hosted
+protected proof remain distinct.
+
+Main advanced to `4383134b358fa32e2af36f4a3619052809fe3a8e`, including
+merged [PR #1096](https://github.com/Hikyo-Org/Hikyo/pull/1096). Integration
+reconciles the shared governance document conflict: retain the explicit Vault
+membership supersession alongside the separate upstream continuation and
+label the old decision tables as historical. The reviewed-pin map retains the
+previously reviewed Vault entry and all other current-main entries without a
+conflicting overlap. All upstream files outside the Vault delta match main
+blobs exactly. This lane modifies no upstream provider, TLS, trust-policy or
+publication implementation and performs no activation.
+
+All frozen Vault Go/API/query/test blobs remain identical to R9. Only the
+reviewed-pin-map frozen blob changes; the other 65 bindings are unchanged.
+The shared governance resolution, this packet and manifest are also reviewed
+as integration metadata. The review covers those changed bytes and exact
+import/carry bindings, not a new audit of upstream lanes. Final-head checks
+and fresh protected final-head/current-base proof remain mandatory. Scoped
+owner merge approval remains banked; #26/#28 operative recording follows
+actual merge, and #79 remains integrated acceptance.

@@ -195,6 +195,24 @@ func (u *transitUse) consumingVersion(v uint32, forgeable bool) error {
 	return nil
 }
 
+// availableCustody resolves the recorded provider and enforces D3 without
+// loading private material. Unavailable custody has one durable failure cause
+// for both public verification and material-bearing operations.
+func (u *transitUse) availableCustody(ctx context.Context, v uint32) (transit.Custody, error) {
+	kind, err := transit.ParseCustodyKind(u.key.Custody)
+	if err != nil {
+		return nil, err
+	}
+	p, err := u.s.Custody.Resolve(kind)
+	if err == nil {
+		err = p.Available(ctx)
+	}
+	if err != nil {
+		return nil, u.refusal(audit.OutcomeFailure, "custody-unavailable", v, ErrTransitCustodyUnavailable)
+	}
+	return p, nil
+}
+
 // material loads one version and its custody provider. A version whose row is
 // gone or has neither sealed material nor an external reference is a version
 // refusal. Provider resolution or availability failures become
@@ -214,16 +232,9 @@ func (u *transitUse) material(ctx context.Context, v uint32) (transit.Custody, t
 	if err != nil {
 		return fail(err)
 	}
-	kind, err := transit.ParseCustodyKind(u.key.Custody)
+	p, err := u.availableCustody(ctx, v)
 	if err != nil {
 		return fail(err)
-	}
-	p, err := u.s.Custody.Resolve(kind)
-	if err == nil {
-		err = p.Available(ctx)
-	}
-	if err != nil {
-		return fail(u.refusal(audit.OutcomeFailure, "custody-unavailable", v, ErrTransitCustodyUnavailable))
 	}
 	return p, t, transitVersion(m), nil
 }
@@ -452,8 +463,8 @@ func (s *Transit) Sign(ctx context.Context, actor Actor, scope domain.Scope, nam
 	return out, err
 }
 
-// Verify checks a signature against the version's stored public key without
-// contacting a custody provider; useKey still requires a non-nil registry.
+// Verify checks a signature locally against the version's stored public key,
+// after checking custody availability; no private operation is requested.
 // A well-formed transit value with a mismatched signature returns Valid=false.
 // Malformed values or oversized inputs return invalid-input errors; unavailable
 // or compromised versions are refused. Authorization, budget, and store errors
@@ -479,6 +490,9 @@ func (s *Transit) Verify(ctx context.Context, actor Actor, scope domain.Scope, n
 			return useResult{}, u.refusal(audit.OutcomeDenied, "version", v, &transitRefusal{cause: "version"})
 		}
 		if err != nil {
+			return useResult{}, err
+		}
+		if _, err := u.availableCustody(ctx, v); err != nil {
 			return useResult{}, err
 		}
 		out = TransitOutput{KeyVersion: v, Valid: crypto.VerifyTransitSignature(m.PublicKey, message, sig)}

@@ -1,6 +1,6 @@
 # Hikyo API & CLI surface (ADR, locked 2026-08-02)
 
-> **Proposed amendment (approval record rechecked 2026-10-28, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** The [explicit HTTPS trust amendment](#proposed-explicit-https-trust-amendment-966) below specifies the exact contract implemented by merged [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967). Preparation [PR #1004](https://github.com/Hikyo-Org/Hikyo/pull/1004) also merged, and #966 and #25 closed, but the inspected owner history does not record final approval of this exact contract and its #966-only review exception. The [scoped closeout packet](../handoff/966-cli-system-ca-trust.md) separates those facts from publication and consumer evidence. Historical requirements below remain authoritative until explicit owner approval is recorded and the corrective documentation PR merges.
+> **Proposed amendment (approval record rechecked 2026-10-29, [#966](https://github.com/Hikyo-Org/Hikyo/issues/966), not yet owner-locked or operative):** The [explicit HTTPS trust amendment](#proposed-explicit-https-trust-amendment-966) below specifies the exact contract implemented by merged [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967). Preparation [PR #1004](https://github.com/Hikyo-Org/Hikyo/pull/1004) and reconciliation [PR #1073](https://github.com/Hikyo-Org/Hikyo/pull/1073) also merged. The owner now explicitly requests fresh Astra outcome validation for #966. That authorizes this scoped review route; it does not itself state final acceptance of the five-clause contract. The [closeout packet](../handoff/966-cli-system-ca-trust.md) separates source, review, signed publication and downstream acceptance. Historical requirements below remain authoritative until explicit contract approval is recorded and the corrective PR merges.
 
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** The closed artifact table adds developer-credential only to fetchDelivery. Human-only dev session mint/list/revoke and instance-config developer-credential-policy get/set provide delegation lifecycle. Mint requires controlling-terminal consent, fresh developer-specific TOTP or passkey reauthentication, and private custody outside the repository; bearer output is never printed. The own lifecycle routes have human ArtifactContracts and resolve current owner directly. Project incident routes require manage-identities and policy routes require instance-config. Mint and own lifecycle are an expressly CLI-only surface; project inspection/revocation and instance lifetime policy administration are available in their respective Web UI settings surfaces (#807). The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
@@ -88,13 +88,17 @@ migration and refusal cases, and the signed-release consumer procedure.
 
 The implementation and this amendment are OpenAI-authored. Cross-provider review
 is **SKIPPED: the configured Anthropic subscription reviewer is unavailable**.
-The proposed owner exception waives only the cross-provider review requirement
-for this #966 amendment. It retains fresh, separate adversarial OpenAI Standards
-and Spec reviews of the amendment and its implemented trust boundary, all
-applicable tests and CodeQL, signed/DCO commits, and ordinary PR/CI protections.
-Same-provider reviews do not constitute cross-provider review. This exception
-does not amend the general [governance procedure](../../GOVERNANCE.md#amendment-procedure)
-or apply to another decision.
+On 2026-10-29 the owner explicitly selected `gpt-6.1-sol` with maximum reasoning
+for this continuation and a fresh `gpt-6-astra` validator with `xhigh` reasoning
+for the concrete outcome. This supplies authority to run that #966-only review
+route without asking again. Its result must cover the exact frozen source,
+contract, runtime and consumer evidence, known findings and outstanding owner
+constraints. It must remain identified as OpenAI same-provider validation.
+The requested route does not execute cross-provider review, approve the exact
+contract, change another ADR's gates or waive maintainer security review,
+applicable tests and CodeQL, signed/DCO history or ordinary PR/CI protections.
+It does not amend the general
+[governance procedure](../../GOVERNANCE.md#amendment-procedure).
 
 The originating ticket [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was
 [reopened for the amendment record](https://github.com/Hikyo-Org/Hikyo/issues/25#issuecomment-6262097215)
@@ -107,7 +111,8 @@ request. Merge and closed issue state do not supply the missing explicit
 decision. This is an approval-record gap, not evidence of missing implementation.
 
 Final owner approval must explicitly accept the unchanged five-clause contract
-above and its #966-only review exception. After that decision, record its
+above with the scoped review disposition. The requested Astra review needs no
+further permission. After the contract decision, record its
 reference, mark this section and banner as an owner-locked declared amendment,
 operative when the corrective documentation PR merges, and reconcile #25's
 closeout with that approval, review disposition and merge record. Until then,

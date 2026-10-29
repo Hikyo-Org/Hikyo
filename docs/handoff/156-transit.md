@@ -1,5 +1,15 @@
 # Handoff: #156 Transit (versioned cryptographic operations)
 
+## Amendment closeout continuation (2026-10-29)
+
+The owner requested completion of the outstanding #156 amendment, with
+independent Standards and Spec review under the October 29 policy. The
+[source-bound closeout](./156-transit-amendment-closeout.md) identifies the
+five normative excerpts, original Claude provenance and exact remaining
+review/ceremony/merge requirements. Historical skipped review is preserved;
+the original implementation and WebUI remain delivered. This continuation
+adds no feature or provider acceptance claim.
+
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/156 (blocked-by #75 and #146,
 both merged). Normative contract: [`docs/adr/transit.md`](../adr/transit.md).
 Declared amendments (pointer banners in this change):

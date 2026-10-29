@@ -68,7 +68,7 @@ policy, findings and dispositions are in the [closeout packet](./162-vault-1.0-c
 | `internal/isolation/adapter_runtime_cleanup_scope_test.go` | `4d8efcc1fff5ec31ce088077166755b7f0a14151` | 0 / 5 / 196 |
 | `internal/isolation/adapter_vaultkv_e2e_test.go` | `c506861d8586d81cd78759f786e36d249d49bbe4` | 280 / 559 / 212 |
 | `internal/isolation/testdata/annotated_queries.json` | `d1e95d89daaab7b16e4a5eddf29a9b0575971118` | 2610 / 158 / 4198 |
-| `internal/lint/testdata/reviewed_pins.json` | `979bffe316fe9067ed2ff09510ef9e58c8693f13` | 0 / 114 / 2875 |
+| `internal/lint/testdata/reviewed_pins.json` | `b474719a43e115a61fef5a4ad05a19fefb653c7f` | 0 / 122 / 2960 |
 | `internal/service/adapters.go` | `635a49b86f5617cfe51aaa6edddac1138011996e` | 410 / 154 / 1568 |
 | `internal/service/adapters_vaultkv_test.go` | `d36c4b253dc244bead00f9bde5381815ac903090` | 70 / 7 / 0 |
 | `internal/store/adapter_lifecycle_queries.go` | `c4efb4c6fa20cc62bbacdf9f4e64f445d40bfc86` | 0 / 14 / 111 |

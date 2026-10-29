@@ -3,7 +3,9 @@
 Status: implementation merged in [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967)
 as `69e32a25a6431426e839cb463aafd78c781ef15d`. The exact
 [ADR amendment and scoped review disposition](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966)
-are prepared for final owner approval; the contract is not yet operative.
+still require final exact-contract approval; the contract is not yet operative.
+The owner explicitly selected fresh Astra `xhigh` outcome validation on
+2026-10-29. That scoped review is authorized and remains same-provider evidence.
 Use these examples only with a verified signed CLI release containing #966.
 Older releases do not support `tls_mode`; an older bundle importer may ignore
 that field and will then refuse an HTTPS entry without a pin. An imported file
@@ -66,6 +68,7 @@ project read permission, the intended org/project identifiers, and a released
 `hikyo` executable on `PATH`:
 
 ```bash
+set -euo pipefail
 set +x
 : "${HIKYO_TRUST_BUNDLE:?Set the protected trust-bundle file path}"
 : "${HIKYO_TOKEN:?Provision the paired machine credential}"
@@ -178,3 +181,54 @@ it. Keep the existing runner configuration available for deliberate rollback.
 Production rollout requires its own authorization. No TLS proxy account
 access is part of this implementation. A certificate rotation test against a
 local test CA is regression evidence; it is not live proxy or release evidence.
+
+### Consumer adapter compatibility
+
+Check the adapter that prepares the protected file, as well as the CLI. DBugIT
+Rewrite's `scripts/lib/hikyo.sh` at source
+`68467d9463ebd53f522b00a7fb220d916680801b` requires `spki_pin` before invoking
+the CLI. It therefore refuses an otherwise valid explicit `system-ca` bundle.
+The [reviewable consumer repair](../handoff/966-dbugit-system-ca-repair.md)
+removes that SPKI-only precondition and leaves the CLI's full identity validation
+in control. This is a prepared patch, not a change to DBugIT's operational CI.
+
+DBugIT's wrapper receives `HIKYO_TRUST_BUNDLE` as protected **JSON text**, writes
+it to a private file, and unsets the text before later CLI commands. The CLI
+itself expects that variable to be a **file path**, as shown above. Do not pass
+JSON text directly to the CLI or allow repository content to supply either
+binding. Update the exact verified CLI version and protected bundle together
+only on the separately authorized isolated consumer. Preserve the prior version,
+bundle and runner configuration for rollback.
+
+### Repeat the isolated authorization check
+
+The source check uses a disposable SQLite store, real Hikyo machine-credential
+minting, API authentication and grants, and fresh test certificates. It changes
+neither host trust nor operational credentials:
+
+```bash
+GOMAXPROCS=2 go test -p 2 -parallel 2 ./internal/isolation \
+  -run '^TestCLISystemCARealAuthorizationConsumer$' -count=1 -v
+```
+
+It covers valid renewal with a different leaf key, expired/not-yet-valid,
+wrong-host and untrusted certificates, legacy/explicit SPKI and changed keys,
+deliberate mode migration, protected identity conflicts, repository injection,
+same-origin and cross-origin redirects, sibling-project denial and credential
+revocation. Transport refusals assert zero HTTP requests; redirects assert
+exactly one request at the original origin and none at the destination.
+
+For a Linux runner, independently verify the complete signed release download
+and its extracted CLI against signed binary provenance **before execution**.
+Set `HIKYO_TLS_CONSUMER_BINARY` to that absolute `hikyo` executable, then run
+the same test. The test records its SHA-256; it does not verify release
+signatures itself. `HIKYO_TLS_CONSUMER_HELPER` may additionally name an absolute,
+reviewed DBugIT helper to run its actual setup and authenticated read against
+the disposable fixture. The source path uses isolated fallback roots; the
+released Linux process uses `SSL_CERT_FILE` in its private environment.
+
+The test sends no operator credential to an external origin. A passing local
+helper check proves isolated adapter compatibility and real fixture
+authorization. It does not prove that a named downstream pipeline changed its
+CLI version, updated its protected bundle, or completed an approved consumer
+run. Those remain explicit closeout gates.
