@@ -29,6 +29,9 @@ fixture using the independently verified, byte-identical Linux/arm64 nightly
 `hikyo_machine_setup` and `hikyo_cli env list -o json` succeeded before and after
 a valid leaf-key renewal. The server minted a fresh machine credential and
 checked real grants. The fixture used no operational DBugIT credential.
+After review, the consumer assertion additionally requires the exact fixture
+environment and one successful environment-list response from the real API.
+Forged output, including a matching ID after only a metadata request, is refused.
 
 The repaired source snapshot passed `bash -n scripts/lib/hikyo.sh` and its
 existing owner/consumer checks:

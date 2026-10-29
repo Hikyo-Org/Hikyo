@@ -101,6 +101,17 @@ This is **PASS: isolated signed-consumer transport and real fixture authorizatio
 It is distinct from the earlier synthetic HTTP fixture, operational DBugIT CI,
 a managed proxy rotation or production acceptance.
 
+The first candidate's optional helper assertion accepted any nonempty list.
+Review identified that a helper could print an unrelated item without making
+an authenticated read. That false-positive witness was reproduced. The test
+now requires the exact fixture environment ID and exactly one successful
+environment-list response from the real API, in addition to HTTP activity.
+Forged unrelated output, matching-ID output without a request, and matching-ID
+output after only a metadata request all fail. The actual repaired helper
+passes on both valid leaf keys with the unchanged verified released CLI.
+The original candidate's Astra review is superseded; fresh validation must
+cover the corrected source and new receipts rather than reuse that review.
+
 To repeat public verification from this source with Go 1.27.3, use a new empty
 operator-selected download directory:
 

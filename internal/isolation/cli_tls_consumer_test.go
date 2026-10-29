@@ -93,6 +93,8 @@ func TestCLISystemCARealAuthorizationConsumer(t *testing.T) {
 	var certificate atomic.Pointer[tls.Certificate]
 	certificate.Store(first)
 	var requests, sinkRequests atomic.Int32
+	var environmentReads atomic.Int32
+	environmentPath := fmt.Sprintf("/api/v1/orgs/%s/projects/%s/environments", orgID, projectID)
 	var redirect atomic.Int32
 	sink := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { sinkRequests.Add(1) }))
 	t.Cleanup(sink.Close)
@@ -107,7 +109,16 @@ func TestCLISystemCARealAuthorizationConsumer(t *testing.T) {
 			http.Redirect(w, r, target, http.StatusTemporaryRedirect)
 			return
 		}
-		handler.ServeHTTP(w, r)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, r)
+		if r.Method == http.MethodGet && r.URL.Path == environmentPath && response.Code == http.StatusOK {
+			environmentReads.Add(1)
+		}
+		for name, values := range response.Header() {
+			w.Header()[name] = values
+		}
+		w.WriteHeader(response.Code)
+		_, _ = w.Write(response.Body.Bytes())
 	}))
 	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
 	srv.TLS = &tls.Config{MinVersion: tls.VersionTLS12, GetConfigForClient: func(*tls.ClientHelloInfo) (*tls.Config, error) {
@@ -206,6 +217,7 @@ hikyo_cli env list -o json`, "tls-consumer", helper, helperDir)
 				"HIKYO_RUNTIME_TARGETS=" + fmt.Sprintf(`{"org":%q,"project":%q}`, orgID, projectID)}
 			var output, diagnostics bytes.Buffer
 			command.Stdout, command.Stderr = &output, &diagnostics
+			beforeRequests, beforeReads := requests.Load(), environmentReads.Load()
 			err = command.Run()
 			if strings.Contains(output.String()+diagnostics.String(), token) {
 				t.Fatal("consumer helper disclosed the fixture bearer")
@@ -216,6 +228,13 @@ hikyo_cli env list -o json`, "tls-consumer", helper, helperDir)
 			var environments apigen.EnvironmentList
 			if err := json.Unmarshal(output.Bytes(), &environments); err != nil || len(environments.Items) == 0 {
 				t.Fatal("downstream helper did not return the real environment list", err)
+			}
+			found := false
+			for _, env := range environments.Items {
+				found = found || env.Id == environmentID
+			}
+			if !found || requests.Load() == beforeRequests || environmentReads.Load() != beforeReads+1 {
+				t.Fatal("downstream helper did not perform the real authenticated environment read")
 			}
 			t.Log("isolated downstream helper: protected JSON bundle and real authenticated read passed")
 		}
@@ -310,6 +329,7 @@ hikyo_cli env list -o json`, "tls-consumer", helper, helperDir)
 	t.Log("real authorization: sibling project refused; revoked credential refused")
 }
 
+// consumerCA creates a disposable signing root whose private key stays in memory.
 func consumerCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -328,6 +348,8 @@ func consumerCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
 	return cert, key
 }
 
+// consumerLeaf generates a fresh key and the selected valid or adverse leaf.
+// An untrusted leaf gets a separate root; unknown fixture kinds fail closed.
 func consumerLeaf(t *testing.T, root *x509.Certificate, rootKey *ecdsa.PrivateKey, kind string) *tls.Certificate {
 	t.Helper()
 	if kind == "untrusted" {
