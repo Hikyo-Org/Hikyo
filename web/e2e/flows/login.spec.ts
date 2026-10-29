@@ -739,8 +739,9 @@ test.describe('login', () => {
         await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
         await expect(page.getByRole('button', { name: /skip|later|not now|without/i })).toHaveCount(0);
         // Confined: a deep link lands back on the gate, no shell renders.
-        await page.goto('/projects');
-        await expect(page).toHaveURL(`${BASE_URL}/login?returnTo=%2Fprojects`);
+        const destination = '/settings?from=enrolment#factors';
+        await page.goto(destination);
+        await expect(page).toHaveURL(`${BASE_URL}/login?${new URLSearchParams({ returnTo: destination })}`);
         await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
         await expect(page.getByRole('list', { name: 'Breadcrumb' })).toHaveCount(0);
 
@@ -753,6 +754,7 @@ test.describe('login', () => {
         await page.getByRole('checkbox').check();
         await proceed.click();
         await page.getByRole('button', { name: 'Create a passkey' }).click();
+        await expect(page).toHaveURL(`${BASE_URL}${destination}`);
         await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
 
         // A fresh sign-in: the passkey now stands, so the password answers a
