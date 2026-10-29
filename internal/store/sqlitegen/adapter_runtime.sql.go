@@ -1158,17 +1158,25 @@ func (q *Queries) AdapterWorkerFinishJobMarkTarget(ctx context.Context, arg Adap
 }
 
 const adapterWorkerFinishJobMarkTargets = `-- name: AdapterWorkerFinishJobMarkTargets :execrows
-UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]',active_job_id=NULL WHERE adapter_targets.org_id=?1 AND adapter_targets.project_id=?2 AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=?3 AND mt.org_id=?1 AND mt.project_id=?2) AND adapter_targets.state='moving'
+UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]',active_job_id=NULL,last_error_class=?1,last_attempted_at=?2,drift_attention=1 WHERE adapter_targets.org_id=?3 AND adapter_targets.project_id=?4 AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=?5 AND mt.org_id=?3 AND mt.project_id=?4) AND adapter_targets.state='moving'
 `
 
 type AdapterWorkerFinishJobMarkTargetsParams struct {
+	ErrorClass   sql.NullString
+	At           sql.NullString
 	ChainOrg     string
 	ChainProject string
 	RouteMoveID  string
 }
 
 func (q *Queries) AdapterWorkerFinishJobMarkTargets(ctx context.Context, arg AdapterWorkerFinishJobMarkTargetsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobMarkTargets, arg.ChainOrg, arg.ChainProject, arg.RouteMoveID)
+	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobMarkTargets,
+		arg.ErrorClass,
+		arg.At,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.RouteMoveID,
+	)
 	if err != nil {
 		return 0, err
 	}

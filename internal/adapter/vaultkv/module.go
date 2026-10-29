@@ -90,7 +90,7 @@ func DestinationID(mount Mount, pathPrefix string) (int64, error) {
 		identity = mount.Accessor
 	}
 	if identity == "" {
-		return 0, errors.New("vault-kv: the mount reported neither uuid nor accessor")
+		return 0, fmt.Errorf("%w: the mount reported neither uuid nor accessor", adapter.ErrDestinationID)
 	}
 	sum := sha256.Sum256([]byte("hikyo-vault-kv\x00" + identity + "\x00" + pathPrefix))
 	id := int64(binary.BigEndian.Uint64(sum[:8]) & math.MaxInt64)
@@ -134,10 +134,13 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	}
 	id, err := m.resolve(ctx, req.Destination)
 	if err != nil {
+		if errors.Is(err, adapter.ErrDestinationID) {
+			return adapter.Connection{}, errors.Join(adapter.ErrOperatorReview, err)
+		}
 		return adapter.Connection{}, err
 	}
 	if req.Destination.NumericID != 0 && req.Destination.NumericID != id {
-		return adapter.Connection{}, fmt.Errorf("%w: the KV mount or its identity changed", adapter.ErrDestinationID)
+		return adapter.Connection{}, fmt.Errorf("%w: %w: the KV mount or its identity changed", adapter.ErrOperatorReview, adapter.ErrDestinationID)
 	}
 	// Expiry is informational. The mount probe above already proved the token
 	// authenticates, so a refusal here only means the policy omits
@@ -161,10 +164,10 @@ func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (
 		return 0, err
 	}
 	if mount.Type != "kv" && mount.Type != "generic" {
-		return 0, fmt.Errorf("vault-kv: mount %q is a %q engine, not KV", destination.Owner, mount.Type)
+		return 0, fmt.Errorf("%w: mount %q is not a KV engine", adapter.ErrDestinationID, destination.Owner)
 	}
 	if mount.Version != "2" {
-		return 0, fmt.Errorf("vault-kv: mount %q is not KV version 2; KV v1 has no check-and-set", destination.Owner)
+		return 0, fmt.Errorf("%w: mount %q is not KV version 2; KV v1 has no check-and-set", adapter.ErrDestinationID, destination.Owner)
 	}
 	return DestinationID(mount, destination.Name)
 }

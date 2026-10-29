@@ -666,17 +666,20 @@
       ]
     },
     "AdapterWorkerFinishJobMarkTargets": {
-      "authority": "Failed activation completion carries the persisted job org/project/route-move ID and marks the activating move attention-required before this statement. Both target outer mutation and move-target membership subquery bind that same org/project and exact move; only moving targets fail and lose their active job. Direct generated tests reject org/project and absent move with complete target-state snapshots unchanged, then mark exactly one owning member and preserve a moving member of another actual move.",
+      "authority": "Failed activation completion carries the persisted job org/project/route-move ID and marks the activating move attention-required before this statement. Both target outer mutation and move-target membership subquery bind that same org/project and exact move; only moving targets fail and lose their active job. Direct generated tests reject org/project and absent move with complete target-state snapshots unchanged, then mark exactly one owning member and preserve a moving member of another actual move. Settlement also records the bounded runtime error class, attempt timestamp and operator attention for these exact moving members. Both-engine direct refusal snapshots include these fields; no scope predicate is relaxed.",
       "sql_hash": {
-        "postgres": "8e0db5a9233eb58b2bd9ad66411e3c7f0505a34db5c8cf57c988314468dd6436",
-        "sqlite": "467d4c6c2166c1037f340a3c9e3bc3e97221d364a6463ff1b0aaee0c78bcc431"
+        "postgres": "47570a77e6b8e9c7b445b2eac064d0c7adb81906a8e98eb2e0c3e2f6576f088f",
+        "sqlite": "6b396ddc2c7b158cb51f22752db3b3a3105b4e5e0cc8ac9c5892d86a2d3328c4"
       },
       "api_hash": {
-        "postgres": "4ec4999bf72fa2337128dd0e6e0aa836794604b02bf2dfd714cf2a3d7c2154bf",
-        "sqlite": "4ec4999bf72fa2337128dd0e6e0aa836794604b02bf2dfd714cf2a3d7c2154bf"
+        "postgres": "19a41f9d59f339cc73769a664b42a6a3c16683942039904da9daf8336dd72c08",
+        "sqlite": "1beaff305812091324aae9b254c44a1c7d60028cbaade574087b05eb2f557a55"
       },
       "tests": [
         "internal/isolation/adapter_runtime_cleanup_scope_test.go:TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets"
+      ],
+      "flow_tests": [
+        "internal/isolation/adapter_vaultkv_e2e_test.go:TestAdapterVaultKVEndToEnd"
       ]
     },
     "AdapterWorkerFinishUpdate": {

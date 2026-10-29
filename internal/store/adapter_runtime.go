@@ -1140,7 +1140,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			payload, _ := json.Marshal(map[string][]string{"orphaned": {}})
 			return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "success", finished, payload)
 		}
-		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict)) {
+		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict) || errors.Is(terminalErr, adapter.ErrOperatorReview)) {
 
 			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobAttention(ctx, job.RouteMoveID, job.OrgID, job.ProjectID)
 			if err != nil {
@@ -1154,7 +1154,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				return err
 			}
 
-			if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID); err != nil {
+			if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID, adapter.ClassifyError(terminalErr), finished); err != nil {
 				return err
 			}
 			return insertAdapterJobAudit(ctx, tx, job, "adapter.test", "failure", finished, []byte(`{}`))
@@ -1257,7 +1257,7 @@ func (r *AdapterRuntime) restoreReviewHeldScrub(ctx context.Context, tx adapterD
 		if _, err := q.adapterWorkerFinishJobSupersede(ctx, at, job.RouteMoveID, job.OrgID, job.ProjectID, job.ID); err != nil {
 			return err
 		}
-		_, err = q.adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID)
+		_, err = q.adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID, adapter.ErrorClassProviderAmbiguous, at)
 		return err
 	}
 	rows, err := q.adapterWorkerRestoreHeldScrubTarget(ctx, job, at)

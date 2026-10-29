@@ -53,6 +53,11 @@ do not bypass this proof. The probe grants no new policy capability, reads no
 value and changes no state. It is cached only within one bounded client attempt.
 Positive Enterprise namespace qualification remains separate from protocol
 mocks and actual OpenBao namespace/Vault OSS refusal evidence.
+An unproved namespace or an incompatible/remounted engine is an identity
+refusal requiring operator review. Activation settles it as a terminal failure
+with bounded attention status and exposes cancellation or pending-route
+replacement; teardown restores visible paused recovery rather than retrying
+an incompatible engine indefinitely.
 
 A target reuses the generic **repository** destination record, so the API's closed destination-kind enum does not grow: `destination_owner` is the **KV v2 mount path**, `destination_name` is the **path prefix**. Each key becomes **one KV secret** at `{mount}/{path prefix}/{name prefix}{canonical name}` holding a single field, `value`. Both classifications share that one tree, so effective names must be unique across the secret and config surfaces (case-insensitively, matching the ledger), and each must be a single path segment. Values must be UTF-8 (JSON cannot carry other bytes exactly) and at most 512 KiB (inside the default 1 MiB integrated-storage entry after escaping). The management sentinel `MANAGED_BY_HIKYO` is one secret, written first and removed last.
 
@@ -118,6 +123,14 @@ resuming caller. Version, destination, generation and consumption checks remain
 unchanged.
 
 A fresh operator plan observes the positive current provider version using metadata only and stores it inside the scoped conflict artifact. Explicit adoption requires the exact current target generation, origin/destination, scope, surface and name; it can update only this target's held Vault row, never a foreign global-name claim. The adopted artifact's conflict generation must be the immediate predecessor of the verified current generation because adoption advances once. The next write requires that observed version still match and uses a new CAS; it never finalizes an old pending version as Hikyo's. Changed versions, consumed artifacts, legacy artifacts without a witness, and zero/nonpositive witnesses refuse. SQLite parses provenance timestamps and fails closed on malformed evidence; ties consume consent conservatively. A successful journal outcome consumes adoption. No wall-clock artifact lifetime is newly invented: freshness is current generation, destination and provider version. An unknown create still absent has no positive witness; the operator must explicitly retain/release that target's custody and recreate the target before another create. No user artifact or provider value is silently deleted to recover.
+
+Vault's global custody guard spans secret and config surfaces because both
+address the same physical tree. A prefixed secret name cannot adopt or dispatch
+past another target's held config name, including an unmarked acknowledged
+write. Reserved, dispatched and owned claims all block; explicit release ends
+that custody. Serializable transactions preserve one winner for concurrent
+opposite-surface reservations. Other providers retain their existing surface
+semantics.
 
 Removing ownership markers also invalidates ordinary overwrite/prune custody,
 even when the provider version did not change. Missing markers are not adoption

@@ -132,6 +132,36 @@ type kvLoader struct {
 	build   func(origin, credential string) (adapter.Module, func(), error)
 }
 
+func (l kvLoader) LoadActivation(ctx context.Context, job adapter.Job, journal adapter.Journal) (adapter.LoadedActivation, error) {
+	gate := func(ctx context.Context) error {
+		return journal.Gate(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "route", Disposition: adapter.Update})
+	}
+	if err := gate(ctx); err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	material, err := l.runtime.LoadActivation(ctx, job)
+	if err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	sealer, err := l.keyring.ForProject(ctx, job.OrgID, job.ProjectID)
+	if err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	if err := gate(ctx); err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	credential, err := sealer.OpenField(adapter.CredentialAAD(job.OrgID, job.ProjectID, material.CredentialOwnerID), material.CredentialCiphertext)
+	if err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	module, release, err := l.build(material.Origin, string(credential))
+	crypto.Zero(credential)
+	if err != nil {
+		return adapter.LoadedActivation{}, err
+	}
+	return adapter.LoadedActivation{Module: module, Request: adapter.ConnectionRequest{Config: adapter.Config{Origin: material.Origin}, Destination: material.Target.Destination, Gate: gate}, Release: release}, nil
+}
+
 func (l kvLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Journal) (adapter.LoadedSync, error) {
 	if err := journal.Gate(ctx, adapter.Effect{Surface: adapter.Secret, EffectiveName: "manifest", Disposition: adapter.Update}); err != nil {
 		return adapter.LoadedSync{}, err
@@ -726,7 +756,152 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatal(err)
 	}
 
-	for _, plaintext := range []string{kvSecretOne, kvSecretTwo, auth["client_token"].(string)} {
+	// Two classifications address one physical path across distinct project
+	// targets. Prefixing keeps the sentinels distinct, so only the custody guard
+	// can prevent adopting an unmarked, acknowledged foreign config write.
+	otherEnv := "env_kv_cross_surface"
+	otherProject, otherKey := "prj_kv_cross_surface", "key_kv_cross_surface"
+	execRaw(t, db, `INSERT INTO projects (id,org_id,name,created_at) VALUES ('`+otherProject+`','`+cOrg+`','cross-surface',`+ts+`)`)
+	execRaw(t, db, `INSERT INTO project_schema_revisions (org_id,project_id,revision) VALUES ('`+cOrg+`','`+otherProject+`',0)`)
+	execRaw(t, db, `INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('`+otherEnv+`','`+cOrg+`','`+otherProject+`','cross-surface','',`+ts+`,1)`)
+	execRaw(t, db, `INSERT INTO keys (id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,group_id,created_at) SELECT '`+otherKey+`',org_id,'`+otherProject+`','URL',folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,NULL,created_at FROM keys WHERE id='`+cKeyPw+`'`)
+	for i, capability := range []string{"edit", "publish", "definitions-edit", "read"} {
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_cross_admin_%d','%s','%s','%s','%s',NULL,%s)`, i, cAdmin, capability, cOrg, otherProject, ts))
+	}
+	for i, capability := range []string{"manage-adapters", "reveal"} {
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_cross_operator_%d','usr_alice','%s','%s','%s',NULL,%s)`, i, capability, cOrg, otherProject, ts))
+	}
+	otherScope := domain.Scope{Org: cOrg, Project: domain.ProjectID(otherProject)}
+	otherEnvScope := domain.Scope{Org: cOrg, Project: domain.ProjectID(otherProject), Env: domain.EnvID(otherEnv)}
+	staged, err := values.Set(ctx, publisher, otherEnvScope, "URL", "opposite-surface-synthetic", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := revisions.PublishPlanned(ctx, publisher, otherEnvScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := svc.Create(ctx, operator, scope, service.CreateAdapterRequest{Provider: "vault-kv", Origin: server.addr, Credential: credential,
+		Target: service.AdapterTargetInput{EnvironmentID: cEnv, DestinationKind: "repository", DestinationOwner: mount, DestinationName: "hikyo/cross-surface", KeyIDs: []string{cKeyURL}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failFinalize = true
+	if _, err := svc.SyncTarget(ctx, operator, scope, foreign.Targets[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	foreignMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]
+	if queryString(t, db, "SELECT state FROM adapter_ledger WHERE target_id='"+foreign.Targets[0].ID+"' AND normalized_name='DATABASE_URL'") != "dispatched" {
+		t.Fatal("fixture did not retain acknowledged unfinalized config custody")
+	}
+	competing, err := svc.Create(ctx, operator, otherScope, service.CreateAdapterRequest{Provider: "vault-kv", Origin: server.addr, Credential: credential,
+		Target: service.AdapterTargetInput{EnvironmentID: otherEnv, DestinationKind: "repository", DestinationOwner: mount, DestinationName: "hikyo/cross-surface", NamePrefix: "DATABASE_", KeyIDs: []string{otherKey}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contender := competing.Targets[0]
+	if _, err := svc.SyncTarget(ctx, operator, otherScope, contender.ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	plan, err := svc.Plan(ctx, operator, otherScope, contender.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := svc.InspectTarget(ctx, operator, otherScope, contender.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Adopt(ctx, operator, otherScope, service.AdoptAdapterRequest{TargetID: contender.ID, ArtifactID: plan.ArtifactID, ExpectedGeneration: view.Target.Generation, ExpectedDestinationID: view.Target.DestinationID, ExpectedRepositoryID: view.Target.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "DATABASE_URL"}}}); !errors.Is(err, domain.ErrConflict) || !errors.Is(err, adapter.ErrOperatorReview) {
+		t.Fatalf("opposite-surface foreign adoption = %v, want conflict", err)
+	}
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/cross-surface/DATABASE_URL", nil)["data"]; !reflect.DeepEqual(foreignMetadata, after) {
+		t.Fatal("foreign config custody was overwritten through secret adoption")
+	}
+	if _, err := svc.Delete(ctx, operator, otherScope, competing.Adapter.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Delete(ctx, operator, scope, foreign.Adapter.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// A deterministic namespace refusal after a successful old-route scrub
+	// must settle activation and expose explicit cancellation on the old route.
+	activation, err := svc.Create(ctx, operator, scope, service.CreateAdapterRequest{Provider: "vault-kv", Origin: server.addr, Credential: credential,
+		Target: service.AdapterTargetInput{EnvironmentID: cEnv, DestinationKind: "repository", DestinationOwner: mount, DestinationName: "hikyo/activation-refusal", KeyIDs: []string{cKeyURL}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncTarget(ctx, operator, scope, activation.Targets[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	moving, err := svc.MoveOrigin(ctx, operator, scope, activation.Adapter.ID, server.addr+"/missing-namespace-162", credential, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	move, err := svc.Move(ctx, operator, scope, moving.MoveID)
+	if err != nil || move.State != "attention_required" {
+		t.Fatalf("namespace activation did not expose recovery: state=%s err=%v", move.State, err)
+	}
+	if queryInt(t, db, "SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id='"+moving.MoveID+"' AND kind='activate' AND state='failed'") != 1 {
+		t.Fatal("namespace activation kept retrying instead of settling")
+	}
+	if refused, err := svc.InspectTarget(ctx, operator, scope, activation.Targets[0].ID); err != nil || refused.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !refused.Target.DriftAttention || refused.Target.LastAttemptedAt == nil {
+		t.Fatalf("namespace activation lost bounded attention status: err=%v target=%+v", err, refused.Target)
+	}
+	if _, err := svc.CancelMove(ctx, operator, scope, moving.MoveID); err != nil {
+		t.Fatalf("cancel refused namespace activation: %v", err)
+	}
+	drain()
+	if current, err := svc.InspectTarget(ctx, operator, scope, activation.Targets[0].ID); err != nil || current.Target.Health() != adapter.HealthConverged {
+		t.Fatalf("canceled namespace activation did not recover root route: %v", err)
+	}
+	if _, err := svc.Delete(ctx, operator, scope, activation.Adapter.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, engine := range []string{"kv-v1", "pki"} {
+		remounted, err := svc.Create(ctx, operator, scope, service.CreateAdapterRequest{Provider: "vault-kv", Origin: server.addr, Credential: credential,
+			Target: service.AdapterTargetInput{EnvironmentID: cEnv, DestinationKind: "repository", DestinationOwner: mount, DestinationName: "hikyo/remount-refusal", KeyIDs: []string{cKeyURL}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		remountedTarget := remounted.Targets[0].ID
+		if _, err := svc.SyncTarget(ctx, operator, scope, remountedTarget); err != nil {
+			t.Fatal(err)
+		}
+		drain()
+		beforeEffects := queryInt(t, db, "SELECT COUNT(*) FROM adapter_effects WHERE target_id='"+remountedTarget+"'")
+		server.must(t, http.MethodDelete, "/v1/sys/mounts/"+mount, nil)
+		mountSpec := map[string]any{"type": "pki"}
+		if engine == "kv-v1" {
+			mountSpec = map[string]any{"type": "kv", "options": map[string]string{"version": "1"}}
+		}
+		server.must(t, http.MethodPost, "/v1/sys/mounts/"+mount, mountSpec)
+		if _, err := svc.RemoveTarget(ctx, operator, scope, remountedTarget, false); err != nil {
+			t.Fatal(err)
+		}
+		drain()
+		view, err := svc.InspectTarget(ctx, operator, scope, remountedTarget)
+		if err != nil || view.Target.State != "active" || view.Target.PausedAt == nil || view.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
+			t.Fatalf("%s remount lost visible teardown recovery: err=%v state=%s", engine, err, view.Target.State)
+		}
+		if queryInt(t, db, "SELECT COUNT(*) FROM adapter_effects WHERE target_id='"+remountedTarget+"'") != beforeEffects {
+			t.Fatal("wrong-engine teardown admitted a provider effect")
+		}
+		if removed, err := svc.RemoveTarget(ctx, operator, scope, remountedTarget, true); err != nil || len(removed.Orphaned) == 0 {
+			t.Fatalf("retain after %s remount: %v", engine, err)
+		}
+		if _, err := svc.Delete(ctx, operator, scope, remounted.Adapter.ID, true); err != nil {
+			t.Fatal(err)
+		}
+		server.must(t, http.MethodDelete, "/v1/sys/mounts/"+mount, nil)
+		server.must(t, http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
+	}
+
+	for _, plaintext := range []string{kvSecretOne, kvSecretTwo, "opposite-surface-synthetic", auth["client_token"].(string)} {
 		if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM audit_tenant_events WHERE payload LIKE '%%%s%%'`, plaintext)); got != 0 {
 			t.Fatal("audit payload carries a delivered value or provider credential")
 		}

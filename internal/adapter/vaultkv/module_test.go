@@ -769,6 +769,37 @@ func TestMountMovementRefusesEveryWrite(t *testing.T) {
 	}
 }
 
+func TestIdentityRefusalsRequireReviewBeforeActivationOrTeardown(t *testing.T) {
+	for _, reason := range []string{"namespace", "wrong-engine", "kv-v1", "missing-identity"} {
+		t.Run(reason, func(t *testing.T) {
+			kv := newFakeKV()
+			target := testTarget(t, kv)
+			switch reason {
+			case "namespace":
+				kv.failOn["mount:secret"] = adapter.ErrDestinationID
+			case "wrong-engine":
+				kv.mount.Type = "pki"
+			case "kv-v1":
+				kv.mount.Version = "1"
+			case "missing-identity":
+				kv.mount.UUID, kv.mount.Accessor = "", ""
+			}
+			module := &Module{API: kv}
+			_, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: target.Destination, Gate: func(context.Context) error { return nil }})
+			if !errors.Is(err, adapter.ErrDestinationID) || !errors.Is(err, adapter.ErrOperatorReview) {
+				t.Fatalf("activation refusal = %v, want identity and operator review", err)
+			}
+			if reason == "namespace" {
+				kv.failOn["mount:secret"] = adapter.ErrDestinationID
+			}
+			_, err = module.Sync(t.Context(), adapter.SyncRequest{Target: target, Teardown: true}, newFakeJournal())
+			if !errors.Is(err, adapter.ErrDestinationID) || !errors.Is(err, adapter.ErrOperatorReview) || len(kv.mutations()) != 0 {
+				t.Fatalf("teardown refusal = %v, mutations=%v", err, kv.mutations())
+			}
+		})
+	}
+}
+
 func TestPlanIsValueBlindAndClassifiesOwnership(t *testing.T) {
 	kv := newFakeKV()
 	journal := newFakeJournal()

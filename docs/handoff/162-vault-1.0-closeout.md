@@ -99,6 +99,30 @@ Independent Spec R1 found three further defects, reproduced with regressions:
     barrier uses separate scoped pending-job and joined held-custody queries.
     The SQL predicate checker, custody checks and permissions remain intact;
     both dialects were regenerated through sqlc.
+12. Spec R6 found a foreign Vault claim hidden by the opposite logical surface.
+    A config name and a prefixed secret name can address the same physical path,
+    while metadata finalization failure can leave the foreign write unmarked.
+    The canonical custody query now spans both surfaces for Vault only, before
+    adoption, reservation and dispatch. Both-engine regressions cover held and
+    explicitly released claims, unconsumed consent and a concurrent one-winner
+    race; the real-provider lifecycle uses two separate projects and distinct
+    sentinels to exercise the exact cross-classification collision.
+13. R6 also found namespace refusal stranding origin activation and wrong-engine
+    remount stranding teardown. Deterministic identity refusals now require
+    operator review consistently in connection/activation and sync/prune.
+    Activation settlement exposes attention-required recovery, with a bounded
+    class and attempt timestamp on affected targets. Actual Vault/OpenBao on
+    both engines cover scrub-then-refused activation, explicit cancellation and
+    root-route recovery, then KV v1 and PKI remount refusal with visible paused
+    teardown and explicit retain. No value mutation is admitted on a wrong
+    engine and no raw engine response is echoed in its error.
+
+The activation-status update retains its existing reviewed scoped-query
+mechanism from #619. Its exact SQL/API pin is refreshed for the added bounded
+class, timestamp and attention fields. The direct generated tests retain all
+org/project/move refusal controls and extend their unchanged-state snapshots
+to those fields, alongside the real-provider recovery flow. This changes no
+scope predicate and adds no instance-scoped exemption or checker bypass.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently
@@ -228,6 +252,17 @@ SELECT shapes in SQLite and PostgreSQL. The later 66a4ccd candidate inherited
 those queries. The rewritten queries pass the focused predicate check and a
 full local boundary/lint/CI-policy run; final candidate validation and hosted
 readback remain separate requirements.
+
+R6 reviewed `120f883bacf2e750b21213e13ef702b0697c0d31`, tree
+`226ebec5ad0034c33f6123f4134355baebf5612a`, using configured Sol/high.
+Standards was CLEAN, with all 54 path/blob/provenance bindings verified. Spec
+was CHANGES for the three defects above; those were reproduced before repair.
+The same head passed hosted repository invariants, native architecture floors,
+feedback, CodeQL and queue admission. Locally both feedback lanes,
+documentation verification and all eight desktop plus eight mobile browser
+adapter flows passed. Its broad Go run was intentionally stopped for these
+source repairs and is incomplete, not passing evidence. Final source still
+requires fresh review, complete local validation and exact-head hosted readback.
 
 ## Owning-ticket ceremony
 

@@ -86,7 +86,7 @@ type adapterRuntimeQueries interface {
 	adapterWorkerFinishJobErase(ctx context.Context, adapterID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerFinishJobAttention(ctx context.Context, routeMoveID string, chainOrg string, chainProject string) (int64, error)
 	adapterWorkerFinishJobSupersede(ctx context.Context, at time.Time, routeMoveID string, chainOrg string, chainProject string, jobID string) (int64, error)
-	adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error)
+	adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string, class adapter.ErrorClass, at time.Time) (int64, error)
 	adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
 	adapterWorkerRestoreHeldScrubTarget(ctx context.Context, job adapter.Job, at time.Time) (int64, error)
 	adapterWorkerRestoreHeldScrubAdapter(ctx context.Context, job adapter.Job, adapterID string) (int64, error)
@@ -571,8 +571,8 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobAttention(ctx context
 func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobSupersede(ctx context.Context, at time.Time, routeMoveID string, chainOrg string, chainProject string, jobID string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobSupersede(ctx, sqlitegen.AdapterWorkerFinishJobSupersedeParams{At: runtimeSQLiteStamp(at), RouteMoveID: sql.NullString{String: routeMoveID, Valid: true}, ChainOrg: chainOrg, ChainProject: chainProject, JobID: jobID})
 }
-func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, sqlitegen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID})
+func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string, class adapter.ErrorClass, at time.Time) (int64, error) {
+	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, sqlitegen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID, ErrorClass: sql.NullString{String: string(class), Valid: true}, At: runtimeSQLiteStamp(at)})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
 	return q.queries.AdapterWorkerRecordJobOutcome(ctx, sqlitegen.AdapterWorkerRecordJobOutcomeParams{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: convergedRev, FailureJSON: string(failureJSON), WarningJSON: string(warningJSON), Revision: revision, Rev: rev, AttemptedAt: runtimeSQLiteStamp(attemptedAt), ErrorClass: errorClass, AttentionMode: attentionMode, RetainActiveJob: retainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
@@ -920,8 +920,8 @@ func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobAttention(ctx context.Con
 func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobSupersede(ctx context.Context, at time.Time, routeMoveID string, chainOrg string, chainProject string, jobID string) (int64, error) {
 	return q.queries.AdapterWorkerFinishJobSupersede(ctx, pggen.AdapterWorkerFinishJobSupersedeParams{At: pgRequiredTime(at), RouteMoveID: pgtype.Text{String: routeMoveID, Valid: true}, ChainOrg: chainOrg, ChainProject: chainProject, JobID: jobID})
 }
-func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error) {
-	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, pggen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID})
+func (q pgAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string, class adapter.ErrorClass, at time.Time) (int64, error) {
+	return q.queries.AdapterWorkerFinishJobMarkTargets(ctx, pggen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: chainOrg, ChainProject: chainProject, RouteMoveID: routeMoveID, ErrorClass: pgtype.Text{String: string(class), Valid: true}, At: pgRequiredTime(at)})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
 	checkedAttentionMode, err := checkedPGInt32(int64(attentionMode))
