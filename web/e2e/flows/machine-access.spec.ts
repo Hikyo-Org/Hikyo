@@ -1063,6 +1063,12 @@ test.describe('deployment adapters', () => {
     await remove.getByRole('button', { name: 'Remove target' }).click();
     await expect(page.locator('.adapters__done')).toContainText(`KV_${ADAPTER_KEY}`);
     await expect(panel.locator('.adapters__target')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Delete adapter' }).click();
+    const deleteAdapter = page.getByRole('dialog', { name: /Delete adapter/ });
+    await expect(deleteAdapter.getByRole('button', { name: 'Delete adapter' })).toBeDisabled();
+    await deleteAdapter.getByRole('radio', { name: /Retain/ }).check();
+    await deleteAdapter.getByRole('button', { name: 'Delete adapter' }).click();
+    await expect(panel).toHaveCount(0);
   });
 
   test('keeps the GHES API base URL and requires explicit environment-create consent', async () => {

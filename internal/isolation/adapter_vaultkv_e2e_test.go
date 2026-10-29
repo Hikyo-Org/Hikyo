@@ -392,6 +392,26 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	}
 	assertHeldRetry()
 	recoverHeld()
+	for _, variant := range []string{"advanced", "malformed", "missing-marker"} {
+		pending := metadata()["current_version"].(float64) + 1
+		markers := map[string]any{vaultkv.PendingKey: fmt.Sprintf("%.0f", pending)}
+		if variant == "malformed" {
+			markers[vaultkv.PendingKey] = "unknown"
+		}
+		if variant == "missing-marker" {
+			markers[vaultkv.MarkerKey] = nil
+		}
+		server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/prod/DATABASE_URL", map[string]any{"custom_metadata": markers})
+		if variant == "advanced" {
+			// Another writer advances beyond the pending version. Neither
+			// movement nor a malformed/removed marker resolves writer custody.
+			for range 2 {
+				server.must(t, http.MethodPost, "/v1/"+mount+"/data/hikyo/prod/DATABASE_URL", map[string]any{"data": map[string]string{"value": kvSecretTwo}})
+			}
+		}
+		assertHeldRetry()
+		recoverHeld()
+	}
 
 	// An acknowledged value write with refused metadata finalization keeps a
 	// successful receipt and Dispatched custody. A new worker/job must hold

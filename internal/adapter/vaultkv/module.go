@@ -245,26 +245,29 @@ func parseVersion(raw string) (int64, bool) {
 func classify(meta Metadata, targetID string) pathState {
 	marker := meta.CustomMetadata[MarkerKey]
 	current := meta.CurrentVersion
+	// A later writer or changed marker cannot resolve an earlier pending
+	// writer's custody. Preserve that hold independently of classification.
+	hasPending := meta.CustomMetadata[PendingKey] != ""
 	released := current == 0 || meta.Versions[current].Deleted || meta.Versions[current].Destroyed
 	switch {
 	case marker == "":
-		return pathState{kind: pathUnmarked, version: current, released: released}
+		return pathState{kind: pathUnmarked, version: current, released: released, pending: hasPending}
 	case marker != targetID:
-		return pathState{kind: pathForeign, version: current}
+		return pathState{kind: pathForeign, version: current, pending: hasPending}
 	}
 	recorded, okRecorded := parseVersion(meta.CustomMetadata[VersionKey])
 	pending, okPending := parseVersion(meta.CustomMetadata[PendingKey])
 	switch {
 	case !okRecorded || !okPending:
-		return pathState{kind: pathMoved, version: current}
+		return pathState{kind: pathMoved, version: current, pending: hasPending}
 	case pending != 0 && current == pending:
 		return pathState{kind: pathLanded, version: current, released: released, pending: true}
 	case pending != 0 && current == pending-1:
 		return pathState{kind: pathClean, version: current, released: released, pending: true}
 	case pending == 0 && current == recorded:
-		return pathState{kind: pathClean, version: current, released: released}
+		return pathState{kind: pathClean, version: current, released: released, pending: hasPending}
 	}
-	return pathState{kind: pathMoved, version: current}
+	return pathState{kind: pathMoved, version: current, pending: hasPending}
 }
 
 // inspect classifies the named destination path using metadata alone. A 404

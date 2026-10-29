@@ -60,6 +60,12 @@ Independent Spec R1 found three further defects, reproduced with regressions:
 6. Import-loop comparison did not share the configured endpoint's host
    canonicalization. It now reuses that owner for trailing DNS dots, IDNA and
    IPv4-mapped IPv6 aliases, preserving effective ports and namespace identity.
+7. Spec R2 found that classification dropped the pending hold when a later
+   writer advanced past the pending version or metadata was malformed or
+   re-marked. The pending flag now survives independently of ownership and
+   version classification. Sync and teardown regressions preserve all paths
+   and custody; actual Vault/OpenBao lifecycle checks also exercise advanced,
+   malformed and missing-marker recovery through fresh version-bound adoption.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently

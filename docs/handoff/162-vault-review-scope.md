@@ -36,7 +36,7 @@ policy, findings and dispositions are in the [closeout packet](./162-vault-1.0-c
 | `api/openapi.yaml` | `9886c995f8689243121d6fc34f6f6169c36d2ffc` | 17983 / 88 / 7006 |
 | `docs/adr/deployment-adapter.md` | `bdaa2e3ce60353b1ffe9b654b256b079bce6d9ad` | 7 / 26 / 273 |
 | `docs/adr/mvp-boundary.md` | `686bdffe8d359197c3ba2b3c44a2d91084824935` | 24 / 1 / 256 |
-| `docs/adr/vault-kv-adapter.md` | `b1cd51911b5fc1530e8f1c1b88a748f53132e43e` | 72 / 60 / 0 |
+| `docs/adr/vault-kv-adapter.md` | `34d3b25161167c98473b028741f193cd30d00b09` | 72 / 63 / 0 |
 | `internal/adapter/adapter.go` | `07f144836ee0dc01cc177edc3cc61295f52d6958` | 347 / 42 / 381 |
 | `internal/adapter/health.go` | `95ebc1567f5de2f1688d3d0d917e887c85b8420e` | 0 / 1 / 91 |
 | `internal/adapter/health_test.go` | `903d0fc2edd213e4d6b80230520b4e320aafc95f` | 0 / 1 / 73 |
@@ -51,10 +51,10 @@ policy, findings and dispositions are in the [closeout packet](./162-vault-1.0-c
 | `internal/adapter/vaultkv/contract_external_test.go` | `9fa5c42cf07ee6427a8b107a8ceee0b65120be5d` | 354 / 267 / 0 |
 | `internal/adapter/vaultkv/credential.go` | `3d76fef4dbd060605df610d51b8f773da408c1c1` | 154 / 3 / 0 |
 | `internal/adapter/vaultkv/marker_custody_test.go` | `8cfcc179c47b7eed9e197e0c3634e87033fbb304` | 0 / 65 / 0 |
-| `internal/adapter/vaultkv/module.go` | `7351dabb68cfe8ec343f3ba9c691aee502e1c660` | 625 / 196 / 2 |
+| `internal/adapter/vaultkv/module.go` | `b6741d26bafe426284689d809b2fcfb8bbb2a56f` | 620 / 204 / 2 |
 | `internal/adapter/vaultkv/module_test.go` | `51c9d114845e406fe573d3411bee16ba54a59b6d` | 764 / 151 / 0 |
 | `internal/adapter/vaultkv/request_gate_test.go` | `88ab6ea91cefc0fff64dfa8ca8553e424a0a640f` | 0 / 131 / 0 |
-| `internal/adapter/vaultkv/review_hold_test.go` | `9ff19c0f3a1513f2170891aaf435cf5ea5e06b76` | 0 / 44 / 0 |
+| `internal/adapter/vaultkv/review_hold_test.go` | `91a35240aa02df7478cf11f568a54a40c804f750` | 0 / 58 / 0 |
 | `internal/adapter/vaultkv/transport_error_test.go` | `efaba3878726b4c142733f615f6b5b6792170d0d` | 0 / 82 / 0 |
 | `internal/app/adapter_loader.go` | `2e09cd858186765c56e66a1dd5e66c01b67471ed` | 5 / 5 / 169 |
 | `internal/app/adapter_provider.go` | `ccfddd02b59e2013582d42be9816574705b3e740` | 80 / 45 / 60 |
@@ -62,7 +62,7 @@ policy, findings and dispositions are in the [closeout packet](./162-vault-1.0-c
 | `internal/cli/adapters_vaultkv_test.go` | `3a729ea9d73e6241cb7b83a0a14aded1aaa3e58a` | 99 / 61 / 0 |
 | `internal/cli/import_loop.go` | `6a827391b2ff01f4d5492359e8b0e33091a936b0` | 70 / 60 / 0 |
 | `internal/cli/import_wizard.go` | `fafedf1642bcf976e5bdea202a0df6567c9bb94a` | 434 / 6 / 54 |
-| `internal/isolation/adapter_vaultkv_e2e_test.go` | `5a492b1b2e8821b9977dd69000ed4fddb47ef2b3` | 282 / 315 / 0 |
+| `internal/isolation/adapter_vaultkv_e2e_test.go` | `b4d5a21e4c6c6f93575d32847b5f988e022d5dee` | 282 / 335 / 0 |
 | `internal/service/adapters.go` | `635a49b86f5617cfe51aaa6edddac1138011996e` | 410 / 154 / 1568 |
 | `internal/service/adapters_vaultkv_test.go` | `d36c4b253dc244bead00f9bde5381815ac903090` | 70 / 7 / 0 |
 | `internal/store/adapter_runtime.go` | `31af46e0ddcff39bfaa0ac10000dfb1df86461b5` | 80 / 145 / 1194 |
@@ -74,7 +74,7 @@ policy, findings and dispositions are in the [closeout packet](./162-vault-1.0-c
 | `internal/store/repos_adapters_config.go` | `f5bc70732f6b94c6d253c0b586a93bb8f91e8d97` | 129 / 19 / 386 |
 | `internal/store/repos_adapters_move.go` | `00eaabe57af3e7a803e7b3dc734f5934b2f7ad04` | 107 / 24 / 670 |
 | `internal/store/vault_recovery_test.go` | `dca6154d8cc93444f46c8118c8630b69e4709d80` | 0 / 284 / 0 |
-| `web/e2e/flows/machine-access.spec.ts` | `4fee1d8fef6670b546ace977fa1a24c7d89a1f3c` | 729 / 39 / 1435 |
+| `web/e2e/flows/machine-access.spec.ts` | `3056d72f4b2bc5d8732c6716b5367732be8d8dee` | 729 / 45 / 1435 |
 | `web/src/api/adapters.ts` | `6461cfa75944aab857020500221cb247b1291d2e` | 43 / 2 / 509 |
 | `web/src/routes/Adapters.test.tsx` | `86c7e5552e83a33a5a6c1328668c88e93a166598` | 328 / 20 / 74 |
 | `web/src/routes/Adapters.tsx` | `37f908ac4d532a518ecf884ecbf7b781a4136334` | 823 / 46 / 1263 |

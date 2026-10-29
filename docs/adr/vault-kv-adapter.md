@@ -83,6 +83,9 @@ movement. Only fresh version-bound explicit adoption grants a new write.
 Before any target mutation, sync and teardown inspect all held and desired
 paths for legacy pending metadata. A pending hold on a later name therefore
 cannot follow a rewrite or prune of earlier names or the sentinel. Authority
+does not resume when the current version advances beyond the pending version,
+the pending marker is malformed, or the ownership marker changes or disappears.
+Each nonempty pending marker retains its review hold. Authority
 is also rechecked at the HTTP request boundary, including after AppRole login
 or renewal and between metadata PATCH and value CAS.
 
