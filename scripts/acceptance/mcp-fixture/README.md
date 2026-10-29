@@ -324,6 +324,10 @@ fixture route remains. Retain only redacted receipts/client pins for the approve
 window. Never delete production namespaces, the shared MCP event rows or #1037
 collector storage. If audit siblings are later separately authorized, their
 custody-copy removal needs its own explicit permission and terminal receipts.
+Namespace deletion is HOLD while any such sibling resources or custody remain.
+First inventory the live workloads/claims against the approved base manifest,
+obtain the separate post-receipt permission, and complete the exact sibling
+teardown. Base #651 cleanup cannot recursively sweep those additional sources.
 
 The reviewed NFS provisioner archives a claim directory on deletion. Before
 teardown, retain the actual PVC UID/PV and exact storage path. PVC/namespace

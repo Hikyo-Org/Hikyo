@@ -1,7 +1,11 @@
 package lint
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/token"
+	"go/types"
 	"maps"
 	"os"
 	"path/filepath"
@@ -80,6 +84,20 @@ func TestMCPFixtureDriverAuthorityIsExactFileScoped(t *testing.T) {
 
 func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 	root := repoRoot(t)
+	// Load the real package/dependency types once. Each valid-source mutation
+	// is independently parsed and typechecked below using those exact imports.
+	loaded, err := packages.Load(&packages.Config{
+		Dir: root,
+		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
+			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
+	}, Module+"/scripts/acceptance/mcp-fixture")
+	if err != nil || len(loaded) != 1 {
+		t.Fatalf("real fixture load: %v", err)
+	}
+	actual := loaded[0]
+	for _, err := range actual.Errors {
+		t.Fatal(err)
+	}
 	protocols, err := reviewedPins.rawProtocols()
 	if err != nil {
 		t.Fatal(err)
@@ -140,22 +158,8 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 					overlay[filepath.Join(filepath.Dir(path), tc.alternate)] = []byte(source)
 				}
 			}
-			// Typecheck the actual fixture and its guard/probe helpers.
-			// Whole-module ownership is checked separately in every build context.
-			pkgs, err := packages.Load(&packages.Config{
-				Dir: root, Overlay: overlay,
-				Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-					packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-			}, Module+"/scripts/acceptance/mcp-fixture")
-			if err != nil || len(pkgs) == 0 {
-				t.Fatalf("typed fixture load: %v", err)
-			}
-			for _, pkg := range pkgs {
-				for _, err := range pkg.Errors {
-					t.Fatal(err)
-				}
-			}
-			findings := CheckRawSQL(pkgs, root, Module, pins)
+			candidate := typecheckMCPFixtureMutation(t, actual, overlay)
+			findings := CheckRawSQL([]*packages.Package{candidate}, root, Module, pins)
 			if tc.refusal == "" {
 				if len(findings) != 0 {
 					t.Fatalf("reviewed fixture refused: %v", findings)
@@ -165,6 +169,59 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mcpFixtureImports map[string]*packages.Package
+
+func (imports mcpFixtureImports) Import(path string) (*types.Package, error) {
+	if pkg := imports[path]; pkg != nil && pkg.Types != nil && pkg.Types.Complete() {
+		return pkg.Types, nil
+	}
+	return nil, fmt.Errorf("mutation requested an unverified import %s", path)
+}
+
+func typecheckMCPFixtureMutation(t *testing.T, actual *packages.Package, overlay map[string][]byte) *packages.Package {
+	t.Helper()
+	// Retain imported object positions from the real load. Fresh root syntax
+	// receives new positions in the same file set; dependency provenance stays
+	// accurate when the analyzer follows typed helper references.
+	files := actual.Fset
+	var syntax []*ast.File
+	paths := make([]string, 0, len(actual.Syntax))
+	for _, file := range actual.Syntax {
+		paths = append(paths, actual.Fset.Position(file.Pos()).Filename)
+	}
+	for path := range overlay {
+		found := false
+		for _, existing := range paths {
+			found = found || path == existing
+		}
+		if !found {
+			paths = append(paths, path)
+		}
+	}
+	for _, path := range paths {
+		var source any
+		if replacement, exists := overlay[path]; exists {
+			source = replacement
+		}
+		file, err := parser.ParseFile(files, path, source, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		syntax = append(syntax, file)
+	}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{}, Defs: map[*ast.Ident]types.Object{},
+		Uses: map[*ast.Ident]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{},
+		Instances: map[*ast.Ident]types.Instance{},
+	}
+	config := types.Config{Importer: mcpFixtureImports(actual.Imports)}
+	checked, err := config.Check(actual.PkgPath, files, syntax, info)
+	if err != nil {
+		t.Fatal("mutation is not valid typed Go:", err)
+	}
+	return &packages.Package{PkgPath: actual.PkgPath, Name: actual.Name, Fset: files, Syntax: syntax, Types: checked, TypesInfo: info, Imports: actual.Imports}
 }
 
 func TestMCPFixtureProtocolBuildContextsFailClosed(t *testing.T) {

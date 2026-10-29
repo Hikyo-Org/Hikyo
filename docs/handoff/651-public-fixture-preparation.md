@@ -206,3 +206,11 @@ does not accept an ambient store handle. Local rehearsal additionally invokes
 the actual `hold` and read-only `observe` commands against the owned datastore,
 requiring the observer to finish while the catalogue lock remains held. This
 operational-command check is separate from public proxy acceptance.
+
+The final local owner suite passes at the existing timeout and conservative
+worker limits. Its 18 typed SQL/guard/caller mutations pass using the real
+imported dependency types and independently parsed/typechecked fixture source.
+This removes redundant dependency loading without omitting cases or ignoring
+parse/type errors. The earlier local timeout remains a failure in the repair
+history. Fresh two-process MCP and both-engine audit seed receipts bind source,
+executable and fixture-asset identities; public acceptance remains NOTRUN.
