@@ -1267,7 +1267,13 @@ func (r *AdapterRuntime) restoreReviewHeldScrub(ctx context.Context, tx adapterD
 	if rows != 1 {
 		return adapter.ErrSuperseded
 	}
-	_, err = q.adapterWorkerRestoreHeldScrubAdapter(ctx, job)
+	// The generation-fenced target above remains locked in this transaction.
+	// Resolve its scoped parent before restoring that exact adapter row.
+	adapterID, err := q.adapterWorkerFinishJobLookup(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
+	if err != nil {
+		return err
+	}
+	_, err = q.adapterWorkerRestoreHeldScrubAdapter(ctx, job, adapterID)
 	return err
 }
 

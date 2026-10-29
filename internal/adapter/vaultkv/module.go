@@ -174,10 +174,13 @@ func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (
 func (m *Module) verifyDestination(ctx context.Context, target adapter.Target) error {
 	id, err := m.resolve(ctx, target.Destination)
 	if err != nil {
+		if errors.Is(err, adapter.ErrDestinationID) {
+			return errors.Join(adapter.ErrOperatorReview, err)
+		}
 		return err
 	}
 	if id != target.Destination.NumericID {
-		return fmt.Errorf("%w: the KV mount or its identity changed", adapter.ErrDestinationID)
+		return fmt.Errorf("%w: %w: the KV mount or its identity changed", adapter.ErrOperatorReview, adapter.ErrDestinationID)
 	}
 	return nil
 }

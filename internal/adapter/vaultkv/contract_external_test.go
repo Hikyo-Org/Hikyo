@@ -587,6 +587,24 @@ func runNamespaceContract(t *testing.T, h *kvHarness) {
 		namespace := "hikyo-ns-" + randomSuffix(t)
 		status, _ := h.do(http.MethodPost, "/v1/sys/namespaces/"+namespace, map[string]any{})
 		if status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusBadRequest {
+			t.Run("reject-root-fallback", func(t *testing.T) {
+				rootMount := "ns-refusal-" + randomSuffix(t)
+				credential := h.fixture(rootMount)
+				scoped := &kvHarness{t: t, addr: h.addr, token: h.token, caPEM: h.caPEM, client: h.client, ns: namespace}
+				client := scoped.adapterClient(credential)
+				if _, err := client.WriteCAS(t.Context(), rootMount, "probe", "must-not-reach-root", 0); !errors.Is(err, adapter.ErrDestinationID) {
+					t.Fatalf("unsupported namespace did not refuse before credential/value transmission: %v", err)
+				}
+				if client.loggedIn || client.token != "" {
+					t.Fatal("unsupported namespace logged in against root")
+				}
+				if status, _ := h.do(http.MethodGet, "/v1/"+rootMount+"/metadata/probe", nil); status != http.StatusNotFound {
+					t.Fatal("unsupported namespace wrote a root version or marker")
+				}
+			})
+			if t.Failed() {
+				return
+			}
 			t.Skipf("namespaces SKIPPED: this server does not serve sys/namespaces (status %d); Vault namespaces are Enterprise-only", status)
 		}
 		if status < 200 || status >= 300 {

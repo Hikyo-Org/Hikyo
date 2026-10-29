@@ -690,6 +690,42 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatal("retain removed the delivered value")
 	}
 
+	// Model a legacy stored namespace configuration that the old client could
+	// resolve in root on Vault OSS. New dispatch refuses without altering the
+	// root path, and failed teardown preserves a visible explicit-retain exit.
+	legacy, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+		EnvironmentID: cEnv, DestinationKind: string(adapter.Repository), DestinationOwner: mount,
+		DestinationName: "hikyo/namespace-hold", KeySelection: &service.AdapterKeySelection{Include: []string{"DATABASE_URL"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncTarget(ctx, operator, scope, legacy.ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	legacyMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil)
+	legacyOrigin := server.addr + "/missing-namespace-162"
+	execRaw(t, db, "UPDATE adapters SET origin='"+legacyOrigin+"' WHERE id='"+created.Adapter.ID+"'")
+	execRaw(t, db, "UPDATE adapter_ledger SET provider_origin='"+legacyOrigin+"' WHERE target_id='"+legacy.ID+"'")
+	if _, err := svc.RemoveTarget(ctx, operator, scope, legacy.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	legacyView, err := svc.InspectTarget(ctx, operator, scope, legacy.ID)
+	if err != nil || legacyView.Target.State != "active" || legacyView.Target.PausedAt == nil || legacyView.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
+		t.Fatalf("namespace refusal lost held teardown recovery: err=%v state=%s", err, legacyView.Target.State)
+	}
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/namespace-hold/DATABASE_URL", nil); !reflect.DeepEqual(legacyMetadata["data"], after["data"]) {
+		t.Fatal("namespace refusal mutated the root value history or markers")
+	}
+	if removed, err := svc.RemoveTarget(ctx, operator, scope, legacy.ID, true); err != nil || len(removed.Orphaned) == 0 {
+		t.Fatalf("retain legacy namespace custody: %v", err)
+	}
+	if _, err := svc.Delete(ctx, operator, scope, created.Adapter.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, plaintext := range []string{kvSecretOne, kvSecretTwo, auth["client_token"].(string)} {
 		if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM audit_tenant_events WHERE payload LIKE '%%%s%%'`, plaintext)); got != 0 {
 			t.Fatal("audit payload carries a delivered value or provider credential")

@@ -271,7 +271,7 @@ UPDATE adapter_targets SET sync_status=sqlc.arg(target_status),converged_revisio
 UPDATE adapter_targets SET state='active',paused_at=sqlc.arg(at) WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND state='tombstoned' AND provider_lease_job_id IS NULL;
 
 -- name: AdapterWorkerRestoreHeldScrubAdapter :execrows
-UPDATE adapters SET state='active' WHERE adapters.org_id=sqlc.arg(chain_org) AND adapters.project_id=sqlc.arg(chain_project) AND adapters.state='tombstoned' AND adapters.id=(SELECT held.adapter_id FROM adapter_targets held WHERE held.id=sqlc.arg(target_id) AND held.org_id=sqlc.arg(chain_org) AND held.project_id=sqlc.arg(chain_project) AND held.environment_id=sqlc.arg(chain_env) AND held.generation=sqlc.arg(generation) AND held.state='active');
+UPDATE adapters SET state='active' WHERE id=sqlc.arg(adapter_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='tombstoned';
 
 -- name: AdapterWorkerRaiseDriftAttentionQuery :execrows
 UPDATE adapter_targets SET drift_attention=1 WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(org) AND project_id=sqlc.arg(project) AND environment_id=sqlc.arg(environment_i_d);
@@ -298,7 +298,10 @@ UPDATE adapter_targets SET state='moving',sync_status='converging',failure_names
 UPDATE adapter_targets SET state='moving',sync_status='converging',failure_names=sqlc.arg(failure_j_s_o_n),active_job_id=NULL WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND state='moving' AND active_job_id=sqlc.arg(job_id) AND provider_lease_job_id IS NULL;
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubCountPending :one
-SELECT COUNT(*) FROM adapter_outbox jobs WHERE jobs.route_move_id=sqlc.arg(route_move_id) AND jobs.org_id=sqlc.arg(chain_org) AND jobs.project_id=sqlc.arg(chain_project) AND jobs.kind='scrub' AND (jobs.state IN ('queued','running') OR EXISTS (SELECT 1 FROM adapter_ledger held WHERE held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id AND held.state<>'released'));
+SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='scrub' AND state IN ('queued','running');
+
+-- name: AdapterWorkerFinishOriginRouteMoveScrubCountHeld :one
+SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=sqlc.arg(route_move_id) AND jobs.org_id=sqlc.arg(chain_org) AND jobs.project_id=sqlc.arg(chain_project) AND jobs.kind='scrub' AND held.state<>'released';
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubActivateMove :execrows
 UPDATE adapter_route_moves SET state='activating' WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='origin' AND target_id IS NULL AND state='scrubbing';

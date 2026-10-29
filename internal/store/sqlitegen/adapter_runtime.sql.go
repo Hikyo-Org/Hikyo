@@ -1259,8 +1259,25 @@ func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubActivateMove(ctx contex
 	return result.RowsAffected()
 }
 
+const adapterWorkerFinishOriginRouteMoveScrubCountHeld = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountHeld :one
+SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=?1 AND jobs.org_id=?2 AND jobs.project_id=?3 AND jobs.kind='scrub' AND held.state<>'released'
+`
+
+type AdapterWorkerFinishOriginRouteMoveScrubCountHeldParams struct {
+	RouteMoveID  sql.NullString
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubCountHeld(ctx context.Context, arg AdapterWorkerFinishOriginRouteMoveScrubCountHeldParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, adapterWorkerFinishOriginRouteMoveScrubCountHeld, arg.RouteMoveID, arg.ChainOrg, arg.ChainProject)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const adapterWorkerFinishOriginRouteMoveScrubCountPending = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountPending :one
-SELECT COUNT(*) FROM adapter_outbox jobs WHERE jobs.route_move_id=?1 AND jobs.org_id=?2 AND jobs.project_id=?3 AND jobs.kind='scrub' AND (jobs.state IN ('queued','running') OR EXISTS (SELECT 1 FROM adapter_ledger held WHERE held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id AND held.state<>'released'))
+SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=?1 AND org_id=?2 AND project_id=?3 AND kind='scrub' AND state IN ('queued','running')
 `
 
 type AdapterWorkerFinishOriginRouteMoveScrubCountPendingParams struct {
@@ -2851,25 +2868,17 @@ func (q *Queries) AdapterWorkerReserveSelectQuery(ctx context.Context, arg Adapt
 }
 
 const adapterWorkerRestoreHeldScrubAdapter = `-- name: AdapterWorkerRestoreHeldScrubAdapter :execrows
-UPDATE adapters SET state='active' WHERE adapters.org_id=?1 AND adapters.project_id=?2 AND adapters.state='tombstoned' AND adapters.id=(SELECT held.adapter_id FROM adapter_targets held WHERE held.id=?3 AND held.org_id=?1 AND held.project_id=?2 AND held.environment_id=?4 AND held.generation=?5 AND held.state='active')
+UPDATE adapters SET state='active' WHERE id=?1 AND org_id=?2 AND project_id=?3 AND state='tombstoned'
 `
 
 type AdapterWorkerRestoreHeldScrubAdapterParams struct {
+	AdapterID    string
 	ChainOrg     string
 	ChainProject string
-	TargetID     string
-	ChainEnv     string
-	Generation   int64
 }
 
 func (q *Queries) AdapterWorkerRestoreHeldScrubAdapter(ctx context.Context, arg AdapterWorkerRestoreHeldScrubAdapterParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, adapterWorkerRestoreHeldScrubAdapter,
-		arg.ChainOrg,
-		arg.ChainProject,
-		arg.TargetID,
-		arg.ChainEnv,
-		arg.Generation,
-	)
+	result, err := q.db.ExecContext(ctx, adapterWorkerRestoreHeldScrubAdapter, arg.AdapterID, arg.ChainOrg, arg.ChainProject)
 	if err != nil {
 		return 0, err
 	}

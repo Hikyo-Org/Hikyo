@@ -83,6 +83,22 @@ Independent Spec R1 found three further defects, reproduced with regressions:
    exact generation under the current caller's authority. Real-provider
    regressions cover both replacement APIs, live/expired sibling cancellation
    and the full removal/plan/adopt/resume sequence without relaxing freshness.
+10. Actual Vault OSS accepted a nonexistent namespace header and wrote in root.
+    A new unauthenticated probe addresses a random child of the configured
+    namespace before any credential leaves the client attempt. Only an explicit
+    missing-namespace response proves header routing; ignored headers, stripped
+    headers and unknown refusals fail closed. No edition or brand assertion
+    bypasses the proof. OpenBao namespace delivery and Vault OSS refusal run
+    against the real pinned servers. Mock Enterprise protocol coverage remains
+    separate from unexecuted Enterprise acceptance. A legacy invalid namespace
+    now stops teardown for operator review, preserving root history and a visible
+    paused target with an explicit retain exit on both database engines.
+11. Hosted invariants rejected two nested SQL predicates in both dialects as
+    unprovable. Restoration now resolves the exact scoped parent after locking
+    the generation-fenced target in the same transaction. The origin activation
+    barrier uses separate scoped pending-job and joined held-custody queries.
+    The SQL predicate checker, custody checks and permissions remain intact;
+    both dialects were regenerated through sqlc.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently
@@ -100,7 +116,7 @@ recreation, not a claim of a separate OS-process or host-reboot drill.
 | Unknown dispatch and reconciliation | Both servers on both database engines: response lost after a real CAS, durable dispatched hold, worker/runtime recreation, resync refusal, positive version-bound Plan/Adopt and consumed-artifact refusal | Response loss is an injected boundary failure around a real provider write; unit/store fixtures separately cover other crash windows |
 | Prune and retention | Both real servers: an external write races explicit-version pruning; only its predecessor is soft-deleted. Both-engine lifecycle checks preserve metadata, distinguish retain, and report orphaned names | No version destroy, metadata delete or undelete is linked by the adapter; harness-only undelete proves recoverability |
 | Authentication and credential confinement | Real AppRole login, two bounded renewals and revocation; client tests cover refusal/budget/static-token handling and deadline-bound cleanup | Static tokens are not revoked by the adapter; fixture-issued credentials are separately revoked by test cleanup |
-| TLS and namespace/destination identity | Verified TLS with generated local CAs, client SPKI/hostname/egress tests, remount refusal, OpenBao namespace contract | Vault OSS namespace test is explicitly SKIPPED because the feature is Enterprise-only; no Enterprise or managed-provider acceptance is claimed |
+| TLS and namespace/destination identity | Verified TLS with generated local CAs, client SPKI/hostname/egress tests, remount refusal, OpenBao namespace delivery, Vault OSS root-fallback refusal before credentials and both-engine legacy teardown recovery | Positive Vault Enterprise namespace delivery is explicitly SKIPPED; protocol mocks are separate and no Enterprise or managed-provider acceptance is claimed |
 | API/CLI/browser consumers | Real CLI target detail, names-only consumption mapping and Plan through TLS API against both real providers on both engines; CLI import-loop refusal tests; desktop/mobile browser adapter flow and Vault configuration flow (execution pending) | Browser fixture uses its declared development provider, separately from real Vault/OpenBao contracts; component/unit coverage is separate again |
 | Status and audit redaction | Closed health classification regression, real outbox health and metadata checks, no synthetic value or provider token in CLI output or audit payloads; transport-body redaction tests | No production tenant data or credentials are used |
 
@@ -127,7 +143,18 @@ and Vault Enterprise acceptance are NOTRUN. No named external environment or
 protected credential was assumed to exist or used as a substitute for the
 permitted disposable servers. A future required external run needs a named
 owner-authorized disposable target, allowed operations and protected credential
-intake before its packet can claim that environment. Integrated #79 acceptance
+intake before its packet can claim that environment. For Enterprise namespace
+qualification, name the authorized target, version, namespace, TLS trust and
+disposable mount/auth scope; obtain its fixture credential through protected
+`request_secret` file delivery. Load `HIKYO_TEST_VAULT_ADDR`,
+`HIKYO_TEST_VAULT_TOKEN` and `HIKYO_TEST_VAULT_CACERT` from that protected file,
+then run `go test -p 2 -parallel 2 -count=1 -run '^TestVaultContract$' -v ./internal/adapter/vaultkv`.
+Require the namespace child to PASS rather than SKIP, verify credential-free
+routing proof, root isolation and fixture teardown, and bind the output to the
+selected source and target. A server or proxy that does not expose the explicit
+unauthenticated missing-namespace response is refused and needs qualification
+before support can be claimed. No paid Enterprise server or license is assumed.
+Integrated #79 acceptance
 must independently select and bind its final source, artifacts and environment.
 
 ## Review provenance and disposition
@@ -185,6 +212,22 @@ the three recovery gaps above. Native xhigh and configured high records remain
 distinct. The repaired final source requires a fresh independent re-check and
 exact-head receipt, recorded with the PR's current check and review disposition.
 Historical cross-provider SKIPPED evidence remains intact.
+
+R5 Standards and Spec rechecks were started on
+`66a4ccdf071bce42a44c9aae3ceede08d527ac32`, tree
+`d53d481aeacc2959ef0e74d9662f70b529d240a6`, then cancellation was requested when
+the inherited hosted SQL invariant failure required new source bytes. No R5
+pass is claimed. The SQL and namespace repairs require a fresh final-source
+review, not a message asking an old review to certify changed files.
+
+The first actionable hosted failure is
+[repository invariants, attempt 1 on 6090358](https://github.com/Hikyo-Org/Hikyo/actions/runs/40865473475/job/123419033519):
+`TestSQLPredicatesRepo` rejected `AdapterWorkerRestoreHeldScrubAdapter` and
+`AdapterWorkerFinishOriginRouteMoveScrubCountPending` as nested, unprovable
+SELECT shapes in SQLite and PostgreSQL. The later 66a4ccd candidate inherited
+those queries. The rewritten queries pass the focused predicate check and a
+full local boundary/lint/CI-policy run; final candidate validation and hosted
+readback remain separate requirements.
 
 ## Owning-ticket ceremony
 

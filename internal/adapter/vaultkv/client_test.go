@@ -235,6 +235,9 @@ func pemCertificate(der []byte) string {
 func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
 		switch {
+		case r.Path == operationRegistry["namespace-probe"].Path:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"errors":["namespace not found"]}`)
 		case r.Method == http.MethodGet && strings.HasPrefix(r.Path, "/v1/secret/metadata/"):
 			_, _ = io.WriteString(w, `{"data":{"current_version":3,"custom_metadata":{"managed_by_hikyo":"tgt"},"versions":{"3":{"deletion_time":"2026-07-01T00:00:00.5Z","destroyed":false},"2":{"deletion_time":"2026-01-01T00:00:00Z","destroyed":false},"1":{"deletion_time":"2026-06-01T00:00:00Z","destroyed":false}}}}`)
 		case r.Method == http.MethodPost && strings.HasPrefix(r.Path, "/v1/secret/data/"):
@@ -264,10 +267,16 @@ func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 	if err := client.PatchCustomMetadata(t.Context(), "secret", "apps/pay svc/TOKEN", map[string]*string{MarkerKey: &value, PendingKey: nil}); err != nil {
 		t.Fatal(err)
 	}
-	if len(stub.requests) != 3 {
+	if len(stub.requests) != 4 {
 		t.Fatalf("requests = %+v", stub.requests)
 	}
-	for _, r := range stub.requests {
+	for i, r := range stub.requests {
+		if i == 0 {
+			if r.Path != operationRegistry["namespace-probe"].Path || r.Token != "" || !strings.HasPrefix(r.Namespace, "team-a/hikyo-probe-") || r.Body != nil {
+				t.Fatalf("namespace proof carried credentials or used the configured namespace: %+v", r)
+			}
+			continue
+		}
 		if r.Token != "hvs.static" || r.Namespace != "team-a" {
 			t.Errorf("%s %s token=%q namespace=%q", r.Method, r.Path, r.Token, r.Namespace)
 		}
@@ -275,7 +284,7 @@ func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 			t.Errorf("value read issued: %s", r.Path)
 		}
 	}
-	write := stub.requests[1]
+	write := stub.requests[2]
 	if write.Path != "/v1/secret/data/apps/pay%20svc/TOKEN" {
 		t.Fatalf("write path = %s", write.Path)
 	}
@@ -285,7 +294,7 @@ func TestClientSendsNamespaceTokenAndCASWithoutReadingData(t *testing.T) {
 	if data, _ := write.Body["data"].(map[string]any); data["value"] != "plaintext" || len(data) != 1 {
 		t.Fatalf("write data = %v", write.Body["data"])
 	}
-	patch := stub.requests[2]
+	patch := stub.requests[3]
 	if patch.Method != http.MethodPatch || patch.ContentType != "application/merge-patch+json" {
 		t.Fatalf("patch = %+v", patch)
 	}
@@ -386,10 +395,13 @@ func TestClientRefusesUnpinnedCertificate(t *testing.T) {
 
 func TestAppRoleLoginIsBoundedAndRevokedOnForget(t *testing.T) {
 	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
-		switch r.Path {
-		case "/v1/auth/approle-ci/login":
+		switch {
+		case r.Path == operationRegistry["namespace-probe"].Path:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"errors":["namespace not found"]}`)
+		case r.Path == "/v1/auth/approle-ci/login":
 			_, _ = io.WriteString(w, `{"auth":{"client_token":"hvs.minted","lease_duration":3600,"renewable":true}}`)
-		case "/v1/auth/token/revoke-self":
+		case r.Path == "/v1/auth/token/revoke-self":
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			_, _ = io.WriteString(w, `{"data":{"current_version":0,"custom_metadata":null,"versions":{}}}`)
@@ -407,18 +419,22 @@ func TestAppRoleLoginIsBoundedAndRevokedOnForget(t *testing.T) {
 	var paths []string
 	for _, r := range stub.requests {
 		paths = append(paths, r.Path)
-		if r.Namespace != "team-a" {
+		if r.Path == operationRegistry["namespace-probe"].Path {
+			if !strings.HasPrefix(r.Namespace, "team-a/hikyo-probe-") || r.Token != "" || r.Body != nil {
+				t.Fatal("namespace proof transmitted credentials")
+			}
+		} else if r.Namespace != "team-a" {
 			t.Errorf("%s namespace = %q", r.Path, r.Namespace)
 		}
 	}
-	want := []string{"/v1/auth/approle-ci/login", "/v1/secret/metadata/p", "/v1/secret/metadata/p", "/v1/auth/token/revoke-self"}
+	want := []string{operationRegistry["namespace-probe"].Path, "/v1/auth/approle-ci/login", "/v1/secret/metadata/p", "/v1/secret/metadata/p", "/v1/auth/token/revoke-self"}
 	if !slices.Equal(paths, want) {
 		t.Fatalf("requests = %v, want one login, reads, one revoke %v", paths, want)
 	}
-	if login := stub.requests[0]; login.Token != "" || login.Body["role_id"] != "role" || login.Body["secret_id"] != "secret-id" {
+	if login := stub.requests[1]; login.Token != "" || login.Body["role_id"] != "role" || login.Body["secret_id"] != "secret-id" {
 		t.Fatalf("login = %+v", login)
 	}
-	if stub.requests[1].Token != "hvs.minted" || stub.requests[3].Token != "hvs.minted" {
+	if stub.requests[2].Token != "hvs.minted" || stub.requests[4].Token != "hvs.minted" {
 		t.Fatal("minted token was not used and revoked")
 	}
 	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); !errors.Is(err, adapter.ErrProviderAuth) {

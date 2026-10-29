@@ -44,6 +44,16 @@ Out (named, not deferred by silence): KV version 1 (no check-and-set, so no safe
 
 A vault-kv adapter names one server: `origin = https://host[:port]` optionally followed by `/<namespace path>`. The namespace travels in the `X-Vault-Namespace` header, which both Vault Enterprise and OpenBao honor; `sys/health` is root-only and is sent without it. The adapter record accepts only the canonical origin spelling so one server and namespace cannot be configured twice. The operator egress policy is keyed by the bare `https://host[:port]`.
 
+**Namespace routing clarification (2026-10-29):** Vault OSS silently ignores
+the namespace header. Before transmitting credentials for a non-root origin,
+the client makes an unauthenticated mount-info probe under a random child of
+the configured namespace. Only an explicit `namespace not found` response
+proves namespace routing. Other responses fail closed; health edition fields
+do not bypass this proof. The probe grants no new policy capability, reads no
+value and changes no state. It is cached only within one bounded client attempt.
+Positive Enterprise namespace qualification remains separate from protocol
+mocks and actual OpenBao namespace/Vault OSS refusal evidence.
+
 A target reuses the generic **repository** destination record, so the API's closed destination-kind enum does not grow: `destination_owner` is the **KV v2 mount path**, `destination_name` is the **path prefix**. Each key becomes **one KV secret** at `{mount}/{path prefix}/{name prefix}{canonical name}` holding a single field, `value`. Both classifications share that one tree, so effective names must be unique across the secret and config surfaces (case-insensitively, matching the ledger), and each must be a single path segment. Values must be UTF-8 (JSON cannot carry other bytes exactly) and at most 512 KiB (inside the default 1 MiB integrated-storage entry after escaping). The management sentinel `MANAGED_BY_HIKYO` is one secret, written first and removed last.
 
 `destination_id` binds the target to the live mount: `sha256("hikyo-vault-kv" ‖ mount uuid (or accessor) ‖ path prefix)`, truncated to a positive int64. A mount that is disabled and re-enabled, or moved, has a new uuid, so every later write refuses with the destination-identity error. Including the path prefix keeps two targets on one mount distinct in the ledger's provider-name index.
@@ -55,6 +65,7 @@ The client is hand-rolled `net/http` behind a closed `API` interface whose metho
 | Operation | Endpoint | Returns |
 |---|---|---|
 | Health | `GET sys/health` | initialized, sealed, version |
+| Internal namespace probe | `GET sys/internal/ui/mounts/hikyo-namespace-probe`, no credential, random child namespace | routing refusal only |
 | MountInfo | `GET sys/internal/ui/mounts/{mount}` | type, KV version, uuid, accessor |
 | LookupSelf | `GET auth/token/lookup-self` | token expiry only (decoded) |
 | ReadMetadata | `GET {mount}/metadata/{path}` | versions and custom metadata, **never data** |
@@ -137,7 +148,7 @@ One tree cannot be both an import source and a sync destination of the same proj
 | Sealed or standby (`503`) | retryable before a value PUT; an unknown dispatched PUT stops for operator review |
 | Rate limited (`429`) | rate limit, honoring `Retry-After` |
 | `401`/`403`, refused login or renewal | provider auth |
-| Mount missing, remounted, not KV v2 | destination identity or configuration refusal |
+| Namespace routing unproved, mount missing, remounted, not KV v2 | destination identity or configuration refusal; changed identity stops automatic sync/prune for operator review |
 | CAS mismatch | conflict (external movement) |
 | Other `4xx` on a write | definitive failure; a reservation is released |
 | Transport error, `5xx` during a value PUT | `unknown`, held `dispatched`; fresh version-bound operator review is required |
