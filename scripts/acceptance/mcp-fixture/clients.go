@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,7 +154,7 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, "app-server")
 	cmd.Dir = home
-	cmd.Env = append(clientEnvironment(home, p.target.CAFile), "CODEX_HOME="+home, "HIKYO_NATIVE_TEST_TOKEN="+p.fixture.Credentials["clients"].Token, "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9", "NO_PROXY=localhost,127.0.0.1")
+	cmd.Env = append(clientEnvironment(home, p.target.CAFile), "CODEX_HOME="+home, "HIKYO_NATIVE_TEST_TOKEN="+p.fixture.Credentials["clients"].Token, "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9", codexNoProxy(p.target.URL))
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -248,3 +249,11 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 }
 
 func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+func codexNoProxy(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return "NO_PROXY=localhost,127.0.0.1"
+	}
+	return "NO_PROXY=localhost,127.0.0.1," + u.Hostname()
+}

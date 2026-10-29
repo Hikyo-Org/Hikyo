@@ -9,17 +9,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 //go:embed resources.yaml.tmpl
 var resourceTemplate string
+
+//go:embed stage-public.sh
+var publicStageScript string
 
 // DeploymentBinding is a selection record, not a signature verifier. The
 // genuine runtime gate still authenticates the supplied bundle and installed
@@ -46,9 +54,10 @@ type deploymentBinding struct {
 	ProxyCIDR           string       `json:"proxy_cidr"`
 	OriginHost          string       `json:"-"`
 	PublicFiles         []publicFile `json:"-"`
+	StageLines          []string     `json:"-"`
 }
 
-type publicFile struct{ Key, Path string }
+type publicFile struct{ Key, Path, SHA256 string }
 
 var sha256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var sourcePattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
@@ -98,6 +107,7 @@ func render(dir string) error {
 		return err
 	}
 	public := filepath.Join(dir, "public")
+	b.StageLines = strings.Split(strings.TrimSuffix(publicStageScript, "\n"), "\n")
 	files := map[string][]byte{}
 	inventory := map[string]string{}
 	total := 0
@@ -121,6 +131,9 @@ func render(dir string) error {
 		if rel != "operator.pub" && !bytes.HasPrefix([]byte(rel), []byte("bundle"+string(filepath.Separator))) {
 			return errors.New("public mount accepts only bundle and operator.pub")
 		}
+		if !regexp.MustCompile(`^[A-Za-z0-9._/-]+$`).MatchString(filepath.ToSlash(rel)) {
+			return errors.New("public artifact path is outside the closed portable grammar")
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return errors.New("public material read failed")
@@ -133,7 +146,7 @@ func render(dir string) error {
 		files[key] = raw
 		hash := sha256.Sum256(raw)
 		inventory[filepath.ToSlash(rel)] = fmt.Sprintf("%x", hash)
-		b.PublicFiles = append(b.PublicFiles, publicFile{Key: key, Path: filepath.ToSlash(rel)})
+		b.PublicFiles = append(b.PublicFiles, publicFile{Key: key, Path: filepath.ToSlash(rel), SHA256: fmt.Sprintf("%x", hash)})
 		return nil
 	}); err != nil {
 		return err
@@ -162,6 +175,31 @@ func render(dir string) error {
 	if json.NewEncoder(&output).Encode(cm) != nil {
 		return errors.New("public mount encoding failed")
 	}
+	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(output.Bytes()), 4096)
+	var reservation []unstructured.Unstructured
+	for {
+		var object unstructured.Unstructured
+		err := decoder.Decode(&object)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.New("rendered Kubernetes resources invalid")
+		}
+		kind, name := object.GetKind(), object.GetName()
+		if kind == "Namespace" || kind == "ResourceQuota" || kind == "ServiceAccount" || kind == "NetworkPolicy" && name == "default-deny" || kind == "PersistentVolumeClaim" && name == "installation-authority" {
+			reservation = append(reservation, object)
+		}
+	}
+	if len(reservation) != 5 {
+		return errors.New("incomplete reservation resource set")
+	}
+	if err := writePrivate(filepath.Join(dir, "reserve.json"), map[string]any{"apiVersion": "v1", "kind": "List", "items": reservation}); err != nil {
+		return err
+	}
+	if err := renderStorageChecks(dir, b); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(filepath.Join(dir, "resources.yaml"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return errors.New("refusing existing rendered resources")
@@ -170,4 +208,22 @@ func render(dir string) error {
 	syncErr := f.Sync()
 	closeErr := f.Close()
 	return errors.Join(writeErr, syncErr, closeErr)
+}
+
+func renderStorageChecks(dir string, b deploymentBinding) error {
+	var pods []map[string]any
+	for i, node := range []string{b.NodeA, b.NodeB} {
+		pods = append(pods, map[string]any{
+			"apiVersion": "v1", "kind": "Pod",
+			"metadata": map[string]any{"name": fmt.Sprintf("custody-check-%d", i), "namespace": "hikyo-mcp-651", "labels": map[string]string{"hikyo.dev/fixture": "mcp-651", "app": "custody-check"}},
+			"spec": map[string]any{
+				"serviceAccountName": "fixture", "automountServiceAccountToken": false,
+				"nodeSelector":    map[string]string{"kubernetes.io/hostname": node},
+				"securityContext": map[string]any{"runAsNonRoot": true, "runAsUser": 65532, "runAsGroup": 65532, "fsGroup": 65532, "fsGroupChangePolicy": "OnRootMismatch", "seccompProfile": map[string]string{"type": "RuntimeDefault"}},
+				"containers":      []map[string]any{{"name": "check", "image": "alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b", "command": []string{"sleep", "3600"}, "securityContext": map[string]any{"allowPrivilegeEscalation": false, "readOnlyRootFilesystem": true, "capabilities": map[string]any{"drop": []string{"ALL"}}}, "resources": map[string]any{"requests": map[string]string{"cpu": "10m", "memory": "16Mi"}, "limits": map[string]string{"cpu": "100m", "memory": "32Mi"}}, "volumeMounts": []map[string]any{{"name": "installation", "mountPath": "/installation"}, {"name": "work", "mountPath": "/work"}}}},
+				"volumes":         []map[string]any{{"name": "installation", "persistentVolumeClaim": map[string]string{"claimName": "installation-authority"}}, {"name": "work", "emptyDir": map[string]string{"medium": "Memory", "sizeLimit": "1Mi"}}},
+			},
+		})
+	}
+	return writePrivate(filepath.Join(dir, "storage-check.json"), map[string]any{"apiVersion": "v1", "kind": "List", "items": pods})
 }

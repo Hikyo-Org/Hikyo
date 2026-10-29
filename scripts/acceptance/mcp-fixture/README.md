@@ -18,18 +18,24 @@ refusal. `TestMCPDeploymentFixture` and its dedicated loopback guard are unchang
 | `local.sh NEW_ABSOLUTE_RUNTIME` | Frozen clients, current-source builds, disposable PostgreSQL 18, two actual Hikyo processes, verified private-CA TLS and a round-robin proxy | Local disposable rehearsal only; generates development custody, never production release authority |
 | `mcp-fixture render --runtime DIR` | Render namespace resources from the selected binding and public bundle | Offline structural preparation only; no Kubernetes calls or signature claim |
 | `mcp-fixture authorize --runtime DIR` | Refuse missing/expired resource approval, changed resources, helper bytes or verification receipt | A recorded owner decision is required; a locally written JSON file does not create that decision |
-| `deploy.sh DIR FIXTURE_EXECUTABLE` | Create the new namespace, protected fixture inputs, supported seed, two servers and gateway | NOTRUN under preparation; requires final selection plus resource-specific approval |
+| `deploy.sh DIR FIXTURE_EXECUTABLE reserve` | Reserve a new namespace and shared installation-authority claim only | NOTRUN; final selection and resource-specific approval required |
+| `prepare-installation.sh EMPTY_PV_DIRECTORY PVC_UID` | Storage owner's manual preparation of the verified fresh claim directory | NOTRUN; manual storage operator only, after exact PVC/PV mapping and approval |
+| `check-installation.sh DIR FIXTURE_EXECUTABLE OPERATOR_RECEIPT_REF` | Two temporary cross-node pods check exclusive locks, private permissions and remount preservation | NOTRUN; approved resources only, removes its own diagnostic pods |
+| `deploy.sh DIR FIXTURE_EXECUTABLE continue` | Stage protected inputs, supported seed, two servers and gateway after bound storage proof | NOTRUN under preparation; requires current resource approval |
 | `mcp-fixture public --runtime DIR` | Public transport/client, committed-authority and lifecycle checks | NOTRUN under preparation; requires approved public origin, authenticated artifacts, independent process binding and mutation window |
 | `seed`, `revoke`, `revoke-smoke`, `grant-remove`, `grant-restore` | Supported service writers on the dedicated fixture | Never point at another database or installation |
 | `hold`, `observe` | Bounded catalogue lock and no-secret store/claim observations | Only the approved synthetic fixture; lock expires after 20 seconds |
 | `gateway` | Verified HTTPS proxy with alternating backends and closed wire-only receipts | Fixture namespace only; no buffering or affinity and no detached tool work |
 
 All runtime directories must be canonical absolute paths owned by the executing
-user with mode 0700. Protected JSON, authority and token records use 0600.
+user with mode 0700. Protected JSON, authority and token records use 0600;
+canonical staged root keys also permit 0400, without relaxing JSON custody.
 No bearer goes into client configuration or OS argv. Inspector receives its
 transient header through its own `runCli` function in process memory. Codex uses
 `bearer_token_env_var`, an isolated home, a loopback-only model-provider stub,
-and no model turn. No Claude or Responses execution is required or authorized.
+and no model turn. Its exact fixture hostname bypasses the otherwise dead
+proxy; this does not enable a provider recipient. No Claude or Responses
+execution is required or authorized.
 
 ## Local rehearsal
 
@@ -77,8 +83,9 @@ The campaign runs:
 7. A real admitted request held on the owned PostgreSQL `keys` table, proxy
    cancellation, disappearance of blocked work while the lock remains held,
    and shared claim release on each process.
-8. SIGTERM with an admitted read, the unchanged five-second application drain
-   budget, successful exit, no claim and a successful surviving peer.
+8. SIGTERM with an admitted read, positively observed operational-listener
+   closure while store work remains blocked, then lock release, successful exit,
+   no claim and a surviving peer within the unchanged five-second drain budget.
 
 `run/local-receipt.json`, `run/smoke-receipt.json` and
 `run/wire-receipt.json` are redacted review artifacts. Wire receipts contain
@@ -129,9 +136,12 @@ budget is 750 KiB; a larger real bundle is HOLD for a new storage packet.
 "$MCP651_FIXTURE" render --runtime "$MCP651_RUNTIME"
 ```
 
-Inspect `resources.yaml` and record its SHA-256 in the owner's concrete
-authorization record. The resources initially keep server/gateway replicas at
-zero. The launcher scales them only after supported seed completes.
+Inspect `resources.yaml`, `reserve.json` and `storage-check.json`, and bind each
+SHA-256 in the owner's concrete authorization record. The resources initially
+keep server/gateway replicas at zero. The launcher scales them only after
+supported seed completes. Projected public bundle files are copied into regular
+files, with selected hashes checked before and after staging. Production
+no-follow artifact readers remain unchanged.
 
 ## Protected inputs after approval
 
@@ -175,10 +185,46 @@ Execution expires within 24 hours; the recommended packet uses four hours.
 No resource approval substitutes for final source/artifact selection.
 
 ```sh
-scripts/acceptance/mcp-fixture/deploy.sh "$MCP651_RUNTIME" "$MCP651_FIXTURE"
+scripts/acceptance/mcp-fixture/deploy.sh "$MCP651_RUNTIME" "$MCP651_FIXTURE" reserve
 ```
 
-The launcher refuses an existing namespace instead of adopting it. A partial
+The reservation creates exactly five resources: namespace, quota, service
+account, default-deny policy and the 1 GiB `installation-authority` RWX claim
+using the existing `nfs` provisioner. No datastore or server starts yet. Tooling
+and both replicas must share this installation's verifier floor/operator state;
+three independent state directories would fail genuine admission to one database.
+The database uses a separate 2 GiB `local-path` claim, for two claims/3 GiB total.
+Claim requests are accounting bounds, not physical filesystem quotas.
+
+After verifying the new PVC UID, PV name and exact empty provisioner directory,
+the storage owner manually runs `prepare-installation.sh` on its Linux storage
+host. No agent executes NAS commands. The script refuses noncanonical, nonempty
+or existing-installation directories. It prepares a 2770 root, group 65532 and
+an owner-65532 0700 `operator-state` child. `OnRootMismatch` preserves that child
+on remount. No dataset/export, shared tree or existing custody is changed. The
+storage owner must validate installed GNU command flags before this manual step.
+
+```sh
+scripts/acceptance/mcp-fixture/check-installation.sh "$MCP651_RUNTIME" "$MCP651_FIXTURE" "$MCP651_STORAGE_OPERATOR_RECEIPT"
+```
+
+This creates only `custody-check-0/1`, pinned to the two selected nodes. Actual
+exclusive contention, success after lock release, private-file ownership and
+preservation after both pods remount must pass. The pods are deleted before
+the resulting protected `storage-verification.json` is written. Failed checks
+are HOLD; diagnostic marker/lock files may require the approved owner's cleanup.
+Review this receipt and bind its SHA-256 as `shared_storage_verification_sha256`
+in the existing approval record. Its fields are `pvc_uid`, `pv_name`, `root_mode`
+(`2770`), `root_group` (65532), `private_child_mode` (`0700`),
+`private_child_owner` (65532), `remount_preserves_private_child`,
+`cross_node_exclusive_locks_passed`, and `operator_receipt_ref`.
+`authorize-resume` checks the original namespace UID, claim identity and proof.
+
+```sh
+scripts/acceptance/mcp-fixture/deploy.sh "$MCP651_RUNTIME" "$MCP651_FIXTURE" continue
+```
+
+The initial launcher refuses an existing namespace instead of adopting it. A partial
 failure is HOLD: preserve the owned namespace, root and verifier/operator state,
 inspect the exact failed step, and recover within the same authorized fixture.
 Do not rerun the fresh installer or erase admission custody to make it pass.
@@ -234,8 +280,12 @@ for revocation/grants, holds only its catalogue table for bounded lifecycle
 checks, and gracefully deletes one UID-preconditioned server pod to obtain
 SIGTERM. It forbids forced/zero-grace deletion. It requires old-pod removal,
 shared-claim release and a surviving peer within the existing five-second
-application budget. Record underlying kubelet/container termination evidence
-as well. Recheck recovery on the replacement pod under the same artifact binding.
+application budget. The toolbox alone may connect to the two observed operational
+TCP sockets to prove shutdown has begun before the held query is released.
+Network timeouts do not establish listener closure. Record underlying
+kubelet/container termination evidence as well; API removal is an upper-bound
+observation and leaves the runtime-termination-record gate HOLD. Recheck recovery
+on the replacement pod under the same artifact binding.
 
 The public receipt is a campaign result, not release PASS. Attach the direct TLS
 comparison, independent public vantage, ingress/CNI observations, exact artifact
@@ -246,14 +296,17 @@ dedicated predecessor through the supported identity writer and update protected
 custody before a new campaign; retain the failed run separately.
 
 An interrupted public campaign writes a redacted failure receipt and attempts
-supported grant restoration within the still-current approved window. It reports
+supported grant restoration within the still-current approved window, including
+when a removal command might have committed before its acknowledgement was lost.
+Recovery is checked on both processes, and a failed command remains a failure.
+It reports
 a failed/expired recovery as HOLD for the named cleanup owner. It never writes
 a passing receipt for a partial campaign or silently resets credential custody.
 
 ## Cleanup and adjacent ownership
 
 Local cleanup is automatic and exact. For remote cleanup, first close only the
-new-host edge route, then remove only this labelled namespace and its four
+new-host edge route, then remove only this labelled namespace and its two
 dedicated PVCs/PVs through the approved storage owner. Verify the exact PV paths
 are reclaimed, task processes/pods/services/secrets are absent, and no public
 fixture route remains. Retain only redacted receipts/client pins for the approved

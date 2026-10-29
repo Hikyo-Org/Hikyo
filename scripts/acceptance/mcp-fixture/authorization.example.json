@@ -10,5 +10,8 @@
   "synthetic_fixture_mutations": false,
   "fixture_lock_cancel_and_delete_one_server_pod": false,
   "rendered_resources_sha256": null,
-  "ingress_verification_sha256": null
+  "ingress_verification_sha256": null,
+  "reservation_resources_sha256": null,
+  "shared_storage_verification_sha256": null,
+  "storage_check_resources_sha256": null
 }

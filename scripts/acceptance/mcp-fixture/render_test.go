@@ -82,6 +82,13 @@ func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.
 				t.Fatal("candidate servers start before supported seeding")
 			}
 			serverSeen = true
+			if claims, _, _ := unstructured.NestedSlice(object.Object, "spec", "volumeClaimTemplates"); len(claims) != 0 {
+				t.Fatal("replica-local installation custody cannot admit shared database")
+			}
+			assertSharedCustody(t, object.Object, "spec", "template", "spec")
+		}
+		if object.GetKind() == "Pod" && object.GetName() == "tooling" {
+			assertSharedCustody(t, object.Object, "spec")
 		}
 		if object.GetKind() == "Deployment" && object.GetName() == "gateway" {
 			replicas, ok, err := unstructured.NestedInt64(object.Object, "spec", "replicas")
@@ -107,6 +114,22 @@ func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.
 	if objects < 15 || !serverSeen || !gatewaySeen || !defaultDenySeen {
 		t.Fatal("incomplete deployable resource inventory")
 	}
+	var reservation struct {
+		APIVersion string                      `json:"apiVersion"`
+		Kind       string                      `json:"kind"`
+		Items      []unstructured.Unstructured `json:"items"`
+	}
+	if err := readPrivate(filepath.Join(dir, "reserve.json"), &reservation); err != nil {
+		t.Fatal(err)
+	}
+	if len(reservation.Items) != 5 {
+		t.Fatal("reservation includes workloads before storage proof")
+	}
+	for _, item := range reservation.Items {
+		if item.GetKind() == "Pod" || item.GetKind() == "StatefulSet" || item.GetKind() == "Deployment" {
+			t.Fatal("reservation starts runtime before storage review")
+		}
+	}
 	// Rendering must not accept changed bundle bytes under a prior receipt.
 	if os.Remove(filepath.Join(dir, "resources.yaml")) != nil {
 		t.Fatal("remove output failed")
@@ -116,5 +139,30 @@ func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.
 	}
 	if render(dir) == nil {
 		t.Fatal("changed public bundle accepted under selected inventory hash")
+	}
+}
+
+func assertSharedCustody(t *testing.T, object map[string]interface{}, fields ...string) {
+	t.Helper()
+	policyPath := append(append([]string{}, fields...), "securityContext", "fsGroupChangePolicy")
+	policy, _, _ := unstructured.NestedString(object, policyPath...)
+	if policy != "OnRootMismatch" {
+		t.Fatal("remount may rewrite private operator custody permissions")
+	}
+	volumePath := append(append([]string{}, fields...), "volumes")
+	volumes, _, _ := unstructured.NestedSlice(object, volumePath...)
+	found := false
+	for _, volume := range volumes {
+		v := volume.(map[string]interface{})
+		if v["name"] == "installation" {
+			claim, _, _ := unstructured.NestedString(v, "persistentVolumeClaim", "claimName")
+			if claim != "installation-authority" {
+				t.Fatal("tooling and replicas must share installation authority")
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("shared installation volume missing")
 	}
 }

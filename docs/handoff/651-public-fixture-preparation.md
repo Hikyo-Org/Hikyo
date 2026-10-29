@@ -67,6 +67,10 @@ with separate collector/destination ownership. Their SQLite/PostgreSQL seeding
 and destructive custody-copy removal are **not implemented or authorized by
 these #651 assets**. They must not use/delete the shared MCP database/event rows.
 Production installation custody and stable recovery/signing resources are excluded.
+Collector [PR #1093](https://github.com/Hikyo-Org/Hikyo/pull/1093), observed at
+`62d9f489b1bf581916f57e76e0dd820c15512234`, is independent collector preparation,
+not #651 source deployment or acceptance evidence. Both audit sibling seed
+assets remain NOT IMPLEMENTED/NOTRUN.
 
 ## Requirements to evidence
 
@@ -99,11 +103,20 @@ cryptographically certify inputs. The genuine production datastore gate still
 authenticates the selected build/bundle and durable installation/operator custody.
 
 The guarded launcher checks an actual owner decision, expiry, exact rendered
-hash, helper bytes and verifier receipt. It refuses an existing namespace.
+hashes, helper bytes and verifier receipt. It refuses an existing namespace.
+Reservation precedes any datastore/server start. The storage owner manually
+prepares only the verified new claim directory; two disposable diagnostic pods
+then prove cross-node locking and preservation of private custody on remount.
+Continuation requires the same namespace UID and a bound storage receipt.
 Servers and gateway start at zero replicas, then supported seeding precedes
 scaling to two real server processes. Root/TLS staging uses the existing canonical
-hidden binary modes; installation custody persists in dedicated PVCs. No NFS
-or production storage is reused.
+hidden binary modes. Tooling and both replicas share one new 1 GiB RWX claim on
+the existing NFS provisioner; the database has a separate 2 GiB claim. Existing
+installation custody is never reused. Shared storage is an explicit deployment
+prerequisite, not a locally rehearsed cross-node result. Public projected bundle
+bytes are hash-checked and staged into regular files for unchanged no-follow
+production readers. Owner-only 0400 canonical root staging is accepted while
+protected JSON remains 0600.
 
 Public campaign preflight requires separate reviewed ingress/CNI evidence and
 anonymous version/revision controls before a bearer. Runtime process identities
@@ -111,6 +124,11 @@ come from authenticated pod inventory and actual gateway backend sockets. A
 reported index instead of the selected platform digest is HOLD. No TLS bypass,
 redirect bearer forwarding, session affinity or MCP session authority is added.
 Wire receipts use closed metadata only, never headers/arguments/body dumps.
+The native Codex fixture host bypasses the dead provider proxy. Ambiguous grant
+write acknowledgements trigger supported recovery and both-process checks.
+Readiness cannot pass after its deadline. Drain checks first observe listener
+closure while real store work is still admitted, before releasing the held lock.
+Runtime termination evidence remains separate from API pod-removal observations.
 
 Only read tools are enabled. Stage/validate remains an optional separately
 approved profile; shipped write tests and capability gates remain intact.

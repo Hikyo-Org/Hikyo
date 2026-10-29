@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,18 +23,21 @@ import (
 )
 
 type executionAuthorization struct {
-	ApprovedBy       string    `json:"approved_by"`
-	ApprovalRef      string    `json:"approval_ref"`
-	Expires          time.Time `json:"expires_at_utc"`
-	Context          string    `json:"kube_context"`
-	Namespace        string    `json:"namespace"`
-	Origin           string    `json:"origin"`
-	NoSpend          bool      `json:"no_new_spend"`
-	NoProviders      bool      `json:"no_provider_calls"`
-	FixtureMutations bool      `json:"synthetic_fixture_mutations"`
-	Lifecycle        bool      `json:"fixture_lock_cancel_and_delete_one_server_pod"`
-	ResourcesSHA256  string    `json:"rendered_resources_sha256"`
-	IngressSHA256    string    `json:"ingress_verification_sha256"`
+	ApprovedBy          string    `json:"approved_by"`
+	ApprovalRef         string    `json:"approval_ref"`
+	Expires             time.Time `json:"expires_at_utc"`
+	Context             string    `json:"kube_context"`
+	Namespace           string    `json:"namespace"`
+	Origin              string    `json:"origin"`
+	NoSpend             bool      `json:"no_new_spend"`
+	NoProviders         bool      `json:"no_provider_calls"`
+	FixtureMutations    bool      `json:"synthetic_fixture_mutations"`
+	Lifecycle           bool      `json:"fixture_lock_cancel_and_delete_one_server_pod"`
+	ResourcesSHA256     string    `json:"rendered_resources_sha256"`
+	IngressSHA256       string    `json:"ingress_verification_sha256"`
+	ReserveSHA256       string    `json:"reservation_resources_sha256"`
+	StorageSHA256       string    `json:"shared_storage_verification_sha256"`
+	StorageChecksSHA256 string    `json:"storage_check_resources_sha256"`
 }
 
 func authorizeDeployment(dir string) error {
@@ -53,6 +57,12 @@ func authorizeDeployment(dir string) error {
 	}
 	if fileHash(filepath.Join(dir, "helper-linux-arm64")) != b.HelperBinary {
 		return errors.New("selected helper bytes differ")
+	}
+	if !sha256Pattern.MatchString(a.ReserveSHA256) || fileHash(filepath.Join(dir, "reserve.json")) != a.ReserveSHA256 {
+		return errors.New("reservation resource bytes differ from owner approval")
+	}
+	if !sha256Pattern.MatchString(a.StorageChecksSHA256) || fileHash(filepath.Join(dir, "storage-check.json")) != a.StorageChecksSHA256 {
+		return errors.New("storage diagnostic resource bytes differ from owner approval")
 	}
 	if fileHash(filepath.Join(dir, "artifact-verification.json")) != b.VerificationReceipt {
 		return errors.New("authenticated artifact verification receipt missing or changed")
@@ -75,8 +85,14 @@ type observedPod struct {
 		IP         string `json:"podIP"`
 		Phase      string `json:"phase"`
 		Containers []struct {
-			Ready   bool   `json:"ready"`
-			ImageID string `json:"imageID"`
+			Ready       bool   `json:"ready"`
+			ImageID     string `json:"imageID"`
+			ContainerID string `json:"containerID"`
+			State       struct {
+				Running struct {
+					Started time.Time `json:"startedAt"`
+				} `json:"running"`
+			} `json:"state"`
 		} `json:"containerStatuses"`
 	} `json:"status"`
 }
@@ -101,7 +117,7 @@ func (c publicControl) helper(ctx context.Context, action string) ([]byte, error
 func (c publicControl) pod(ctx context.Context, name string, b deploymentBinding) (observedPod, error) {
 	var p observedPod
 	out, err := c.kubectl(ctx, "get", "pod", name, "-o", "json").Output()
-	if err != nil || json.Unmarshal(out, &p) != nil || p.Metadata.Name != name || p.Metadata.UID == "" || p.Metadata.Labels["hikyo.dev/fixture"] != "mcp-651" || p.Status.IP == "" || p.Status.Phase != "Running" || len(p.Spec.Containers) != 1 || len(p.Status.Containers) != 1 || !p.Status.Containers[0].Ready || p.Spec.Containers[0].Image != b.Image {
+	if err != nil || json.Unmarshal(out, &p) != nil || p.Metadata.Name != name || p.Metadata.UID == "" || p.Metadata.Labels["hikyo.dev/fixture"] != "mcp-651" || p.Status.IP == "" || p.Status.Phase != "Running" || len(p.Spec.Containers) != 1 || len(p.Status.Containers) != 1 || !p.Status.Containers[0].Ready || p.Status.Containers[0].ContainerID == "" || p.Status.Containers[0].State.Running.Started.IsZero() || p.Spec.Containers[0].Image != b.Image {
 		return p, errors.New("fixture pod binding failed")
 	}
 	// Kubernetes sometimes reports an index rather than the selected child.
@@ -114,6 +130,9 @@ func (c publicControl) pod(ctx context.Context, name string, b deploymentBinding
 
 func publicCampaign(ctx context.Context, dir string) (result error) {
 	if err := authorizeDeployment(dir); err != nil {
+		return err
+	}
+	if err := authorizeContinuation(ctx, dir); err != nil {
 		return err
 	}
 	var a executionAuthorization
@@ -145,25 +164,6 @@ func publicCampaign(ctx context.Context, dir string) (result error) {
 	}()
 	r.Identities = map[string]string{"source_commit": binding.SourceCommit, "source_tree": binding.SourceTree, "image": binding.Image, "platform_manifest_sha256": binding.PlatformManifest, "image_config_sha256": binding.ImageConfig, "server_binary_sha256": binding.Binary, "release_manifest_sha256": binding.Manifest, "operator_public_key_sha256": binding.OperatorPin, "verification_receipt_sha256": binding.VerificationReceipt}
 	control := publicControl{authorization: a}
-	grantRemoved := false
-	defer func() {
-		if !grantRemoved {
-			return
-		}
-		if !time.Now().Before(a.Expires) {
-			r.Checks["grant_recovery"] = "HOLD: execution window expired; approved cleanup owner must restore"
-			return
-		}
-		recovery, cancel := context.WithDeadline(context.Background(), a.Expires)
-		defer cancel()
-		if _, err := control.helper(recovery, "grant-restore"); err != nil {
-			result = errors.Join(result, errors.New("supported grant recovery failed; owner action required"))
-			r.Checks["grant_recovery"] = "FAIL"
-		} else {
-			r.Checks["grant_recovery"] = "PASS: restored through supported writer after interrupted campaign"
-			r.event("failure_recovery_grant_restoration_committed", "", 0)
-		}
-	}()
 	helperHash, err := control.kubectl(ctx, "exec", "tooling", "--", "sha256sum", "/tools/mcp-fixture").Output()
 	if err != nil || len(strings.Fields(string(helperHash))) != 2 || strings.Fields(string(helperHash))[0] != binding.HelperBinary {
 		return errors.New("remote helper bytes differ from reviewed binding")
@@ -178,6 +178,17 @@ func publicCampaign(ctx context.Context, dir string) (result error) {
 	}
 	if pods[0].Metadata.UID == pods[1].Metadata.UID || pods[0].Status.IP == pods[1].Status.IP {
 		return errors.New("two distinct runtime processes required")
+	}
+	if err := control.stageOperationalTargets(ctx, pods); err != nil {
+		return err
+	}
+	if err := writePrivate(filepath.Join(dir, "deployment-processes.json"), pods); err != nil {
+		return err
+	}
+	for i, pod := range pods {
+		raw, _ := json.Marshal(pod)
+		hash := sha256.Sum256(raw)
+		r.Identities[fmt.Sprintf("process_%d_observation_sha256", i)] = fmt.Sprintf("%x", hash)
 	}
 	// These IDs come from the authenticated cluster inventory, not the
 	// response header alone. Receipt hashes keep private addresses out.
@@ -207,24 +218,40 @@ func publicCampaign(ctx context.Context, dir string) (result error) {
 		return err
 	}
 	r.Checks["supported_committed_revocation_first_call_each_process_replacement"] = "PASS"
-	if _, err := control.helper(ctx, "grant-remove"); err != nil {
-		return err
-	}
-	grantRemoved = true
-	r.event("grant_removal_committed_writer_return", "", 0)
-	if err := p.firstDenials(ctx, f.Credentials["live"].Token, false); err != nil {
-		return err
-	}
-	if _, err := control.helper(ctx, "grant-restore"); err != nil {
-		return err
-	}
-	grantRemoved = false
-	r.event("grant_restoration_committed_writer_return", "", 0)
-	for i := 0; i < 2; i++ {
-		v, err := p.call(ctx, "tools/call", mcpserver.ToolListDefinitions, p.args(), f.Credentials["live"].Token)
-		if err != nil || !successful(v) {
-			return errors.New("public same-bearer recovery failed")
+	if err := withGrantRecovery(func() error {
+		// Any dispatch may have committed before kubectl loses its reply.
+		if _, err := control.helper(ctx, "grant-remove"); err != nil {
+			return err
 		}
+		r.event("grant_removal_committed_writer_return", "", 0)
+		if err := p.firstDenials(ctx, f.Credentials["live"].Token, false); err != nil {
+			return err
+		}
+		if _, err := control.helper(ctx, "grant-restore"); err != nil {
+			return err
+		}
+		r.event("grant_restoration_committed_writer_return", "", 0)
+		return p.verifyLiveBoth(ctx)
+	}, func() error {
+		if !time.Now().Before(a.Expires) {
+			r.Checks["grant_recovery"] = "HOLD: execution window expired; owner must restore"
+			return errors.New("grant restoration requires current owner window")
+		}
+		recovery, cancel := context.WithDeadline(context.Background(), a.Expires)
+		defer cancel()
+		_, writerErr := control.helper(recovery, "grant-restore")
+		observedErr := p.verifyLiveBoth(recovery)
+		if observedErr != nil {
+			r.Checks["grant_recovery"] = "FAIL: supported restoration or both-process recovery unconfirmed"
+		} else {
+			r.Checks["grant_recovery"] = "PASS: both processes authorize after supported restoration attempt"
+		}
+		if writerErr != nil {
+			r.Checks["grant_recovery_writer_ack"] = "UNKNOWN: do not claim committed writer receipt"
+		}
+		return errors.Join(writerErr, observedErr)
+	}); err != nil {
+		return err
 	}
 	r.Checks["supported_grant_remove_restore_both"] = "PASS"
 	if err := p.smoke(ctx, dir, func() error { _, err := control.helper(ctx, "revoke-smoke"); return err }); err != nil {
@@ -388,7 +415,7 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 			done <- err
 		}()
 		observed := -1
-		if err := wait(ctx, 4*time.Second, func() bool {
+		if err := wait(ctx, 4*time.Second, func(ctx context.Context) bool {
 			v, err := c.counts(ctx)
 			if err != nil || v.Claims != 1 {
 				return false
@@ -409,7 +436,10 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		start := time.Now()
 		cancel()
 		<-done
-		if err := wait(ctx, 3*time.Second, func() bool { v, err := c.counts(ctx); return err == nil && v.Claims == 0 && v.Blocked[observed] == 0 }); err != nil {
+		if err := wait(ctx, 3*time.Second, func(ctx context.Context) bool {
+			v, err := c.counts(ctx)
+			return err == nil && v.Claims == 0 && v.Blocked[observed] == 0
+		}); err != nil {
 			release()
 			return errors.New("public cancellation left a store query or shared claim")
 		}
@@ -439,7 +469,7 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		done <- err
 	}()
 	index := -1
-	if err := wait(ctx, 4*time.Second, func() bool {
+	if err := wait(ctx, 4*time.Second, func(ctx context.Context) bool {
 		v, err := c.counts(ctx)
 		if err != nil || v.Claims != 1 {
 			return false
@@ -455,16 +485,33 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		return errors.New("public drain admission not observed")
 	}
 	current, err := c.pod(ctx, pods[index].Metadata.Name, binding)
-	if err != nil || current.Metadata.UID != pods[index].Metadata.UID {
+	if err != nil || current.Metadata.UID != pods[index].Metadata.UID || current.Status.Containers[0].ContainerID != pods[index].Status.Containers[0].ContainerID {
 		return errors.New("refusing changed pod before drain")
 	}
 	start := time.Now()
-	deletion := c.kubectl(ctx, "delete", "--raw", "/api/v1/namespaces/hikyo-mcp-651/pods/"+current.Metadata.Name, "-f", "-")
+	drainCtx, cancelDrain := context.WithDeadline(ctx, start.Add(5*time.Second))
+	defer cancelDrain()
+	listeners, err := c.listeners(drainCtx)
+	if err != nil || !listeners.Accepting[0] || !listeners.Accepting[1] {
+		return errors.New("operational listener positive controls failed")
+	}
+	deletion := c.kubectl(drainCtx, "delete", "--raw", "/api/v1/namespaces/hikyo-mcp-651/pods/"+current.Metadata.Name, "-f", "-")
 	preconditions, _ := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "DeleteOptions", "preconditions": map[string]string{"uid": current.Metadata.UID}})
 	deletion.Stdin = bytes.NewReader(preconditions)
 	if _, err := deletion.Output(); err != nil {
 		return errors.New("fixture SIGTERM deletion refused")
 	}
+	if err := wait(drainCtx, time.Until(start.Add(5*time.Second)), func(ctx context.Context) bool {
+		listeners, err := c.listeners(ctx)
+		if err != nil || listeners.Accepting[index] || !listeners.Accepting[1-index] {
+			return false
+		}
+		counts, err := c.counts(ctx)
+		return err == nil && counts.Claims == 1 && counts.Blocked[index] > 0
+	}); err != nil {
+		return errors.New("SIGTERM shutdown start was not observed while store work remained admitted")
+	}
+	p.receipt.event("public_shutdown_listener_closed_while_store_work_admitted", fmt.Sprint(index), 0)
 	if err := release(); err != nil {
 		return errors.New("drain lock release failed")
 	}
@@ -473,14 +520,14 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		if err != nil {
 			return err
 		}
-	case <-time.After(5 * time.Second):
+	case <-drainCtx.Done():
 		return errors.New("public admitted read exceeded drain budget")
 	}
-	if err := wait(ctx, time.Until(start.Add(5*time.Second)), func() bool { v, err := c.counts(ctx); return err == nil && v.Claims == 0 }); err != nil {
+	if err := wait(drainCtx, time.Until(start.Add(5*time.Second)), func(ctx context.Context) bool { v, err := c.counts(ctx); return err == nil && v.Claims == 0 }); err != nil {
 		return errors.New("public drain left shared claims")
 	}
 	peer, err := c.pod(ctx, pods[1-index].Metadata.Name, binding)
-	if err != nil || peer.Metadata.UID != pods[1-index].Metadata.UID {
+	if err != nil || peer.Metadata.UID != pods[1-index].Metadata.UID || peer.Status.Containers[0].ContainerID != pods[1-index].Status.Containers[0].ContainerID {
 		return errors.New("drain peer changed or failed")
 	}
 	r, err := p.call(ctx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["lifecycle"].Token)
@@ -488,7 +535,7 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 		return errors.New("public peer positive control failed")
 	}
 	p.receipt.Measurements["public_SIGTERM_admitted_read_and_claim_release"] = time.Since(start).Milliseconds()
-	if err := wait(ctx, time.Until(start.Add(5*time.Second)), func() bool {
+	if err := wait(drainCtx, time.Until(start.Add(5*time.Second)), func(ctx context.Context) bool {
 		out, err := c.kubectl(ctx, "get", "pod", current.Metadata.Name, "--ignore-not-found=true", "-o", "json").Output()
 		if err != nil {
 			return false
@@ -501,9 +548,10 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 	}); err != nil {
 		return errors.New("old graceful pod removal not observed within unchanged five-second budget")
 	}
-	p.receipt.Checks["public_SIGTERM_process_exit"] = "PASS: UID-preconditioned graceful deletion and old pod removal observed within five seconds; attach runtime termination record"
+	p.receipt.Checks["public_SIGTERM_graceful_pod_removal"] = "PASS: shutdown observed with admitted store work, original pod/container bound, normal old-pod removal observed within five seconds"
+	p.receipt.Checks["public_SIGTERM_runtime_termination_record"] = "HOLD: attach original-container runtime termination record; API removal is an upper-bound observation"
 	var replacement observedPod
-	if err := wait(ctx, 120*time.Second, func() bool {
+	if err := wait(ctx, 120*time.Second, func(ctx context.Context) bool {
 		pod, err := c.pod(ctx, current.Metadata.Name, binding)
 		if err != nil || pod.Metadata.UID == current.Metadata.UID {
 			return false
@@ -527,4 +575,15 @@ func (p *probe) publicLifecycle(ctx context.Context, c publicControl, pods []obs
 	}
 	p.receipt.Checks["public_replacement_and_peer_same_custody_recovery"] = "PASS"
 	return nil
+}
+
+// Compensation is registered before attempting the remote write. A missing
+// acknowledgement cannot establish whether the supported writer committed.
+func withGrantRecovery(action, recoverGrant func() error) (result error) {
+	defer func() {
+		if result != nil {
+			result = errors.Join(result, recoverGrant())
+		}
+	}()
+	return action()
 }

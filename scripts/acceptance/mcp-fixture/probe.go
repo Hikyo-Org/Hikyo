@@ -281,3 +281,18 @@ func probeConfigured(ctx context.Context, dir string) error {
 	}
 	return writePrivate(filepath.Join(dir, "probe-receipt.json"), r)
 }
+
+func (p *probe) verifyLiveBoth(ctx context.Context) error {
+	seen := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		r, err := p.call(ctx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["live"].Token)
+		if err != nil || !successful(r) || !contains(p.target.Processes, r.Process) {
+			return errors.New("both-process replacement recovery failed")
+		}
+		seen[r.Process] = true
+	}
+	if len(seen) != 2 {
+		return errors.New("replacement recovery missed a process")
+	}
+	return nil
+}

@@ -68,8 +68,17 @@ func run(ctx context.Context, args []string) error {
 	if args[0] == "authorize" {
 		return authorizeDeployment(*dir)
 	}
+	if args[0] == "reserve-record" {
+		return recordReservation(ctx, *dir)
+	}
+	if args[0] == "authorize-resume" {
+		return authorizeContinuation(ctx, *dir)
+	}
 	if args[0] == "public" {
 		return publicCampaign(ctx, *dir)
+	}
+	if args[0] == "listeners" {
+		return listeners(ctx, *dir)
 	}
 	var cfg settings
 	if err := readPrivate(filepath.Join(*dir, "settings.json"), &cfg); err != nil {
@@ -102,13 +111,25 @@ func run(ctx context.Context, args []string) error {
 }
 
 func privatePath(path string, directory bool) error {
-	info, err := os.Lstat(path)
 	mode := os.FileMode(0600)
 	if directory {
 		mode = 0700
 	}
-	if err != nil || !filepath.IsAbs(path) || info.Mode().Perm() != mode || info.IsDir() != directory || (!directory && !info.Mode().IsRegular()) || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("custody requires absolute 0700 directories and 0600 regular files")
+	return privatePathModes(path, directory, mode)
+}
+
+func privatePathModes(path string, directory bool, modes ...os.FileMode) error {
+	info, err := os.Lstat(path)
+	permitted := false
+	if err == nil {
+		for _, mode := range modes {
+			if info.Mode().Perm() == mode {
+				permitted = true
+			}
+		}
+	}
+	if err != nil || !filepath.IsAbs(path) || !permitted || info.IsDir() != directory || (!directory && !info.Mode().IsRegular()) || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("custody requires canonical owner-only directories and regular files with the declared mode")
 	}
 	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || int(stat.Uid) != os.Geteuid() {
 		return errors.New("custody must belong to the current user")

@@ -34,7 +34,7 @@ func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*
 			_, err := p.call(callCtx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["lifecycle"].Token)
 			done <- err
 		}()
-		admitted := func() bool {
+		admitted := func(ctx context.Context) bool {
 			var n int
 			err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&n)
 			if err != nil || n != 1 {
@@ -59,7 +59,7 @@ func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*
 		}
 		// Keep the table lock held until BOTH the shared claim and the blocked
 		// backend query have disappeared. A client error alone cannot pass.
-		if err := wait(ctx, 3*time.Second, func() bool {
+		if err := wait(ctx, 3*time.Second, func(ctx context.Context) bool {
 			var claims, waiting int
 			if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&claims) != nil {
 				return false
@@ -95,16 +95,38 @@ func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*
 		}
 		done <- err
 	}()
-	if err := wait(ctx, 4*time.Second, func() bool {
+	if err := wait(ctx, 4*time.Second, func(ctx context.Context) bool {
 		var n int
 		return pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&n) == nil && n == 1
 	}); err != nil {
 		return errors.New("drain admission not observed")
 	}
 	start := time.Now()
+	drainCtx, cancelDrain := context.WithDeadline(ctx, start.Add(5*time.Second))
+	defer cancelDrain()
+	if accepting, err := listenerAccepting(drainCtx, processes[index].operational); err != nil || !accepting {
+		return errors.New("drain operational listener positive control failed")
+	}
 	if err := processes[index].cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return errors.New("SIGTERM failed")
 	}
+	if err := wait(drainCtx, time.Until(start.Add(5*time.Second)), func(ctx context.Context) bool {
+		accepting, err := listenerAccepting(ctx, processes[index].operational)
+		if err != nil || accepting {
+			return false
+		}
+		var claims, blocked int
+		if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&claims) != nil {
+			return false
+		}
+		if pool.QueryRow(ctx, "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock'", fmt.Sprintf("mcp651-%d", index)).Scan(&blocked) != nil {
+			return false
+		}
+		return claims == 1 && blocked > 0
+	}); err != nil {
+		return errors.New("shutdown start with admitted store work not observed")
+	}
+	p.receipt.event("shutdown_listener_closed_while_store_work_admitted", fmt.Sprint(index), 0)
 	// Releasing the owned store lock permits the already-admitted read to
 	// finish while shutdown refuses new work. No application state is edited.
 	if err := lock.Rollback(ctx); err != nil {
@@ -115,7 +137,7 @@ func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*
 		if err != nil {
 			return err
 		}
-	case <-time.After(5 * time.Second):
+	case <-drainCtx.Done():
 		return errors.New("inflight request exceeded drain budget")
 	}
 	select {
@@ -123,8 +145,11 @@ func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*
 		if err != nil {
 			return errors.New("drained process exited unsuccessfully")
 		}
-	case <-time.After(time.Until(start.Add(5 * time.Second))):
+	case <-drainCtx.Done():
 		return errors.New("server exceeded unchanged five-second drain budget")
+	}
+	if drainCtx.Err() != nil {
+		return errors.New("drain observation exceeded five-second budget")
 	}
 	var claims int
 	if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight").Scan(&claims) != nil || claims != 0 {

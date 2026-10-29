@@ -3,24 +3,34 @@
 # This preparation task does not invoke this script.
 set -eu
 umask 077
-if [ "$#" -ne 2 ]; then
-  printf 'usage: deploy.sh ABSOLUTE_RUNTIME ABSOLUTE_LOCAL_FIXTURE_EXECUTABLE\n' >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  printf 'usage: deploy.sh ABSOLUTE_RUNTIME ABSOLUTE_LOCAL_FIXTURE_EXECUTABLE [reserve|continue]\n' >&2
   exit 2
 fi
 runtime=$1
 fixture=$2
+phase=${3:-reserve}
 case "$runtime:$fixture" in /*:/*) ;; *) exit 2 ;; esac
 "$fixture" authorize --runtime "$runtime"
 kube() { "$fixture" authorize --runtime "$runtime"; kubectl --context picluster --namespace hikyo-mcp-651 "$@"; }
-if [ -n "$(kube get namespace hikyo-mcp-651 --ignore-not-found=true -o name)" ]; then
-  printf 'HOLD: namespace exists; inspect its owner and custody, do not reset or redeploy it\n' >&2
-  exit 1
-fi
+case "$phase" in
+  reserve)
+    if [ -n "$(kube get namespace hikyo-mcp-651 --ignore-not-found=true -o name)" ]; then
+      printf 'HOLD: namespace exists; never adopt or reset its custody\n' >&2
+      exit 1
+    fi
+    kube apply -f "$runtime/reserve.json"
+    "$fixture" reserve-record --runtime "$runtime"
+    printf 'RESERVED ONLY. No server or database has been seeded.\n'
+    printf 'HOLD: owner verifies the installation-authority PVC, canonical permissions, remounts and cross-node locks, then records storage-verification.json before continue.\n'
+    exit 0
+    ;;
+  continue) "$fixture" authorize-resume --runtime "$runtime" ;;
+  *) printf 'phase must be reserve or continue\n' >&2; exit 2 ;;
+esac
 for file in root-key password dsn backend.crt backend.key backend-ca.crt postgres.crt postgres.key postgres-ca.crt public.crt public.key settings.json; do
   test -f "$runtime/custody/$file"
 done
-kube create namespace hikyo-mcp-651
-kube label namespace hikyo-mcp-651 hikyo.dev/fixture=mcp-651 pod-security.kubernetes.io/enforce=restricted
 kube create secret generic fixture-root --from-file="root-key=$runtime/custody/root-key"
 kube create secret generic postgres-password --from-file="password=$runtime/custody/password"
 kube create secret generic fixture-dsn --from-file="dsn=$runtime/custody/dsn"

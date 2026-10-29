@@ -7,17 +7,124 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
+
+func TestCanonicalRootStageIsAcceptedWithoutRelaxingJSONCustody(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, destination := filepath.Join(dir, "source"), filepath.Join(dir, "root")
+	if err := os.WriteFile(source, []byte(strings.Repeat("07", 32)), 0440); err != nil {
+		t.Fatal(err)
+	}
+	if err := securefile.StageRootKey(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	if err := privatePathModes(destination, false, 0400, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var cfg settings
+	if readPrivate(destination, &cfg) == nil {
+		t.Fatal("root staging mode broadened JSON input custody")
+	}
+}
+
+func TestProjectedPublicFilesBecomeRegularProductionReadableFiles(t *testing.T) {
+	dir := t.TempDir()
+	projected, staged := filepath.Join(dir, "projected"), filepath.Join(dir, "staged")
+	if err := os.MkdirAll(filepath.Join(projected, "revision", "bundle"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(staged, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("revision", filepath.Join(projected, "..data")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("..data/bundle", filepath.Join(projected, "bundle")); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(projected, "revision", "bundle", "index.json")
+	want := []byte(`{"fixture":"public staging consumer only"}`)
+	if err := os.WriteFile(path, want, 0444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("..data/operator.pub", filepath.Join(projected, "operator.pub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projected, "revision", "operator.pub"), want, 0444); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backupreceipt.ReadPublicArtifact(filepath.Join(projected, "operator.pub"), 1024); err == nil {
+		t.Fatal("positive control did not reject projected symlink")
+	}
+	args := []string{"stage-public.sh", projected, staged, "bundle/index.json:" + fileHash(path), "operator.pub:" + fileHash(path)}
+	if output, err := exec.Command("sh", args...).CombinedOutput(); err != nil {
+		t.Fatalf("staging: %v: %s", err, output)
+	}
+	for _, relative := range []string{"bundle/index.json", "operator.pub"} {
+		got, err := backupreceipt.ReadPublicArtifact(filepath.Join(staged, relative), 1024)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatal("staged file rejected by production no-follow reader", err)
+		}
+	}
+	if err := os.Chmod(path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("changed projected content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if exec.Command("sh", args...).Run() == nil {
+		t.Fatal("changed projection passed selected hash")
+	}
+}
+
+func TestAmbiguousGrantWriteAlwaysAttemptsRecovery(t *testing.T) {
+	ackLost, recoveryFailed := errors.New("writer reply lost after possible commit"), errors.New("recovery failed")
+	for _, recoveryErr := range []error{nil, recoveryFailed} {
+		called := false
+		err := withGrantRecovery(func() error { return ackLost }, func() error { called = true; return recoveryErr })
+		if !called || !errors.Is(err, ackLost) || recoveryErr != nil && !errors.Is(err, recoveryErr) {
+			t.Fatal("ambiguous commit skipped compensation or hid failure")
+		}
+	}
+}
+
+func TestWaitCannotPassAfterDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	if wait(ctx, time.Second, func(context.Context) bool { called = true; return true }) == nil || called {
+		t.Fatal("expired wait invoked readiness")
+	}
+	if wait(context.Background(), 10*time.Millisecond, func(ctx context.Context) bool { <-ctx.Done(); return true }) == nil {
+		t.Fatal("late positive observation passed")
+	}
+}
+
+func TestCodexPublicFixtureBypassesDeadProxyOnlyForItsHost(t *testing.T) {
+	value := codexNoProxy("https://mcp-651.example/mcp/codex")
+	if value != "NO_PROXY=localhost,127.0.0.1,mcp-651.example" || strings.Contains(value, "*") {
+		t.Fatal("public fixture would use dead proxy or unrestricted bypass", value)
+	}
+}
 
 func TestWireReceiptCannotPersistCallerControlledSecrets(t *testing.T) {
 	dir, err := filepath.EvalSymlinks(t.TempDir())

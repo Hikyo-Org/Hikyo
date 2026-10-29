@@ -18,8 +18,8 @@ spec:
     limits.cpu: "3"
     requests.memory: 1536Mi
     limits.memory: 3Gi
-    requests.storage: 5Gi
-    persistentvolumeclaims: "4"
+    requests.storage: 3Gi
+    persistentvolumeclaims: "2"
     pods: "6"
     services.loadbalancers: "0"
     services.nodeports: "0"
@@ -57,6 +57,8 @@ spec:
   ingress:
     - from: [{podSelector: {matchLabels: {app: gateway}}}]
       ports: [{protocol: TCP, port: 8443}]
+    - from: [{podSelector: {matchLabels: {app: tooling}}}]
+      ports: [{protocol: TCP, port: 8081}]
   egress:
     - to: [{podSelector: {matchLabels: {app: db}}}]
       ports: [{protocol: TCP, port: 5432}]
@@ -82,6 +84,8 @@ spec:
   egress:
     - to: [{podSelector: {matchLabels: {app: db}}}]
       ports: [{protocol: TCP, port: 5432}]
+    - to: [{podSelector: {matchLabels: {app: server}}}]
+      ports: [{protocol: TCP, port: 8081}]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -183,6 +187,7 @@ spec:
         runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile: {type: RuntimeDefault}
       affinity:
         nodeAffinity:
@@ -194,9 +199,18 @@ spec:
             - labelSelector: {matchLabels: {app: server}}
               topologyKey: kubernetes.io/hostname
       initContainers:
+        - name: public-stage
+          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+          command: [sh, /scripts/stage-public.sh, /projected, /public{{range .PublicFiles}}, "{{.Path}}:{{.SHA256}}"{{end}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+          volumeMounts:
+            - {name: public-source, mountPath: /projected, readOnly: true}
+            - {name: public-stage-script, mountPath: /scripts, readOnly: true}
+            - {name: public, mountPath: /public}
         - name: installation-directory
           image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-          command: [sh, -eu, -c, 'umask 077; if [ ! -e /installation/operator-state ]; then mkdir /installation/operator-state; fi; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"']
+          command: [sh, -eu, -c, 'test "$(stat -c "%a %g" /installation)" = "2770 65532"; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"']
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
           volumeMounts: [{name: installation, mountPath: /installation}]
@@ -260,7 +274,13 @@ spec:
           secret: {secretName: backend-tls, defaultMode: 0440}
         - name: tls
           emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        - name: installation
+          persistentVolumeClaim: {claimName: installation-authority}
         - name: public
+          emptyDir: {medium: Memory, sizeLimit: 2Mi}
+        - name: public-stage-script
+          configMap: {name: public-stage}
+        - name: public-source
           configMap:
             name: authenticated-public-bundle
             items:
@@ -270,9 +290,6 @@ spec:
           configMap: {name: db-ca}
         - name: tmp
           emptyDir: {medium: Memory, sizeLimit: 32Mi}
-  volumeClaimTemplates:
-    - metadata: {name: installation, labels: {hikyo.dev/fixture: mcp-651}}
-      spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 1Gi}}}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -292,7 +309,7 @@ spec:
     spec:
       serviceAccountName: fixture
       nodeSelector: {kubernetes.io/hostname: "{{.NodeA}}"}
-      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
       initContainers:
         - name: tls-stage
           image: "{{.Image}}"
@@ -356,8 +373,17 @@ metadata: {name: tooling, namespace: hikyo-mcp-651, labels: {app: tooling, hikyo
 spec:
   serviceAccountName: fixture
   nodeSelector: {kubernetes.io/hostname: "{{.NodeA}}"}
-  securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+  securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
   initContainers:
+    - name: public-stage
+      image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+      command: [sh, /scripts/stage-public.sh, /projected, /public{{range .PublicFiles}}, "{{.Path}}:{{.SHA256}}"{{end}}]
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+      volumeMounts:
+        - {name: public-source, mountPath: /projected, readOnly: true}
+        - {name: public-stage-script, mountPath: /scripts, readOnly: true}
+        - {name: public, mountPath: /public}
     - name: root-key-stage
       image: "{{.Image}}"
       args: [__hikyo-stage-root-key]
@@ -369,7 +395,7 @@ spec:
   containers:
     - name: tooling
       image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-      command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; if [ ! -e /installation/operator-state ]; then mkdir /installation/operator-state; fi; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"; exec sleep 86400']
+      command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; test "$(stat -c "%a %g" /installation)" = "2770 65532"; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"; exec sleep 86400']
       env: [{name: PGSSLROOTCERT, value: /db-ca/ca.crt}]
       securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
       resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 250m, memory: 512Mi}}
@@ -390,8 +416,12 @@ spec:
     - name: work
       emptyDir: {medium: Memory, sizeLimit: 64Mi}
     - name: installation
-      persistentVolumeClaim: {claimName: tooling-state}
+      persistentVolumeClaim: {claimName: installation-authority}
     - name: public
+      emptyDir: {medium: Memory, sizeLimit: 2Mi}
+    - name: public-stage-script
+      configMap: {name: public-stage}
+    - name: public-source
       configMap:
         name: authenticated-public-bundle
         items:
@@ -402,5 +432,14 @@ spec:
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
-metadata: {name: tooling-state, namespace: hikyo-mcp-651, labels: {hikyo.dev/fixture: mcp-651}}
-spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 1Gi}}}
+metadata: {name: installation-authority, namespace: hikyo-mcp-651, labels: {hikyo.dev/fixture: mcp-651}}
+spec: {accessModes: [ReadWriteMany], storageClassName: nfs, resources: {requests: {storage: 1Gi}}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: public-stage, namespace: hikyo-mcp-651}
+data:
+  stage-public.sh: |
+{{range .StageLines}}    {{.}}
+{{end}}

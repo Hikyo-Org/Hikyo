@@ -56,7 +56,7 @@ func validateDSN(raw string, development bool) error {
 	if development && u.Hostname() == "127.0.0.1" && q.Get("sslmode") == "disable" {
 		return nil
 	}
-	if !development && u.Hostname() == "db.hikyo-mcp-651.svc.cluster.local" && q.Get("sslmode") == "verify-full" {
+	if !development && u.Hostname() == "db.hikyo-mcp-651.svc.cluster.local" && port == 5432 && q.Get("sslmode") == "verify-full" {
 		return nil
 	}
 	return errors.New("fixture host or TLS policy refused")
@@ -69,7 +69,7 @@ func openFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring,
 	if err := privatePath(cfg.State, true); err != nil {
 		return nil, nil, err
 	}
-	if err := privatePath(cfg.Root, false); err != nil {
+	if err := privatePathModes(cfg.Root, false, 0400, 0600); err != nil {
 		return nil, nil, err
 	}
 	root, err := crypto.ReadRootKey(cfg.Root, "")

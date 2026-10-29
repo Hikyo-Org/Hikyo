@@ -36,10 +36,11 @@ import (
 const postgresImage = "postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941"
 
 type serverProcess struct {
-	cmd      *exec.Cmd
-	done     chan error
-	address  string
-	identity string
+	cmd         *exec.Cmd
+	done        chan error
+	address     string
+	identity    string
+	operational string
 }
 
 func command(ctx context.Context, name string, args ...string) (string, error) {
@@ -160,7 +161,7 @@ func local(ctx context.Context, dir, binary string) (result error) {
 		return errors.New("database did not bind loopback only")
 	}
 	dsn := "postgres://hikyo:" + password + "@" + address + "/hikyo_mcp_651?sslmode=disable"
-	if err := wait(ctx, 20*time.Second, func() bool {
+	if err := wait(ctx, 20*time.Second, func(ctx context.Context) bool {
 		c, err := pgx.Connect(ctx, dsn)
 		if err != nil {
 			return false
@@ -383,20 +384,26 @@ func startServer(ctx context.Context, dir, binary string, cfg settings, origin, 
 	}
 	address := listener.Addr().String()
 	listener.Close()
+	operational, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	operationalAddress := operational.Addr().String()
+	operational.Close()
 	log, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("server-%d.log", index)), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(binary, "server", "--dev", "--listen="+address, "--operational-listen=127.0.0.1:0", "--root-key-file="+cfg.Root, "--tls-cert-file="+cert, "--tls-key-file="+key)
+	cmd := exec.Command(binary, "server", "--dev", "--listen="+address, "--operational-listen="+operationalAddress, "--root-key-file="+cfg.Root, "--tls-cert-file="+cert, "--tls-key-file="+key)
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "HIKYO_DB=" + cfg.DSN + "&application_name=mcp651-" + strconv.Itoa(index), "HIKYO_UPGRADE_STATE_DIR=" + cfg.State, "HIKYO_EXTERNAL_ORIGIN=" + origin, "HIKYO_MCP_ENABLED=true", "HIKYO_NODE_ID=mcp651-" + strconv.Itoa(index), "HIKYO_PG_POOL_MAX=4", "HIKYO_UPDATE_CHANNEL=off"}
 	cmd.Stdout, cmd.Stderr = log, log
 	if err := cmd.Start(); err != nil {
 		log.Close()
 		return nil, errors.New("server launch failed")
 	}
-	p := &serverProcess{cmd: cmd, done: make(chan error, 1), address: address, identity: fmt.Sprintf("process-%d", cmd.Process.Pid)}
+	p := &serverProcess{cmd: cmd, done: make(chan error, 1), address: address, operational: operationalAddress, identity: fmt.Sprintf("process-%d", cmd.Process.Pid)}
 	go func() { err := cmd.Wait(); log.Close(); p.done <- err; close(p.done) }()
-	if err := wait(ctx, 30*time.Second, func() bool {
+	if err := wait(ctx, 30*time.Second, func(ctx context.Context) bool {
 		c, err := net.DialTimeout("tcp", address, 100*time.Millisecond)
 		if err != nil {
 			return false
@@ -411,11 +418,18 @@ func startServer(ctx context.Context, dir, binary string, cfg settings, origin, 
 	return p, nil
 }
 
-func wait(ctx context.Context, budget time.Duration, ready func() bool) error {
+func wait(ctx context.Context, budget time.Duration, ready func(ctx context.Context) bool) error {
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	for {
-		if ready() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		readyNow := ready(ctx)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if readyNow {
 			return nil
 		}
 		select {
