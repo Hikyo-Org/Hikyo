@@ -13,8 +13,8 @@ or deployment, or grant a general review exception.
 Scope is the delivered one-way KV v2 destination and its existing API, CLI,
 browser, import-loop and durable outbox consumers. #162 remains CLOSED for
 implementation. #26 owns the MVP amendment; #28 owns the deployment seam
-pointer. Qualifying review and scoped provider acceptance are HOLD pending
-the execution records below. Integrated final-candidate acceptance remains #79.
+pointer. Independent review and scoped provider acceptance remain pending the execution
+records below. Integrated final-candidate acceptance remains #79.
 
 AWS #158/#969/#1057, Transit #156, TLS #966, other providers and all unrelated
 release gates are outside this task. Shipped code and assertions stay intact.
@@ -46,6 +46,20 @@ Three concrete defects were reproduced before repair:
 3. A subsequent direct `ErrOperatorReview` fell through to `network` health.
    It now remains `provider_ambiguous`, which requires attention. Sibling
    consumers retain the existing closed error vocabulary.
+
+Independent Spec R1 found three further defects, reproduced with regressions:
+
+4. Revocation during metadata PATCH, AppRole login or renewal could permit a
+   following provider request. The module now carries its live authority gate
+   to each HTTP request boundary, after authentication work as well.
+5. An Owned row with legacy pending metadata was detected only after earlier
+   paths could be mutated. A target-wide metadata preflight now stops first.
+   An acknowledged write with failed ownership finalization retains its
+   successful OUTCOME and Dispatched custody, preserving the whole-target hold
+   across new jobs and teardown until exact version-bound adoption.
+6. Import-loop comparison did not share the configured endpoint's host
+   canonicalization. It now reuses that owner for trailing DNS dots, IDNA and
+   IPv4-mapped IPv6 aliases, preserving effective ports and namespace identity.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently
@@ -114,21 +128,27 @@ provenance. Current repairs and this packet are OpenAI gpt-6.1-sol/xhigh.
 Unknown original portions remain unknown, rather than being assigned a
 provider from a human Git identity or a squash commit's combined trailers.
 
-An available OpenAI reviewer can qualify review of Claude-authored material;
-Anthropic availability is not a prerequisite for that route. Reviewing the
-OpenAI-authored portions with OpenAI does not qualify as cross-provider review.
-No TLS-specific or other feature's exception transfers to Vault.
+An available OpenAI reviewer can review Claude-authored material without
+Anthropic availability. Reviewing OpenAI-authored portions with OpenAI remains
+same-provider review. No TLS-specific or other feature's exception transfers
+to Vault.
 
-The confirmed cached cross-provider route is OpenAI gpt-6.1-sol/high for
-Anthropic-authored portions. Current authenticated telemetry reported 79 percent
-weekly remaining and no secondary/session bucket. The shared review skill's
-combined daily-choice/quota-applicability card was asked once; no answer arrived
-within its three-minute window. This attempt's qualifying pass is SKIPPED under
-that rule, not CLEAN. Anthropic is independently unavailable, confirmed in both
-the owner availability record and orchestrator capability readback. No paid API,
-provider substitution or restored subscription was assumed. Ordinary independent
-OpenAI Standards and Spec reviews remain separate from this qualifying gate.
-Their exact source, findings and dispositions will be attached to the PR.
+The initial cross-provider attempt was SKIPPED under the then-current skill's
+unresolved quota rule; no pass was executed or relabeled CLEAN. Marc then
+explicitly instructed: "remove the cross model review requirements and daily
+model choice. Keep current choices". The local review policy and wrapper now
+remove mandatory cross-provider, daily-choice and quota-prompt gates while
+retaining OpenAI gpt-6.1-sol/high and the inactive Anthropic
+claude-opus-5-5/high selections. No subscription, paid route or alternate model
+was assumed. This is an explicit owner review-policy disposition, not a
+fabricated cross-provider result or a new feature-membership decision.
+
+The current task uses independent OpenAI gpt-6.1-sol/xhigh Standards and Spec
+reviews. R1 reviewed `d84fbeadfad5f9669549d1738543c1260aa9efc3`, tree
+`e63f48e26711c850b2c269b84e9150895af4a5fe`: Standards CLEAN; Spec CHANGES
+with the three findings above. All three were reproduced and repaired at their
+owners; the final source needs the independent re-check and exact-head receipt.
+Historical cross-provider SKIPPED evidence remains intact.
 
 ## Owning-ticket ceremony
 
@@ -136,8 +156,7 @@ Membership is recorded on [#162](https://github.com/Hikyo-Org/Hikyo/issues/162#i
 which remains CLOSED for implementation. The scoped amendment was reopened on
 [#26](https://github.com/Hikyo-Org/Hikyo/issues/26#issuecomment-6493362830) and
 [#28](https://github.com/Hikyo-Org/Hikyo/issues/28#issuecomment-6493364339).
-These tickets remain open for review disposition and operative amendment
-binding. Re-close only after those scoped obligations are resolved and the
+These tickets remain open for final review and operative amendment binding. Re-close only after those scoped obligations are resolved and the
 amendment PR has actually merged, checking and preserving any unrelated open
 obligations on the shared tickets. This assignment does not authorize that merge.
 
@@ -180,11 +199,11 @@ evidence; it was stopped, diagnosed and replaced with sequential runs.
 ## Remaining gate and executable handoff
 
 Membership is APPROVED, implementation is DELIVERED, and amendment/acceptance
-closeout remains HOLD. Complete the scoped ordinary independent reviews and
+closeout remains HOLD pending final evidence and merge. Complete the independent reviews and
 all required checks, resolve every finding, then record the exact PR head and
-GitHub signature/check state. If a qualifying review disposition is still
-missing for the mixed final scope, present the finished source and review
-packet for one precise Vault-only owner decision. No membership question is
-owed again. Final integrated release acceptance remains #79 even after the
+GitHub signature/check state. The owner has removed the mandatory cross-model
+gate; no further daily-choice, provider-quota or membership question is owed.
+Independent findings still require repair and final-byte review. Final
+integrated release acceptance remains #79 even after the
 scoped PR completes. Stable trust, signing custody, Apple artifacts, release
 publication and production changes remain unauthorized.

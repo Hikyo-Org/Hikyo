@@ -115,6 +115,7 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	if req.Gate == nil {
 		return adapter.Connection{}, adapter.ErrUnauthorized
 	}
+	ctx = withRequestGate(ctx, req.Gate)
 	if err := req.Gate(ctx); err != nil {
 		return adapter.Connection{}, err
 	}
@@ -330,6 +331,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if req.Gate == nil {
 		return adapter.Plan{}, adapter.ErrUnauthorized
 	}
+	ctx = withRequestGate(ctx, req.Gate)
 	if err := req.Gate(ctx); err != nil {
 		return adapter.Plan{}, err
 	}
@@ -396,6 +398,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		return adapter.SyncResult{}, err
 	}
 	inspect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "*", Disposition: adapter.Update}
+	ctx = withRequestGate(ctx, func(ctx context.Context) error { return journal.Gate(ctx, inspect) })
 	if err := journal.Gate(ctx, inspect); err != nil {
 		return adapter.SyncResult{}, err
 	}
@@ -412,6 +415,39 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		}
 	}
 	rows := desiredRows(req.Target.NamePrefix, req.Manifest, !req.Teardown)
+	// Discover existing pending writer holds across the entire target before
+	// any desired write, reservation release or prune. Desired rows go first
+	// so exact consent on a reclassified path is evaluated on its new surface.
+	checked := make(map[string]bool)
+	checkPending := func(name string, record adapter.LedgerEntry, claimed bool) error {
+		key := strings.ToUpper(name)
+		if checked[key] {
+			return nil
+		}
+		checked[key] = true
+		if err := journal.Gate(ctx, inspect); err != nil {
+			return err
+		}
+		live, err := m.inspect(ctx, req.Target, name)
+		if err != nil {
+			return err
+		}
+		if live.pending && !writable(claimedState(record, claimed), record.State, record.AdoptionPending, record.AdoptionVersion, live) {
+			return fmt.Errorf("%w: KV path %s has an unresolved pending version", adapter.ErrOperatorReview, name)
+		}
+		return nil
+	}
+	for _, row := range rows {
+		record, claimed := ledger[adapter.NewLedgerKey(row.Surface, row.EffectiveName)]
+		if err := checkPending(row.EffectiveName, record, claimed); err != nil {
+			return adapter.SyncResult{}, err
+		}
+	}
+	for _, record := range ledger {
+		if err := checkPending(record.EffectiveName, record, true); err != nil {
+			return adapter.SyncResult{}, err
+		}
+	}
 	desiredPaths := make(map[string]bool, len(rows))
 	for _, row := range rows {
 		desiredPaths[strings.ToUpper(row.EffectiveName)] = true
@@ -563,7 +599,9 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		casMoved := IsCASMismatch(writeErr)
 		var acknowledged *acknowledgedWriteError
 		if errors.As(writeErr, &acknowledged) {
-			completion.Outcome, completion.State = adapter.OutcomeSuccess, adapter.Owned
+			// Keep the successful value receipt without granting ordinary
+			// overwrite/prune authority while its ownership metadata is incomplete.
+			completion.Outcome, completion.State = adapter.OutcomeSuccess, adapter.Dispatched
 		} else if casMoved || definitive(writeErr) {
 			completion.Outcome = adapter.OutcomeFailure
 			// A stranded pending marker may name the racer's version. Keep
@@ -654,8 +692,9 @@ func (e *acknowledgedWriteError) Unwrap() error { return e.cause }
 // operator review: neither a matching pending version nor an unmarked version
 // one establishes its writer. A fresh plan's version-bound consent starts a
 // new CAS, never finalizes the old pending version as Hikyo's. Failed metadata
-// finalization after an acknowledged PUT retains known Owned custody but also
-// stops for review. errPendingStranded reports failed CAS-marker withdrawal.
+// finalization after an acknowledged PUT retains its successful receipt and
+// held Dispatched custody until review. errPendingStranded reports failed
+// CAS-marker withdrawal.
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version

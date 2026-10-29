@@ -617,7 +617,7 @@ func TestAmbiguousCreateStopsForReviewWhetherOrNotItLanded(t *testing.T) {
 	}
 }
 
-func TestAcknowledgedCreateWithFailedMarkRetainsOwnershipButNeedsFreshConsent(t *testing.T) {
+func TestAcknowledgedCreateWithFailedMarkRetainsReceiptAndReviewHold(t *testing.T) {
 	kv := newFakeKV()
 	journal := newFakeJournal()
 	target := testTarget(t, kv)
@@ -626,15 +626,18 @@ func TestAcknowledgedCreateWithFailedMarkRetainsOwnershipButNeedsFreshConsent(t 
 	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 		t.Fatalf("Sync() = %v, want indeterminate", err)
 	}
-	if journal.states["secret:DATABASE_URL"] != adapter.Owned {
-		t.Fatal("acknowledged create must retain known ownership")
+	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched || !slices.Contains(journal.outcomes, "secret:DATABASE_URL=success") {
+		t.Fatal("acknowledged create must retain its successful receipt and held custody")
 	}
 	if custom := kv.paths["apps/pay/DATABASE_URL"].custom; custom[MarkerKey] != "" {
 		t.Fatalf("custom metadata = %v, want the unmarked create", custom)
 	}
-	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrConflict) {
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrOperatorReview) {
 		t.Fatalf("unmarked replay = %v; want refusal", err)
 	}
+	// Model the sanctioned store adoption: explicit version-bound consent
+	// changes only this held row to Owned before the new CAS attempt.
+	journal.states["secret:DATABASE_URL"] = adapter.Owned
 	ledger := journal.ledger()
 	for i := range ledger {
 		if ledger[i].EffectiveName == "DATABASE_URL" {
@@ -888,8 +891,8 @@ func TestFailedCreateFinalizeNeverOverwritesOrPrunesLaterExternalEdit(t *testing
 			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
 				t.Fatalf("create finalize: %v", err)
 			}
-			if journal.states["secret:DATABASE_URL"] != adapter.Owned {
-				t.Fatal("acknowledged create finalize refusal must retain known ownership")
+			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched || !slices.Contains(journal.outcomes, "secret:DATABASE_URL=success") {
+				t.Fatal("acknowledged create finalize refusal must retain its receipt and held custody")
 			}
 			kv.externalWrite("apps/pay/DATABASE_URL", "external")
 			req := adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}
@@ -897,12 +900,12 @@ func TestFailedCreateFinalizeNeverOverwritesOrPrunesLaterExternalEdit(t *testing
 				req.Manifest = nil
 				req.Teardown = true
 			}
-			result, err := module.Sync(t.Context(), req, journal)
-			if !teardown && !errors.Is(err, adapter.ErrConflict) {
-				t.Fatalf("replay = %v", err)
+			kv.calls = nil
+			if _, err := module.Sync(t.Context(), req, journal); !errors.Is(err, adapter.ErrOperatorReview) {
+				t.Fatalf("unresolved ownership metadata replay = %v", err)
 			}
-			if teardown && (err != nil || len(result.Warnings) == 0) {
-				t.Fatalf("teardown = %+v, %v", result, err)
+			if len(kv.mutations()) != 0 || journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+				t.Fatal("review hold mutated provider paths or released custody")
 			}
 			if value, ok := kv.value("apps/pay/DATABASE_URL"); !ok || value != "external" {
 				t.Fatalf("external version altered: %q %v", value, ok)

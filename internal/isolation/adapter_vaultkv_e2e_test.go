@@ -85,6 +85,9 @@ func (s kvServer) do(t *testing.T, method, path string, body any) (int, map[stri
 		t.Fatal(err)
 	}
 	req.Header.Set("X-Vault-Token", s.token)
+	if method == http.MethodPatch {
+		req.Header.Set("Content-Type", "application/merge-patch+json")
+	}
 	resp, err := s.http.Do(req)
 	if err != nil {
 		t.Fatalf("harness %s %s: %v", method, path, err)
@@ -166,7 +169,7 @@ func (l kvLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Jou
 	}
 	return adapter.LoadedSync{
 		Module:   module,
-		Request:  adapter.SyncRequest{Config: adapter.Config{Origin: material.Origin}, Target: material.Target, Manifest: manifest, Ledger: material.Ledger},
+		Request:  adapter.SyncRequest{Config: adapter.Config{Origin: material.Origin}, Target: material.Target, Manifest: manifest, Ledger: material.Ledger, Completed: material.Completed},
 		Revision: material.Revision,
 		Release:  release,
 	}, nil
@@ -193,14 +196,15 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage','usr_alice','manage-adapters','`+cOrg+`','`+cPrj+`',NULL,`+ts+`)`)
 	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal','usr_alice','reveal','`+cOrg+`','`+cPrj+`','`+cEnv+`',`+ts+`)`)
 	kr := probeKeyring(t, db)
-	var loseWriteResponse bool
+	var loseWriteResponse, failFinalize, failMetadata bool
+	var metadataReads int
 	build := func(origin, credential string) (adapter.Module, func(), error) {
 		client, err := vaultkv.NewClient(vaultkv.ClientConfig{Origin: origin, Credential: credential, Deadline: 10 * time.Second,
 			AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}})
 		if err != nil {
 			return nil, nil, err
 		}
-		return &vaultkv.Module{API: &kvLostResponse{API: client, lose: &loseWriteResponse}}, client.Forget, nil
+		return &vaultkv.Module{API: &kvFailureClient{API: client, loseResponse: &loseWriteResponse, failFinalize: &failFinalize, failMetadata: &failMetadata, metadataReads: &metadataReads}}, client.Forget, nil
 	}
 	svc := &service.Adapters{DB: db, Keyring: kr, ModuleFactory: func(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		if provider != adapter.VaultKVProvider {
@@ -341,26 +345,94 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
 		t.Fatalf("restarted held target class = %q, want provider ambiguity needing attention", got.LastErrorClass)
 	}
-	plan, err := svc.Plan(ctx, operator, scope, target.ID)
-	if err != nil {
+	recoverHeld := func() {
+		t.Helper()
+		beforeRecovery := metadata()
+		plan, err := svc.Plan(ctx, operator, scope, target.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current := inspect()
+		adopt := service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: plan.ArtifactID,
+			ExpectedGeneration: current.Generation, ExpectedDestinationID: current.DestinationID,
+			ExpectedRepositoryID: current.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "variable", EffectiveName: "DATABASE_URL"}}}
+		if _, err := svc.Adopt(ctx, operator, scope, adopt); err != nil {
+			t.Fatalf("fresh version-bound operator recovery: %v", err)
+		}
+		drain()
+		if got := inspect(); got.Health() != adapter.HealthConverged {
+			t.Fatalf("adopted recovery: health %q class %q", got.Health(), got.LastErrorClass)
+		}
+		if metadata()["current_version"].(float64) != beforeRecovery["current_version"].(float64)+1 {
+			t.Fatal("adoption did not create exactly one new CAS version")
+		}
+		if _, err := svc.Adopt(ctx, operator, scope, adopt); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("consumed adoption artifact replay = %v", err)
+		}
+	}
+	recoverHeld()
+
+	// Legacy Owned+pending metadata must stop all paths before mutation, not
+	// only when the worker eventually reaches this key after the sentinel.
+	pending := metadata()["current_version"].(float64) + 1
+	server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/prod/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: fmt.Sprintf("%.0f", pending)}})
+	assertHeldRetry := func() {
+		t.Helper()
+		beforeKey := metadata()
+		beforeSentinel := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"]
+		worker = newWorker("kv-node-held-retry")
+		if _, err := svc.SyncTarget(ctx, operator, scope, target.ID); err != nil {
+			t.Fatal(err)
+		}
+		drain()
+		afterSentinel := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"]
+		if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous || !reflect.DeepEqual(beforeKey, metadata()) || !reflect.DeepEqual(beforeSentinel, afterSentinel) {
+			t.Fatal("held target retry changed metadata/history or lost attention status")
+		}
+	}
+	assertHeldRetry()
+	recoverHeld()
+
+	// An acknowledged value write with refused metadata finalization keeps a
+	// successful receipt and Dispatched custody. A new worker/job must hold
+	// every path, including the already delivered sentinel, until adoption.
+	failFinalize = true
+	if _, err := svc.SyncTarget(ctx, operator, scope, target.ID); err != nil {
 		t.Fatal(err)
 	}
-	current := inspect()
-	adopt := service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: plan.ArtifactID,
-		ExpectedGeneration: current.Generation, ExpectedDestinationID: current.DestinationID,
-		ExpectedRepositoryID: current.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "variable", EffectiveName: "DATABASE_URL"}}}
-	if _, err := svc.Adopt(ctx, operator, scope, adopt); err != nil {
-		t.Fatalf("fresh version-bound operator recovery: %v", err)
+	drain()
+	if outcome := queryString(t, db, `SELECT outcome FROM adapter_effects WHERE target_id='`+target.ID+`' AND effective_name='DATABASE_URL' ORDER BY created_at DESC,id DESC LIMIT 1`); outcome != "success" {
+		t.Fatalf("acknowledged value receipt = %q", outcome)
 	}
+	if state := queryString(t, db, `SELECT state FROM adapter_ledger WHERE target_id='`+target.ID+`' AND normalized_name='DATABASE_URL'`); state != "dispatched" {
+		t.Fatalf("incomplete metadata custody = %q", state)
+	}
+	assertHeldRetry()
+	recoverHeld()
+
+	// Fail the later key's inspection after the sentinel's acknowledged
+	// write. A recreated runtime must resume this same job/input revision
+	// from its durable successful prefix without re-delivering the sentinel.
+	failMetadata, metadataReads = true, 0
+	publish(kvSecretTwo)
+	clock = clock.Add(time.Second)
+	if worked, err := worker.RunOnce(ctx); !worked || err != nil {
+		t.Fatalf("partial attempt: worked=%v err=%v", worked, err)
+	}
+	if failMetadata || inspect().LastErrorClass != adapter.ErrorClassNetwork {
+		t.Fatal("partial fixture did not stop at the later metadata failure")
+	}
+	prefixVersion := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"].(map[string]any)["current_version"]
+	worker = newWorker("kv-node-partial-resume")
 	drain()
 	if got := inspect(); got.Health() != adapter.HealthConverged {
-		t.Fatalf("adopted recovery: health %q class %q", got.Health(), got.LastErrorClass)
+		t.Fatalf("partial resume did not converge: %q", got.LastErrorClass)
 	}
-	if metadata()["current_version"].(float64) != before["current_version"].(float64)+1 {
-		t.Fatal("adoption did not create exactly one new CAS version")
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"].(map[string]any)["current_version"]; after != prefixVersion {
+		t.Fatal("same-job restart re-delivered an acknowledged prefix")
 	}
-	if _, err := svc.Adopt(ctx, operator, scope, adopt); !errors.Is(err, domain.ErrConflict) {
-		t.Fatalf("consumed adoption artifact replay = %v", err)
+	if value, _ := server.value(t, mount, "hikyo/prod/DATABASE_URL"); value != kvSecretTwo {
+		t.Fatal("partial resume did not deliver the held input revision")
 	}
 
 	// A second target exercises retain through the service/outbox seam. It
@@ -379,7 +451,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 
 	// An edit outside Hikyo: the next converge is a conflict, never an overwrite.
 	server.must(t, http.MethodPost, "/v1/"+mount+"/data/hikyo/prod/DATABASE_URL", map[string]any{"data": map[string]string{"value": "hand-edited"}})
-	publish(kvSecretTwo)
+	publish(kvSecretOne)
 	// A conflict retries with backoff until an operator acts, so run one
 	// attempt rather than draining.
 	clock = clock.Add(time.Second)
@@ -419,7 +491,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
 		t.Fatal("retain mutated provider version or metadata")
 	}
-	if got, ok := server.value(t, mount, "hikyo/retain/DATABASE_URL"); !ok || got != kvSecretTwo {
+	if got, ok := server.value(t, mount, "hikyo/retain/DATABASE_URL"); !ok || got != kvSecretOne {
 		t.Fatal("retain removed the delivered value")
 	}
 
@@ -442,9 +514,12 @@ func TestAdapterVaultKVEndToEnd(t *testing.T) {
 	}
 }
 
-type kvLostResponse struct {
+type kvFailureClient struct {
 	vaultkv.API
-	lose *bool
+	loseResponse  *bool
+	failFinalize  *bool
+	failMetadata  *bool
+	metadataReads *int
 }
 
 // Drive the actual CLI through the TLS API and its real authorization and
@@ -493,11 +568,30 @@ func assertKVCLI(t *testing.T, db *store.DB, svc *service.Adapters, targetID, mo
 	}
 }
 
-func (c *kvLostResponse) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
+func (c *kvFailureClient) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
 	version, err := c.API.WriteCAS(ctx, mount, path, value, cas)
-	if err == nil && *c.lose && strings.HasSuffix(path, "/DATABASE_URL") {
-		*c.lose = false
+	if err == nil && *c.loseResponse && strings.HasSuffix(path, "/DATABASE_URL") {
+		*c.loseResponse = false
 		return 0, errors.New("synthetic response loss after real provider apply")
 	}
 	return version, err
+}
+
+func (c *kvFailureClient) PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error {
+	if *c.failFinalize && custom[vaultkv.VersionKey] != nil && strings.HasSuffix(path, "/DATABASE_URL") {
+		*c.failFinalize = false
+		return &vaultkv.ResponseError{Status: http.StatusForbidden}
+	}
+	return c.API.PatchCustomMetadata(ctx, mount, path, custom)
+}
+
+func (c *kvFailureClient) ReadMetadata(ctx context.Context, mount, path string) (vaultkv.Metadata, error) {
+	if *c.failMetadata && strings.HasSuffix(path, "/DATABASE_URL") {
+		*c.metadataReads++
+		if *c.metadataReads == 2 {
+			*c.failMetadata = false
+			return vaultkv.Metadata{}, &vaultkv.ResponseError{Status: http.StatusServiceUnavailable}
+		}
+	}
+	return c.API.ReadMetadata(ctx, mount, path)
 }

@@ -139,6 +139,15 @@ type Client struct {
 
 var _ API = (*Client)(nil)
 
+type requestGateKey struct{}
+
+// withRequestGate carries the module's live authority to the HTTP boundary.
+// Login and renewal may themselves wait on the provider, so admission before
+// an API method does not authorize a later request within that method.
+func withRequestGate(ctx context.Context, gate func(context.Context) error) context.Context {
+	return context.WithValue(ctx, requestGateKey{}, gate)
+}
+
 // NewClient prepares a client without contacting the server. Deadline must be
 // positive and shorter than adapter.LeaseTime. Invalid origins, credentials,
 // trust material, deadlines, or egress policies return errors. Call Forget
@@ -452,6 +461,11 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 			contentType = "application/merge-patch+json"
 		}
 		req.Header.Set("Content-Type", contentType)
+	}
+	if gate, ok := ctx.Value(requestGateKey{}).(func(context.Context) error); ok {
+		if err := gate(ctx); err != nil {
+			return err
+		}
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

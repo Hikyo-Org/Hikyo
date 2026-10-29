@@ -1053,7 +1053,8 @@ test.describe('deployment adapters', () => {
     await detail.getByRole('button', { name: 'Resync' }).click();
     await authoriseAdapterCeremony(page);
     await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
-    await expect(detail.locator('.adapters__workflow')).toContainText(`secret/apps/prod/KV_${ADAPTER_KEY}`);
+    await expect(detail.locator('.adapters__facts')).toContainText('secret/apps/prod');
+    await expect(detail.locator('.adapters__workflow')).toHaveText(`${ADAPTER_KEY}: KV_${ADAPTER_KEY}`);
     await expect(detail).not.toContainText('e2e-vault-private');
     await detail.getByRole('button', { name: 'Remove' }).click();
     const remove = page.getByRole('dialog', { name: /Remove target/ });

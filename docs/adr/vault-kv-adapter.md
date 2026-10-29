@@ -9,6 +9,15 @@
 > #26 and #28 own the scoped amendment procedure. See the
 > [current closeout packet](../handoff/162-vault-1.0-closeout.md).
 
+> **Owner review-policy decision (2026-10-29):** "remove the cross model
+> review requirements and daily model choice. Keep current choices".
+> Mandatory cross-provider and daily-choice gates are removed for this
+> closeout. Independent adversarial Standards and Spec review of the final
+> bytes, disposition of all findings, and the #26/#28 amendment record remain
+> required. No cross-provider execution is invented; the older SKIPPED records
+> below remain historical. The amendment becomes operative only on its reviewed
+> PR merging. Integrated 1.0 acceptance remains #79.
+
 > **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, adversarial cross-model review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
 
 > **Delivery and governance reconciliation (2026-10-28, no new amendment):**
@@ -65,6 +74,17 @@ Ownership is the ledger (deployment-adapter ADR). The destination additionally c
 4. **Finalize**: patch the marker, record `hikyo_version`, and clear the pending marker. For a create this pins version 1, so an external write landing between the create and the finalize reads as movement on the next sync.
 
 **Operator-review policy amendment (2026-10-01, explicitly approved):** automatic writer inference from pending versions is withdrawn. An unknown PUT result, process death before its journal outcome, an unmarked dispatched create, or legacy pending metadata stops all automatic sync and prune attempts for the held target. Matching `current == pending` or `current == pending - 1` does not prove which writer landed. The foreign current value, version history, metadata and held custody remain unchanged while the operator reviews. An acknowledged PUT response may complete `owned` custody even if metadata finalization fails; this conservative incomplete-metadata case also stops for review rather than inventing a replay proof.
+
+**Custody clarification (2026-10-29):** the acknowledged-but-incomplete metadata
+case above now records its successful value OUTCOME while keeping `dispatched`
+custody. This supersedes the earlier `owned` option: ordinary prune must not
+release an unmarked acknowledged create as though it were known external
+movement. Only fresh version-bound explicit adoption grants a new write.
+Before any target mutation, sync and teardown inspect all held and desired
+paths for legacy pending metadata. A pending hold on a later name therefore
+cannot follow a rewrite or prune of earlier names or the sentinel. Authority
+is also rechecked at the HTTP request boundary, including after AppRole login
+or renewal and between metadata PATCH and value CAS.
 
 A fresh operator plan observes the positive current provider version using metadata only and stores it inside the scoped conflict artifact. Explicit adoption requires the exact current target generation, origin/destination, scope, surface and name; it can update only this target's held Vault row, never a foreign global-name claim. The adopted artifact's conflict generation must be the immediate predecessor of the verified current generation because adoption advances once. The next write requires that observed version still match and uses a new CAS; it never finalizes an old pending version as Hikyo's. Changed versions, consumed artifacts, legacy artifacts without a witness, and zero/nonpositive witnesses refuse. SQLite parses provenance timestamps and fails closed on malformed evidence; ties consume consent conservatively. A successful journal outcome consumes adoption. No wall-clock artifact lifetime is newly invented: freshness is current generation, destination and provider version. An unknown create still absent has no positive witness; the operator must explicitly retain/release that target's custody and recreate the target before another create. No user artifact or provider value is silently deleted to recover.
 
