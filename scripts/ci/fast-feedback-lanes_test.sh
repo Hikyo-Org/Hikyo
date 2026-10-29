@@ -43,18 +43,29 @@ printf '# fixture\n' >.github/workflows/fixture.yml
 printf '// docs selection\n' >docs/site/scripts/fixture.mjs
 commit_fixture
 FIXTURE_REAL_GO=$(command -v go)
+FIXTURE_REAL_GOFMT="$("$FIXTURE_REAL_GO" env GOROOT)/bin/gofmt"
 # Resolve the real executable before prepending stubs: local Node wrappers
 # may search PATH again and would otherwise recurse through this fixture.
 FIXTURE_REAL_NODE=$(node -p 'process.execPath')
 FIXTURE_REAL_SHELLCHECK=$(command -v shellcheck)
-export FIXTURE_REAL_GO FIXTURE_REAL_NODE FIXTURE_REAL_SHELLCHECK FIXTURE_WORK=$work
+export FIXTURE_REAL_GO FIXTURE_REAL_GOFMT FIXTURE_REAL_NODE FIXTURE_REAL_SHELLCHECK FIXTURE_WORK=$work
+mkdir -p "$work/goroot/bin"
+cat >"$work/goroot/bin/gofmt" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+printf 'go-format\n' >>"$FIXTURE_WORK/checks"
+[ "${FIXTURE_FAILURE:-}" != go-format ] || exit 40
+exec "$FIXTURE_REAL_GOFMT" "$@"
+STUB
+chmod +x "$work/goroot/bin/gofmt"
 cat >"$work/bin/go" <<'STUB'
 #!/usr/bin/env bash
 set -eu
 if [ "$1" = env ]; then
-	printf 'go-format\n' >>"$FIXTURE_WORK/checks"
 	[ "${FIXTURE_FAILURE:-}" != go-env ] || exit 33
-	exec "$FIXTURE_REAL_GO" "$@"
+	[ "$#" -eq 2 ] && [ "$2" = GOROOT ] || exit 34
+	printf '%s\n' "$FIXTURE_WORK/goroot"
+	exit
 fi
 case "$1" in
 	test) printf 'go-compile\n' >>"$FIXTURE_WORK/checks" ;;
@@ -171,7 +182,7 @@ FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --la
 FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=application
 FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=tooling
 FIXTURE_FAILURE=frontend FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=frontend
-for failure in go-env shellcheck-version actionlint docs node-version node-status; do
+for failure in go-env go-format shellcheck-version actionlint docs node-version node-status; do
 	FIXTURE_FAILURE=$failure refuse --lane=go --go-scope=tooling
 	case "$failure" in
 		shellcheck-version) grep -F 'ShellCheck 0.11.0 is required' "$work/output" >/dev/null ;;
