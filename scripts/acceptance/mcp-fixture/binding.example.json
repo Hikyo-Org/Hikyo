@@ -1,0 +1,21 @@
+{
+  "source_commit": null,
+  "source_tree": null,
+  "image": null,
+  "platform_manifest_sha256": null,
+  "image_config_sha256": null,
+  "server_binary_sha256": null,
+  "helper_binary_sha256": null,
+  "release_manifest_sha256": null,
+  "bundle_inventory_sha256": null,
+  "operator_public_key_sha256": null,
+  "authenticated_verification_receipt_sha256": null,
+  "owner_final_candidate_selection_ref": null,
+  "channel": null,
+  "server_version": null,
+  "origin": "https://fixture.example",
+  "node_a": null,
+  "node_b": null,
+  "cluster_dns_ip": null,
+  "proxy_cidr": null
+}

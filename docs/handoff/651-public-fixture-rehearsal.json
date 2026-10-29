@@ -1,0 +1,102 @@
+{
+  "schema": "hikyo.dev/mcp-651-fixture/v1",
+  "evidence_class": "local_development_rehearsal",
+  "started_at_utc": "2026-10-29T13:58:22.223686Z",
+  "checks": {
+    "SIGTERM_inflight_drain_claim_release_peer_survives": "PASS",
+    "absent_invalid_uniform_denial": "PASS",
+    "actual_server_pids": "PASS: 9381, 9407",
+    "bounded_JSON_no_open_stream_claim": "PASS",
+    "closed_catalog_nonempty_cross_process_cursor": "PASS",
+    "codex_0.160.1_authenticated_native_no_model_turn": "PASS; protocol wire receipt required separately",
+    "codex_0.160.1_wire_requested_negotiated_2025-06-18": "PASS",
+    "committed_revocation_first_request_each_process_replacement": "PASS",
+    "direct_verified_TLS_each_process": "PASS; distinct from local proxy cancellation",
+    "existing_public_smoke_polling_only_replacement_recheck": "PASS; separate predecessor from first-call proof",
+    "inspector_2.11.0_modern_requested_negotiated_2026-07-28_authenticated": "PASS",
+    "local_proxy_cancellation_store_context_claims_both": "PASS",
+    "official_go_v1.8.0_requested_negotiated_2026-07-28_five_tools": "PASS",
+    "outcome": "PASS",
+    "owned_container_network_process_cleanup": "PASS",
+    "private_scratch_cleanup": "PASS",
+    "public_candidate_acceptance": "NOTRUN; local private-CA development rehearsal only",
+    "restarted_process_and_peer_recover_same_custody": "PASS",
+    "scope_ungranted_missing_twin_canary": "PASS",
+    "supported_grant_remove_first_denials_restore_both": "PASS",
+    "supported_service_provisioning_nonempty_disjoint_scope": "PASS"
+  },
+  "milliseconds": {
+    "SIGTERM_drain": 38,
+    "local_proxy_cancel_process_0": 28,
+    "local_proxy_cancel_process_1": 30
+  },
+  "identities": {
+    "codex_binary_sha256": "09fa44fdc37a5fc70dc1ace31235f90468a2e193d0e85f7552eab068ea2582be",
+    "helper_binary_sha256": "37456948a650ed12ef8d5dd6a7dc28e838adc98266371cdbccfd67a54b691378",
+    "inspector_cli_sha256": "bd48a8df27412e4c01e876493a4e629d84d823ed44f0e738751a7efa3a8d18ca",
+    "owned_container_id": "3b345815835cdb41f2d987c15e1282a2ff36baefa61f5237436d4e95ee6789ca",
+    "owned_network_id": "b8e035e6a3cc6c74d02f812e88a03a298ae21046cc8385889c5e48af30e73496",
+    "replacement_process_pid": "9444",
+    "server_binary_sha256": "2a1613cf98ff127c59bd5d12852aada65222a4564b59f5375739d46652b85719",
+    "source_commit": "ce5e85835383b6428676ff595e2a0c1a72f6a088",
+    "source_tree": "0a15a814ecb0e17e98a519cc129950dd0e94b02c"
+  },
+  "events": [
+    {
+      "phase": "credential_revocation_committed",
+      "at_utc": "2026-10-29T13:58:27.064699Z"
+    },
+    {
+      "phase": "first_post_revocation_request",
+      "process": "b",
+      "at_utc": "2026-10-29T13:58:27.069326Z",
+      "HTTP_status": 401
+    },
+    {
+      "phase": "first_post_revocation_request",
+      "process": "a",
+      "at_utc": "2026-10-29T13:58:27.073917Z",
+      "HTTP_status": 401
+    },
+    {
+      "phase": "grant_removal_committed",
+      "at_utc": "2026-10-29T13:58:27.10951Z"
+    },
+    {
+      "phase": "first_post_grant_removal_request",
+      "process": "b",
+      "at_utc": "2026-10-29T13:58:27.126768Z",
+      "HTTP_status": 200
+    },
+    {
+      "phase": "first_post_grant_removal_request",
+      "process": "a",
+      "at_utc": "2026-10-29T13:58:27.132546Z",
+      "HTTP_status": 200
+    },
+    {
+      "phase": "grant_restoration_committed",
+      "at_utc": "2026-10-29T13:58:27.138959Z"
+    }
+  ],
+  "claim_limit": "Local private-CA development rehearsal only; published final candidate, public deployment, remote ingress, final named-client acceptance and release are HOLD/NOTRUN.",
+  "named_client_support": {
+    "go_sdk_v1.8.0": "LOCAL_PASS_PUBLIC_NOTRUN",
+    "inspector_2.11.0_modern": "LOCAL_PASS_PUBLIC_NOTRUN",
+    "codex_0.160.1_native": "LOCAL_PASS_PUBLIC_NOTRUN_NOT_T3_DESKTOP",
+    "claude_code": "NOT_VERIFIED_FOR_1_0_OUTSIDE_REQUIRED_MATRIX",
+    "openai_responses": "NOT_VERIFIED_FOR_1_0_OUTSIDE_REQUIRED_MATRIX"
+  },
+  "local_checks": {
+    "scoped_go_race": "PASS",
+    "go_vet": "PASS",
+    "existing_loopback_datastore_guard": "PASS",
+    "shellcheck": "PASS",
+    "node_syntax": "PASS",
+    "selected_full_diff_fast_feedback": "PASS",
+    "docs_content_check": "PASS",
+    "linux_arm64_helper_compile": "PASS"
+  },
+  "prepared_assets_patch_sha256": "6b60775a39459f8ca2b4709a67994a05a5532975ef308324f0b134c6cadd91e8",
+  "prepared_assets_patch_method": "SHA-256 of git diff --binary preparation baseline HEAD -- scripts/acceptance/mcp-fixture; excludes this receipt"
+}

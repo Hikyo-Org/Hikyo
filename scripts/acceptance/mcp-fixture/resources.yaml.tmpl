@@ -1,0 +1,406 @@
+# Prepared assets only. Rendering and applying require separate candidate and
+# resource authorizations. Secrets and authenticated public bundle are staged
+# by the operator into this new namespace before any server starts.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hikyo-mcp-651
+  labels:
+    hikyo.dev/fixture: mcp-651
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata: {name: fixture-budget, namespace: hikyo-mcp-651}
+spec:
+  hard:
+    requests.cpu: "1500m"
+    limits.cpu: "3"
+    requests.memory: 1536Mi
+    limits.memory: 3Gi
+    requests.storage: 5Gi
+    persistentvolumeclaims: "4"
+    pods: "6"
+    services.loadbalancers: "0"
+    services.nodeports: "0"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: fixture, namespace: hikyo-mcp-651}
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: fixture-dns, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: server-boundary, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {matchLabels: {app: server}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app: gateway}}}]
+      ports: [{protocol: TCP, port: 8443}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: db}}}]
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: db-boundary, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {matchLabels: {app: db}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app: server}}
+        - podSelector: {matchLabels: {app: tooling}}
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: tooling-db, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {matchLabels: {app: tooling}}
+  policyTypes: [Egress]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: db}}}]
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: gateway-boundary, namespace: hikyo-mcp-651}
+spec:
+  podSelector: {matchLabels: {app: gateway}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: traefik}}
+      ports: [{protocol: TCP, port: 8443}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app: server}}}]
+      ports: [{protocol: TCP, port: 8443}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: db, namespace: hikyo-mcp-651}
+spec:
+  clusterIP: None
+  selector: {app: db}
+  ports: [{name: postgres, port: 5432}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db, namespace: hikyo-mcp-651}
+spec:
+  serviceName: db
+  replicas: 1
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db, hikyo.dev/fixture: mcp-651}}
+    spec:
+      serviceAccountName: fixture
+      nodeSelector: {kubernetes.io/hostname: "{{.NodeA}}"}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+          args: [-c, ssl=on, -c, ssl_cert_file=/tls/server.crt, -c, ssl_key_file=/tls/server.key, -c, max_connections=40, -c, shared_buffers=32MB]
+          env:
+            - {name: POSTGRES_USER, value: hikyo}
+            - {name: POSTGRES_DB, value: hikyo_mcp_651}
+            - name: POSTGRES_PASSWORD_FILE
+              value: /password/password
+          ports: [{name: postgres, containerPort: 5432}]
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          readinessProbe: {exec: {command: [pg_isready, -U, hikyo, -d, hikyo_mcp_651]}, periodSeconds: 2}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql}
+            - {name: password, mountPath: /password, readOnly: true}
+            - {name: tls, mountPath: /tls, readOnly: true}
+      volumes:
+        - name: password
+          secret: {secretName: postgres-password, defaultMode: 0440}
+        # Stage a fixture-only TLS key owned by UID 999 in this projected
+        # volume's group. PostgreSQL accepts a root-owned 0640 server key.
+        - name: tls
+          secret: {secretName: postgres-tls, defaultMode: 0440}
+  volumeClaimTemplates:
+    - metadata: {name: data, labels: {hikyo.dev/fixture: mcp-651}}
+      spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 2Gi}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: server, namespace: hikyo-mcp-651}
+spec:
+  clusterIP: None
+  selector: {app: server}
+  ports: [{name: tls, port: 8443}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: hikyo, namespace: hikyo-mcp-651}
+spec:
+  serviceName: server
+  # The guarded launcher scales to two only after supported seeding commits.
+  replicas: 0
+  podManagementPolicy: Parallel
+  selector: {matchLabels: {app: server}}
+  template:
+    metadata:
+      labels: {app: server, hikyo.dev/fixture: mcp-651}
+      annotations: {hikyo.dev/source: "{{.SourceCommit}}", hikyo.dev/manifest: "{{.Manifest}}"}
+    spec:
+      serviceAccountName: fixture
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions: [{key: kubernetes.io/hostname, operator: In, values: ["{{.NodeA}}", "{{.NodeB}}"]}]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector: {matchLabels: {app: server}}
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: installation-directory
+          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+          command: [sh, -eu, -c, 'umask 077; if [ ! -e /installation/operator-state ]; then mkdir /installation/operator-state; fi; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"']
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+          volumeMounts: [{name: installation, mountPath: /installation}]
+        - name: root-key-stage
+          image: "{{.Image}}"
+          args: [__hikyo-stage-root-key]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+          volumeMounts:
+            - {name: root-key-source, mountPath: /run/hikyo-root-key-source, readOnly: true}
+            - {name: root-key, mountPath: /run/hikyo-root-key}
+        - name: tls-stage
+          image: "{{.Image}}"
+          args: [__hikyo-stage-tls, --once]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+          volumeMounts:
+            - {name: tls-source, mountPath: /run/hikyo-tls-source, readOnly: true}
+            - {name: tls, mountPath: /run/hikyo-tls}
+      containers:
+        - name: hikyo
+          image: "{{.Image}}"
+          args: [server, --listen=0.0.0.0:8443, --operational-listen=0.0.0.0:8081, --root-key-file=/run/hikyo-root-key/root-key, --tls-cert-file=/run/hikyo-tls/tls.crt, --tls-key-file=/run/hikyo-tls/tls.key, --auto-migrate=false]
+          env:
+            - name: HIKYO_DB
+              valueFrom: {secretKeyRef: {name: fixture-dsn, key: dsn}}
+            - {name: PGSSLROOTCERT, value: /db-ca/ca.crt}
+            - {name: HIKYO_EXTERNAL_ORIGIN, value: "{{.Origin}}"}
+            - {name: HIKYO_MCP_ENABLED, value: "true"}
+            - {name: HIKYO_MCP_WRITE_ENABLED, value: "false"}
+            - {name: HIKYO_HA, value: "true"}
+            - name: HIKYO_NODE_ID
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: PGAPPNAME
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: HIKYO_PG_POOL_MAX, value: "4"}
+            - {name: HIKYO_TRUSTED_PROXY_CIDRS, value: "{{.ProxyCIDR}}"}
+            - {name: HIKYO_UPDATE_CHANNEL, value: "off"}
+            - {name: HIKYO_UPGRADE_BUNDLE, value: /public/bundle}
+            - {name: HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY, value: /public/operator.pub}
+            - {name: HIKYO_UPGRADE_STATE_DIR, value: /installation/operator-state}
+          ports: [{name: tls, containerPort: 8443}, {name: operational, containerPort: 8081}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          readinessProbe: {httpGet: {path: /readyz, port: operational}, periodSeconds: 2}
+          volumeMounts:
+            - {name: root-key, mountPath: /run/hikyo-root-key, readOnly: true}
+            - {name: tls, mountPath: /run/hikyo-tls, readOnly: true}
+            - {name: public, mountPath: /public, readOnly: true}
+            - {name: installation, mountPath: /installation}
+            - {name: db-ca, mountPath: /db-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: root-key-source
+          secret: {secretName: fixture-root, defaultMode: 0400}
+        - name: root-key
+          emptyDir: {medium: Memory, sizeLimit: 64Ki}
+        - name: tls-source
+          secret: {secretName: backend-tls, defaultMode: 0440}
+        - name: tls
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        - name: public
+          configMap:
+            name: authenticated-public-bundle
+            items:
+{{range .PublicFiles}}              - {key: "{{.Key}}", path: "{{.Path}}"}
+{{end}}
+        - name: db-ca
+          configMap: {name: db-ca}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 32Mi}
+  volumeClaimTemplates:
+    - metadata: {name: installation, labels: {hikyo.dev/fixture: mcp-651}}
+      spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 1Gi}}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: gateway, namespace: hikyo-mcp-651}
+data:
+  gateway.json: |
+    {"origin":"{{.Origin}}","listen":":8443","certificate_file":"/run/hikyo-tls/tls.crt","key_file":"/run/hikyo-tls/tls.key","backend_ca_file":"/backend-ca/ca.crt","backends":["hikyo-0.server.hikyo-mcp-651.svc.cluster.local:8443","hikyo-1.server.hikyo-mcp-651.svc.cluster.local:8443"]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: gateway, namespace: hikyo-mcp-651}
+spec:
+  replicas: 0
+  selector: {matchLabels: {app: gateway}}
+  template:
+    metadata: {labels: {app: gateway, hikyo.dev/fixture: mcp-651}}
+    spec:
+      serviceAccountName: fixture
+      nodeSelector: {kubernetes.io/hostname: "{{.NodeA}}"}
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      initContainers:
+        - name: tls-stage
+          image: "{{.Image}}"
+          args: [__hikyo-stage-tls, --once]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+          volumeMounts:
+            - {name: tls-source, mountPath: /run/hikyo-tls-source, readOnly: true}
+            - {name: tls, mountPath: /run/hikyo-tls}
+      containers:
+        - name: gateway
+          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+          command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; cp /config/gateway.json /work/custody/gateway.json; chmod 600 /work/custody/gateway.json; i=0; until [ -x /tools/mcp-fixture ]; do i=$((i+1)); test "$i" -lt 600; sleep 1; done; test "$(sha256sum /tools/mcp-fixture | cut -d " " -f 1)" = "{{.HelperBinary}}"; exec /tools/mcp-fixture gateway --runtime /work/custody']
+          ports: [{name: tls, containerPort: 8443}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {requests: {cpu: 50m, memory: 32Mi}, limits: {cpu: 250m, memory: 256Mi}}
+          readinessProbe: {tcpSocket: {port: tls}, periodSeconds: 2}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: tls, mountPath: /run/hikyo-tls, readOnly: true}
+            - {name: tools, mountPath: /tools}
+            - {name: work, mountPath: /work}
+            - {name: backend-ca, mountPath: /backend-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: gateway}
+        - name: tls-source
+          secret: {secretName: public-tls, defaultMode: 0440}
+        - name: tls
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        - name: tools
+          emptyDir: {sizeLimit: 192Mi}
+        - name: work
+          emptyDir: {medium: Memory, sizeLimit: 16Mi}
+        - name: backend-ca
+          configMap: {name: backend-ca}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 32Mi}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: gateway, namespace: hikyo-mcp-651}
+spec:
+  selector: {app: gateway}
+  ports: [{name: tls, port: 8443}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata: {name: mcp-651, namespace: hikyo-mcp-651}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: HostSNI(`{{.OriginHost}}`)
+      services: [{name: gateway, port: 8443}]
+  tls: {passthrough: true}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: tooling, namespace: hikyo-mcp-651, labels: {app: tooling, hikyo.dev/fixture: mcp-651}}
+spec:
+  serviceAccountName: fixture
+  nodeSelector: {kubernetes.io/hostname: "{{.NodeA}}"}
+  securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+  initContainers:
+    - name: root-key-stage
+      image: "{{.Image}}"
+      args: [__hikyo-stage-root-key]
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 32Mi}}
+      volumeMounts:
+        - {name: root-key-source, mountPath: /run/hikyo-root-key-source, readOnly: true}
+        - {name: root-key, mountPath: /run/hikyo-root-key}
+  containers:
+    - name: tooling
+      image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+      command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; if [ ! -e /installation/operator-state ]; then mkdir /installation/operator-state; fi; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"; exec sleep 86400']
+      env: [{name: PGSSLROOTCERT, value: /db-ca/ca.crt}]
+      securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 250m, memory: 512Mi}}
+      volumeMounts:
+        - {name: tools, mountPath: /tools}
+        - {name: work, mountPath: /work}
+        - {name: installation, mountPath: /installation}
+        - {name: root-key, mountPath: /run/hikyo-root-key, readOnly: true}
+        - {name: public, mountPath: /public, readOnly: true}
+        - {name: db-ca, mountPath: /db-ca, readOnly: true}
+  volumes:
+    - name: root-key-source
+      secret: {secretName: fixture-root, defaultMode: 0400}
+    - name: root-key
+      emptyDir: {medium: Memory, sizeLimit: 64Ki}
+    - name: tools
+      emptyDir: {sizeLimit: 192Mi}
+    - name: work
+      emptyDir: {medium: Memory, sizeLimit: 64Mi}
+    - name: installation
+      persistentVolumeClaim: {claimName: tooling-state}
+    - name: public
+      configMap:
+        name: authenticated-public-bundle
+        items:
+{{range .PublicFiles}}          - {key: "{{.Key}}", path: "{{.Path}}"}
+{{end}}
+    - name: db-ca
+      configMap: {name: db-ca}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: tooling-state, namespace: hikyo-mcp-651, labels: {hikyo.dev/fixture: mcp-651}}
+spec: {accessModes: [ReadWriteOnce], storageClassName: local-path, resources: {requests: {storage: 1Gi}}}

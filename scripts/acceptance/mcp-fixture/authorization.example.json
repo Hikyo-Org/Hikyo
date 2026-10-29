@@ -1,0 +1,14 @@
+{
+  "approved_by": null,
+  "approval_ref": null,
+  "expires_at_utc": null,
+  "kube_context": "picluster",
+  "namespace": "hikyo-mcp-651",
+  "origin": "https://fixture.example",
+  "no_new_spend": true,
+  "no_provider_calls": true,
+  "synthetic_fixture_mutations": false,
+  "fixture_lock_cancel_and_delete_one_server_pod": false,
+  "rendered_resources_sha256": null,
+  "ingress_verification_sha256": null
+}
