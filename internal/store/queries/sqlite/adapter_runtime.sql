@@ -255,16 +255,23 @@ UPDATE adapter_targets SET state='tombstoned',sync_status='converged',active_job
 UPDATE adapters SET credential_ciphertext=NULL,credential_set_at=NULL,credential_expires_at=NULL WHERE adapters.id=sqlc.arg(adapter_i_d) AND adapters.org_id=sqlc.arg(chain_org) AND adapters.project_id=sqlc.arg(chain_project) AND NOT EXISTS (SELECT 1 FROM adapter_targets retained WHERE retained.adapter_id=adapters.id AND retained.org_id=adapters.org_id AND retained.project_id=adapters.project_id AND retained.state<>'tombstoned') AND NOT EXISTS (SELECT 1 FROM adapter_outbox j JOIN adapter_targets t ON t.id=j.target_id AND t.org_id=j.org_id AND t.project_id=j.project_id AND t.environment_id=j.environment_id WHERE t.adapter_id=adapters.id AND t.org_id=adapters.org_id AND t.project_id=adapters.project_id AND j.kind='scrub' AND j.state IN ('queued','running'));
 
 -- name: AdapterWorkerFinishJobAttention :execrows
-UPDATE adapter_route_moves SET state='attention_required' WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state='activating';
+UPDATE adapter_route_moves SET state='attention_required' WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND state IN ('activating','scrubbing','attention_required');
 
 -- name: AdapterWorkerFinishJobSupersede :execrows
-UPDATE adapter_outbox SET state='superseded',finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND id<>sqlc.arg(job_id) AND kind='activate' AND state IN ('queued','running');
+UPDATE adapter_outbox SET state='superseded',finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND id<>sqlc.arg(job_id) AND kind IN ('activate','scrub') AND state IN ('queued','running');
 
 -- name: AdapterWorkerFinishJobMarkTargets :execrows
 UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]',active_job_id=NULL WHERE adapter_targets.org_id=sqlc.arg(chain_org) AND adapter_targets.project_id=sqlc.arg(chain_project) AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=sqlc.arg(route_move_id) AND mt.org_id=sqlc.arg(chain_org) AND mt.project_id=sqlc.arg(chain_project)) AND adapter_targets.state='moving';
 
 -- name: AdapterWorkerRecordJobOutcome :execrows
 UPDATE adapter_targets SET sync_status=sqlc.arg(target_status),converged_revision=CASE WHEN CAST(sqlc.arg(converged_revision) AS BIGINT)>0 THEN sqlc.arg(converged_rev) ELSE converged_revision END,failure_names=sqlc.arg(failure_j_s_o_n),warnings=sqlc.arg(warning_j_s_o_n),last_attempted_revision=CASE WHEN CAST(sqlc.arg(revision) AS BIGINT)>0 THEN sqlc.arg(rev) ELSE last_attempted_revision END,last_attempted_at=sqlc.arg(attempted_at),last_error_class=sqlc.arg(error_class),drift_attention=CASE WHEN CAST(sqlc.arg(attention_mode) AS INTEGER)=0 THEN 0 WHEN CAST(sqlc.arg(attention_mode) AS INTEGER)=1 THEN 1 ELSE drift_attention END,active_job_id=CASE WHEN CAST(sqlc.arg(retain_active_job) AS INTEGER)=1 THEN active_job_id ELSE NULL END WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND provider_lease_job_id IS NULL;
+
+-- A review-held removal remains visible and paused, with all custody intact.
+-- name: AdapterWorkerRestoreHeldScrubTarget :execrows
+UPDATE adapter_targets SET state='active',paused_at=sqlc.arg(at) WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND state='tombstoned' AND provider_lease_job_id IS NULL;
+
+-- name: AdapterWorkerRestoreHeldScrubAdapter :execrows
+UPDATE adapters SET state='active' WHERE adapters.org_id=sqlc.arg(chain_org) AND adapters.project_id=sqlc.arg(chain_project) AND adapters.state='tombstoned' AND adapters.id=(SELECT held.adapter_id FROM adapter_targets held WHERE held.id=sqlc.arg(target_id) AND held.org_id=sqlc.arg(chain_org) AND held.project_id=sqlc.arg(chain_project) AND held.environment_id=sqlc.arg(chain_env) AND held.generation=sqlc.arg(generation) AND held.state='active');
 
 -- name: AdapterWorkerRaiseDriftAttentionQuery :execrows
 UPDATE adapter_targets SET drift_attention=1 WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(org) AND project_id=sqlc.arg(project) AND environment_id=sqlc.arg(environment_i_d);
@@ -291,7 +298,7 @@ UPDATE adapter_targets SET state='moving',sync_status='converging',failure_names
 UPDATE adapter_targets SET state='moving',sync_status='converging',failure_names=sqlc.arg(failure_j_s_o_n),active_job_id=NULL WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND state='moving' AND active_job_id=sqlc.arg(job_id) AND provider_lease_job_id IS NULL;
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubCountPending :one
-SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='scrub' AND state IN ('queued','running');
+SELECT COUNT(*) FROM adapter_outbox jobs WHERE jobs.route_move_id=sqlc.arg(route_move_id) AND jobs.org_id=sqlc.arg(chain_org) AND jobs.project_id=sqlc.arg(chain_project) AND jobs.kind='scrub' AND (jobs.state IN ('queued','running') OR EXISTS (SELECT 1 FROM adapter_ledger held WHERE held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id AND held.state<>'released'));
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubActivateMove :execrows
 UPDATE adapter_route_moves SET state='activating' WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='origin' AND target_id IS NULL AND state='scrubbing';

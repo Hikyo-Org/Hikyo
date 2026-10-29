@@ -129,7 +129,7 @@ func (s kvServer) value(t *testing.T, mount, path string) (string, bool) {
 type kvLoader struct {
 	runtime *store.AdapterRuntime
 	keyring *crypto.Keyring
-	build   func(credential string) (adapter.Module, func(), error)
+	build   func(origin, credential string) (adapter.Module, func(), error)
 }
 
 func (l kvLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Journal) (adapter.LoadedSync, error) {
@@ -148,7 +148,7 @@ func (l kvLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Jou
 	if err != nil {
 		return adapter.LoadedSync{}, err
 	}
-	module, release, err := l.build(string(credential))
+	module, release, err := l.build(material.Origin, string(credential))
 	crypto.Zero(credential)
 	if err != nil {
 		return adapter.LoadedSync{}, err
@@ -258,10 +258,8 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		runtime := store.NewAdapterRuntime(db, authorizePush)
 		return &adapter.Worker{
 			Store: runtime, ID: id,
-			Loader: kvLoader{runtime: runtime, keyring: kr, build: func(credential string) (adapter.Module, func(), error) {
-				return build(server.addr, credential)
-			}},
-			Now: func() time.Time { return clock }, Jitter: func(time.Duration) time.Duration { return 0 },
+			Loader: kvLoader{runtime: runtime, keyring: kr, build: build},
+			Now:    func() time.Time { return clock }, Jitter: func(time.Duration) time.Duration { return 0 },
 		}
 	}
 	worker := newWorker("kv-node-1")
@@ -469,6 +467,87 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	}
 	drain()
 
+	// Route removal must stop at review without losing cancellation. Test the
+	// two-target origin race with a real successful sibling scrub whose durable
+	// completion arrives only after the held target has failed.
+	for _, originMove := range []bool{false, true} {
+		server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/prod/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
+		beforeHeld := metadata()
+		var moveID string
+		if originMove {
+			moving, err := svc.MoveOrigin(ctx, operator, scope, created.Adapter.ID, "https://must-not-activate.invalid", credential, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			moveID = moving.MoveID
+			runtime := store.NewAdapterRuntime(db, authorizePush)
+			loader := kvLoader{runtime: runtime, keyring: kr, build: build}
+			clock = clock.Add(time.Second)
+			jobs := make(map[string]adapter.Job)
+			for range 2 {
+				job, ok, err := runtime.ClaimDue(ctx, "concurrent-move", clock, clock.Add(adapter.LeaseTime))
+				if err != nil || !ok {
+					t.Fatalf("claim concurrent scrub: %v %v", ok, err)
+				}
+				jobs[job.TargetID] = job
+			}
+			runScrub := func(job adapter.Job) (int64, error) {
+				t.Helper()
+				loaded, err := loader.Load(ctx, job, runtime.Journal(job))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer loaded.Release()
+				loaded.Request.Teardown = true
+				_, err = loaded.Module.Sync(ctx, loaded.Request, runtime.Journal(job))
+				return loaded.Revision, err
+			}
+			sibling, held := jobs[retained.ID], jobs[target.ID]
+			revision, err := runScrub(sibling)
+			if err != nil {
+				t.Fatalf("sibling scrub: %v", err)
+			}
+			heldRevision, heldErr := runScrub(held)
+			if !errors.Is(heldErr, adapter.ErrOperatorReview) {
+				t.Fatalf("held move scrub: %v", heldErr)
+			}
+			if err := runtime.Fail(ctx, held, heldRevision, clock, heldErr); err != nil {
+				t.Fatal(err)
+			}
+			if err := runtime.Succeed(ctx, sibling, revision, nil, clock); !errors.Is(err, adapter.ErrSuperseded) {
+				t.Fatalf("late sibling completion escaped held move: %v", err)
+			}
+		} else {
+			moving, err := svc.ApplyTargetMutation(ctx, operator, scope, service.UpdateAdapterTargetRequest{
+				TargetID: target.ID, ExpectedGeneration: inspect().Generation,
+				Target: service.AdapterTargetInput{EnvironmentID: cEnv, DestinationKind: string(adapter.Repository), DestinationOwner: mount,
+					DestinationName: "hikyo/must-not-activate", KeySelection: &service.AdapterKeySelection{Include: []string{"DATABASE_URL"}}},
+			}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			started, ok := moving.(service.TargetMutationMoveStarted)
+			if !ok {
+				t.Fatalf("route mutation did not start a move: %T", moving)
+			}
+			moveID = started.Move.MoveID
+			drain()
+		}
+		move, err := svc.Move(ctx, operator, scope, moveID)
+		if err != nil || move.State != "attention_required" || !reflect.DeepEqual(beforeHeld, metadata()) {
+			t.Fatalf("review-held route lost old custody or cancellation: state=%s err=%v", move.State, err)
+		}
+		if queryInt(t, db, "SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id='"+moveID+"' AND kind='activate'") != 0 {
+			t.Fatal("review-held route scheduled new-destination activation")
+		}
+		if _, err := svc.CancelMove(ctx, operator, scope, moveID); err != nil {
+			t.Fatalf("cancel held route: %v", err)
+		}
+		worker = newWorker("kv-node-canceled-move")
+		drain()
+		recoverHeld()
+	}
+
 	// An edit outside Hikyo: the next converge is a conflict, never an overwrite.
 	server.must(t, http.MethodPost, "/v1/"+mount+"/data/hikyo/prod/DATABASE_URL", map[string]any{"data": map[string]string{"value": "hand-edited"}})
 	publish(kvSecretOne)
@@ -503,6 +582,33 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	}
 
 	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
+	server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
+	retainedMetadata = server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
+	for _, wholeAdapter := range []bool{false, true} {
+		if wholeAdapter {
+			_, err = svc.Delete(ctx, operator, scope, created.Adapter.ID, false)
+		} else {
+			_, err = svc.RemoveTarget(ctx, operator, scope, retained.ID, false)
+		}
+		if err != nil {
+			t.Fatalf("request held teardown: %v", err)
+		}
+		drain()
+		view, err := svc.InspectTarget(ctx, operator, scope, retained.ID)
+		if err != nil || view.Target.State != "active" || view.Target.PausedAt == nil || view.Target.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
+			t.Fatalf("held teardown lost visible operator recovery: view=%+v err=%v", view.Target, err)
+		}
+		listed, err := svc.List(ctx, operator, scope)
+		if err != nil || len(listed) != 1 || !listed[0].Adapter.CredentialPresent {
+			t.Fatalf("held teardown hid parent or erased credential: %v", err)
+		}
+		if _, err := svc.Plan(ctx, operator, scope, retained.ID); err != nil {
+			t.Fatalf("held teardown cannot prepare version-bound review: %v", err)
+		}
+		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+			t.Fatal("review-held teardown changed provider metadata")
+		}
+	}
 	removed, err := svc.RemoveTarget(ctx, operator, scope, retained.ID, true)
 	if err != nil || len(removed.Orphaned) == 0 {
 		t.Fatalf("retain failed to name orphaned custody: %v", err)

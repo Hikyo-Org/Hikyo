@@ -66,6 +66,14 @@ Independent Spec R1 found three further defects, reproduced with regressions:
    version classification. Sync and teardown regressions preserve all paths
    and custody; actual Vault/OpenBao lifecycle checks also exercise advanced,
    malformed and missing-marker recovery through fresh version-bound adoption.
+8. Spec R3 found that review-held removal and route scrubs could leave custody
+   inaccessible to supported recovery, and a later successful origin-move
+   sibling could schedule activation past a failed held scrub. Settlement now
+   restores blocked removals as visible paused targets with credentials intact,
+   or makes blocked moves attention-required and supersedes sibling work.
+   Old held custody prevents origin activation; supported cancel and retain
+   decisions remain available. Both-engine real-provider regressions cover
+   target removal, adapter deletion, target moves and late sibling completion.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently

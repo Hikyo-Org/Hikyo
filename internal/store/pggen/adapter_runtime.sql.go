@@ -1068,7 +1068,7 @@ func (q *Queries) AdapterWorkerFinishDeadCredentialScrubReleaseLedger(ctx contex
 }
 
 const adapterWorkerFinishJobAttention = `-- name: AdapterWorkerFinishJobAttention :execrows
-UPDATE adapter_route_moves SET state='attention_required' WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state='activating'
+UPDATE adapter_route_moves SET state='attention_required' WHERE id=$1 AND org_id=$2 AND project_id=$3 AND state IN ('activating','scrubbing','attention_required')
 `
 
 type AdapterWorkerFinishJobAttentionParams struct {
@@ -1211,7 +1211,7 @@ func (q *Queries) AdapterWorkerFinishJobQuery(ctx context.Context, arg AdapterWo
 }
 
 const adapterWorkerFinishJobSupersede = `-- name: AdapterWorkerFinishJobSupersede :execrows
-UPDATE adapter_outbox SET state='superseded',finished_at=$1,lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=$2 AND org_id=$3 AND project_id=$4 AND id<>$5 AND kind='activate' AND state IN ('queued','running')
+UPDATE adapter_outbox SET state='superseded',finished_at=$1,lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=$2 AND org_id=$3 AND project_id=$4 AND id<>$5 AND kind IN ('activate','scrub') AND state IN ('queued','running')
 `
 
 type AdapterWorkerFinishJobSupersedeParams struct {
@@ -1255,7 +1255,7 @@ func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubActivateMove(ctx contex
 }
 
 const adapterWorkerFinishOriginRouteMoveScrubCountPending = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountPending :one
-SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=$1 AND org_id=$2 AND project_id=$3 AND kind='scrub' AND state IN ('queued','running')
+SELECT COUNT(*) FROM adapter_outbox jobs WHERE jobs.route_move_id=$1 AND jobs.org_id=$2 AND jobs.project_id=$3 AND jobs.kind='scrub' AND (jobs.state IN ('queued','running') OR EXISTS (SELECT 1 FROM adapter_ledger held WHERE held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id AND held.state<>'released'))
 `
 
 type AdapterWorkerFinishOriginRouteMoveScrubCountPendingParams struct {
@@ -2831,6 +2831,61 @@ func (q *Queries) AdapterWorkerReserveSelectQuery(ctx context.Context, arg Adapt
 	var state string
 	err := row.Scan(&state)
 	return state, err
+}
+
+const adapterWorkerRestoreHeldScrubAdapter = `-- name: AdapterWorkerRestoreHeldScrubAdapter :execrows
+UPDATE adapters SET state='active' WHERE adapters.org_id=$1 AND adapters.project_id=$2 AND adapters.state='tombstoned' AND adapters.id=(SELECT held.adapter_id FROM adapter_targets held WHERE held.id=$3 AND held.org_id=$1 AND held.project_id=$2 AND held.environment_id=$4 AND held.generation=$5 AND held.state='active')
+`
+
+type AdapterWorkerRestoreHeldScrubAdapterParams struct {
+	ChainOrg     string
+	ChainProject string
+	TargetID     string
+	ChainEnv     string
+	Generation   int64
+}
+
+func (q *Queries) AdapterWorkerRestoreHeldScrubAdapter(ctx context.Context, arg AdapterWorkerRestoreHeldScrubAdapterParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerRestoreHeldScrubAdapter,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.TargetID,
+		arg.ChainEnv,
+		arg.Generation,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const adapterWorkerRestoreHeldScrubTarget = `-- name: AdapterWorkerRestoreHeldScrubTarget :execrows
+UPDATE adapter_targets SET state='active',paused_at=$1 WHERE id=$2 AND org_id=$3 AND project_id=$4 AND environment_id=$5 AND generation=$6 AND state='tombstoned' AND provider_lease_job_id IS NULL
+`
+
+type AdapterWorkerRestoreHeldScrubTargetParams struct {
+	At           pgtype.Timestamptz
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+}
+
+// A review-held removal remains visible and paused, with all custody intact.
+func (q *Queries) AdapterWorkerRestoreHeldScrubTarget(ctx context.Context, arg AdapterWorkerRestoreHeldScrubTargetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerRestoreHeldScrubTarget,
+		arg.At,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const adapterWorkerTryEnqueueDepthQuery = `-- name: AdapterWorkerTryEnqueueDepthQuery :one

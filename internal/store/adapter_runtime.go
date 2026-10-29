@@ -1216,6 +1216,11 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
+		if job.Kind == adapter.Scrub && state == "failed" && errors.Is(terminalErr, adapter.ErrOperatorReview) {
+			if err := r.restoreReviewHeldScrub(ctx, tx, job, finished); err != nil {
+				return err
+			}
+		}
 		if state == "failed" && errors.Is(terminalErr, adapter.ErrUnauthorized) {
 			payload, _ := json.Marshal(map[string]string{"cause": "authority"})
 			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
@@ -1234,6 +1239,36 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		}
 		return nil
 	})
+}
+
+// restoreReviewHeldScrub preserves supported operator recovery without granting
+// another provider write. Removals reappear paused; route moves stop for a
+// cancel/review decision on the old route. Claims and credentials stay intact.
+func (r *AdapterRuntime) restoreReviewHeldScrub(ctx context.Context, tx adapterDBTX, job adapter.Job, at time.Time) error {
+	q := tx.adapterRuntimeQueries()
+	if job.RouteMoveID != "" {
+		rows, err := q.adapterWorkerFinishJobAttention(ctx, job.RouteMoveID, job.OrgID, job.ProjectID)
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return adapter.ErrSuperseded
+		}
+		if _, err := q.adapterWorkerFinishJobSupersede(ctx, at, job.RouteMoveID, job.OrgID, job.ProjectID, job.ID); err != nil {
+			return err
+		}
+		_, err = q.adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID)
+		return err
+	}
+	rows, err := q.adapterWorkerRestoreHeldScrubTarget(ctx, job, at)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	_, err = q.adapterWorkerRestoreHeldScrubAdapter(ctx, job)
+	return err
 }
 
 // raiseDriftAttention flags a target as needing operator action (#157): an

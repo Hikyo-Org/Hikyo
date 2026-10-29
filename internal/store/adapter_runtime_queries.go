@@ -88,6 +88,8 @@ type adapterRuntimeQueries interface {
 	adapterWorkerFinishJobSupersede(ctx context.Context, at time.Time, routeMoveID string, chainOrg string, chainProject string, jobID string) (int64, error)
 	adapterWorkerFinishJobMarkTargets(ctx context.Context, chainOrg string, chainProject string, routeMoveID string) (int64, error)
 	adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error)
+	adapterWorkerRestoreHeldScrubTarget(ctx context.Context, job adapter.Job, at time.Time) (int64, error)
+	adapterWorkerRestoreHeldScrubAdapter(ctx context.Context, job adapter.Job) (int64, error)
 	adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error)
 	adapterWorkerFinishRouteMoveScrubLookupMove(ctx context.Context, routeMoveID string, chainOrg string, chainProject string, targetID string, chainEnv string) (string, error)
 	adapterWorkerFinishRouteMoveScrubActiveLedgerQuery(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (int64, error)
@@ -575,6 +577,12 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerFinishJobMarkTargets(ctx conte
 func (q sqliteAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Context, targetStatus string, convergedRevision int64, convergedRev sql.NullInt64, failureJSON []byte, warningJSON []byte, revision int64, rev sql.NullInt64, attemptedAt time.Time, errorClass sql.NullString, attentionMode int64, retainActiveJob int64, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (int64, error) {
 	return q.queries.AdapterWorkerRecordJobOutcome(ctx, sqlitegen.AdapterWorkerRecordJobOutcomeParams{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: convergedRev, FailureJSON: string(failureJSON), WarningJSON: string(warningJSON), Revision: revision, Rev: rev, AttemptedAt: runtimeSQLiteStamp(attemptedAt), ErrorClass: errorClass, AttentionMode: attentionMode, RetainActiveJob: retainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
 }
+func (q sqliteAdapterRuntimeQueries) adapterWorkerRestoreHeldScrubTarget(ctx context.Context, job adapter.Job, at time.Time) (int64, error) {
+	return q.queries.AdapterWorkerRestoreHeldScrubTarget(ctx, sqlitegen.AdapterWorkerRestoreHeldScrubTargetParams{At: runtimeSQLiteStamp(at), TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation})
+}
+func (q sqliteAdapterRuntimeQueries) adapterWorkerRestoreHeldScrubAdapter(ctx context.Context, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerRestoreHeldScrubAdapter(ctx, sqlitegen.AdapterWorkerRestoreHeldScrubAdapterParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation})
+}
 func (q sqliteAdapterRuntimeQueries) adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error) {
 	return q.queries.AdapterWorkerRaiseDriftAttentionQuery(ctx, sqlitegen.AdapterWorkerRaiseDriftAttentionQueryParams{TargetID: targetID, Org: org, Project: project, EnvironmentID: environmentID})
 }
@@ -921,6 +929,12 @@ func (q pgAdapterRuntimeQueries) adapterWorkerRecordJobOutcome(ctx context.Conte
 		return 0, err
 	}
 	return q.queries.AdapterWorkerRecordJobOutcome(ctx, pggen.AdapterWorkerRecordJobOutcomeParams{TargetStatus: targetStatus, ConvergedRevision: convergedRevision, ConvergedRev: pgtype.Int8{Int64: convergedRev.Int64, Valid: convergedRev.Valid}, FailureJSON: failureJSON, WarningJSON: warningJSON, Revision: revision, Rev: pgtype.Int8{Int64: rev.Int64, Valid: rev.Valid}, AttemptedAt: pgRequiredTime(attemptedAt), ErrorClass: pgtype.Text{String: errorClass.String, Valid: errorClass.Valid}, AttentionMode: checkedAttentionMode, RetainActiveJob: checkedRetainActiveJob, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation})
+}
+func (q pgAdapterRuntimeQueries) adapterWorkerRestoreHeldScrubTarget(ctx context.Context, job adapter.Job, at time.Time) (int64, error) {
+	return q.queries.AdapterWorkerRestoreHeldScrubTarget(ctx, pggen.AdapterWorkerRestoreHeldScrubTargetParams{At: pgRequiredTime(at), TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation})
+}
+func (q pgAdapterRuntimeQueries) adapterWorkerRestoreHeldScrubAdapter(ctx context.Context, job adapter.Job) (int64, error) {
+	return q.queries.AdapterWorkerRestoreHeldScrubAdapter(ctx, pggen.AdapterWorkerRestoreHeldScrubAdapterParams{TargetID: job.TargetID, ChainOrg: job.OrgID, ChainProject: job.ProjectID, ChainEnv: job.EnvironmentID, Generation: job.Generation})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerRaiseDriftAttentionQuery(ctx context.Context, targetID string, org string, project string, environmentID string) (int64, error) {
 	return q.queries.AdapterWorkerRaiseDriftAttentionQuery(ctx, pggen.AdapterWorkerRaiseDriftAttentionQueryParams{TargetID: targetID, Org: org, Project: project, EnvironmentID: environmentID})

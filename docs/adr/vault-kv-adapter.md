@@ -89,6 +89,16 @@ Each nonempty pending marker retains its review hold. Authority
 is also rechecked at the HTTP request boundary, including after AppRole login
 or renewal and between metadata PATCH and value CAS.
 
+A removal scrub stopped for operator review restores the target and, when
+necessary, its parent adapter to visible active state, with the target paused
+and attention required. Custody and credentials remain intact. The operator
+can plan/adopt and explicitly resume, or choose retain. A route-move scrub
+stopped for review marks the move attention-required and stops sibling work;
+cancel restores the old route for review. A late sibling completion cannot
+activate a new route while old custody is held. Existing documented credential
+retirement may resolve custody with explicit orphan warnings; a failed held
+scrub is never treated as a successful one merely because it is terminal.
+
 A fresh operator plan observes the positive current provider version using metadata only and stores it inside the scoped conflict artifact. Explicit adoption requires the exact current target generation, origin/destination, scope, surface and name; it can update only this target's held Vault row, never a foreign global-name claim. The adopted artifact's conflict generation must be the immediate predecessor of the verified current generation because adoption advances once. The next write requires that observed version still match and uses a new CAS; it never finalizes an old pending version as Hikyo's. Changed versions, consumed artifacts, legacy artifacts without a witness, and zero/nonpositive witnesses refuse. SQLite parses provenance timestamps and fails closed on malformed evidence; ties consume consent conservatively. A successful journal outcome consumes adoption. No wall-clock artifact lifetime is newly invented: freshness is current generation, destination and provider version. An unknown create still absent has no positive witness; the operator must explicitly retain/release that target's custody and recreate the target before another create. No user artifact or provider value is silently deleted to recover.
 
 Removing ownership markers also invalidates ordinary overwrite/prune custody,
