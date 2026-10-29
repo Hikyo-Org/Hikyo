@@ -116,6 +116,14 @@ Independent Spec R1 found three further defects, reproduced with regressions:
     root-route recovery, then KV v1 and PKI remount refusal with visible paused
     teardown and explicit retain. No value mutation is admitted on a wrong
     engine and no raw engine response is echoed in its error.
+14. R7 found terminal authority refusal leaving activation stuck after the old
+    route was scrubbed. Failed activation now exposes attention-required
+    recovery for `ErrUnauthorized` without restoring push authority. Its
+    opening principal's refusal audit is retained. The actual-provider
+    regression revokes the recorded principal between scrub and activation,
+    proves no provider effect or metadata read was admitted, preserves the
+    service's not-found concealment, and cancels through a different authorized
+    operator on both databases. The new operator supplies the recovery authority.
 
 The activation-status update retains its existing reviewed scoped-query
 mechanism from #619. Its exact SQL/API pin is refreshed for the added bounded
@@ -264,6 +272,17 @@ adapter flows passed. Its broad Go run was intentionally stopped for these
 source repairs and is incomplete, not passing evidence. Final source still
 requires fresh review, complete local validation and exact-head hosted readback.
 
+R7 used configured Sol/high on
+`ee338c2c7a2e7bcc104d308d7a3e5d3d97e31db0`, tree
+`105f35032d77fd72c952341c601668d5d5600d39`. Standards was CLEAN, verifying all
+64 scoped blobs and 20 repair bindings. Spec identified only the authority
+recovery defect above. It was reproduced on both real providers and both
+databases before repair. Recheck scope is the changed authority settlement,
+its regression and this evidence update, carrying the unchanged-source R7
+review bindings forward explicitly. Final-byte receipts and exact-head check
+status are recorded on [PR #1091](https://github.com/Hikyo-Org/Hikyo/pull/1091)
+and the owning ticket records; no pending review is self-certified here.
+
 ## Owning-ticket ceremony
 
 Membership is recorded on [#162](https://github.com/Hikyo-Org/Hikyo/issues/162#issuecomment-6493361355),
@@ -304,11 +323,23 @@ finished. Retain evidence and the active review checkout. Never print or commit
 the environment file. Shared images, caches, services and unrelated data are not
 disposable merely because this run uses Docker.
 
-The broader Go suite, affected race/invariant checks, desktop/mobile browser
-flows and final PR-head CI are being completed. Commands, exit statuses and
+Affected Go owner/consumer, race/invariant checks, desktop/mobile browser flows
+and final PR-head CI supply the scoped completion evidence. Commands, exit statuses and
 exact source bindings remain in the review evidence. A prior overlapping local
 isolation run was invalidated by shared-schema interference and is not passing
 evidence; it was stopped, diagnosed and replaced with sequential runs.
+
+## Bounded completion contract (owner steering, 2026-10-29)
+
+Stop at one reviewed PR with these destination repairs, source-bound provider
+and consumer evidence, a self-contained handoff, and owned runtime cleanup.
+The current source reviews conclude this audit; any recheck covers changed
+bytes and their immediate recovery path. Record unrelated findings separately.
+The interrupted repository-wide Go runs remain incomplete; do not restart
+unrelated suites or absorb their fixes into #162. Run the selected full-PR
+feedback checks and affected owners/consumers, preserving failures and existing
+deadlines. No new feature, generic provider framework, additional environment
+provisioning or unrelated release gate is part of this endpoint.
 
 ## Remaining gate and executable handoff
 

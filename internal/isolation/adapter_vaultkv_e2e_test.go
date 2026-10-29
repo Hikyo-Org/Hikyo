@@ -858,6 +858,54 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if current, err := svc.InspectTarget(ctx, operator, scope, activation.Targets[0].ID); err != nil || current.Target.Health() != adapter.HealthConverged {
 		t.Fatalf("canceled namespace activation did not recover root route: %v", err)
 	}
+	// Authority can disappear after the old route was successfully scrubbed.
+	// Failure must expose cancellation, without reviving the revoked principal.
+	authorityMove, err := svc.MoveOrigin(ctx, operator, scope, activation.Adapter.ID, server.addr+"/must-not-receive-credentials", credential, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(time.Second)
+	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
+		t.Fatalf("old-route scrub before revocation: worked=%t err=%v", worked, err)
+	}
+	if move, err := svc.Move(ctx, operator, scope, authorityMove.MoveID); err != nil || move.State != "activating" {
+		t.Fatalf("fixture did not reach activation: state=%s err=%v", move.State, err)
+	}
+	activationJob := queryString(t, db, "SELECT id FROM adapter_outbox WHERE route_move_id='"+authorityMove.MoveID+"' AND kind='activate'")
+	beforeEffects := queryInt(t, db, "SELECT COUNT(*) FROM adapter_effects WHERE job_id='"+activationJob+"'")
+	beforeMetadataReads := metadataReads
+	execRaw(t, db, `DELETE FROM grants WHERE principal_id='usr_alice' AND org_id='`+cOrg+`' AND project_id='`+cPrj+`' AND capability IN ('manage-adapters','reveal')`)
+	for i, capability := range []string{"manage-adapters", "reveal"} {
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_rescue_%d','%s','%s','%s','%s',NULL,%s)`, i, cAdmin, capability, cOrg, cPrj, ts))
+	}
+	clock = clock.Add(time.Second)
+	if worked, err := worker.RunOnce(ctx); err != nil || !worked {
+		t.Fatalf("revoked activation: worked=%t err=%v", worked, err)
+	}
+	if move, err := svc.Move(ctx, publisher, scope, authorityMove.MoveID); err != nil || move.State != "attention_required" {
+		t.Fatalf("authority refusal stranded activation: state=%s err=%v", move.State, err)
+	}
+	if refused, err := svc.InspectTarget(ctx, publisher, scope, activation.Targets[0].ID); err != nil || refused.Target.LastErrorClass != adapter.ErrorClassRefused || !refused.Target.DriftAttention {
+		t.Fatalf("authority refusal lost bounded attention status: err=%v target=%+v", err, refused.Target)
+	}
+	if queryInt(t, db, "SELECT COUNT(*) FROM adapter_effects WHERE job_id='"+activationJob+"'") != beforeEffects || metadataReads != beforeMetadataReads {
+		t.Fatal("revoked activation admitted a provider effect")
+	}
+	if queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE correlation_id='"+activationJob+"' AND type='adapter.abort' AND authority_id='usr_alice' AND outcome='failure' AND CAST(payload AS TEXT) LIKE '%authority%'") != 1 {
+		t.Fatal("revoked activation lost its opener-bound refusal audit")
+	}
+	if _, err := svc.CancelMove(ctx, operator, scope, authorityMove.MoveID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("revoked principal's move was not concealed: %v", err)
+	}
+	if _, err := svc.CancelMove(ctx, publisher, scope, authorityMove.MoveID); err != nil {
+		t.Fatalf("different authorized operator cannot cancel: %v", err)
+	}
+	drain()
+	if current, err := svc.InspectTarget(ctx, publisher, scope, activation.Targets[0].ID); err != nil || current.Target.Health() != adapter.HealthConverged || current.Target.AuthorityPrincipalID != cAdmin {
+		t.Fatalf("authorized cancellation did not restore root under new authority: err=%v target=%+v", err, current.Target)
+	}
+	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage_recovered','usr_alice','manage-adapters','`+cOrg+`','`+cPrj+`',NULL,`+ts+`)`)
+	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal_recovered','usr_alice','reveal','`+cOrg+`','`+cPrj+`','`+cEnv+`',`+ts+`)`)
 	if _, err := svc.Delete(ctx, operator, scope, activation.Adapter.ID, true); err != nil {
 		t.Fatal(err)
 	}

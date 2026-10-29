@@ -1140,7 +1140,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 			payload, _ := json.Marshal(map[string][]string{"orphaned": {}})
 			return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "success", finished, payload)
 		}
-		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict) || errors.Is(terminalErr, adapter.ErrOperatorReview)) {
+		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict) || errors.Is(terminalErr, adapter.ErrOperatorReview) || errors.Is(terminalErr, adapter.ErrUnauthorized)) {
 
 			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobAttention(ctx, job.RouteMoveID, job.OrgID, job.ProjectID)
 			if err != nil {
@@ -1156,6 +1156,14 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 
 			if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID, adapter.ClassifyError(terminalErr), finished); err != nil {
 				return err
+			}
+			// Recovery changes no push authority. Preserve the opening job's
+			// refusal audit before this activation-specific settlement returns.
+			if errors.Is(terminalErr, adapter.ErrUnauthorized) {
+				payload, _ := json.Marshal(map[string]string{"cause": "authority"})
+				if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
+					return err
+				}
 			}
 			return insertAdapterJobAudit(ctx, tx, job, "adapter.test", "failure", finished, []byte(`{}`))
 		}
