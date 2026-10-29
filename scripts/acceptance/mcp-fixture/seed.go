@@ -38,7 +38,7 @@ type credential struct {
 // Other supported writer commands intentionally reopen this already owned
 // installation and therefore must not use the fresh-only entry point.
 func openFreshFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring, error) {
-	if err := requireEmptyFixture(ctx, cfg); err != nil {
+	if err := requireEmptyPostgres(ctx, cfg, false); err != nil {
 		return nil, nil, err
 	}
 	db, kr, err := openFixture(ctx, cfg)
@@ -47,7 +47,7 @@ func openFreshFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Key
 	}
 	// Admission may create the catalogue. Recheck before any supported seed
 	// writer, retaining the same pre-admission refusal for existing tenants.
-	if err := requireEmptyFixture(ctx, cfg); err != nil {
+	if err := requireEmptyPostgres(ctx, cfg, false); err != nil {
 		db.Close()
 		return nil, nil, err
 	}

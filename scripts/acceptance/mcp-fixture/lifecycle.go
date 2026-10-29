@@ -3,9 +3,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -13,6 +18,47 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// Exercise the actual operational commands against the owned local datastore.
+// The observer must finish while the helper holds the catalogue lock, without
+// repeating admission behind that lock. This is not public proxy proof.
+func exerciseStoreCommands(ctx context.Context, dir string) (result error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	binary, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	hold := exec.CommandContext(ctx, binary, "hold", "--runtime", dir)
+	hold.Stderr = io.Discard
+	input, err := hold.StdinPipe()
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := hold.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+	if err := hold.Start(); err != nil {
+		return err
+	}
+	defer func() {
+		input.Close()
+		result = errors.Join(result, hold.Wait())
+	}()
+	line, err := bufio.NewReader(output).ReadString('\n')
+	if err != nil || line != "LOCKED\n" {
+		return errors.New("actual fixture hold command failed")
+	}
+	raw, err := exec.CommandContext(ctx, binary, "observe", "--runtime", dir).Output()
+	var counts storeCounts
+	if err != nil || json.Unmarshal(raw, &counts) != nil || counts.Claims != 0 || len(counts.Blocked) != 2 || counts.Blocked[0] != 0 || counts.Blocked[1] != 0 {
+		return errors.New("read-only observer failed while catalogue was locked")
+	}
+	return nil
+}
 
 // Locks are permitted only on this disposable fixture. They simulate admitted
 // work stalled in the real store, not a timer or mocked service. Never use

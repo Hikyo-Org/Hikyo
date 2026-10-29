@@ -198,3 +198,11 @@ authorities are unchanged. Typed mutation regressions exercise query/write-mode
 drift, both datastore guards, new callers/aliases, neighboring source files,
 generated imports and unexpected SQL in an excluded build context. The hash
 updater cannot change the declared source authority.
+
+The fresh-seed sequencer directly invokes the named preflight before and after
+admission, so either removal or reordering invalidates its caller pin. The hold
+protocol validates its own DSN and opens that exact guarded connection; it
+does not accept an ambient store handle. Local rehearsal additionally invokes
+the actual `hold` and read-only `observe` commands against the owned datastore,
+requiring the observer to finish while the catalogue lock remains held. This
+operational-command check is separate from public proxy acceptance.

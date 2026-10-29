@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -312,14 +311,30 @@ func observeReadOnly(ctx context.Context, cfg settings) error {
 	return json.NewEncoder(os.Stdout).Encode(c)
 }
 
-func holdFixtureCatalogue(ctx context.Context, db *store.DB) error {
+func holdFixtureCatalogue(ctx context.Context, cfg settings) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	lock, err := db.PG().Begin(ctx)
+	if err := validateDSN(cfg.DSN, cfg.Development); err != nil {
+		return err
+	}
+	connection, err := pgx.Connect(ctx, cfg.DSN)
+	if err != nil {
+		return errors.New("guarded fixture lock connection unavailable")
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		connection.Close(cleanup)
+	}()
+	lock, err := connection.Begin(ctx)
 	if err != nil {
 		return errors.New("fixture lock unavailable")
 	}
-	defer lock.Rollback(context.Background())
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		lock.Rollback(cleanup)
+	}()
 	if _, err := lock.Exec(ctx, "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE"); err != nil {
 		return errors.New("fixture lock refused")
 	}

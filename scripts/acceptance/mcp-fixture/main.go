@@ -114,7 +114,7 @@ func run(ctx context.Context, args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{"action": args[0], "committed_at_utc": time.Now().UTC()})
 	case "hold":
-		return holdFixtureCatalogue(ctx, db)
+		return holdFixtureCatalogue(ctx, cfg)
 	default:
 		return errors.New("unknown command")
 	}

@@ -1,7 +1,6 @@
 package lint
 
 import (
-	"go/ast"
 	"go/token"
 	"maps"
 	"os"
@@ -93,7 +92,7 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 		}
 		pins[mcpFixtureDirectory+owner] = pin
 	}
-	for _, tc := range []struct{ name, file, old, replacement, appendSource, alternate, refusal string }{
+	for _, tc := range []struct{ name, file, function, old, replacement, appendSource, alternate, refusal string }{
 		{name: "reviewed fixture"},
 		{name: "fresh tenant query", file: "seed.go", old: "SELECT COUNT(*) FROM public.orgs", replacement: "SELECT COUNT(*) FROM principals", refusal: "requireEmptyPostgres changed its reviewed engine protocol"},
 		{name: "write-capable preflight", file: "seed.go", old: "AccessMode: pgx.ReadOnly", replacement: "AccessMode: pgx.ReadWrite", refusal: "requireEmptyPostgres changed its reviewed engine protocol"},
@@ -103,6 +102,11 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 		{name: "catalogue lock", file: "public.go", old: "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE", replacement: "LOCK TABLE principals IN ACCESS EXCLUSIVE MODE", refusal: "holdFixtureCatalogue changed its reviewed engine protocol"},
 		{name: "lifecycle mutation", file: "lifecycle.go", old: "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE", replacement: "DELETE FROM keys", refusal: "probe.lifecycle changed its reviewed engine protocol"},
 		{name: "admitted caller drift", file: "main.go", old: "opener = openFreshFixture", replacement: "opener = openFixture", refusal: "run references protocol"},
+		{name: "pre-admission check removed", file: "seed.go", function: "openFreshFixture", old: "if err := requireEmptyPostgres(ctx, cfg, false); err != nil {\n\t\treturn nil, nil, err\n\t}", replacement: "if err := error(nil); err != nil {\n\t\treturn nil, nil, err\n\t}", refusal: "openFreshFixture references protocol"},
+		{name: "post-admission check removed", file: "seed.go", function: "openFreshFixture", old: "if err := requireEmptyPostgres(ctx, cfg, false); err != nil {\n\t\tdb.Close()", replacement: "if err := error(nil); err != nil {\n\t\tdb.Close()", refusal: "openFreshFixture references protocol"},
+		{name: "admission precedes first check", file: "seed.go", function: "openFreshFixture", old: "if err := requireEmptyPostgres(ctx, cfg, false); err != nil {\n\t\treturn nil, nil, err\n\t}\n\tdb, kr, err := openFixture(ctx, cfg)", replacement: "db, kr, err := openFixture(ctx, cfg)\n\tif err := requireEmptyPostgres(ctx, cfg, false); err != nil {\n\t\treturn nil, nil, err\n\t}", refusal: "openFreshFixture references protocol"},
+		{name: "hold guard removed", file: "public.go", function: "holdFixtureCatalogue", old: "validateDSN(cfg.DSN, cfg.Development)", replacement: "error(nil)", refusal: "holdFixtureCatalogue changed its reviewed engine protocol"},
+		{name: "hold connection override", file: "public.go", function: "holdFixtureCatalogue", old: "pgx.Connect(ctx, cfg.DSN)", replacement: "pgx.Connect(ctx, cfg.DSN+\"&host=unowned.invalid\")", refusal: "holdFixtureCatalogue changed its reviewed engine protocol"},
 		{name: "new caller", file: "seed.go", appendSource: "\nfunc anotherPreflight(ctx context.Context, cfg settings) error { return requireEmptyPostgres(ctx, cfg, false) }\n", refusal: "anotherPreflight references protocol"},
 		{name: "new alias", file: "seed.go", appendSource: "\nfunc aliasPreflight(ctx context.Context, cfg settings) error { preflight := requireEmptyPostgres; return preflight(ctx, cfg, false) }\n", refusal: "aliasPreflight references protocol"},
 		{name: "new SQL owner", file: "seed.go", appendSource: "\nfunc anotherSQL(ctx context.Context, conn *pgx.Conn) { _, _ = conn.Exec(ctx, \"DELETE FROM orgs\") }\n", refusal: "anotherSQL executes handwritten SQL outside a named engine protocol"},
@@ -118,10 +122,17 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 				}
 				source := string(raw)
 				if tc.old != "" {
-					if !strings.Contains(source, tc.old) {
+					start := 0
+					if tc.function != "" {
+						start = strings.Index(source, "func "+tc.function+"(")
+						if start < 0 {
+							t.Fatal("missing mutation function", tc.function)
+						}
+					}
+					if !strings.Contains(source[start:], tc.old) {
 						t.Fatal("missing mutation target", tc.old)
 					}
-					source = strings.Replace(source, tc.old, tc.replacement, 1)
+					source = source[:start] + strings.Replace(source[start:], tc.old, tc.replacement, 1)
 				}
 				overlay[path] = []byte(source + tc.appendSource)
 				if tc.alternate != "" {
@@ -129,13 +140,13 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 					overlay[filepath.Join(filepath.Dir(path), tc.alternate)] = []byte(source)
 				}
 			}
-			// Typecheck the fixture and its actual raw-handle implementation.
+			// Typecheck the actual fixture and its guard/probe helpers.
 			// Whole-module ownership is checked separately in every build context.
 			pkgs, err := packages.Load(&packages.Config{
 				Dir: root, Overlay: overlay,
 				Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
 					packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
-			}, Module+"/scripts/acceptance/mcp-fixture", Module+"/internal/store")
+			}, Module+"/scripts/acceptance/mcp-fixture")
 			if err != nil || len(pkgs) == 0 {
 				t.Fatalf("typed fixture load: %v", err)
 			}
@@ -143,28 +154,6 @@ func TestMCPFixtureProtocolsRejectDrift(t *testing.T) {
 				for _, err := range pkg.Errors {
 					t.Fatal(err)
 				}
-			}
-			// Keep the real typed accessor helper bodies, not unrelated store
-			// protocols. Their pins remain checked by the fixture's dependency
-			// closure and the unchanged full-repository invariant tests.
-			for _, pkg := range pkgs {
-				if pkg.PkgPath != Module+"/internal/store" {
-					continue
-				}
-				var syntax []*ast.File
-				for _, file := range pkg.Syntax {
-					selected := *file
-					selected.Decls = nil
-					for _, declaration := range file.Decls {
-						if fn, ok := declaration.(*ast.FuncDecl); ok && (rawSQLFunctionName(fn) == "DB.PG" || rawSQLFunctionName(fn) == "postgresPool.raw") {
-							selected.Decls = append(selected.Decls, declaration)
-						}
-					}
-					if len(selected.Decls) > 0 {
-						syntax = append(syntax, &selected)
-					}
-				}
-				pkg.Syntax = syntax
 			}
 			findings := CheckRawSQL(pkgs, root, Module, pins)
 			if tc.refusal == "" {

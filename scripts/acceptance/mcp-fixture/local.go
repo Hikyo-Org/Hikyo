@@ -165,6 +165,10 @@ func local(ctx context.Context, dir, binary string) (result error) {
 		return errors.New("nonempty datastore pre-admission guard failed")
 	}
 	r.Checks["nonempty_seed_refused_before_admission"] = "PASS"
+	if err := exerciseStoreCommands(ctx, dir); err != nil {
+		return err
+	}
+	r.Checks["guarded_hold_and_readonly_observe_CLI"] = "PASS: local datastore commands only"
 	var f fixture
 	if err := readPrivate(filepath.Join(dir, "fixture.json"), &f); err != nil {
 		return err

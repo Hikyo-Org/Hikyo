@@ -2688,7 +2688,7 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/local.go:local": "c9de8e943824485998104d596a230feaff09baf964218115b48d3516c151aaa4"
+        "scripts/acceptance/mcp-fixture/local.go:local": "c3b0dae8d21d413e7bda5df35235bf7e59018d9f3bad77a7a0f887b34a9e0de9"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/listeners.go:listenerAccepting",
@@ -2700,19 +2700,18 @@
       ]
     },
     "scripts/acceptance/mcp-fixture/public.go:holdFixtureCatalogue": {
-      "hash": "730e2703c7936f7fe5fc1c082bd8c89217f1e16c50c79bbde728294b62f6ec1e",
-      "reason": "Twenty-second disposable MCP fixture catalogue lock for authorized public proxy cancellation/drain measurement. The reviewed dispatcher opens the guarded admitted fixture before invoking this bounded lock; stdin, cancellation or deadline releases it. No tenant writes.",
+      "hash": "488968e249549547eeec9ab9bf652839c859e00c335c80496bc4d596d49fd70b",
+      "reason": "Twenty-second disposable MCP fixture catalogue lock for authorized public proxy cancellation/drain measurement. The exact DSN guard and its own connection bind the SQL target inside this protocol, after dispatcher admission. Stdin, cancellation or deadline releases the lock, with bounded rollback/close. No tenant writes.",
       "build_contexts": [
         "default",
         "ui",
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "aaa178b82ca37a205e336698ca8396a2ba7f55f1280158e558b4994aa6c0ae43"
+        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
       },
       "dependencies": [
-        "internal/store/store.go:DB.PG",
-        "internal/store/store.go:postgresPool.raw"
+        "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
       ]
     },
     "scripts/acceptance/mcp-fixture/public.go:observeReadOnly": {
@@ -2724,7 +2723,7 @@
         "darwin"
       ],
       "callers": {
-        "scripts/acceptance/mcp-fixture/main.go:run": "aaa178b82ca37a205e336698ca8396a2ba7f55f1280158e558b4994aa6c0ae43"
+        "scripts/acceptance/mcp-fixture/main.go:run": "9272c094d4adf13ee5da3e43936c5a7b9c3f8d2f0b67f1ca9bba05d600107e31"
       },
       "dependencies": [
         "scripts/acceptance/mcp-fixture/seed.go:validateDSN"
@@ -2740,6 +2739,7 @@
       ],
       "callers": {
         "scripts/acceptance/mcp-fixture/audit_seed.go:auditSeedConfigured": "fe2c08d05c7fef830531e5a324763f644d656d373e5b6281675caee64d2d6a4e",
+        "scripts/acceptance/mcp-fixture/seed.go:openFreshFixture": "a5384c7dcb1a95b3957ae0be658f4164932e4cc75a38ee8395093135507e588e",
         "scripts/acceptance/mcp-fixture/seed.go:requireEmptyFixture": "5992f098735a8dda97b778ca462f0bfd948993e75d491db6e447fd96fb81d731"
       },
       "dependencies": [
@@ -2965,14 +2965,12 @@
     "internal/store/recovery.go:RecoveryDB.Engine": "3ce2266b37a91e0c33fab6bcf52e6ec1ccb042f138d575c6c9ebf41c44bc5c81",
     "internal/store/sqlitegen/snapshot_statements.go:SnapshotInsertSlot": "cc921f9eff01a60fedb875f0a219b9ce511f5d8a4ad706a3723e7fb4649a582c",
     "internal/store/store.go:DB.Close": "2adabeab5b29dbba1f6d5f93f178c14a9b9894bd845b9d3e3685c3cfdfeb5097",
-    "internal/store/store.go:DB.PG": "e2e4186e87d0bf1262fc077c2e68837f7374ba70ea3af2e6dd4666d3171aa4e2",
     "internal/store/store.go:PreparedPostgresPool.Close": "019b6c0981ea5d0eb22fcf1a0e04cde790cf9862e767aec81883b033b60d72fc",
     "internal/store/store.go:SQLiteDSN": "dec351809224219ad6c364efc304f4ee2e6f965c8408d3c7e2af548d0b66aa51",
     "internal/store/store.go:postgresPool.Acquire": "f9d5d3bd3a2f69add5517483604feb8d18cec186247ef1eea613779d896b2ebf",
     "internal/store/store.go:postgresPool.BeginTx": "25818c2f59be0b411fa1ffe1a42a388d56f55d48709fcb9ca26eea37a9677638",
     "internal/store/store.go:postgresPool.Close": "c8cae8c4aeda4414771661ffc72b18ea9d8bd0e7cac7323f8ec0ff482816d3ce",
     "internal/store/store.go:postgresPool.pin": "23d9b2d9a56f6182ffc77e519a7789969aeda4e8d94d86c6ba491eaf88cdd23c",
-    "internal/store/store.go:postgresPool.raw": "d58a888e2dc2ab51a4f305123cc46f91f43335eb85688a18b5ac2a3051020463",
     "internal/store/store.go:postgresPool.retireLocked": "3b233cad77cb5026127b7a76055e8367f7c251296c7be5da7b206c660ef04414",
     "internal/store/store.go:rollbackPostgresSourceProof": "b205da554b3350237751826e7871f89f4cd21199737916e052ad03814b6641f6",
     "internal/store/store.go:sqliteReadDSN": "acc83922e07014cade2291fa1400ce7e2a5ef32321de9e82f15e0c65546f3acc",
