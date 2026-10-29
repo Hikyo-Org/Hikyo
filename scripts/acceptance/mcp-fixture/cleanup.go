@@ -5,6 +5,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -72,4 +74,35 @@ func boundedDocker(args ...string) (string, error) {
 		return "", errors.New("owned Docker cleanup timeout")
 	}
 	return out, err
+}
+
+func finishLocalScratch(dir string, r *receipt, result error) error {
+	if result == nil {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			result = errors.New("private scratch enumeration failed")
+		} else {
+			for _, entry := range entries {
+				if entry.Name() == "smoke-receipt.json" || entry.Name() == "wire-receipt.json" {
+					continue
+				}
+				if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+					result = errors.Join(result, errors.New("private scratch removal failed"))
+				}
+			}
+		}
+		if result == nil {
+			r.Checks["private_scratch_cleanup"] = "PASS"
+		} else {
+			r.Checks["private_scratch_cleanup"] = "FAIL"
+		}
+	} else {
+		r.Checks["private_scratch_cleanup"] = "RETAINED: private diagnostic scratch pending repair"
+	}
+	if result != nil {
+		r.Checks["outcome"] = "FAIL; private diagnostic scratch retained pending repair"
+	} else {
+		r.Checks["outcome"] = "PASS"
+	}
+	return result
 }

@@ -175,3 +175,9 @@ for failed starts; child readiness failure has a kill fallback. Log read failure
 fail disclosure checks, missing executable hashes fail, canonical parent checks
 precede local resource creation, and container custody directories survive
 restarts. Public runtime and final artifact gates remain separately HOLD.
+
+Required server/helper/native-client identities are validated before resource
+allocation. Final cleanup enumerates/removes private scratch with propagated
+errors, and only then sets the outcome; an incomplete campaign cannot receive
+a passing receipt. Fault regressions cover missing identities, failed scratch
+enumeration and failed removal.

@@ -68,9 +68,6 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	}
 	r := newReceipt()
 	r.Identities["server_binary_sha256"] = fileHash(binary)
-	if !sha256Pattern.MatchString(r.Identities["server_binary_sha256"]) {
-		return errors.New("server executable identity unavailable")
-	}
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -78,6 +75,11 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	r.Identities["helper_binary_sha256"] = fileHash(self)
 	r.Identities["codex_binary_sha256"] = fileHash(os.Getenv("MCP651_CODEX"))
 	r.Identities["inspector_cli_sha256"] = fileHash(os.Getenv("MCP651_INSPECTOR_ENTRY"))
+	for _, name := range []string{"server_binary_sha256", "helper_binary_sha256", "codex_binary_sha256", "inspector_cli_sha256"} {
+		if !sha256Pattern.MatchString(r.Identities[name]) {
+			return errors.New("required executable identity unavailable before resource allocation")
+		}
+	}
 	r.Identities["source_commit"], err = command(ctx, "git", "rev-parse", "HEAD")
 	if err != nil {
 		return err
@@ -89,7 +91,11 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	name := "hikyo-mcp-651-" + randomHex()[:12]
 	var container, network string
 	var processes []*serverProcess
+	completed := false
 	defer func() {
+		if !completed && result == nil {
+			result = errors.New("local campaign did not complete normally")
+		}
 		for _, p := range processes {
 			stopServer(p, 7*time.Second)
 		}
@@ -100,22 +106,7 @@ func local(ctx context.Context, dir, binary string) (result error) {
 			r.Checks["owned_container_network_process_cleanup"] = "FAIL"
 			result = errors.New("owned resource cleanup failed")
 		}
-		if result == nil {
-			entries, _ := os.ReadDir(dir)
-			for _, e := range entries {
-				if e.Name() == "smoke-receipt.json" || e.Name() == "wire-receipt.json" {
-					continue
-				}
-				if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
-					result = errors.New("private scratch cleanup failed")
-				}
-			}
-			if result == nil {
-				r.Checks["private_scratch_cleanup"] = "PASS"
-			}
-		} else {
-			r.Checks["outcome"] = "FAIL; private diagnostic scratch retained pending repair"
-		}
+		result = finishLocalScratch(dir, r, result)
 		if err := writePrivate(filepath.Join(dir, "local-receipt.json"), r); err != nil {
 			result = err
 		}
@@ -358,7 +349,7 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	}
 	r.Checks["bounded_JSON_no_open_stream_claim"] = "PASS"
 	r.Checks["public_candidate_acceptance"] = "NOTRUN; local private-CA development rehearsal only"
-	r.Checks["outcome"] = "PASS"
+	completed = true
 	return nil
 }
 

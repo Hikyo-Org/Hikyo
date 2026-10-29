@@ -190,3 +190,73 @@ func TestUnresponsiveOwnedProcessGetsKillFallback(t *testing.T) {
 		t.Fatal("owned process stop exceeded fallback budget")
 	}
 }
+
+func TestMissingClientIdentityRefusesBeforeAnyResourceCommand(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := filepath.Join(dir, "runtime")
+	if err := os.Mkdir(runtime, 0700); err != nil {
+		t.Fatal(err)
+	}
+	server := filepath.Join(dir, "server")
+	if err := os.WriteFile(server, []byte("synthetic nonexecuted fixture input"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	inspector := filepath.Join(dir, "inspector")
+	if err := os.WriteFile(inspector, []byte("synthetic inspector inventory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"git": "printf aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "docker": "printf reached > \"$TEST_RESOURCE_MARKER\"; exit 1"} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+body+"\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("MCP651_CODEX", filepath.Join(dir, "absent-codex"))
+	t.Setenv("MCP651_INSPECTOR_ENTRY", inspector)
+	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	t.Setenv("TEST_RESOURCE_MARKER", filepath.Join(dir, "resource-called"))
+	if local(context.Background(), runtime, server) == nil {
+		t.Fatal("missing client identity accepted")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "resource-called")); !os.IsNotExist(err) {
+		t.Fatal("allocated resources before rejecting missing artifact identity")
+	}
+}
+
+func TestScratchEnumerationFailureOverridesEarlierPassingOutcome(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(file, []byte("synthetic"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r := newReceipt()
+	r.Checks["outcome"] = "PASS"
+	if finishLocalScratch(file, r, nil) == nil || r.Checks["private_scratch_cleanup"] != "FAIL" || !strings.HasPrefix(r.Checks["outcome"], "FAIL") {
+		t.Fatal("failed enumeration retained passing cleanup/outcome")
+	}
+}
+
+func TestScratchRemovalFailureOverridesEarlierPassingOutcome(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory write permission failure")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "private-synthetic"), []byte("synthetic"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0700)
+	r := newReceipt()
+	r.Checks["outcome"] = "PASS"
+	if finishLocalScratch(dir, r, nil) == nil || r.Checks["private_scratch_cleanup"] != "FAIL" || !strings.HasPrefix(r.Checks["outcome"], "FAIL") {
+		t.Fatal("failed removal retained passing cleanup/outcome")
+	}
+}
