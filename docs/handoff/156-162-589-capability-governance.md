@@ -1,5 +1,22 @@
 # #156 / #162 / #589: pre-freeze capability governance reconciliation
 
+## Transit continuation (2026-10-29)
+
+[PR #1071](https://github.com/Hikyo-Org/Hikyo/pull/1071) merged as
+`1c7a0d0bdb5f8e4f9bd9c71f0a67219cd8f72736`; the October 28 record below is
+historical. The owner subsequently requested actual #156 amendment review and
+closeout under the October 29 independent Standards/Spec policy. The exact
+contract, provenance and remaining gates are in the
+[Transit-only closeout](./156-transit-amendment-closeout.md).
+
+Vault membership has its own later owner approval and
+[reviewed PR #1091](https://github.com/Hikyo-Org/Hikyo/pull/1091), separately
+from the historical V1 hold below. This continuation neither duplicates that
+work nor changes its scope or acceptance. Social A7 remains under #589's own
+disposition. The release coordinator retains the canonical #79 records.
+
+## Historical reconciliation (2026-10-28)
+
 Assessed canonical `Hikyo-Org/Hikyo` main on 2026-10-28:
 `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
 

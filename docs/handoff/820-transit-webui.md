@@ -2,6 +2,10 @@
 
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/820
 
+The separate #156 governance continuation is now the
+[October 29 source-bound amendment closeout](./156-transit-amendment-closeout.md).
+It leaves the delivered WebUI and this handoff's historical review limits intact.
+
 ## Current delivery record (2026-10-28)
 
 [#965](https://github.com/Hikyo-Org/Hikyo/pull/965) merged on October 18 as
