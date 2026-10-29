@@ -108,6 +108,12 @@ Reservation precedes any datastore/server start. The storage owner manually
 prepares only the verified new claim directory; two disposable diagnostic pods
 then prove cross-node locking and preservation of private custody on remount.
 Continuation requires the same namespace UID and a bound storage receipt.
+Exclusive namespace creation succeeds before any child mutation; ownership is
+recorded from its create response. Failed/ambiguous creation cannot adopt an
+existing namespace. Shell dispatch propagates authorization failure explicitly,
+including cleanup conditionals. The storage owner must verify and remove this
+new claim's archived directory during teardown; namespace deletion alone does
+not remove NFS custody under the observed archive policy.
 Servers and gateway start at zero replicas, then supported seeding precedes
 scaling to two real server processes. Root/TLS staging uses the existing canonical
 hidden binary modes. Tooling and both replicas share one new 1 GiB RWX claim on

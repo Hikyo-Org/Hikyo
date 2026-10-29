@@ -12,7 +12,7 @@ operator_receipt=$3
 case "$runtime:$fixture" in /*:/*) ;; *) exit 2 ;; esac
 test -n "$operator_receipt"
 command -v jq >/dev/null
-kube() { "$fixture" authorize --runtime "$runtime"; kubectl --context picluster --namespace hikyo-mcp-651 "$@"; }
+kube() { "$fixture" authorize --runtime "$runtime" || return "$?"; kubectl --context picluster --namespace hikyo-mcp-651 "$@"; }
 test "$(kube get namespace hikyo-mcp-651 -o jsonpath='{.metadata.uid}')" = "$(jq -r .namespace_uid "$runtime/reservation.json")"
 test ! -e "$runtime/storage-verification.json"
 pvc_uid=$(kube get pvc installation-authority -o jsonpath='{.metadata.uid}')

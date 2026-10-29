@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 )
 
@@ -48,12 +50,90 @@ func reservationControl(ctx context.Context, dir string) (publicControl, reserva
 	return c, reservationReceipt{NamespaceUID: object.Metadata.UID, Resources: a.ResourcesSHA256, Approval: a.ApprovalRef}, nil
 }
 
-func recordReservation(ctx context.Context, dir string) error {
-	_, r, err := reservationControl(ctx, dir)
+func createReservation(ctx context.Context, dir string) error {
+	if err := authorizeDeployment(dir); err != nil {
+		return err
+	}
+	var a executionAuthorization
+	if err := readPrivate(filepath.Join(dir, "authorization.json"), &a); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "reservation.json")); !os.IsNotExist(err) {
+		return errors.New("HOLD: reservation already recorded or unavailable")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "reserve.json"))
+	if err != nil {
+		return errors.New("reservation resources unavailable")
+	}
+	ctx, cancel := context.WithDeadline(ctx, a.Expires)
+	defer cancel()
+	c := publicControl{authorization: a}
+	return createReservationObjects(dir, a, raw, func(input []byte) ([]byte, error) {
+		cmd := c.kubectl(ctx, "create", "-f", "-", "-o", "json")
+		cmd.Stdin = bytes.NewReader(input)
+		return cmd.Output()
+	})
+}
+
+// Never create any namespaced object before an exclusive namespace creation
+// succeeds. A failed/ambiguous create cannot establish ownership for adoption.
+func createReservationObjects(dir string, a executionAuthorization, raw []byte, create func([]byte) ([]byte, error)) error {
+	var list struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if json.Unmarshal(raw, &list) != nil || len(list.Items) != 5 {
+		return errors.New("invalid approved reservation inventory")
+	}
+	var namespace json.RawMessage
+	var remaining []json.RawMessage
+	for _, item := range list.Items {
+		var object struct {
+			Kind     string `json:"kind"`
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		}
+		if json.Unmarshal(item, &object) != nil {
+			return errors.New("invalid reservation object")
+		}
+		if object.Kind == "Namespace" {
+			if namespace != nil || object.Metadata.Name != "hikyo-mcp-651" {
+				return errors.New("invalid reservation namespace")
+			}
+			namespace = item
+		} else {
+			remaining = append(remaining, item)
+		}
+	}
+	if namespace == nil {
+		return errors.New("reservation namespace missing")
+	}
+	result, err := create(namespace)
+	if err != nil {
+		return errors.New("HOLD: exclusive namespace creation failed or acknowledgement is ambiguous; do not adopt")
+	}
+	var created struct {
+		Metadata struct {
+			UID    string            `json:"uid"`
+			Name   string            `json:"name"`
+			Labels map[string]string `json:"labels"`
+		} `json:"metadata"`
+	}
+	if json.Unmarshal(result, &created) != nil || created.Metadata.Name != "hikyo-mcp-651" || created.Metadata.UID == "" || created.Metadata.Labels["hikyo.dev/fixture"] != "mcp-651" {
+		return errors.New("HOLD: created namespace identity unavailable")
+	}
+	receipt := reservationReceipt{NamespaceUID: created.Metadata.UID, Resources: a.ResourcesSHA256, Approval: a.ApprovalRef}
+	if err := writePrivate(filepath.Join(dir, "reservation.json"), receipt); err != nil {
+		return err
+	}
+	rest, err := json.Marshal(map[string]any{"apiVersion": "v1", "kind": "List", "items": remaining})
 	if err != nil {
 		return err
 	}
-	return writePrivate(filepath.Join(dir, "reservation.json"), r)
+	if _, err := create(rest); err != nil {
+		return errors.New("HOLD: partial owned reservation; preserve namespace identity and custody")
+	}
+	return nil
 }
 
 func authorizeContinuation(ctx context.Context, dir string) error {

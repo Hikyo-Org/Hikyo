@@ -68,8 +68,8 @@ func run(ctx context.Context, args []string) error {
 	if args[0] == "authorize" {
 		return authorizeDeployment(*dir)
 	}
-	if args[0] == "reserve-record" {
-		return recordReservation(ctx, *dir)
+	if args[0] == "reserve" {
+		return createReservation(ctx, *dir)
 	}
 	if args[0] == "authorize-resume" {
 		return authorizeContinuation(ctx, *dir)

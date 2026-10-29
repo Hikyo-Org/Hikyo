@@ -190,8 +190,14 @@ scripts/acceptance/mcp-fixture/deploy.sh "$MCP651_RUNTIME" "$MCP651_FIXTURE" res
 
 The reservation creates exactly five resources: namespace, quota, service
 account, default-deny policy and the 1 GiB `installation-authority` RWX claim
-using the existing `nfs` provisioner. No datastore or server starts yet. Tooling
-and both replicas must share this installation's verifier floor/operator state;
+using the existing `nfs` provisioner. No datastore or server starts yet. The helper
+uses exclusive namespace creation first, captures ownership from that successful
+create response, then creates the other four resources. A failed or ambiguous
+namespace create cannot adopt an existing namespace or dispatch child mutations.
+Partial creation preserves the original namespace receipt for owner recovery.
+Every shell Kubernetes dispatch explicitly propagates authorization failure,
+including conditional cleanup where shell errexit does not apply.
+Tooling and both replicas must share this installation's verifier floor/operator state;
 three independent state directories would fail genuine admission to one database.
 The database uses a separate 2 GiB `local-path` claim, for two claims/3 GiB total.
 Claim requests are accounting bounds, not physical filesystem quotas.
@@ -313,6 +319,14 @@ fixture route remains. Retain only redacted receipts/client pins for the approve
 window. Never delete production namespaces, the shared MCP event rows or #1037
 collector storage. If audit siblings are later separately authorized, their
 custody-copy removal needs its own explicit permission and terminal receipts.
+
+The reviewed NFS provisioner archives a claim directory on deletion. Before
+teardown, retain the actual PVC UID/PV and exact storage path. PVC/namespace
+deletion alone is not custody cleanup. The storage owner manually verifies the
+new installation claim's `fixture-pvc.uid` marker and exact archived directory
+before removing only that approved fixture copy. Never guess an archive name,
+delete a shared parent/export/dataset or execute agent NAS commands. Missing
+identity/path proof leaves teardown HOLD for the named owner.
 
 The owner-approved 1.0 mandatory matrix is Go v1.8.0, Inspector 2.11.0 and Codex
 0.160.1 only. Claude Code and Responses remain not verified for 1.0. Native Codex

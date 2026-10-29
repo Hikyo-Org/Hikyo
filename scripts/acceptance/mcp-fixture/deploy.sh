@@ -12,15 +12,10 @@ fixture=$2
 phase=${3:-reserve}
 case "$runtime:$fixture" in /*:/*) ;; *) exit 2 ;; esac
 "$fixture" authorize --runtime "$runtime"
-kube() { "$fixture" authorize --runtime "$runtime"; kubectl --context picluster --namespace hikyo-mcp-651 "$@"; }
+kube() { "$fixture" authorize --runtime "$runtime" || return "$?"; kubectl --context picluster --namespace hikyo-mcp-651 "$@"; }
 case "$phase" in
   reserve)
-    if [ -n "$(kube get namespace hikyo-mcp-651 --ignore-not-found=true -o name)" ]; then
-      printf 'HOLD: namespace exists; never adopt or reset its custody\n' >&2
-      exit 1
-    fi
-    kube apply -f "$runtime/reserve.json"
-    "$fixture" reserve-record --runtime "$runtime"
+    "$fixture" reserve --runtime "$runtime"
     printf 'RESERVED ONLY. No server or database has been seeded.\n'
     printf 'HOLD: owner verifies the installation-authority PVC, canonical permissions, remounts and cross-node locks, then records storage-verification.json before continue.\n'
     exit 0

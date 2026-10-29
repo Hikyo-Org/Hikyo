@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -313,5 +314,103 @@ func TestCandidateCannotUseMutableImageOrMissingAuthority(t *testing.T) {
 	b.Image = "ghcr.io/hikyo-org/hikyo@sha256:" + strings.Repeat("c", 64)
 	if validateBinding(&b) == nil {
 		t.Fatal("accepted missing artifact and operator identities")
+	}
+}
+
+func TestNamespaceCreateFailureCannotMutateExistingNamespace(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"items":[{"kind":"Namespace","metadata":{"name":"hikyo-mcp-651"}},{"kind":"ResourceQuota"},{"kind":"ServiceAccount"},{"kind":"NetworkPolicy"},{"kind":"PersistentVolumeClaim"}]}`)
+	calls := 0
+	err = createReservationObjects(dir, executionAuthorization{}, raw, func(input []byte) ([]byte, error) {
+		calls++
+		var object struct {
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal(input, &object) != nil || object.Kind != "Namespace" {
+			t.Fatal("namespaced resources dispatched before exclusive namespace creation")
+		}
+		return nil, errors.New("already exists, denied, transport failure or lost acknowledgement")
+	})
+	if err == nil || calls != 1 {
+		t.Fatal("failed namespace creation reached later mutations")
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "reservation.json")); !os.IsNotExist(err) {
+		t.Fatal("failed creation recorded ownership")
+	}
+	calls = 0
+	err = createReservationObjects(dir, executionAuthorization{}, raw, func(input []byte) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return []byte(`{"metadata":{"name":"hikyo-mcp-651","uid":"unit-created-namespace","labels":{"hikyo.dev/fixture":"mcp-651"}}}`), nil
+		}
+		var objects struct {
+			Items []struct {
+				Kind string `json:"kind"`
+			} `json:"items"`
+		}
+		if json.Unmarshal(input, &objects) != nil || len(objects.Items) != 4 {
+			t.Fatal("remaining create inventory incorrect")
+		}
+		for _, object := range objects.Items {
+			if object.Kind == "Namespace" {
+				t.Fatal("namespace was updated instead of exclusively created")
+			}
+		}
+		return nil, errors.New("partial child creation failure")
+	})
+	if err == nil || calls != 2 {
+		t.Fatal("partial creation failure hidden")
+	}
+	var recorded reservationReceipt
+	if err := readPrivate(filepath.Join(dir, "reservation.json"), &recorded); err != nil || recorded.NamespaceUID != "unit-created-namespace" {
+		t.Fatal("partial reservation lost original ownership identity", err)
+	}
+}
+
+func TestShellAuthorizationFailureCannotReachKubectlInConditionalCleanup(t *testing.T) {
+	for _, name := range []string{"deploy.sh", "check-installation.sh"} {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wrapper := ""
+			for _, line := range strings.Split(string(data), "\n") {
+				if strings.HasPrefix(line, "kube() ") {
+					wrapper = line
+				}
+			}
+			if wrapper == "" {
+				t.Fatal("guarded wrapper not found")
+			}
+			dir := t.TempDir()
+			fixture := filepath.Join(dir, "fixture")
+			kube := filepath.Join(dir, "kubectl")
+			marker := filepath.Join(dir, "called")
+			if err := os.WriteFile(kube, []byte("#!/bin/sh\nprintf called > \"$TEST_MARKER\"\n"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, authorized := range []bool{false, true} {
+				status := "42"
+				if authorized {
+					status = "0"
+				}
+				if err := os.WriteFile(fixture, []byte("#!/bin/sh\nexit "+status+"\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				command := exec.Command("sh", "-eu", "-c", "fixture=$TEST_FIXTURE; runtime=$TEST_RUNTIME\n"+wrapper+"\nkube delete only-unit-fixture || true")
+				command.Env = append(os.Environ(), "PATH="+dir+":/usr/bin:/bin", "TEST_FIXTURE="+fixture, "TEST_RUNTIME="+dir, "TEST_MARKER="+marker)
+				if out, err := command.CombinedOutput(); err != nil {
+					t.Fatalf("wrapper execution: %v %s", err, out)
+				}
+				_, err := os.Stat(marker)
+				if authorized && err != nil || !authorized && !os.IsNotExist(err) {
+					t.Fatal("kubectl dispatch did not respect authorization in conditional context")
+				}
+			}
+		})
 	}
 }
