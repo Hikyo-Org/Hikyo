@@ -1,208 +1,190 @@
 # #966: explicit system-CA CLI trust
 
 Issue: <https://github.com/Hikyo-Org/Hikyo/issues/966>.
-Baseline: `7bef4d670d2dce0defb963326f0e1e05cfdb6798`.
-Implementation: [PR #967](https://github.com/Hikyo-Org/Hikyo/pull/967), merged on
-2026-10-18 as `69e32a25a6431426e839cb463aafd78c781ef15d`.
-Current inspection: 2026-10-28, canonical `Hikyo-Org/Hikyo` main
-`24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
-Historical preparation baseline: `eb991c991bcad853590cb0ab2c09367052a92c02`.
+Current source baseline: `d02242217502de6f23f528396be572072c34c085`, inspected
+2026-10-29. Implementation [#967](https://github.com/Hikyo-Org/Hikyo/pull/967)
+merged as `69e32a25a6431426e839cb463aafd78c781ef15d`; preparation
+[#1004](https://github.com/Hikyo-Org/Hikyo/pull/1004) merged as
+`f3581e7bb6ec65cb416d5213f7e55819ef19782f`; reconciliation
+[#1073](https://github.com/Hikyo-Org/Hikyo/pull/1073) merged on 2026-10-28 at
+10:50:15 UTC as `970ac0db7c6024f91dedcefe34db7ca560b247e3`.
+These are ancestors of this baseline. Merge and closed issue state do not
+establish the missing acceptance gates.
 
 ## Current disposition
 
-**Governance HOLD.** The implementation and preparation PRs merged. The inspected
-issue, PR and original owner conversation do not record final acceptance of
-the exact five-clause contract and #966-only review exception. The contract
-text is unchanged by this correction; its approval status remains proposed.
-No general governance exception, merge authority or production upgrade authority
-is inferred from the readiness-task approval.
+**Reviewable outcome, exact-contract and operational downstream acceptance HOLD.**
+This continuation adds a repeatable consumer test against real Hikyo machine
+authentication and grants, independently verifies the current signed nightly,
+and supplies a reproduced and tested downstream adapter repair. It does not
+change production TLS code, operational credentials or runner configuration.
+The five normative clauses in the [proposed amendment](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966)
+remain unchanged.
 
-The public record is internally inconsistent:
+The owner explicitly requested `gpt-6.1-sol` with maximum reasoning and a fresh
+`gpt-6-astra` outcome validator with `xhigh` reasoning for #966 on 2026-10-29.
+That route is authorized; no repeat permission request is needed. It remains
+OpenAI same-provider validation. Cross-provider review is **SKIPPED**, because
+the configured Anthropic subscription reviewer is unavailable. No paid or
+alternate provider, general ADR waiver, Transit or Vault exception is inferred.
+The fresh validator must inspect the frozen base/head/tree and blob inventory,
+this contract, the actual runtime receipts and every outstanding constraint.
+Its exact candidate and result belong in the PR's review record, separately
+from historical reviews. A requested or running review is not CLEAN.
 
-- [#25's amendment record](https://github.com/Hikyo-Org/Hikyo/issues/25#issuecomment-6262097215)
-  reopened the ticket on October 19 and explicitly retained final owner approval,
-  signed publication and isolated authenticated downstream acceptance.
-- [#1004](https://github.com/Hikyo-Org/Hikyo/pull/1004) merged on October 19 at
-  08:57:52 UTC as `f3581e7bb6ec65cb416d5213f7e55819ef19782f`, without the
-  proposed text becoming owner-locked. #966 closed one second later, and #25
-  also closed. Both implementation and preparation merges are current-main
-  ancestors. Those facts establish merge and ticket state, not exact-contract
-  approval or criterion 5 acceptance.
-- [#1004's review record](https://github.com/Hikyo-Org/Hikyo/pull/1004#issuecomment-6262095983)
-  records separate OpenAI Standards CLEAN and Spec SOUND results for
-  `9f339981a0e931c6236fa296907f4c2dd954b491`, with cross-provider review
-  **SKIPPED** and the scoped waiver still pending. These historical reviews do
-  not become cross-provider review or a review of this correction.
+The inspected original owner conversation selected preparation of the proposal
+and ended with an unanswered exact-contract approval request. The documented
+legacy SQLite snapshot has no matching thread rows. The latest explicit
+request selects the reviewer but does not expressly accept the five clauses.
+Neither #1004/#1073's merges nor closed #25/#966 supplies that missing decision.
+No private transcript is published in this packet.
 
-The original owner conversation selected preparation of the recommended
-amendment/exception route and ended with an unanswered final approval request.
-It provides no additional final decision. Current T3 history was inspected
-through its read tools; the documented legacy SQLite snapshot was queried
-read-only and contained no matching October thread rows. The approval conclusion
-is limited to those inspected records, rather than inferred from stale prose
-or closed state alone. No private transcript or credential is included here.
+## Evidence by gate
 
-## One owner decision
-
-**Recommended: approve the unchanged [five-clause trust contract](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966)
-and its #966-only cross-provider review exception.** That accepts explicit
-system-CA verification, legacy SPKI compatibility, deliberate first contact,
-protected origin/mode provisioning and fail-closed refusal boundaries. The
-exception covers only this amendment's unavailable cross-provider review;
-the separate same-provider review requirements, technical checks, CodeQL,
-signed/DCO history, ordinary PR protections and maintainer security review
-remain. Publication and consumer evidence are separate gates.
-
-The alternative is to keep governance **HOLD** until an authorized qualifying
-cross-provider review is available. No substitute provider, paid review or
-general ADR waiver is authorized. A same-provider review cannot unlock this
-gate by itself. The explicit final decision is required by the amendment's
-[activation section](../adr/api-cli-surface.md#proposed-review-disposition-and-activation)
-and the [governance amendment procedure](../../GOVERNANCE.md#amendment-procedure).
-
-After explicit approval, record its durable reference in the TLS section,
-change its banner and activation status to owner-locked and operative on the
-corrective PR's merge, and reconcile #25's closeout with the decision and merge.
-Keep the actual cross-provider result **SKIPPED** even if the owner accepts
-the scoped exception. Prepare a #966 closeout entry only for gates supported
-by evidence below. This packet changes no remote ticket state and leaves merge
-to the maintainer.
-
-## Evidence boundaries and closeout
-
-| Gate | Evidence and remaining work |
+| Gate | Current evidence and limit |
 | --- | --- |
-| Source | #967 merged as `69e32a25a6431426e839cb463aafd78c781ef15d`; #1004 merged as `f3581e7bb6ec65cb416d5213f7e55819ef19782f`. Both are ancestors of the inspected main. No production TLS behavior changes in this correction. |
-| Trusted merge validation | [Run 39144169996](https://github.com/Hikyo-Org/Hikyo/actions/runs/39144169996) completed successfully on that exact merge commit. |
-| Contract | **HOLD**, pending the exact owner decision above. |
-| Review | Historical #1004 same-provider reviews as recorded above. No independent current-correction review is claimed. Cross-provider **SKIPPED**, configured Anthropic subscription unavailable; no alternate or paid route substituted. |
-| Hosted publication | [Nightly release](https://github.com/Hikyo-Org/Hikyo/releases/tag/v0.0.1-nightly.20261028.98.g24e198b3), release ID `426425469`, published 2026-10-28 at 08:41:04 UTC. [Nightly run 40651678580](https://github.com/Hikyo-Org/Hikyo/actions/runs/40651678580) succeeded for source `24e198b32a3ffd8d4013207b2f974d76ec49be6f`. This is hosted publication evidence; local trusted verification is recorded separately below. |
-| Earlier pending nightly | [Run 39213654522](https://github.com/Hikyo-Org/Hikyo/actions/runs/39213654522), described as pending in the October 19 handoff, subsequently completed successfully. No consumer acceptance is inferred from that result. |
-| Named downstream CI update | **NOTRUN/HOLD**. No approved isolated downstream target, paired protected credential/bundle or existing runner configuration was supplied for this lane. Synthetic fixture proof does not show that DBugIT CI's version and protected bundle were updated. |
-| Production, stable 1.0 publication and deployment | **NOTRUN**, outside this lane's authority. A verified nightly is not stable-release qualification or production upgrade approval. |
+| Source | #967, #1004 and #1073 merged. This candidate adds tests and Markdown evidence/operations changes; production trust behavior is unchanged. |
+| Contract | **HOLD**: explicit acceptance of the exact five clauses is still required. The current review route is authorized. |
+| Fresh review | Fresh Astra `xhigh` outcome validation is required for this exact candidate. See the PR review record for its completed verdict and any re-check. Historical same-provider reviews are not reused as current proof. Cross-provider **SKIPPED**. |
+| Hosted publication | [Nightly release](https://github.com/Hikyo-Org/Hikyo/releases/tag/v0.0.1-nightly.20261029.99.gd0224221), release ID `427637314`, published 2026-10-29 at 08:56:29 UTC. [Run 40837498647](https://github.com/Hikyo-Org/Hikyo/actions/runs/40837498647) succeeded for source `d02242217502de6f23f528396be572072c34c085`. |
+| Independent signed verification | **PASS**: complete 24-file download authenticated against independently pinned repository public trust; 22 signed inventory payloads verified. Exact identity and CLI provenance below. |
+| Real authorization fixture | **PASS**: source CLI and the verified released Linux/arm64 CLI read a real fixture environment through Hikyo API authentication, machine credential minting and scoped grants. Certificate, redirect, protected identity, sibling-project and revoked-credential refusals passed. Disposable SQLite fixture, not an operational service or pipeline. |
+| Actual consumer helper | **Reproduced and repair validated**: fresh DBugIT source rejects `system-ca` because it requires a pin. The minimal repair passes the actual helper and existing owner/consumer tests. [Exact patch, source/blob identities and apply procedure](966-dbugit-system-ca-repair.md). It has not been applied to DBugIT's operational source or CI. |
+| Named downstream version/bundle update and approved consumer run | **NOTRUN/HOLD**: discovery found the operational legacy-SPKI bundle and preview/staging/release credential names, not a #966-approved isolated target/credential/runner configuration. No secret value was read. Local fixture proof does not close this gate. |
+| Merge | **NOTRUN**: this continuation is authorized through a signed/DCO PR and review, without merge. Head feedback, CodeQL and full merge-group validation remain distinct evidence. |
+| Production, stable 1.0 publication and deployment | **NOTRUN**, outside this task. No production upgrade, stable-policy activation, tag, Apple submission, release or image publication is authorized. |
 
-A verified signed nightly containing #967 satisfies the publication component
-of criterion 5 without waiting for 1.0. The
-[operations closeout procedure](../operations/cli-tls-trust.md#signed-release-and-consumer-update)
-also requires the consumer's exact version and bundle update plus an isolated
-authenticated read against its approved origin. For the named downstream CI
-gate, the next operator needs an explicitly authorized isolated runner/target,
-its non-production read credential delivered through protected storage, and the
-corresponding bundle. Inspect that protected storage before requesting a missing
-secret through the private secret tool. Do not reuse production credentials or
-run a production upgrade. Retain the prior runner configuration for rollback.
+## Verified released CLI, 2026-10-29
 
-For an authorized isolated consumer with a verified `hikyo` on `PATH`, the
-existing Bash procedure is:
-
-```bash
-set -euo pipefail
-set +x
-: "${HIKYO_TRUST_BUNDLE:?Protected system-ca bundle required}"
-: "${HIKYO_TOKEN:?Paired non-production read credential required}"
-: "${HIKYO_ORG:?Approved organisation required}"
-: "${HIKYO_PROJECT:?Approved project required}"
-: "${HIKYO_STATE_DIR:?Fresh private absolute state directory required}"
-hikyo --version
-hikyo context create ci --instance ci --trust-file "$HIKYO_TRUST_BUNDLE"
-hikyo env list --auth machine --instance ci \
-  --org "$HIKYO_ORG" --project "$HIKYO_PROJECT" -o json
-```
-
-Expect context creation to perform no network request and `env list` to return
-JSON with `items`. Record exact release/source/digests, runner identity,
-protected-bundle identity without its credential, origin, successful read and
-rollback location. Do not print the token or collect an environment dump.
-
-The dated validation and review sections below are historical snapshots.
-Current gate disposition above takes precedence over their former open-ticket
-instructions.
-
-## Fresh signed-artifact and synthetic consumer evidence, 2026-10-28
-
-The current-source `scripts/release/nightly` verifier authenticated the complete
-24-file public release download, including all 22 signed inventory payloads,
-against independently pinned repository public trust. It returned:
+The repository's current `scripts/release/nightly` verifier returned:
 
 ```json
-{"profile":"nightly/v1","version":"0.0.1-nightly.20261028.98.g24e198b3","sequence":98,"commit":"24e198b32a3ffd8d4013207b2f974d76ec49be6f","compatibility_sha256":"e2fc5b672565e44ac6498ca004e5e862e6c8784c5257f17671dfebb4425de36e","manifest_sha256":"1cfc26f353602feaad139d88a81bff54a36b8c3afaa16a93da1649bc3d50ed45"}
+{"profile":"nightly/v1","version":"0.0.1-nightly.20261029.99.gd0224221","sequence":99,"commit":"d02242217502de6f23f528396be572072c34c085","compatibility_sha256":"2e5c1d26fe48b64abec24c40c8b806ed5ad0caaad15f7823ccea6cdb98eb6c9d","manifest_sha256":"776012927e0fad1c021d5a192324d57301c2715c8115698e45ccc87405470711"}
 ```
 
-| Verified identity | SHA-256 |
+| Verified material | SHA-256 |
 | --- | --- |
-| Linux/arm64 archive, release asset `684368480` | `b2f26718ac02877d38f4d0055ccd1692ab4527b048af24a7f5b42e392b71e9c8` |
-| Extracted Linux/arm64 CLI, matching signed binary provenance | `1b75ce36808c9a650b0839461829234218ca02d5c5872c816ff4cc65c89cb3cb` |
-| Independently authorized nightly policy, matching current main | `afaeb19fc0299f700234a74aa0817f77ce0833853b327a9d9d9d126d25d5b04f` |
+| Linux/arm64 archive, asset `687941779` | `44eb39091af0dee0ed62f7d0ae1d8d4564ea4120f4c8369ea58965d9e0732e76` |
+| Extracted Linux/arm64 CLI, matching signed binary provenance | `134c8aa1a9dfd68c2489cef8979ccd61c4e1d301f8634fe0f353ab676c15186b` |
+| Independently authorized nightly policy | `afaeb19fc0299f700234a74aa0817f77ce0833853b327a9d9d9d126d25d5b04f` |
 
-The signed CLI was executed only after verification. A disposable Linux/arm64
-container used an existing Node 26.12.1 image
+The released CLI was executed only after full verification and binary digest
+comparison. A disposable container used the existing Linux/arm64 Node image
 `sha256:5c4012d11d9857c42713ba511fbc19645cac1706bb710d51d42b0d301dff7f88`,
-with networking disabled, read-only root and fixture mounts, no inherited
-operator credentials, private temporary CLI state and a synthetic bearer. Its
-private protected bundle selected `system-ca` for a loopback HTTPS fixture.
-The runner's CA file contained only the disposable fixture root; Linux Go's
-normal root loading through `SSL_CERT_FILE` performed verification. Host trust
-and global state were unchanged. A second valid certificate had a different
-SPKI at the same origin.
+network disabled, read-only root and source mounts, dropped capabilities,
+private temporary state, two CPUs and a 2 GiB memory bound. No operator
+credential or proxy environment was inherited. Go loaded only the disposable
+fixture root through the child's `SSL_CERT_FILE` and empty `SSL_CERT_DIR`.
+Host trust was unchanged. Fixture keys and credentials lived in temporary
+storage, and no operational database was loaded.
 
-The fixture returned synthetic API metadata and an empty environment list,
-requiring the expected synthetic bearer on every request. It exercised the
-released consumer's transport and command path. It did not run a Hikyo server's
-authorization service, a managed proxy or a named downstream CI pipeline.
+The current-source Go fixture ran the real API handler, authentication service,
+credential mint/revoke service and SQLite authorization store. It granted one
+fresh automation identity project read access and returned the existing fixture
+environment. An existing sibling project was denied, and revoking the credential
+caused the next read to fail authentication. No canned environment response
+or fake bearer comparison supplied these authorization results.
 
-| Released consumer action | Exit | HTTP requests received |
-| --- | --- | --- |
-| Protected bundle and context import | `0` | `0` |
-| Machine `env list`, first valid certificate | `0` | `2`, metadata and environments |
-| Machine `env list`, renewed certificate with a different key | `0` | `2`, metadata and environments |
-| Expired, wrong-host or untrusted certificate | `6` each | `0` each |
-| Redirect refusal | `4` | `1` at original origin, `0` at redirect sink |
-| Repository mode substitution | `4` | `0` |
+| Exercised behavior | Observed result |
+| --- | --- |
+| Protected bundle/context import | Exit `0`, zero HTTP requests. |
+| Valid leaf and renewed leaf with a different SPKI | Environment reads succeeded, including the actual repaired DBugIT helper on each leaf. |
+| Expired, not-yet-valid, wrong-host, untrusted leaf | Exit `6`, zero HTTP requests on each refusal. |
+| Cross-origin and same-origin redirects | Exit `4`, exactly one original request each, zero forwarded requests. |
+| Protected origin/mode/pin conflict and repository origin/mode/pin injection | Exit `4`, zero HTTP requests. |
+| Legacy and explicit SPKI; changed key; missing pin | Original key accepted, changed key and missing pin refused; no fallback. |
+| Deliberate SPKI to system-CA re-establishment | Explicit deletion and reimport succeeded. |
+| Sibling project; revoked credential | Real API returned not-found and authentication refusal respectively. |
+| CLI/helper diagnostics | No fixture bearer appeared in stdout or stderr. |
 
-No request had a missing or unexpected bearer, and no CLI output exposed it.
-This is **PASS: local signed-consumer synthetic transport evidence**. The
-named downstream version/bundle update and live-provider acceptance remain
-**NOTRUN/HOLD**. Production upgrade remains **NOTRUN**. The owned container,
-downloaded payloads and fixture private keys are disposable; retain only the
-public verification/consumer receipts and fixture source for review.
+This is **PASS: isolated signed-consumer transport and real fixture authorization**.
+It is distinct from the earlier synthetic HTTP fixture, operational DBugIT CI,
+a managed proxy rotation or production acceptance.
 
-To repeat full public artifact verification from this inspected source with
-Go 1.27.3 and an empty operator-selected download directory:
+To repeat public verification from this source with Go 1.27.3, use a new empty
+operator-selected download directory:
 
 ```bash
 set -euo pipefail
-: "${HIKYO_NIGHTLY_REVIEW_DIR:?Empty download directory required}"
-gh release download v0.0.1-nightly.20261028.98.g24e198b3 \
+: "${HIKYO_NIGHTLY_REVIEW_DIR:?Set a new empty download directory}"
+gh release download v0.0.1-nightly.20261029.99.gd0224221 \
   --repo Hikyo-Org/Hikyo --dir "$HIKYO_NIGHTLY_REVIEW_DIR"
-go run -p 2 ./scripts/release/nightly verify --trust release/trust \
+GOMAXPROCS=2 go run -p 2 ./scripts/release/nightly verify --trust release/trust \
   --directory "$HIKYO_NIGHTLY_REVIEW_DIR"
 ```
 
-Expect the identity JSON above. Recheck current public trust/revocations before
-a later use; preserve its verification state where the selected verifier
-requires one. Do not substitute release-page checksums for trusted verification.
-The full download is disposable after its receipts and required review evidence
-are retained.
+Expect the identity above. Recheck public trust and revocations before a later
+use. Release-page checksums alone are insufficient. See the
+[isolated authorization command](../operations/cli-tls-trust.md#repeat-the-isolated-authorization-check)
+for source and released-consumer execution.
 
-## Fresh local source checks, 2026-10-28
+## Discovery and executable remaining work
 
-Shared-queue job `2568` passed on Go 1.27.3/macOS, with the pinned Node 26.12.1
-for the documentation test. Production source is unchanged from inspection
-`24e198b32a3ffd8d4013207b2f974d76ec49be6f`:
+Discovery used current DBugIT main, its actual CI helper/workflow, authenticated
+Forgejo repository/variable/secret-name metadata, runner metadata and retained
+local upgrade-rehearsal inventories. Forgejo's protected bundle currently names
+`https://hikyo.dbugit.io` with a legacy SPKI pin. Preview, staging and release
+credential names exist, but their values were not fetched. Repository runner
+registration returned an empty list; this does not prove no inherited runner
+exists. Recent job metadata did not identify an isolated TLS runner. Retained
+upgrade rehearsals are historical, have no running owned server, and do not
+supply current #966 acceptance authority. Protected recovery/admin files were
+not opened, and no production credential was reused.
 
-```sh
-go test -p 2 -parallel 2 ./internal/cli ./cmd/hikyo -count=1
-go test -p 2 -parallel 2 -race ./internal/cli -run 'TestNewHTTPSInteractive|TestRemoteAdd|TestTLSIdentityInspection|TestExplicitSPKI|TestExistingAndProvisionedSPKI|TestContextCreateExplicitSPKI|TestSystemCATrust|TestTrustModes|TestProvisionedTrustMode|TestPinnedClient' -count=1
-node --test docs/site/scripts/test-prepare-content.mjs
-```
+1. **Owner contract decision:** approve the unchanged five clauses with the
+   explicitly requested #966 Astra review disposition after reading the concrete
+   result, or keep contract **HOLD**. No additional permission is needed to run
+   the requested review. If approved, record the durable decision, mark the
+   amendment owner-locked and operative on the corrective PR's authorized merge,
+   and reconcile #25 with the decision/review/merge evidence. Keep the actual
+   cross-provider review **SKIPPED**.
+2. **Named downstream gate:** select the authorized isolated runner and target,
+   paired non-production project-read credential, protected system-CA bundle,
+   exact CLI version and prior configuration retained for rollback. Apply the
+   reviewed consumer repair through the downstream repository's normal source
+   review. Inspect protected storage first; if the selected credential is still
+   missing, obtain it through the private secret tool. Do not ask for a token in
+   chat, reuse an operational credential, change a shared protected bundle or
+   upgrade production to satisfy this gate.
+3. **Record acceptance:** import the approved file bundle into fresh private
+   state and run the [documented authenticated read](../operations/cli-tls-trust.md#protected-provisioning-for-ci).
+   Record exact source/release/digests, runner and protected-bundle identities
+   without credentials, origin, read result and rollback reference. The local
+   DBugIT wrapper receives JSON text; the CLI receives a file path. A signed
+   nightly satisfies publication without stable 1.0, but not the downstream gate.
 
-The CLI and command suites passed in 26.184 and 1.549 seconds; focused race
-coverage passed in 10.173 seconds. No shipped tests were removed. Persistence
-is unchanged; no new both-engine qualification is claimed. The shared
-fast-feedback driver selects no application/frontend domains for the complete
-two-Markdown-file correction. Final documentation/link checks and hosted
-current-head checks belong to the corrective PR; local checks do not establish
-merge-queue validation or final integrated 1.0 acceptance.
+#966 and #25 are already closed. This packet prepares their correction rather
+than treating closed state as proof or sending external issue messages. Do not
+claim #966 complete or close a new reconciliation record until all required
+gates above are evidenced. Merge requires a later explicit instruction.
+
+## Current validation and custody
+
+Go 1.27.3 and Node 26.12.1 were used, following the current direct-command
+resource policy with at most two Go workers. Source CLI/command owner suites,
+focused TLS race checks and the new real-authorization source fixture passed.
+The Linux fixture runner was cross-compiled from this candidate; the released
+consumer executable was the unchanged signed binary, not a rebuild. DBugIT's
+existing preview, teardown and release-script tests passed on the minimally
+repaired source snapshot. These script tests use their established mocks;
+the separate signed-consumer fixture supplies real authentication evidence.
+
+The complete-diff fast-feedback plan selects the Go owner, with no frontend,
+workflow, shell or docs-site domains. Its checks passed, together with the explicit docs preparation test, targeted
+owner vet, the new fixture under the race detector, 44 local link-path checks
+and unchanged-contract verification. Record the exact head/tree,
+source and blob coverage, local receipts, hosted checks and Astra result in the
+PR review record. A passing feedback compilation is not execution of these
+runtime tests or full merge-group validation.
+
+Retain public receipts, the failure witness and reviewed patch while review is
+active. Disposable containers use automatic removal; remove owned downloads,
+extracted executables, test binaries and source snapshots after the validator
+finishes. Keep local Markdown/HTML reports ignored. No shared service, image,
+cache, rehearsal archive or user worktree belongs to this task's cleanup.
+
+The following sections are historical validation and implementation records.
+The current gate disposition above takes precedence.
 
 ## Amendment validation, 2026-10-19
 
