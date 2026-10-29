@@ -6,6 +6,11 @@ source-copy destruction or notifications. Keep #1037 open. The owner receives a
 private, resource-specific approval packet separately; do not put private host,
 credential or raw receipt inventory in Git.
 
+An owner may approve an unprivileged LXC instead of a VM. The Proxmox host then
+owns the new LUKS mapping and key. Bind only its mounted filesystem into the
+guest; do not pass through block devices, enable privileged mode/nesting, or relax
+encryption checks. LXC shares the host kernel and does not establish VM isolation.
+
 ## Executable assets
 
 All paths below are relative to the repository root. Host paths are intentional
@@ -79,6 +84,26 @@ filesystem at `/srv/hikyo-evidence`. No NAS data or source recovery keys are use
 `install-host.py` verifies an exact mount backed by an active device-mapper
 cryptsetup mapping. It does not format, unlock, mount, provision a guest or change
 the network. Verify the mapping's cipher, key custody and backing disk independently.
+
+For an approved unprivileged LXC, add `--host-encryption-proof`,
+`--expected-luks-uuid` and `--expected-filesystem-uuid`, using the independently
+recorded approved storage IDs. Do not derive the expected IDs from the guest's
+proof file. This mode verifies the
+fixed host-owned read-only receipt `/run/hikyo-evidence-host/encryption.json`
+instead of requesting guest block access. The host first verifies the active
+LUKS mapping and filesystem UUID, then binds this metadata read-only into the
+guest. Checks cover owner/mode/type/size, duplicate fields, observed filesystem
+device number/mapper source, this guest hostname and a five-minute receipt window.
+The key and block device stay on the host. This is trusted operator custody
+evidence, not cryptographic remote attestation or protection from common host root.
+
+Receipt fields are exactly `version` (integer 1), `guest`, `container_id`, `node`,
+`mount_source`, `luks_uuid`, `filesystem_uuid`, `device_major`, `device_minor` and
+`verified_ns`. Keep actual identifiers and receipts private. Refresh a receipt
+only after reconciling the real mapping; never create one in the guest to bypass
+a failed encryption check. Owner-authorized disposable campaigns must tear down
+their exact guest, binding, mapping, newly allocated volume and ephemeral key,
+then verify absence while retaining the required private receipts locally.
 
 Private `streams.json` contains exactly `pg-tenant`, `pg-instance`, `sqlite-tenant`
 and `sqlite-instance`. Each value has the runbook's six receiver configuration

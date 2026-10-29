@@ -2,6 +2,7 @@
 """Install only on a newly approved dedicated Debian guest. See deployment packet."""
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -27,7 +28,8 @@ def write(path, body, mode=0o644):
     path.chmod(mode)
 
 
-def install(manifest, keys, rehearsal):
+def install(manifest, keys, rehearsal, host_encryption_proof=False,
+            expected_luks_uuid=None, expected_filesystem_uuid=None):
     if os.geteuid() != 0:
         raise ValueError("root installation required on the approved guest")
     streams = json.loads(Path(manifest).read_text())
@@ -43,7 +45,13 @@ def install(manifest, keys, rehearsal):
         mounted = subprocess.check_output(["findmnt", "-n", "-o", "SOURCE", "--mountpoint", str(BASE)], text=True).strip()
         if not mounted.startswith("/dev/mapper/"):
             raise ValueError("dedicated unlocked encrypted evidence mount required")
-        run("cryptsetup", "status", mounted)
+        if host_encryption_proof:
+            spec = importlib.util.spec_from_file_location("host_mount", Path(__file__).with_name("host_mount.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.verify(BASE, mounted, expected_luks_uuid, expected_filesystem_uuid)
+        else:
+            run("cryptsetup", "status", mounted)
     if CODE.exists() or CONFIG.exists() or any(BASE.iterdir()):
         raise ValueError("fresh installation only; reconcile partial/unknown state before retry")
     for name, value in streams.items():
@@ -158,9 +166,20 @@ def main():
     parser.add_argument("manifest")
     parser.add_argument("keys")
     parser.add_argument("--rehearsal", action="store_true")
+    parser.add_argument("--host-encryption-proof", action="store_true",
+                        help="verify fixed host-owned read-only LXC mount receipt instead of guest block access")
+    parser.add_argument("--expected-luks-uuid")
+    parser.add_argument("--expected-filesystem-uuid")
     args = parser.parse_args()
     os.umask(0o077)
-    install(args.manifest, args.keys, args.rehearsal)
+    if args.rehearsal and args.host_encryption_proof:
+        raise ValueError("rehearsal and protected host receipt modes are exclusive")
+    if args.host_encryption_proof != bool(args.expected_luks_uuid and args.expected_filesystem_uuid):
+        raise ValueError("host proof requires both independently approved storage UUIDs")
+    if not args.host_encryption_proof and (args.expected_luks_uuid or args.expected_filesystem_uuid):
+        raise ValueError("storage UUID arguments require host proof mode")
+    install(args.manifest, args.keys, args.rehearsal, args.host_encryption_proof,
+            args.expected_luks_uuid, args.expected_filesystem_uuid)
 
 
 if __name__ == "__main__":

@@ -8,14 +8,36 @@ The executable operator entry point is the
 
 ## Current preparation, 2026-10-29
 
+### Owner-authorized disposable LXC follow-up
+
+The owner subsequently selected the named destination packet with an
+**unprivileged LXC instead of a VM and cleanup afterwards**. This supersedes
+the earlier preparation-only destination restriction, without authorizing source
+routing/deployment, production data, notifications, merge or a broader acceptance
+claim. The private campaign record retains the actual resource and deletion-owner
+bindings. #1038 remains separately HOLD; #79 remains the release tracker.
+
+The first scoped Proxmox creation attempt returned **403 Forbidden: Permission
+check failed**. Successful inventory/storage readbacks confirmed no guest, new
+volume, mapping, mount or task-key/runtime resource was created. No alternate
+creation route was attempted. Destination encryption/ACL/retention/health
+acceptance remains **NOTRUN/HOLD on this specific connector access gap**.
+
+The LXC installer mode uses a host-owned read-only encrypted-mount receipt and
+independently supplied expected LUKS/filesystem UUIDs. Guest block/key custody and
+privileged/nesting exceptions are not granted. Default in-guest cryptsetup and
+synthetic-only rehearsal guards remain. Policy unit checks are local supporting
+proof, not protected LXC execution; actual execution/cleanup receipts belong to
+the authorized campaign. Retain pending validation/review state explicitly.
+
 Inspected base/live main: `ce5e85835383b6428676ff595e2a0c1a72f6a088`.
 #1035 and #1036 are merged and closed. Collector PR #1079 is integrated through
 #1087. Their historical pending statements below describe the original delivery,
 not today's dependency state. TLS #1090 is present; Vault #1091 and stable signing
 are outside this preparation. This base is not a selected final release candidate.
 
-The owner authorized preparation, read-only infrastructure discovery, disposable
-local rehearsals and a concrete resource-specific deployment packet. No remote
+The initial preparation authorization covered read-only infrastructure discovery, disposable
+local rehearsals and a concrete resource-specific deployment packet. At that phase, no remote
 installation/account/ACL/DNS/firewall changes, production collection, existing
 installation destruction, paid resources, notifications, merge or release actions
 are authorized. #1038 real delivery remains HOLD. Accepted #158/#969/#1057 and
