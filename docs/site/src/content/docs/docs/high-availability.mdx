@@ -134,7 +134,7 @@ rolling root-key rotation.
 - Pre-authentication rate windows are fixed one-minute buckets, so an attacker
   can spend up to two windows' allowance across a boundary. The concurrency
   limit still bounds the actual verification work.
-- After a `rotate-dek --instance`, a node picks up the new instance key within
+- After a `rotate-dek --instance-scope`, a node picks up the new instance key within
   one heartbeat.
 
 ## Managed Hikyo configuration

@@ -44,3 +44,22 @@ func TestAuditReadIsMFAMandatory(t *testing.T) {
 		t.Fatal("audit-read capability is not protected by the mandatory MFA gate")
 	}
 }
+
+func TestDEKOperationsRequireMFA(t *testing.T) {
+	var a TxAuthorizer
+	for _, op := range []Operation{OpRotateDEK, OpReencryptProject, OpReencryptInstance, OpRotateTokenKey, OpRotateScanningKey} {
+		t.Run(string(op), func(t *testing.T) {
+			password := Identity{Principal: "p", SessionID: "password-session", Assurance: Assurance{Factors: []string{"password"}}}
+			if !a.assuranceInadequate(password, op) {
+				t.Fatal("password-only session bypassed the MFA gate")
+			}
+			passkey := Identity{Principal: "p", SessionID: "passkey-session", Assurance: Assurance{Factors: []string{"webauthn"}}}
+			if a.assuranceInadequate(passkey, op) {
+				t.Fatal("passkey session was refused by the MFA gate")
+			}
+			if a.assuranceInadequate(Identity{Principal: "p"}, op) {
+				t.Fatal("session-less local authority must remain exempt from the MFA gate")
+			}
+		})
+	}
+}
