@@ -21,6 +21,30 @@ change production TLS code, operational credentials or runner configuration.
 The five normative clauses in the [proposed amendment](../adr/api-cli-surface.md#proposed-explicit-https-trust-amendment-966)
 remain unchanged.
 
+The canonical contract excerpt is the raw UTF-8 Git-blob bytes beginning with
+`1. **Two explicit HTTPS trust modes.**` and ending before the newline followed
+by `The [operations contract]`. It is 2,591 bytes with SHA-256
+`3445ee9fa6a9a2c71546bbf7d4a4bd5acad0ba2fd8b6506e65796819b190a66e`.
+From this candidate checkout, reproduce the excerpt identity and base comparison:
+
+```bash
+python3 - <<'CONTRACT'
+import hashlib
+import subprocess
+excerpts = []
+for revision in ("d02242217502de6f23f528396be572072c34c085", "HEAD"):
+    source = subprocess.check_output([
+        "git", "show", revision + ":docs/adr/api-cli-surface.md"
+    ])
+    start = source.index(b"1. **Two explicit HTTPS trust modes.**")
+    end = source.index(b"\nThe [operations contract]", start)
+    excerpt = source[start:end]
+    excerpts.append(excerpt)
+    print(revision, len(excerpt), hashlib.sha256(excerpt).hexdigest())
+assert excerpts[0] == excerpts[1], "Normative contract changed"
+CONTRACT
+```
+
 The owner explicitly requested `gpt-6.1-sol` with maximum reasoning and a fresh
 `gpt-6-astra` outcome validator with `xhigh` reasoning for #966 on 2026-10-29.
 That route is authorized; no repeat permission request is needed. It remains

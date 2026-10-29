@@ -51,13 +51,15 @@ or hosted downstream CI pass is claimed.
 ## Apply to the authorized consumer source
 
 Use an isolated DBugIT source checkout. `HIKYO_CONSUMER_CHECKOUT` identifies
-that checkout; `HIKYO_CONSUMER_PATCH` names a new patch output file. Run the
-extraction from this Hikyo repository root:
+that checkout; `HIKYO_CONSUMER_PATCH` names a new patch output file in an existing
+directory. Relative patch paths are resolved against the Hikyo repository root
+before applying from the consumer checkout. Run the extraction from this root:
 
 ```bash
 set -euo pipefail
 : "${HIKYO_CONSUMER_CHECKOUT:?Set the isolated DBugIT source checkout}"
 : "${HIKYO_CONSUMER_PATCH:?Set a new patch output file}"
+HIKYO_CONSUMER_PATCH="$(python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$HIKYO_CONSUMER_PATCH")"
 python3 - "$HIKYO_CONSUMER_PATCH" <<'EXTRACT'
 from pathlib import Path
 import sys
