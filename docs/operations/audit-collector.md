@@ -1,7 +1,9 @@
 # Independent audit collection reference (#1037)
 
-Status: **reference implementation and synthetic rehearsal, operational acceptance
-HOLD**. Entry point and evidence: [issue handoff](../handoff/1037-independent-evidence.md).
+Status: **reference implementation and local product/Unix rehearsal, operational
+acceptance HOLD**. Entry point and evidence: [issue handoff](../handoff/1037-independent-evidence.md).
+The [deployment preparation](audit-collector-deployment.md) describes the executable
+host assets and approval boundaries.
 This is an external scheduled-export example, not a server sink, SIEM, new machine
 identity class, or a locked-ADR amendment. Keep [#1037](https://github.com/Hikyo-Org/Hikyo/issues/1037)
 open. Alert delivery belongs to [#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038).
@@ -19,13 +21,12 @@ it does not change their trust or retention boundaries.
 | Org-wide tenant slice | Authorized human, org `audit-read` and current assurance | Supervised collection; a project automation credential cannot replace this human. |
 | Instance trail | Authorized human, instance `audit-read` and current assurance | Requires #1035's supported route. No unattended instance collector credential is authorized here. |
 
-All live collection requires #1036's negotiated completion protocol. At assessed
-main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, neither that protocol nor the
-instance HTTP route is merged. The example refuses an older server even if it
-returns HTTP 200 and valid JSONL. Recheck the final merged contracts of
-[PR #1044](https://github.com/Hikyo-Org/Hikyo/pull/1044) and
-[PR #1045](https://github.com/Hikyo-Org/Hikyo/pull/1045) before enabling collection.
-No end-to-end live server acceptance is recorded by this document.
+At inspected main `ce5e85835383b6428676ff595e2a0c1a72f6a088` on 2026-10-29,
+#1035's instance route and #1036's negotiated completion protocol are merged,
+and both issues are closed. Collector PR #1079 is also integrated through #1087.
+The example still refuses older servers, including HTTP 200 with valid JSONL
+without a verified receipt. Local product exports now exercise both engines;
+protected-host and final release-candidate acceptance remain separate and pending.
 
 ## Separate the three identities
 
@@ -224,6 +225,24 @@ and poll-process liveness cannot clear it. Monitor invocation failure is also a
 failed check. The supervising monitor needs its own dead-man check outside the
 poller/Hikyo failure domain; #1038 owns routing and delivery acknowledgment.
 No alert was sent or delivery tested here.
+
+The added `monitor.py` checks every independently configured expected stream,
+the poller's last finite attempt and free destination capacity. It also observes
+the cumulative receiver refusal count and durable source-attempt history, so a
+success between monitor checks cannot hide a refusal or failed/unknown poll.
+Stale/unavailable collection and missed detector intervals also latch HOLD.
+Receiver and poll failure counts survive later success; receiver history remains
+visible after monitor state recreation. Protect monitor state from deletion. Removed expected streams remain HOLD in its durable inventory.
+There is intentionally no automatic reconciliation/reset command. The independent
+owner must retain the original failure history and review any future reconciliation
+mechanism before clearing that interval. `status` itself describes current
+freshness; a newer success may clear its current failure flag.
+
+`health.py` serves only PASS/HOLD over operator-provisioned TLS. It refuses a
+missing, future or older-than-120-second monitor snapshot. A separate watchdog
+must observe the endpoint, including detector/health-service outage. This is a
+preparation interface for #1038; neither an HTTP health check nor a local sink
+assertion establishes external notification delivery or human acknowledgment.
 
 `receipt_age_seconds` measures receiver freshness, **not event-generation lag**.
 A fresh empty success proves a completed read, not that a producer emitted all

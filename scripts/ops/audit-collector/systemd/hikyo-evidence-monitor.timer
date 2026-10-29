@@ -1,0 +1,10 @@
+[Unit]
+Description=Check every expected Hikyo evidence stream each minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

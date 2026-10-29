@@ -234,7 +234,7 @@ def status(cfg, max_age):
     db = connect(cfg, "ro")
     try:
         latest = db.execute("SELECT MAX(received_ns) FROM batches").fetchone()[0]
-        failed = db.execute("SELECT MAX(at_ns) FROM failure").fetchone()[0]
+        failed, failures = db.execute("SELECT MAX(at_ns), COUNT(*) FROM failure").fetchone()
         now = time.time_ns()
         age = (now - latest) / 1e9 if latest is not None else None
         healthy = (age is not None and 0 <= age <= max_age
@@ -242,6 +242,8 @@ def status(cfg, max_age):
         return {"source_id": cfg["source_id"], "trail": cfg["trail"],
                 "scope": cfg["scope"], "healthy": healthy,
                 "receipt_age_seconds": age,
+                "failure_count": failures,
+                "last_failure_ns": failed,
                 "receive_failure": failed is not None and
                 (latest is None or failed >= latest)}
     finally:
