@@ -20,6 +20,7 @@ import (
 type SQLiteTransaction struct {
 	auditActor auditActorCache
 	tx         *sql.Tx
+	ctx        context.Context
 	conn       *sql.Conn
 	guard      *upgrade.SQLiteGuard
 	settleOnce sync.Once
@@ -71,6 +72,13 @@ func (t *SQLiteTransaction) QueryRowContext(ctx context.Context, q string, args 
 }
 func (t *SQLiteTransaction) Commit() error {
 	t.auditActor.disable()
+	// database/sql derives a child context. The caller's Done can close
+	// before cancellation reaches that child, so check the original owner
+	// before deciding to commit. Rollback still joins native settlement and
+	// retains host exclusion until the connection is released.
+	if err := t.ctx.Err(); err != nil {
+		return errors.Join(err, t.Rollback())
+	}
 	return errors.Join(t.tx.Commit(), t.closeOwner())
 }
 func (t *SQLiteTransaction) Rollback() error {
@@ -124,7 +132,7 @@ func (d *DB) BeginSQLite(ctx context.Context, readonly bool) (*SQLiteTransaction
 	if err != nil {
 		return nil, errors.Join(err, closeSQLiteConn(conn), guard.Close())
 	}
-	owner := &SQLiteTransaction{tx: tx, conn: conn, guard: guard}
+	owner := &SQLiteTransaction{tx: tx, ctx: ctx, conn: conn, guard: guard}
 	if err := guard.Check(ctx, tx); err != nil {
 		return nil, errors.Join(err, owner.Rollback())
 	}

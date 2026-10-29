@@ -127,3 +127,23 @@ custody boundaries. Both review notes are retained and the combined source pin
 is refreshed. Shared CLI dispatch, audit/DEK authority and both-engine acceptance,
 the related stories and complete-diff feedback validate the integration before
 fresh current-base queue proof. No source history or security gate is removed.
+
+## SQLite caller-cancellation settlement repair
+
+Full queue run `40786078752` passed 45 jobs but its store race shard observed
+an expired SQLite commit return success. Caller cancellation closes its Done
+channel before visiting child contexts, and database/sql commits against a
+derived child. A controlled callback gate reproduced that propagation gap with
+real SQLite: commit returned success and published a write after caller
+cancellation. This is a production refusal gap, not a reason to loosen the test.
+
+The transaction owner now retains the original context and checks its error
+before deciding to commit. A cancelled caller takes the existing rollback path,
+which preserves native errors and joins connection settlement before releasing
+host exclusion. Cancellation after the commit decision retains the native
+outcome. The original deadline, pool, native-settlement and host-lock assertions
+are unchanged. The new controlled regression joins every held callback and
+asserts refusal, absent writes, released connections and host exclusion. Both
+focused Standards and Spec source reviews reported zero actionable findings;
+they are automated evidence, not independent human approval. Local race and
+consumer results and fresh full current-base validation are recorded on the PR.

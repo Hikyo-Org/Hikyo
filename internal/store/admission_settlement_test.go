@@ -89,6 +89,77 @@ func TestSQLiteSettlementPoolsAndErrors(t *testing.T) {
 	}
 }
 
+func TestSQLiteCommitRefusesCallerCancellationBeforeSQLPropagation(t *testing.T) {
+	cfg := ownedAdmissionConfig(t, EngineSQLite)
+	db, err := admittedStoreFixture(t, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, readonly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("read=%t", readonly), func(t *testing.T) {
+			parent, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			ctx := &heldSQLiteCancellation{Context: parent, release: make(chan struct{})}
+			t.Cleanup(func() { close(ctx.release); ctx.callbacks.Wait() })
+			tx, err := db.BeginSQLite(ctx, readonly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			if !readonly {
+				if _, err := tx.ExecContext(ctx, "CREATE TABLE canceled_commit_probe(value TEXT)"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cancel()
+			if err := tx.Commit(); !errors.Is(err, context.Canceled) && !errors.Is(err, sql.ErrTxDone) {
+				t.Errorf("caller cancellation not yet propagated to SQL: commit = %v", err)
+			}
+			if db.sqWrite.Stats().InUse != 0 || db.sqRead.Stats().InUse != 0 {
+				t.Error("canceled commit retained a connection")
+			}
+			if !readonly {
+				var persisted int
+				if err := db.sqRead.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sqlite_schema WHERE name = 'canceled_commit_probe'").Scan(&persisted); err != nil {
+					t.Fatal(err)
+				}
+				if persisted != 0 {
+					t.Error("canceled transaction published its write")
+				}
+			}
+			assertSQLiteHostLock(t, cfg.Path, true)
+		})
+	}
+}
+
+// Context cancellation closes Done before visiting its children. Hold the
+// database/sql child callback to make that scheduling window deterministic.
+type heldSQLiteCancellation struct {
+	context.Context
+	release   chan struct{}
+	callbacks sync.WaitGroup
+}
+
+// Hide context's private parent lookup so propagation uses the AfterFunc seam.
+func (*heldSQLiteCancellation) Value(any) any { return nil }
+
+func (c *heldSQLiteCancellation) AfterFunc(f func()) func() bool {
+	c.callbacks.Add(1)
+	stop := context.AfterFunc(c.Context, func() {
+		defer c.callbacks.Done()
+		<-c.release
+		f()
+	})
+	return func() bool {
+		if !stop() {
+			return false
+		}
+		c.callbacks.Done()
+		return true
+	}
+}
+
 func TestSQLiteConcurrentSettlementJoinsNativeCommit(t *testing.T) {
 	cfg := ownedAdmissionConfig(t, EngineSQLite)
 	db, err := admittedStoreFixture(t, cfg)
