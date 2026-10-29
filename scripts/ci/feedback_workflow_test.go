@@ -80,7 +80,10 @@ func requireFeedbackWorkflow(raw []byte) error {
 		return fmt.Errorf("feedback lost its bootstrap or execution steps")
 	}
 	finalStep := job.Steps[len(job.Steps)-1]
-	if finalStep.If != "" || finalStep.Continue || finalStep.Run != `bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane == 'tooling' && 'go' || matrix.lane }} --go-scope=${{ matrix.lane == 'go' && 'application' || matrix.lane == 'tooling' && 'tooling' || 'all' }}` {
+	if finalStep.If != "" || finalStep.Continue || finalStep.Run != `bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane="$FEEDBACK_LANE" --go-scope="$FEEDBACK_GO_SCOPE"` || !reflect.DeepEqual(finalStep.Env, map[string]string{
+		"FEEDBACK_LANE":     "${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].lane }}",
+		"FEEDBACK_GO_SCOPE": "${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}",
+	}) {
 		return fmt.Errorf("each runner must execute its actual selected lane, not rerun all checks or skip a lane")
 	}
 	if job.Env["GOFLAGS"] != "-gcflags=all=-dwarf=false" {
@@ -105,10 +108,10 @@ func requireFeedbackWorkflow(raw []byte) error {
 	buildReaders := 0
 	for _, step := range job.Steps {
 		if step.Name == "Select fast feedback domains" {
-			pinnedBase = strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`)
+			pinnedBase = step.ID == "plan" && step.If == "" && !step.Continue && strings.Contains(step.Run, "rev-parse HEAD^1") && strings.Contains(step.Run, `test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"`) && strings.Contains(step.Run, `export FAST_FEEDBACK_BASE="$base"`) && strings.Contains(step.Run, `plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)`)
 		}
 		if step.Name == "Select Go build cache runner ABI" {
-			runnerABI = step.ID == "runner-cache-abi" && step.If == "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
+			runnerABI = step.ID == "runner-cache-abi" && step.If == feedbackPrerequisiteCondition("go") && step.Run == `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"`
 		}
 		if step.With["path"] == ".ci-cache/go-feedback-compact" && step.Name != "Restore bounded feedback Go cache" {
 			return fmt.Errorf("every build-cache reader must satisfy the exact Go-only compatibility contract")
@@ -116,7 +119,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 		if step.Name == "Restore bounded feedback Go cache" {
 			buildReaders++
 			buildReader = step.Uses == "actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" &&
-				step.If == "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)" &&
+				step.If == feedbackPrerequisiteCondition("go") &&
 				!step.Continue && reflect.DeepEqual(step.With, map[string]string{
 				"path":         ".ci-cache/go-feedback-compact",
 				"key":          "go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}",
@@ -129,7 +132,11 @@ func requireFeedbackWorkflow(raw []byte) error {
 		return fmt.Errorf("feedback needs a verified integration base and bounded compatible read-only Go build cache")
 	}
 	shellcheckInstallers, releasePythonInstallers := 0, 0
+	setupCounts := map[string]int{}
 	for index, step := range job.Steps {
+		if step.Continue {
+			return fmt.Errorf("selected setup and checks must propagate failures")
+		}
 		if strings.Contains(step.Run, "fast-feedback_test.sh") || strings.Contains(step.Run, "fast-feedback-deadline_test.sh") {
 			return fmt.Errorf("refusal and deadline self-tests belong to mandatory full lint, not the per-commit budget")
 		}
@@ -143,16 +150,25 @@ func requireFeedbackWorkflow(raw []byte) error {
 			if index > 1 && !strings.Contains(job.Steps[index-1].Run, "feedback-budget.sh\" --reserve 60") {
 				return fmt.Errorf("external setup must reserve cumulative headroom first")
 			}
+			if index > 3 && job.Steps[index-1].If != step.If {
+				return fmt.Errorf("setup reserve and action must consume the same planned prerequisite")
+			}
 		}
-		if strings.Contains(step.Uses, "setup-go@") && step.If != "matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)" {
-			return fmt.Errorf("only the Go/tooling lane prepares Go")
+		if strings.Contains(step.Uses, "setup-go@") {
+			setupCounts["go"]++
+			if step.If != feedbackPrerequisiteCondition("go") || step.Uses != "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e" || step.With["go-version-file"] != "feedback-tools/go.mod" {
+				return fmt.Errorf("planned Go prerequisites must retain the pinned immutable runtime")
+			}
 		}
-		if strings.Contains(step.Uses, "setup-node@") && step.If != "(matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)" {
-			return fmt.Errorf("frontend and read-only docs must retain their pinned Node runtime")
+		if strings.Contains(step.Uses, "setup-node@") {
+			setupCounts["node"]++
+			if step.If != feedbackPrerequisiteCondition("node") || step.Uses != "actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903" || step.With["node-version-file"] != "source/.nvmrc" {
+				return fmt.Errorf("planned frontend and docs prerequisites must retain the pinned Node runtime")
+			}
 		}
 		if step.Name == "Install verified pinned ShellCheck" {
 			shellcheckInstallers++
-			if step.If != "matrix.lane == 'tooling' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)" || step.Continue ||
+			if step.If != feedbackPrerequisiteCondition("shellcheck") || step.Continue ||
 				step.Env["SHELLCHECK_VERSION"] != "v0.11.0" || step.Env["SHELLCHECK_SHA256"] != "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198" ||
 				!strings.Contains(step.Run, "sha256sum --check --strict") {
 				return fmt.Errorf("shell and workflow-only checks require verified pinned ShellCheck in the Go/tooling lane")
@@ -160,7 +176,7 @@ func requireFeedbackWorkflow(raw []byte) error {
 		}
 		if step.Name == "Prepare trusted release contract dependencies" {
 			releasePythonInstallers++
-			if step.If != "matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).releaseAdmission" || step.Continue ||
+			if step.If != feedbackPrerequisiteCondition("releaseDependencies") || step.Continue ||
 				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60`) ||
 				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" python3 -m venv "$RUNNER_TEMP/release-admission-checks"`) ||
 				!strings.Contains(step.Run, `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$RUNNER_TEMP/release-admission-checks/bin/python" -m pip install -r scripts/ci/release-admission/requirements.txt`) ||
@@ -168,16 +184,30 @@ func requireFeedbackWorkflow(raw []byte) error {
 				return fmt.Errorf("release contracts require pinned dependencies in their tooling lane within the original setup budget")
 			}
 		}
-		if strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh") || (strings.Contains(step.Uses, "cache/restore@") && step.Name != "Restore bounded feedback Go cache") || step.Name == "Select explicit pnpm cache path and ABI" {
-			if !strings.HasPrefix(step.If, "matrix.lane == 'frontend' && ") {
-				return fmt.Errorf("frontend dependency preparation must not compete with Go/tooling")
+		if strings.Contains(step.Uses, "cache/restore@") {
+			switch step.Name {
+			case "Restore bounded feedback Go cache", "Restore frontend dependencies":
+			default:
+				return fmt.Errorf("every cache restore must use an approved planned prerequisite: %q", step.Name)
 			}
 		}
-		if strings.Contains(step.Uses, "setup-node@") && !strings.Contains(step.If, "fromJSON(steps.plan.outputs.plan).docs") {
-			return fmt.Errorf("docs-only feedback must select the pinned Node runtime")
+		prerequisite := ""
+		switch step.Name {
+		case "Install pinned Corepack", "Select explicit pnpm cache path and ABI", "Restore frontend dependencies":
+			prerequisite = "pnpm"
+		case "Install locked client dependencies":
+			prerequisite = "clientDependencies"
+		case "Install locked web dependencies":
+			prerequisite = "webDependencies"
 		}
-		if (strings.Contains(step.Run, "pnpm install") || strings.Contains(step.Run, "install-corepack.sh")) && strings.Contains(step.If, ".docs") {
-			return fmt.Errorf("read-only docs preparation must not require Node dependency installation")
+		if prerequisite != "" {
+			setupCounts[step.Name]++
+			if step.If != feedbackPrerequisiteCondition(prerequisite) {
+				return fmt.Errorf("%s must consume the planner's %s prerequisite", step.Name, prerequisite)
+			}
+		}
+		if strings.Contains(step.Run, "pnpm install") && (prerequisite != "clientDependencies" && prerequisite != "webDependencies") || strings.Contains(step.Run, "install-corepack.sh") && prerequisite != "pnpm" {
+			return fmt.Errorf("dependency installation must consume an explicit planned prerequisite")
 		}
 		if strings.Contains(step.Uses, "cache/save") || strings.Contains(step.Uses, "/.github/workflows/ci.yml") || strings.Contains(step.Run, "bash scripts/ci/fast-feedback.sh") {
 			return fmt.Errorf("feedback cannot write shared caches, run the full graph, or depend on a helper in an old head")
@@ -192,7 +222,16 @@ func requireFeedbackWorkflow(raw []byte) error {
 	if releasePythonInstallers != 1 {
 		return fmt.Errorf("feedback requires exactly one selected release-contract dependency setup")
 	}
+	for _, setup := range []string{"go", "node", "Install pinned Corepack", "Select explicit pnpm cache path and ABI", "Restore frontend dependencies", "Install locked client dependencies", "Install locked web dependencies"} {
+		if setupCounts[setup] != 1 {
+			return fmt.Errorf("feedback requires exactly one planned %s setup", setup)
+		}
+	}
 	return nil
+}
+
+func feedbackPrerequisiteCondition(name string) string {
+	return "fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites." + name
 }
 
 func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
@@ -201,6 +240,57 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutation := range map[string]func(map[string]any){
+		"candidate planner": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Select fast feedback domains", "run", `plan=$(bash scripts/ci/fast-feedback.sh --plan)`)
+		},
+		"missing plan": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Select fast feedback domains", "if", "false")
+		},
+		"unscoped adapter mapping": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Run fast feedback", "env", map[string]any{"FEEDBACK_LANE": "go", "FEEDBACK_GO_SCOPE": "all"})
+		},
+		"node prerequisite omitted": func(j map[string]any) {
+			for _, value := range j["steps"].([]any) {
+				step := value.(map[string]any)
+				if strings.Contains(fmt.Sprint(step["uses"]), "setup-node@") {
+					step["if"] = "false"
+				}
+			}
+		},
+		"client prerequisite omitted": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Install locked client dependencies", "if", "false")
+		},
+		"web prerequisite reinterpreted": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Install locked web dependencies", "if", feedbackPrerequisiteCondition("clientDependencies"))
+		},
+		"reserve prerequisite mismatched": func(j map[string]any) {
+			mutateFeedbackNamedStep(j, "Check budget before Go build cache restore", "if", "false")
+		},
+		"unrecognized frontend restore in go lane": func(j map[string]any) {
+			steps := j["steps"].([]any)
+			for _, value := range steps {
+				step := value.(map[string]any)
+				if step["name"] != "Restore frontend dependencies" {
+					continue
+				}
+				restore := make(map[string]any, len(step))
+				for key, value := range step {
+					restore[key] = value
+				}
+				restore["name"] = "Restore extra frontend dependencies"
+				restore["if"] = feedbackPrerequisiteCondition("go")
+				reserve := map[string]any{
+					"name": "Check budget before extra restore",
+					"if":   feedbackPrerequisiteCondition("go"),
+					"run":  `bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60`,
+				}
+				// Keep final execution last and satisfy its independent reserve
+				// checks, isolating the unrecognized cache-reader escape.
+				last := len(steps) - 1
+				j["steps"] = append(append(append([]any{}, steps[:last]...), reserve, restore), steps[last])
+				return
+			}
+		},
 		"release dependencies wrong lane": func(j map[string]any) {
 			mutateReleasePython(j, "if", "matrix.lane == 'frontend'")
 		},
@@ -292,6 +382,16 @@ func TestFeedbackWorkflowRejectsSkippedOrFailOpenLanes(t *testing.T) {
 				t.Fatal("unsafe feedback configuration escaped actual workflow contract")
 			}
 		})
+	}
+}
+
+func mutateFeedbackNamedStep(j map[string]any, name, key string, value any) {
+	for _, valueStep := range j["steps"].([]any) {
+		step := valueStep.(map[string]any)
+		if step["name"] == name {
+			step[key] = value
+			return
+		}
 	}
 }
 

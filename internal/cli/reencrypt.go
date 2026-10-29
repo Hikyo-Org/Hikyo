@@ -28,22 +28,7 @@ func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := flags.checkNoPositionals("reencrypt"); err != nil {
-		return err
-	}
-	if err := checkDEKScopeFlags(flags, instanceScope, "reencrypt"); err != nil {
-		return err
-	}
-
-	resolved, err := Resolve(st, ios.Env, flags.Flags, ios.Workdir)
-	if err != nil {
-		return err
-	}
-	org, project, err := dekScope(resolved, instanceScope)
-	if err != nil {
-		return err
-	}
-	client, _, _, err := authenticatedResolvedTarget(st, ios, flags, resolved)
+	client, org, project, err := prepareDEKTarget(st, ios, flags, instanceScope)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -181,6 +183,52 @@ func TestDEKRotationScopeRefusals(t *testing.T) {
 				t.Fatalf("a refused rotation reached the server %d times", calls.Load())
 			}
 		})
+	}
+}
+
+// Usage diagnostics must win over later failures in local target or auth state.
+// Exercise both callers so extraction cannot change which error users see.
+func TestDEKRotationPreparationErrorPrecedence(t *testing.T) {
+	for _, verb := range []string{"rotate-dek", "reencrypt"} {
+		for _, tc := range []struct {
+			name       string
+			args       []string
+			invalidPin bool
+			message    string
+		}{
+			{"format before positionals", []string{"-o", "yaml", "--env", "env_70", "stray"}, false,
+				`unknown output format "yaml": use table or json`},
+			{"positionals before selectors", []string{"--env", "env_70", "stray"}, false,
+				"usage: hikyo " + verb + " takes no positional arguments, got: stray"},
+			{"environment before context", []string{"--env=", "--context", "missing"}, false,
+				"hikyo " + verb + ": --env cannot select a DEK; use --org/--project for the entire project or --instance-scope"},
+			{"empty selector before context", []string{"--instance=", "--context", "missing"}, false,
+				"hikyo " + verb + ": --instance must not be empty; omit it to use inherited selection"},
+			{"scope conflict before pin", []string{"--instance-scope", "--org", "org_70"}, true,
+				"hikyo " + verb + ": --instance-scope and --org/--project name two different scopes; choose one"},
+			{"missing org before authentication", []string{"--instance", "untrusted", "--project", "prj_70"}, false,
+				"no org resolved."},
+			{"missing project before authentication", []string{"--instance", "untrusted", "--org", "org_70"}, false,
+				"no project resolved."},
+		} {
+			t.Run(verb+"/"+tc.name, func(t *testing.T) {
+				ios, stdout, stderr := testIO(t, nil)
+				if tc.invalidPin {
+					if err := os.WriteFile(filepath.Join(ios.Workdir, cli.PinFileName), []byte("{"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if code := cli.Run(t.Context(), ios, append([]string{verb}, tc.args...)); code != cli.ExitUsage {
+					t.Fatalf("exit %d, want usage; stderr=%s", code, stderr)
+				}
+				if !strings.Contains(stderr.String(), tc.message) {
+					t.Fatalf("stderr=%q, want %q", stderr, tc.message)
+				}
+				if stdout.Len() != 0 || strings.Contains(stderr.String(), "target:") || strings.Contains(stderr.String(), "rotate-dek appends") {
+					t.Fatalf("failed preparation produced output: stdout=%q stderr=%q", stdout, stderr)
+				}
+			})
+		}
 	}
 }
 

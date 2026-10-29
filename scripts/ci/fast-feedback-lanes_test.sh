@@ -6,6 +6,7 @@ owner=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-feedback-lanes.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/repo" "$work/bin" "$work/tools/scripts/ci" "$work/tools/docs/site/scripts"
+cp "$script_dir/feedback-plan.sh" "$work/tools/scripts/ci/"
 cp "$owner/docs/site/scripts/prepare-content.mjs" "$work/tools/docs/site/scripts/"
 cd "$work/repo"
 git init -q
@@ -50,27 +51,53 @@ export FIXTURE_REAL_GO FIXTURE_REAL_NODE FIXTURE_REAL_SHELLCHECK FIXTURE_WORK=$w
 cat >"$work/bin/go" <<'STUB'
 #!/usr/bin/env bash
 set -eu
-if [ "$1" = env ]; then exec "$FIXTURE_REAL_GO" "$@"; fi
+if [ "$1" = env ]; then
+	printf 'go-format\n' >>"$FIXTURE_WORK/checks"
+	[ "${FIXTURE_FAILURE:-}" != go-env ] || exit 33
+	exec "$FIXTURE_REAL_GO" "$@"
+fi
+case "$1" in
+	test) printf 'go-compile\n' >>"$FIXTURE_WORK/checks" ;;
+	mod) printf 'go-mod-verify\n' >>"$FIXTURE_WORK/checks" ;;
+	*) exit 34 ;;
+esac
 printf 'go %s\n' "$*" >>"$FIXTURE_WORK/commands"
 [ "${FIXTURE_FAILURE:-}" != compile ] || exit 31
 STUB
 cat >"$work/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 set -eu
-if [ "$1" = --version ]; then printf '11.24.0\n'; exit; fi
+if [ "$1" = --version ]; then
+	[ "${FIXTURE_FAILURE:-}" != pnpm-version ] || { printf '0.0.0\n'; exit; }
+	printf '11.24.0\n'
+	[ "${FIXTURE_FAILURE:-}" != pnpm-status ] || exit 38
+	exit
+fi
+case "$2" in clients/ts) owner=client ;; web) owner=web ;; *) exit 35 ;; esac
+printf '%s-%s\n' "$owner" "$4" >>"$FIXTURE_WORK/checks"
 printf 'pnpm %s\n' "$*" >>"$FIXTURE_WORK/commands"
 [ "${FIXTURE_FAILURE:-}" != frontend ] || exit 32
 STUB
 cat >"$work/bin/node" <<'STUB'
 #!/usr/bin/env bash
 set -eu
-if [ "$1" != --version ]; then printf 'docs\n' >>"$FIXTURE_WORK/commands"; fi
+if [ "$1" != --version ]; then
+	printf 'docs\n' >>"$FIXTURE_WORK/commands"
+	printf 'docs\n' >>"$FIXTURE_WORK/checks"
+	[ "${FIXTURE_FAILURE:-}" != docs ] || exit 36
+elif [ "${FIXTURE_FAILURE:-}" = node-version ]; then printf 'v0.0.0\n'; exit
+elif [ "${FIXTURE_FAILURE:-}" = node-status ]; then "$FIXTURE_REAL_NODE" "$@"; exit 39
+fi
 exec "$FIXTURE_REAL_NODE" "$@"
 STUB
 cat >"$work/bin/shellcheck" <<'STUB'
 #!/usr/bin/env bash
 set -eu
-if [ "$1" != --version ]; then printf 'shellcheck\n' >>"$FIXTURE_WORK/commands"; fi
+if [ "$1" != --version ]; then
+	printf 'shellcheck\n' >>"$FIXTURE_WORK/commands"
+	printf 'shellcheck\n' >>"$FIXTURE_WORK/checks"
+elif [ "${FIXTURE_FAILURE:-}" = shellcheck-version ]; then printf 'version: 0.0.0\n'; exit
+fi
 exec "$FIXTURE_REAL_SHELLCHECK" "$@"
 STUB
 cat >"$work/tools/scripts/ci/run-go-tool.sh" <<'STUB'
@@ -78,13 +105,22 @@ cat >"$work/tools/scripts/ci/run-go-tool.sh" <<'STUB'
 set -eu
 [ "$1" = actionlint ]
 printf 'actionlint\n' >>"$FIXTURE_WORK/commands"
+printf 'actionlint\n' >>"$FIXTURE_WORK/checks"
+[ "${FIXTURE_FAILURE:-}" != actionlint ] || exit 37
 STUB
 chmod +x "$work/bin/"* "$work/tools/scripts/ci/run-go-tool.sh"
 export PATH="$work/bin:$PATH" FAST_FEEDBACK_TOOLS_DIR="$work/tools/scripts/ci"
 run_lane() {
 	: >"$work/commands"
+	: >"$work/checks"
 	bash "$script_dir/fast-feedback.sh" "$@" >"$work/output" 2>&1
 	sort "$work/commands"
+}
+assert_planned_checks() {
+	local selected=$1
+	bash "$script_dir/fast-feedback.sh" --plan >"$work/plan"
+	jq -r --arg lane "$selected" '.lanes[$lane].checks[].id' "$work/plan" >"$work/planned-checks"
+	cmp "$work/planned-checks" "$work/checks"
 }
 run_lane >"$work/all"
 FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) run_lane --lane=go >"$work/go"
@@ -101,7 +137,11 @@ printf '\n// Select dependency integrity.\n' >>go.mod
 commit_fixture
 run_lane --lane=go >"$work/scope-all"
 run_lane --lane=go --go-scope=application >"$work/application"
+assert_planned_checks go
 run_lane --lane=go --go-scope=tooling >"$work/tooling"
+assert_planned_checks tooling
+run_lane --lane=frontend >"$work/frontend"
+assert_planned_checks frontend
 diff -u <(printf '%s\n' 'go mod verify' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./.' | sort) "$work/application"
 diff -u <(printf '%s\n' 'actionlint' 'docs' 'go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null ./scripts/tooling' 'shellcheck' | sort) "$work/tooling"
 compile_prefix='go test -c -vet=off -gcflags=all=-dwarf=false -ldflags=-w -o /dev/null '
@@ -131,6 +171,18 @@ FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --la
 FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=application
 FIXTURE_FAILURE=compile FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=go --go-scope=tooling
 FIXTURE_FAILURE=frontend FAST_FEEDBACK_DEADLINE=$(($(date +%s) + 20)) refuse --lane=frontend
+for failure in go-env shellcheck-version actionlint docs node-version node-status; do
+	FIXTURE_FAILURE=$failure refuse --lane=go --go-scope=tooling
+	case "$failure" in
+		shellcheck-version) grep -F 'ShellCheck 0.11.0 is required' "$work/output" >/dev/null ;;
+		node-version) grep -F 'Node differs from .nvmrc' "$work/output" >/dev/null ;;
+		node-status) grep -F 'cannot determine Node version' "$work/output" >/dev/null ;;
+	esac
+done
+FIXTURE_FAILURE=pnpm-version refuse --lane=frontend
+grep -F 'pnpm differs from packageManager' "$work/output" >/dev/null
+FIXTURE_FAILURE=pnpm-status refuse --lane=frontend
+grep -F 'cannot determine pnpm version' "$work/output" >/dev/null
 # A frontend-only success cannot conceal invalid Go formatting in the other lane.
 printf 'package lanes\nvar bad=1\n' >fixture.go
 commit_fixture

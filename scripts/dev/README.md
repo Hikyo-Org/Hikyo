@@ -13,7 +13,18 @@ Run `scripts/ci/fast-feedback.sh` from a clean checkout before a push, or add
 otherwise they default to `hikyo-upstream/main` and `HEAD`. Both refs must exist
 and share history. The command prints their resolved IDs, and committed mode
 refuses a dirty checkout or a different checked-out revision. `--plan` emits
-the selected domains as JSON, without running checks.
+the selected domains as JSON, without running checks. Its eight domain booleans
+retain their existing meanings, including Go scope filtering. The additive
+`lanes` object describes all three hosted lanes independently of the requested
+local lane/scope: each has its adapter `lane` and `goScope`, ordered `checks`
+(stable IDs with prerequisite lists), and the union of its `prerequisites` as
+booleans. Planning works before Go, Node, pnpm or jq setup, including on Bash 3.2.
+The shared `scripts/ci/feedback-plan.sh` module owns this selection, ordering,
+lane placement and prerequisite policy. Hosted setup consumes its prerequisite
+fields; the local driver dispatches its check IDs through explicit commands.
+CI loads the module from the immutable feedback tooling checkout, never from
+the source checkout being examined. These plans describe developer feedback;
+the full candidate classifier, queue planner and coverage contract are separate.
 
 The profile checks range whitespace, formatting of changed Go files, compilation
 of their owning packages including tests (without running them), pinned
