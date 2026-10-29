@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-// This state is local to one held-head reconciliation, not an authority cache.
-// Only the existing complete source/authority/final-identity proof can mark a
-// terminal verdict verified. A retired disposition requires fresh absence of
-// every live head role and retirement of owned unfinished records. Other exits
-// independently verify blocking.
-type queueReassessment struct {
+// queueReconciliation owns observation, publication and settlement for one
+// held-head pass. Proof producers deliver freshly verified results; they never
+// carry publication flags or reuse an earlier pass's authority. Every unsettled
+// exit independently verifies blocking under the original publication reserve.
+type queueReconciliation struct {
+	q                *queueController
 	latest           *check
 	uncertainCreate  bool
 	verifiedTerminal bool
@@ -55,7 +55,7 @@ func (q *queueController) reassess(ctx context.Context, work func(context.Contex
 // reassessment while GitHub job metadata lags or a read fails transiently.
 // Every other invocation reassesses exactly once and never waits.
 func (q *queueController) reassessHeld(ctx context.Context, rereads bool, work func(context.Context) error) error {
-	if q.queueRefresh != nil {
+	if q.reconciliation != nil {
 		return work(ctx)
 	}
 	if !shaPattern.MatchString(q.expectedHead) {
@@ -200,14 +200,19 @@ func (q *queueController) pollProofJobs(ctx context.Context, loop *groupRereads,
 // A looping pass leaves a nonterminal barrier and asks to wait; any other
 // outcome is final. Nothing terminal is written while the window is open.
 func (q *queueController) reassessOnce(ctx context.Context, work func(context.Context) error, rereads *groupRereads) (next rereadNext, err error) {
-	state := &queueReassessment{}
+	session := &queueReconciliation{q: q}
+	q.reconciliation = session
+	defer func() { q.reconciliation = nil }()
+	return session.reconcile(ctx, work, rereads)
+}
+
+func (s *queueReconciliation) reconcile(ctx context.Context, work func(context.Context) error, rereads *groupRereads) (next rereadNext, err error) {
+	q := s.q
 	if rereads != nil {
-		state.pinned = rereads.pinned
+		s.pinned = rereads.pinned
 	}
-	q.queueRefresh = state
-	defer func() { q.queueRefresh = nil }()
 	own, readErr := q.listOwnedChecks(ctx, q.expectedHead)
-	state.latest = newestQueueCheck(own)
+	s.latest = newestQueueCheck(own)
 	if readErr == nil {
 		err = work(ctx)
 	} else {
@@ -217,9 +222,9 @@ func (q *queueController) reassessOnce(ctx context.Context, work func(context.Co
 		return rereadStop, err
 	}
 	if rereads != nil && rereads.pinned == nil {
-		rereads.pinned = state.finishedGroup
+		rereads.pinned = s.finishedGroup
 	}
-	if err == nil && state.verifiedTerminal || state.verifiedRetired && (err == nil || onlyStaleHeadWork(err)) {
+	if err == nil && s.verifiedTerminal || s.verifiedRetired && (err == nil || onlyStaleHeadWork(err)) {
 		return rereadStop, err
 	}
 	// Cancellation may have interrupted mutable authority or an uncertain write.
@@ -234,7 +239,7 @@ func (q *queueController) reassessOnce(ctx context.Context, work func(context.Co
 		reserve, stop = q.reserveContext(ctx)
 	}
 	defer stop()
-	if rereads != nil && !state.uncertainCreate && rereads.parent.Err() == nil && !q.groupSettled(state) {
+	if rereads != nil && !s.uncertainCreate && rereads.parent.Err() == nil && !s.groupSettled() {
 		// Only the loop's own fence can have ended the pass context here.
 		fenced := ctx.Err() != nil
 		if fenced && expirableGroupRead(err) || !fenced && deferrableGroupRead(err) {
@@ -248,7 +253,7 @@ func (q *queueController) reassessOnce(ctx context.Context, work func(context.Co
 			if !fenced && !rateLimitedGroupRead(err) && rereads.open(next) {
 				// An existing blocking record is left untouched; a missing one is still
 				// created so the wait never leaves a stale non-blocking verdict effective.
-				blockErr := q.ensureBlocking(reserve, state, err)
+				blockErr := s.ensureBlocking(reserve, err)
 				if blockErr != nil && !deferrableGroupRead(blockErr) {
 					return rereadStop, errors.Join(err, blockErr)
 				}
@@ -271,16 +276,16 @@ func (q *queueController) reassessOnce(ctx context.Context, work func(context.Co
 					return rereadPass, errors.Join(err, blockErr)
 				}
 			}
-			state.rereadExpired = true
-			if state.finishedGroup == nil {
+			s.rereadExpired = true
+			if s.finishedGroup == nil {
 				// The final pass failed before re-proving the group. The identity an
 				// earlier pass proved is still re-verified against live state before
 				// any write.
-				state.finishedGroup = state.pinned
+				s.finishedGroup = s.pinned
 			}
 		}
 	}
-	return rereadStop, errors.Join(err, q.ensureBlocking(reserve, state, err))
+	return rereadStop, errors.Join(err, s.ensureBlocking(reserve, err))
 }
 
 // A completed owned record that already carries this run's identity (or is the
@@ -290,7 +295,8 @@ func (q *queueController) reassessOnce(ctx context.Context, work func(context.Co
 // establishes has no run, so an expiry refusal written onto it has Run 0: a
 // same-head re-run after one therefore takes the single-pass path, which is
 // acceptable because the refusal tells the operator to re-queue (a new head).
-func (q *queueController) groupSettled(s *queueReassessment) bool {
+func (s *queueReconciliation) groupSettled() bool {
+	q := s.q
 	proved := s.finishedGroup
 	if proved == nil {
 		proved = s.pinned
@@ -386,20 +392,21 @@ func classifyGroupRead(err error, fenced bool) (curable, other, limited bool) {
 	return false, err != context.Canceled && !(fenced && err == context.DeadlineExceeded), false
 }
 
-func (q *queueController) ensureBlocking(ctx context.Context, state *queueReassessment, cause error) error {
+func (s *queueReconciliation) ensureBlocking(ctx context.Context, cause error) error {
+	q := s.q
 	own, scanErr := q.listOwnedChecks(ctx, q.expectedHead)
 	if scanErr != nil {
 		return scanErr
 	} // Unknown history cannot authorize another creation.
 	latest := newestQueueCheck(own)
 	if blockingQueueCheck(latest) {
-		if state.terminalGroupCause(cause) && latest.Status != "completed" && q.authenticatedQueueCheck(latest, q.expectedHead) {
+		if s.terminalGroupCause(cause) && latest.Status != "completed" && q.authenticatedQueueCheck(latest, q.expectedHead) {
 			b, err := decodeBinding(latest.ExternalID)
 			if err != nil {
 				return err
 			}
 			p := pull{Number: b.PR, Head: reference{SHA: b.Head}}
-			return q.finishGroupFailure(ctx, state.finishedGroup, p, b, latest, cause, state.groupFailure())
+			return s.finishGroupFailure(ctx, p, b, latest, cause, s.groupFailure())
 		}
 		return nil
 	}
@@ -422,19 +429,19 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	// A lost POST receipt is not retried. A complete fresh scan can establish its
 	// actual blocking record; otherwise only a captured, still-newest owned ID
 	// may receive a genuine failure. Foreign/truncated history stays an error.
-	if state.uncertainCreate {
+	if s.uncertainCreate {
 		if scanErr != nil || latest == nil {
 			return errors.Join(scanErr, errors.New("uncertain queued creation; no effective blocking identity confirmed"))
 		}
-		return q.failOwnedBarrier(ctx, p, b, latest, cause, unsafeProofRefusal)
+		return s.failOwnedBarrier(ctx, p, b, latest, cause, unsafeProofRefusal)
 	}
 	result := pending("Current held-head proof is incomplete; admission and merging remain blocked.")
-	written, writeErr := q.publishQueueRecord(ctx, p, b, latest, result)
+	written, writeErr := s.publishRecord(ctx, p, b, latest, result)
 	if writeErr != nil {
 		// Never retry the uncertain CREATE. Only the complete inventory captured
 		// before it may authorize a failure on that known owned record.
 		if latest != nil && scanErr == nil {
-			return errors.Join(writeErr, q.failOwnedBarrier(ctx, p, b, latest, writeErr, unsafeProofRefusal))
+			return errors.Join(writeErr, s.failOwnedBarrier(ctx, p, b, latest, writeErr, unsafeProofRefusal))
 		}
 		return errors.Join(scanErr, writeErr)
 	}
@@ -443,8 +450,8 @@ func (q *queueController) ensureBlocking(ctx context.Context, state *queueReasse
 	if finalErr != nil || written == nil || current == nil || current.ID != written.ID || !blockingQueueCheck(current) {
 		return errors.Join(scanErr, finalErr, errors.New("newest owned blocking barrier could not be confirmed"))
 	}
-	if state.terminalGroupCause(cause) {
-		return q.finishGroupFailure(ctx, state.finishedGroup, p, b, current, cause, state.groupFailure())
+	if s.terminalGroupCause(cause) {
+		return s.finishGroupFailure(ctx, p, b, current, cause, s.groupFailure())
 	}
 	return scanErr
 }
@@ -454,14 +461,14 @@ var unsafeProofRefusal = refused("Current proof could not be safely established;
 // A finished group's failure is terminal because nothing retriggers it. The
 // exceptions are causes only waiting can cure: they stay pending unless a
 // re-reading invocation exhausted its window, which publishes a distinct refusal.
-func (s *queueReassessment) terminalGroupCause(cause error) bool {
+func (s *queueReconciliation) terminalGroupCause(cause error) bool {
 	return cause != nil && s.finishedGroup != nil && (s.rereadExpired || !deferrableGroupRead(cause))
 }
 
-// proveGroup records the finished-group identity a pass is about to verdict. A
+// observeGroup records the finished-group identity a pass is about to verdict. A
 // re-reading pass that finds a different one keeps the pinned proof, so the only
 // possible outcome is the existing identity-moved refusal to write.
-func (s *queueReassessment) proveGroup(proved *finishedGroupProof) error {
+func (s *queueReconciliation) observeGroup(proved *finishedGroupProof) error {
 	if s.pinned != nil && !sameGroupProof(*s.pinned, *proved) {
 		s.finishedGroup = s.pinned
 		return &queueSnapshotChanged{reason: "merge group identity moved between re-reads"}
@@ -478,14 +485,15 @@ func sameGroupProof(proved, live finishedGroupProof) bool {
 // recognises it by Title.
 var metadataExpiredRefusal = outcome{Status: "completed", Conclusion: "failure", Title: "Merge group proof metadata unavailable", Summary: "GitHub job metadata stayed incomplete or unreadable after a successful merge-group run, through bounded re-reads or a rate limit; re-queue the PR."}
 
-func (s *queueReassessment) groupFailure() outcome {
+func (s *queueReconciliation) groupFailure() outcome {
 	if s.rereadExpired {
 		return metadataExpiredRefusal
 	}
 	return unsafeProofRefusal
 }
 
-func (q *queueController) finishGroupFailure(ctx context.Context, proved *finishedGroupProof, p pull, b binding, selected *check, cause error, result outcome) error {
+func (s *queueReconciliation) finishGroupFailure(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
+	q := s.q
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
@@ -498,19 +506,20 @@ func (q *queueController) finishGroupFailure(ctx context.Context, proved *finish
 	if err != nil {
 		return err
 	}
-	if live == nil || live.Status != "completed" || !sameGroupProof(*proved, finishedGroupProof{run: *live, policy: policy, snapshot: snapshot}) {
+	if live == nil || live.Status != "completed" || !sameGroupProof(*s.finishedGroup, finishedGroupProof{run: *live, policy: policy, snapshot: snapshot}) {
 		return errors.New("completed group identity moved before failure publication")
 	}
-	return q.failOwnedBarrier(ctx, p, b, selected, cause, result)
+	return s.failOwnedBarrier(ctx, p, b, selected, cause, result)
 }
 
-func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
+func (s *queueReconciliation) failOwnedBarrier(ctx context.Context, p pull, b binding, selected *check, cause error, result outcome) error {
+	q := s.q
 	own, err := q.listOwnedChecks(ctx, q.expectedHead)
 	latest := newestQueueCheck(own)
 	if err != nil || latest == nil || latest.ID != selected.ID || !q.authenticatedQueueCheck(latest, q.expectedHead) {
 		return errors.Join(err, errors.New("failure fallback cannot authenticate the effective owned record"))
 	}
-	if blockingQueueCheck(latest) && (latest.Status == "completed" || q.queueRefresh == nil || q.queueRefresh.finishedGroup == nil) {
+	if blockingQueueCheck(latest) && (latest.Status == "completed" || s.finishedGroup == nil) {
 		return nil
 	}
 	if cause == nil {
@@ -537,11 +546,54 @@ func (q *queueController) failOwnedBarrier(ctx context.Context, p pull, b bindin
 
 // A changed authenticated source binding is an event transition, rather than a
 // periodic refresh. Establish its pending generation promptly, before proof.
-func (q *queueController) changedBinding(ctx context.Context, p pull, b binding) error {
-	if q.queueRefresh == nil || q.queueRefresh.latest == nil || q.queueRefresh.latest.ExternalID == b.externalID() || blockingQueueCheck(q.queueRefresh.latest) && q.authenticatedQueueCheck(q.queueRefresh.latest, b.Head) {
+func (s *queueReconciliation) changedBinding(ctx context.Context, p pull, b binding) error {
+	q := s.q
+	if s.latest == nil || s.latest.ExternalID == b.externalID() || blockingQueueCheck(s.latest) && q.authenticatedQueueCheck(s.latest, b.Head) {
 		return nil
 	}
-	_, err := q.publishQueueRecord(ctx, p, b, q.queueRefresh.latest, pending("A new current source binding requires fresh validation."))
+	_, err := s.publishRecord(ctx, p, b, s.latest, pending("A new current source binding requires fresh validation."))
+	return err
+}
+
+// Closed PRs and stale callbacks are benign only when this exact commit has no
+// other live role. The disposition belongs to this reconciliation, never a
+// cached property of a SHA or a PR-close event.
+func (s *queueReconciliation) retireHead(ctx context.Context, allowLandedGroup bool) error {
+	q := s.q
+	s.verifiedRetired = false
+	roles, err := q.roles(ctx, q.expectedHead)
+	if err != nil {
+		return err
+	}
+	inactive, err := q.inactiveRetirementRoles(ctx, q.expectedHead, roles, allowLandedGroup)
+	if err != nil {
+		return err
+	}
+	if inactive {
+		retired, err := q.retireChecksState(ctx, q.expectedHead, allowLandedGroup)
+		if err != nil {
+			return err
+		}
+		s.verifiedRetired = retired
+	}
+	return nil
+}
+
+// Callbacks and group workers both renew complete retirement proof when queue
+// movement invalidates their role read. An active or uncertain head stays blocked.
+func (s *queueReconciliation) retireMovedGroup(ctx context.Context, err error) error {
+	q := s.q
+	var moved *queueSnapshotChanged
+	if !errors.As(err, &moved) {
+		return err
+	}
+	if retireErr := s.retireHead(ctx, true); retireErr != nil {
+		return errors.Join(err, retireErr)
+	}
+	if s.verifiedRetired {
+		_, writeErr := fmt.Fprintln(q.output, "Merge group retired after queue movement:", moved.reason)
+		return writeErr
+	}
 	return err
 }
 

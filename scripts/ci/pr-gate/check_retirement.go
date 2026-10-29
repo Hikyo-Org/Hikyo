@@ -79,39 +79,6 @@ func (c *controller) retireEvent(ctx context.Context, name string, e event) erro
 	return c.retireChecks(ctx, head)
 }
 
-// Closed PRs and stale callbacks are benign only when this exact commit has no
-// other live role. The disposition belongs to this reconciliation, never a
-// cached property of a SHA or a PR-close event.
-func (q *queueController) retiredHead(ctx context.Context) error {
-	return q.retiredHeadRoles(ctx, false)
-}
-
-func (q *queueController) retiredGroup(ctx context.Context) error {
-	return q.retiredHeadRoles(ctx, true)
-}
-
-func (q *queueController) retiredHeadRoles(ctx context.Context, allowLandedGroup bool) error {
-	if q.queueRefresh != nil {
-		q.queueRefresh.verifiedRetired = false
-	}
-	roles, err := q.roles(ctx, q.expectedHead)
-	if err != nil {
-		return err
-	}
-	inactive, err := q.inactiveRetirementRoles(ctx, q.expectedHead, roles, allowLandedGroup)
-	if err != nil {
-		return err
-	}
-	if inactive && q.queueRefresh != nil {
-		retired, err := q.retireChecksState(ctx, q.expectedHead, allowLandedGroup)
-		if err != nil {
-			return err
-		}
-		q.queueRefresh.verifiedRetired = retired
-	}
-	return nil
-}
-
 // retireChecks is called only under the existing writer lease for this exact
 // context/head. It never supplies proof and never rewrites a terminal verdict.
 func (c *controller) retireChecks(ctx context.Context, head string) error {

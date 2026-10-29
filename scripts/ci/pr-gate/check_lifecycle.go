@@ -302,8 +302,9 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 		return listErr
 	}
 	receipt.HistoryBefore = len(before)
+	publication := &queueReconciliation{q: &queueController{controller: c}}
 	initial := outcome{Status: "completed", Conclusion: "success", Title: "Non-required lifecycle canary", Summary: "API lifecycle diagnostic only. This is not validation or merge proof."}
-	created, publishErr := c.publishQueueRecord(work, p, b, nil, initial)
+	created, publishErr := publication.publishRecord(work, p, b, nil, initial)
 	track(created)
 	if publishErr != nil {
 		return fmt.Errorf("initial canary publication failed without mutation retry: %w", publishErr)
@@ -318,7 +319,7 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	}
 
 	pendingResult := pending("Reassessment requires a fresh queued record; no prior terminal green supplies current proof.")
-	barrier, publishErr := c.publishQueueRecord(work, p, b, created, pendingResult)
+	barrier, publishErr := publication.publishRecord(work, p, b, created, pendingResult)
 	track(barrier)
 	if barrier != nil {
 		receipt.Stages.Barrier = lifecycleObservation(*barrier)
@@ -344,7 +345,7 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	receipt.EffectivePending = lifecycleObservation(latest)
 
 	pendingResult.Summary = "The same authenticated pending record is being updated without another creation."
-	reused, publishErr := c.publishQueueRecord(work, p, b, barrier, pendingResult)
+	reused, publishErr := publication.publishRecord(work, p, b, barrier, pendingResult)
 	track(reused)
 	if reused != nil {
 		receipt.Stages.Reuse = lifecycleObservation(*reused)
@@ -360,7 +361,7 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 		return err
 	}
 
-	finalized, publishErr := c.publishQueueRecord(work, p, b, reused, initial)
+	finalized, publishErr := publication.publishRecord(work, p, b, reused, initial)
 	track(finalized)
 	if finalized != nil {
 		receipt.Stages.Finalized = lifecycleObservation(*finalized)
@@ -379,7 +380,7 @@ func (c *controller) checkLifecycle(ctx context.Context, name string, e event, r
 	if !c.lifecycleIdentity(confirmed, barrier.ID, b) || lifecycleResult(confirmed) != lifecycleResult(*finalized) || confirmed.Output.Title != initial.Title || confirmed.Output.Summary != initial.Summary {
 		return errors.New("final canary success readback not confirmed")
 	}
-	noop, publishErr := c.publishQueueRecord(work, p, b, &confirmed, initial)
+	noop, publishErr := publication.publishRecord(work, p, b, &confirmed, initial)
 	track(noop)
 	if noop != nil {
 		receipt.Stages.Noop = lifecycleObservation(*noop)

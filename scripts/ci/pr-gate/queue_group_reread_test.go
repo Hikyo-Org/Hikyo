@@ -1279,50 +1279,100 @@ func TestGroupRereadBackoffRestartsAfterHealthyPass(t *testing.T) {
 	}
 }
 
+// Exercise settled-record recognition through the group callback rather than
+// constructing the reconciliation's private state. Every non-settling record
+// still gets bounded re-reads and an effective blocker, never reused success.
 func TestGroupSettledRecognisesOnlyItsOwnVerdicts(t *testing.T) {
-	f := newQueueFixture(t)
-	f.pendingGroup(t)
-	barrier := *newestQueueCheck(f.api.checks)
-	held, err := decodeBinding(barrier.ExternalID)
-	if err != nil || held.Run != 0 {
-		t.Fatalf("setup: the running group's barrier must be run-less: %+v %v", held, err)
-	}
-	proved := &finishedGroupProof{run: f.groupRun}
-	record := func(run, attempt int64, title string, mutate ...func(*check)) *check {
-		c, b := barrier, held
-		b.Run, b.Attempt = run, attempt
-		c.ExternalID = b.externalID()
-		c.Status, c.Conclusion, c.Output.Title = "completed", "failure", title
-		for _, m := range mutate {
-			m(&c)
-		}
-		return &c
-	}
-	const refused = "PR validation refused"
-	id, attempt := f.groupRun.ID, f.groupRun.Attempt
 	for _, tc := range []struct {
-		name string
-		s    queueReassessment
-		want bool
+		name    string
+		mutate  func(*check, *binding)
+		noProof bool
+		absent  bool
+		waits   int
 	}{
-		{"expiry refusal on the run-less barrier", queueReassessment{latest: record(0, 0, metadataExpiredRefusal.Title), finishedGroup: proved}, true},
-		{"expiry refusal with only the pinned proof", queueReassessment{latest: record(0, 0, metadataExpiredRefusal.Title), pinned: proved}, true},
-		{"unsafe-proof refusal on the run-less barrier", queueReassessment{latest: record(0, 0, unsafeProofRefusal.Title), finishedGroup: proved}, false},
-		{"retirement-cancelled run-less barrier", queueReassessment{latest: record(0, 0, "PR validation retired", func(c *check) { c.Conclusion = "cancelled" }), finishedGroup: proved}, false},
-		{"run-less record with the expiry title still pending", queueReassessment{latest: record(0, 0, metadataExpiredRefusal.Title, func(c *check) { c.Status, c.Conclusion = "queued", "" }), finishedGroup: proved}, false},
-		{"unauthenticated expiry refusal", queueReassessment{latest: record(0, 0, metadataExpiredRefusal.Title, func(c *check) { c.App.Slug = "someone-else" }), finishedGroup: proved}, false},
-		{"this run's verdict under another title", queueReassessment{latest: record(id, attempt, refused), finishedGroup: proved}, true},
-		{"another attempt of this run", queueReassessment{latest: record(id, attempt+1, refused), finishedGroup: proved}, false},
-		{"another run", queueReassessment{latest: record(id+1, attempt, refused), finishedGroup: proved}, false},
-		{"no proof yet", queueReassessment{latest: record(0, 0, metadataExpiredRefusal.Title)}, false},
-		{"no record", queueReassessment{finishedGroup: proved}, false},
+		{name: "expiry refusal on the run-less barrier", waits: 0},
+		{name: "unsafe-proof refusal on the run-less barrier", mutate: func(c *check, _ *binding) { c.Output.Title = unsafeProofRefusal.Title }, waits: expectedWaits},
+		{name: "retirement-cancelled run-less barrier", mutate: func(c *check, _ *binding) { c.Output.Title, c.Conclusion = "PR validation retired", "cancelled" }, waits: expectedWaits},
+		{name: "run-less record with the expiry title still pending", mutate: func(c *check, _ *binding) { c.Status, c.Conclusion = "queued", "" }, waits: expectedWaits},
+		{name: "unauthenticated expiry refusal", mutate: func(c *check, _ *binding) { c.App.Slug = "someone-else" }, waits: 0},
+		{name: "this run's verdict under another title", mutate: func(c *check, b *binding) { b.Run, b.Attempt, c.Output.Title = 102, 1, "PR validation refused" }, waits: 0},
+		{name: "another attempt of this run", mutate: func(_ *check, b *binding) { b.Run, b.Attempt = 102, 2 }, waits: expectedWaits},
+		{name: "another run", mutate: func(_ *check, b *binding) { b.Run, b.Attempt = 103, 1 }, waits: expectedWaits},
+		{name: "no proof yet", noProof: true, waits: len(persistentFailureWaits)},
+		{name: "no record", absent: true, waits: expectedWaits},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := f.q.groupSettled(&tc.s); got != tc.want {
-				t.Fatalf("groupSettled = %t, want %t", got, tc.want)
+			f := newQueueFixture(t)
+			f.pendingGroup(t)
+			prior := f.api.checks[0]
+			held, err := decodeBinding(prior.ExternalID)
+			if err != nil || held.Run != 0 {
+				t.Fatalf("setup: the running group's barrier must be run-less: %+v %v", held, err)
 			}
+			prior.Status, prior.Conclusion, prior.Output.Title = "completed", "failure", metadataExpiredRefusal.Title
+			if tc.mutate != nil {
+				tc.mutate(&prior, &held)
+			}
+			prior.ExternalID = held.externalID()
+			f.api.checks = []check{prior}
+			if tc.absent {
+				f.api.checks = nil
+			}
+			f.staleGroup()
+			if tc.noProof {
+				f.api.responses[f.workflowPath()] = &githubReadError{path: f.workflowPath(), status: 502}
+			}
+			writes := len(f.api.writes)
+			clock := newGroupClock(t)
+			if err := f.group(); err == nil {
+				t.Fatal("incomplete or unauthenticated proof was accepted")
+			}
+			if len(clock.waits) != tc.waits {
+				t.Fatalf("waits = %v, want %d waits", clock.waits, tc.waits)
+			}
+			if !tc.absent && prior.Status == "completed" && f.api.checks[0] != prior {
+				t.Fatal("historical terminal verdict was mutated")
+			}
+			if tc.waits == 0 && len(f.api.writes) != writes {
+				t.Fatal("settled or unauthenticated history was mutated")
+			}
+			if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
+				t.Fatal("incomplete proof has no effective blocker")
+			}
+			f.assertNoSuccess(t)
 		})
 	}
+}
+
+func TestGroupSettledUsesPinnedIdentityAfterLaterReadFailure(t *testing.T) {
+	f := newQueueFixture(t)
+	f.pendingGroup(t)
+	f.staleGroup()
+	probe := f.probe()
+	probe.fault = func(_ context.Context, path string, n int) error {
+		if path == f.workflowPath() && n > 1 {
+			return &githubReadError{path: path, status: 502}
+		}
+		return nil
+	}
+	clock := newGroupClock(t)
+	clock.before = func(wait int) {
+		if wait == 1 {
+			// Another invocation expires the run-less barrier while this one
+			// waits. Its next pass fails before re-observing the finished group.
+			f.api.checks[0].Status, f.api.checks[0].Conclusion, f.api.checks[0].Output.Title = "completed", "failure", metadataExpiredRefusal.Title
+			f.groupRefresh()
+		}
+	}
+	writes := len(f.api.writes)
+	if err := f.group(); err == nil {
+		t.Fatal("later transient read failure was erased")
+	}
+	if len(clock.waits) != 1 || len(f.api.writes) != writes {
+		t.Fatalf("settled pinned identity waited or mutated again: waits=%v writes=%+v", clock.waits, f.api.writes[writes:])
+	}
+	f.assertNewest(t, "failure", metadataExpiredTitle, "")
+	f.assertNoSuccess(t)
 }
 
 // A run-less completed record that is not the expiry refusal (here a

@@ -35,7 +35,7 @@ func TestQueueTruncatedLegacyReserveCreatesCanonicalGeneration(t *testing.T) {
 					f.api.nextID = int64(count + 1000)
 					work := func(ctx context.Context) error {
 						if phase == "changed binding" {
-							if err := f.q.changedBinding(ctx, p, b); err != nil {
+							if err := f.q.reconciliation.changedBinding(ctx, p, b); err != nil {
 								return err
 							}
 						}
