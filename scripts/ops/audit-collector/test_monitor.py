@@ -155,6 +155,25 @@ class MonitorTest(unittest.TestCase):
         self.state.write_text(json.dumps(state))
         self.assertTrue(self.check()["healthy"])
 
+    def test_detector_interval_inclusive_boundary_and_first_rejected_second(self):
+        """Accept exactly 90 seconds; latch the first whole second above it."""
+        self.complete()
+        now = time.time_ns()
+        for seconds, expected_healthy in ((90, True), (91, False)):
+            with self.subTest(seconds=seconds), \
+                    patch.object(self, "state", self.root / f"boundary-{seconds}.json"), \
+                    patch.object(self, "output", self.root / f"health-{seconds}.json"), \
+                    patch.object(monitor.time, "time_ns", return_value=now):
+                self.assertTrue(self.check()["healthy"])
+                state = json.loads(self.state.read_bytes())
+                state["tenant"]["last_checked_ns"] -= seconds * 1_000_000_000
+                self.state.write_text(json.dumps(state))
+                result = self.check()
+                self.assertEqual(result["healthy"], expected_healthy)
+                if not expected_healthy:
+                    self.assertIn("detector-interval-HOLD", result["streams"]["tenant"]["reasons"])
+                    self.assertEqual(self.check()["streams"]["tenant"]["reasons"], ["unresolved-collection-history"])
+
     def test_detector_setup_failure_then_fast_recovery_is_latched(self):
         self.complete()
         self.assertTrue(self.check()["healthy"])
