@@ -127,6 +127,25 @@ class MonitorTest(unittest.TestCase):
         self.assertFalse(self.check()["healthy"])
         self.assertFalse(self.check()["healthy"])
 
+    def test_killed_run_gap_below_two_minutes_latches_its_own_hold(self):
+        self.complete()
+        self.assertTrue(self.check()["healthy"])
+        state = json.loads(self.state.read_bytes())
+        state["tenant"]["last_checked_ns"] -= 100_000_000_000
+        self.state.write_text(json.dumps(state))
+        result = self.check()
+        self.assertFalse(result["healthy"])
+        self.assertIn("detector-interval-HOLD", result["streams"]["tenant"]["reasons"])
+        self.assertEqual(self.check()["streams"]["tenant"]["reasons"], ["unresolved-collection-history"])
+
+    def test_ordinary_minute_cadence_with_accuracy_margin_stays_healthy(self):
+        self.complete()
+        self.assertTrue(self.check()["healthy"])
+        state = json.loads(self.state.read_bytes())
+        state["tenant"]["last_checked_ns"] -= 65_000_000_000
+        self.state.write_text(json.dumps(state))
+        self.assertTrue(self.check()["healthy"])
+
     def test_detector_setup_failure_then_fast_recovery_is_latched(self):
         self.complete()
         self.assertTrue(self.check()["healthy"])

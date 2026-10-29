@@ -21,7 +21,7 @@ installation paths on a newly approved dedicated Debian guest.
 | `scripts/ops/audit-collector/rehearse-local.py` | Finite local both-engine product export and separate-user SSH/ACL exercise, with exact resource ownership and teardown. |
 | `internal/isolation/audit_collector_rehearsal_test.go` | Supported project-rename and failed-login writers, real router/HTTP completion, Python receiver subprocesses, exact lost-ack replay, partial refusal and independent retained read after disposable producer rewrite/removal. |
 | `scripts/ops/audit-collector/install-host.py` | Fresh-host-only receiver, four fixed stream identities, restricted SSH keys, exact sudo commands, reader/monitor ACLs, private spools and systemd units. Installs without starting services. |
-| `scripts/ops/audit-collector/poll-once.py` | One finite poll under a fixed root-owned origin/expiry binding. Instance mode refuses unattended invocation and requires an explicit supervised human session. |
+| `scripts/ops/audit-collector/poll-once.py` | One finite poll under a fixed root-owned origin/expiry binding. Instance mode requires `--supervised`, an operator assertion of a human/MFA session. The script does not verify human presence or credential freshness. |
 | `scripts/ops/audit-collector/monitor.py` | Independent expected-stream, freshness, historical refusal, poll-attempt and capacity checks. Never sends notifications. |
 | `scripts/ops/audit-collector/health.py` | Content-free TLS health, including stale/stopped detector detection. |
 | `scripts/ops/audit-collector/systemd/` | Bounded SSH, tenant-only polling, minute monitor and TLS health services. No instance timer exists. |
@@ -35,8 +35,10 @@ python3 -I -B scripts/ops/audit-collector/rehearse-local.py \
 python3 -I -B -m unittest discover -s scripts/ops/audit-collector -p 'test_*.py' -v
 ```
 
-The output directory must not exist. It is private evidence and must be ignored
-by Git. The runner registers exact task/container/image ownership before creation,
+The output directory must not exist. It is private evidence. Before creating it,
+the runner requires any containing Git worktree to ignore it, with no tracked
+contents. The default `.local/reports/` is ignored by the repository policy;
+private output outside Git worktrees is also supported. The runner registers exact task/container/image ownership before creation,
 uses a task-only PostgreSQL 18.6 server bound to loopback, and cleans its containers,
 anonymous volumes and image in `finally`. It verifies both engine legs executed.
 It preserves private packet/receipt/log evidence for review and shared build caches.
@@ -151,6 +153,8 @@ Do not print secrets, use verbose tracing or pass bearer values in arguments.
 Source TLS uses verified system trust or an approved CA; the SSH configuration
 pins the dedicated host key for `[127.0.0.1]:2222`, sets IdentitiesOnly, User,
 IdentityFile and UserKnownHostsFile. No source runtime receives destination keys.
+The installer rejects reuse of the same submit public-key bytes across streams,
+including keys with different comments, before creating accounts or files.
 
 Create root-owned, non-writable `/etc/hikyo-evidence/poll-<stream>.json` with exactly
 `url` and `approved_until` (a timezone-bearing ISO timestamp). Use the full retained
@@ -158,6 +162,10 @@ project or instance export URL with exactly `receipt=v1`. The expiry bounds the
 fixture lease; a nonzero result/expired lease is HOLD. Do not add from/to/sequence
 filters or silent scope narrowing. Instance credentials are supplied only for
 each approved supervised window, then removed; no instance timer is installed.
+`--supervised` asserts that the operator followed this procedure; any caller can
+pass it. It does not authenticate a human or enforce a fresh MFA ceremony. The
+source must enforce its authentication requirements. Record actual human/current
+MFA evidence separately, and do not schedule the instance command unattended.
 
 After TLS health certificate/key provisioning (key readable only by its custodian
 and `hk-monitor`) and actual target-side acceptance, enable only the approved
@@ -208,8 +216,15 @@ Full retained-scope replay and stable ID/content dedup remain mandatory.
 Snapshot time is an inclusive recorded-at upper bound, not a continuation cursor.
 Lost acknowledgments are reconciled by exact pending-byte retry before another
 source read. Poll intent is durable before transport; failed or killed/unknown
-attempts remain in cumulative history, and stale/unavailable/missed detector
-intervals latch HOLD even after later success. Never rebuild an unknown packet or advance after partial HTTP 200.
+attempts remain in cumulative history during nonmalicious poller execution.
+The poller owns its status file and could maliciously rewrite it between monitor
+samples; this diagnostic is not a tamper-proof attempt journal. Independent
+monitor state and receiver refusal history remain outside the poller's write
+authority. Stale/unavailable checks and detector gaps over 90 seconds latch HOLD
+even after later success. This conservative gap bound pairs with the minute
+timer, five-second accuracy and 30-second service deadline; it is separate from
+the health endpoint's 120-second snapshot limit. Never rebuild an unknown packet
+or advance after partial HTTP 200.
 
 The approved exercise must cover both source engines and trails; per-page
 revocation/expiry; partial/refused export; destination outage, crash and lost ack;

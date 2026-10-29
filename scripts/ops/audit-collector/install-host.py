@@ -2,6 +2,7 @@
 """Install only on a newly approved dedicated Debian guest. See deployment packet."""
 
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -54,6 +55,7 @@ def install(manifest, keys, rehearsal, host_encryption_proof=False,
             run("cryptsetup", "status", mounted)
     if CODE.exists() or CONFIG.exists() or any(BASE.iterdir()):
         raise ValueError("fresh installation only; reconcile partial/unknown state before retry")
+    public_keys, seen_key_blobs = {}, set()
     for name, value in streams.items():
         if set(value) != {"source_id", "trail", "scope", "database", "max_bytes", "max_rows"}:
             raise ValueError("invalid fixed receiver config")
@@ -62,6 +64,11 @@ def install(manifest, keys, rehearsal, host_encryption_proof=False,
         key = (Path(keys) / (name + ".pub")).read_text().strip()
         if not re.fullmatch(r"ssh-ed25519 [A-Za-z0-9+/]+={0,2}(?: [^\r\n]*)?", key):
             raise ValueError("one Ed25519 submit public key required per stream")
+        blob = base64.b64decode(key.split()[1], validate=True)
+        if blob in seen_key_blobs:
+            raise ValueError("submit public keys must be distinct across streams")
+        seen_key_blobs.add(blob)
+        public_keys[name] = key
         for prefix in ("hk-s-", "hk-e-", "hk-p-"):
             try:
                 pwd.getpwnam(prefix + name)
@@ -107,7 +114,7 @@ def install(manifest, keys, rehearsal, host_encryption_proof=False,
         run("runuser", "-u", evidence, "--", "python3", "-I", "-B", str(CODE / "receiver.py"), "init", str(config))
         run("setfacl", "-m", "u:hk-reader:rx,u:hk-monitor:rx", str(directory))
         run("setfacl", "-m", "u:hk-reader:r,u:hk-monitor:r", str(directory / "retained.sqlite"))
-        key = (Path(keys) / (name + ".pub")).read_text().strip()
+        key = public_keys[name]
         receive = f"/usr/bin/timeout --kill-after=5s 180s /usr/bin/python3 -I -B {CODE}/receiver.py receive {config}"
         wrapper = CODE / ("submit-" + name)
         write(wrapper, '#!/bin/sh\nset -eu\n[ -z "${SSH_ORIGINAL_COMMAND:-}" ] || exit 64\nexec /usr/bin/sudo -n -u ' + evidence + ' -- ' + receive + '\n', 0o755)
@@ -116,7 +123,7 @@ def install(manifest, keys, rehearsal, host_encryption_proof=False,
         spool = BASE / ("spool-" + name)
         spool.mkdir(mode=0o700)
         shutil.chown(spool, user=poller, group=poller)
-        # A fixed precreated status inode gives the monitor read-only access.
+        # Poller-owned diagnostic history, not a tamper-proof attempt journal.
         write(spool / "poll-status.json", '{"attempt_ns":0,"outcome":"NOTRUN"}\n', 0o600)
         shutil.chown(spool / "poll-status.json", user=poller, group=poller)
         run("setfacl", "-m", "u:hk-monitor:rx", str(spool))

@@ -30,7 +30,7 @@ synthetic-only rehearsal guards remain. Policy unit checks are local supporting
 proof, not protected LXC execution; actual execution/cleanup receipts belong to
 the authorized campaign. Retain pending validation/review state explicitly.
 
-Inspected base/live main: `ce5e85835383b6428676ff595e2a0c1a72f6a088`.
+Bound preparation base: `ce5e85835383b6428676ff595e2a0c1a72f6a088`.
 #1035 and #1036 are merged and closed. Collector PR #1079 is integrated through
 #1087. Their historical pending statements below describe the original delivery,
 not today's dependency state. TLS #1090 is present; Vault #1091 and stable signing
@@ -57,7 +57,7 @@ Current local evidence, distinct from historical runs:
 | Real product HTTP exports | PASS on SQLite and PostgreSQL 18.6: supported project rename and failed login, existing WebAuthn test authenticator, completed tenant/instance packets, exact acknowledgment replay, partial refusal and separate-process retained reads after exclusively synthetic producer rewrite/removal. No live human/MFA ceremony or release-artifact proof. |
 | Separate Unix identities and transport | PASS in a disposable Debian container: real loopback OpenSSH fixed command, separate submit/poll/evidence/read/monitor UIDs, submitter/poller shell/read/write/delete/ACL/code/monitor denial, reader/monitor write denial and exact original packet read. Root deletion tested only on a disposable synthetic probe. Actual SFTP subsystem, PTY-only and remote-forward requests explicitly refused. Protected guest and independent personnel NOTRUN. |
 | Source contracts | PASS: both-engine receipt, session revocation, instance route/CLI, retention boundaries/rollback/concurrent export, pagination, PostgreSQL commit-order/cutoff and instance commit-order owner tests. No pruning acknowledgment dependency added. |
-| Receiver/monitor controls | Local synthetic suite covers never-received, stale/future receipts, stopped poller/detector, durable failed/unknown source-attempt history, missed detector intervals, capacity threshold, sticky cumulative receiver refusals even between checks, and removed expected streams. Later success cannot resolve historical uncertainty. |
+| Receiver/monitor controls | Local synthetic suite covers never-received, stale/future receipts, stopped poller/detector, durable failed/unknown source-attempt diagnostics during nonmalicious poller execution, missed detector intervals, capacity threshold, sticky cumulative receiver refusals even between checks, and removed expected streams. Later success cannot resolve monitor-latched uncertainty. Poller-owned status is not tamper-proof against that UID. |
 | Consumer | #1038's opt-in receiver compatibility suite passes against current receiver bytes. External notification, acknowledgment and escalation NOTRUN/HOLD. |
 | Host preparation | Fixed installer and systemd unit verification are local evidence. Local TLS trust/stale/future/stopped-health and actual task-owned tmpfs ENOSPC/preserved-copy/retry controls PASS. Actual encrypted disk, protected ACL/account/trust, power-loss durability and independent watchdog acceptance remain NOTRUN. |
 | Review/CI | Record exact final source head, local feedback and independent Standards/Spec results in the PR. Required maintainer security review and hosted CI are separate from local results. No merge is authorized. |
@@ -70,6 +70,27 @@ The final expanded local runner passed and verified removal of its task
 containers, exact anonymous volumes and image. Its failures remain separately
 recorded rather than relabeled PASS. All owned disposable resources must be removed and
 verified; private evidence and offline HTML may remain for the review window.
+
+### Bounded source review repair (#1093)
+
+The five review findings against `7d35b328d86fa08da5ec4a029c04125afd4b9137`
+are addressed in the existing PR: reject duplicate submit public-key bytes before
+installation mutations; qualify poller-writable diagnostic history; describe
+`--supervised` as an operator assertion rather than human/MFA enforcement;
+refuse unignored/tracked evidence output before creating it; and latch detector
+gaps over 90 seconds, below the gap left by a killed minute check.
+Read-only main at repair time is `f3e9ce2d5892d73f8f0dd357614c68cdf1e1c6e8`;
+it has not been selected as a final integrated release candidate.
+
+Light local validation: **44 Python controls PASS**, including three new
+regressions reproduced against the earlier implementation, an ordinary
+65-second detector interval, a latched 100-second gap, unchanged 121-second
+coverage, distinct submit keys and actual Git staging refusal. These supporting
+checks do not rerun the prior Go/product/Unix campaign or establish remote
+acceptance. Record independent review and exact pushed head/tree in the PR.
+The authorized LXC, cleanup requirement, specific connector 403 access question
+and #1038 notification HOLD remain unchanged. No source deployment, destination
+retry, alternate access route or merge is authorized by these source repairs.
 
 ## Historical source-delivery record
 

@@ -227,12 +227,18 @@ poller/Hikyo failure domain; #1038 owns routing and delivery acknowledgment.
 No alert was sent or delivery tested here.
 
 The added `monitor.py` checks every independently configured expected stream,
-the poller's last finite attempt and free destination capacity. It also observes
-the cumulative receiver refusal count and durable source-attempt history, so a
-success between monitor checks cannot hide a refusal or failed/unknown poll.
-Stale/unavailable collection and missed detector intervals also latch HOLD.
-Receiver and poll failure counts survive later success; receiver history remains
-visible after monitor state recreation. Protect monitor state from deletion. Removed expected streams remain HOLD in its durable inventory.
+the poller's last finite attempt and free destination capacity. It compares the
+receiver-owned cumulative refusal count and poller-owned source-attempt diagnostic.
+During nonmalicious poller execution, failure counts survive later success, so
+a success between monitor checks cannot hide a failed/unknown poll. A compromised
+poller owns `poll-status.json` and can rewrite its count and outcome between
+samples. Poll history is diagnostic, not tamper-proof evidence against that UID.
+Receiver refusal history is outside the poller's write authority and remains
+visible after monitor state recreation. Protect monitor state from deletion.
+Stale/unavailable checks and detector gaps over 90 seconds latch HOLD, including
+a 100-second gap after a killed run. The bound is conservative for the installed
+minute timer, five-second accuracy and 30-second service deadline; slow checks
+can also cause HOLD. Removed expected streams remain HOLD in its durable inventory.
 There is intentionally no automatic reconciliation/reset command. The independent
 owner must retain the original failure history and review any future reconciliation
 mechanism before clearing that interval. `status` itself describes current

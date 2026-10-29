@@ -80,7 +80,9 @@ def check_streams(inventory, receiver, state):
         sticky = bool(old.get("unresolved", False))
         if old.get("last_checked_ns") is not None:
             interval = (now - old["last_checked_ns"]) / 1e9
-            if not 0 <= interval <= 120:
+            # Minute timer plus 5s accuracy and a 30s service deadline: leave
+            # margin below two ticks so a killed invocation cannot blend in.
+            if not 0 <= interval <= 90:
                 row["reasons"].append("detector-interval-HOLD")
         try:
             cfg = module.config(paths["config"])

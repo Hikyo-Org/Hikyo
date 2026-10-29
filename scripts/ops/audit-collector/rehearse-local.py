@@ -10,6 +10,24 @@ import subprocess
 import uuid
 
 
+def validate_output(output):
+    ancestor = output.parent
+    while not ancestor.exists():
+        ancestor = ancestor.parent
+    probe = subprocess.run(["git", "-C", str(ancestor), "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, check=False,
+                           env=dict(os.environ, LC_ALL="C"))
+    if probe.returncode == 128 and "not a git repository" in probe.stderr:
+        return  # Outside all working trees; private external output is allowed.
+    probe.check_returncode()
+    repository = probe.stdout.strip()
+    ignored = subprocess.run(["git", "-C", repository, "check-ignore", "-q", "--", str(output)], check=False)
+    tracked = subprocess.run(["git", "-C", repository, "ls-files", "--", str(output)],
+                             capture_output=True, text=True, check=True)
+    if ignored.returncode != 0 or tracked.stdout:
+        raise ValueError("output must be ignored and untracked, or outside Git working trees")
+
+
 def confirmed_absent(kind, name):
     template = {"container": "{{.Names}}", "image": "{{.Repository}}:{{.Tag}}", "volume": "{{.Name}}"}[kind]
     listing = subprocess.run(["docker", kind, "ls", *(["-a"] if kind == "container" else []),
@@ -22,12 +40,13 @@ def confirmed_absent(kind, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", type=Path, help="new private evidence directory, outside Git")
+    parser.add_argument("output", type=Path, help="new private evidence directory, ignored or outside Git working trees")
     args = parser.parse_args()
     os.umask(0o077)
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     assets = root / "scripts/ops/audit-collector"
     output = args.output.resolve()
+    validate_output(output)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     task = "hikyo-1037-" + uuid.uuid4().hex[:12]
     postgres, custody, image = task + "-pg", task + "-custody", task + ":local"
