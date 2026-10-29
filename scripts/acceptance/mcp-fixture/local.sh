@@ -10,6 +10,12 @@ case "$1" in /*) ;; *) printf 'runtime must be absolute\n' >&2; exit 2 ;; esac
 repo=$(git rev-parse --show-toplevel)
 source_dir=$repo/scripts/acceptance/mcp-fixture
 runtime=$1
+parent=$(dirname "$runtime")
+physical_parent=$(CDPATH='' cd -P "$parent" && pwd -P) || exit 1
+if [ "$parent" != "$physical_parent" ]; then
+  printf 'runtime parent must already exist and be canonical\n' >&2
+  exit 2
+fi
 mkdir -m 700 "$runtime"
 mkdir -m 700 "$runtime/bin" "$runtime/clients" "$runtime/run"
 # Resolve the actual Node executable before isolating HOME, avoiding a version

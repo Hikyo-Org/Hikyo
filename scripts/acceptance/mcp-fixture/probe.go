@@ -60,13 +60,14 @@ type probe struct {
 	receipt              *receipt
 	authenticationDenial response
 	scopeDenial          response
+	codexInvocation      string
 }
 
 type response struct {
-	Status    int
-	Body      []byte
-	Challenge string
-	Process   string
+	Status    int    `json:"-"`
+	Body      []byte `json:"-"`
+	Challenge string `json:"-"`
+	Process   string `json:"-"`
 	Result    struct {
 		IsError    bool            `json:"isError"`
 		Structured json.RawMessage `json:"structuredContent"`
@@ -155,7 +156,7 @@ func (p *probe) args() map[string]any {
 	return map[string]any{"org_id": p.fixture.Org, "project_id": p.fixture.Project, "page_size": 1}
 }
 func successful(r response) bool {
-	return r.Status == 200 && !r.Result.IsError && len(r.Error) == 0 && len(r.Result.Structured) > 0
+	return r.Status == 200 && !r.Result.IsError && len(r.Error) == 0 && len(r.Result.Structured) > 0 && !bytes.Equal(bytes.TrimSpace(r.Result.Structured), []byte("null"))
 }
 func sameDenial(a, b response) bool {
 	return a.Status == b.Status && a.Challenge == b.Challenge && bytes.Equal(a.Body, b.Body)

@@ -263,9 +263,9 @@ func publicCampaign(ctx context.Context, dir string) (result error) {
 	if err := p.publicLifecycle(ctx, control, pods, binding); err != nil {
 		return err
 	}
-	wireRaw, err := control.kubectl(ctx, "exec", "deployment/gateway", "--", "cat", "/work/custody/wire-receipt.json").Output()
-	var wire []wireObservation
-	if err != nil || json.Unmarshal(wireRaw, &wire) != nil || !validCodexWire(wire) {
+	wireRaw, err := control.kubectl(ctx, "exec", "deployment/gateway", "--", "/tools/mcp-fixture", "wire-snapshot", "--runtime", remoteRuntime).Output()
+	var wire wireReceipt
+	if err != nil || json.Unmarshal(wireRaw, &wire) != nil || !validCodexWire(wire, p.codexInvocation) {
 		return errors.New("public Codex requested/negotiated wire receipt missing")
 	}
 	if err := writePrivate(filepath.Join(dir, "wire-receipt.json"), wire); err != nil {

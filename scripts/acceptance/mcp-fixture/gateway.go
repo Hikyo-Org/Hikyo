@@ -5,8 +5,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -23,6 +25,7 @@ import (
 )
 
 type wireObservation struct {
+	Invocation      string `json:"invocation_sha256,omitempty"`
 	Method          string `json:"method"`
 	Requested       string `json:"requested_protocol,omitempty"`
 	Header          string `json:"header_protocol,omitempty"`
@@ -31,6 +34,22 @@ type wireObservation struct {
 	RequestSession  bool   `json:"request_session"`
 	ResponseSession bool   `json:"response_session"`
 	BearerPresent   bool   `json:"bearer_present"`
+}
+
+const probeHeader = "X-Hikyo-Fixture-Probe"
+
+type wireReceipt struct {
+	Schema       string            `json:"schema"`
+	Failed       bool              `json:"failed"`
+	Observations []wireObservation `json:"observations"`
+}
+
+func invocationHash(value string) string {
+	if !sha256Pattern.MatchString(value) {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 type wireRecorder struct {
@@ -75,18 +94,23 @@ func (w *wireRecorder) wrap(next http.Handler) http.Handler {
 			}
 			return "other"
 		}
-		observation := &wireObservation{Method: req.Method, Requested: protocol(req.Params.Protocol), Header: protocol(r.Header.Get("Mcp-Protocol-Version")), RequestSession: len(r.Header.Values("Mcp-Session-Id")) != 0, BearerPresent: r.Header.Get("Authorization") != ""}
+		observation := &wireObservation{Invocation: invocationHash(r.Header.Get(probeHeader)), Method: req.Method, Requested: protocol(req.Params.Protocol), Header: protocol(r.Header.Get("Mcp-Protocol-Version")), RequestSession: len(r.Header.Values("Mcp-Session-Id")) != 0, BearerPresent: r.Header.Get("Authorization") != ""}
 		next.ServeHTTP(out, r.WithContext(context.WithValue(r.Context(), wireKey{}, observation)))
 		w.mu.Lock()
 		defer w.mu.Unlock()
 		if len(w.observations) >= 1000 {
 			w.failed.Store(true)
-			return
+		} else {
+			w.observations = append(w.observations, *observation)
 		}
-		w.observations = append(w.observations, *observation)
 		if w.directory != "" {
-			if err := replacePrivate(filepath.Join(w.directory, "wire-receipt.json"), w.observations); err != nil {
+			if err := replacePrivate(filepath.Join(w.directory, "wire-receipt.json"), w.snapshotLocked()); err != nil {
 				w.failed.Store(true)
+				// A cached file is never the public oracle; best-effort persist
+				// the failure, then remove stale success if writes still fail.
+				if replacePrivate(filepath.Join(w.directory, "wire-receipt.json"), w.snapshotLocked()) != nil {
+					_ = os.Remove(filepath.Join(w.directory, "wire-receipt.json"))
+				}
 			}
 		}
 	})
@@ -122,17 +146,32 @@ func (w *wireRecorder) response(h *http.Response) error {
 	return nil
 }
 
-func (w *wireRecorder) valid() bool {
+func (w *wireRecorder) valid(expected string) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return !w.failed.Load() && validCodexWire(w.observations)
+	return validCodexWire(w.snapshotLocked(), expected)
 }
 
-func validCodexWire(observations []wireObservation) bool {
+func (w *wireRecorder) snapshotLocked() wireReceipt {
+	return wireReceipt{Schema: "hikyo.dev/mcp-wire/v1", Failed: w.failed.Load(), Observations: append([]wireObservation(nil), w.observations...)}
+}
+func (w *wireRecorder) snapshot() wireReceipt {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.snapshotLocked()
+}
+func validCodexWire(document wireReceipt, expected string) bool {
+	if document.Schema != "hikyo.dev/mcp-wire/v1" || document.Failed || invocationHash(expected) == "" {
+		return false
+	}
+	wanted := invocationHash(expected)
 	initialized, called := false, false
-	for _, o := range observations {
+	for _, o := range document.Observations {
 		if o.RequestSession || o.ResponseSession {
 			return false
+		}
+		if o.Invocation != wanted {
+			continue
 		}
 		if o.Method == "initialize" && o.Status == 200 && o.Requested == "2025-06-18" && o.Negotiated == "2025-06-18" {
 			initialized = true
@@ -212,6 +251,11 @@ func serveGateway(ctx context.Context, dir string) error {
 	defer transport.CloseIdleConnections()
 	var next atomic.Uint64
 	wire := &wireRecorder{directory: dir}
+	closeSnapshot, err := serveWireSnapshot(ctx, dir, wire)
+	if err != nil {
+		return err
+	}
+	defer closeSnapshot()
 	proxy := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
 		i := int(next.Add(1)-1) % 2
 		backend, _ := url.Parse("https://" + cfg.Backends[i])
@@ -225,7 +269,7 @@ func serveGateway(ctx context.Context, dir string) error {
 		return wire.response(h)
 	}, ErrorHandler: func(out http.ResponseWriter, _ *http.Request, _ error) { out.WriteHeader(502) }, ErrorLog: log.New(io.Discard, "", 0), FlushInterval: -1}
 	handler := wire.wrap(proxy)
-	server := &http.Server{Addr: cfg.Listen, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
+	server := &http.Server{Addr: cfg.Listen, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(func(out http.ResponseWriter, r *http.Request) {
 		if r.Host != origin.Host || (r.URL.Path != "/mcp" && r.URL.Path != "/mcp/codex" && r.URL.Path != "/api/v1/meta") {
 			out.WriteHeader(404)
 			return

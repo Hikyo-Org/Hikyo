@@ -1,13 +1,14 @@
 # #651 isolated acceptance fixture
 
-Entry point for source assets. The [preparation handoff](../../../../docs/handoff/651-public-fixture-preparation.md)
+Entry point for source assets. The [preparation handoff](../../../docs/handoff/651-public-fixture-preparation.md)
 records scope and evidence boundaries. The owner receives the actual private
 host/origin authorization packet separately. **Preparation is not deployment
 authority or final 1.0 acceptance.**
 
 This directory owns one isolated fixture. Existing production installations,
 stable signing/recovery custody, #158, PR #969 and controller #1057 are excluded.
-The separate #1037 source-sibling proposal is not implemented by this seeder.
+The separate [#1037 audit seeding seam](audit-source.md) has its own guards and
+private outputs; it does not deploy those sources or broaden the MCP guard.
 Never reuse an existing namespace or reset admission/operator custody after a
 refusal. `TestMCPDeploymentFixture` and its dedicated loopback guard are unchanged.
 
@@ -90,7 +91,11 @@ The campaign runs:
 `run/local-receipt.json`, `run/smoke-receipt.json` and
 `run/wire-receipt.json` are redacted review artifacts. Wire receipts contain
 only closed method/protocol names, status, session-presence and bearer-presence
-booleans. They contain no token, request arguments, response bodies or tenant
+booleans, a fresh invocation digest and recorder-failure state. The pinned native
+client forwards a random nonsecret correlation header; only its SHA-256 is
+recorded. This is receipt correlation, never session authority or affinity.
+Public validation reads a current snapshot over the gateway's owner-only local
+Unix socket, so a stale file cannot hide recorder failure. They contain no token, request arguments, response bodies or tenant
 identifiers. Direct TLS reads are recorded separately from proxy observations.
 Bounded JSON is not open-stream proof.
 
@@ -118,8 +123,8 @@ integrated source SHA/tree after required source/trust work. Fill:
 - The actual approved hostname, two observed nodes, cluster DNS IP and gateway
   trust CIDR. The renderer checks syntax, not domain ownership or capacity.
 
-Follow [manual signed-bundle assembly](../../../../docs/operations/manual-upgrades.md)
-and the [signed nightly procedure](../../../../docs/operations/signed-nightlies.md)
+Follow [manual signed-bundle assembly](../../../docs/operations/manual-upgrades.md)
+and the [signed nightly procedure](../../../docs/operations/signed-nightlies.md)
 for the selected channel. Authenticate source/provenance, immutable image tree,
 bundle and public operator pin independently. Store the no-secret verifier
 output as `artifact-verification.json`. `authorize` checks its exact bytes;
@@ -332,3 +337,11 @@ The owner-approved 1.0 mandatory matrix is Go v1.8.0, Inspector 2.11.0 and Codex
 0.160.1 only. Claude Code and Responses remain not verified for 1.0. Native Codex
 proof does not establish T3 desktop acceptance. #631's managed-credential,
 no-OAuth ruling and its lifecycle limitations remain unchanged.
+
+## Architecture boundary
+
+This fixture command is standalone provisioning/lifecycle wiring and is never
+linked into the product. Its exact package is declared in the store-importer
+allowlist, alongside existing disposable deployment fixtures. The boundary
+assertions and all other importers stay intact; handlers still cannot import
+the datastore. Domain writes remain supported service operations.

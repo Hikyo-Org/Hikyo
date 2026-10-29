@@ -74,8 +74,14 @@ func run(ctx context.Context, args []string) error {
 	if args[0] == "authorize-resume" {
 		return authorizeContinuation(ctx, *dir)
 	}
+	if args[0] == "audit-seed" {
+		return auditSeedConfigured(ctx, *dir)
+	}
 	if args[0] == "public" {
 		return publicCampaign(ctx, *dir)
+	}
+	if args[0] == "wire-snapshot" {
+		return readWireSnapshot(ctx, *dir)
 	}
 	if args[0] == "listeners" {
 		return listeners(ctx, *dir)
@@ -90,7 +96,11 @@ func run(ctx context.Context, args []string) error {
 	if args[0] == "observe" {
 		return observeReadOnly(ctx, cfg)
 	}
-	db, kr, err := openFixture(ctx, cfg)
+	opener := openFixture
+	if args[0] == "seed" {
+		opener = openFreshFixture
+	}
+	db, kr, err := opener(ctx, cfg)
 	if err != nil {
 		return errors.New("datastore admission refused; protected custody retained")
 	}

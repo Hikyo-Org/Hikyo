@@ -140,6 +140,7 @@ func TestWireReceiptCannotPersistCallerControlledSecrets(t *testing.T) {
 	secret := "SYNTHETIC-CANARY-MUST-NOT-ENTER-WIRE-RECEIPT"
 	req := httptest.NewRequest(http.MethodPost, "https://fixture.example/mcp/codex", strings.NewReader(`{"method":"`+secret+`","params":{"protocolVersion":"`+secret+`"}}`))
 	req.Header.Set("Mcp-Protocol-Version", secret)
+	req.Header.Set(probeHeader, secret)
 	req.Header.Set("Authorization", "Bearer "+secret)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	raw, err := os.ReadFile(filepath.Join(dir, "wire-receipt.json"))
@@ -379,6 +380,9 @@ func TestShellAuthorizationFailureCannotReachKubectlInConditionalCleanup(t *test
 			}
 			wrapper := ""
 			for _, line := range strings.Split(string(data), "\n") {
+				if strings.Contains(line, "kubectl") && !strings.HasPrefix(line, "kube() ") {
+					t.Fatal("unguarded kubectl dispatch outside wrapper")
+				}
 				if strings.HasPrefix(line, "kube() ") {
 					wrapper = line
 				}

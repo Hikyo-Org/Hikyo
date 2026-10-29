@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/buildcompat"
@@ -23,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
+	"github.com/jackc/pgx/v5"
 )
 
 type credential struct {
@@ -30,6 +32,54 @@ type credential struct {
 	Account   string             `json:"account"`
 	ID        string             `json:"credential"`
 	Principal domain.PrincipalID `json:"principal"`
+}
+
+// Seed's empty-datastore refusal precedes migration/admission control writes.
+// Other supported writer commands intentionally reopen this already owned
+// installation and therefore must not use the fresh-only entry point.
+func openFreshFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring, error) {
+	if err := requireEmptyFixture(ctx, cfg); err != nil {
+		return nil, nil, err
+	}
+	return openFixture(ctx, cfg)
+}
+
+func requireEmptyFixture(ctx context.Context, cfg settings) error {
+	if err := validateDSN(cfg.DSN, cfg.Development); err != nil {
+		return err
+	}
+	return requireEmptyPostgres(ctx, cfg.DSN)
+}
+func requireEmptyPostgres(ctx context.Context, dsn string) error {
+	connection, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return errors.New("fresh datastore preflight unavailable")
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		connection.Close(cleanup)
+	}()
+	tx, err := connection.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return errors.New("read-only fresh preflight unavailable")
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		tx.Rollback(cleanup)
+	}()
+	var exists bool
+	if tx.QueryRow(ctx, "SELECT to_regclass('public.orgs') IS NOT NULL").Scan(&exists) != nil {
+		return errors.New("fresh datastore catalogue unavailable")
+	}
+	if exists {
+		var count int
+		if tx.QueryRow(ctx, "SELECT COUNT(*) FROM public.orgs").Scan(&count) != nil || count != 0 {
+			return errors.New("refusing nonempty datastore before admission")
+		}
+	}
+	return nil
 }
 
 type fixture struct {
@@ -66,6 +116,10 @@ func openFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring,
 	if err := validateDSN(cfg.DSN, cfg.Development); err != nil {
 		return nil, nil, err
 	}
+	return admitFixture(ctx, cfg, upgrade.Config{Engine: releaseidentity.Postgres, DSN: cfg.DSN}, store.Config{Engine: store.EnginePostgres, DSN: cfg.DSN, PostgresPoolMax: 4})
+}
+
+func admitFixture(ctx context.Context, cfg settings, upgradeConfig upgrade.Config, storeConfig store.Config) (*store.DB, *crypto.Keyring, error) {
 	if err := privatePath(cfg.State, true); err != nil {
 		return nil, nil, err
 	}
@@ -77,7 +131,7 @@ func openFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring,
 		return nil, nil, err
 	}
 	defer crypto.Zero(root)
-	req := upgradegate.Request{Store: upgrade.Config{Engine: releaseidentity.Postgres, DSN: cfg.DSN}, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/postgres", Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root}
+	req := upgradegate.Request{Store: upgradeConfig, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(upgradeConfig.Engine), Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root}
 	var admitted upgradegate.Result
 	if cfg.Development {
 		material, err := devupgrade.Open(ctx, cfg.State)
@@ -104,7 +158,7 @@ func openFixture(ctx context.Context, cfg settings) (*store.DB, *crypto.Keyring,
 			return nil, nil, err
 		}
 	}
-	db, err := store.Open(ctx, store.Config{Engine: store.EnginePostgres, DSN: cfg.DSN, PostgresPoolMax: 4}, admitted.Admission)
+	db, err := store.Open(ctx, storeConfig, admitted.Admission)
 	if err != nil {
 		return nil, nil, err
 	}

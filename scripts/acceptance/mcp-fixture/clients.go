@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -146,8 +147,13 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	if err := os.Mkdir(home, 0700); err != nil {
 		return err
 	}
-	config := "model_provider = \"fixture-offline\"\n[model_providers.fixture-offline]\nname = \"No provider calls\"\nbase_url = \"http://127.0.0.1:9\"\nwire_api = \"responses\"\nrequires_openai_auth = false\n[mcp_servers.hikyo]\nurl = " + strconvQuote(p.target.URL+"/codex") + "\nbearer_token_env_var = \"HIKYO_NATIVE_TEST_TOKEN\"\n"
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
+	p.codexInvocation = randomHex()
+	p.receipt.Identities["codex_invocation_sha256"] = invocationHash(p.codexInvocation)
+	config, err := codexConfiguration(p.target.URL+"/codex", p.codexInvocation)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), config, 0600); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -234,6 +240,17 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	if json.Unmarshal(status, &catalog) != nil || len(catalog.Data) != 1 || catalog.Data[0].Name != "hikyo" || catalog.Data[0].ToolsError != nil || len(catalog.Data[0].Tools) != 5 {
 		return errors.New("native closed catalog missing")
 	}
+	// The pinned client's Tool.name is the original MCP name, independently
+	// from its client-owned map keys. The real native rehearsal checks this.
+	names := map[string]bool{}
+	for _, tool := range catalog.Data[0].Tools {
+		names[tool.Name] = true
+	}
+	for _, name := range mcpserver.ProductionToolNames() {
+		if !names[name] {
+			return errors.New("native catalog names differ from production read profile")
+		}
+	}
 	called, err := rpc("mcpServer/tool/call", map[string]any{"threadId": started.Thread.ID, "server": "hikyo", "tool": mcpserver.ToolInspectConfiguration, "arguments": map[string]any{"org_id": p.fixture.Org, "project_id": p.fixture.Project, "environment_id": p.fixture.Environment}})
 	if err != nil {
 		return err
@@ -248,7 +265,15 @@ func (p *probe) codex(ctx context.Context, dir string) error {
 	return nil
 }
 
-func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
+func codexConfiguration(endpoint, invocation string) ([]byte, error) {
+	var out bytes.Buffer
+	err := toml.NewEncoder(&out).Encode(map[string]any{
+		"model_provider":  "fixture-offline",
+		"model_providers": map[string]any{"fixture-offline": map[string]any{"name": "No provider calls", "base_url": "http://127.0.0.1:9", "wire_api": "responses", "requires_openai_auth": false}},
+		"mcp_servers":     map[string]any{"hikyo": map[string]any{"url": endpoint, "bearer_token_env_var": "HIKYO_NATIVE_TEST_TOKEN", "http_headers": map[string]string{probeHeader: invocation}}},
+	})
+	return out.Bytes(), err
+}
 
 func codexNoProxy(endpoint string) string {
 	u, err := url.Parse(endpoint)

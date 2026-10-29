@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
@@ -69,6 +68,9 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	}
 	r := newReceipt()
 	r.Identities["server_binary_sha256"] = fileHash(binary)
+	if !sha256Pattern.MatchString(r.Identities["server_binary_sha256"]) {
+		return errors.New("server executable identity unavailable")
+	}
 	self, err := os.Executable()
 	if err != nil {
 		return err
@@ -88,34 +90,10 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	var container, network string
 	var processes []*serverProcess
 	defer func() {
-		clean := true
 		for _, p := range processes {
-			if p.cmd.Process != nil {
-				_ = p.cmd.Process.Signal(syscall.SIGTERM)
-				select {
-				case <-p.done:
-				case <-time.After(7 * time.Second):
-					_ = p.cmd.Process.Kill()
-					<-p.done
-				}
-			}
+			stopServer(p, 7*time.Second)
 		}
-		if container != "" {
-			if _, err := command(context.Background(), "docker", "rm", "-f", container); err != nil {
-				clean = false
-			}
-			if _, err := command(context.Background(), "docker", "inspect", container); err == nil {
-				clean = false
-			}
-		}
-		if network != "" {
-			if _, err := command(context.Background(), "docker", "network", "rm", network); err != nil {
-				clean = false
-			}
-			if _, err := command(context.Background(), "docker", "network", "inspect", network); err == nil {
-				clean = false
-			}
-		}
+		clean := cleanupDocker(name, container, network, boundedDocker)
 		if clean {
 			r.Checks["owned_container_network_process_cleanup"] = "PASS"
 		} else {
@@ -183,7 +161,7 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	if err := writePrivate(filepath.Join(dir, "settings.json"), cfg); err != nil {
 		return err
 	}
-	db, kr, err := openFixture(ctx, cfg)
+	db, kr, err := openFreshFixture(ctx, cfg)
 	if err != nil {
 		return errors.New("local development admission failed")
 	}
@@ -192,6 +170,10 @@ func local(ctx context.Context, dir, binary string) (result error) {
 		return err
 	}
 	r.Checks["supported_service_provisioning_nonempty_disjoint_scope"] = "PASS"
+	if requireEmptyFixture(ctx, cfg) == nil {
+		return errors.New("nonempty datastore pre-admission guard failed")
+	}
+	r.Checks["nonempty_seed_refused_before_admission"] = "PASS"
 	var f fixture
 	if err := readPrivate(filepath.Join(dir, "fixture.json"), &f); err != nil {
 		return err
@@ -318,7 +300,7 @@ func local(ctx context.Context, dir, binary string) (result error) {
 	if err := p.namedClients(ctx, dir); err != nil {
 		return err
 	}
-	if !wire.valid() {
+	if !wire.valid(p.codexInvocation) {
 		return errors.New("Codex requested and negotiated protocol not independently observed")
 	}
 	r.Checks["codex_0.160.1_wire_requested_negotiated_2025-06-18"] = "PASS"
@@ -359,7 +341,10 @@ func local(ctx context.Context, dir, binary string) (result error) {
 		return err
 	}
 	for _, filename := range logs {
-		b, _ := os.ReadFile(filename)
+		b, err := os.ReadFile(filename)
+		if err != nil {
+			return errors.New("server log unavailable; disclosure scan incomplete")
+		}
 		for _, canary := range f.Canaries {
 			if strings.Contains(string(b), canary) {
 				return errors.New("server log canary disclosure")
@@ -411,8 +396,7 @@ func startServer(ctx context.Context, dir, binary string, cfg settings, origin, 
 		c.Close()
 		return true
 	}); err != nil {
-		cmd.Process.Signal(syscall.SIGTERM)
-		<-p.done
+		stopServer(p, 7*time.Second)
 		return nil, errors.New("server readiness failed; protected process log retained")
 	}
 	return p, nil

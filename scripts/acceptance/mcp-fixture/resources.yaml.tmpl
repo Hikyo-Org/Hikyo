@@ -322,7 +322,7 @@ spec:
       containers:
         - name: gateway
           image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-          command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; cp /config/gateway.json /work/custody/gateway.json; chmod 600 /work/custody/gateway.json; i=0; until [ -x /tools/mcp-fixture ]; do i=$((i+1)); test "$i" -lt 600; sleep 1; done; test "$(sha256sum /tools/mcp-fixture | cut -d " " -f 1)" = "{{.HelperBinary}}"; exec /tools/mcp-fixture gateway --runtime /work/custody']
+          command: [sh, -eu, -c, 'umask 077; mkdir -p /work/custody; cp /config/gateway.json /work/custody/gateway.json; chmod 600 /work/custody/gateway.json; i=0; until [ -x /tools/mcp-fixture ]; do i=$((i+1)); test "$i" -lt 600; sleep 1; done; test "$(sha256sum /tools/mcp-fixture | cut -d " " -f 1)" = "{{.HelperBinary}}"; exec /tools/mcp-fixture gateway --runtime /work/custody']
           ports: [{name: tls, containerPort: 8443}]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           resources: {requests: {cpu: 50m, memory: 32Mi}, limits: {cpu: 250m, memory: 256Mi}}
@@ -395,7 +395,7 @@ spec:
   containers:
     - name: tooling
       image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-      command: [sh, -eu, -c, 'umask 077; mkdir /work/custody; test "$(stat -c "%a %g" /installation)" = "2770 65532"; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"; exec sleep 86400']
+      command: [sh, -eu, -c, 'umask 077; mkdir -p /work/custody; test "$(stat -c "%a %g" /installation)" = "2770 65532"; test "$(stat -c "%a %u" /installation/operator-state)" = "700 65532"; exec sleep 86400']
       env: [{name: PGSSLROOTCERT, value: /db-ca/ca.crt}]
       securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
       resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 250m, memory: 512Mi}}

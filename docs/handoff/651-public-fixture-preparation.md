@@ -44,8 +44,11 @@ disposable local rehearsals, scoped repairs and a source PR. No remote deploymen
 production changes, public DNS/ingress/tunnel/certificate changes, registry push,
 provider/model call, spending, merge, tag/freeze, Apple action or publication is
 authorized. #158, PR #969, controller #1057 and accepted deferrals stay excluded.
-Shipped production source, tests and the existing deployment-fixture datastore
-guard are unchanged.
+Production source and the existing deployment-fixture datastore guard are
+unchanged. The store-importer architecture declaration adds only the exact
+standalone disposable fixture package; its enforcement remains intact.
+The owner subsequently authorized source PR repair and merge. That instruction
+does not authorize resource deployment or public acceptance.
 
 ## Single ownership and host discovery
 
@@ -62,15 +65,20 @@ existing wildcard and returned empty HTTP 200; this is not a working fixture
 origin or route-ownership proof. The actual edge readback, domain/certificate
 authority and network enforcement remain explicit deployment prerequisites.
 
-#1037 coordination proposes audit source siblings under this source owner,
-with separate collector/destination ownership. Their SQLite/PostgreSQL seeding
-and destructive custody-copy removal are **not implemented or authorized by
-these #651 assets**. They must not use/delete the shared MCP database/event rows.
-Production installation custody and stable recovery/signing resources are excluded.
-Collector [PR #1093](https://github.com/Hikyo-Org/Hikyo/pull/1093), observed at
-`62d9f489b1bf581916f57e76e0dd820c15512234`, is independent collector preparation,
-not #651 source deployment or acceptance evidence. Both audit sibling seed
-assets remain NOT IMPLEMENTED/NOTRUN.
+#1037 source siblings remain under this single source owner. The
+[supported audit-seed interface](../../scripts/acceptance/mcp-fixture/audit-source.md)
+now provisions the separately guarded PostgreSQL/SQLite scopes through service
+writers and emits token-free seed metadata plus a separate protected bearer
+curl-config file. Both engines passed local disposable seeding. No audit source
+was deployed; actual image/origin/resource bindings and supervised human-MFA
+instance export remain HOLD. Destructive sibling-copy removal still needs its
+own post-receipt permission and never includes shared MCP database/event rows.
+
+Collector [PR #1093](https://github.com/Hikyo-Org/Hikyo/pull/1093) owns independent
+destination preparation and receipts. The owner's later destination approval
+replaced its proposed VM with a disposable unprivileged LXC and required cleanup.
+That authority does not authorize sources, routes, credentials or notification
+delivery here. Production installation custody and stable resources stay excluded.
 
 ## Requirements to evidence
 
@@ -154,3 +162,16 @@ origin/TLS path, recipients/custodian, resource ceiling, permitted mutations,
 execution/retention window and teardown owner. It also lists source/artifact and
 edge prerequisites. Owner approval is the final remote-operation gate. A final
 artifact selection is a separate prerequisite, not implicit approval to deploy.
+
+## Hosted repair closeout
+
+Hosted review repairs use the TOML encoder for native client configuration,
+verify actual native catalog names, bind wire initialization/tool evidence to a
+fresh invocation digest, and read live recorder state rather than trusting a
+cached success file. Transport identities cannot be overwritten by response
+JSON, null structured content fails, and seed refusal precedes admission writes.
+Owned Docker cleanup has bounded contexts and an exact-name-plus-label fallback
+for failed starts; child readiness failure has a kill fallback. Log read failures
+fail disclosure checks, missing executable hashes fail, canonical parent checks
+precede local resource creation, and container custody directories survive
+restarts. Public runtime and final artifact gates remain separately HOLD.

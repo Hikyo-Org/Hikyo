@@ -31,6 +31,7 @@ type ImportConfinement struct {
 // internal/store or its subpackages. Additions here are architecture
 // decisions, not conveniences.
 var storeImporters = map[string]bool{
+	module + "/scripts/acceptance/mcp-fixture":       true, // disposable #651 provisioning/lifecycle wiring only; never linked into the product
 	module + "/scripts/ci/unattendedfixture/inspect": true, // disposable deployment acceptance reads the closed control ledger; never linked into the server
 	module + "/scripts/ci/chartfixture":              true, // test-only signed deployment fixture verifies source-owned embedded migration bytes
 	module + "/internal/upgradegate":                 true, // closed control capability only; stricter production rule below

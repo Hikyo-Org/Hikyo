@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -99,7 +100,7 @@ func TestRenderedResourcesAreIsolatedAndStartServersOnlyAfterSeeding(t *testing.
 		}
 		if object.GetKind() == "NetworkPolicy" && object.GetName() == "default-deny" {
 			policies, _, _ := unstructured.NestedStringSlice(object.Object, "spec", "policyTypes")
-			if len(policies) != 2 {
+			if len(policies) != 2 || !slices.Contains(policies, "Ingress") || !slices.Contains(policies, "Egress") {
 				t.Fatal("missing ingress/egress default deny")
 			}
 			defaultDenySeen = true
