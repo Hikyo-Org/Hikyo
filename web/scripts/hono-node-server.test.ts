@@ -48,16 +48,51 @@ it('preserves the OpenPencil request listener contract for MCP POST bodies and h
 });
 
 it('preserves streamed MCP response bytes through the pinned adapter', async () => {
+  let producerClosed = false;
+  let finishProducer = () => {};
+  let releaseSecond: () => void = () => { throw new Error('Response stream has not started'); };
   await withServer(() => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode('event: message\ndata: first\n\n'));
-      controller.enqueue(new TextEncoder().encode('event: message\ndata: second\n\n'));
-      controller.close();
+      finishProducer = () => {
+        if (producerClosed) return;
+        producerClosed = true;
+        controller.close();
+      };
+      releaseSecond = () => {
+        if (producerClosed) throw new Error('Response stream closed before the second event');
+        controller.enqueue(new TextEncoder().encode('event: message\ndata: second\n\n'));
+        finishProducer();
+      };
     },
+    cancel() { producerClosed = true; },
   }), { headers: { 'content-type': 'text/event-stream' } }), async (origin) => {
-    const response = await fetch(`${origin}/mcp`);
+    const response = await fetch(`${origin}/mcp`, { signal: AbortSignal.timeout(3_000) });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('text/event-stream');
-    expect(await response.text()).toBe('event: message\ndata: first\n\nevent: message\ndata: second\n\n');
+    const reader = response.body?.getReader();
+    if (reader === undefined) throw new Error('Response stream is missing');
+    try {
+      const decoder = new TextDecoder();
+      let first = '';
+      while (!first.endsWith('\n\n')) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error('Response stream ended before the first event');
+        first += decoder.decode(chunk.value, { stream: true });
+      }
+      expect(first).toBe('event: message\ndata: first\n\n');
+      expect(producerClosed).toBe(false);
+      releaseSecond();
+      let second = '';
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        second += decoder.decode(chunk.value, { stream: true });
+      }
+      expect(second).toBe('event: message\ndata: second\n\n');
+    } finally {
+      finishProducer();
+      await reader.cancel();
+    }
   });
 });

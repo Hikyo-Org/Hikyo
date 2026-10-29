@@ -114,6 +114,12 @@ Node `26.12.1`, pnpm `11.24.0`:
 - Independent adversarial Standards and Spec review outcomes are recorded in
   the PR. Cross-provider review is not requested and is not substituted.
 
+Standards review identified one asynchronous-test gap: an immediately closed
+producer could hide buffering until EOF. The test now receives the first event
+while the producer remains open, then releases the second event, with reader
+and server cleanup in `finally`. An isolated buffering mutation fails this
+test while the pinned adapter passes. Spec review reported zero findings.
+
 Focused reproduction from the repository root, after frozen installations:
 
 ```sh
