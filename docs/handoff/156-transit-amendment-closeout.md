@@ -3,15 +3,21 @@
 Source baseline: `ce5e85835383b6428676ff595e2a0c1a72f6a088`, tree
 `0a15a814ecb0e17e98a519cc129950dd0e94b02c`, assessed 2026-10-29.
 
-Status: **HOLD on the D3 public-verification disposition below**. Independent
-Standards and Spec reviews of head
+Status: **D3 conformance repair authorized; final-byte independent review
+and formal closeout pending**. The coordinator clarified that the existing
+implementation/fix authorization covers option A as preservation of the
+already approved contract. This is not a new product-policy decision, ADR
+exception or waiver. D3 and all five normative excerpts remain unchanged.
+
+Independent R1 Standards and Spec reviews of head
 `c69576b74e12791439e16d51666b821255bad863`, tree
 `d2d1c258b99b4e06ebcf3d6fef95623e62a666ef`, both requested changes for the
-same two P2 findings: the permission selector's adjacent #154 capture and the
-D3 custody-availability mismatch. This revision repairs the selector; D3 is
-not silently amended or counted as resolved. Any review of these new bytes
-is a separate bounded recheck. Maintainer approval, owning-ticket ceremony
-and verified merge remain required. Delivered implementation/UI stays closed.
+same two P2 findings. The permission selector's adjacent #154 capture was
+corrected in `274ee392f94f1df81e1acc170e970c4ab54ffb19`. The D3 consumer
+repair and focused regressions now address the other finding. R1 remains
+historically CHANGES REQUESTED; fresh review receipts must bind the changed
+final bytes. Maintainer/security approval, scoped owner-ticket ceremony and
+verified merge remain separate gates. Delivered #156/#820 stay closed.
 
 ## Exact disposition being reviewed
 
@@ -144,69 +150,89 @@ and the WebUI Transit owners. A source review must identify which consumers
 it inspected; this list does not assert a fresh test execution or full
 implementation security audit.
 
-## One remaining owner decision: public verification during custody outage
+## D3 conformance repair, preserving the approved rule
 
-Both independent configured OpenAI `gpt-6.1-sol/high` reviews found the same
-pre-existing mismatch at the reviewed source. D3 says an unregistered or
-unavailable custody provider refuses **every operation** with a retryable
-unavailable error. `Transit.Verify` in `internal/service/transit_ops.go`
-parses the signature, checks version/compromise policy, loads the stored public
-key and calls `crypto.VerifyTransitSignature`. It neither resolves that key's
-provider nor calls `Available`. `useKey` checks only that the registry is
-non-nil. The normal material-bearing path, `transitUse.material`, does resolve
-custody and check availability before performing work.
+Both independent configured OpenAI `gpt-6.1-sol/high` R1 reviews found the
+same pre-existing mismatch: D3 requires every operation to refuse unavailable
+or unregistered custody, but `Transit.Verify` read the stored public key and
+verified locally without resolving/checking its provider. The first source
+packet offered an A/B policy choice. The coordinator corrected that scope:
+A is a conformance repair already authorized by the original implementation
+and fix instruction and the 1.0 completion goal. No additional product-policy
+approval is needed to preserve D3. B is not selected; D3 is not weakened.
 
-Consequently an authorized caller can receive a local public-key verification
-result while the key's external provider is down or absent from the registry.
-This is not evidence of private-material export or software custody fallback.
-The existing mock-outage source in `internal/isolation/transit_e2e_test.go`
-covers encryption, decryption, rotation and creation, not this verification
-case. No new runtime/provider test has been executed by this lane.
+The repair shares the existing provider-kind resolution, `Available` check,
+`ErrTransitCustodyUnavailable` error and durable `custody-unavailable` failure
+audit in `transitUse.availableCustody`. The existing material-bearing path
+uses the same helper. Public verification calls it only after the ordinary
+authorization, state, version/compromise and public-version-row checks, then
+runs `crypto.VerifyTransitSignature` locally. It does not call `material`,
+request unsealing or signing, or fall back to another provider.
 
-Only the owner can select the intended availability policy; this preparation
-preserves the accepted D3 text and runtime source until that selection:
+`TestTransitVerifyCustodyAvailability` uses the existing `forEngines` harness
+and software/mock external providers. Its immediate matrix covers available,
+down, missing and recovered custody; valid and mismatched signatures; unknown
+and below-floor versions; disabled and compromised keys; cross-org/sibling
+scope concealment; and one durable failure audit per unavailable verification
+with no result returned. Guarded providers reject every material-bearing
+operation and record calls to the wrong provider. The verification service
+has no keyring. Both available and recovered checks must still verify locally,
+while preceding policy refusals must not contact custody at all. Existing
+`assertTransitAuditClean` checks exclude input/signature material from audit.
 
-| Option | Exact authorized change | Consequence |
-| --- | --- | --- |
-| A: retain D3 (recommended) | Authorize the minimal `Transit.Verify` consumer repair to resolve the key's custody provider and call `Available` after existing authorization/state/version checks, before producing a verification result. Capture the existing `custody-unavailable` audit cause and return `ErrTransitCustodyUnavailable` on refusal. Keep verification local; do not load/unseal private material or invoke a signing operation. | Preserves the approved absolute fail-closed contract. Verification gains the same outage refusal as other data-plane operations. No external provider or new capability is added. |
-| B: declare a public-verification exception | Approve a #156-only D3 amendment: after ordinary authorization, state, version, compromise and admission checks, Ed25519 verification may use the retained public key without resolving or contacting the custody provider. All material-bearing operations retain fail-closed custody and no fallback. | Preserves the existing local-verification behavior but changes the absolute ADR statement. The exception needs its own final-byte review and recorded amendment; it is not inferred from the new global review preference. |
+No live external provider, new infrastructure, schema, wire contract or UI is
+introduced. Both-engine execution uses isolated fixture databases on an
+existing local PostgreSQL 18.6 test service plus the normal temporary SQLite
+fixture. Only task-owned databases may be dropped; the existing service and
+other databases remain protected. Exact red/green, consumer and race commands
+and results are recorded in the accompanying PR, tied to its source head.
 
-For A, the immediate regression matrix must cover an available provider,
-registered-but-down provider, missing registered provider, recovered provider,
-valid and mismatched signatures, disabled/compromised/version refusals,
-unauthorized/sibling scope and decision-only failure audit. It must prove no
-private-material operation or fallback occurs and retain normal version/state
-concealment. Use the existing isolated software/mock fixtures on both engines;
-this is not authority for a live external-provider run.
+The R1 OpenAI receipts are provider-diverse for evidenced Claude-origin
+contract portions and independent same-provider review for later OpenAI
+portions. Their source-only limitations and historical skipped passes remain
+intact. Fresh Standards/Spec rechecks cover the changed helper, verification
+consumer, regressions, selector and closeout text, inheriting unchanged R1
+coverage only where the frozen excerpt/source identities still match.
 
-For B, pin the same authorization/state/version/compromise/admission/audit
-boundaries and prove only public verification survives down/missing custody;
-all material-bearing operations must still refuse. Neither choice allows
-weakening or deleting shipped tests. A is recommended because it preserves the
-already approved contract. A runtime repair or B's normative amendment remains
-unselected and is not implemented in this documentation-only preparation.
+## Focused validation evidence
 
-These are substantive review findings, not an ineligible-review result.
-The OpenAI receipts are provider-diverse for evidenced Claude-origin portions
-and independent same-provider review for later OpenAI portions, with their
-stated source-only limitations. Both axes remain **CHANGES REQUESTED** for
-complete amendment closeout until this decision is implemented and rechecked.
-No extra provider, paid API fallback, daily prompt or general ADR waiver is
-needed to present this exact decision.
+The new regression was run before the fix. On both SQLite and PostgreSQL,
+for software and mock external custody, down and missing providers incorrectly
+returned `Valid=true` with no error. The available/recovered cases also proved
+that availability was never checked. Existing preceding policy refusals passed.
+
+After the fix, the new regression and existing Transit end-to-end consumer
+suite passed on both engines. The focused service owner tests, new both-engine
+race test and owner-package vet passed. No assertion, deadline, fixture skip
+or security boundary was weakened. With `HIKYO_TEST_POSTGRES_DSN` configured
+for an isolated fixture database, the executed commands were:
+
+```sh
+GOMAXPROCS=2 go test -p 2 -parallel 2 ./internal/isolation -run '^TestTransit(VerifyCustodyAvailability|EndToEnd)$' -count=1 -v
+GOMAXPROCS=2 go test -p 2 -parallel 2 ./internal/service -run '^TestTransit' -count=1
+GOMAXPROCS=2 go test -race -p 2 -parallel 2 ./internal/isolation -run '^TestTransitVerifyCustodyAvailability$' -count=1 -v
+GOMAXPROCS=2 go vet -p 2 ./internal/service ./internal/isolation
+```
+
+The complete PR diff still requires its shared feedback plan/run and exact
+final-head hosted readback. Frozen normative identities and Markdown paths
+were checked without changing the contract. These fixture executions do not
+establish real HSM/provider, deployed instance or integrated #79 acceptance.
 
 ## Formal closeout and exact remaining action
 
-1. Obtain the owner's A/B disposition above, implement only that authorized
-   repair/amendment and its regression evidence, then obtain new independent
-   Standards and Spec rechecks of the affected final bytes. Preserve the R1
-   receipts, selector correction and provenance classification. Do not call
-   the current changes-requested result CLEAN.
+1. Complete the authorized D3 conformance repair and its immediate regression
+   evidence, then obtain fresh independent Standards and Spec rechecks of the
+   changed final bytes. Preserve R1's changes-requested receipts, the selector
+   correction and provenance classification. Do not relabel R1 CLEAN or invent
+   a new owner-policy approval requirement for preserving D3.
 2. Record the #156-scoped ceremony on the owning ADR tickets: MVP #26,
    encryption #14, permission #15 and tenant isolation #23. Preserve every
    unrelated obligation on shared tickets. Do not reopen delivered #156/#820
-   as if implementation were missing. The parent/maintainer owns public
-   owner-ticket decisions and any genuinely missing scoped acceptance of
-   the review disposition; this preparation posts no issue messages.
+   as if implementation were missing. The parent/maintainer owns the public
+   owner-ticket ceremony and recorded #156 review disposition; this
+   preparation posts no issue messages and requests no new product-policy
+   approval for preserving D3.
 3. Obtain the existing human merge authorization for this new source/docs PR,
    then use the protected queue. Verify actual merge, ancestry and unchanged
    reviewed excerpts before declaring the amendment debt closed. Do not
@@ -218,7 +244,8 @@ needed to present this exact decision.
 No new feature, provider run, production mutation, payment, release, tag or
 deployment is authorized. Vault #162's approved membership and reviewed
 PR #1091 remain with their owner. Historical social A7 is not reopened.
-Source validation here is the complete-diff feedback driver, Markdown link
-checks and the frozen excerpt comparison. Runtime/provider acceptance is
-NOTRUN by this documentation-only closeout; historical tests are not promoted
-into fresh proof. HTML companions are ignored local chat artifacts only.
+Source validation includes the complete-diff feedback driver, Markdown links,
+frozen excerpt comparison and the immediate both-engine/consumer/race checks
+recorded against the final source. Live provider and integrated release
+acceptance remain NOTRUN by this lane; historical or fixture tests do not
+establish those gates. HTML companions are ignored local chat artifacts only.

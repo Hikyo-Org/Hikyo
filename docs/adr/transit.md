@@ -5,7 +5,9 @@
 > policy. The [source-bound closeout](../handoff/156-transit-amendment-closeout.md)
 > fixes the covered contract, original Claude provenance, later mixed edits and
 > required final-byte review receipts. This note changes no decision below and
-> grants no ADR waiver. The September/October 28 skipped reviews remain
+> grants no ADR waiver. The D3 consumer repair preserves the existing absolute
+> custody-availability rule; it introduces no public-verification exception.
+> The September/October 28 skipped reviews remain
 > historical SKIPPED records. The amendment-review obligation is discharged
 > only by qualifying review of the bound scope, its recorded owner-ticket
 > ceremony and an explicitly authorized merge of this closeout. Until then,
