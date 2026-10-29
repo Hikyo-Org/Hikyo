@@ -122,7 +122,7 @@ for (const screen of screens) {
 
 test('anonymous settings navigation retains the sign-in gate', async ({ page }) => {
   await page.goto(`${BASE_URL}/settings`);
-  await expect(page).toHaveURL(`${BASE_URL}/login`);
+  await expect(page).toHaveURL(`${BASE_URL}/login?returnTo=%2Fsettings`);
   await expect(page.getByRole('heading', { name: 'Sign in to Hikyo', exact: true })).toBeVisible();
   const assets = await page.evaluate(() => performance.getEntriesByType('resource').map((entry) => new URL(entry.name).pathname));
   expect(assets.some((file) => /\/(?:settings|AccountSecurity)-/.test(file))).toBe(false);

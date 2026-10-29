@@ -385,10 +385,36 @@ test.describe('login', () => {
   test('redirects an anonymous authenticated-route deep link to login', async ({ page }) => {
     await page.goto('/projects');
 
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(`${BASE_URL}/login?returnTo=%2Fprojects`);
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Organisations' })).toHaveCount(0);
   });
+
+  for (const method of ['password', 'oidc']) {
+    test(`returns to the original deep link after ${method} sign-in`, async ({ page, browser }) => {
+      const seed = readSeed();
+      const account = method === 'password' ? await enrolledAccount(browser, 'login-return', 'org-admin') : null;
+      const destination = `/orgs/${seed.org}/projects/${seed.project}/machine-access?tab=members&filter=a%2Fb#grant`;
+      await page.goto(destination);
+      await expect(page).toHaveURL(`${BASE_URL}/login?${new URLSearchParams({ returnTo: destination })}`);
+      await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+      // A reload must retain the continuation, including the original fragment.
+      await page.reload();
+      if (account !== null) {
+        await page.getByRole('button', { name: /^Password\b/ }).click();
+        await page.getByLabel('Username').fill(account.username);
+        await page.getByLabel('Password').fill(account.password);
+        await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+        await page.getByLabel('Authenticator code').fill(await account.ledger.next());
+        await page.getByRole('button', { name: 'Present code' }).click();
+      } else {
+        await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      }
+      await expect(page).toHaveURL(`${BASE_URL}${destination}`);
+      await expect(page.getByRole('heading', { name: 'Machine access', exact: true })).toBeVisible();
+    });
+  }
 
   test('presents the second factor after a password and establishes a browser session on cookies alone', async ({
     page,
@@ -713,8 +739,9 @@ test.describe('login', () => {
         await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
         await expect(page.getByRole('button', { name: /skip|later|not now|without/i })).toHaveCount(0);
         // Confined: a deep link lands back on the gate, no shell renders.
-        await page.goto('/projects');
-        await expect(page).toHaveURL(/\/login$/);
+        const destination = '/settings?from=enrolment#factors';
+        await page.goto(destination);
+        await expect(page).toHaveURL(`${BASE_URL}/login?${new URLSearchParams({ returnTo: destination })}`);
         await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
         await expect(page.getByRole('list', { name: 'Breadcrumb' })).toHaveCount(0);
 
@@ -727,6 +754,7 @@ test.describe('login', () => {
         await page.getByRole('checkbox').check();
         await proceed.click();
         await page.getByRole('button', { name: 'Create a passkey' }).click();
+        await expect(page).toHaveURL(`${BASE_URL}${destination}`);
         await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
 
         // A fresh sign-in: the passkey now stands, so the password answers a

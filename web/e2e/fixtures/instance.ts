@@ -1966,7 +1966,7 @@ export async function passEnrolmentGate(page: Page, password: string): Promise<s
   await page.getByLabel('Authenticator code').fill(totpCode(otpauth));
   await page.getByRole('button', { name: 'Confirm and enrol' }).click();
   // The reissued session carries no gate, so `/login` hands over to the app.
-  await expect(page).not.toHaveURL(/\/login$/);
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   return otpauth;
 }
 
