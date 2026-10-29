@@ -20,6 +20,9 @@ profile.cov
 # Python tooling imports can write bytecode beside modules in any directory.
 __pycache__/
 
+# Private local evidence, receipts and offline reports must never be staged.
+/.local/reports/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 

@@ -1,10 +1,106 @@
 # #1037: external independent-evidence route
 
-Status: **local reference implemented; general acceptance remains OPEN/HOLD**.
+Status: **PREPARATION with local product/Unix proof; operational acceptance OPEN/HOLD**.
 The executable operator entry point is the
 [collection runbook](../operations/audit-collector.md), backed by
 [receiver.py](../../scripts/ops/audit-collector/receiver.py) and its
 [synthetic rehearsal](../../scripts/ops/audit-collector/test_receiver.py).
+
+## Current preparation, 2026-10-29
+
+### Owner-authorized disposable LXC follow-up
+
+The owner subsequently selected the named destination packet with an
+**unprivileged LXC instead of a VM and cleanup afterwards**. This supersedes
+the earlier preparation-only destination restriction, without authorizing source
+routing/deployment, production data, notifications, merge or a broader acceptance
+claim. The private campaign record retains the actual resource and deletion-owner
+bindings. #1038 remains separately HOLD; #79 remains the release tracker.
+
+The first scoped Proxmox creation attempt returned **403 Forbidden: Permission
+check failed**. Successful inventory/storage readbacks confirmed no guest, new
+volume, mapping, mount or task-key/runtime resource was created. No alternate
+creation route was attempted. Destination encryption/ACL/retention/health
+acceptance remains **NOTRUN/HOLD on this specific connector access gap**.
+
+The LXC installer mode uses a host-owned read-only encrypted-mount receipt and
+independently supplied expected LUKS/filesystem UUIDs. Guest block/key custody and
+privileged/nesting exceptions are not granted. Default in-guest cryptsetup and
+synthetic-only rehearsal guards remain. Policy unit checks are local supporting
+proof, not protected LXC execution; actual execution/cleanup receipts belong to
+the authorized campaign. Retain pending validation/review state explicitly.
+
+Bound preparation base: `ce5e85835383b6428676ff595e2a0c1a72f6a088`.
+#1035 and #1036 are merged and closed. Collector PR #1079 is integrated through
+#1087. Their historical pending statements below describe the original delivery,
+not today's dependency state. TLS #1090 is present; Vault #1091 and stable signing
+are outside this preparation. This base is not a selected final release candidate.
+
+The initial preparation authorization covered read-only infrastructure discovery, disposable
+local rehearsals and a concrete resource-specific deployment packet. At that phase, no remote
+installation/account/ACL/DNS/firewall changes, production collection, existing
+installation destruction, paid resources, notifications, merge or release actions
+are authorized. #1038 real delivery remains HOLD. Accepted #158/#969/#1057 and
+other 1.0 deferrals remain excluded.
+
+The executable [deployment preparation](../operations/audit-collector-deployment.md)
+and `scripts/ops/audit-collector/rehearse-local.py` are the new entry points.
+The private approval packet names the actual proposed source/destination,
+administrators, data exposure, lease, retention and exact permitted operations.
+Native fixture IDs, selected artifact and protected-host trust are bound only
+after their independently approved creation; unavailable bindings remain HOLD.
+
+Current local evidence, distinct from historical runs:
+
+| Evidence class | Result and limits |
+| --- | --- |
+| Real product HTTP exports | PASS on SQLite and PostgreSQL 18.6: supported project rename and failed login, existing WebAuthn test authenticator, completed tenant/instance packets, exact acknowledgment replay, partial refusal and separate-process retained reads after exclusively synthetic producer rewrite/removal. No live human/MFA ceremony or release-artifact proof. |
+| Separate Unix identities and transport | PASS in a disposable Debian container: real loopback OpenSSH fixed command, separate submit/poll/evidence/read/monitor UIDs, submitter/poller shell/read/write/delete/ACL/code/monitor denial, reader/monitor write denial and exact original packet read. Root deletion tested only on a disposable synthetic probe. Actual SFTP subsystem, PTY-only and remote-forward requests explicitly refused. Protected guest and independent personnel NOTRUN. |
+| Source contracts | PASS: both-engine receipt, session revocation, instance route/CLI, retention boundaries/rollback/concurrent export, pagination, PostgreSQL commit-order/cutoff and instance commit-order owner tests. No pruning acknowledgment dependency added. |
+| Receiver/monitor controls | Local synthetic suite covers never-received, stale/future receipts, stopped poller/detector, durable failed/unknown source-attempt diagnostics during nonmalicious poller execution, missed detector intervals, capacity threshold, sticky cumulative receiver refusals even between checks, and removed expected streams. Later success cannot resolve monitor-latched uncertainty. Poller-owned status is not tamper-proof against that UID. |
+| Consumer | #1038's opt-in receiver compatibility suite passes against current receiver bytes. External notification, acknowledgment and escalation NOTRUN/HOLD. |
+| Host preparation | Fixed installer and systemd unit verification are local evidence. Local TLS trust/stale/future/stopped-health and actual task-owned tmpfs ENOSPC/preserved-copy/retry controls PASS. Actual encrypted disk, protected ACL/account/trust, power-loss durability and independent watchdog acceptance remain NOTRUN. |
+| Review/CI | Record exact final source head, local feedback and independent Standards/Spec results in the PR. Required maintainer security review and hosted CI are separate from local results. No merge is authorized. |
+
+Reproduce the full private local product/Unix exercise with the one command in
+the deployment preparation. Retain its exact source hashes, receipts and ownership
+inventory outside Git. No Python linter/typechecker is configured in this scope;
+the unittest suite, Python compilation, Go owner checks and shared feedback apply.
+The final expanded local runner passed and verified removal of its task
+containers, exact anonymous volumes and image. Its failures remain separately
+recorded rather than relabeled PASS. All owned disposable resources must be removed and
+verified; private evidence and offline HTML may remain for the review window.
+
+### Bounded source review repair (#1093)
+
+The five review findings against `7d35b328d86fa08da5ec4a029c04125afd4b9137`
+are addressed in the existing PR: reject duplicate submit public-key bytes before
+installation mutations; qualify poller-writable diagnostic history; describe
+`--supervised` as an operator assertion rather than human/MFA enforcement;
+refuse unignored/tracked evidence output before creating it; and latch detector
+gaps over 90 seconds, below the gap left by a killed minute check.
+Read-only main at repair time is `f3e9ce2d5892d73f8f0dd357614c68cdf1e1c6e8`;
+it has not been selected as a final integrated release candidate.
+
+Light local validation: **46 Python controls PASS**, including three new
+regressions reproduced against the earlier implementation, an ordinary
+65-second detector interval, a delayed healthy 85-second interval, a latched
+100-second gap, exact 90/91-second inclusive-boundary checks, unchanged 121-second
+coverage, distinct submit keys and actual Git staging refusal. These supporting
+checks do not rerun the prior Go/product/Unix campaign or establish remote
+acceptance. Record independent review and exact pushed head/tree in the PR.
+The later cadence tests address CodeRabbit coverage suggestions. They detect
+in-memory limits narrowed to 70/89 seconds or widened to 95 seconds, without
+changing runtime behavior. Boundary cases use fixed time and separate healthy
+baselines, and verify the rejected interval stays HOLD after the next check.
+The authorized LXC, cleanup requirement, specific connector 403 access question
+and #1038 notification HOLD remain unchanged. No source deployment, destination
+retry, alternate access route or merge is authorized by these source repairs.
+
+## Historical source-delivery record
+
+The remaining dated evidence records the original implementation and PR repair.
+Current operational gates above supersede its old pending integration statements.
 
 ## Contract and approved boundary
 
@@ -155,7 +251,7 @@ A malicious producer can omit, rewrite or fabricate future exports. A successful
 receipt proves what that producer claimed to export, not that it emitted all
 events. No sequence-gap or source-timestamp heuristic can close that boundary.
 
-## One human-only request
+## Historical human-only request (superseded by the concrete preparation packet)
 
 Choose **A (recommended)**: nominate and authorize an isolated Hikyo fixture and
 a separately administered disposable destination, naming the source scopes,

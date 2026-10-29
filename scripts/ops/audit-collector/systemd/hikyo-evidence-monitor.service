@@ -1,0 +1,18 @@
+[Unit]
+Description=Hikyo independent expected-stream and receipt check
+RequiresMountsFor=/srv/hikyo-evidence
+ConditionPathIsMountPoint=/srv/hikyo-evidence
+
+[Service]
+Type=oneshot
+User=hk-monitor
+ExecStart=/usr/bin/python3 -I -B /opt/hikyo-evidence/monitor.py check /etc/hikyo-evidence/monitor.json /opt/hikyo-evidence/receiver.py /srv/hikyo-evidence/monitor/state.json /srv/hikyo-evidence/monitor/health.json
+TimeoutStartSec=30
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/hikyo-evidence/monitor
+MemoryMax=128M
+TasksMax=8

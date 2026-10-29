@@ -1,0 +1,11 @@
+[Unit]
+Description=Approved five-minute PostgreSQL fixture tenant poll
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=300
+AccuracySec=5
+Unit=hikyo-evidence-poll@pg-tenant.service
+
+[Install]
+WantedBy=timers.target
