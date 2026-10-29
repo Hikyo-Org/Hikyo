@@ -18,7 +18,7 @@
 > below remain historical. The amendment becomes operative only on its reviewed
 > PR merging. Integrated 1.0 acceptance remains #79.
 
-> **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, adversarial cross-model review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
+> **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, independent adversarial Standards and Spec review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
 
 > **Delivery and governance reconciliation (2026-10-28, no new amendment):**
 > [PR #823](https://github.com/Hikyo-Org/Hikyo/pull/823) delivered the compiled-in

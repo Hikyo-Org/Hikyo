@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 )
 
 func TestNamespaceSupportIsProvedBeforeCredentialTransmission(t *testing.T) {
+	var probeNames sync.Map
 	for _, edition := range []string{"vault-oss", "vault-enterprise", "openbao", "unknown", "namespace-header-stripped"} {
 		for _, method := range []string{"token", "approle"} {
 			t.Run(edition+"/"+method, func(t *testing.T) {
@@ -23,6 +25,9 @@ func TestNamespaceSupportIsProvedBeforeCredentialTransmission(t *testing.T) {
 					switch {
 					case r.Path == operationRegistry["namespace-probe"].Path:
 						probes++
+						if _, repeated := probeNames.LoadOrStore(r.Namespace, struct{}{}); repeated {
+							t.Error("namespace probe reused a child namespace")
+						}
 						if r.Token != "" || r.Body != nil || !strings.HasPrefix(r.Namespace, "team/hikyo-probe-") {
 							t.Error("namespace probe leaked credential or used configured namespace")
 							w.WriteHeader(http.StatusInternalServerError)

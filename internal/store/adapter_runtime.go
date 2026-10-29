@@ -840,6 +840,12 @@ func (r *AdapterRuntime) Activate(ctx context.Context, job adapter.Job, connecti
 		if err := journal.lockCurrentCustody(ctx, tx.adapterRuntimeQueries()); err != nil {
 			return err
 		}
+		// Prepare atomically changes a reservation to dispatched with its
+		// provider lease. Under this live activation fence, retire only unsent
+		// reservations so the next converge must claim the new route identity.
+		if _, err := tx.adapterRuntimeQueries().adapterWorkerActivateReleaseReservations(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID); err != nil {
+			return err
+		}
 		rows, err := tx.adapterRuntimeQueries().adapterWorkerActivateFinish(ctx, stamp, job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner)
 		if err != nil {
 			return err

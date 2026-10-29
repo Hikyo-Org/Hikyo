@@ -453,6 +453,12 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		}
 	}
 	for _, record := range ledger {
+		// Desired reservations were checked above. An undesired reservation
+		// has no dispatched provider effect and needs only a fenced local
+		// release, including when metadata access to its old path is denied.
+		if record.State == adapter.Reserved {
+			continue
+		}
 		if err := checkPending(record.EffectiveName, record, true); err != nil {
 			return adapter.SyncResult{}, err
 		}

@@ -652,6 +652,32 @@ func (q *Queries) AdapterWorkerActivateOriginRouteMoveTargetQuery(ctx context.Co
 	return items, nil
 }
 
+const adapterWorkerActivateReleaseReservations = `-- name: AdapterWorkerActivateReleaseReservations :execrows
+DELETE FROM adapter_ledger WHERE target_id=$1 AND org_id=$2 AND project_id=$3 AND environment_id=$4 AND state='reserved'
+`
+
+type AdapterWorkerActivateReleaseReservationsParams struct {
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Only unsent claims are retired after the activation job obtains its live
+// generation and provider fence. Dispatched and owned custody is never removed.
+func (q *Queries) AdapterWorkerActivateReleaseReservations(ctx context.Context, arg AdapterWorkerActivateReleaseReservationsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, adapterWorkerActivateReleaseReservations,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const adapterWorkerActivateSetResolved = `-- name: AdapterWorkerActivateSetResolved :execrows
 UPDATE adapter_route_move_targets SET destination_id=$1,repository_id=$2 WHERE move_id=$3 AND target_id=$4 AND org_id=$5 AND project_id=$6 AND environment_id=$7 AND destination_id=0
 `
@@ -1263,7 +1289,7 @@ func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubActivateMove(ctx contex
 }
 
 const adapterWorkerFinishOriginRouteMoveScrubCountHeld = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountHeld :one
-SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=$1 AND jobs.org_id=$2 AND jobs.project_id=$3 AND jobs.kind='scrub' AND held.state<>'released'
+SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=$1 AND jobs.org_id=$2 AND jobs.project_id=$3 AND jobs.kind='scrub' AND held.state IN ('dispatched','owned')
 `
 
 type AdapterWorkerFinishOriginRouteMoveScrubCountHeldParams struct {

@@ -102,6 +102,9 @@ func runVaultCrossSurfaceAdoption(t *testing.T, engine store.Engine) {
 				if err != nil {
 					t.Fatalf("explicitly released opposite surface blocked adoption: %v", err)
 				}
+				if recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id='plan_vault_surface' AND adopted_at IS NOT NULL`) != 1 || recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_vault_surface' AND target_id='tgt_1' AND surface='secret' AND normalized_name='TOKEN' AND state='owned'`) != 1 {
+					t.Fatal("successful adoption did not consume consent and claim custody")
+				}
 			} else {
 				if !errors.Is(err, adapter.ErrOperatorReview) || !errors.Is(err, store.ErrConflict) {
 					t.Fatalf("foreign opposite-surface custody adopted: %v", err)

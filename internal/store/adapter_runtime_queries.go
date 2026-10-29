@@ -57,6 +57,7 @@ type adapterRuntimeQueries interface {
 	adapterWorkerInsertConflictDedup(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, surface string, effectiveName string) (int64, error)
 	adapterWorkerInsertConflictInsert(ctx context.Context, newID string, artifactID string, chainOrg string, chainProject string, chainEnv string, targetID string, jobID string, generation int64, surface string, effectiveName string, now time.Time) (int64, error)
 	adapterWorkerInsertAdapterJobAuditWithIDQuery(ctx context.Context, effectID string, typ string, at time.Time, authorityPrincipal string, chainOrg string, chainProject string, chainEnv string, targetID string, outcome string, jobID string, payload string) (int64, error)
+	adapterWorkerActivateReleaseReservations(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (int64, error)
 	adapterWorkerActivateFinish(ctx context.Context, at time.Time, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (int64, error)
 	adapterWorkerActivateLookup(ctx context.Context, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64) (adapterWorkerActivateLookupRow, error)
 	adapterWorkerActivateCollisionQuery(ctx context.Context, routeMoveID string, targetID string, pendingOrigin string, kind string, repositoryID int64, destinationID int64, sentinelName string) (int64, error)
@@ -470,6 +471,9 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerInsertConflictInsert(ctx conte
 func (q sqliteAdapterRuntimeQueries) adapterWorkerInsertAdapterJobAuditWithIDQuery(ctx context.Context, effectID string, typ string, at time.Time, authorityPrincipal string, chainOrg string, chainProject string, chainEnv string, targetID string, outcome string, jobID string, payload string) (int64, error) {
 	return q.queries.AdapterWorkerInsertAdapterJobAuditWithIDQuery(ctx, sqlitegen.AdapterWorkerInsertAdapterJobAuditWithIDQueryParams{EffectID: effectID, Typ: typ, At: fixedStamp(at), AuthorityPrincipal: sql.NullString{String: authorityPrincipal, Valid: true}, ChainOrg: chainOrg, ChainProject: sql.NullString{String: chainProject, Valid: true}, ChainEnv: sql.NullString{String: chainEnv, Valid: true}, TargetID: sql.NullString{String: targetID, Valid: true}, Outcome: outcome, JobID: sql.NullString{String: jobID, Valid: true}, Payload: payload})
 }
+func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateReleaseReservations(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (int64, error) {
+	return q.queries.AdapterWorkerActivateReleaseReservations(ctx, sqlitegen.AdapterWorkerActivateReleaseReservationsParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
+}
 func (q sqliteAdapterRuntimeQueries) adapterWorkerActivateFinish(ctx context.Context, at time.Time, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (int64, error) {
 	return q.queries.AdapterWorkerActivateFinish(ctx, sqlitegen.AdapterWorkerActivateFinishParams{At: runtimeSQLiteStamp(at), JobID: jobID, RouteMoveID: sql.NullString{String: routeMoveID, Valid: true}, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation, LeaseOwner: sql.NullString{String: leaseOwner, Valid: true}})
 }
@@ -817,6 +821,9 @@ func (q pgAdapterRuntimeQueries) adapterWorkerInsertConflictInsert(ctx context.C
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerInsertAdapterJobAuditWithIDQuery(ctx context.Context, effectID string, typ string, at time.Time, authorityPrincipal string, chainOrg string, chainProject string, chainEnv string, targetID string, outcome string, jobID string, payload string) (int64, error) {
 	return q.queries.AdapterWorkerInsertAdapterJobAuditWithIDQuery(ctx, pggen.AdapterWorkerInsertAdapterJobAuditWithIDQueryParams{EffectID: effectID, Typ: typ, At: pgRequiredTime(at), AuthorityPrincipal: pgtype.Text{String: authorityPrincipal, Valid: true}, ChainOrg: chainOrg, ChainProject: pgtype.Text{String: chainProject, Valid: true}, ChainEnv: pgtype.Text{String: chainEnv, Valid: true}, TargetID: pgtype.Text{String: targetID, Valid: true}, Outcome: outcome, JobID: pgtype.Text{String: jobID, Valid: true}, Payload: payload})
+}
+func (q pgAdapterRuntimeQueries) adapterWorkerActivateReleaseReservations(ctx context.Context, targetID string, chainOrg string, chainProject string, chainEnv string) (int64, error) {
+	return q.queries.AdapterWorkerActivateReleaseReservations(ctx, pggen.AdapterWorkerActivateReleaseReservationsParams{TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerActivateFinish(ctx context.Context, at time.Time, jobID string, routeMoveID string, targetID string, chainOrg string, chainProject string, chainEnv string, generation int64, leaseOwner string) (int64, error) {
 	return q.queries.AdapterWorkerActivateFinish(ctx, pggen.AdapterWorkerActivateFinishParams{At: pgRequiredTime(at), JobID: jobID, RouteMoveID: pgtype.Text{String: routeMoveID, Valid: true}, TargetID: targetID, ChainOrg: chainOrg, ChainProject: chainProject, ChainEnv: chainEnv, Generation: generation, LeaseOwner: pgtype.Text{String: leaseOwner, Valid: true}})

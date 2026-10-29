@@ -164,6 +164,11 @@ INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,t
 -- name: AdapterWorkerInsertAdapterJobAuditWithIDQuery :execrows
 INSERT INTO audit_tenant_events (id,type,schema_version,occurred_at,occurred_asserted,recorded_at,actor_id,actor_class,authority_id,scope_class,org_id,project_id,env_id,object_type,object_id,outcome,correlation_id,origin,payload) VALUES (sqlc.arg(effect_id),sqlc.arg(typ),1,sqlc.arg(at),false,sqlc.arg(at),NULL,'system',sqlc.arg(authority_principal),'env',sqlc.arg(chain_org),sqlc.arg(chain_project),sqlc.arg(chain_env),'adapter-target',sqlc.arg(target_id),sqlc.arg(outcome),sqlc.arg(job_id),'adapter-job',sqlc.arg(payload));
 
+-- Only unsent claims are retired after the activation job obtains its live
+-- generation and provider fence. Dispatched and owned custody is never removed.
+-- name: AdapterWorkerActivateReleaseReservations :execrows
+DELETE FROM adapter_ledger WHERE target_id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND state='reserved';
+
 -- name: AdapterWorkerActivateFinish :execrows
 UPDATE adapter_outbox SET state='succeeded',finished_at=sqlc.arg(at),lease_owner=NULL,lease_expires_at=NULL WHERE id=sqlc.arg(job_id) AND route_move_id=sqlc.arg(route_move_id) AND target_id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(chain_env) AND generation=sqlc.arg(generation) AND kind='activate' AND state='running' AND lease_owner=sqlc.arg(lease_owner);
 
@@ -301,7 +306,7 @@ UPDATE adapter_targets SET state='moving',sync_status='converging',failure_names
 SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='scrub' AND state IN ('queued','running');
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubCountHeld :one
-SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=sqlc.arg(route_move_id) AND jobs.org_id=sqlc.arg(chain_org) AND jobs.project_id=sqlc.arg(chain_project) AND jobs.kind='scrub' AND held.state<>'released';
+SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=sqlc.arg(route_move_id) AND jobs.org_id=sqlc.arg(chain_org) AND jobs.project_id=sqlc.arg(chain_project) AND jobs.kind='scrub' AND held.state IN ('dispatched','owned');
 
 -- name: AdapterWorkerFinishOriginRouteMoveScrubActivateMove :execrows
 UPDATE adapter_route_moves SET state='activating' WHERE id=sqlc.arg(route_move_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND kind='origin' AND target_id IS NULL AND state='scrubbing';

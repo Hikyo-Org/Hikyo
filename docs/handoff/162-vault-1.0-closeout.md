@@ -352,3 +352,54 @@ Independent findings still require repair and final-byte review. Final
 integrated release acceptance remains #79 even after the
 scoped PR completes. Stable trust, signing custody, Apple artifacts, release
 publication and production changes remain unauthorized.
+
+## G1 source-review repair after ready status
+
+CodeRabbit review 5704090239 requested changes on the frozen f26c7d7 head.
+The queued candidate was explicitly removed before editing; its unfinished
+full-suite run is retained as incomplete evidence, not final-head proof. The
+owner preserved the banked source-merge approval for necessary scoped repairs,
+with fresh changed-byte review/checks and protected final-head/base proof.
+No routine reapproval, new lane or broader audit is introduced.
+
+The five findings share these bounded dispositions:
+
+- The active ADR status now names independent Standards and Spec review,
+  matching the recorded owner policy while keeping historical outcomes.
+- The operator recovery list explicitly includes acknowledged writes whose
+  metadata finalization fails as a review hold.
+- Undesired Reserved claims require no provider metadata read; desired rows
+  still undergo pending-marker preflight. Existing whole-target holds still
+  prevent reservation release and all provider mutation.
+- Both SQL dialects distinguish unsent Reserved claims from Owned/Dispatched
+  old-route custody. Dropping only that count guard would preserve an unsafe
+  old route binding: activation now retires only unsent claims under its live
+  generation/authority/provider fence, so the next converge reserves the new
+  destination. Prepared/unknown effects remain Dispatched and still block
+  replacement. Stale worker and activation leases cannot release claims.
+
+Focused regressions reproduce metadata-403 refusal and all four SQLite/
+PostgreSQL by target/origin replacement failures on original f26 production
+bytes. Repaired focused tests pass both real databases and exercise actual
+repository mutation and worker activation/journal consumers. Provider-response
+fixtures remain distinct from the earlier pinned real Vault/OpenBao receipts;
+unchanged provider/browser campaigns were not rerun for this bounded repair.
+The same review's two nonblocking test notes now assert consent consumption/
+custody and unique namespace-probe children. Fresh final-byte independent
+review and selected feedback/owner checks are pending at this source freeze.
+
+The frozen scope adds the focused reservation-recovery test and its owning
+annotated-query census fixture. Original
+#823 Anthropic, later OpenAI and unknown portions retain their provenance.
+No cross-provider pass, deadline change, assertion weakening or release/
+deployment authority is inferred. #26/#28 remain operative-on-merge and #79
+owns integrated acceptance.
+
+The retired f26 protected candidate also failed
+`TestInvariant13AllowlistPinning`: the owning isolation census retained the old
+SQL hashes and reasons for `AdapterOriginHeldCandidates`. Its two existing
+SQLite/PostgreSQL entries now match the previously reviewed cross-surface
+Vault guard. Annotation kinds, census cardinality and every other entry are
+unchanged; no new exemption or test weakening is introduced. The focused
+pin invariant is required on the final repaired source. This is a concrete
+consumer failure from the protected run, not a new audit lane.

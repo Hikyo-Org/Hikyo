@@ -583,8 +583,9 @@ hikyo adapter create --provider vault-kv \
   If that key is later removed from the selection or the target is removed,
   Hikyo releases it with a warning instead of deleting the edit. An unknown
   write response or nonempty pending marker stops automatic sync and pruning
-  for the whole target. Metadata cannot identify which writer produced the
-  pending version. Plan and explicitly adopt the observed positive version
+  for the whole target. An acknowledged value write whose metadata finalization
+  fails also holds the target until review. Metadata cannot identify which writer
+  produced the pending version. Plan and explicitly adopt the observed positive version
   before resuming; changed versions and already-consumed consent refuse. An
   unknown create that is still absent has no version witness: explicitly retain
   custody and recreate the target before retrying. See the
