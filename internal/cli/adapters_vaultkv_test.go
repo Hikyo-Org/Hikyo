@@ -103,6 +103,21 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 			t.Errorf("%s: loop = %v, want %v", identity, got, loop)
 		}
 	}
+	for _, hosts := range [][2]string{
+		{"https://vault.example", "https://VAULT.example.:0443"},
+		{"https://vault.example.", "https://vault.example"},
+		{"https://xn--bcher-kva.example", "https://bücher.example.:443"},
+		{"https://192.0.2.4", "https://[::ffff:192.0.2.4]:443"},
+	} {
+		aliases := apigen.AdapterList{Items: []apigen.Adapter{{
+			Id: "adp_alias", Provider: "vault-kv", Origin: hosts[0], State: apigen.AdapterStateActive,
+			Targets: []apigen.AdapterTarget{{Id: "tgt_alias", State: apigen.AdapterTargetStateActive, DestinationOwner: "secret", DestinationName: "apps/pay"}},
+		}}}
+		result := importer.Result{Identity: hosts[1], Scope: importer.Scope{Mount: "secret", PathPrefix: "apps/pay"}}
+		if _, loop, err := vaultImportLoop(result, aliases); !loop || err != nil {
+			t.Errorf("canonical host aliases %v: loop=%v err=%v", hosts, loop, err)
+		}
+	}
 	adapters.Items[0].Targets[0].State = apigen.AdapterTargetStateTombstoned
 	if _, loop, err := vaultImportLoop(source("team-a", "secret", "apps/pay"), adapters); loop || err != nil {
 		t.Fatal("tombstoned target still refuses imports")

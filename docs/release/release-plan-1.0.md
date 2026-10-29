@@ -115,7 +115,9 @@ for HA #146, dynamic credentials #147, change approvals #151, temporary access
 member access rules #15, developer credentials, signed upgrades and Kubernetes
 reporting, plus each
 provider's own scope/review conditions. Do not restore an obsolete small MVP
-inventory. Vault KV's proposed governance condition remains explicit. Social
+inventory. Vault KV destination membership was approved on October 29 subject
+to qualifying review and acceptance; its proposed amendment closeout remains
+HOLD under the [scoped packet](../handoff/162-vault-1.0-closeout.md). Social
 registration's implemented presence does not override its post-1.0 A7 ruling.
 
 Earlier integration is delivered source, with fresh final-candidate proof still

@@ -549,6 +549,14 @@ hikyo adapter create --provider vault-kv \
   share the tree, so names must be unique across both, case-insensitively.
   Values must be UTF-8 and at most 512 KiB. KV v1 mounts are refused: they have
   no check-and-set.
+- **Namespace routing.** Vault OSS ignores namespace headers, so a non-root
+  origin must prove routing before Hikyo transmits credentials. Hikyo makes an
+  unauthenticated request under a random child namespace and requires an explicit
+  missing-namespace refusal. It sends no token or AppRole secret with this
+  probe and needs no extra policy grant. A server or proxy that cannot prove
+  routing is refused rather than silently using root. Actual OpenBao namespace
+  delivery is covered by the contract; Vault Enterprise namespace qualification
+  remains separate.
 - **Credential.** A bare token, or JSON:
   `{"method":"approle","role_id":"…","secret_id":"…","mount":"approle"}` or
   `{"method":"token","token":"…"}`. Either form accepts `ca_pem` (your CA;
@@ -573,28 +581,35 @@ hikyo adapter create --provider vault-kv \
   by name; adoption never reads the value. A Hikyo path that someone edits
   outside Hikyo is also a conflict: Hikyo reports it and never overwrites it.
   If that key is later removed from the selection or the target is removed,
-  Hikyo releases it with a warning instead of deleting the edit. An interrupted delivery replays from metadata, with a residual concurrency limit:
-  if an external write takes exactly the pending version and the attempt stops before
-  releasing custody, replay cannot distinguish that write from Hikyo's own. A later
-  retry can overwrite it; the external value remains in KV version history. See the
+  Hikyo releases it with a warning instead of deleting the edit. An unknown
+  write response or nonempty pending marker stops automatic sync and pruning
+  for the whole target. An acknowledged value write whose metadata finalization
+  fails also holds the target until review. Metadata cannot identify which writer
+  produced the pending version. Plan and explicitly adopt the observed positive version
+  before resuming; changed versions and already-consumed consent refuse. An
+  unknown create that is still absent has no version witness: explicitly retain
+  custody and recreate the target before retrying. See the
   [Vault adapter ownership protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/vault-kv-adapter.md#ownership-and-concurrency-cas-plus-a-marker-protocol)
   before allowing concurrent external writers.
 - **Retain, prune, destroy.** Removing a target with `--keep-remote` leaves every
   path in place. Without it, and for keys that leave the selection, Hikyo
-  soft-deletes the current version: history and metadata stay, and
+  soft-deletes only the inspected known-owned version: history and metadata stay, and
   `vault kv undelete` recovers the value until the mount's own retention drops
   it. Hikyo never destroys versions or deletes metadata; use Vault tooling for
-  that after removal.
+  that after removal. A review-held removal returns as a visible paused target
+  with custody intact. Plan/adopt and explicitly resume, or choose retain.
 - **Versions.** Every converge re-delivers every selected value, so each key
   gains a KV version per converge. Bound history with the mount's
   `max_versions`.
 - **Loops.** A live `hikyo import --from vault` refuses to read a tree that an
   active `vault-kv` target of the same project writes (same host, namespace,
   mount, and overlapping path), so Hikyo never imports its own output.
-- **Failures.** A sealed or standby server and transport errors retry; a
+- **Failures.** A sealed or standby server and transport errors before value
+  dispatch retry; an unknown value-write result requires operator review. A
   `429` honors `Retry-After`; a refused token or AppRole login marks the
   credential for replacement; a re-created or moved mount stops delivery until
-  you reconfigure the target.
+  you reconfigure the target. Unproved namespace routing also stops delivery
+  without falling back to root.
 
 For a private Vault address, add an egress exception keyed by
 `https://HOST:PORT` (without the namespace).

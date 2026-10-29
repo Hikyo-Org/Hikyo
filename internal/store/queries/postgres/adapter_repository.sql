@@ -152,6 +152,11 @@ UPDATE adapter_targets SET paused_at=sqlc.arg(paused_at),generation=sqlc.arg(nex
 -- name: AdapterResumeTarget :execrows
 UPDATE adapter_targets SET paused_at=NULL WHERE id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND generation=sqlc.arg(expected_generation) AND paused_at IS NOT NULL;
 
+-- Resume the paused adoption job without advancing its exact generation witness.
+-- The caller revalidates consent through AdapterPlanLedger in the same transaction.
+-- name: AdapterResumeAdoptedJob :execrows
+UPDATE adapter_outbox SET authority_principal_id=sqlc.arg(authority_principal_id),next_attempt_at=sqlc.arg(at) WHERE id=sqlc.arg(job_id) AND target_id=sqlc.arg(target_id) AND org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND generation=sqlc.arg(generation) AND kind='converge' AND route_move_id IS NULL AND state='queued';
+
 -- name: AdapterResumeRevision :one
 SELECT CAST(COALESCE(MAX(revision),0) AS BIGINT) AS revision FROM snapshots WHERE org_id=sqlc.arg(chain_org) AND project_id=sqlc.arg(chain_project) AND environment_id=sqlc.arg(environment_id) AND payload_present=true;
 

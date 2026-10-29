@@ -1,5 +1,13 @@
 # #156 / #162 / #589: pre-freeze capability governance reconciliation
 
+> **Vault-only supersession (2026-10-29):** Marc approved #162 destination
+> membership in 1.0 subject to qualifying review and acceptance: "A, in separate
+> t3code thread sol 6.1 xhigh". V1's undecided membership is historical below;
+> the amendment and acceptance gates remain HOLD. Transit T1, social A7 and
+> all unrelated exclusions are unchanged. Follow the
+> [Vault closeout packet](./162-vault-1.0-closeout.md) for current source,
+> review and provider evidence. Keep #162 closed for delivered implementation.
+
 ## Transit continuation (2026-10-29)
 
 [PR #1071](https://github.com/Hikyo-Org/Hikyo/pull/1071) merged as
@@ -16,6 +24,11 @@ work nor changes its scope or acceptance. Social A7 remains under #589's own
 disposition. The release coordinator retains the canonical #79 records.
 
 ## Historical reconciliation (2026-10-28)
+
+The scope and owner-disposition tables below record the October 28 decisions.
+Later Vault and Transit outcomes are bound by their separate continuations
+above; this historical record does not reimpose a superseded membership or
+review gate.
 
 Assessed canonical `Hikyo-Org/Hikyo` main on 2026-10-28:
 `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.

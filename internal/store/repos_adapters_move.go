@@ -135,6 +135,16 @@ func cancelAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, mo
 		if err != nil {
 			return AdapterMove{}, adapter.ErrSuperseded
 		}
+		// Superseded siblings are no longer claimable. Close only their
+		// expired effects under the target lock, retaining unknown custody.
+		if err := closeIndeterminateAdapterEffects(ctx, db, adapter.Job{TargetID: target.TargetID,
+			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: target.EnvironmentID}, at); err != nil {
+			return AdapterMove{}, err
+		}
+		lookupResult, err = db.adapterMoveQueries().cancelTarget(ctx, target.TargetID, chain.Org, chain.Project, target.EnvironmentID)
+		if err != nil {
+			return AdapterMove{}, err
+		}
 		if lookupResult.ProviderBusy != 0 {
 			return AdapterMove{}, adapter.ErrProviderBusy
 		}
@@ -304,6 +314,15 @@ func replaceAdapterMoveOrigin(ctx context.Context, db adapterDB, chain domain.Sc
 
 func resumeAdapterMove(ctx context.Context, db adapterDB, chain domain.Scope, move AdapterMove, authorityPrincipalID string, at time.Time) error {
 	stamp := at
+	// Attention can originate from a held scrub, not just failed activation.
+	// Replacing the pending route does not resolve custody on the old route.
+	unresolved, err := db.adapterRuntimeQueries().adapterWorkerFinishOriginRouteMoveScrubCountPending(ctx, move.ID, string(chain.Org), string(chain.Project))
+	if err != nil {
+		return err
+	}
+	if unresolved != 0 {
+		return fmt.Errorf("%w: resolve old route custody before replacement", adapter.ErrOperatorReview)
+	}
 
 	if rows, err := db.adapterMoveQueries().activate(ctx, authorityPrincipalID, move.ID, chain.Org, chain.Project); err != nil || rows != 1 {
 		return errors.Join(err, adapter.ErrSuperseded)

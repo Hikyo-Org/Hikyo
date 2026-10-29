@@ -58,7 +58,7 @@ JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.pr
 WHERE a.provider=$1
 AND (l.destination_kind=$2 OR (a.provider='aws-secrets-manager' AND l.destination_kind IN ('json-object','per-key') AND ($2='json-object' OR $2='per-key')))
 AND l.repository_id=$3 AND l.destination_id=$4
-AND l.destination_scope=$5 AND l.surface=$6 AND l.normalized_name=$7
+AND l.destination_scope=$5 AND (l.surface=$6 OR a.provider='vault-kv') AND l.normalized_name=$7
 AND l.state<>'released' AND l.id>$8
 AND (l.target_id=$9 OR
     l.provider_origin='' OR
@@ -98,7 +98,7 @@ type AdapterOriginHeldCandidatesRow struct {
 	ProviderOrigin string
 }
 
-// hikyo:reason Authorized adapter custody checks read only held origin metadata within the exact provider and resolved destination, repository, scope, surface and normalized name, including the current target's historical claim. Canonical-origin comparison stays in the private store owner; paged candidates do not expose tenant identifiers or values and prevent legacy aliases from bypassing the global held-custody constraint.
+// hikyo:reason Authorized adapter custody checks read only held origin metadata within the exact provider and resolved destination, repository, scope and normalized name, using the logical surface except for Vault whose secret and config surfaces share one physical tree, including the current target's historical claim. Canonical-origin comparison stays in the private store owner; paged candidates do not expose tenant identifiers or values and prevent legacy aliases from bypassing the global held-custody constraint.
 // hikyo:instance-scoped
 func (q *Queries) AdapterOriginHeldCandidates(ctx context.Context, arg AdapterOriginHeldCandidatesParams) ([]AdapterOriginHeldCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, adapterOriginHeldCandidates,

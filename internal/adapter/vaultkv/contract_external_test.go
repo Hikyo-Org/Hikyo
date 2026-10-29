@@ -85,6 +85,12 @@ func (h *kvHarness) do(method, path string, body any) (int, map[string]any) {
 		h.t.Fatal(err)
 	}
 	req.Header.Set("X-Vault-Token", h.token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+		if method == http.MethodPatch {
+			req.Header.Set("Content-Type", "application/merge-patch+json")
+		}
+	}
 	if h.ns != "" {
 		req.Header.Set("X-Vault-Namespace", h.ns)
 	}
@@ -421,6 +427,9 @@ func runKVContract(t *testing.T, name string) {
 		t.Fatalf("soft-deleted value not recoverable: %q, %v", got, ok)
 	}
 
+	runKVRaceContracts(t, h, mount, client)
+	runKVAuthContract(t, h, mount)
+
 	// Mount movement: the same path re-enabled is a different mount identity.
 	h.must(http.MethodDelete, "/v1/sys/mounts/"+mount, nil)
 	h.must(http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
@@ -431,11 +440,171 @@ func runKVContract(t *testing.T, name string) {
 	runNamespaceContract(t, h)
 }
 
+// Hooks inject external writes at the real provider boundary, after Hikyo's
+// metadata inspection and before its CAS or explicit-version soft delete.
+type contractRacingKV struct {
+	API
+	beforeWrite  func(string, string, int64)
+	beforeDelete func(string, string, int64)
+}
+
+func (r *contractRacingKV) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
+	if r.beforeWrite != nil {
+		r.beforeWrite(mount, path, cas)
+	}
+	return r.API.WriteCAS(ctx, mount, path, value, cas)
+}
+
+func (r *contractRacingKV) DeleteVersion(ctx context.Context, mount, path string, version int64) error {
+	if r.beforeDelete != nil {
+		r.beforeDelete(mount, path, version)
+	}
+	return r.API.DeleteVersion(ctx, mount, path, version)
+}
+
+func runKVRaceContracts(t *testing.T, h *kvHarness, mount string, client *Client) {
+	t.Helper()
+	for _, race := range []string{"create", "update", "prune"} {
+		t.Run(race+"-race", func(t *testing.T) {
+			prefix := "races/" + race
+			liveMount, err := client.MountInfo(t.Context(), mount)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, err := DestinationID(liveMount, prefix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := adapter.Target{ID: "tgt_" + race, Generation: 1, Destination: adapter.Destination{Kind: adapter.Repository, Owner: mount, Name: prefix, NumericID: id}}
+			path := prefix + "/TOKEN"
+			entries := []adapter.ManifestEntry{{KeyID: "key_race", CanonicalName: "TOKEN", Classification: adapter.SecretClassification, Value: "hikyo-value"}}
+			journal := newFakeJournal()
+			module := &Module{API: client}
+			if race != "create" {
+				if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries}, journal); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var racedVersion int64
+			externalWrite := func(_ string, candidate string, version int64) {
+				if candidate != path || racedVersion != 0 {
+					return
+				}
+				h.must(http.MethodPost, "/v1/"+mount+"/data/"+path, map[string]any{"options": map[string]int64{"cas": version}, "data": map[string]string{"value": "external-racer"}})
+				racedVersion = version + 1
+				if race == "create" {
+					h.must(http.MethodPatch, "/v1/"+mount+"/metadata/"+path, map[string]any{"custom_metadata": map[string]string{MarkerKey: "foreign-target", "foreign": "preserve"}})
+				}
+			}
+			racer := &contractRacingKV{API: client}
+			req := adapter.SyncRequest{Target: target, Manifest: entries, Ledger: journal.ledger()}
+			if race == "prune" {
+				racer.beforeDelete = externalWrite
+				req.Teardown, req.Manifest = true, nil
+			} else {
+				racer.beforeWrite = externalWrite
+			}
+			_, err = (&Module{API: racer}).Sync(t.Context(), req, journal)
+			if race == "prune" && err != nil || race != "prune" && !errors.Is(err, adapter.ErrConflict) {
+				t.Fatalf("%s race = %v", race, err)
+			}
+			if got, ok := h.readValue(mount, path); !ok || got != "external-racer" || racedVersion == 0 {
+				t.Fatal("race overwrote or deleted the external winner")
+			}
+			meta, err := client.ReadMetadata(t.Context(), mount, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta.CurrentVersion != racedVersion || meta.CustomMetadata[PendingKey] != "" {
+				t.Fatalf("race left an incorrect version or pending marker: %+v", meta)
+			}
+			if race == "create" && (meta.CustomMetadata[MarkerKey] != "foreign-target" || meta.CustomMetadata["foreign"] != "preserve") {
+				t.Fatal("lost create CAS changed foreign ownership metadata")
+			}
+			if race == "prune" && (!meta.Versions[racedVersion-1].Deleted || meta.Versions[racedVersion].Deleted || meta.Versions[racedVersion-1].Destroyed) {
+				t.Fatal("prune did not soft-delete only the inspected predecessor")
+			}
+			// Even exact version-bound consent cannot take another target's
+			// foreign marker. An ordinary conflict and teardown preserve it.
+			h.must(http.MethodPatch, "/v1/"+mount+"/metadata/"+path, map[string]any{"custom_metadata": map[string]string{MarkerKey: "foreign-target"}})
+			before, err := client.ReadMetadata(t.Context(), mount, path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal.states["secret:TOKEN"] = adapter.Owned
+			ledger := journal.ledger()
+			for i := range ledger {
+				if ledger[i].EffectiveName == "TOKEN" {
+					ledger[i].AdoptionPending, ledger[i].AdoptionVersion = true, &racedVersion
+				}
+			}
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: entries, Ledger: ledger}, journal); !errors.Is(err, adapter.ErrConflict) {
+				t.Fatalf("foreign marker adoption = %v", err)
+			}
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Ledger: journal.ledger(), Teardown: true}, journal); err != nil {
+				t.Fatalf("foreign marker teardown: %v", err)
+			}
+			after, err := client.ReadMetadata(t.Context(), mount, path)
+			if err != nil || !reflect.DeepEqual(before, after) {
+				t.Fatal("foreign marker refusal or teardown mutated provider metadata")
+			}
+		})
+	}
+}
+
+func runKVAuthContract(t *testing.T, h *kvHarness, mount string) {
+	t.Run("approle-renew-revoke", func(t *testing.T) {
+		// Use a separate attempt so renewal cannot affect the lifecycle client.
+		credential := h.fixture("auth-" + mount)
+		client := h.adapterClient(credential)
+		if _, err := client.MountInfo(t.Context(), "auth-"+mount); err != nil {
+			t.Fatal(err)
+		}
+		token := client.token
+		for i := 0; i < maxRenewals; i++ {
+			now := client.renewAt.Add(time.Second)
+			client.now = func() time.Time { return now }
+			if _, err := client.MountInfo(t.Context(), "auth-"+mount); err != nil {
+				t.Fatalf("real AppRole renewal %d: %v", i+1, err)
+			}
+		}
+		if client.renewals != maxRenewals {
+			t.Fatal("AppRole attempt did not exercise its bounded renewals")
+		}
+		client.Forget()
+		probe := &kvHarness{t: t, addr: h.addr, token: token, client: h.client}
+		if status, _ := probe.do(http.MethodGet, "/v1/auth/token/lookup-self", nil); status != http.StatusForbidden {
+			t.Fatalf("minted attempt token survived Forget: status %d", status)
+		}
+		if client.token != "" || client.credential.RoleID != "" || client.credential.SecretID != "" {
+			t.Fatal("released AppRole attempt retained credentials")
+		}
+	})
+}
+
 func runNamespaceContract(t *testing.T, h *kvHarness) {
 	t.Run("namespace", func(t *testing.T) {
 		namespace := "hikyo-ns-" + randomSuffix(t)
 		status, _ := h.do(http.MethodPost, "/v1/sys/namespaces/"+namespace, map[string]any{})
 		if status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusBadRequest {
+			t.Run("reject-root-fallback", func(t *testing.T) {
+				rootMount := "ns-refusal-" + randomSuffix(t)
+				credential := h.fixture(rootMount)
+				scoped := &kvHarness{t: t, addr: h.addr, token: h.token, caPEM: h.caPEM, client: h.client, ns: namespace}
+				client := scoped.adapterClient(credential)
+				if _, err := client.WriteCAS(t.Context(), rootMount, "probe", "must-not-reach-root", 0); !errors.Is(err, adapter.ErrDestinationID) {
+					t.Fatalf("unsupported namespace did not refuse before credential/value transmission: %v", err)
+				}
+				if client.loggedIn || client.token != "" {
+					t.Fatal("unsupported namespace logged in against root")
+				}
+				if status, _ := h.do(http.MethodGet, "/v1/"+rootMount+"/metadata/probe", nil); status != http.StatusNotFound {
+					t.Fatal("unsupported namespace wrote a root version or marker")
+				}
+			})
+			if t.Failed() {
+				return
+			}
 			t.Skipf("namespaces SKIPPED: this server does not serve sys/namespaces (status %d); Vault namespaces are Enterprise-only", status)
 		}
 		if status < 200 || status >= 300 {

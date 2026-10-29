@@ -159,6 +159,77 @@ func TestAdapterOriginCustodyContinuesPastFirstCandidatePage(t *testing.T) {
 	})
 }
 
+func TestVaultCrossSurfaceCustodyGuardsReserveAndPrepare(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		seedGitLabMoves(t, db, "production")
+		seedOriginGuardForeignTarget(t, db)
+		execRealAdoption(t, db, `UPDATE adapters SET provider='vault-kv',origin='https://vault.example' WHERE id='adp_gitlab'`)
+		execRealAdoption(t, db, `UPDATE adapter_targets SET adapter_id='adp_gitlab' WHERE id='tgt_gitlab_b'`)
+		insertOriginGuardLedger(t, db, "led_vault_foreign", "tgt_gitlab_b", "env_gitlab_second", "https://vault.example", "production", "dispatched")
+		execRealAdoption(t, db, `UPDATE adapter_ledger SET surface='variable' WHERE id='led_vault_foreign'`)
+		runtime := generatedAdapterRuntime(db)
+		job := claimReservationJob(t, runtime)
+		journal := runtime.Journal(job)
+		effect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "P_TOKEN", Disposition: adapter.Create, RequireExplicitRecovery: true}
+		if _, err := journal.Reserve(t.Context(), effect); !errors.Is(err, adapter.ErrOperatorReview) {
+			t.Errorf("opposite-surface Reserve = %v, want review refusal", err)
+		}
+		execRealAdoption(t, db, `DELETE FROM adapter_ledger WHERE target_id='tgt_gitlab_a'`)
+		insertOriginGuardLedger(t, db, "led_vault_own", "tgt_gitlab_a", "env_gitlab_e2e", "https://vault.example", "production", "reserved")
+		if err := journal.Prepare(t.Context(), effect, adapter.Reserved); !errors.Is(err, adapter.ErrOperatorReview) {
+			t.Errorf("opposite-surface Prepare = %v, want review refusal", err)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM adapter_effects WHERE job_id='job_gitlab'`) != 0 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND provider_lease_job_id IS NOT NULL`) != 0 {
+			t.Fatal("cross-surface custody refusal admitted an INTENT or provider lease")
+		}
+		if queryString(t, db, `SELECT state FROM adapter_ledger WHERE id='led_vault_foreign'`) != "dispatched" {
+			t.Fatal("cross-surface guard changed foreign held custody")
+		}
+	})
+}
+
+func TestVaultConcurrentCrossSurfaceReservationsHaveOneWinner(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		seedGitLabMoves(t, db, "production")
+		seedOriginGuardForeignTarget(t, db)
+		execRealAdoption(t, db, `UPDATE adapters SET provider='vault-kv',origin='https://vault.example' WHERE id='adp_gitlab'`)
+		execRealAdoption(t, db, `UPDATE adapter_targets SET adapter_id='adp_gitlab' WHERE id='tgt_gitlab_b'`)
+		runtime := generatedAdapterRuntime(db)
+		if _, err := runtime.Enqueue(t.Context(), adapter.Job{OrgID: "org_gitlab", ProjectID: "prj_gitlab", EnvironmentID: "env_gitlab_second", TargetID: "tgt_gitlab_b", Kind: adapter.Converge, AuthorityPrincipal: "usr_gitlab"}, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		jobs := []adapter.Job{claimReservationJob(t, runtime), claimReservationJob(t, runtime)}
+		start, results := make(chan struct{}), make(chan error, len(jobs))
+		for i, job := range jobs {
+			go func() {
+				<-start
+				surface := adapter.Secret
+				if i == 1 {
+					surface = adapter.Variable
+				}
+				_, err := runtime.Journal(job).Reserve(t.Context(), adapter.Effect{Surface: surface, EffectiveName: "P_TOKEN", Disposition: adapter.Create})
+				results <- err
+			}()
+		}
+		close(start)
+		successes := 0
+		for range jobs {
+			err := <-results
+			if err == nil {
+				successes++
+				continue
+			}
+			var pgErr *pgconn.PgError
+			if !errors.Is(err, adapter.ErrOperatorReview) && !(errors.As(err, &pgErr) && pgErr.Code == "40001") {
+				t.Fatalf("unexpected cross-surface reservation result: %v", err)
+			}
+		}
+		if successes != 1 || queryInt(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE normalized_name='P_TOKEN' AND state<>'released'`) != 1 {
+			t.Fatalf("cross-surface reservations admitted %d winners", successes)
+		}
+	})
+}
+
 func TestAdapterOriginCustodyConcurrentAWSRegionalAliases(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		seedGitLabMoves(t, db, "production")

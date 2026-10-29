@@ -1,6 +1,24 @@
 # Hikyo Vault/OpenBao KV v2 adapter: a one-way destination over the deployment-module seam (ADR, proposed 2026-09-26)
 
-> **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, adversarial cross-model review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
+> **Owner membership decision (2026-10-29):** Marc selected inclusion in 1.0
+> after qualifying review and acceptance: "A, in separate t3code thread sol 6.1
+> xhigh". This supersedes the October 28 V1 decision only as to undecided
+> membership. The destination is an approved 1.0 member with review and
+> acceptance still **HOLD**. It grants no review waiver, merge, release or
+> deployment authority. #162 remains closed for delivered implementation;
+> #26 and #28 own the scoped amendment procedure. See the
+> [current closeout packet](../handoff/162-vault-1.0-closeout.md).
+
+> **Owner review-policy decision (2026-10-29):** "remove the cross model
+> review requirements and daily model choice. Keep current choices".
+> Mandatory cross-provider and daily-choice gates are removed for this
+> closeout. Independent adversarial Standards and Spec review of the final
+> bytes, disposition of all findings, and the #26/#28 amendment record remain
+> required. No cross-provider execution is invented; the older SKIPPED records
+> below remain historical. The amendment becomes operative only on its reviewed
+> PR merging. Integrated 1.0 acceptance remains #79.
+
+> **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, independent adversarial Standards and Spec review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
 
 > **Delivery and governance reconciliation (2026-10-28, no new amendment):**
 > [PR #823](https://github.com/Hikyo-Org/Hikyo/pull/823) delivered the compiled-in
@@ -26,6 +44,21 @@ Out (named, not deferred by silence): KV version 1 (no check-and-set, so no safe
 
 A vault-kv adapter names one server: `origin = https://host[:port]` optionally followed by `/<namespace path>`. The namespace travels in the `X-Vault-Namespace` header, which both Vault Enterprise and OpenBao honor; `sys/health` is root-only and is sent without it. The adapter record accepts only the canonical origin spelling so one server and namespace cannot be configured twice. The operator egress policy is keyed by the bare `https://host[:port]`.
 
+**Namespace routing clarification (2026-10-29):** Vault OSS silently ignores
+the namespace header. Before transmitting credentials for a non-root origin,
+the client makes an unauthenticated mount-info probe under a random child of
+the configured namespace. Only an explicit `namespace not found` response
+proves namespace routing. Other responses fail closed; health edition fields
+do not bypass this proof. The probe grants no new policy capability, reads no
+value and changes no state. It is cached only within one bounded client attempt.
+Positive Enterprise namespace qualification remains separate from protocol
+mocks and actual OpenBao namespace/Vault OSS refusal evidence.
+An unproved namespace or an incompatible/remounted engine is an identity
+refusal requiring operator review. Activation settles it as a terminal failure
+with bounded attention status and exposes cancellation or pending-route
+replacement; teardown restores visible paused recovery rather than retrying
+an incompatible engine indefinitely.
+
 A target reuses the generic **repository** destination record, so the API's closed destination-kind enum does not grow: `destination_owner` is the **KV v2 mount path**, `destination_name` is the **path prefix**. Each key becomes **one KV secret** at `{mount}/{path prefix}/{name prefix}{canonical name}` holding a single field, `value`. Both classifications share that one tree, so effective names must be unique across the secret and config surfaces (case-insensitively, matching the ledger), and each must be a single path segment. Values must be UTF-8 (JSON cannot carry other bytes exactly) and at most 512 KiB (inside the default 1 MiB integrated-storage entry after escaping). The management sentinel `MANAGED_BY_HIKYO` is one secret, written first and removed last.
 
 `destination_id` binds the target to the live mount: `sha256("hikyo-vault-kv" ‖ mount uuid (or accessor) ‖ path prefix)`, truncated to a positive int64. A mount that is disabled and re-enabled, or moved, has a new uuid, so every later write refuses with the destination-identity error. Including the path prefix keeps two targets on one mount distinct in the ledger's provider-name index.
@@ -37,6 +70,7 @@ The client is hand-rolled `net/http` behind a closed `API` interface whose metho
 | Operation | Endpoint | Returns |
 |---|---|---|
 | Health | `GET sys/health` | initialized, sealed, version |
+| Internal namespace probe | `GET sys/internal/ui/mounts/hikyo-namespace-probe`, no credential, random child namespace | routing refusal only |
 | MountInfo | `GET sys/internal/ui/mounts/{mount}` | type, KV version, uuid, accessor |
 | LookupSelf | `GET auth/token/lookup-self` | token expiry only (decoded) |
 | ReadMetadata | `GET {mount}/metadata/{path}` | versions and custom metadata, **never data** |
@@ -57,7 +91,46 @@ Ownership is the ledger (deployment-adapter ADR). The destination additionally c
 
 **Operator-review policy amendment (2026-10-01, explicitly approved):** automatic writer inference from pending versions is withdrawn. An unknown PUT result, process death before its journal outcome, an unmarked dispatched create, or legacy pending metadata stops all automatic sync and prune attempts for the held target. Matching `current == pending` or `current == pending - 1` does not prove which writer landed. The foreign current value, version history, metadata and held custody remain unchanged while the operator reviews. An acknowledged PUT response may complete `owned` custody even if metadata finalization fails; this conservative incomplete-metadata case also stops for review rather than inventing a replay proof.
 
+**Custody clarification (2026-10-29):** the acknowledged-but-incomplete metadata
+case above now records its successful value OUTCOME while keeping `dispatched`
+custody. This supersedes the earlier `owned` option: ordinary prune must not
+release an unmarked acknowledged create as though it were known external
+movement. Only fresh version-bound explicit adoption grants a new write.
+Before any target mutation, sync and teardown inspect all held and desired
+paths for legacy pending metadata. A pending hold on a later name therefore
+cannot follow a rewrite or prune of earlier names or the sentinel. Authority
+does not resume when the current version advances beyond the pending version,
+the pending marker is malformed, or the ownership marker changes or disappears.
+Each nonempty pending marker retains its review hold. Authority
+is also rechecked at the HTTP request boundary, including after AppRole login
+or renewal and between metadata PATCH and value CAS.
+
+A removal scrub stopped for operator review restores the target and, when
+necessary, its parent adapter to visible active state, with the target paused
+and attention required. Custody and credentials remain intact. The operator
+can plan/adopt and explicitly resume, or choose retain. A route-move scrub
+stopped for review marks the move attention-required and stops sibling work;
+cancel restores the old route for review. A late sibling completion cannot
+activate a new route while old custody is held. Existing documented credential
+retirement may resolve custody with explicit orphan warnings; a failed held
+scrub is never treated as a successful one merely because it is terminal.
+Replacing the pending target or origin also refuses while old custody remains
+held. Cancellation settles expired effects through the existing audited unknown
+OUTCOME path, retaining custody, and still refuses live provider leases.
+Adopt-then-resume reuses the paused consent-bearing job and its exact generation;
+it revalidates the existing unconsumed witness and assigns push authority to the
+resuming caller. Version, destination, generation and consumption checks remain
+unchanged.
+
 A fresh operator plan observes the positive current provider version using metadata only and stores it inside the scoped conflict artifact. Explicit adoption requires the exact current target generation, origin/destination, scope, surface and name; it can update only this target's held Vault row, never a foreign global-name claim. The adopted artifact's conflict generation must be the immediate predecessor of the verified current generation because adoption advances once. The next write requires that observed version still match and uses a new CAS; it never finalizes an old pending version as Hikyo's. Changed versions, consumed artifacts, legacy artifacts without a witness, and zero/nonpositive witnesses refuse. SQLite parses provenance timestamps and fails closed on malformed evidence; ties consume consent conservatively. A successful journal outcome consumes adoption. No wall-clock artifact lifetime is newly invented: freshness is current generation, destination and provider version. An unknown create still absent has no positive witness; the operator must explicitly retain/release that target's custody and recreate the target before another create. No user artifact or provider value is silently deleted to recover.
+
+Vault's global custody guard spans secret and config surfaces because both
+address the same physical tree. A prefixed secret name cannot adopt or dispatch
+past another target's held config name, including an unmarked acknowledged
+write. Reserved, dispatched and owned claims all block; explicit release ends
+that custody. Serializable transactions preserve one winner for concurrent
+opposite-surface reservations. Other providers retain their existing surface
+semantics.
 
 Removing ownership markers also invalidates ordinary overwrite/prune custody,
 even when the provider version did not change. Missing markers are not adoption
@@ -88,7 +161,7 @@ One tree cannot be both an import source and a sync destination of the same proj
 | Sealed or standby (`503`) | retryable before a value PUT; an unknown dispatched PUT stops for operator review |
 | Rate limited (`429`) | rate limit, honoring `Retry-After` |
 | `401`/`403`, refused login or renewal | provider auth |
-| Mount missing, remounted, not KV v2 | destination identity or configuration refusal |
+| Namespace routing unproved, mount missing, remounted, not KV v2 | destination identity or configuration refusal; changed identity stops automatic sync/prune for operator review |
 | CAS mismatch | conflict (external movement) |
 | Other `4xx` on a write | definitive failure; a reservation is released |
 | Transport error, `5xx` during a value PUT | `unknown`, held `dispatched`; fresh version-bound operator review is required |
