@@ -171,15 +171,25 @@ class MonitorTest(unittest.TestCase):
                 self.inventory.write_text(json.dumps(self.manifest))
                 self.assertFalse(monitor.check(self.inventory, SCRIPT, state, output)["healthy"])
 
-    def test_wrong_state_and_poll_shapes_are_unhealthy_and_latched(self):
+    def test_wrong_state_shape_is_unhealthy_and_latched(self):
         self.complete()
         self.assertTrue(self.check()["healthy"])
         self.state.write_text("[]")
         self.assertFalse(self.check()["healthy"])
         self.state.write_text("{}")
         self.assertFalse(self.check()["healthy"])
+
+    def test_wrong_poll_shape_has_its_own_healthy_baseline_and_latches(self):
+        self.complete()
+        self.assertTrue(self.check()["healthy"])
         self.pollpath.write_text("[]")
-        self.assertFalse(self.check()["healthy"])
+        failed = self.check()
+        self.assertFalse(failed["healthy"])
+        self.assertIn("check-unavailable-HOLD", failed["streams"]["tenant"]["reasons"])
+        self.pollpath.write_text(json.dumps({"attempt_ns": time.time_ns(), "outcome": "success", "failure_count": 0}))
+        recovered = self.check()
+        self.assertFalse(recovered["healthy"])
+        self.assertEqual(recovered["streams"]["tenant"]["reasons"], ["unresolved-collection-history"])
 
 
 if __name__ == "__main__":
