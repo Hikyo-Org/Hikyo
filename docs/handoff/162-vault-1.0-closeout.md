@@ -74,6 +74,15 @@ Independent Spec R1 found three further defects, reproduced with regressions:
    Old held custody prevents origin activation; supported cancel and retain
    decisions remain available. Both-engine real-provider regressions cover
    target removal, adapter deletion, target moves and late sibling completion.
+9. Configured Sol/high Spec R4 found that pending-route replacement could bypass
+   a failed scrub, expired superseded sibling effects could block cancellation
+   forever, and resuming a paused adoption advanced past its exact witness.
+   Replacement now refuses old held custody. Cancellation shares the existing
+   fenced, audited unknown-effect settlement while refusing live leases. Resume
+   revalidates the canonical unconsumed witness and reuses its paused job and
+   exact generation under the current caller's authority. Real-provider
+   regressions cover both replacement APIs, live/expired sibling cancellation
+   and the full removal/plan/adopt/resume sequence without relaxing freshness.
 
 The lifecycle harness formerly selected the first configured server. It now
 requires each named server under `HIKYO_TEST_KV_REQUIRED=1` and independently
@@ -157,11 +166,24 @@ claude-opus-5-5/high selections. No subscription, paid route or alternate model
 was assumed. This is an explicit owner review-policy disposition, not a
 fabricated cross-provider result or a new feature-membership decision.
 
-The current task uses independent OpenAI gpt-6.1-sol/xhigh Standards and Spec
+Native R1, R2 and R3 used independent OpenAI gpt-6.1-sol/xhigh Standards and Spec
 reviews. R1 reviewed `d84fbeadfad5f9669549d1738543c1260aa9efc3`, tree
 `e63f48e26711c850b2c269b84e9150895af4a5fe`: Standards CLEAN; Spec CHANGES
 with the three findings above. All three were reproduced and repaired at their
-owners; the final source needs the independent re-check and exact-head receipt.
+owners. R2 reviewed `6831902ca20ed88674274bfa716b3db2a38d81ed`, tree
+`e087feb27b640b284f21ba31acf36dccec760b40`: Standards CLEAN, Spec CHANGES for
+pending-marker classification. R3 reviewed
+`d2effbb456e8a0aa94f893d71cbc034c30010e29`, tree
+`f5db8e087f3ae2f62b6e47a04285dec8086a99b9`: Standards CLEAN, Spec CHANGES for
+teardown recovery and late sibling activation.
+
+Configured R4 used the retained OpenAI gpt-6.1-sol/high choice on
+`609035824a11a5adeda974e87dd9d8e8334b8cba`, tree
+`4f5ee3049013673a696a66ca3301d5e4b48b2bd9`. Standards CHANGES identified the
+round-specific model provenance wording corrected here; Spec CHANGES identified
+the three recovery gaps above. Native xhigh and configured high records remain
+distinct. The repaired final source requires a fresh independent re-check and
+exact-head receipt, recorded with the PR's current check and review disposition.
 Historical cross-provider SKIPPED evidence remains intact.
 
 ## Owning-ticket ceremony

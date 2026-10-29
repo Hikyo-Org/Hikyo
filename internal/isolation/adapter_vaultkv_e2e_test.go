@@ -470,7 +470,9 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	// Route removal must stop at review without losing cancellation. Test the
 	// two-target origin race with a real successful sibling scrub whose durable
 	// completion arrives only after the held target has failed.
-	for _, originMove := range []bool{false, true} {
+	for _, moveCase := range []string{"target", "origin-late", "origin-crash"} {
+		originMove := moveCase != "target"
+		crashedEffectID := ""
 		server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/prod/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
 		beforeHeld := metadata()
 		var moveID string
@@ -503,9 +505,18 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 				return loaded.Revision, err
 			}
 			sibling, held := jobs[retained.ID], jobs[target.ID]
-			revision, err := runScrub(sibling)
-			if err != nil {
-				t.Fatalf("sibling scrub: %v", err)
+			var revision int64
+			if moveCase == "origin-crash" {
+				effect := adapter.Effect{Surface: adapter.Variable, EffectiveName: "DATABASE_URL", Disposition: adapter.Update, RequireExplicitRecovery: true}
+				if err := runtime.Journal(sibling).Prepare(ctx, effect, adapter.Owned); err != nil {
+					t.Fatal(err)
+				}
+				crashedEffectID = queryString(t, db, "SELECT id FROM adapter_effects WHERE job_id='"+sibling.ID+"' AND outcome IS NULL")
+			} else {
+				revision, err = runScrub(sibling)
+				if err != nil {
+					t.Fatalf("sibling scrub: %v", err)
+				}
 			}
 			heldRevision, heldErr := runScrub(held)
 			if !errors.Is(heldErr, adapter.ErrOperatorReview) {
@@ -516,6 +527,18 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			}
 			if err := runtime.Succeed(ctx, sibling, revision, nil, clock); !errors.Is(err, adapter.ErrSuperseded) {
 				t.Fatalf("late sibling completion escaped held move: %v", err)
+			}
+			if crashedEffectID != "" {
+				liveCtx, cancel := context.WithTimeout(ctx, 40*time.Millisecond)
+				_, err := svc.CancelMove(liveCtx, operator, scope, moveID)
+				cancel()
+				if !errors.Is(err, adapter.ErrProviderBusy) {
+					t.Fatalf("live sibling effect was not fenced: %v", err)
+				}
+				if queryInt(t, db, "SELECT COUNT(*) FROM adapter_effects WHERE id='"+crashedEffectID+"' AND outcome IS NULL") != 1 {
+					t.Fatal("live sibling effect was settled before expiry")
+				}
+				execRaw(t, db, "UPDATE adapter_targets SET provider_lease_expires_at='2026-01-01T00:00:00Z' WHERE id='"+retained.ID+"'")
 			}
 		} else {
 			moving, err := svc.ApplyTargetMutation(ctx, operator, scope, service.UpdateAdapterTargetRequest{
@@ -540,8 +563,28 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		if queryInt(t, db, "SELECT COUNT(*) FROM adapter_outbox WHERE route_move_id='"+moveID+"' AND kind='activate'") != 0 {
 			t.Fatal("review-held route scheduled new-destination activation")
 		}
-		if _, err := svc.CancelMove(ctx, operator, scope, moveID); err != nil {
-			t.Fatalf("cancel held route: %v", err)
+		if originMove {
+			_, err = svc.ResumeOriginMove(ctx, operator, scope, moveID, "https://replacement-must-not-activate.invalid", credential)
+		} else {
+			_, err = svc.ResumeTargetMove(ctx, operator, scope, moveID, service.UpdateAdapterTargetRequest{
+				TargetID: target.ID, Target: service.AdapterTargetInput{EnvironmentID: cEnv,
+					DestinationKind: string(adapter.Repository), DestinationOwner: mount, DestinationName: "hikyo/replacement-must-not-activate", KeyIDs: []string{cKeyURL}},
+			})
+		}
+		if !errors.Is(err, adapter.ErrOperatorReview) {
+			t.Fatalf("replacement bypassed unresolved old custody: origin=%t err=%v", originMove, err)
+		}
+		cancelCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		_, cancelErr := svc.CancelMove(cancelCtx, operator, scope, moveID)
+		cancel()
+		if cancelErr != nil {
+			t.Fatalf("cancel held route: %v", cancelErr)
+		}
+		if crashedEffectID != "" {
+			if queryString(t, db, "SELECT outcome FROM adapter_effects WHERE id='"+crashedEffectID+"'") != "unknown" ||
+				queryString(t, db, "SELECT state FROM adapter_ledger WHERE target_id='"+retained.ID+"' AND normalized_name='DATABASE_URL'") != "dispatched" {
+				t.Fatal("expired sibling lost audited unknown outcome or held custody")
+			}
 		}
 		worker = newWorker("kv-node-canceled-move")
 		drain()
@@ -607,6 +650,32 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		}
 		if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
 			t.Fatal("review-held teardown changed provider metadata")
+		}
+		if !wholeAdapter {
+			plan, err := svc.Plan(ctx, operator, scope, retained.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = svc.Adopt(ctx, operator, scope, service.AdoptAdapterRequest{TargetID: retained.ID, ArtifactID: plan.ArtifactID,
+				ExpectedGeneration: view.Target.Generation, ExpectedDestinationID: view.Target.DestinationID,
+				ExpectedRepositoryID: view.Target.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "variable", EffectiveName: "DATABASE_URL"}}})
+			if err != nil {
+				t.Fatalf("adopt paused removal: %v", err)
+			}
+			drain()
+			if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+				t.Fatal("adoption bypassed pause")
+			}
+			if _, err := svc.ResumeTarget(ctx, operator, scope, retained.ID); err != nil {
+				t.Fatal(err)
+			}
+			drain()
+			view, err := svc.InspectTarget(ctx, operator, scope, retained.ID)
+			if err != nil || view.Target.Health() != adapter.HealthConverged {
+				t.Fatalf("adopt then resume discarded recovery witness: %v health=%s", err, view.Target.Health())
+			}
+			server.must(t, http.MethodPatch, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", map[string]any{"custom_metadata": map[string]string{vaultkv.PendingKey: "unknown"}})
+			retainedMetadata = server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
 		}
 	}
 	removed, err := svc.RemoveTarget(ctx, operator, scope, retained.ID, true)

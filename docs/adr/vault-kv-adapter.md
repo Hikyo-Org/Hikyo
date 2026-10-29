@@ -98,6 +98,13 @@ cancel restores the old route for review. A late sibling completion cannot
 activate a new route while old custody is held. Existing documented credential
 retirement may resolve custody with explicit orphan warnings; a failed held
 scrub is never treated as a successful one merely because it is terminal.
+Replacing the pending target or origin also refuses while old custody remains
+held. Cancellation settles expired effects through the existing audited unknown
+OUTCOME path, retaining custody, and still refuses live provider leases.
+Adopt-then-resume reuses the paused consent-bearing job and its exact generation;
+it revalidates the existing unconsumed witness and assigns push authority to the
+resuming caller. Version, destination, generation and consumption checks remain
+unchanged.
 
 A fresh operator plan observes the positive current provider version using metadata only and stores it inside the scoped conflict artifact. Explicit adoption requires the exact current target generation, origin/destination, scope, surface and name; it can update only this target's held Vault row, never a foreign global-name claim. The adopted artifact's conflict generation must be the immediate predecessor of the verified current generation because adoption advances once. The next write requires that observed version still match and uses a new CAS; it never finalizes an old pending version as Hikyo's. Changed versions, consumed artifacts, legacy artifacts without a witness, and zero/nonpositive witnesses refuse. SQLite parses provenance timestamps and fails closed on malformed evidence; ties consume consent conservatively. A successful journal outcome consumes adoption. No wall-clock artifact lifetime is newly invented: freshness is current generation, destination and provider version. An unknown create still absent has no positive witness; the operator must explicitly retain/release that target's custody and recreate the target before another create. No user artifact or provider value is silently deleted to recover.
 
