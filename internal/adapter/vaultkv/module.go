@@ -579,7 +579,10 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 			completion.Conflict = casMoved
 		}
 		if completion.Outcome == adapter.OutcomeUnknown {
-			completion.Conflict, completion.Finding = true, "operator_review_required"
+			// A lost response has the same unacknowledged-writer evidence as a
+			// crash window. Use the closed finding shared by storage and the API;
+			// operator review is enforced by held custody and ErrOperatorReview.
+			completion.Conflict, completion.Finding = true, "crash_window"
 		}
 		if missing && !completion.ReleaseLedger {
 			completion.Missing, completion.Finding = true, "owned_missing"

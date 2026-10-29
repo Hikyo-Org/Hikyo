@@ -1,5 +1,14 @@
 # Hikyo Vault/OpenBao KV v2 adapter: a one-way destination over the deployment-module seam (ADR, proposed 2026-09-26)
 
+> **Owner membership decision (2026-10-29):** Marc selected inclusion in 1.0
+> after qualifying review and acceptance: "A, in separate t3code thread sol 6.1
+> xhigh". This supersedes the October 28 V1 decision only as to undecided
+> membership. The destination is an approved 1.0 member with review and
+> acceptance still **HOLD**. It grants no review waiver, merge, release or
+> deployment authority. #162 remains closed for delivered implementation;
+> #26 and #28 own the scoped amendment procedure. See the
+> [current closeout packet](../handoff/162-vault-1.0-closeout.md).
+
 > **Status: proposed with [#162](https://github.com/Hikyo-Org/Hikyo/issues/162).** It becomes operative when the [mvp-boundary](./mvp-boundary.md) amendment it depends on (§ 4.1 "Cloud secret-manager sync" row) completes the [oss-mechanics](./oss-mechanics.md) § Governance procedure: [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) reopened, adversarial cross-model review, amendment recorded. The implementation ships behind that gate; the maintainer records the review outcome here.
 
 > **Delivery and governance reconciliation (2026-10-28, no new amendment):**

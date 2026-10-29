@@ -54,6 +54,7 @@ func TestClassifyErrorIsBoundedAndNamesNoProviderDetail(t *testing.T) {
 		{classifyRetryErr{at: time.Now()}, ErrorClassProviderLimit},
 		{ErrQueueFull, ErrorClassProviderLimit},
 		{ErrIndeterminate, ErrorClassProviderAmbiguous},
+		{ErrOperatorReview, ErrorClassProviderAmbiguous},
 		{ErrDestinationID, ErrorClassProviderAmbiguous},
 		{ErrUnauthorized, ErrorClassRefused},
 		{ErrSuperseded, ErrorClassRefused},

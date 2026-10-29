@@ -128,6 +128,9 @@ func TestParseCredentialNeverEchoesInput(t *testing.T) {
 		`{"method":"jwt","token":"hvs.leak-me"}`,
 		`{"method":"token","token":"hvs.leak-me","spki_sha256":"short"}`,
 		`{"method":"token","token":"hvs.leak-me","ca_pem":"not pem"}`,
+		`{"method":"token","token":"hvs.leak-me"}}`,
+		`{"method":"token","token":"hvs.leak-me"}]`,
+		`{"method":"token","token":"hvs.leak-me"} {"method":"token","token":"other"}`,
 	} {
 		_, err := ParseCredential(raw)
 		if err == nil {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -76,7 +77,8 @@ func ParseCredential(raw string) (Credential, error) {
 	if err := decoder.Decode(&encoded); err != nil {
 		return Credential{}, errors.New("vault-kv: credential JSON is malformed or names an unknown field")
 	}
-	if decoder.More() {
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		return Credential{}, errors.New("vault-kv: credential JSON has trailing content")
 	}
 	out := Credential{Method: AuthMethod(encoded.Method), CAPEM: encoded.CAPEM, SPKISHA256: encoded.SPKISHA256}

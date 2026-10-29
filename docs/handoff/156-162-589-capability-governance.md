@@ -1,5 +1,13 @@
 # #156 / #162 / #589: pre-freeze capability governance reconciliation
 
+> **Vault-only supersession (2026-10-29):** Marc approved #162 destination
+> membership in 1.0 subject to qualifying review and acceptance: "A, in separate
+> t3code thread sol 6.1 xhigh". V1's undecided membership is historical below;
+> the amendment and acceptance gates remain HOLD. Transit T1, social A7 and
+> all unrelated exclusions are unchanged. Follow the
+> [Vault closeout packet](./162-vault-1.0-closeout.md) for current source,
+> review and provider evidence. Keep #162 closed for delivered implementation.
+
 Assessed canonical `Hikyo-Org/Hikyo` main on 2026-10-28:
 `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
 
@@ -11,7 +19,7 @@ authorize removing shipped code or tests. The release-scope coordinator owns
 `docs/release/release-plan-1.0.md`, `docs/release/acceptance-1.0.md`, the roadmap
 and canonical status ledger; those files are unchanged by this reconciliation.
 
-## Operative scope for the coordinator
+## Historical scope for the coordinator (2026-10-28)
 
 | Capability | Delivered source | Governance and membership | Pre-freeze disposition |
 | --- | --- | --- | --- |
@@ -108,7 +116,7 @@ social membership decision is required to preserve this operative scope.
 The old exceptions do not automatically qualify this reconciliation's new
 bytes; its ordinary review and protected merge requirements remain.
 
-## Owner disposition and decision packet
+## Historical owner disposition and decision packet (2026-10-28)
 
 On 2026-10-28, Marc explicitly selected **T1 + V1** in the
 [PR #1071](https://github.com/Hikyo-Org/Hikyo/pull/1071) task conversation:

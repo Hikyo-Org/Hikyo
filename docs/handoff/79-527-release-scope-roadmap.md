@@ -34,7 +34,9 @@ Everything from `## Historical evidence rules` onward, including September
 results and all original criterion rows, is preserved byte for byte. C-ACC,
 HA, dynamic credentials, approvals, PKI, SSH, Transit, provider-specific
 conditions, member rules, developer credentials, multi-instance, signed upgrades
-and reporting remain visible. Conditional Vault governance is not decided here.
+and reporting remain visible. The October 29 owner decision separately approves
+Vault destination membership subject to qualifying review and acceptance;
+the [Vault closeout packet](./162-vault-1.0-closeout.md) tracks those gates.
 
 ## Administrative closure evidence
 

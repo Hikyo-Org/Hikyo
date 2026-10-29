@@ -1,5 +1,14 @@
 # Execution roadmap: bounded 1.0 release, then additive product lanes
 
+> **Vault-only update (2026-10-29):** Marc approved #162 Vault/OpenBao KV v2
+> destination membership in 1.0 subject to qualifying review and acceptance.
+> Its implementation remains delivered/closed; the #26/#28 amendment review
+> and fresh acceptance remain HOLD in the
+> [scoped closeout packet](./162-vault-1.0-closeout.md). This supersedes only
+> #162's membership in this historical snapshot. AWS stays excluded under the
+> current release decision; all other scope follows the current
+> [release plan](../release/release-plan-1.0.md), not this September snapshot.
+
 Refreshed 5 September 2026 against main `0d591366874ad525b60ca12938dfd0ef2efe12d4`, actual merged work and the current review queue. This assessment uses supported-product correctness, operational safety and explicit release evidence; labels, milestones and closed dependency arrows do not prove release readiness.
 
 The [public roadmap source](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/site/src/content/docs/docs/roadmap.mdx) and [implementation status](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/status/README.md) provide the capability context. This dated issue snapshot sets no release date or promised minor version.

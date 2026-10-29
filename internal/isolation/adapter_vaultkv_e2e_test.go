@@ -6,11 +6,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +21,10 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/vaultkv"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -44,31 +49,28 @@ type kvServer struct {
 	http        *http.Client
 }
 
-func loadKVServer(t *testing.T) (kvServer, bool) {
+func loadKVServer(t *testing.T, name string) (kvServer, bool) {
 	t.Helper()
-	for _, name := range []string{"VAULT", "OPENBAO"} {
-		addr, token, caPath := os.Getenv("HIKYO_TEST_"+name+"_ADDR"), os.Getenv("HIKYO_TEST_"+name+"_TOKEN"), os.Getenv("HIKYO_TEST_"+name+"_CACERT")
-		if addr == "" || token == "" || caPath == "" {
-			continue
+	addr, token, caPath := os.Getenv("HIKYO_TEST_"+name+"_ADDR"), os.Getenv("HIKYO_TEST_"+name+"_TOKEN"), os.Getenv("HIKYO_TEST_"+name+"_CACERT")
+	if addr == "" || token == "" || caPath == "" {
+		if os.Getenv("HIKYO_TEST_KV_REQUIRED") == "1" {
+			t.Fatalf("HIKYO_TEST_KV_REQUIRED=1 but HIKYO_TEST_%s_ADDR, _TOKEN and _CACERT are not all set", name)
 		}
-		ca, err := os.ReadFile(caPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(ca) {
-			t.Fatalf("%s CA holds no certificate", name)
-		}
-		return kvServer{addr: strings.TrimSuffix(addr, "/"), token: token, ca: ca, http: &http.Client{
-			Timeout:   10 * time.Second,
-			Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}},
-		}}, true
+		t.Skipf("EXTERNAL %s KV v2 end-to-end SKIPPED LOUDLY: set HIKYO_TEST_%s_ADDR, _TOKEN and _CACERT", name, name)
+		return kvServer{}, false
 	}
-	if os.Getenv("HIKYO_TEST_KV_REQUIRED") == "1" {
-		t.Fatal("HIKYO_TEST_KV_REQUIRED=1 but no HIKYO_TEST_VAULT_* or HIKYO_TEST_OPENBAO_* server is configured")
+	ca, err := os.ReadFile(caPath)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Skip("EXTERNAL KV v2 end-to-end SKIPPED LOUDLY: set HIKYO_TEST_VAULT_ADDR, _TOKEN and _CACERT")
-	return kvServer{}, false
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(ca) {
+		t.Fatalf("%s CA holds no certificate", name)
+	}
+	return kvServer{addr: strings.TrimSuffix(addr, "/"), token: token, ca: ca, http: &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: pool}},
+	}}, true
 }
 
 func (s kvServer) do(t *testing.T, method, path string, body any) (int, map[string]any) {
@@ -170,12 +172,9 @@ func (l kvLoader) Load(ctx context.Context, job adapter.Job, journal adapter.Jou
 	}, nil
 }
 
-func runVaultKVEndToEnd(t *testing.T, db *store.DB) {
-	server, ok := loadKVServer(t)
-	if !ok {
-		return
-	}
+func runVaultKVEndToEnd(t *testing.T, db *store.DB, server kvServer) {
 	ctx := tctx(t)
+	seedComposeCatalogue(t, db)
 	mount := fmt.Sprintf("hikyo-e2e-%d", time.Now().UnixNano())
 	server.must(t, http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
 	t.Cleanup(func() { server.do(t, http.MethodDelete, "/v1/sys/mounts/"+mount, nil) })
@@ -186,18 +185,22 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	server.must(t, http.MethodPut, "/v1/sys/policies/acl/"+mount, map[string]string{"policy": policy})
 	t.Cleanup(func() { server.do(t, http.MethodDelete, "/v1/sys/policies/acl/"+mount, nil) })
 	auth := server.must(t, http.MethodPost, "/v1/auth/token/create", map[string]any{"policies": []string{mount}, "ttl": "30m", "no_default_policy": true})["auth"].(map[string]any)
+	t.Cleanup(func() {
+		server.must(t, http.MethodPost, "/v1/auth/token/revoke", map[string]any{"token": auth["client_token"]})
+	})
 	credential, _ := json.Marshal(map[string]string{"method": "token", "token": auth["client_token"].(string), "ca_pem": string(server.ca)})
 
-	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage','usr_alice','manage-adapters','org_a','prj_a1',NULL,`+ts+`)`)
-	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal','usr_alice','reveal','org_a','prj_a1','env_a1',`+ts+`)`)
+	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_manage','usr_alice','manage-adapters','`+cOrg+`','`+cPrj+`',NULL,`+ts+`)`)
+	execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_kv_reveal','usr_alice','reveal','`+cOrg+`','`+cPrj+`','`+cEnv+`',`+ts+`)`)
 	kr := probeKeyring(t, db)
+	var loseWriteResponse bool
 	build := func(origin, credential string) (adapter.Module, func(), error) {
 		client, err := vaultkv.NewClient(vaultkv.ClientConfig{Origin: origin, Credential: credential, Deadline: 10 * time.Second,
 			AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}})
 		if err != nil {
 			return nil, nil, err
 		}
-		return &vaultkv.Module{API: client}, client.Forget, nil
+		return &vaultkv.Module{API: &kvLostResponse{API: client, lose: &loseWriteResponse}}, client.Forget, nil
 	}
 	svc := &service.Adapters{DB: db, Keyring: kr, ModuleFactory: func(provider adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 		if provider != adapter.VaultKVProvider {
@@ -210,13 +213,13 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		return adapter.NewModuleLease(module, release)
 	}}
 	operator := service.LocalPrincipal(alice)
-	scope := domain.Scope{Org: orgA, Project: prjA1}
+	scope := domain.Scope{Org: cOrg, Project: cPrj}
 	created, err := svc.Create(ctx, operator, scope, service.CreateAdapterRequest{
 		Provider: string(adapter.VaultKVProvider), Origin: server.addr, Credential: credential,
 		Target: service.AdapterTargetInput{
-			EnvironmentID: string(envA1), DestinationKind: string(adapter.Repository),
+			EnvironmentID: cEnv, DestinationKind: string(adapter.Repository),
 			DestinationOwner: mount, DestinationName: "hikyo/prod",
-			KeySelection: &service.AdapterKeySelection{Include: []string{"SHARED_*"}},
+			KeySelection: &service.AdapterKeySelection{Include: []string{"DATABASE_URL"}},
 		},
 	})
 	if err != nil {
@@ -224,13 +227,13 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	}
 	target := created.Targets[0]
 
-	publisher := service.LocalPrincipal(custodian)
-	envScope := domain.Scope{Org: orgA, Project: prjA1, Env: envA1}
+	publisher := service.LocalPrincipal(domain.PrincipalID(cAdmin))
+	envScope := domain.Scope{Org: cOrg, Project: cPrj, Env: cEnv}
 	values := &service.Values{DB: db, Keyring: kr}
 	revisions := &service.Revisions{DB: db, Keyring: kr}
 	publish := func(plaintext string) {
 		t.Helper()
-		staged, err := values.Set(ctx, publisher, envScope, "SHARED_KEY", plaintext, nil)
+		staged, err := values.Set(ctx, publisher, envScope, "DATABASE_URL", plaintext, nil)
 		if err != nil {
 			t.Fatalf("stage: %v", err)
 		}
@@ -246,15 +249,18 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 			return err
 		})
 	}
-	runtime := store.NewAdapterRuntime(db, authorizePush)
 	clock := time.Now().UTC()
-	worker := &adapter.Worker{
-		Store: runtime, ID: "kv-node-1",
-		Loader: kvLoader{runtime: runtime, keyring: kr, build: func(credential string) (adapter.Module, func(), error) {
-			return build(server.addr, credential)
-		}},
-		Now: func() time.Time { return clock }, Jitter: func(time.Duration) time.Duration { return 0 },
+	newWorker := func(id string) *adapter.Worker {
+		runtime := store.NewAdapterRuntime(db, authorizePush)
+		return &adapter.Worker{
+			Store: runtime, ID: id,
+			Loader: kvLoader{runtime: runtime, keyring: kr, build: func(credential string) (adapter.Module, func(), error) {
+				return build(server.addr, credential)
+			}},
+			Now: func() time.Time { return clock }, Jitter: func(time.Duration) time.Duration { return 0 },
+		}
 	}
+	worker := newWorker("kv-node-1")
 	drain := func() {
 		t.Helper()
 		for range 8 {
@@ -283,15 +289,96 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if got := inspect(); got.Health() != adapter.HealthConverged || got.ConvergedRevision == nil {
 		t.Fatalf("after first publish: health %q class %q", got.Health(), got.LastErrorClass)
 	}
-	if got, ok := server.value(t, mount, "hikyo/prod/SHARED_KEY"); !ok || got != kvSecretOne {
+	if got, ok := server.value(t, mount, "hikyo/prod/DATABASE_URL"); !ok || got != kvSecretOne {
 		t.Fatalf("delivered %q, %v; want %q", got, ok, kvSecretOne)
 	}
 	if got, ok := server.value(t, mount, "hikyo/prod/MANAGED_BY_HIKYO"); !ok || got != adapter.SentinelName {
 		t.Fatalf("sentinel = %q, %v", got, ok)
 	}
+	assertKVCLI(t, db, svc, target.ID, mount, auth["client_token"].(string))
+
+	// Pause gates delivery. Resume catches up through a fresh worker instance.
+	if _, err := svc.PauseTarget(ctx, operator, scope, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	publish(kvSecretTwo)
+	drain()
+	if got, _ := server.value(t, mount, "hikyo/prod/DATABASE_URL"); got != kvSecretOne {
+		t.Fatal("paused target delivered a revision")
+	}
+	if _, err := svc.ResumeTarget(ctx, operator, scope, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	worker = newWorker("kv-node-2")
+	drain()
+	if got, _ := server.value(t, mount, "hikyo/prod/DATABASE_URL"); got != kvSecretTwo {
+		t.Fatal("resumed target failed to catch up after worker restart")
+	}
+
+	// Lose an acknowledged provider response after the real CAS applies. The
+	// durable outbox must hold custody across restart and explicit resync.
+	loseWriteResponse = true
+	publish(kvSecretOne)
+	drain()
+	if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
+		t.Fatalf("lost response class = %q, want operator review", got.LastErrorClass)
+	}
+	metadata := func() map[string]any {
+		return server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/DATABASE_URL", nil)["data"].(map[string]any)
+	}
+	before := metadata()
+	if before["custom_metadata"].(map[string]any)[vaultkv.PendingKey] == nil {
+		t.Fatal("ambiguous write lacks pending metadata")
+	}
+	worker = newWorker("kv-node-3")
+	if _, err := svc.SyncTarget(ctx, operator, scope, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
+	if !reflect.DeepEqual(before, metadata()) {
+		t.Fatal("restarted outbox inferred an unknown writer or changed held metadata")
+	}
+	if got := inspect(); got.LastErrorClass != adapter.ErrorClassProviderAmbiguous {
+		t.Fatalf("restarted held target class = %q, want provider ambiguity needing attention", got.LastErrorClass)
+	}
+	plan, err := svc.Plan(ctx, operator, scope, target.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := inspect()
+	adopt := service.AdoptAdapterRequest{TargetID: target.ID, ArtifactID: plan.ArtifactID,
+		ExpectedGeneration: current.Generation, ExpectedDestinationID: current.DestinationID,
+		ExpectedRepositoryID: current.RepositoryID, Entries: []store.AdapterConflictEntry{{Surface: "variable", EffectiveName: "DATABASE_URL"}}}
+	if _, err := svc.Adopt(ctx, operator, scope, adopt); err != nil {
+		t.Fatalf("fresh version-bound operator recovery: %v", err)
+	}
+	drain()
+	if got := inspect(); got.Health() != adapter.HealthConverged {
+		t.Fatalf("adopted recovery: health %q class %q", got.Health(), got.LastErrorClass)
+	}
+	if metadata()["current_version"].(float64) != before["current_version"].(float64)+1 {
+		t.Fatal("adoption did not create exactly one new CAS version")
+	}
+	if _, err := svc.Adopt(ctx, operator, scope, adopt); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("consumed adoption artifact replay = %v", err)
+	}
+
+	// A second target exercises retain through the service/outbox seam. It
+	// releases custody without changing a single remote version or marker.
+	retained, err := svc.AddTarget(ctx, operator, scope, created.Adapter.ID, service.AdapterTargetInput{
+		EnvironmentID: cEnv, DestinationKind: string(adapter.Repository), DestinationOwner: mount,
+		DestinationName: "hikyo/retain", KeySelection: &service.AdapterKeySelection{Include: []string{"DATABASE_URL"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SyncTarget(ctx, operator, scope, retained.ID); err != nil {
+		t.Fatal(err)
+	}
+	drain()
 
 	// An edit outside Hikyo: the next converge is a conflict, never an overwrite.
-	server.must(t, http.MethodPost, "/v1/"+mount+"/data/hikyo/prod/SHARED_KEY", map[string]any{"data": map[string]string{"value": "hand-edited"}})
+	server.must(t, http.MethodPost, "/v1/"+mount+"/data/hikyo/prod/DATABASE_URL", map[string]any{"data": map[string]string{"value": "hand-edited"}})
 	publish(kvSecretTwo)
 	// A conflict retries with backoff until an operator acts, so run one
 	// attempt rather than draining.
@@ -302,7 +389,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if got := inspect(); got.LastErrorClass != adapter.ErrorClassConflict || got.Health() == adapter.HealthConverged {
 		t.Fatalf("after external edit: health %q class %q, want a conflict", got.Health(), got.LastErrorClass)
 	}
-	if got, _ := server.value(t, mount, "hikyo/prod/SHARED_KEY"); got != "hand-edited" {
+	if got, _ := server.value(t, mount, "hikyo/prod/DATABASE_URL"); got != "hand-edited" {
 		t.Fatalf("external edit overwritten with %q", got)
 	}
 
@@ -315,7 +402,7 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	if _, ok := server.value(t, mount, "hikyo/prod/MANAGED_BY_HIKYO"); ok {
 		t.Fatal("sentinel still readable after removal")
 	}
-	if got, _ := server.value(t, mount, "hikyo/prod/SHARED_KEY"); got != "hand-edited" {
+	if got, _ := server.value(t, mount, "hikyo/prod/DATABASE_URL"); got != "hand-edited" {
 		t.Fatalf("removal pruned a path that moved outside Hikyo: %q", got)
 	}
 	meta := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/prod/MANAGED_BY_HIKYO", nil)["data"].(map[string]any)
@@ -323,13 +410,94 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 		t.Fatalf("removal deleted metadata: %v", meta)
 	}
 
-	for _, plaintext := range []string{kvSecretOne, kvSecretTwo} {
+	retainedMetadata := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil)
+	removed, err := svc.RemoveTarget(ctx, operator, scope, retained.ID, true)
+	if err != nil || len(removed.Orphaned) == 0 {
+		t.Fatalf("retain failed to name orphaned custody: %v", err)
+	}
+	drain()
+	if after := server.must(t, http.MethodGet, "/v1/"+mount+"/metadata/hikyo/retain/DATABASE_URL", nil); !reflect.DeepEqual(retainedMetadata["data"], after["data"]) {
+		t.Fatal("retain mutated provider version or metadata")
+	}
+	if got, ok := server.value(t, mount, "hikyo/retain/DATABASE_URL"); !ok || got != kvSecretTwo {
+		t.Fatal("retain removed the delivered value")
+	}
+
+	for _, plaintext := range []string{kvSecretOne, kvSecretTwo, auth["client_token"].(string)} {
 		if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM audit_tenant_events WHERE payload LIKE '%%%s%%'`, plaintext)); got != 0 {
-			t.Fatalf("audit payload carries value plaintext %q", plaintext)
+			t.Fatal("audit payload carries a delivered value or provider credential")
 		}
 	}
 }
 
 func TestAdapterVaultKVEndToEnd(t *testing.T) {
-	forEngines(t, runVaultKVEndToEnd)
+	for _, name := range []string{"VAULT", "OPENBAO"} {
+		t.Run(name, func(t *testing.T) {
+			server, ok := loadKVServer(t, name)
+			if !ok {
+				return
+			}
+			forEngines(t, func(t *testing.T, db *store.DB) { runVaultKVEndToEnd(t, db, server) })
+		})
+	}
+}
+
+type kvLostResponse struct {
+	vaultkv.API
+	lose *bool
+}
+
+// Drive the actual CLI through the TLS API and its real authorization and
+// service owners, against the target delivered to each real provider above.
+func assertKVCLI(t *testing.T, db *store.DB, svc *service.Adapters, targetID, mount, providerToken string) {
+	t.Helper()
+	srv := httptest.NewTLSServer(server.New(&server.API{Auth: authService(t, db), Adapters: svc, Version: "kv-cli-fixture"}, nil))
+	t.Cleanup(srv.Close)
+	stateDir, workDir := t.TempDir(), t.TempDir()
+	env := cli.Env{Getenv: func(key string) string {
+		if key == "HIKYO_STATE_DIR" {
+			return stateDir
+		}
+		return ""
+	}}
+	state, err := cli.NewState(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Trust().Put(cli.TrustEntry{Name: "kv-fixture", Origin: srv.URL, SPKIPin: cli.SPKIFingerprint(srv.Certificate())}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.PutSession(cli.SessionArtifact{Instance: "kv-fixture", Origin: srv.URL, Token: sessionWithWindows(t, db, alice), Principal: string(alice)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range [][]string{
+		{"adapter", "target", "show", targetID, "--format", "workflow"},
+		{"adapter", "target", "show", targetID, "-o", "json"},
+		{"adapter", "plan", "--target", targetID, "-o", "json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		args := append(command, "--org", cOrg, "--project", cPrj, "--instance", "kv-fixture")
+		code := cli.Run(t.Context(), cli.IO{Stdout: &stdout, Stderr: &stderr, Workdir: workDir, Env: env}, args)
+		if code != cli.ExitOK {
+			t.Fatalf("Vault CLI %s: exit %d: %s", command[1], code, stderr.String())
+		}
+		output := stdout.String() + stderr.String()
+		for _, sensitive := range []string{kvSecretOne, kvSecretTwo, providerToken} {
+			if strings.Contains(output, sensitive) {
+				t.Fatal("Vault CLI exposed a value or provider credential")
+			}
+		}
+		if command[len(command)-1] == "workflow" && !strings.Contains(output, mount+"/hikyo/prod/DATABASE_URL") {
+			t.Fatal("Vault CLI omitted the names-only destination mapping")
+		}
+	}
+}
+
+func (c *kvLostResponse) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
+	version, err := c.API.WriteCAS(ctx, mount, path, value, cas)
+	if err == nil && *c.lose && strings.HasSuffix(path, "/DATABASE_URL") {
+		*c.lose = false
+		return 0, errors.New("synthetic response loss after real provider apply")
+	}
+	return version, err
 }
