@@ -45,6 +45,10 @@ var reviewedWireExtras = wireExtras{
 		// not read answers exactly like a scope that is not there.
 		"http:GET /api/v1/orgs/{org}/audit":        {Events: []string{"EventAuditQuery"}},
 		"http:GET /api/v1/orgs/{org}/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
+		// The instance trail is instance-class: the formula is audit-read at
+		// instance scope, so a tenant grant never satisfies it.
+		"http:GET /api/v1/instance/audit":        {Events: []string{"EventAuditQuery"}},
+		"http:GET /api/v1/instance/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
 		// Temporary access (#152). Policy administration is manage-members at the
 		// project; the request queue and every decision are read@env with the
 		// finer eligibility checked after the grant (a reachable 403).
@@ -309,9 +313,19 @@ var reviewedWireExtras = wireExtras{
 			"EventAdapterPushIntent", "EventAdapterPushOutcome",
 		}},
 		"cli:approval": {Class: "ClassTenant"},
-		"cli:backup":   {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
-		"cli:cert":     {Class: "ClassTenant"},
-		"cli:compose":  {Class: "ClassTenant"},
+		// `audit` reaches both tenant and explicitly selected instance readers.
+		// Like `access`, the verb carries the instance probe contract; each
+		// tenant route retains its own uniform-nonexistent classification.
+		// Link every addressed reader so its audit disposition is inherited
+		// from the operation owner rather than duplicated or exemption-pinned.
+		"cli:audit": {Class: "ClassInstance", Ops: []string{
+			"OpAuditQueryOrg", "OpAuditQueryProject", "OpAuditQueryEnv",
+			"OpAuditExportOrg", "OpAuditExportProject", "OpAuditExportEnv",
+			"OpAuditInstanceQuery", "OpAuditInstanceExport",
+		}},
+		"cli:backup":  {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		"cli:cert":    {Class: "ClassTenant"},
+		"cli:compose": {Class: "ClassTenant"},
 		// `context` is entirely client-local: the trust store and the named
 		// contexts live on this box and reach no server.
 		"cli:context": {Class: "ClassUnauthenticated"},

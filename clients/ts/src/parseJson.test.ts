@@ -9,6 +9,7 @@ import { zRevisionBefore } from './generated/zod.gen.ts';
 import { z } from 'zod';
 import BigNumber from 'bignumber.js';
 import { parseJson } from './parseJson.ts';
+import { consumeAuditExport } from './auditExport.ts';
 
 // The generator emits bundler-style relative imports. Resolve only this
 // package's source tree for the Node execution of the actual HTTP/SSE runtime.
@@ -25,7 +26,39 @@ registerHooks({
 });
 
 const { createClient } = await import('./generated/client/client.gen.ts');
+const { exportOrgAudit } = await import('./generated/sdk.gen.ts');
 const { createSseClient } = await import('./generated/core/serverSentEvents.gen.ts');
+
+test('generated audit SDK streams into completion validation instead of accepting partial JSONL', async () => {
+  const snapshot = '2026-10-28T00:00:00Z';
+  const event = '{"seq":9007199254740993,"id":"evt_sdk","type":"future.event","schema_version":1,"occurred_at":"2026-01-01T00:00:00Z","occurred_asserted":false,"recorded_at":"2026-01-01T00:00:00Z","actor_class":"system","scope_class":"org","outcome":"success","origin":"system","payload":{}}\n';
+  const receipt = JSON.stringify({ export_receipt: {
+    version: 1, started_event_id: 'evt_export_sdk', snapshot_time: snapshot,
+    rows_streamed: 1, outcome: 'success', outcome_recorded: true,
+  } }) + '\n';
+  for (const complete of [false, true]) {
+    const client = createClient({ baseUrl: 'https://fixture.example', fetch: async (input) => {
+      assert.ok(input instanceof Request);
+      assert.equal(new URL(input.url).pathname, '/api/v1/orgs/org_1/audit/export');
+      assert.equal(new URL(input.url).searchParams.get('receipt'), 'v1');
+      return new Response(event + (complete ? receipt : ''), { headers: {
+        'Content-Type': 'application/x-ndjson', 'Hikyo-Audit-Receipt': 'v1',
+        'Hikyo-Audit-Export-ID': 'evt_export_sdk', 'Hikyo-Audit-Snapshot-Time': snapshot,
+      } });
+    } });
+    const result = await exportOrgAudit({ client, path: { org: 'org_1' }, query: { receipt: 'v1' }, parseAs: 'stream' });
+    assert.ok(result.response);
+    assert.equal(result.response.bodyUsed, false, 'SDK must leave streaming validation in charge');
+    const staged: Uint8Array[] = [];
+    const validated = consumeAuditExport(result.response, (line) => { staged.push(line); });
+    if (complete) {
+      assert.equal((await validated).rows_streamed, 1n);
+      assert.equal(Buffer.concat(staged).toString(), event);
+    } else {
+      await assert.rejects(validated, /terminal receipt/);
+    }
+  }
+});
 
 test('wire integers retain exact digits without changing ordinary numeric fields', () => {
   assert.deepEqual(parseJson('{"rows":[9007199254740993,-9223372036854775808,9223372036854775807],"count":42,"fraction":1.25,"label":"9007199254740993"}'), {

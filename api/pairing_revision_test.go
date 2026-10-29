@@ -20,8 +20,8 @@ func TestRemotePairingOperationMinimumRevision(t *testing.T) {
 		"startRemotePairing":        true,
 		"finishRemotePairing":       true,
 	}
-	if api.Revision != 12 {
-		t.Fatalf("server advertises API revision %d, want 12", api.Revision)
+	if api.Revision < 12 {
+		t.Fatalf("server advertises API revision %d, want at least 12", api.Revision)
 	}
 	for name := range expected {
 		operation, ok := operations[name]

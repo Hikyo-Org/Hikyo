@@ -69,7 +69,8 @@ var SpecYAML []byte
 // and the authenticated local-credential inventory.
 // Revision 12 adds manual remote invitations, PAKE redemption, and key-bound
 // directory pairing. Existing operations retain their first-appearance minima.
-const Revision = 12
+// Revision 13 adds instance audit trail query and export.
+const Revision = 13
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

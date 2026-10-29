@@ -1474,6 +1474,10 @@ export type WhoAmI = {
  */
 export type PrincipalCapabilities = {
     /**
+     * True when the caller holds instance audit-read. This navigation hint does not imply instance-config or replace per-request authority and MFA checks. Absent on older servers.
+     */
+    instance_audit_read?: boolean;
+    /**
      * True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
      */
     instance_operator: boolean;
@@ -6211,6 +6215,66 @@ export type AuditPage = {
     exhausted: boolean;
 };
 
+/**
+ * The last line of an export stream when the client sent `receipt=v1`.
+ * Event lines never carry the `export_receipt` member, so a reader tells
+ * the two apart by that key.
+ *
+ */
+export type AuditExportReceiptLine = {
+    export_receipt: AuditExportReceipt;
+};
+
+/**
+ * How one export ended, as the export run saw it. Completion requires
+ * success, outcome_recorded=true, no cause, exact event count, identity
+ * and snapshot matching the response headers, and clean EOF immediately
+ * after this line. The receipt counts rows; it does not attest that the
+ * trail has no sequence gaps. Consumers bound each line to 1 MiB including
+ * LF and fail closed on larger lines. Event fields remain extensible.
+ *
+ */
+export type AuditExportReceipt = {
+    version: 1;
+    /**
+     * The id of this export's `audit.export_started` event. The
+     * `audit.export_completed` event, when recorded, carries it as its
+     * correlation id.
+     *
+     */
+    started_event_id: string;
+    /**
+     * Effective inclusive recorded_at upper bound, capped by the server's
+     * fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+     * Together with the request's filters this names the selected extent,
+     * not a resumable seq cursor or a promise of gapless sequence numbers.
+     *
+     */
+    snapshot_time: string;
+    /**
+     * The number of event lines written before this receipt.
+     */
+    rows_streamed: number;
+    /**
+     * `success`: the export read to its snapshot. `failure`: a server
+     * fault stopped it, or its terminal audit event did not commit.
+     * `disconnected`: a write to the client failed. `revoked`: the
+     * caller lost `audit-read` at a page boundary.
+     *
+     */
+    outcome: 'success' | 'failure' | 'disconnected' | 'revoked';
+    /**
+     * Why the export did not succeed. Absent on success and on revocation.
+     */
+    cause?: 'page-read-failed' | 'sink-error' | 'writer-barrier-failed' | 'outcome-write-failed';
+    /**
+     * True when the matching `audit.export_completed` event is durable in
+     * the trail. A revoked export never records one.
+     *
+     */
+    outcome_recorded: boolean;
+};
+
 export type AdapterFinding = {
     surface: 'secret' | 'variable';
     effective_name: string;
@@ -6877,6 +6941,13 @@ export type AuditObjectId = string;
  *
  */
 export type AuditCorrelationId = string;
+
+/**
+ * Opt in to the export completion receipt at this version. The stream
+ * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+ *
+ */
+export type AuditReceipt = 'v1';
 
 /**
  * The transit key's name, unique among the environment's live keys.
@@ -27468,6 +27539,12 @@ export type ExportOrgAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/audit/export';
 };
@@ -27768,6 +27845,12 @@ export type ExportProjectAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/projects/{project}/audit/export';
 };
@@ -28076,6 +28159,12 @@ export type ExportEnvAuditData = {
          *
          */
         correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
     };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export';
 };
@@ -28144,6 +28233,294 @@ export type ExportEnvAuditResponses = {
 };
 
 export type ExportEnvAuditResponse = ExportEnvAuditResponses[keyof ExportEnvAuditResponses];
+
+export type QueryInstanceAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Resume cursor: return events whose seq is strictly greater. Pass the
+         * previous page's `next_after_seq` to page forward.
+         *
+         */
+        after_seq?: number;
+        /**
+         * The session ceiling. Absent on the first page (the server pins it to the
+         * trail's current head and returns it as `upper_seq`); pass that value back
+         * on every later page so paging terminates and never chases the
+         * `audit.query` events the reads themselves append.
+         *
+         */
+        to_seq?: number;
+        /**
+         * Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+         * be fewer when a filter is set.
+         *
+         */
+        limit?: number;
+        /**
+         * Match only events whose acting principal has this id (exact).
+         */
+        actor?: string;
+        /**
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+    };
+    url: '/api/v1/instance/audit';
+};
+
+export type QueryInstanceAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type QueryInstanceAuditError = QueryInstanceAuditErrors[keyof QueryInstanceAuditErrors];
+
+export type QueryInstanceAuditResponses = {
+    /**
+     * One page of instance trail events.
+     */
+    200: AuditPage;
+};
+
+export type QueryInstanceAuditResponse = QueryInstanceAuditResponses[keyof QueryInstanceAuditResponses];
+
+export type ExportInstanceAuditData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Inclusive lower time bound (recorded-at). Absent means the epoch.
+         */
+        from?: string;
+        /**
+         * Inclusive upper time bound (recorded-at). Absent means unbounded.
+         */
+        to?: string;
+        /**
+         * Match only events whose acting principal has this id (exact).
+         */
+        actor?: string;
+        /**
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
+         *
+         */
+        operation?: string;
+        /**
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
+         */
+        outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
+        /**
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
+         */
+        object_type?: string;
+        /**
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
+         */
+        object_id?: string;
+        /**
+         * Match only events sharing this correlation id — the link between an
+         * act's INTENT and OUTCOME events.
+         *
+         */
+        correlation_id?: string;
+        /**
+         * Opt in to the export completion receipt at this version. The stream
+         * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+         *
+         */
+        receipt?: 'v1';
+    };
+    url: '/api/v1/instance/audit/export';
+};
+
+export type ExportInstanceAuditErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ExportInstanceAuditError = ExportInstanceAuditErrors[keyof ExportInstanceAuditErrors];
+
+export type ExportInstanceAuditResponses = {
+    /**
+     * The instance trail as a JSONL byte stream.
+     */
+    200: string;
+};
+
+export type ExportInstanceAuditResponse = ExportInstanceAuditResponses[keyof ExportInstanceAuditResponses];
 
 export type RotateTokenKeyData = {
     body?: never;

@@ -1175,6 +1175,7 @@ export const zUnheldGrantReach = z.object({
  * UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
  */
 export const zPrincipalCapabilities = z.object({
+    instance_audit_read: z.boolean().optional(),
     instance_operator: z.boolean(),
     delivery_report_grant: zUnheldGrantReach
 });
@@ -4578,6 +4579,45 @@ export const zAuditPage = z.object({
     exhausted: z.boolean()
 });
 
+/**
+ * How one export ended, as the export run saw it. Completion requires
+ * success, outcome_recorded=true, no cause, exact event count, identity
+ * and snapshot matching the response headers, and clean EOF immediately
+ * after this line. The receipt counts rows; it does not attest that the
+ * trail has no sequence gaps. Consumers bound each line to 1 MiB including
+ * LF and fail closed on larger lines. Event fields remain extensible.
+ *
+ */
+export const zAuditExportReceipt = z.object({
+    version: z.literal(1),
+    started_event_id: z.string().min(1),
+    snapshot_time: z.iso.datetime(),
+    rows_streamed: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    outcome: z.enum([
+        'success',
+        'failure',
+        'disconnected',
+        'revoked'
+    ]),
+    cause: z.enum([
+        'page-read-failed',
+        'sink-error',
+        'writer-barrier-failed',
+        'outcome-write-failed'
+    ]).optional(),
+    outcome_recorded: z.boolean()
+});
+
+/**
+ * The last line of an export stream when the client sent `receipt=v1`.
+ * Event lines never carry the `export_receipt` member, so a reader tells
+ * the two apart by that key.
+ *
+ */
+export const zAuditExportReceiptLine = z.object({
+    export_receipt: zAuditExportReceipt
+});
+
 export const zAdapterFinding = z.object({
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string(),
@@ -5350,6 +5390,13 @@ export const zAuditObjectId = z.string().max(64);
  *
  */
 export const zAuditCorrelationId = z.string().max(64);
+
+/**
+ * Opt in to the export completion receipt at this version. The stream
+ * then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+ *
+ */
+export const zAuditReceipt = z.enum(['v1']);
 
 /**
  * The transit key's name, unique among the environment's live keys.
@@ -8260,7 +8307,8 @@ export const zExportOrgAuditQuery = z.object({
     ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
-    correlation_id: z.string().max(64).optional()
+    correlation_id: z.string().max(64).optional(),
+    receipt: z.enum(['v1']).optional()
 });
 
 /**
@@ -8337,7 +8385,8 @@ export const zExportProjectAuditQuery = z.object({
     ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
-    correlation_id: z.string().max(64).optional()
+    correlation_id: z.string().max(64).optional(),
+    receipt: z.enum(['v1']).optional()
 });
 
 /**
@@ -8416,13 +8465,82 @@ export const zExportEnvAuditQuery = z.object({
     ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
-    correlation_id: z.string().max(64).optional()
+    correlation_id: z.string().max(64).optional(),
+    receipt: z.enum(['v1']).optional()
 });
 
 /**
  * The trail as a JSONL byte stream.
  */
 export const zExportEnvAuditResponse = z.string();
+
+export const zQueryInstanceAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    after_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(1000).optional().default(100),
+    actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional()
+});
+
+/**
+ * One page of instance trail events.
+ */
+export const zQueryInstanceAuditResponse = zAuditPage;
+
+export const zExportInstanceAuditQuery = z.object({
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+    actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
+    operation: z.string().max(128).optional(),
+    outcome: z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
+    object_type: z.string().max(64).optional(),
+    object_id: z.string().max(64).optional(),
+    correlation_id: z.string().max(64).optional(),
+    receipt: z.enum(['v1']).optional()
+});
+
+/**
+ * The instance trail as a JSONL byte stream.
+ */
+export const zExportInstanceAuditResponse = z.string();
 
 /**
  * The rotation.

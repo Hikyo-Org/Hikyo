@@ -273,6 +273,7 @@ const surfaceChecks = {
   scim: { mode: 'read-only', heading: 'SCIM provisioning', sample: 'acme-sso' },
   audit: { mode: 'read-only', heading: 'Audit', sample: 'revision.published' },
   'instance-admin': { mode: 'excluded', result: 'unavailable' },
+  'instance-audit': { mode: 'excluded', result: 'unavailable' },
   'instance-config': { mode: 'excluded', result: 'unavailable' },
   'instance-members': { mode: 'excluded', result: 'unavailable' },
   settings: { mode: 'read-only', heading: 'Account & security', sample: 'Sample security key', tab: 'Sign-in factors' },

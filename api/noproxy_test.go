@@ -638,6 +638,8 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/orgs/{org}/projects/{project}/audit/export":                            true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit":        true,
 	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export": true,
+	"GET /api/v1/instance/audit":                                                        true,
+	"GET /api/v1/instance/audit/export":                                                 true,
 	// Secret-change approvals (#151): policy administration and the review queue
 	// read/write only THIS instance's own approval rows; nothing is proxied or
 	// relayed. The merge/bypass decision rides the publish route already pinned.

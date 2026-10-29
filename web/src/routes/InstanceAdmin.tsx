@@ -201,6 +201,13 @@ export function InstanceAdmin() {
           </Panel>
         ) },
         { id: 'instance-settings', label: 'Policy', content: <CredentialPolicyPanel query={policy} editing={editingPolicy} setEditing={setEditingPolicy} notices={notices} onDone={ok} onFailure={report} /> },
+        { id: 'instance-audit', label: 'Audit', content: (
+          <Panel id="instance-audit" title="Instance audit">
+            <p>Inspect authentication and instance security events, including failed logins. Organisation and project audit views do not include these events.</p>
+            <p>Requires an instance audit-read grant and a second factor. Project automation remains confined to its project.</p>
+            <Link className="btn" to={surfaceById('instance-audit').path}>Open instance audit</Link>
+          </Panel>
+        ) },
         { id: 'instance-developer-credentials', label: 'Developer credentials', content: <DeveloperCredentialPolicy /> },
         { id: 'instance-oidc', label: 'Identity providers', content: <OidcProvidersPanel /> },
         { id: 'instance-oauth2', label: 'GitHub sign-in', content: <OAuth2ProvidersPanel /> },

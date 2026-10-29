@@ -409,7 +409,9 @@ operations:
 
   # audit
   queryOrgAudit:               {webui: audit}
-  # A plain same-origin download link; the browser streams the JSONL itself.
+  queryInstanceAudit:          {webui: instance-audit}
+  exportInstanceAudit:         {webui: instance-audit, reach: path}
+  # Same-origin export paths consumed by the verified browser download helper.
   exportOrgAudit:              {webui: audit, reach: path}
   queryProjectAudit:           {webui: project-audit}
   exportProjectAudit:          {webui: project-audit, reach: path}

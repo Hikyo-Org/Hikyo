@@ -52,6 +52,7 @@ const WorkspaceScope = lazy(() => loadWorkspaceRoutes().then((routes) => ({ defa
 // shared chunks without making every administration screen load together.
 const AccountSecurity = lazy(() => import('../routes/AccountSecurity.tsx').then((routes) => ({ default: routes.AccountSecurity })));
 const Audit = lazy(() => import('../routes/Audit.tsx').then((routes) => ({ default: routes.Audit })));
+const InstanceAudit = lazy(() => import('../routes/Audit.tsx').then((routes) => ({ default: routes.InstanceAudit })));
 const ChangeApprovals = lazy(() => import('../routes/ChangeApprovals.tsx').then((routes) => ({ default: routes.ChangeApprovals })));
 const TemporaryAccess = lazy(() => import('../routes/TemporaryAccess.tsx').then((routes) => ({ default: routes.TemporaryAccess })));
 const InstanceConfig = lazy(() => import('../routes/InstanceConfig.tsx').then((routes) => ({ default: routes.InstanceConfig })));
@@ -96,6 +97,7 @@ const ELEMENTS: Record<SurfaceId, ReactElement> = {
   'org-settings': withRouteFallback(<OrgSettings />),
   scim: withRouteFallback(<ScimProvisioning />),
   audit: withRouteFallback(<Audit key="audit-org" />),
+  'instance-audit': withRouteFallback(<InstanceAudit />),
   // Keyed per scope for the same reason as Members: the two audit routes are
   // siblings under one Outlet, and a picked environment or an applied filter
   // must not ride from the org trail into the project one.

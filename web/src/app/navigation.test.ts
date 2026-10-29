@@ -38,6 +38,7 @@ describe('the route policy registry', () => {
     expect(sectionsFor('instance').map((s) => s.label)).toEqual([
       'Instance settings',
       'Hikyo configuration',
+      'Instance audit',
       'Instance members',
     ]);
     expect(sectionsFor('account').map((s) => s.id)).toEqual(['settings']);

@@ -243,6 +243,9 @@ var machineAllowlists = map[PrincipalClass]map[Capability]bool{
 	ClassAutomation: {
 		CapRead: true, CapEdit: true, CapPublish: true, CapDefinitionsEdit: true,
 		CapIssueCertificate: true, CapCryptoUse: true,
+		// The audit-model ADR's amendment part 3 permits project collection.
+		// The independent scope-depth and owning-project checks still bind it.
+		CapAuditRead: true,
 	},
 	// The scim-provisioning amendment's single row: system-created with the
 	// binding, and refused through the grant API — so the allowlist admits

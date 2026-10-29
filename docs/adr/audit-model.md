@@ -224,3 +224,21 @@ Environment deletion, including deletion through definitions apply, records one
 `grant.revoked` per removed environment-scoped grant using the existing revocation
 schema. Origin release, grant deletion, principal generation advance, human session
 invalidation and all audit records commit atomically with environment deletion.
+
+## Supported operator surfaces (#1035)
+
+The instance trail is addressed by `GET /api/v1/instance/audit` and
+`GET /api/v1/instance/audit/export`, `hikyo audit query|export --instance-scope`,
+and Instance settings → Audit. These expose the existing instance `audit-read`
+proof to human sessions with the MFA floor, without an additional reveal
+ceremony or a new machine artifact class. Login failures remain instance-trail
+events and are absent from tenant-only views. Event details include actor and
+source metadata, with missing fields stated explicitly.
+
+The same CLI commands address organisation, project and environment trails
+through `--org`, `--project` and `--env`. Project automation remains restricted
+to its owning project subtree. Interactive queries retain bounded allocation-
+ordered pages with a pinned `to_seq`; exports retain fixed snapshots, fresh
+page authorization and commit ordering. The completion-receipt protocol and
+shared consumer validation are owned by #1036. Consumers must verify completion
+before publishing an export or changing collection state.

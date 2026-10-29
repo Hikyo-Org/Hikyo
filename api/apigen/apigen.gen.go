@@ -803,6 +803,69 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for AuditExportReceiptCause.
+const (
+	AuditExportCauseOutcomeWriteFailed  AuditExportReceiptCause = "outcome-write-failed"
+	AuditExportCausePageReadFailed      AuditExportReceiptCause = "page-read-failed"
+	AuditExportCauseSinkError           AuditExportReceiptCause = "sink-error"
+	AuditExportCauseWriterBarrierFailed AuditExportReceiptCause = "writer-barrier-failed"
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptCause enum.
+func (e AuditExportReceiptCause) Valid() bool {
+	switch e {
+	case AuditExportCauseOutcomeWriteFailed:
+		return true
+	case AuditExportCausePageReadFailed:
+		return true
+	case AuditExportCauseSinkError:
+		return true
+	case AuditExportCauseWriterBarrierFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditExportReceiptOutcome.
+const (
+	AuditExportReceiptOutcomeDisconnected AuditExportReceiptOutcome = "disconnected"
+	AuditExportReceiptOutcomeFailure      AuditExportReceiptOutcome = "failure"
+	AuditExportReceiptOutcomeRevoked      AuditExportReceiptOutcome = "revoked"
+	AuditExportReceiptOutcomeSuccess      AuditExportReceiptOutcome = "success"
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptOutcome enum.
+func (e AuditExportReceiptOutcome) Valid() bool {
+	switch e {
+	case AuditExportReceiptOutcomeDisconnected:
+		return true
+	case AuditExportReceiptOutcomeFailure:
+		return true
+	case AuditExportReceiptOutcomeRevoked:
+		return true
+	case AuditExportReceiptOutcomeSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditExportReceiptVersion.
+const (
+	AuditExportReceiptV1 AuditExportReceiptVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the AuditExportReceiptVersion enum.
+func (e AuditExportReceiptVersion) Valid() bool {
+	switch e {
+	case AuditExportReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthMethodProviderProfile.
 const (
 	AuthMethodProviderProfileGithub AuthMethodProviderProfile = "github"
@@ -3950,6 +4013,21 @@ func (e AuditOutcome) Valid() bool {
 	}
 }
 
+// Defines values for AuditReceipt.
+const (
+	AuditReceiptV1 AuditReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the AuditReceipt enum.
+func (e AuditReceipt) Valid() bool {
+	switch e {
+	case AuditReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeliveryProjection.
 const (
 	ConfigOnly DeliveryProjection = "config-only"
@@ -3962,6 +4040,141 @@ func (e DeliveryProjection) Valid() bool {
 	case ConfigOnly:
 		return true
 	case Full:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueryInstanceAuditParamsOutcome.
+const (
+	QueryInstanceAuditParamsOutcomeDenied       QueryInstanceAuditParamsOutcome = "denied"
+	QueryInstanceAuditParamsOutcomeDisconnected QueryInstanceAuditParamsOutcome = "disconnected"
+	QueryInstanceAuditParamsOutcomeFailure      QueryInstanceAuditParamsOutcome = "failure"
+	QueryInstanceAuditParamsOutcomeIntent       QueryInstanceAuditParamsOutcome = "intent"
+	QueryInstanceAuditParamsOutcomeSuccess      QueryInstanceAuditParamsOutcome = "success"
+	QueryInstanceAuditParamsOutcomeUnknown      QueryInstanceAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryInstanceAuditParamsOutcome enum.
+func (e QueryInstanceAuditParamsOutcome) Valid() bool {
+	switch e {
+	case QueryInstanceAuditParamsOutcomeDenied:
+		return true
+	case QueryInstanceAuditParamsOutcomeDisconnected:
+		return true
+	case QueryInstanceAuditParamsOutcomeFailure:
+		return true
+	case QueryInstanceAuditParamsOutcomeIntent:
+		return true
+	case QueryInstanceAuditParamsOutcomeSuccess:
+		return true
+	case QueryInstanceAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for QueryInstanceAuditParamsOutcomes.
+const (
+	QueryInstanceAuditParamsOutcomesDenied       QueryInstanceAuditParamsOutcomes = "denied"
+	QueryInstanceAuditParamsOutcomesDisconnected QueryInstanceAuditParamsOutcomes = "disconnected"
+	QueryInstanceAuditParamsOutcomesFailure      QueryInstanceAuditParamsOutcomes = "failure"
+	QueryInstanceAuditParamsOutcomesIntent       QueryInstanceAuditParamsOutcomes = "intent"
+	QueryInstanceAuditParamsOutcomesSuccess      QueryInstanceAuditParamsOutcomes = "success"
+	QueryInstanceAuditParamsOutcomesUnknown      QueryInstanceAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryInstanceAuditParamsOutcomes enum.
+func (e QueryInstanceAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case QueryInstanceAuditParamsOutcomesDenied:
+		return true
+	case QueryInstanceAuditParamsOutcomesDisconnected:
+		return true
+	case QueryInstanceAuditParamsOutcomesFailure:
+		return true
+	case QueryInstanceAuditParamsOutcomesIntent:
+		return true
+	case QueryInstanceAuditParamsOutcomesSuccess:
+		return true
+	case QueryInstanceAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportInstanceAuditParamsOutcome.
+const (
+	ExportInstanceAuditParamsOutcomeDenied       ExportInstanceAuditParamsOutcome = "denied"
+	ExportInstanceAuditParamsOutcomeDisconnected ExportInstanceAuditParamsOutcome = "disconnected"
+	ExportInstanceAuditParamsOutcomeFailure      ExportInstanceAuditParamsOutcome = "failure"
+	ExportInstanceAuditParamsOutcomeIntent       ExportInstanceAuditParamsOutcome = "intent"
+	ExportInstanceAuditParamsOutcomeSuccess      ExportInstanceAuditParamsOutcome = "success"
+	ExportInstanceAuditParamsOutcomeUnknown      ExportInstanceAuditParamsOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportInstanceAuditParamsOutcome enum.
+func (e ExportInstanceAuditParamsOutcome) Valid() bool {
+	switch e {
+	case ExportInstanceAuditParamsOutcomeDenied:
+		return true
+	case ExportInstanceAuditParamsOutcomeDisconnected:
+		return true
+	case ExportInstanceAuditParamsOutcomeFailure:
+		return true
+	case ExportInstanceAuditParamsOutcomeIntent:
+		return true
+	case ExportInstanceAuditParamsOutcomeSuccess:
+		return true
+	case ExportInstanceAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportInstanceAuditParamsOutcomes.
+const (
+	ExportInstanceAuditParamsOutcomesDenied       ExportInstanceAuditParamsOutcomes = "denied"
+	ExportInstanceAuditParamsOutcomesDisconnected ExportInstanceAuditParamsOutcomes = "disconnected"
+	ExportInstanceAuditParamsOutcomesFailure      ExportInstanceAuditParamsOutcomes = "failure"
+	ExportInstanceAuditParamsOutcomesIntent       ExportInstanceAuditParamsOutcomes = "intent"
+	ExportInstanceAuditParamsOutcomesSuccess      ExportInstanceAuditParamsOutcomes = "success"
+	ExportInstanceAuditParamsOutcomesUnknown      ExportInstanceAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportInstanceAuditParamsOutcomes enum.
+func (e ExportInstanceAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case ExportInstanceAuditParamsOutcomesDenied:
+		return true
+	case ExportInstanceAuditParamsOutcomesDisconnected:
+		return true
+	case ExportInstanceAuditParamsOutcomesFailure:
+		return true
+	case ExportInstanceAuditParamsOutcomesIntent:
+		return true
+	case ExportInstanceAuditParamsOutcomesSuccess:
+		return true
+	case ExportInstanceAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportInstanceAuditParamsReceipt.
+const (
+	ExportInstanceAuditParamsReceiptV1 ExportInstanceAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportInstanceAuditParamsReceipt enum.
+func (e ExportInstanceAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportInstanceAuditParamsReceiptV1:
 		return true
 	default:
 		return false
@@ -4106,6 +4319,21 @@ func (e ExportOrgAuditParamsOutcomes) Valid() bool {
 	}
 }
 
+// Defines values for ExportOrgAuditParamsReceipt.
+const (
+	ExportOrgAuditParamsReceiptV1 ExportOrgAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportOrgAuditParamsReceipt enum.
+func (e ExportOrgAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportOrgAuditParamsReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ShowAdapterTargetParamsFormat.
 const (
 	Detail   ShowAdapterTargetParamsFormat = "detail"
@@ -4244,6 +4472,21 @@ func (e ExportProjectAuditParamsOutcomes) Valid() bool {
 	}
 }
 
+// Defines values for ExportProjectAuditParamsReceipt.
+const (
+	ExportProjectAuditParamsReceiptV1 ExportProjectAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportProjectAuditParamsReceipt enum.
+func (e ExportProjectAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportProjectAuditParamsReceiptV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryEnvAuditParamsOutcome.
 const (
 	QueryEnvAuditParamsOutcomeDenied       QueryEnvAuditParamsOutcome = "denied"
@@ -4358,6 +4601,21 @@ func (e ExportEnvAuditParamsOutcomes) Valid() bool {
 	case ExportEnvAuditParamsOutcomesSuccess:
 		return true
 	case ExportEnvAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportEnvAuditParamsReceipt.
+const (
+	ExportEnvAuditParamsReceiptV1 ExportEnvAuditParamsReceipt = "v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportEnvAuditParamsReceipt enum.
+func (e ExportEnvAuditParamsReceipt) Valid() bool {
+	switch e {
+	case ExportEnvAuditParamsReceiptV1:
 		return true
 	default:
 		return false
@@ -5324,6 +5582,67 @@ type AuditEvent struct {
 	// Type The event type from the closed audit registry.
 	Type      string  `json:"type"`
 	UserAgent *string `json:"user_agent,omitempty"`
+}
+
+// AuditExportReceipt How one export ended, as the export run saw it. Completion requires
+// success, outcome_recorded=true, no cause, exact event count, identity
+// and snapshot matching the response headers, and clean EOF immediately
+// after this line. The receipt counts rows; it does not attest that the
+// trail has no sequence gaps. Consumers bound each line to 1 MiB including
+// LF and fail closed on larger lines. Event fields remain extensible.
+type AuditExportReceipt struct {
+	// Cause Why the export did not succeed. Absent on success and on revocation.
+	Cause *AuditExportReceiptCause `json:"cause,omitempty"`
+
+	// Outcome `success`: the export read to its snapshot. `failure`: a server
+	// fault stopped it, or its terminal audit event did not commit.
+	// `disconnected`: a write to the client failed. `revoked`: the
+	// caller lost `audit-read` at a page boundary.
+	Outcome AuditExportReceiptOutcome `json:"outcome"`
+
+	// OutcomeRecorded True when the matching `audit.export_completed` event is durable in
+	// the trail. A revoked export never records one.
+	OutcomeRecorded bool `json:"outcome_recorded"`
+
+	// RowsStreamed The number of event lines written before this receipt.
+	RowsStreamed int64 `json:"rows_streamed"`
+
+	// SnapshotTime Effective inclusive recorded_at upper bound, capped by the server's
+	// fixed snapshot before the INTENT. Must match Hikyo-Audit-Snapshot-Time.
+	// Together with the request's filters this names the selected extent,
+	// not a resumable seq cursor or a promise of gapless sequence numbers.
+	SnapshotTime time.Time `json:"snapshot_time"`
+
+	// StartedEventId The id of this export's `audit.export_started` event. The
+	// `audit.export_completed` event, when recorded, carries it as its
+	// correlation id.
+	StartedEventId string                    `json:"started_event_id"`
+	Version        AuditExportReceiptVersion `json:"version"`
+}
+
+// AuditExportReceiptCause Why the export did not succeed. Absent on success and on revocation.
+type AuditExportReceiptCause string
+
+// AuditExportReceiptOutcome `success`: the export read to its snapshot. `failure`: a server
+// fault stopped it, or its terminal audit event did not commit.
+// `disconnected`: a write to the client failed. `revoked`: the
+// caller lost `audit-read` at a page boundary.
+type AuditExportReceiptOutcome string
+
+// AuditExportReceiptVersion defines model for AuditExportReceipt.Version.
+type AuditExportReceiptVersion int
+
+// AuditExportReceiptLine The last line of an export stream when the client sent `receipt=v1`.
+// Event lines never carry the `export_receipt` member, so a reader tells
+// the two apart by that key.
+type AuditExportReceiptLine struct {
+	// ExportReceipt How one export ended, as the export run saw it. Completion requires
+	// success, outcome_recorded=true, no cause, exact event count, identity
+	// and snapshot matching the response headers, and clean EOF immediately
+	// after this line. The receipt counts rows; it does not attest that the
+	// trail has no sequence gaps. Consumers bound each line to 1 MiB including
+	// LF and fail closed on larger lines. Event fields remain extensible.
+	ExportReceipt AuditExportReceipt `json:"export_receipt"`
 }
 
 // AuditPage defines model for AuditPage.
@@ -9062,6 +9381,9 @@ type PrincipalCapabilities struct {
 	// DeliveryReportGrant Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
 	DeliveryReportGrant UnheldGrantReach `json:"delivery_report_grant"`
 
+	// InstanceAuditRead True when the caller holds instance audit-read. This navigation hint does not imply instance-config or replace per-request authority and MFA checks. Absent on older servers.
+	InstanceAuditRead *bool `json:"instance_audit_read,omitempty"`
+
 	// InstanceOperator True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
 	InstanceOperator bool `json:"instance_operator"`
 }
@@ -12070,6 +12392,9 @@ type AuditOutcome string
 // AuditOutcomes defines model for AuditOutcomes.
 type AuditOutcomes = []string
 
+// AuditReceipt defines model for AuditReceipt.
+type AuditReceipt string
+
 // AuditTo defines model for AuditTo.
 type AuditTo = time.Time
 
@@ -12311,6 +12636,127 @@ type OidcCallbackParams struct {
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
 }
 
+// QueryInstanceAuditParams defines parameters for QueryInstanceAudit.
+type QueryInstanceAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// AfterSeq Resume cursor: return events whose seq is strictly greater. Pass the
+	// previous page's `next_after_seq` to page forward.
+	AfterSeq *AuditAfterSeq `form:"after_seq,omitempty" json:"after_seq,omitempty"`
+
+	// ToSeq The session ceiling. Absent on the first page (the server pins it to the
+	// trail's current head and returns it as `upper_seq`); pass that value back
+	// on every later page so paging terminates and never chases the
+	// `audit.query` events the reads themselves append.
+	ToSeq *AuditToSeq `form:"to_seq,omitempty" json:"to_seq,omitempty"`
+
+	// Limit Maximum rows SCANNED for this page (clamped to 1000). Matched rows may
+	// be fewer when a filter is set.
+	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Actor Match only events whose acting principal has this id (exact).
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
+	Outcome *QueryInstanceAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+}
+
+// QueryInstanceAuditParamsOutcome defines parameters for QueryInstanceAudit.
+type QueryInstanceAuditParamsOutcome string
+
+// QueryInstanceAuditParamsOutcomes defines parameters for QueryInstanceAudit.
+type QueryInstanceAuditParamsOutcomes string
+
+// ExportInstanceAuditParams defines parameters for ExportInstanceAudit.
+type ExportInstanceAuditParams struct {
+	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
+	From *AuditFrom `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
+	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
+
+	// Actor Match only events whose acting principal has this id (exact).
+	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
+
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
+	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
+
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
+	Outcome *ExportInstanceAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
+	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
+
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
+	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
+
+	// CorrelationId Match only events sharing this correlation id — the link between an
+	// act's INTENT and OUTCOME events.
+	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportInstanceAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
+}
+
+// ExportInstanceAuditParamsOutcome defines parameters for ExportInstanceAudit.
+type ExportInstanceAuditParamsOutcome string
+
+// ExportInstanceAuditParamsOutcomes defines parameters for ExportInstanceAudit.
+type ExportInstanceAuditParamsOutcomes string
+
+// ExportInstanceAuditParamsReceipt defines parameters for ExportInstanceAudit.
+type ExportInstanceAuditParamsReceipt string
+
 // RevokeInstanceGrantParams defines parameters for RevokeInstanceGrant.
 type RevokeInstanceGrantParams struct {
 	// Principal The principal whose grant is being revoked.
@@ -12436,6 +12882,10 @@ type ExportOrgAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportOrgAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportOrgAuditParamsOutcome defines parameters for ExportOrgAudit.
@@ -12443,6 +12893,9 @@ type ExportOrgAuditParamsOutcome string
 
 // ExportOrgAuditParamsOutcomes defines parameters for ExportOrgAudit.
 type ExportOrgAuditParamsOutcomes string
+
+// ExportOrgAuditParamsReceipt defines parameters for ExportOrgAudit.
+type ExportOrgAuditParamsReceipt string
 
 // RevokeOrgGrantParams defines parameters for RevokeOrgGrant.
 type RevokeOrgGrantParams struct {
@@ -12577,6 +13030,10 @@ type ExportProjectAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportProjectAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportProjectAuditParamsOutcome defines parameters for ExportProjectAudit.
@@ -12584,6 +13041,9 @@ type ExportProjectAuditParamsOutcome string
 
 // ExportProjectAuditParamsOutcomes defines parameters for ExportProjectAudit.
 type ExportProjectAuditParamsOutcomes string
+
+// ExportProjectAuditParamsReceipt defines parameters for ExportProjectAudit.
+type ExportProjectAuditParamsReceipt string
 
 // ExportDefinitionsParams defines parameters for ExportDefinitions.
 type ExportDefinitionsParams struct {
@@ -12714,6 +13174,10 @@ type ExportEnvAuditParams struct {
 	// CorrelationId Match only events sharing this correlation id — the link between an
 	// act's INTENT and OUTCOME events.
 	CorrelationId *AuditCorrelationID `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+
+	// Receipt Opt in to the export completion receipt at this version. The stream
+	// then ends with one `AuditExportReceiptLine`. Omit it for plain JSONL.
+	Receipt *ExportEnvAuditParamsReceipt `form:"receipt,omitempty" json:"receipt,omitempty"`
 }
 
 // ExportEnvAuditParamsOutcome defines parameters for ExportEnvAudit.
@@ -12721,6 +13185,9 @@ type ExportEnvAuditParamsOutcome string
 
 // ExportEnvAuditParamsOutcomes defines parameters for ExportEnvAudit.
 type ExportEnvAuditParamsOutcomes string
+
+// ExportEnvAuditParamsReceipt defines parameters for ExportEnvAudit.
+type ExportEnvAuditParamsReceipt string
 
 // FetchDeliveryParams defines parameters for FetchDelivery.
 type FetchDeliveryParams struct {
@@ -14640,6 +15107,12 @@ type ServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string)
+	// QueryInstanceAudit One bounded page of the instance audit trail.
+	// (GET /api/v1/instance/audit)
+	QueryInstanceAudit(w http.ResponseWriter, r *http.Request, params QueryInstanceAuditParams)
+	// ExportInstanceAudit Stream the instance audit trail as JSONL.
+	// (GET /api/v1/instance/audit/export)
+	ExportInstanceAudit(w http.ResponseWriter, r *http.Request, params ExportInstanceAuditParams)
 	// GetInstanceConfig Read this owner instance configuration status.
 	// (GET /api/v1/instance/config)
 	GetInstanceConfig(w http.ResponseWriter, r *http.Request)
@@ -16032,6 +16505,18 @@ func (_ Unimplemented) StartWorkspaceHandoff(w http.ResponseWriter, r *http.Requ
 // ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 // (GET /api/v1/auth/workspace/transactions/{state})
 func (_ Unimplemented) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// QueryInstanceAudit One bounded page of the instance audit trail.
+// (GET /api/v1/instance/audit)
+func (_ Unimplemented) QueryInstanceAudit(w http.ResponseWriter, r *http.Request, params QueryInstanceAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ExportInstanceAudit Stream the instance audit trail as JSONL.
+// (GET /api/v1/instance/audit/export)
+func (_ Unimplemented) ExportInstanceAudit(w http.ResponseWriter, r *http.Request, params ExportInstanceAuditParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -19273,6 +19758,358 @@ func (siw *ServerInterfaceWrapper) ShowWorkspaceHandoff(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// QueryInstanceAudit operation middleware
+func (siw *ServerInterfaceWrapper) QueryInstanceAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QueryInstanceAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "after_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_seq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to_seq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to_seq", r.URL.Query(), &params.ToSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to_seq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to_seq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QueryInstanceAudit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInstanceAudit operation middleware
+func (siw *ServerInterfaceWrapper) ExportInstanceAudit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportInstanceAuditParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor", r.URL.Query(), &params.Actor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "operation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "operation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "operation", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcome" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcome", r.URL.Query(), &params.Outcome, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_type", r.URL.Query(), &params.ObjectType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "object_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "object_id", r.URL.Query(), &params.ObjectId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "object_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "correlation_id", r.URL.Query(), &params.CorrelationId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInstanceAudit(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetInstanceConfig operation middleware
 func (siw *ServerInterfaceWrapper) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
 
@@ -21541,6 +22378,19 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportOrgAudit(w, r, org, params)
 	}))
@@ -23502,6 +24352,19 @@ func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportProjectAudit(w, r, org, project, params)
 	}))
@@ -25310,6 +26173,19 @@ func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "correlation_id"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "correlation_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "receipt" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "receipt", r.URL.Query(), &params.Receipt, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "receipt"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "receipt", Err: err})
 		}
 		return
 	}
@@ -33933,6 +34809,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export", wrapper.ExportEnvAudit)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/audit", wrapper.QueryInstanceAudit)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/audit/export", wrapper.ExportInstanceAudit)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/rotate-token-key", wrapper.RotateTokenKey)
 	})
 	r.Group(func(r chi.Router) {
@@ -40764,6 +41646,295 @@ func (response ShowWorkspaceHandoff500JSONResponse) VisitShowWorkspaceHandoffRes
 type ShowWorkspaceHandoff503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ShowWorkspaceHandoff503JSONResponse) VisitShowWorkspaceHandoffResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAuditRequestObject struct {
+	Params QueryInstanceAuditParams
+}
+
+type QueryInstanceAuditResponseObject interface {
+	VisitQueryInstanceAuditResponse(w http.ResponseWriter) error
+}
+
+type QueryInstanceAudit200JSONResponse AuditPage
+
+func (response QueryInstanceAudit200JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response QueryInstanceAudit400JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response QueryInstanceAudit401JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response QueryInstanceAudit403JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response QueryInstanceAudit404JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response QueryInstanceAudit429JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response QueryInstanceAudit500JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type QueryInstanceAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response QueryInstanceAudit503JSONResponse) VisitQueryInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAuditRequestObject struct {
+	Params ExportInstanceAuditParams
+}
+
+type ExportInstanceAuditResponseObject interface {
+	VisitExportInstanceAuditResponse(w http.ResponseWriter) error
+}
+
+type ExportInstanceAudit200ResponseHeaders struct {
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
+}
+
+type ExportInstanceAudit200ApplicationxNdjsonResponse struct {
+	Body          io.Reader
+	Headers       ExportInstanceAudit200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ExportInstanceAudit200ApplicationxNdjsonResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type ExportInstanceAudit400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportInstanceAudit400JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ExportInstanceAudit401JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ExportInstanceAudit403JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ExportInstanceAudit404JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ExportInstanceAudit429JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit500JSONResponse struct{ InternalJSONResponse }
+
+func (response ExportInstanceAudit500JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportInstanceAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ExportInstanceAudit503JSONResponse) VisitExportInstanceAuditResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -52559,8 +53730,15 @@ type ExportOrgAuditResponseObject interface {
 	VisitExportOrgAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportOrgAudit200ResponseHeaders struct {
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
+}
+
 type ExportOrgAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportOrgAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -52569,6 +53747,15 @@ func (response ExportOrgAudit200ApplicationxNdjsonResponse) VisitExportOrgAuditR
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 
@@ -57091,8 +58278,15 @@ type ExportProjectAuditResponseObject interface {
 	VisitExportProjectAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportProjectAudit200ResponseHeaders struct {
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
+}
+
 type ExportProjectAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportProjectAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -57101,6 +58295,15 @@ func (response ExportProjectAudit200ApplicationxNdjsonResponse) VisitExportProje
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 
@@ -61021,8 +62224,15 @@ type ExportEnvAuditResponseObject interface {
 	VisitExportEnvAuditResponse(w http.ResponseWriter) error
 }
 
+type ExportEnvAudit200ResponseHeaders struct {
+	HikyoAuditExportID     *string
+	HikyoAuditReceipt      *string
+	HikyoAuditSnapshotTime *time.Time
+}
+
 type ExportEnvAudit200ApplicationxNdjsonResponse struct {
 	Body          io.Reader
+	Headers       ExportEnvAudit200ResponseHeaders
 	ContentLength int64
 }
 
@@ -61031,6 +62241,15 @@ func (response ExportEnvAudit200ApplicationxNdjsonResponse) VisitExportEnvAuditR
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	if response.ContentLength != 0 {
 		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.HikyoAuditExportID != nil {
+		w.Header().Set("Hikyo-Audit-Export-ID", fmt.Sprint(*response.Headers.HikyoAuditExportID))
+	}
+	if response.Headers.HikyoAuditReceipt != nil {
+		w.Header().Set("Hikyo-Audit-Receipt", fmt.Sprint(*response.Headers.HikyoAuditReceipt))
+	}
+	if response.Headers.HikyoAuditSnapshotTime != nil {
+		w.Header().Set("Hikyo-Audit-Snapshot-Time", fmt.Sprint(*response.Headers.HikyoAuditSnapshotTime))
 	}
 	w.WriteHeader(200)
 
@@ -80262,6 +81481,12 @@ type StrictServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(ctx context.Context, request ShowWorkspaceHandoffRequestObject) (ShowWorkspaceHandoffResponseObject, error)
+	// QueryInstanceAudit One bounded page of the instance audit trail.
+	// (GET /api/v1/instance/audit)
+	QueryInstanceAudit(ctx context.Context, request QueryInstanceAuditRequestObject) (QueryInstanceAuditResponseObject, error)
+	// ExportInstanceAudit Stream the instance audit trail as JSONL.
+	// (GET /api/v1/instance/audit/export)
+	ExportInstanceAudit(ctx context.Context, request ExportInstanceAuditRequestObject) (ExportInstanceAuditResponseObject, error)
 	// GetInstanceConfig Read this owner instance configuration status.
 	// (GET /api/v1/instance/config)
 	GetInstanceConfig(ctx context.Context, request GetInstanceConfigRequestObject) (GetInstanceConfigResponseObject, error)
@@ -83077,6 +84302,58 @@ func (sh *strictHandler) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ShowWorkspaceHandoffResponseObject); ok {
 		if err := validResponse.VisitShowWorkspaceHandoffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QueryInstanceAudit operation middleware
+func (sh *strictHandler) QueryInstanceAudit(w http.ResponseWriter, r *http.Request, params QueryInstanceAuditParams) {
+	var request QueryInstanceAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QueryInstanceAudit(ctx, request.(QueryInstanceAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QueryInstanceAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QueryInstanceAuditResponseObject); ok {
+		if err := validResponse.VisitQueryInstanceAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInstanceAudit operation middleware
+func (sh *strictHandler) ExportInstanceAudit(w http.ResponseWriter, r *http.Request, params ExportInstanceAuditParams) {
+	var request ExportInstanceAuditRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInstanceAudit(ctx, request.(ExportInstanceAuditRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInstanceAudit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInstanceAuditResponseObject); ok {
+		if err := validResponse.VisitExportInstanceAuditResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

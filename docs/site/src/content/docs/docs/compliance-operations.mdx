@@ -86,3 +86,24 @@ targets do not replace GDPR deadlines. Follow [EDPB breach guidance](https://www
 
 Store evidence with restricted access and justified retention. Do not attach
 production secrets, full archives or unredacted personal data to public issues.
+
+## Inspecting authentication and instance security events
+
+Open **Instance settings → Audit → Open instance audit**. This trail includes
+login failures and instance security changes; tenant audit views do not include
+those events. Inspect an event for its actor class, principal, credential,
+source IP, user agent, origin and correlation. An absent actor or source is
+shown explicitly, rather than attributed to the viewing operator.
+
+An interactive human with instance `audit-read` and a second factor can also
+run `hikyo audit query --instance NAME --instance-scope -o json` or
+`hikyo audit export --instance NAME --instance-scope > instance-audit.jsonl`.
+The browser and CLI verify completion before publishing an export. A denial,
+stream failure or missing completion receipt is a failed collection, even if
+HTTP reported 200. Keep the prior collection state and retry; public `seq`
+is not a gap-free export continuation token.
+
+Project automation is restricted to its owning project subtree. It cannot
+become an instance-wide collector by selecting a different route. A routine
+encrypted backup remains the supported broader off-box copy; do not replace
+it with a project credential granted authority outside its project.
