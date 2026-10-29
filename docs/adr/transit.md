@@ -1,5 +1,16 @@
 # Hikyo transit: versioned cryptographic operations (ADR, decision locked 2026-09-26)
 
+> **Scoped amendment closeout preparation (2026-10-29):** The owner requested
+> completion of #156 under the updated independent Standards/Spec review
+> policy. The [source-bound closeout](../handoff/156-transit-amendment-closeout.md)
+> fixes the covered contract, original Claude provenance, later mixed edits and
+> required final-byte review receipts. This note changes no decision below and
+> grants no ADR waiver. The September/October 28 skipped reviews remain
+> historical SKIPPED records. The amendment-review obligation is discharged
+> only by qualifying review of the bound scope, its recorded owner-ticket
+> ceremony and an explicitly authorized merge of this closeout. Until then,
+> closeout remains HOLD; delivered #156 and #820 stay closed.
+
 > **Status: decision locked; operative upon the implementing PR merging.** The
 > owner approved redrawing the map for
 > [#156](https://github.com/Hikyo-Org/Hikyo/issues/156) on 2026-09-26 and chose
