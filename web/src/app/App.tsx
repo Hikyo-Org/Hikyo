@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactElement } from 'react';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes } from 'react-router';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation } from 'react-router';
 
 import { NotFound, Overview } from '../routes/Placeholder.tsx';
 import { Shell } from '../routes/Shell.tsx';
@@ -12,6 +12,7 @@ import {
 } from './navigation.ts';
 import { ToastViewport } from './notifications.tsx';
 import { useAuth } from './AuthProvider.tsx';
+import { loginReturnTarget } from './loginReturn.ts';
 import { isDemo, DEMO_MATRIX_PATH } from '../demo/config.ts';
 
 const Router = isDemo ? HashRouter : BrowserRouter;
@@ -192,6 +193,7 @@ const sessionChromelessSurfaces = SURFACES.filter(
 // gate under MemoryRouter; production owns BrowserRouter below.
 export function AppRoutes() {
   const auth = useAuth();
+  const location = useLocation();
 
   if (auth.failure !== null) {
     return <>
@@ -218,13 +220,18 @@ export function AppRoutes() {
       }
   }
 
+  const loginPath = `${surfaceById('login').path}?${new URLSearchParams({
+    returnTo: `${location.pathname}${location.search}${location.hash}`,
+  })}`;
+  const returnTo = loginReturnTarget(new URLSearchParams(location.search).get('returnTo'));
+
   return <>
       {live === null ? (
         <Routes>
           {anonymousSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />
           ))}
-          <Route path="*" element={<Navigate to={surfaceById('login').path} replace />} />
+          <Route path="*" element={<Navigate to={loginPath} replace />} />
         </Routes>
       ) : live.enrolment_required === true ? (
         // The enrolment gate (#785): a session minted for an unenrolled account
@@ -234,12 +241,12 @@ export function AppRoutes() {
         // falls away on its own.
         <Routes>
           <Route path={surfaceById('login').path} element={withRouteFallback(<EnrolmentGate />)} />
-          <Route path="*" element={<Navigate to={surfaceById('login').path} replace />} />
+          <Route path="*" element={<Navigate to={loginPath} replace />} />
         </Routes>
       ) : (
         <Routes>
           {(['login', 'signup'] as const).map((id) => (
-            <Route key={id} path={surfaceById(id).path} element={<Navigate to={isDemo ? DEMO_MATRIX_PATH : surfaceById('projects').path} replace />} />
+            <Route key={id} path={surfaceById(id).path} element={<Navigate to={returnTo ?? (isDemo ? DEMO_MATRIX_PATH : surfaceById('projects').path)} replace />} />
           ))}
           {sessionChromelessSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={surfaceElement(surface.id)} />

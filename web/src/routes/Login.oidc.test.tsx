@@ -399,12 +399,17 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
 const buttonNamed = (container: HTMLElement, text: string) =>
   [...container.querySelectorAll('button')].find((button) => button.textContent?.trim() === text);
 
-it.each(['password', 'passkey', 'code', 'challenge-passkey'])('refreshes the document after completed %s login, retaining consent continuation', async (leg) => {
+it.each(['password', 'passkey', 'code', 'challenge-passkey'].flatMap((leg) =>
+  ['prop', 'query'].map((source) => ({ leg, source })),
+))('refreshes the document after completed $leg login, retaining the $source continuation', async ({ leg, source }) => {
   const assign = vi.fn();
   vi.stubGlobal('location', { origin: 'http://localhost:3000', assign });
   mocks.passkeysAvailable = true;
   const container = document.createElement('div');
-  const { unmount } = await mount(container, { returnTo: '/workspace/approve?state=bound-state' });
+  const returnTo = source === 'prop' ? '/workspace/approve?state=bound-state'
+    : '/orgs/org_test/projects/prj_test/machine-access?filter=a%2Fb&tab=members#grant';
+  const { unmount } = await mount(container, source === 'prop' ? { returnTo }
+    : { url: `/login?${new URLSearchParams({ returnTo })}` });
   if (leg === 'password') {
     mocks.login.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({ kind: 'session' }));
     await openPassword(container);
@@ -429,7 +434,43 @@ it.each(['password', 'passkey', 'code', 'challenge-passkey'])('refreshes the doc
       await act(async () => buttonNamed(container, 'Use a passkey')?.click());
     }
   }
-  expect(assign).toHaveBeenCalledExactlyOnceWith('/workspace/approve?state=bound-state');
+  expect(assign).toHaveBeenCalledExactlyOnceWith(returnTo);
+  await unmount();
+});
+
+it.each(['https://other.example', '//other.example', '/\\other.example', '/.//other.example', '/login', '/SIGNUP/', '/%6cogin', '/%'])('ignores an unsafe login return: %s', async (returnTo) => {
+  const assign = vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined).mockClear();
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { url: `/login?${new URLSearchParams({ returnTo })}` });
+  mocks.login.mutate.mockImplementation((_input, callbacks) => callbacks.onSuccess({ kind: 'session' }));
+  await openPassword(container);
+  await act(async () => container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(assign).toHaveBeenCalledExactlyOnceWith('/');
+  await unmount();
+});
+
+it.each(['oidc', 'oauth2', 'saml'])('retains the login URL continuation in a %s transaction', async (kind) => {
+  const returnTo = '/orgs/org_test/projects/prj_test/machine-access?tab=members#grant';
+  mocks.methods.data.providers = [{ kind, slug: 'sso', display_name: 'SSO' }];
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso?RelayState=bound-state' }))));
+  vi.spyOn(globalThis.location, 'assign').mockImplementation(() => undefined);
+  const container = document.createElement('div');
+  const { unmount } = await mount(container, { url: `/login?${new URLSearchParams({ returnTo })}` });
+  await act(async () => buttonNamed(container, 'Continue with SSO')?.click());
+  if (kind === 'saml') {
+    expect(JSON.parse(globalThis.sessionStorage.getItem('hikyo-saml-transaction:bound-state') ?? 'null')).toEqual({ purpose: 'login', returnTo });
+  } else {
+    expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind, provider: 'sso', intent: 'sign-in', signupOrg: undefined, returnTo });
+  }
+  await unmount();
+});
+
+it('keeps an explicit consent return ahead of a URL-supplied continuation', async () => {
+  const container = document.createElement('div');
+  const returnTo = '/login/cli?transaction=bound-state';
+  const { unmount } = await mount(container, { returnTo, url: '/login?returnTo=/projects' });
+  await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ kind: 'oidc', provider: 'strict', intent: 'sign-in', signupOrg: undefined, returnTo });
   await unmount();
 });
 
