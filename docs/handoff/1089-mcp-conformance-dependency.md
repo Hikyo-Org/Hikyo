@@ -27,6 +27,14 @@ the defect deterministically: one durable update, zero acknowledged updates.
 The proxy forwards other bytes unchanged, retains no message values, closes its
 connections and joins every worker at teardown.
 
+A subsequent queue run, `40795957963`, exposed a fixture setup mismatch: CI uses
+a PostgreSQL URL without an explicit `sslmode`. The proxy now forwards the
+client's SSL/GSS startup requests and the server's refusal byte unchanged before
+observing backend messages. The normal client fallback works without changing
+its URL or environment policy. TLS-required URL and environment configurations
+must still refuse the disposable plaintext server. Local regression validation
+uses the same unqualified URL form as CI.
+
 The shared-node test still requires progress under 64 concurrent attempts, exact
 failure-health accounting, a validated window and at most 32 samples. It checks
 that every acknowledged update is durable and no more than one update per attempt

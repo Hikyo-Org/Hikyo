@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestRequestRefusalSnapshotWaitsForPostgresSettlement(t *testing.T) {
@@ -80,9 +82,6 @@ func TestRequestRefusalLostPostgresCommitReceiptRetainsEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Query().Get("sslmode") != "disable" {
-		t.Fatal("commit-receipt fixture requires the disposable PostgreSQL plaintext transport")
-	}
 	address, loseNext, dropped := refusalCommitReceiptProxy(t, u.Host)
 	u.Host = address
 	t.Setenv("HIKYO_TEST_POSTGRES_DSN", u.String())
@@ -108,6 +107,38 @@ func TestRequestRefusalLostPostgresCommitReceiptRetainsEvidence(t *testing.T) {
 	expireRefusalWindow(t, db)
 	waitForRefusalSeal(t, db, service.NewRefusalSignals(db), committed)
 	assertRetainedRefusalRequest(t, db, sample.RequestID, sample.SourceIP)
+}
+
+func TestRequestRefusalCommitProxyPreservesTLSRequirement(t *testing.T) {
+	for _, inherited := range []bool{false, true} {
+		name := "URL"
+		if inherited {
+			name = "environment"
+		}
+		t.Run(name, func(t *testing.T) {
+			u, err := url.Parse(postgresTestDSN(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			address, _, _ := refusalCommitReceiptProxy(t, u.Host)
+			u.Host = address
+			q := u.Query()
+			if inherited {
+				q.Del("sslmode")
+				t.Setenv("PGSSLMODE", "require")
+			} else {
+				q.Set("sslmode", "require")
+			}
+			u.RawQuery = q.Encode()
+			conn, err := pgx.Connect(t.Context(), u.String())
+			if conn != nil {
+				_ = conn.Close(t.Context())
+			}
+			if err == nil {
+				t.Fatal("proxy downgraded a TLS-required connection to the plaintext fixture")
+			}
+		})
+	}
 }
 
 // Forward PostgreSQL bytes unchanged, except for one armed COMMIT receipt.
@@ -146,7 +177,6 @@ func refusalCommitReceiptProxy(t *testing.T, target string) (string, *atomic.Boo
 					_ = upstream.Close()
 				})
 				copied := make(chan struct{})
-				go func() { defer close(copied); _, _ = io.Copy(upstream, client) }()
 				defer func() {
 					_ = client.Close()
 					_ = upstream.Close()
@@ -155,6 +185,11 @@ func refusalCommitReceiptProxy(t *testing.T, target string) (string, *atomic.Boo
 						<-closed
 					}
 				}()
+				if err := forwardRefusalPostgresStartup(client, upstream); err != nil {
+					close(copied)
+					return
+				}
+				go func() { defer close(copied); _, _ = io.Copy(upstream, client) }()
 				for {
 					var header [5]byte
 					if _, err := io.ReadFull(upstream, header[:]); err != nil {
@@ -182,4 +217,40 @@ func refusalCommitReceiptProxy(t *testing.T, target string) (string, *atomic.Boo
 	}()
 	t.Cleanup(func() { cancel(); _ = listener.Close(); workers.Wait() })
 	return listener.Addr().String(), loseNext, dropped
+}
+
+// Preserve the client's SSL/GSS negotiation. CI's unqualified URL uses the
+// normal plaintext fallback after the disposable server replies N; a client
+// requiring TLS must still refuse that response. Encrypted transports cannot
+// enter the plaintext backend-message observer.
+func forwardRefusalPostgresStartup(client, upstream net.Conn) error {
+	for {
+		var prefix [8]byte
+		if _, err := io.ReadFull(client, prefix[:]); err != nil {
+			return err
+		}
+		size := binary.BigEndian.Uint32(prefix[:4])
+		if size < 8 || size > 1<<20 {
+			return errors.New("invalid PostgreSQL fixture startup length")
+		}
+		buffers := net.Buffers{prefix[:]}
+		if _, err := buffers.WriteTo(upstream); err != nil {
+			return err
+		}
+		request := binary.BigEndian.Uint32(prefix[4:])
+		if size != 8 || (request != 80877103 && request != 80877104) {
+			return nil
+		}
+		var response [1]byte
+		if _, err := io.ReadFull(upstream, response[:]); err != nil {
+			return err
+		}
+		buffers = net.Buffers{response[:]}
+		if _, err := buffers.WriteTo(client); err != nil {
+			return err
+		}
+		if response[0] != 'N' {
+			return errors.New("encrypted PostgreSQL transport cannot enter the commit-receipt observer")
+		}
+	}
 }
