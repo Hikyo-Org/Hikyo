@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { expect, type Page } from '@playwright/test';
 import {
-  zFileTarget, zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse,
+  zAdapterMove, zFileTarget, zEnvironment, zOrg, zProject, zServiceAccount, zKey, zInitializeValueResponse,
   zTransitKey, zTransitCiphertextResult, zTransitDecryptResult, zTransitDataKeyResult,
   zTransitSignatureResult, zTransitHmacResult, zTransitVerifyResult, zTransitTrimResult,
 } from '@hikyo/zod';
@@ -1279,10 +1279,27 @@ test.describe('deployment adapters', () => {
     await expect(move).toContainText('Resume with a working credential, or cancel');
     await page.reload();
     await expect(move.locator('.adapters__move-state')).toHaveText(/attention required/);
+    const cancellation = page.waitForResponse((response) =>
+      response.request().method() === 'DELETE' && response.url().includes('/adapter-moves/'),
+    );
     await move.getByRole('button', { name: 'Cancel move' }).click();
     await authoriseAdapterCeremony(page);
     await expect(page.locator('.adapters__done')).toContainText('Move canceled');
     await expect(move.locator('.adapters__move-state')).toHaveText(/canceled/, { timeout: 30_000 });
+    const canceledMove = zAdapterMove.parse(await (await cancellation).json());
+    // Cancellation queues reconvergence; its terminal move state does not
+    // settle that job. Starting another move while it runs races the real
+    // provider fence. Observe the old-route outcome before changing it again.
+    await expect.poll(async () => {
+      const response = await page.request.get(
+        `${BASE_URL}/api/v1/orgs/${seed.org}/projects/${seed.project}/adapter-moves/${canceledMove.id}`,
+      );
+      expect(response.status()).toBe(200);
+      const current = zAdapterMove.parse(await response.json());
+      return current.targets.flatMap((target) =>
+        target.jobs.filter((job) => job.kind === 'converge').map((job) => job.state),
+      );
+    }).toEqual(['succeeded']);
     await move.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toBeVisible();
 
