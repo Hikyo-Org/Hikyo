@@ -5,6 +5,9 @@ repo=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-signature-fixture.XXXXXX")
 trap 'rm -rf "$repo"' EXIT HUP INT TERM
 zero=0000000000000000000000000000000000000000
 
+# Assert that COMMAND [ARG...] fails and reports EXPECTED in its combined output.
+# Usage: expect_refusal EXPECTED COMMAND [ARG...]. Any success or unrelated failure
+# terminates the fixture, so a broken setup cannot masquerade as a valid refusal.
 expect_refusal() {
 	expected=$1
 	shift
