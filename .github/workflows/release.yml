@@ -151,9 +151,9 @@ jobs:
         run: |
           ./scripts/ci/check-fallback-channel-test.sh \
             release/repository/fallback-channel-test.json \
-            security@developwent.io
+            security@hikyo.app
           ./scripts/ci/check-docs-live.sh \
-            https://hikyo.app security@developwent.io
+            https://hikyo.app security@hikyo.app
 
       - name: Validate candidate for GoReleaser
         env:
