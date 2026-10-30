@@ -1,31 +1,58 @@
-# Update-check release response limit
+# PR #1104: bounded release discovery
+
+PR: <https://github.com/Hikyo-Org/Hikyo/pull/1104>
 
 ## Result
 
-The shared GitHub release reader accepts metadata responses up to 8 MiB,
-instead of 2 MiB. This repairs release discovery for the instance banner, CLI,
-and automatic upgrade callers when GitHub returns a normal, metadata-heavy
-release page. Requests remain pinned to the existing release authority and
-bounded by size and time; release selection and verification are unchanged.
+The shared GitHub release reader traverses up to 100 records in pages of 20,
+then looks up the latest stable release separately. Oversized pages retry at
+10, 5, then 1 record. Each smaller size divides the preceding size, preserving
+its numeric offset even when a later page must shrink. Successful short or
+empty pages end traversal; failures return no partial result.
+
+The original 2 MiB per-response limit is retained. The lookup also has a 16 MiB
+aggregate body budget, at most 104 requests including reductions and latest
+stable, and one discovery deadline. Size detection reads at most one extra byte
+past a byte limit. The deadline uses the original two-request timeout allowance,
+capped at 30 seconds and subject to any earlier caller deadline. The instance's
+3-second HTTP timeout therefore permits at most 6 seconds for the entire lookup;
+individual requests still have their original timeout.
+
+Only successful JSON responses that exceed the response-size limit trigger
+smaller-page retries. HTTP errors, invalid content types, malformed JSON,
+invalid release metadata, cancellation, and exhausted budgets remain visible
+failures. A single record above 2 MiB still fails. Requests are constructed at
+the pinned GitHub authority; response-supplied pagination links are ignored.
+Release selection, exact-version lookup, and signature verification retain
+their existing semantics and validation.
+
+This supports release windows larger than 8 MiB without raising individual
+response limits. It is still intentionally bounded: excessive single records,
+aggregate metadata, latency, and rate limiting can prevent discovery. GitHub
+pagination is a mutable feed, not a snapshot across requests.
 
 ## Evidence
 
-On 2026-10-30, the public metadata endpoint for `hikyo.went.io` reported
-`0.0.1-nightly.20261023.91.gcd2352d2`. That revision uses the same 2 MiB limit.
-GitHub's 100-record release endpoint returned more than 2 MiB of JSON. Two
-requests measured 2,763,962 and 2,296,206 bytes; the response representation
-varies, but both exceed 2,097,152 bytes.
+On 2026-10-30, public metadata for `hikyo.went.io` reported
+`0.0.1-nightly.20261023.91.gcd2352d2`, whose source uses a 2 MiB response limit.
+GitHub's original 100-record endpoint returned 2,763,962 and 2,296,206 bytes in
+two requests, both exceeding 2,097,152 bytes. A temporary real Go public-only
+client probe reproduced `updatecheck: release response exceeds size limit`.
 
-A temporary probe using the real public-only Go HTTP client and release reader
-failed with `updatecheck: release response exceeds size limit` before the
-change, then accepted 52 releases after it. The network probe was removed;
-committed tests remain deterministic.
+The paginated reader accepted all 52 published releases in four requests:
+three 20-record pages and the latest-stable endpoint, which returned the
+expected absence, HTTP 404. The final probe took 3.119 seconds within the
+instance's shared 6-second budget. These are local public-source observations,
+not authenticated production recovery evidence. The temporary probe is removed
+before handback; committed tests remain deterministic.
 
-The new regression builds a complete 100-record page with release notes,
-exceeding the old limit, and checks successful discovery and newest-nightly
-selection. It failed with the same size-limit error before the fix and passed
-after it. Existing non-success and oversized-response rejection tests also
-passed with the new bound.
+Pagination regressions failed against the prior single-page implementation
+and pass with the final reader. Coverage includes a release window exceeding
+8 MiB, newest-nightly and latest-stable selection, all page-size reductions
+both initially and after an earlier successful page, the 100-record boundary,
+short and empty pages, the 104-request worst case, aggregate byte exhaustion,
+response closure, cancellation, non-retryable errors, oversized single-record
+refusal, and deadline expiration across multiple requests with a fake clock.
 
 Local validation passed:
 
@@ -36,7 +63,7 @@ go test -p 2 ./internal/service ./internal/server ./internal/cli -run Update -co
 go vet -p 2 ./internal/updatecheck
 ```
 
-Hosted CI and protected merge proof remain separate from these local checks.
+Hosted CI and protected merge proof remain separate from local checks.
 
 ## Production boundary and next steps
 
@@ -50,5 +77,7 @@ signed release process. An authorized operator must use the documented manual
 signed-bundle procedure in [the upgrade guide](../site/src/content/docs/docs/upgrades.mdx)
 if the installed release cannot discover updates. Reload the Projects page and
 verify the authenticated `/api/v1/instance/update-status` request succeeds and
-the warning disappears. Do not disable checks or relax signature verification
-to work around discovery failure.
+the warning disappears. Keep checks and signature verification enabled.
+
+GitHub's documented pagination parameters are `per_page` and `page`:
+[release API reference](https://docs.github.com/en/rest/releases/releases#list-releases).

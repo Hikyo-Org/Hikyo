@@ -29,7 +29,7 @@ func TestGitHubSourceReturnsPublishedReleaseRecords(t *testing.T) {
 				Body:       io.NopCloser(strings.NewReader(`{"tag_name":"v1.0.1","prerelease":false,"draft":false,"immutable":true,"published_at":"2026-08-23T02:00:00Z","assets":[]}`)),
 			}, nil
 		}
-		if request.URL.String() != githubReleasesURL {
+		if request.URL.String() != githubReleasesURL+"?per_page=20&page=1" {
 			t.Fatalf("request URL = %s, want pinned release source", request.URL)
 		}
 		return &http.Response{
@@ -93,9 +93,9 @@ func TestGitHubSourceKeepsLatestStableAfterNightliesFillFirstPage(t *testing.T) 
 	}
 }
 
-func TestGitHubSourceAcceptsFullReleasePage(t *testing.T) {
+func TestGitHubSourceAcceptsLargeReleaseWindow(t *testing.T) {
 	// GitHub includes release notes and other unused metadata. A full page of
-	// otherwise valid releases can exceed the former 2 MiB response limit.
+	// otherwise valid releases can exceed even an enlarged 8 MiB response limit.
 	type pageRelease struct {
 		githubRelease
 		Body string `json:"body"`
@@ -108,27 +108,32 @@ func TestGitHubSourceAcceptsFullReleasePage(t *testing.T) {
 				Prerelease:  true,
 				PublishedAt: "2026-10-30T02:00:00Z",
 			},
-			Body: strings.Repeat("release notes ", 4096),
+			Body: strings.Repeat("release notes ", 8192),
 		})
 	}
 	body, err := json.Marshal(records)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(body) <= 2<<20 {
-		t.Fatal("fixture must exceed the former 2 MiB response limit")
+	if len(body) <= 8<<20 {
+		t.Fatal("fixture must exceed the former 8 MiB response limit")
 	}
 	source := NewGitHubSource(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.URL.String() == githubLatestReleaseURL {
 			return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
 		}
-		if request.URL.String() != githubReleasesURL {
-			t.Fatalf("unexpected request URL: %s", request.URL)
+		size, start := releasePageBounds(t, request)
+		if start >= len(records) {
+			t.Fatalf("read beyond release window: %s", request.URL)
+		}
+		page, err := json.Marshal(records[start:min(start+size, len(records))])
+		if err != nil {
+			t.Fatal(err)
 		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(string(body))),
+			Body:       io.NopCloser(strings.NewReader(string(page))),
 		}, nil
 	})})
 	releases, err := source.Releases(t.Context())

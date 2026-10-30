@@ -21,13 +21,26 @@ import (
 )
 
 const (
-	githubReleasesURL      = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases?per_page=100"
-	githubLatestReleaseURL = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/latest"
-	githubReleasePageBase  = "https://github.com/Hikyo-Org/Hikyo/releases/tag/"
-	// Full pages include asset metadata and release notes for up to 100
-	// releases. Keep reads bounded with room for the published release feed.
-	maxReleaseResponseBytes = 8 << 20
+	githubReleasesURL           = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases"
+	githubLatestReleaseURL      = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/latest"
+	githubReleasePageBase       = "https://github.com/Hikyo-Org/Hikyo/releases/tag/"
+	maxReleaseResponseBytes     = 2 << 20
+	maxReleaseDiscoveryBytes    = 16 << 20
+	maxReleaseDiscoveryRequests = 104 // 100 single-record pages, 3 reductions, latest stable.
+	maxReleaseDiscoveryDuration = 30 * time.Second
+	maxDiscoveryReleases        = 100
 )
+
+var errReleaseResponseTooLarge = errors.New("updatecheck: release response exceeds size limit")
+
+type releaseReadBudget struct {
+	bytes    int64
+	requests int
+}
+
+func newReleaseReadBudget() *releaseReadBudget {
+	return &releaseReadBudget{bytes: maxReleaseDiscoveryBytes, requests: maxReleaseDiscoveryRequests}
+}
 
 // Source lists published releases from one fixed release authority.
 type Source interface {
@@ -117,12 +130,21 @@ func (s *GitHubSource) Releases(ctx context.Context) ([]Release, error) {
 	if s == nil || s.client == nil {
 		return nil, errors.New("updatecheck: HTTP client is required")
 	}
-	var records []githubRelease
-	if _, err := s.getJSON(ctx, githubReleasesURL, &records, false); err != nil {
+	// Pagination shares the original two-request timeout allowance instead of
+	// multiplying it by the number of pages or oversized-page retries.
+	timeout := maxReleaseDiscoveryDuration
+	if s.client.Timeout > 0 && s.client.Timeout < timeout/2 {
+		timeout = 2 * s.client.Timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	budget := newReleaseReadBudget()
+	records, err := s.releaseRecords(ctx, budget)
+	if err != nil {
 		return nil, err
 	}
 	var latestStable githubRelease
-	foundStable, err := s.getJSON(ctx, githubLatestReleaseURL, &latestStable, true)
+	foundStable, err := s.getJSON(ctx, githubLatestReleaseURL, &latestStable, true, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +185,37 @@ func (s *GitHubSource) Releases(ctx context.Context) ([]Release, error) {
 	return releases, nil
 }
 
+func (s *GitHubSource) releaseRecords(ctx context.Context, budget *releaseReadBudget) ([]githubRelease, error) {
+	var records []githubRelease
+	pageSize := 20
+	for len(records) < maxDiscoveryReleases {
+		// Every smaller size divides the preceding size, so the offset remains
+		// exact even when a later page needs to shrink: 20 -> 10 -> 5 -> 1.
+		endpoint := fmt.Sprintf("%s?per_page=%d&page=%d", githubReleasesURL, pageSize, len(records)/pageSize+1)
+		var page []githubRelease
+		_, err := s.getJSON(ctx, endpoint, &page, false, budget)
+		if errors.Is(err, errReleaseResponseTooLarge) && pageSize > 1 {
+			if pageSize > 5 {
+				pageSize /= 2
+			} else {
+				pageSize = 1
+			}
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(page) > pageSize {
+			return nil, errors.New("updatecheck: release page exceeds requested record count")
+		}
+		records = append(records, page...)
+		if len(page) < pageSize {
+			break
+		}
+	}
+	return records, nil
+}
+
 // ReleaseByVersion resolves an exact authenticated graph reference even after
 // that release has left the first discovery page. The returned record is still
 // discovery only; the caller must verify its signed identity and full inventory.
@@ -175,7 +228,7 @@ func (s *GitHubSource) ReleaseByVersion(ctx context.Context, version string) (Re
 	}
 	tag := "v" + version
 	var record githubRelease
-	if _, err := s.getJSON(ctx, "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/tags/"+url.PathEscape(tag), &record, false); err != nil {
+	if _, err := s.getJSON(ctx, "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/tags/"+url.PathEscape(tag), &record, false, newReleaseReadBudget()); err != nil {
 		return Release{}, err
 	}
 	if record.Draft || record.TagName != tag {
@@ -224,7 +277,14 @@ func releaseAssets(tag string, records []githubAsset) ([]Asset, error) {
 	return assets, nil
 }
 
-func (s *GitHubSource) getJSON(ctx context.Context, endpoint string, target any, allowNotFound bool) (bool, error) {
+func (s *GitHubSource) getJSON(ctx context.Context, endpoint string, target any, allowNotFound bool, budget *releaseReadBudget) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if budget.bytes <= 0 || budget.requests <= 0 {
+		return false, errors.New("updatecheck: release discovery budget exhausted")
+	}
+	budget.requests--
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false, err
@@ -236,13 +296,6 @@ func (s *GitHubSource) getJSON(ctx context.Context, endpoint string, target any,
 		return false, fmt.Errorf("updatecheck: fetch releases: %w", err)
 	}
 	defer response.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(response.Body, maxReleaseResponseBytes+1))
-	if err != nil {
-		return false, fmt.Errorf("updatecheck: read releases: %w", err)
-	}
-	if len(raw) > maxReleaseResponseBytes {
-		return false, errors.New("updatecheck: release response exceeds size limit")
-	}
 	if allowNotFound && response.StatusCode == http.StatusNotFound {
 		return false, nil
 	}
@@ -252,6 +305,17 @@ func (s *GitHubSource) getJSON(ctx context.Context, endpoint string, target any,
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		return false, fmt.Errorf("updatecheck: release source returned invalid content type %q", response.Header.Get("Content-Type"))
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, min(int64(maxReleaseResponseBytes), budget.bytes)+1))
+	budget.bytes -= int64(len(raw))
+	if err != nil {
+		return false, fmt.Errorf("updatecheck: read releases: %w", err)
+	}
+	if budget.bytes < 0 {
+		return false, errors.New("updatecheck: release discovery byte budget exceeded")
+	}
+	if len(raw) > maxReleaseResponseBytes {
+		return false, errReleaseResponseTooLarge
 	}
 	if err := json.Unmarshal(raw, target); err != nil {
 		return false, fmt.Errorf("updatecheck: decode releases: %w", err)
