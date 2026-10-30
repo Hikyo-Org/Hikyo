@@ -602,7 +602,7 @@ jobs:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-notarize.outputs.artifact_id }}
-        run: ./scripts/release/verify-apple-install.sh dist "$VERSION" "$ARCH" "$RUNNER_TEMP/install-$ARCH.json"
+        run: ./scripts/release/with-apple-ticket-network.sh ./scripts/release/verify-apple-install.sh dist "$VERSION" "$ARCH" "$RUNNER_TEMP/install-$ARCH.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-install-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
