@@ -53,13 +53,13 @@ func TestGitHubDotComContract(t *testing.T) {
 	harness.assertWorkflowFixture(t)
 	contractEvidence(t, map[string]any{"kind": "binding", "candidate_sha": cfg.candidateSHA, "authorization_ref": cfg.authorizationRef, "repository_id": cfg.repositoryID, "organization_id": cfg.organizationID, "environment_id": cfg.environmentID, "workflow_sha": cfg.workflowSHA, "workflow_sha256": fmt.Sprintf("%x", sha256.Sum256(contractWorkflowFixture))})
 
-	repositoryClient := newContractClient(t, cfg.repositoryToken)
-	organizationClient := newContractClient(t, cfg.organizationToken)
-	environmentClient := newContractClient(t, cfg.environmentToken)
-	adminClient := newContractClient(t, cfg.harnessToken)
-	repositoryDeniedClient := newContractClient(t, cfg.repositoryDeniedToken)
-	organizationDeniedClient := newContractClient(t, cfg.organizationDeniedToken)
-	environmentDeniedClient := newContractClient(t, cfg.environmentDeniedToken)
+	repositoryClient := newContractClient(t, cfg, cfg.repositoryToken)
+	organizationClient := newContractClient(t, cfg, cfg.organizationToken)
+	environmentClient := newContractClient(t, cfg, cfg.environmentToken)
+	adminClient := newContractClient(t, cfg, cfg.harnessToken)
+	repositoryDeniedClient := newContractClient(t, cfg, cfg.repositoryDeniedToken)
+	organizationDeniedClient := newContractClient(t, cfg, cfg.organizationDeniedToken)
+	environmentDeniedClient := newContractClient(t, cfg, cfg.environmentDeniedToken)
 
 	repository := adapter.Destination{Kind: adapter.Repository, Owner: cfg.owner, Name: cfg.repository}
 	repositoryIdentity, err := repositoryClient.ResolveDestination(t.Context(), repository)
@@ -160,14 +160,14 @@ func loadGitHubContractConfig(t *testing.T) (githubContractConfig, bool) {
 	return cfg, true
 }
 
-func newContractClient(t *testing.T, token string) *Client {
+func newContractClient(t *testing.T, cfg githubContractConfig, token string) *observedContractClient {
 	t.Helper()
 	client, err := NewClient(ClientConfig{Origin: "https://api.github.com", Credential: token, Deadline: 30 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(client.Forget)
-	return client
+	return observeContractClient(client, cfg, func(record map[string]any) { contractEvidence(t, record) })
 }
 
 func assertNoVariableReadSurface(t *testing.T) {
@@ -181,7 +181,7 @@ func assertNoVariableReadSurface(t *testing.T) {
 	}
 }
 
-func assertConnectionContract(t *testing.T, client *Client, token string, destination adapter.Destination, destinationID, repositoryID int64) {
+func assertConnectionContract(t *testing.T, client *observedContractClient, token string, destination adapter.Destination, destinationID, repositoryID int64) {
 	t.Helper()
 	connection, err := (&Module{API: client}).TestConnection(t.Context(), adapter.ConnectionRequest{
 		Destination: destination, Access: adapter.Access{Credential: token}, Gate: func(context.Context) error { return nil },
@@ -194,7 +194,7 @@ func assertConnectionContract(t *testing.T, client *Client, token string, destin
 	}
 }
 
-func assertNamedPermissionRefusal(t *testing.T, client *Client, token string, destination adapter.Destination, permissionNames ...string) {
+func assertNamedPermissionRefusal(t *testing.T, client *observedContractClient, token string, destination adapter.Destination, permissionNames ...string) {
 	t.Helper()
 	_, err := (&Module{API: client}).TestConnection(t.Context(), adapter.ConnectionRequest{
 		Destination: destination, Access: adapter.Access{Credential: token}, Gate: func(context.Context) error { return nil },
@@ -209,7 +209,7 @@ func assertNamedPermissionRefusal(t *testing.T, client *Client, token string, de
 	}
 }
 
-func assertNamedVariablePermissionRefusal(t *testing.T, denied, cleanup *Client, token string, destination adapter.Destination) {
+func assertNamedVariablePermissionRefusal(t *testing.T, denied, cleanup *observedContractClient, token string, destination adapter.Destination) {
 	t.Helper()
 	module := &Module{API: denied}
 	// Variables cannot be read safely. Missing Variables write must therefore
@@ -244,7 +244,7 @@ func workflowByteClasses() []struct{ name, value string } {
 	}
 }
 
-func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix string) {
+func runGitHubScopeContract(t *testing.T, client *observedContractClient, harness *contractHTTP, destination adapter.Destination, prefix string) {
 	t.Helper()
 	variable := prefix + "VARIABLE"
 	missing := prefix + "MISSING"
@@ -313,7 +313,7 @@ func runGitHubScopeContract(t *testing.T, client *Client, harness *contractHTTP,
 	}
 }
 
-func assertEmptyValueContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix, nonemptyVariable string, key PublicKey) {
+func assertEmptyValueContract(t *testing.T, client *observedContractClient, harness *contractHTTP, destination adapter.Destination, prefix, nonemptyVariable string, key PublicKey) {
 	t.Helper()
 	variable, secret := prefix+"EMPTY_VARIABLE", prefix+"EMPTY_SECRET"
 	ownContractName(t, client, destination, adapter.Variable, variable)
@@ -340,7 +340,7 @@ func assertEmptyValueContract(t *testing.T, client *Client, harness *contractHTT
 	harness.assertWorkflowValueHashes(t, destination, secret, nonemptyVariable, "", "contract-value-not-logged")
 }
 
-func assertValueBoundaryContract(t *testing.T, client *Client, harness *contractHTTP, destination adapter.Destination, prefix string, key PublicKey) {
+func assertValueBoundaryContract(t *testing.T, client *observedContractClient, harness *contractHTTP, destination adapter.Destination, prefix string, key PublicKey) {
 	t.Helper()
 	variable, secret := prefix+"VARIABLE_MAX", prefix+"SECRET_MAX"
 	overVariable, overSecret := prefix+"VARIABLE_OVER", prefix+"SECRET_OVER"
@@ -378,7 +378,7 @@ func assertValueBoundaryContract(t *testing.T, client *Client, harness *contract
 	harness.assertWorkflowValueHashes(t, destination, secret, variable, secretValue, variableValue)
 }
 
-func configureSelectedRecipients(t *testing.T, client *Client, destination adapter.Destination, surface adapter.Surface, name string) {
+func configureSelectedRecipients(t *testing.T, client *observedContractClient, destination adapter.Destination, surface adapter.Surface, name string) {
 	t.Helper()
 	if destination.Kind == adapter.Organization && destination.Visibility == "selected" {
 		if err := client.ReplaceSelectedRepositories(t.Context(), destination, surface, name); err != nil {
