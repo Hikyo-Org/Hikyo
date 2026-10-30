@@ -15,6 +15,24 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
+## Merge queue fixture naming correction, 2026-10-30
+
+Run 41129773953, attempt 1, tested group
+`b5f072994a041348aa6fb32aa7d748e7aa8a3321` at base
+`142b0916e3479d4a6e40e1e1602d23cdf197a2ae` and head
+`929c69c2e4fd4bb7baa868c5ed3d352c7ddd5fe9`. It failed with 45 of 48 jobs
+successful: invariant 12 was the only leaf failure, followed by two aggregate
+failures. Preflight and cache restoration passed. The inspected isolation runner
+had sufficient space, so its capacity helper did not need SDK deletion.
+
+The invariant reported five new workflow-fixture declarations whose names
+contained `Cache`. These are filesystem/workflow fixtures, not runtime caches;
+the existing shared-workflow fixtures use `Reuse` names for this reason. The
+local invariant reproduces all five findings. Those identifiers and their call
+sites now follow the same naming convention. No invariant exemption or registry
+entry is added; the workflow, capacity helper, fixture behavior and baseline hashes
+are unchanged. Fresh current-base merge-group proof remains required.
+
 ## Merge queue repair, 2026-10-30
 
 Merge-group run 41119940247, attempt 1, tested

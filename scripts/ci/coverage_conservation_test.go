@@ -119,7 +119,7 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeSharedRaceReuse(workflow.Jobs["race_shard"]); err != nil {
 		return err
 	}
-	if err := normalizeGoCacheDiskPreparation(workflow.Jobs); err != nil {
+	if err := normalizeGoReuseDiskPreparation(workflow.Jobs); err != nil {
 		return err
 	}
 	// The feedback fixtures execute the real documentation checker. Pin its
