@@ -31,6 +31,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/cli"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/disclose"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -214,10 +215,19 @@ func newAWSAuthenticatedSurface(t *testing.T, db *store.DB) *awsAuthenticatedSur
 	if err := h.state.Trust().Put(cli.TrustEntry{Name: "aws-surface", Origin: h.origin, SPKIPin: cli.SPKIFingerprint(h.front.Certificate())}); err != nil {
 		t.Fatal(err)
 	}
-	h.command(cli.ExitOK, "", "", "login", h.origin, "--local", "--as", "aws-surface", "--name", "aws-surface")
+	// Enrolled accounts must join the passkey-authenticated browser session;
+	// the password-only local path must not mint a CLI credential.
+	h.command(cli.ExitRefused, "", "", "login", h.origin, "--local", "--as", "aws-surface", "--name", "aws-surface")
+	if !strings.Contains(h.lastStderr, "enrolled factor") {
+		t.Fatal("password-only CLI login did not report its enrolled-factor refusal")
+	}
+	h.command(cli.ExitOK, "", "", "login", h.origin, "--name", "aws-surface")
 	identity, err := h.auth.Identity(t.Context(), h.artifact().Token)
 	if err != nil || identity.Artifact != service.ArtifactCLI || identity.Principal != administrator.boot.PrincipalID {
 		t.Fatal("CLI did not establish its own real human session")
+	}
+	if h.opened != 1 || identity.Assurance.Method != service.MethodLocalPasskey {
+		t.Fatal("CLI login skipped the passkey-authenticated browser handoff")
 	}
 	if h.artifact().Token == h.cookie("__Host-hikyo") {
 		t.Fatal("CLI reused browser credential")
@@ -347,8 +357,14 @@ func (h *awsAuthenticatedSurface) openURL(target string) error {
 	if err != nil {
 		return err
 	}
-	if u.Scheme+"://"+u.Host != h.origin || u.Path != "/reauth/cli" || h.wantOperation == "" || len(u.Query()) != 1 || u.Query().Get("transaction") == "" {
+	if u.Scheme+"://"+u.Host != h.origin || len(u.Query()) != 1 {
 		return fmt.Errorf("unexpected CLI browser continuation")
+	}
+	if u.Path == "/login/cli" && h.wantOperation == "" && u.Query().Get("state") != "" {
+		return h.approveLogin(u.Query().Get("state"))
+	}
+	if u.Path != "/reauth/cli" || h.wantOperation == "" || u.Query().Get("transaction") == "" {
+		return fmt.Errorf("unexpected CLI reauthentication continuation")
 	}
 	var transaction apigen.CLIReauthTransaction
 	raw := h.request(h.browser, "", http.MethodGet, "/auth/cli-reauth/transactions/"+url.PathEscape(u.Query().Get("transaction")), nil, http.StatusOK)
@@ -367,14 +383,40 @@ func (h *awsAuthenticatedSurface) openURL(target string) error {
 	if approved.State != transaction.State || approved.RedirectUri != transaction.RedirectUri || approved.Code == "" {
 		return fmt.Errorf("approval changed the exact CLI handoff")
 	}
-	callback, err := url.Parse(approved.RedirectUri)
+	return h.completeCLIApproval(approved.RedirectUri, approved.Code, approved.State)
+}
+
+func (h *awsAuthenticatedSurface) approveLogin(state string) error {
+	h.t.Helper()
+	var transaction apigen.CLILoginTransaction
+	raw := h.request(h.browser, "", http.MethodGet, "/auth/cli-login/transactions/"+url.PathEscape(state), nil, http.StatusOK)
+	if err := json.Unmarshal(raw, &transaction); err != nil {
+		return err
+	}
+	if transaction.Reference != state || transaction.Transport != "loopback" || transaction.RedirectUri == "" {
+		return fmt.Errorf("CLI login lost its exact transaction binding")
+	}
+	var approved apigen.CLILoginApproved
+	raw = h.request(h.browser, "", http.MethodPost, "/auth/cli-login/approve", apigen.CLILoginApproveRequest{Reference: state}, http.StatusOK)
+	if err := json.Unmarshal(raw, &approved); err != nil {
+		return err
+	}
+	if approved.State != state || approved.RedirectUri != transaction.RedirectUri || approved.Code == "" {
+		return fmt.Errorf("approval changed the exact CLI login handoff")
+	}
+	return h.completeCLIApproval(approved.RedirectUri, approved.Code, approved.State)
+}
+
+func (h *awsAuthenticatedSurface) completeCLIApproval(redirect, code, state string) error {
+	h.t.Helper()
+	callback, err := url.Parse(redirect)
 	if err != nil {
 		return err
 	}
 	if callback.Scheme != "http" || callback.Hostname() != "127.0.0.1" || callback.Path != "/callback" || callback.Port() == "" {
 		return fmt.Errorf("invalid loopback callback")
 	}
-	callback.RawQuery = url.Values{"code": {approved.Code}, "state": {approved.State}}.Encode()
+	callback.RawQuery = url.Values{"code": {code}, "state": {state}}.Encode()
 	response, err := http.DefaultClient.Get(callback.String())
 	if err != nil {
 		return err
@@ -383,7 +425,7 @@ func (h *awsAuthenticatedSurface) openURL(target string) error {
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("CLI loopback refused real approval")
 	}
-	h.forbidden = append(h.forbidden, approved.Code, approved.State)
+	h.forbidden = append(h.forbidden, code, state)
 	h.opened++
 	return nil
 }
@@ -397,7 +439,11 @@ func (h *awsAuthenticatedSurface) command(want int, operation, input string, arg
 	}
 	h.wantOperation = operation
 	opened := h.opened
-	ios := cli.IO{Env: h.env, Workdir: h.t.TempDir(), Stdin: strings.NewReader(input), Stdout: &stdout, Stderr: &stderr, OpenURL: h.openURL, ReadPassword: func(string) (string, error) { return awsSurfacePassword, nil }}
+	terminal, err := disclose.NewTerminalSession(socialAcceptanceTerminal{ReadWriter: &bytes.Buffer{}})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	ios := cli.IO{Env: h.env, Workdir: h.t.TempDir(), Stdin: strings.NewReader(input), Stdout: &stdout, Stderr: &stderr, TerminalSession: terminal, OpenURL: h.openURL, ReadPassword: func(string) (string, error) { return awsSurfacePassword, nil }}
 	if args[0] != "login" {
 		args = append(args, "--instance", "aws-surface", "--org", string(awsSurfaceOrg), "--project", string(awsSurfaceProject))
 	}

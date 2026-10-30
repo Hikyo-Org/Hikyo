@@ -37,6 +37,14 @@ additions and its evidence refusal checks. Current source Standards and Spec
 review, signed/DCO commits, exact-head feedback and mandatory current-base merge
 queue validation remain required. Controlled loopback tests are local evidence.
 
+The current-base lifecycle check exposed a stale fixture login: all eight
+API/CLI, naming-mode and engine cases attempted password-only CLI sign-in after
+passkey enrollment. Main correctly refuses that path. The fixture now asserts
+that refusal, follows the actual cookie/CSRF-authenticated browser approval and
+PKCE loopback redemption, and checks passkey assurance on a distinct CLI session.
+Adapter-operation reauthentication and its bearer-rotation assertions remain.
+This repair changes test drivers only, with no production authentication change.
+
 ## Prior c11 status, 2026-10-28
 
 Issue #158 remains unfinished. The c11 owner-assisted attempt is closed after
