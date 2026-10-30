@@ -784,11 +784,13 @@ jobs:
             'Includes six archives and eight native Linux packages.' "$apple_notes" \
             'Server installation requires the authenticated offline bundle and upgrade evidence.' \
             >nightly-payloads/NIGHTLY-BUILD.txt
+          cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
           if [ "$APPLE_NOTARIZATION_RESULT" = success ]; then
             python3 scripts/release/apple_notary_state.py append-evidence dist \
               "$RUNNER_TEMP/apple-installations" nightly-payloads/NIGHTLY-BUILD.txt
+            printf '\nApple notarization and native installation evidence is included in the NIGHTLY-BUILD.txt release asset.\n' \
+              >>"$RUNNER_TEMP/nightly-notes.md"
           fi
-          cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
           ./scripts/release/create-nightly-manifest.sh "$VERSION" "$COMMIT" "$GITHUB_RUN_NUMBER" nightly-payloads
       - name: Append changes since the previous published nightly
         if: needs.build-artifacts.outputs.skip != 'true'
