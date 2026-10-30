@@ -39,6 +39,31 @@ be checked for the final pushed revision; local checks do not replace them.
 The optional paid performance benchmark was not run because the repository's
 projected budget was exhausted.
 
+## Merge-group cancellation fixture repair
+
+Merge-group run `41138788388`, attempt 1, tested group
+`c1e97a6bf5cf9838fbf248f4cb6a5b411eb2ad55` over main
+`1746d489c32a9f4070ca3b02c86fa4735a3020d8` and PR head
+`a21e9647c00a70db4f87aa0f02770ff7e55722cf`. Its core test job failed in
+`TestNonTransientReadFailuresAreNotRetried/cancelled_context`: the fixture
+cancelled the client and immediately aborted the server connection, racing
+the expected cancellation error against a connection EOF. The aggregate and
+proof jobs consequently failed. This run is not full merge proof.
+
+The isolated test reproduced the same failure locally in a 500-run batch.
+The repaired handler waits for its request context to observe the client
+cancellation before returning. The assertions still require a cancellation
+error, exactly one request, and no retry waits. Production retry behavior is
+unchanged. After the repair, 2,000 isolated repetitions, the full queue-report
+package suite, and 100 race-instrumented repetitions of the containing test
+passed:
+
+```sh
+GOMAXPROCS=2 go test -p 2 ./scripts/ci/queue-report -run '^TestNonTransientReadFailuresAreNotRetried/cancelled_context$' -count=2000
+GOMAXPROCS=2 go test -p 2 ./scripts/ci/queue-report -count=1
+GOMAXPROCS=2 go test -race -p 2 ./scripts/ci/queue-report -run '^TestNonTransientReadFailuresAreNotRetried$' -count=100
+```
+
 ## Follow-up
 
 Revisit oasdiff only after the freeze gate independently preserves Hikyo's
