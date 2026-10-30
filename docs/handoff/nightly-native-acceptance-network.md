@@ -26,7 +26,10 @@ quarantine removal, new credentials or relaxed release gates are introduced.
 with the real wrapper and synthetic privileged tools. Before the repair, the
 installation probe reproduces the CloudKit transport refusal. Afterward, both
 architecture selections run the installation probe with fallback active,
-propagate ticket failure, and fail on cleanup errors. These command fixtures
+propagate ticket failure, and fail on cleanup errors. Negative argument cases
+reject incorrect argument count, distribution, version, architecture and receipt
+before recording installation execution; network cleanup remains mandatory.
+These command fixtures
 do not exercise Apple or the host firewall. Existing native-install fixtures
 retain signature, ticket, archive equality, architecture, version/help,
 quarantine and detach refusal coverage.

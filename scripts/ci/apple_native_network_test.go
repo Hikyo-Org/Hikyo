@@ -30,13 +30,19 @@ func TestAppleNativeAcceptanceTicketNetwork(t *testing.T) {
 	for _, arch := range []string{"arm64", "x86_64"} {
 		for _, scenario := range []struct {
 			name          string
+			from, to      string
 			installStatus int
 			cleanupStatus int
 			wantStatus    int
 		}{
-			{"accepted", 0, 0, 0},
-			{"invalid ticket", 68, 0, 68},
-			{"cleanup failure", 0, 1, 1},
+			{name: "accepted"},
+			{name: "invalid ticket", installStatus: 68, wantStatus: 68},
+			{name: "cleanup failure", cleanupStatus: 1, wantStatus: 1},
+			{name: "wrong argument count", from: " dist ", to: " dist extra ", wantStatus: 1},
+			{name: "wrong distribution", from: " dist ", to: " wrong ", wantStatus: 1},
+			{name: "wrong version", from: `"$VERSION"`, to: `"wrong"`, wantStatus: 1},
+			{name: "wrong architecture", from: `"$ARCH"`, to: `"wrong"`, wantStatus: 1},
+			{name: "wrong receipt", from: `"$RUNNER_TEMP/install-$ARCH.json"`, to: `"wrong.json"`, wantStatus: 1},
 		} {
 			t.Run(arch+"/"+scenario.name, func(t *testing.T) {
 				root := t.TempDir()
@@ -75,11 +81,18 @@ if [ ! -f "$FIXTURE_ROOT/tcp-rule" ] || [ ! -f "$FIXTURE_ROOT/enabled" ]; then
   exit 68
 fi
 [ "$#" = 4 ] && [ "$1" = dist ] && [ "$2" = '1.2.3-nightly.1' ] &&
-  [ "$3" = "$ARCH" ] && [ "$4" = "$RUNNER_TEMP/install-$ARCH.json" ]
+  [ "$3" = "$ARCH" ] && [ "$4" = "$RUNNER_TEMP/install-$ARCH.json" ] || exit 1
 touch "$FIXTURE_ROOT/installation-ran"
 exit "$INSTALL_STATUS"
 `)
-				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", command)
+				invocation := command
+				if scenario.from != "" {
+					if !strings.Contains(invocation, scenario.from) {
+						t.Fatalf("argument mutation %q no longer matches workflow command", scenario.from)
+					}
+					invocation = strings.Replace(invocation, scenario.from, scenario.to, 1)
+				}
+				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", invocation)
 				cmd.Dir = root
 				cmd.Env = append(os.Environ(), "PATH="+filepath.Join(root, "bin")+":"+os.Getenv("PATH"),
 					"FIXTURE_ROOT="+root, "RUNNER_TEMP="+root, "ARCH="+arch, "VERSION=1.2.3-nightly.1",
@@ -93,8 +106,13 @@ exit "$INSTALL_STATUS"
 				if got := cmd.ProcessState.ExitCode(); got != scenario.wantStatus {
 					t.Fatalf("native acceptance exit=%d, want=%d: %v\n%s", got, scenario.wantStatus, err, output)
 				}
-				if _, err := os.Stat(filepath.Join(root, "installation-ran")); err != nil {
-					t.Fatal("native installation did not execute with TCP fallback")
+				_, probeErr := os.Stat(filepath.Join(root, "installation-ran"))
+				if scenario.from != "" {
+					if !os.IsNotExist(probeErr) {
+						t.Fatalf("native installation accepted invalid arguments: %v", probeErr)
+					}
+				} else if probeErr != nil {
+					t.Fatalf("native installation did not execute with TCP fallback: %v", probeErr)
 				}
 				for _, name := range []string{"tcp-rule", "enabled"} {
 					if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
