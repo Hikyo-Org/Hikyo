@@ -155,7 +155,7 @@ func TestAdapterShowIncludesTargetStatusRevisionAndFailures(t *testing.T) {
 func TestAdapterHelpAndParserExposeNoCredentialValueFlag(t *testing.T) {
 	var help bytes.Buffer
 	Usage(&help)
-	if strings.Contains(help.String(), "--value ") || strings.Contains(help.String(), "--credential ") {
+	if strings.Contains(help.String(), "--value ") || strings.Contains(help.String(), "--credential ") || strings.Contains(help.String(), "--aws-access-key-id") || strings.Contains(help.String(), "--aws-auth ambient|assume-role|web-identity|static") {
 		t.Fatalf("credential argv surface in help:\n%s", help.String())
 	}
 	var stderr bytes.Buffer
@@ -184,20 +184,20 @@ func TestAdapterCancelMoveRequiresOnlyExplicitMove(t *testing.T) {
 	}
 }
 
-// The AWS access descriptor is assembled from flags; the only secret in it,
-// the static secret access key, still arrives through the no-argv intake.
+// Workload descriptors use nonsecret flags. The complete static descriptor
+// enters through the same protected intake as other adapter credentials.
 func TestAWSAccessDescriptorAssembly(t *testing.T) {
 	var prompted string
 	ios := IO{Stdin: strings.NewReader("stdin-secret-key\n"), ReadPassword: func(prompt string) (string, error) {
 		prompted = prompt
-		return "tty-secret-key", nil
+		return awsCLIStaticDescriptor, nil
 	}}
-	raw, err := adapterAWSAuth{mode: "static", accessKeyID: "AKIAHIKYOTEST0000001"}.credential(ios, adapterCredentialSource{})
+	raw, err := (adapterAWSAuth{}).credential(ios, adapterCredentialSource{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prompted != "AWS secret access key: " || string(raw) != `{"mode":"static","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"tty-secret-key"}` {
-		t.Fatalf("static descriptor=%s prompt=%q", raw, prompted)
+	if prompted != "Deployment provider credential: " || string(raw) != awsCLIStaticDescriptor {
+		t.Fatal("protected prompt did not preserve the complete static descriptor")
 	}
 	raw, err = adapterAWSAuth{mode: "assume-role", roleARN: "arn:aws:iam::123456789012:role/hikyo", externalID: "tenant-42", sessionSeconds: 1800}.credential(ios, adapterCredentialSource{})
 	if err != nil || string(raw) != `{"mode":"assume-role","role_arn":"arn:aws:iam::123456789012:role/hikyo","external_id":"tenant-42","session_seconds":1800}` {
@@ -207,6 +207,7 @@ func TestAWSAccessDescriptorAssembly(t *testing.T) {
 		auth   adapterAWSAuth
 		source adapterCredentialSource
 	}{
+		{adapterAWSAuth{mode: "static"}, adapterCredentialSource{}},
 		{adapterAWSAuth{mode: "ambient"}, adapterCredentialSource{stdin: true}},
 		{adapterAWSAuth{roleARN: "arn:aws:iam::123456789012:role/hikyo"}, adapterCredentialSource{}},
 		{adapterAWSAuth{mode: "assume-role", roleARN: "arn:aws:iam::123456789012:role/hikyo", sessionSeconds: 7200}, adapterCredentialSource{}},

@@ -310,7 +310,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 80, while the
+// The runtime-created fixture includes migrations 45 through 82, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -330,10 +330,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+36 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 80 only")
+	if len(current.Entries) != len(legacy.Entries)+38 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 82 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -375,6 +375,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM developer_credential_policy WHERE max_lifetime_seconds <> 28800",
 		"SELECT COUNT(*) FROM adapters",
 		"SELECT COUNT(*) FROM adapter_conflicts WHERE observed_provider_version IS NOT NULL",
+		"SELECT COUNT(*) FROM adapter_conflicts WHERE observed_provider_witness <> ''",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
 		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
 		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
@@ -436,6 +437,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
+	// Reverse 00082: lookup indexes carry no independent data or uniqueness.
+	drillExec(t, db, "DROP INDEX adapter_effects_adoption_lookup")
+	drillExec(t, db, "DROP INDEX adapter_conflicts_adoption_lookup")
+	// Reverse 00081 only after proving no reviewed AWS resource witness is discarded.
+	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_witness")
 	// Reverse 00079 only after the evidence checks above; children first.
 	for _, table := range []string{"remote_pairing_exchanges", "remote_pairing_invites", "remote_paired_connections", "remote_pairing_replays"} {
 		drillExec(t, db, "DROP TABLE "+table)
@@ -646,7 +652,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82)",
 	} {
 		drillExec(t, db, query)
 	}

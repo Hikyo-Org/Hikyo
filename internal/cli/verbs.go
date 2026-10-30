@@ -432,8 +432,8 @@ adapters:
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
       --env E --kind json-object|per-key --owner <account-id> [--secret <name-or-path/>] [--kms-key <key>]
-      --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
-      [--aws-session-seconds 900-3600] [--aws-access-key-id <id>] [--aws-region <region>]
+      [--aws-auth ambient|assume-role|web-identity] [--aws-role-arn <arn>] [--aws-external-id <id>]
+      [--aws-session-seconds 900-3600] [--aws-region <region>]
       [--aws-sts-origin <https-origin>] [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter create --provider cloudflare --env E --kind workers-script --account <id> --script <name>
   hikyo adapter create --provider cloudflare --env E --kind pages-project --account <id> --pages-project <name>
@@ -445,8 +445,8 @@ adapters:
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
   hikyo adapter update <adapter> --origin <https-origin> [--stdin | --value-file PATH]
-      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
-      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-auth ambient|assume-role|web-identity] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600]
       [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter update <adapter> --move <move-id> | --cancel-move
                                                    resume or cancel an attention-required origin move
@@ -459,8 +459,8 @@ adapters:
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter delete <adapter> [--keep-remote]
   hikyo adapter credential set --adapter <adapter> [--stdin | --value-file PATH] [--move <move-id>]
-      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
-      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-auth ambient|assume-role|web-identity] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600]
       [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter credential revoke --adapter <adapter>
   hikyo adapter target add --adapter <adapter> --env E --kind <kind> --owner <owner>
@@ -497,9 +497,11 @@ adapters:
 
   aws-secrets-manager is one-way and never reads a value back: json-object
   writes one secret holding a JSON object, per-key one secret per key.
-  --aws-auth assembles the access descriptor; only static reads a secret (the
-  secret access key, like any credential). ambient, assume-role and
-  web-identity use this server's AWS identity and need the node operator's
+  Static authentication requires the complete one-line JSON access descriptor
+  (mode, access_key_id, secret_access_key, optional session_token and region)
+  via the no-echo prompt, --stdin, or --value-file, without --aws-* flags.
+  --aws-auth assembles only ambient, assume-role or web-identity descriptors.
+  These modes use this server's AWS identity and need the node operator's
   HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. web-identity also needs the
   server to run with AWS_WEB_IDENTITY_TOKEN_FILE set. --aws-* flags also
   apply to adapter update --origin and adapter credential set.

@@ -73,12 +73,14 @@ type SecretMetadata struct {
 	Stages map[string][]string
 }
 
-// CreateSecretInput creates a secret with no version. The first value is
-// written by PutSecretValue so every Hikyo version carries CurrentStage.
+// CreateSecretInput creates a secret with no version. Raw HTTP callers supply
+// the stable token even without a value. The first value is written by
+// PutSecretValue so every Hikyo version carries CurrentStage.
 type CreateSecretInput struct {
-	Name     string
-	KMSKeyID string
-	Tags     map[string]string
+	Name               string
+	ClientRequestToken string
+	KMSKeyID           string
+	Tags               map[string]string
 }
 
 // API is the complete provider surface. The closure test pins this exact
@@ -502,14 +504,44 @@ func (c *Client) ListSecretNames(ctx context.Context, prefix string, limit int) 
 	}
 }
 
+// CreatedSecret is the identity returned by CreateSecret, without values.
+type CreatedSecret struct {
+	ARN  string `json:"ARN"`
+	Name string `json:"Name"`
+}
+
+// CreateSecretIdentity lets an operator fixture retain exact cleanup custody
+// before eventually consistent metadata becomes visible. It adds no operation
+// to API and validates against the caller's already approved account.
+func (c *Client) CreateSecretIdentity(ctx context.Context, input CreateSecretInput, account string) (CreatedSecret, error) {
+	var out CreatedSecret
+	if err := adapter.ValidateAWSSecretsManagerDestination(adapter.Destination{Kind: adapter.PerKey, Owner: account}); err != nil {
+		return out, errors.New("aws-secrets-manager: invalid expected creation account")
+	}
+	if err := c.createSecret(ctx, input, &out); err != nil {
+		return CreatedSecret{}, err
+	}
+	// Operator fixtures retain their commercial-only account contract.
+	// Ordinary metadata inspection also supports other AWS partitions.
+	if err := verifySecretIdentity(out, input.Name, account, c.route.region); err != nil || !strings.HasPrefix(out.ARN, "arn:aws:") {
+		return CreatedSecret{}, fmt.Errorf("%w: created resource identity mismatch", adapter.ErrDestinationID)
+	}
+	return out, nil
+}
+
 func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) error {
+	return c.createSecret(ctx, input, nil)
+}
+
+func (c *Client) createSecret(ctx context.Context, input CreateSecretInput, out any) error {
 	request := struct {
-		Name        string `json:"Name"`
-		Description string `json:"Description"`
-		KmsKeyID    string `json:"KmsKeyId,omitempty"`
-		Tags        []tag  `json:"Tags"`
-	}{Name: input.Name, Description: "Managed by Hikyo. Values are overwritten on every sync.", KmsKeyID: input.KMSKeyID, Tags: tagList(input.Tags)}
-	return c.do(ctx, "create-secret", request, nil)
+		Name               string `json:"Name"`
+		ClientRequestToken string `json:"ClientRequestToken,omitempty"`
+		Description        string `json:"Description"`
+		KmsKeyID           string `json:"KmsKeyId,omitempty"`
+		Tags               []tag  `json:"Tags"`
+	}{Name: input.Name, ClientRequestToken: input.ClientRequestToken, Description: "Managed by Hikyo. Values are overwritten on every sync.", KmsKeyID: input.KMSKeyID, Tags: tagList(input.Tags)}
+	return c.do(ctx, "create-secret", request, out)
 }
 
 // PutSecretValue stages an idempotent version without moving an existing
@@ -517,7 +549,7 @@ func (c *Client) CreateSecret(ctx context.Context, input CreateSecretInput) erro
 func (c *Client) PutSecretValue(ctx context.Context, name, token, value string) error {
 	request := struct {
 		SecretID           string   `json:"SecretId"`
-		ClientRequestToken string   `json:"ClientRequestToken"`
+		ClientRequestToken string   `json:"ClientRequestToken,omitempty"`
 		SecretString       string   `json:"SecretString"`
 		VersionStages      []string `json:"VersionStages"`
 	}{SecretID: name, ClientRequestToken: token, SecretString: value, VersionStages: []string{PendingStage}}

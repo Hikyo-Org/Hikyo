@@ -70,6 +70,7 @@ func TestRevocationStopsEverySubsequentAWSRequest(t *testing.T) {
 				req.Ledger = journal.ledger()
 				if operation == "tag" {
 					req.Ledger[0].AdoptionPending = true
+					req.Ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 				}
 				wrapped := &revokeAfterRequestAPI{fakeAPI: api, journal: journal, after: operation, err: gateErr}
 				_, err := (&Module{API: wrapped}).Sync(t.Context(), req, journal)
@@ -122,6 +123,7 @@ func TestPendingAdoptionPermitsWriteButNeverUntaggedPrune(t *testing.T) {
 			journal.states["prod/app"] = adapter.Owned
 			ledger := journal.ledger()
 			ledger[0].AdoptionPending = true
+			ledger[0].AdoptionWitness = testAdoptionWitness(t, api, "prod/app")
 			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: ledger, JobID: "adopt", Teardown: teardown}
 			if teardown {
 				req.Manifest = nil
@@ -183,5 +185,32 @@ func TestProviderMetadataCannotRedirectWritesOrDeletes(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+type partitionMetadataAPI struct {
+	*fakeAPI
+	partition string
+	region    string
+}
+
+func (api *partitionMetadataAPI) Region() string { return api.region }
+func (api *partitionMetadataAPI) DescribeSecret(ctx context.Context, id string) (SecretMetadata, error) {
+	meta, err := api.fakeAPI.DescribeSecret(ctx, id)
+	meta.ARN = strings.Replace(meta.ARN, "arn:aws:secretsmanager:"+testRegion+":", "arn:"+api.partition+":secretsmanager:"+api.region+":", 1)
+	return meta, err
+}
+
+func TestMetadataIdentityPreservesSupportedPartitions(t *testing.T) {
+	for _, destination := range []struct{ partition, region string }{{"aws-cn", "cn-north-1"}, {"aws-us-gov", "us-gov-west-1"}} {
+		t.Run(destination.partition, func(t *testing.T) {
+			fake := newFakeAPI()
+			fake.secrets["prod/app"] = &fakeSecret{tags: map[string]string{adapter.SentinelName: testTarget}, stages: map[string][]string{}}
+			api := &partitionMetadataAPI{fakeAPI: fake, partition: destination.partition, region: destination.region}
+			plan, err := (&Module{API: api}).Plan(t.Context(), adapter.PlanRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: []adapter.LedgerEntry{{Surface: adapter.Secret, EffectiveName: "prod/app", State: adapter.Owned}}, Gate: func(context.Context) error { return nil }})
+			if err != nil || len(plan.Changes) != 1 || plan.Changes[0].Disposition != adapter.Update || len(fake.writes()) != 0 {
+				t.Fatalf("supported partition metadata refused: %+v %v", plan, err)
+			}
+		})
 	}
 }

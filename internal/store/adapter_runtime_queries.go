@@ -194,6 +194,7 @@ type adapterWorkerLoadExecutionLedgerQueryRow struct {
 	Missing         bool
 	AdoptionPending bool
 	AdoptionVersion *int64
+	AdoptionWitness string
 }
 type adapterWorkerLoadExecutionSnapshotQueryRow struct {
 	ID                string
@@ -328,7 +329,7 @@ func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx c
 		return nil, err
 	}
 	return mapRows(value, func(c sqlitegen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0), AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: (c.Missing != 0), AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid), AdoptionWitness: c.AdoptionWitness}, nil
 	})
 }
 func (q sqliteAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {
@@ -675,7 +676,7 @@ func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionLedgerQuery(ctx conte
 		return nil, err
 	}
 	return mapRows(value, func(c pggen.AdapterWorkerLoadExecutionLedgerQueryRow) (adapterWorkerLoadExecutionLedgerQueryRow, error) {
-		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
+		return adapterWorkerLoadExecutionLedgerQueryRow{Surface: c.Surface, EffectiveName: c.EffectiveName, State: c.State, Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid), AdoptionWitness: c.AdoptionWitness}, nil
 	})
 }
 func (q pgAdapterRuntimeQueries) adapterWorkerLoadExecutionSnapshotQuery(ctx context.Context, chainOrg string, chainProject string, chainEnv string) (adapterWorkerLoadExecutionSnapshotQueryRow, error) {

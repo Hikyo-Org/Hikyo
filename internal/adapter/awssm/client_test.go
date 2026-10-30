@@ -3,10 +3,12 @@ package awssm
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -145,6 +147,148 @@ func TestSignedWireLifecycleAgainstEmulator(t *testing.T) {
 	}
 }
 
+// The provider has committed the first value, but DescribeSecret can still
+// omit AWSCURRENT. Keep the signed request/response path and alter metadata
+// visibility only, refusing the same empty-predecessor move AWS refuses.
+type firstCurrentVisibilityTransport struct {
+	base          http.RoundTripper
+	hiddenReads   int
+	putCalls      int
+	metadataReads int
+	stageCalls    int
+	currentMoves  int
+	afterHidden   func()
+}
+
+func (p *firstCurrentVisibilityTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	operation := req.Header.Get("X-Amz-Target")
+	if operation == "secretsmanager.UpdateSecretVersionStage" {
+		raw, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		req.Body = io.NopCloser(strings.NewReader(string(raw)))
+		var stage struct {
+			VersionStage        string
+			RemoveFromVersionID string `json:"RemoveFromVersionId"`
+		}
+		if err := json.Unmarshal(raw, &stage); err != nil {
+			return nil, err
+		}
+		p.stageCalls++
+		if stage.VersionStage == awsCurrent {
+			p.currentMoves++
+			if stage.RemoveFromVersionID == "" {
+				return &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": {"application/x-amz-json-1.1"}}, Body: io.NopCloser(strings.NewReader(`{"__type":"InvalidParameterException"}`)), Request: req}, nil
+			}
+		}
+	}
+	response, err := p.base.RoundTrip(req)
+	if err != nil {
+		return response, err
+	}
+	if operation == "secretsmanager.PutSecretValue" && response.StatusCode == http.StatusOK {
+		p.putCalls++
+	}
+	if operation != "secretsmanager.DescribeSecret" || p.putCalls == 0 || response.StatusCode != http.StatusOK {
+		return response, nil
+	}
+	p.metadataReads++
+	if p.hiddenReads == 0 {
+		return response, nil
+	}
+	p.hiddenReads--
+	raw, err := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	var stages map[string][]string
+	if err := json.Unmarshal(fields["VersionIdsToStages"], &stages); err != nil {
+		return nil, err
+	}
+	for id, labels := range stages {
+		stages[id] = slices.DeleteFunc(labels, func(label string) bool { return label == awsCurrent })
+	}
+	fields["VersionIdsToStages"], err = json.Marshal(stages)
+	if err != nil {
+		return nil, err
+	}
+	raw, err = json.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
+	response.Body = io.NopCloser(strings.NewReader(string(raw)))
+	response.ContentLength = int64(len(raw))
+	if p.afterHidden != nil {
+		p.afterHidden()
+	}
+	return response, nil
+}
+
+func TestSignedWireFirstCurrentMetadataLag(t *testing.T) {
+	for _, scenario := range []struct {
+		name        string
+		hiddenReads int
+		wantReads   int
+		wantError   error
+	}{
+		{name: "visible", wantReads: 1},
+		{name: "one stale read", hiddenReads: 1, wantReads: 2},
+		{name: "two stale reads", hiddenReads: 2, wantReads: 3},
+		{name: "persistent lag", hiddenReads: 4, wantReads: 3, wantError: adapter.ErrConflict},
+		{name: "concurrent foreign version", hiddenReads: 1, wantReads: 2, wantError: adapter.ErrConflict},
+		{name: "gate revoked", hiddenReads: 1, wantReads: 1, wantError: adapter.ErrUnauthorized},
+		{name: "cancelled", hiddenReads: 1, wantReads: 1, wantError: context.Canceled},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			server := awssmtest.New(testAccount, testRegion)
+			t.Cleanup(server.Close)
+			client := emulatorClient(t, server)
+			journal := newFakeJournal()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			wire := &firstCurrentVisibilityTransport{base: client.http.Transport, hiddenReads: scenario.hiddenReads}
+			switch scenario.name {
+			case "concurrent foreign version":
+				wire.afterHidden = func() { server.ExternalPut("prod/app", "concurrent foreign value") }
+			case "gate revoked":
+				wire.afterHidden = func() { journal.gateErr = adapter.ErrUnauthorized }
+			case "cancelled":
+				wire.afterHidden = cancel
+			}
+			client.http.Transport = wire
+			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), JobID: "metadata-lag"}
+			_, err := (&Module{API: client}).Sync(ctx, req, journal)
+			if scenario.wantError == nil && err != nil || scenario.wantError != nil && !errors.Is(err, scenario.wantError) {
+				t.Fatalf("unexpected convergence outcome: %v", err)
+			}
+			if wire.metadataReads != scenario.wantReads || wire.putCalls != 1 || wire.currentMoves != 0 {
+				t.Fatalf("metadata reads=%d puts=%d current moves=%d", wire.metadataReads, wire.putCalls, wire.currentMoves)
+			}
+			if scenario.wantError != nil {
+				if wire.stageCalls != 0 || server.Tag("prod/app", VersionTag) != "" || journal.states["prod/app"] != adapter.Dispatched {
+					t.Fatal("unproven current version advanced ownership markers or discarded custody")
+				}
+				if scenario.name == "concurrent foreign version" {
+					if value, _ := server.Value("prod/app"); value != "concurrent foreign value" {
+						t.Fatal("foreign current version was overwritten")
+					}
+				}
+				return
+			}
+			token := idempotencyToken(req.JobID, req.Target.ID, req.Target.Generation, "prod/app")
+			if wire.stageCalls != 1 || server.Tag("prod/app", VersionTag) != token || journal.states["prod/app"] != adapter.Owned || server.Versions("prod/app") != 1 {
+				t.Fatal("observed first current version did not settle ownership exactly once")
+			}
+		})
+	}
+}
+
 type wireWriteRaceAPI struct {
 	*Client
 	server *awssmtest.Server
@@ -195,7 +339,7 @@ func TestSignedWireStagingPreservesCurrentAndRequiresExactPredecessor(t *testing
 	server := awssmtest.New(testAccount, testRegion)
 	defer server.Close()
 	client := emulatorClient(t, server)
-	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging"}); err != nil {
+	if err := client.CreateSecret(t.Context(), CreateSecretInput{Name: "staging", ClientRequestToken: strings.Repeat("c", 64)}); err != nil {
 		t.Fatal(err)
 	}
 	first, second := strings.Repeat("a", 64), strings.Repeat("b", 64)
@@ -340,6 +484,22 @@ func TestDescriptorContract(t *testing.T) {
 }
 
 func TestWorkloadIdentityRequiresInstanceOptIn(t *testing.T) {
+	// The enabled AssumeRole constructor below loads SDK configuration. Keep
+	// this local contract test independent of real profiles, projected tokens,
+	// credential processes, container sources and instance metadata.
+	emptyConfig := filepath.Join(t.TempDir(), "empty-aws-config")
+	if err := os.WriteFile(emptyConfig, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AWS_CONFIG_FILE", emptyConfig)
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", emptyConfig)
+	for _, name := range []string{"AWS_PROFILE", "AWS_DEFAULT_PROFILE", "AWS_SESSION_TOKEN", "AWS_ROLE_ARN", "AWS_ROLE_SESSION_NAME", "AWS_WEB_IDENTITY_TOKEN_FILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_CONTAINER_AUTHORIZATION_TOKEN", "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE"} {
+		t.Setenv(name, "")
+	}
+	t.Setenv("AWS_ACCESS_KEY_ID", "AKIAHIKYOTEST0000001")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test-secret-access-key")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	t.Setenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")
 	for _, raw := range []string{`{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":"arn:aws:iam::123456789012:role/r"}`, `{"mode":"web-identity","role_arn":"arn:aws:iam::123456789012:role/r"}`} {
 		_, err := NewClient(ClientConfig{Origin: "https://secretsmanager.eu-west-1.amazonaws.com", Credential: raw, Deadline: time.Second})
 		if !errors.Is(err, ErrWorkloadIdentityDisabled) {
@@ -435,7 +595,7 @@ func TestServiceQuotaFailureIsDefiniteWithoutThrottleRetry(t *testing.T) {
 		server.FailNext(operation, 400, "LimitExceededException", "")
 		var err error
 		if operation == "CreateSecret" {
-			err = client.CreateSecret(t.Context(), CreateSecretInput{Name: "quota"})
+			err = client.CreateSecret(t.Context(), CreateSecretInput{Name: "quota", ClientRequestToken: strings.Repeat("d", 64)})
 		} else {
 			err = client.PutSecretValue(t.Context(), "quota", strings.Repeat("a", 64), "value")
 		}

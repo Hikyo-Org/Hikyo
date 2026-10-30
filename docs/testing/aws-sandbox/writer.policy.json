@@ -1,0 +1,103 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateInWriterNamespace",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:CreateSecret"
+      ],
+      "Resource": "${WRITER_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}",
+          "secretsmanager:KmsKeyArn": "${KMS_KEY_ARN}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "WriteAndInspectOwnFixture",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecretVersionStage",
+        "secretsmanager:TagResource"
+      ],
+      "Resource": "${WRITER_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "ScheduleThirtyDayRecovery",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:DeleteSecret"
+      ],
+      "Resource": "${WRITER_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        },
+        "NumericEquals": {
+          "secretsmanager:RecoveryWindowInDays": 30
+        }
+      }
+    },
+    {
+      "Sid": "KeyUseThroughSecretsManager",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "${KMS_KEY_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}",
+          "kms:ViaService": "secretsmanager.${REGION}.amazonaws.com",
+          "kms:CallerAccount": "${ACCOUNT}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        },
+        "StringLike": {
+          "kms:EncryptionContext:SecretARN": "${WRITER_SECRET_ARN_PATTERN}"
+        }
+      }
+    },
+    {
+      "Sid": "NeverReadValues",
+      "Effect": "Deny",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:BatchGetSecretValue",
+        "secretsmanager:GetRandomPassword"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NeverForceDelete",
+      "Effect": "Deny",
+      "Action": "secretsmanager:DeleteSecret",
+      "Resource": "*",
+      "Condition": {
+        "Bool": {
+          "secretsmanager:ForceDeleteWithoutRecovery": "true"
+        }
+      }
+    }
+  ]
+}

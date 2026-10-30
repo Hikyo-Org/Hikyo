@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AssumeOnlyFixtureWriter",
+      "Effect": "Allow",
+      "Action": [
+        "sts:AssumeRole"
+      ],
+      "Resource": "${ASSUME_WRITER_ROLE_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}",
+          "sts:ExternalId": "${EXTERNAL_ID}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    }
+  ]
+}
