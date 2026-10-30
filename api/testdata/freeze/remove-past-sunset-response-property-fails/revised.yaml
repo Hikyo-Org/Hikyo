@@ -1,0 +1,17 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+info: {title: fixture, version: "1"}
+paths:
+  /api/v1/thing:
+    get:
+      operationId: getThing
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kept]
+                properties:
+                  kept: {type: string}
