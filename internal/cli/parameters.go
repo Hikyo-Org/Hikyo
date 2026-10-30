@@ -4,11 +4,9 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/parameters"
 )
 
@@ -48,33 +46,21 @@ func runEnvParam(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	project, err := resolved.Require(DimProject)
-	if err != nil {
-		return err
-	}
-	env, err := resolved.Require(DimEnv)
-	if err != nil {
-		return err
-	}
-	path := api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/projects/" + url.PathEscape(project) + "/environments/" + url.PathEscape(env) + "/parameters"
+	path := target.base + "/parameters"
 	if sub != "list" {
 		body := struct {
 			Name    string `json:"name"`
 			Pattern string `json:"pattern,omitempty"`
 			Action  string `json:"action"`
 		}{name, pattern, sub}
-		return client.Do(ctx, http.MethodPost, path, body, nil)
+		return target.client.Do(ctx, http.MethodPost, path, body, nil)
 	}
 	var declarations map[string]string
-	if err := client.Do(ctx, http.MethodGet, path, nil, &declarations); err != nil {
+	if err := target.client.Do(ctx, http.MethodGet, path, nil, &declarations); err != nil {
 		return err
 	}
 	names := make([]string, 0, len(declarations))

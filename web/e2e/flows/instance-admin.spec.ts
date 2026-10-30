@@ -1432,3 +1432,88 @@ test.describe('social sign-in administration', () => {
     await expect(panel.getByRole('button', { name: `Reconfigure ${name}` })).toHaveCount(0);
   });
 });
+
+// #1035: use the seeded native human session, never a browser auth bypass.
+test.describe('instance audit security trail', () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test('navigates from settings, inspects source, handles empty and verified export', async ({ page }, testInfo) => {
+    await page.goto('/instance');
+    await expect(page.getByRole('heading', { name: 'Instance settings', level: 1 })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`instance-settings-after-${testInfo.project.name}.png`), fullPage: true });
+    await page.getByRole('tab', { name: 'Audit', exact: true }).click();
+    await page.getByRole('link', { name: 'Open instance audit', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Instance audit', level: 1 })).toBeVisible();
+    const rows = page.locator('.audit__row');
+    await expect(rows.first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`instance-audit-after-${testInfo.project.name}.png`), fullPage: true });
+    await page.locator('#audit-events').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`instance-audit-events-after-${testInfo.project.name}.png`), fullPage: true });
+    await rows.first().focus();
+    await page.keyboard.press('Enter');
+    const detail = page.getByRole('complementary', { name: 'Event detail' });
+    await expect(detail.getByText('Actor class', { exact: true })).toBeVisible();
+    await expect(detail.getByText('Source IP', { exact: true })).toBeVisible();
+    await expect(detail.getByText('User agent', { exact: true })).toBeVisible();
+    await detail.getByText('Source IP', { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`instance-audit-detail-after-${testInfo.project.name}.png`), fullPage: true });
+    await page.keyboard.press('Escape');
+    await expect(detail).toBeHidden();
+    await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('synthetic.no-such-event');
+    await page.getByRole('button', { name: 'Apply filter' }).click();
+    await expectStatusIsTextAndAria(page, page.locator('.audit__empty'));
+    await page.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(rows.first()).toBeVisible();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export JSONL', exact: true }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('hikyo-audit-instance.jsonl');
+    const lines = readFileSync(await file.path(), 'utf8').trim().split('\n');
+    for (const line of lines) {
+      const event = z.object({ id: z.string().min(1), org_id: z.string().optional(), scope_class: z.string().optional() }).parse(JSON.parse(line));
+      expect(event.org_id).toBeUndefined();
+    }
+  });
+
+  test('announces loading, denied and export failure states', async ({ page }) => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route('**/api/v1/instance/audit?*', async (route) => { await gate; await route.continue(); });
+    await page.goto('/instance/audit');
+    await expectStatusIsTextAndAria(page, page.getByText('Loading events…', { exact: true }));
+    release();
+    await expect(page.locator('.audit__row').first()).toBeVisible();
+    await page.route('**/api/v1/instance/audit/export?*', (route) => route.fulfill({ status: 200, contentType: 'application/x-ndjson', body: '{"id":"truncated"}\n' }));
+    await page.getByRole('button', { name: 'Export JSONL', exact: true }).click();
+    const failure = page.getByRole('alert').filter({ hasText: 'No download was saved' });
+    await expectStatusIsTextAndAria(page, failure);
+    await page.unroute('**/api/v1/instance/audit?*');
+    await page.route('**/api/v1/instance/audit?*', (route) => route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":{"code":"forbidden","message":"forbidden"}}' }));
+    await page.reload();
+    const denied = page.getByRole('alert').filter({ hasText: 'audit-read grant on this instance' });
+    await expectStatusIsTextAndAria(page, denied);
+    await expect(page.locator('.audit__empty')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Export JSONL', exact: true })).toBeDisabled();
+  });
+
+  for (const theme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on instance audit (${theme})`, async ({ page }, testInfo) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.goto('/instance/audit');
+      await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('auth.credential_established');
+      await page.getByRole('button', { name: 'Apply filter' }).click();
+      const op = page.locator('.audit__row-op').first();
+      await expect(op).toBeVisible();
+      const heading = page.getByRole('heading', { name: 'Instance audit', level: 1 });
+      const panel = page.locator('.panel').first();
+      const apply = page.getByRole('button', { name: 'Apply filter' });
+      await expectPinnedAssertionSet(page, {
+        flow: 'instance-audit', surface: 'instance-audit', theme,
+        text: [heading, op], radii: [[panel, 'container'], [apply, 'control']],
+        fonts: [[heading, 'ui'], [op, 'mono']],
+        colours: [[heading, 'color', '--tx'], [panel, 'backgroundColor', '--bg-panel'], [panel, 'borderTopColor', '--panel-line']],
+        hairlines: [panel], density: [[apply, testInfo.project.name === 'mobile' ? '--touch' : '--row']],
+      });
+    });
+  }
+});

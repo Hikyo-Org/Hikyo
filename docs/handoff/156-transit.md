@@ -1,5 +1,15 @@
 # Handoff: #156 Transit (versioned cryptographic operations)
 
+## Amendment closeout continuation (2026-10-29)
+
+The owner requested completion of the outstanding #156 amendment, with
+independent Standards and Spec review under the October 29 policy. The
+[source-bound closeout](./156-transit-amendment-closeout.md) identifies the
+five normative excerpts, original Claude provenance and exact remaining
+review/ceremony/merge requirements. Historical skipped review is preserved;
+the original implementation and WebUI remain delivered. This continuation
+adds no feature or provider acceptance claim.
+
 Issue: https://github.com/Hikyo-Org/Hikyo/issues/156 (blocked-by #75 and #146,
 both merged). Normative contract: [`docs/adr/transit.md`](../adr/transit.md).
 Declared amendments (pointer banners in this change):
@@ -10,6 +20,21 @@ material under the project DEK, HKDF's second job),
 [`permission-model.md`](../adr/permission-model.md) (`crypto-use`,
 `crypto-manage`), [`tenant-isolation.md`](../adr/tenant-isolation.md) (the
 scheduler's transit doors). WebUI follow-up: #820.
+
+## Current delivery and governance (2026-10-28)
+
+[#156](https://github.com/Hikyo-Org/Hikyo/issues/156) is closed following
+[PR #826](https://github.com/Hikyo-Org/Hikyo/pull/826), merge
+`ebd2d2f8c0cd154963fe9919a56e79c049c929e2`. The WebUI follow-up is also
+delivered: [PR #965](https://github.com/Hikyo-Org/Hikyo/pull/965), merge
+`6da8f57cb8c8aae4cb58b7cc65ec5971c1705e0c`, closed #820. Both are ancestors
+of assessed main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
+
+The amendment review below remains owed. The
+[scoped governance packet](./156-162-589-capability-governance.md) records
+the review evidence, **HOLD**, and executable owner disposition options.
+This is governance reconciliation, not a new implementation or runtime test.
+The build and test records below retain their original session boundaries.
 
 ## ADR gate
 
@@ -119,7 +144,8 @@ governance tickets is the human's.
 
 - No real external custody provider (by design: HSM management stays Out until
   a user with an HSM triggers it).
-- No WebUI (#820).
+- The original WebUI gap (#820) was delivered by #965; see the current record
+  above and [the WebUI handoff](./820-transit-webui.md).
 - `service` package: `TestSAMLMetadata*` fail in this sandbox on a clean tree
   too (the HTTPS egress proxy intercepts the test's TLS server); unrelated.
 

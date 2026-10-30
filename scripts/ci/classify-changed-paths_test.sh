@@ -135,6 +135,9 @@ expect_plan 'generated CRD' \
 	'chart/hikyo/crds/hikyo.dev_hikyosecrets.yaml'
 expect_plan 'k8s e2e runner' '["k8s-e2e","lint"]' 'scripts/ci/k8s-e2e.sh'
 expect_plan 'chart kind runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-kind.sh'
+expect_plan 'chart network policy runner' '["k8s-e2e","lint"]' 'scripts/ci/chart-network-policy.sh'
+expect_plan 'chart synthetic network destination' '["k8s-e2e","lint"]' 'scripts/ci/networkpolicyfixture/main.go'
+expect_plan 'chart functional cleanup fixture' '["k8s-e2e","lint"]' 'internal/isolation/network_policy_cleanup_test.go'
 expect_plan 'chart production trust fixture' '["k8s-e2e","lint"]' 'scripts/ci/chartfixture/fixture_test.go'
 expect_plan 'root-key staging runtime' \
 	'["client","floor-bench","fuzz","generated","headline-guarantee","k8s-e2e","race","release-snapshot","test","web-go"]' \

@@ -1,0 +1,36 @@
+# Illustrative peers only. Review actual labels, namespaces, CNI and every
+# integration before applying. Merge with the installation's existing values.
+# This is a standard NetworkPolicy, not a provider FQDN allowlist.
+networkPolicy:
+  ingress:
+    restricted: true
+    allowOperator: true
+    from:
+      # Both selectors must match. A podSelector alone is namespace-local.
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+        podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ingress-nginx
+      - podSelector:
+          matchLabels:
+            hikyo-client: approved
+  egress:
+    restricted: true
+    # The DNS defaults select kube-dns in kube-system, on UDP and TCP 53.
+    # Change them if the installation uses another resolver.
+    datastore:
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: database
+          podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # No other outbound destination is allowed by this example. Add explicit
+    # peers and ports for configured IdPs, adapters, remotes, collector transport,
+    # mail, updates, upgrades and pending cleanup. Never guess provider CIDRs.

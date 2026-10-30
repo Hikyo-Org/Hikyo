@@ -74,6 +74,60 @@ func TestCanonicalOriginAdoptionPostgres(t *testing.T) {
 	runCanonicalOriginAdoption(t, store.EnginePostgres)
 }
 
+func runVaultCrossSurfaceAdoption(t *testing.T, engine store.Engine) {
+	for _, foreignState := range []string{"reserved", "dispatched", "owned", "released"} {
+		t.Run(foreignState, func(t *testing.T) {
+			db := repositoryRecoveryDB(t, engine)
+			seedOriginAdoptionPeer(t, db, "vault-kv", "https://git.example", "https://GIT.example:443/", "vault-kv", foreignState, "", false)
+			execAdapter(t, db, `UPDATE adapter_ledger SET surface='variable' WHERE id='led_peer'`)
+			if err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+				proof, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adopt"}, authz.OpAdapterPlan, domain.Scope{Org: "org_adopt", Project: "prj_adopt"})
+				if err != nil {
+					return err
+				}
+				version := int64(1)
+				return repos.Adapters().RecordPlan(ctx, proof, "tgt_1", "plan_vault_surface", 1, 0, 42, []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN", ObservedProviderVersion: &version}}, time.Now().UTC())
+			}); err != nil {
+				t.Fatal(err)
+			}
+			err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+				proof, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adopt"}, authz.OpAdapterAdopt, domain.Scope{Org: "org_adopt", Project: "prj_adopt"})
+				if err != nil {
+					return err
+				}
+				_, err = repos.Adapters().Adopt(ctx, proof, store.AdapterAdoption{TargetID: "tgt_1", ArtifactID: "plan_vault_surface", Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN"}}, AuthorityPrincipalID: "usr_adopt", LedgerIDs: []string{"led_vault_surface"}, JobID: "job_vault_surface", AuditAt: time.Now().UTC()})
+				return err
+			})
+			if foreignState == "released" {
+				if err != nil {
+					t.Fatalf("explicitly released opposite surface blocked adoption: %v", err)
+				}
+				if recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id='plan_vault_surface' AND adopted_at IS NOT NULL`) != 1 || recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_vault_surface' AND target_id='tgt_1' AND surface='secret' AND normalized_name='TOKEN' AND state='owned'`) != 1 {
+					t.Fatal("successful adoption did not consume consent and claim custody")
+				}
+			} else {
+				if !errors.Is(err, adapter.ErrOperatorReview) || !errors.Is(err, store.ErrConflict) {
+					t.Fatalf("foreign opposite-surface custody adopted: %v", err)
+				}
+				if recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_conflicts WHERE artifact_id='plan_vault_surface' AND adopted_at IS NOT NULL`) != 0 || recoveryCount(t, db, `SELECT COUNT(*) FROM adapter_ledger WHERE id='led_vault_surface'`) != 0 {
+					t.Fatal("cross-surface refusal consumed consent or claimed custody")
+				}
+			}
+			if recoveryCount(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_ledger WHERE id='led_peer' AND state='%s' AND surface='variable'`, foreignState)) != 1 {
+				t.Fatal("cross-surface adoption rewrote foreign custody")
+			}
+		})
+	}
+}
+
+func TestVaultCrossSurfaceAdoptionSQLite(t *testing.T) {
+	runVaultCrossSurfaceAdoption(t, store.EngineSQLite)
+}
+
+func TestVaultCrossSurfaceAdoptionPostgres(t *testing.T) {
+	runVaultCrossSurfaceAdoption(t, store.EnginePostgres)
+}
+
 func runConcurrentAWSOriginAdoption(t *testing.T, engine store.Engine) {
 	db := repositoryRecoveryDB(t, engine)
 	seedOriginAdoptionPeer(t, db, "aws-secrets-manager", "https://secretsmanager.us-east-1.amazonaws.com", "https://secretsmanager-fips.us-east-1.amazonaws.com", "aws-secrets-manager", "", "", true)

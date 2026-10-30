@@ -1,0 +1,25 @@
+{
+  "schema": "hikyo.dev/stable-policy/v1",
+  "trusted_root_sha256": "6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "repository_uri": "https://github.com/Hikyo-Org/Hikyo",
+  "repository_id": "1316165429",
+  "repository_owner_uri": "https://github.com/Hikyo-Org",
+  "repository_owner_id": "316726515",
+  "workflow_path": ".github/workflows/release.yml",
+  "protected_ref": "refs/tags/v*",
+  "runner_environment": "github-hosted",
+  "require_sct": true,
+  "rekor_log_id": "c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d",
+  "checkpoint_origin": "rekor.sigstore.dev - 1193050959916656506",
+  "revoked_manifests": [],
+  "minimum_release_sequence": 1,
+  "primary_keys_sha256": "e175859df29efce67963df1125ceb53e091ed30874a1d501426df597bdb762cd",
+  "nightly_policies": [
+    "afaeb19fc0299f700234a74aa0817f77ce0833853b327a9d9d9d126d25d5b04f"
+  ],
+  "bridges": [
+    "0094b5d9ec5bbae50905f4bcf8a4ae6ef23320457c02c4efebdb241d641ab5a1",
+    "bc6e5f79252864e2ffb73c0335f17d29f2cdd7cf8b1e57e87f0f5f0cf0c41bfd"
+  ]
+}

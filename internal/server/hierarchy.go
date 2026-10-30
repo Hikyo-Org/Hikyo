@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
@@ -96,6 +97,10 @@ func (a *API) writeRequestError(w http.ResponseWriter, r *http.Request, _ error)
 func (a *API) writeSCIMRequestError(w http.ResponseWriter, r *http.Request, refusal *scimproto.Error) {
 	org, binding := chi.URLParam(r, "org"), chi.URLParam(r, "binding")
 	err := a.afterAuth(r.Context(), org, binding, refusal)
+	if errors.Is(err, admission.ErrOverloaded) {
+		a.writeHandlerError(w, r, err)
+		return
+	}
 	e := scimError(err)
 	w.Header().Set("Content-Type", scimproto.MediaType)
 	w.WriteHeader(e.Status)
@@ -136,7 +141,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 	// A service refusal may carry a caller-safe detail (the clone abort names
 	// the stranded keys; a duplicate-item refusal names the duplicate; the
 	// protected-destination refusal names the caller's own destination id).
-	// errorBody honours it only for bad_request, conflict and unprocessable, so
+	// errorBody honours it only for policies that explicitly allow safe detail, so
 	// a detail on any other code is dropped — and detail is only ever set by an explicit
 	// SafeDetail carrier, so a plain refusal on those codes still stays uniform.
 	// A Surface-2 secret-scanning refusal (#74) carries a typed findings array

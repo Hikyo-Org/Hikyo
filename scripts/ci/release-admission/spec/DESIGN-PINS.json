@@ -1,0 +1,18 @@
+{
+  "schema": "hikyo-1046/design-pins/v1",
+  "predecessorManifestSHA256": "2701b4e6cb391a3b25aa4f4139d8e2979ff30cb6e892f1a6a7aabacf6f69fe7d",
+  "files": {
+    "CONFORMANCE-CASES.json": {
+      "bytes": 12499,
+      "rawSHA256": "859f4685e7eb21db5c08d1d7cae59ff3c1082b7c0978acff52741090ee8b0a82"
+    },
+    "CONTRACTS.json": {
+      "bytes": 30360,
+      "rawSHA256": "6e927f791d6ecfe32575296731c5287f379b122edeb945e069449e9d7b77ef04"
+    },
+    "POLICY.md": {
+      "bytes": 32023,
+      "rawSHA256": "1ba3622c6ccf641398e943036603a5f00d8eda371c5fe2ff1ad06489bc852745"
+    }
+  }
+}

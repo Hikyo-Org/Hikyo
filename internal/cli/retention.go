@@ -4,11 +4,9 @@ import (
 	"context"
 	"flag"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
@@ -47,23 +45,19 @@ func runOrgRetention(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	path := api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/retention"
+	path := target.base + "/retention"
 	var out apigen.RetentionPolicy
 	if sub == "get" {
-		if err := client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		if err := target.client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, orgRetentionTable(out))
 	}
-	if err := client.Do(ctx, http.MethodPut, path, body, &out); err != nil {
+	if err := target.client.Do(ctx, http.MethodPut, path, body, &out); err != nil {
 		return err
 	}
 	return Render(ios.Stdout, f, orgRetentionTable(out))
@@ -102,23 +96,19 @@ func runProjectRetention(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	target, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	base, err := projectBase(resolved)
-	if err != nil {
-		return err
-	}
-	path := base + "/retention"
+	path := target.base + "/retention"
 	var out apigen.ProjectRetentionPolicy
 	if sub == "get" {
-		if err := client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		if err := target.client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return err
 		}
 		return Render(ios.Stdout, f, projectRetentionTable(out))
 	}
-	if err := client.Do(ctx, http.MethodPut, path, body, &out); err != nil {
+	if err := target.client.Do(ctx, http.MethodPut, path, body, &out); err != nil {
 		return err
 	}
 	return Render(ios.Stdout, f, projectRetentionTable(out))

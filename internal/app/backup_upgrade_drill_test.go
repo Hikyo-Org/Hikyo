@@ -310,7 +310,7 @@ func TestLegacyDrillFixtureRefusesProjectCapacityEvidence(t *testing.T) {
 	}
 }
 
-// The runtime-created fixture includes migrations 45 through 81, while the
+// The runtime-created fixture includes migrations 45 through 82, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -330,10 +330,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+37 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 81 only")
+	if len(current.Entries) != len(legacy.Entries)+38 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 82 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -350,6 +350,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	}
 	for _, query := range []string{
 		"SELECT COUNT(*) FROM backup_state WHERE last_prune_attempt_at IS NOT NULL OR last_prune_attempt_id <> '' OR prune_failure_reason <> '' OR retained_expired_archives <> 0 OR last_artifact_sha256 <> ''",
+		// 00080: only the untouched refusal seed is disposable.
+		`SELECT COUNT(*) FROM auth_refusal_window WHERE window_start <> 0 OR state <> '{"counts":[0,0,0,0,0],"samples":[]}'`,
 		"SELECT COUNT(*) FROM audit_retention_policy",
 		"SELECT COUNT(*) FROM principals WHERE privacy_state <> 'active'",
 		"SELECT COUNT(*) FROM self_config_binding",
@@ -435,10 +437,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate, PKI, temporary-access, file-target, member-access-rule or manual-pairing evidence", query, err)
 		}
 	}
-	// Reverse 00081: lookup indexes carry no independent data or uniqueness.
+	// Reverse 00082: lookup indexes carry no independent data or uniqueness.
 	drillExec(t, db, "DROP INDEX adapter_effects_adoption_lookup")
 	drillExec(t, db, "DROP INDEX adapter_conflicts_adoption_lookup")
-	// Reverse 00080 only after proving no reviewed AWS resource witness is discarded.
+	// Reverse 00081 only after proving no reviewed AWS resource witness is discarded.
 	drillExec(t, db, "ALTER TABLE adapter_conflicts DROP COLUMN observed_provider_witness")
 	// Reverse 00079 only after the evidence checks above; children first.
 	for _, table := range []string{"remote_pairing_exchanges", "remote_pairing_invites", "remote_paired_connections", "remote_pairing_replays"} {
@@ -645,11 +647,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
+		"DROP TABLE auth_refusal_window",
 		// Reverse 00056 (second factor at sign-in): the login challenge table and
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82)",
 	} {
 		drillExec(t, db, query)
 	}

@@ -2019,6 +2019,40 @@ func (q *Queries) AdapterReplaceCredentialTarget(ctx context.Context, arg Adapte
 	return i, err
 }
 
+const adapterResumeAdoptedJob = `-- name: AdapterResumeAdoptedJob :execrows
+UPDATE adapter_outbox SET authority_principal_id=?1,next_attempt_at=?2 WHERE id=?3 AND target_id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND generation=?8 AND kind='converge' AND route_move_id IS NULL AND state='queued'
+`
+
+type AdapterResumeAdoptedJobParams struct {
+	AuthorityPrincipalID string
+	At                   string
+	JobID                string
+	TargetID             string
+	ChainOrg             string
+	ChainProject         string
+	EnvironmentID        string
+	Generation           int64
+}
+
+// Resume the paused adoption job without advancing its exact generation witness.
+// The caller revalidates consent through AdapterPlanLedger in the same transaction.
+func (q *Queries) AdapterResumeAdoptedJob(ctx context.Context, arg AdapterResumeAdoptedJobParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterResumeAdoptedJob,
+		arg.AuthorityPrincipalID,
+		arg.At,
+		arg.JobID,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.EnvironmentID,
+		arg.Generation,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const adapterResumeRevision = `-- name: AdapterResumeRevision :one
 SELECT CAST(COALESCE(MAX(revision),0) AS INTEGER) AS revision FROM snapshots WHERE org_id=?1 AND project_id=?2 AND environment_id=?3 AND payload_present=1
 `

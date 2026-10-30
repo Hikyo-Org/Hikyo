@@ -59,6 +59,17 @@ cp "$repo_root/docs/site/src/content/docs/docs/meta.json" \
 # Prove the complete synthetic fixture passes before interpreting refusals.
 "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site"
 
+for page in docs security support governance implementation-status trademark contributing license; do
+	sed "s#https://hikyo.app/$page/#https://example.invalid/$page/#g" \
+		"$repo_root/docs/site/dist/$page/index.html" >"$fixture_dir/site/$page/index.html"
+	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/canonical-refusal.log" 2>&1; then
+		printf 'OSS policy fixture failed: noncanonical %s page was accepted\n' "$page" >&2
+		exit 1
+	fi
+	grep -F '<link rel="canonical"' "$fixture_dir/canonical-refusal.log" >/dev/null
+	cp "$repo_root/docs/site/dist/$page/index.html" "$fixture_dir/site/$page/index.html"
+done
+
 # Execute the real parsed policy check against complete YAML mutations. Tokens
 # in environment values, comments or another step cannot grant job authority or
 # replace the unique executable failure notification.

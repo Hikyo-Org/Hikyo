@@ -7,6 +7,7 @@ package vaultkv
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,6 +102,7 @@ type operation struct {
 var operationRegistry = map[string]operation{
 	"health":           {Method: http.MethodGet, Path: "/v1/sys/health?standbyok=true&perfstandbyok=true&sealedcode=200&uninitcode=200&drsecondarycode=200&performancestandbycode=200", RootOnly: true},
 	"mount-info":       {Method: http.MethodGet, Path: "/v1/sys/internal/ui/mounts/{mount}", Authenticated: true},
+	"namespace-probe":  {Method: http.MethodGet, Path: "/v1/sys/internal/ui/mounts/hikyo-namespace-probe"},
 	"approle-login":    {Method: http.MethodPost, Path: "/v1/auth/{auth_mount}/login"},
 	"token-lookup":     {Method: http.MethodGet, Path: "/v1/auth/token/lookup-self", Authenticated: true},
 	"token-renew":      {Method: http.MethodPost, Path: "/v1/auth/token/renew-self", Authenticated: true},
@@ -121,11 +123,13 @@ type ClientConfig struct {
 // Client is the hand-rolled Vault/OpenBao HTTP client. One client serves one
 // outbox attempt; Forget revokes any login token and drops credentials.
 type Client struct {
-	base      string
-	namespace string
-	http      *http.Client
-	deadline  time.Duration
-	now       func() time.Time
+	base              string
+	namespace         string
+	http              *http.Client
+	deadline          time.Duration
+	now               func() time.Time
+	namespaceMu       sync.Mutex
+	namespaceVerified bool
 
 	mu         sync.Mutex
 	credential Credential
@@ -138,6 +142,16 @@ type Client struct {
 }
 
 var _ API = (*Client)(nil)
+
+type requestGateKey struct{}
+type namespaceProbeKey struct{}
+
+// withRequestGate carries the module's live authority to the HTTP boundary.
+// Login and renewal may themselves wait on the provider, so admission before
+// an API method does not authorize a later request within that method.
+func withRequestGate(ctx context.Context, gate func(context.Context) error) context.Context {
+	return context.WithValue(ctx, requestGateKey{}, gate)
+}
 
 // NewClient prepares a client without contacting the server. Deadline must be
 // positive and shorter than adapter.LeaseTime. Invalid origins, credentials,
@@ -255,9 +269,10 @@ func CanonicalOrigin(raw string) (string, error) {
 // surfaced: a broken provider can echo request material, which may be
 // plaintext. CASMismatch is derived internally from the fixed KV v2 phrase.
 type ResponseError struct {
-	Status      int
-	CASMismatch bool
-	Sealed      bool
+	Status           int
+	CASMismatch      bool
+	Sealed           bool
+	namespaceMissing bool
 }
 
 func (e *ResponseError) Error() string {
@@ -385,6 +400,11 @@ func (c *Client) do(ctx context.Context, key string, params map[string]string, b
 	if !ok {
 		return fmt.Errorf("vault-kv: operation %q is not linked", key)
 	}
+	if c.namespace != "" && key != "health" && key != "namespace-probe" {
+		if err := c.verifyNamespace(ctx); err != nil {
+			return err
+		}
+	}
 	token := ""
 	if op.Authenticated {
 		var err error
@@ -393,6 +413,34 @@ func (c *Client) do(ctx context.Context, key string, params map[string]string, b
 		}
 	}
 	return c.send(ctx, op, params, token, body, out)
+}
+
+// verifyNamespace proves routing before credentials leave this attempt.
+// Vault OSS and a header-stripping proxy can silently resolve requests in root.
+// Only an explicit unauthenticated missing-namespace response to a random child
+// namespace proves that the configured header is enforced. Unknown refusals fail
+// closed. The proof belongs to this bounded, immutable-origin client attempt.
+func (c *Client) verifyNamespace(ctx context.Context) error {
+	c.namespaceMu.Lock()
+	defer c.namespaceMu.Unlock()
+	if c.namespaceVerified {
+		return nil
+	}
+	probe := c.namespace + "/hikyo-probe-" + strings.ToLower(rand.Text())
+	probeCtx := context.WithValue(ctx, namespaceProbeKey{}, probe)
+	err := c.do(probeCtx, "namespace-probe", nil, nil, nil)
+	var response *ResponseError
+	if !errors.As(err, &response) || !response.namespaceMissing {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil && (response == nil || response.Status >= 500) {
+			return err
+		}
+		return fmt.Errorf("%w: namespace routing could not be verified", adapter.ErrDestinationID)
+	}
+	c.namespaceVerified = true
+	return nil
 }
 
 // send sends a JSON request and decodes a nonempty successful response into
@@ -444,7 +492,15 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 		req.Header.Set("X-Vault-Token", token)
 	}
 	if c.namespace != "" && !op.RootOnly {
-		req.Header.Set("X-Vault-Namespace", c.namespace)
+		namespace := c.namespace
+		if op == operationRegistry["namespace-probe"] {
+			probe, ok := ctx.Value(namespaceProbeKey{}).(string)
+			if !ok || token != "" || !strings.HasPrefix(probe, c.namespace+"/hikyo-probe-") {
+				return errors.New("vault-kv: invalid namespace probe")
+			}
+			namespace = probe
+		}
+		req.Header.Set("X-Vault-Namespace", namespace)
 	}
 	if body != nil {
 		contentType := "application/json"
@@ -452,6 +508,11 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 			contentType = "application/merge-patch+json"
 		}
 		req.Header.Set("Content-Type", contentType)
+	}
+	if gate, ok := ctx.Value(requestGateKey{}).(func(context.Context) error); ok {
+		if err := gate(ctx); err != nil {
+			return err
+		}
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -470,6 +531,14 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		responseErr := &ResponseError{Status: resp.StatusCode}
+		if op == operationRegistry["namespace-probe"] && resp.StatusCode == http.StatusNotFound {
+			var message struct {
+				Errors []string `json:"errors"`
+			}
+			if json.Unmarshal(raw, &message) == nil && len(message.Errors) == 1 && message.Errors[0] == "namespace not found" {
+				responseErr.namespaceMissing = true
+			}
+		}
 		switch resp.StatusCode {
 		case http.StatusBadRequest:
 			responseErr.CASMismatch = bytes.Contains(raw, []byte("check-and-set parameter did not match"))

@@ -5,6 +5,20 @@ import { Glyph } from '../ui/Glyph.tsx';
 
 export type DiagnosticSeverity = 'error' | 'warn' | 'unknown';
 
+/** Keep the API's exact byte counts, but use readable units in the banner. */
+function formatStorageMessage(message: string): string {
+  return message.replace(/\b(\d+) bytes available\b/g, (_match, bytes: string) => {
+    let value = Number(bytes);
+    const units = ['bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return `${unit === 0 ? value : value.toFixed(2)} ${value === 1 && unit === 0 ? 'byte' : units[unit]} available`;
+  });
+}
+
 /**
  * A persistent chrome diagnostic: `role="status"` because it stays for the
  * whole session rather than interrupting one, and the severity is data the
@@ -38,7 +52,7 @@ export function OpsDiagnosticBanners({ health }: {
         return (
           <ChromeDiagnostic severity={severity} key={finding.code}>
             <strong>{severity === 'unknown' ? 'Unmeasured' : severity === 'error' ? 'Error' : 'Warning'}: </strong>
-            {finding.message}
+            {finding.code === 'data-volume' ? formatStorageMessage(finding.message) : finding.message}
           </ChromeDiagnostic>
         );
       })}

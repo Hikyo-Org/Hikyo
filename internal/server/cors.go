@@ -98,6 +98,7 @@ func workspaceCORS(allowed func(context.Context, string) bool) func(http.Handler
 
 			h := w.Header()
 			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Expose-Headers", RefusalRequestIDHeader)
 			// Deliberately absent: Access-Control-Allow-Credentials. See the
 			// package comment — cookies never cross origins in this design.
 			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {

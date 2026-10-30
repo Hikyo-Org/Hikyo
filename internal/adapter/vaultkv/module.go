@@ -90,7 +90,7 @@ func DestinationID(mount Mount, pathPrefix string) (int64, error) {
 		identity = mount.Accessor
 	}
 	if identity == "" {
-		return 0, errors.New("vault-kv: the mount reported neither uuid nor accessor")
+		return 0, fmt.Errorf("%w: the mount reported neither uuid nor accessor", adapter.ErrDestinationID)
 	}
 	sum := sha256.Sum256([]byte("hikyo-vault-kv\x00" + identity + "\x00" + pathPrefix))
 	id := int64(binary.BigEndian.Uint64(sum[:8]) & math.MaxInt64)
@@ -115,6 +115,7 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	if req.Gate == nil {
 		return adapter.Connection{}, adapter.ErrUnauthorized
 	}
+	ctx = withRequestGate(ctx, req.Gate)
 	if err := req.Gate(ctx); err != nil {
 		return adapter.Connection{}, err
 	}
@@ -133,10 +134,13 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	}
 	id, err := m.resolve(ctx, req.Destination)
 	if err != nil {
+		if errors.Is(err, adapter.ErrDestinationID) {
+			return adapter.Connection{}, errors.Join(adapter.ErrOperatorReview, err)
+		}
 		return adapter.Connection{}, err
 	}
 	if req.Destination.NumericID != 0 && req.Destination.NumericID != id {
-		return adapter.Connection{}, fmt.Errorf("%w: the KV mount or its identity changed", adapter.ErrDestinationID)
+		return adapter.Connection{}, fmt.Errorf("%w: %w: the KV mount or its identity changed", adapter.ErrOperatorReview, adapter.ErrDestinationID)
 	}
 	// Expiry is informational. The mount probe above already proved the token
 	// authenticates, so a refusal here only means the policy omits
@@ -160,10 +164,10 @@ func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (
 		return 0, err
 	}
 	if mount.Type != "kv" && mount.Type != "generic" {
-		return 0, fmt.Errorf("vault-kv: mount %q is a %q engine, not KV", destination.Owner, mount.Type)
+		return 0, fmt.Errorf("%w: mount %q is not a KV engine", adapter.ErrDestinationID, destination.Owner)
 	}
 	if mount.Version != "2" {
-		return 0, fmt.Errorf("vault-kv: mount %q is not KV version 2; KV v1 has no check-and-set", destination.Owner)
+		return 0, fmt.Errorf("%w: mount %q is not KV version 2; KV v1 has no check-and-set", adapter.ErrDestinationID, destination.Owner)
 	}
 	return DestinationID(mount, destination.Name)
 }
@@ -173,10 +177,13 @@ func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (
 func (m *Module) verifyDestination(ctx context.Context, target adapter.Target) error {
 	id, err := m.resolve(ctx, target.Destination)
 	if err != nil {
+		if errors.Is(err, adapter.ErrDestinationID) {
+			return errors.Join(adapter.ErrOperatorReview, err)
+		}
 		return err
 	}
 	if id != target.Destination.NumericID {
-		return fmt.Errorf("%w: the KV mount or its identity changed", adapter.ErrDestinationID)
+		return fmt.Errorf("%w: %w: the KV mount or its identity changed", adapter.ErrOperatorReview, adapter.ErrDestinationID)
 	}
 	return nil
 }
@@ -244,26 +251,29 @@ func parseVersion(raw string) (int64, bool) {
 func classify(meta Metadata, targetID string) pathState {
 	marker := meta.CustomMetadata[MarkerKey]
 	current := meta.CurrentVersion
+	// A later writer or changed marker cannot resolve an earlier pending
+	// writer's custody. Preserve that hold independently of classification.
+	hasPending := meta.CustomMetadata[PendingKey] != ""
 	released := current == 0 || meta.Versions[current].Deleted || meta.Versions[current].Destroyed
 	switch {
 	case marker == "":
-		return pathState{kind: pathUnmarked, version: current, released: released}
+		return pathState{kind: pathUnmarked, version: current, released: released, pending: hasPending}
 	case marker != targetID:
-		return pathState{kind: pathForeign, version: current}
+		return pathState{kind: pathForeign, version: current, pending: hasPending}
 	}
 	recorded, okRecorded := parseVersion(meta.CustomMetadata[VersionKey])
 	pending, okPending := parseVersion(meta.CustomMetadata[PendingKey])
 	switch {
 	case !okRecorded || !okPending:
-		return pathState{kind: pathMoved, version: current}
+		return pathState{kind: pathMoved, version: current, pending: hasPending}
 	case pending != 0 && current == pending:
 		return pathState{kind: pathLanded, version: current, released: released, pending: true}
 	case pending != 0 && current == pending-1:
 		return pathState{kind: pathClean, version: current, released: released, pending: true}
 	case pending == 0 && current == recorded:
-		return pathState{kind: pathClean, version: current, released: released}
+		return pathState{kind: pathClean, version: current, released: released, pending: hasPending}
 	}
-	return pathState{kind: pathMoved, version: current}
+	return pathState{kind: pathMoved, version: current, pending: hasPending}
 }
 
 // inspect classifies the named destination path using metadata alone. A 404
@@ -330,6 +340,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	if req.Gate == nil {
 		return adapter.Plan{}, adapter.ErrUnauthorized
 	}
+	ctx = withRequestGate(ctx, req.Gate)
 	if err := req.Gate(ctx); err != nil {
 		return adapter.Plan{}, err
 	}
@@ -396,6 +407,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		return adapter.SyncResult{}, err
 	}
 	inspect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "*", Disposition: adapter.Update}
+	ctx = withRequestGate(ctx, func(ctx context.Context) error { return journal.Gate(ctx, inspect) })
 	if err := journal.Gate(ctx, inspect); err != nil {
 		return adapter.SyncResult{}, err
 	}
@@ -412,6 +424,45 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 		}
 	}
 	rows := desiredRows(req.Target.NamePrefix, req.Manifest, !req.Teardown)
+	// Discover existing pending writer holds across the entire target before
+	// any desired write, reservation release or prune. Desired rows go first
+	// so exact consent on a reclassified path is evaluated on its new surface.
+	checked := make(map[string]bool)
+	checkPending := func(name string, record adapter.LedgerEntry, claimed bool) error {
+		key := strings.ToUpper(name)
+		if checked[key] {
+			return nil
+		}
+		checked[key] = true
+		if err := journal.Gate(ctx, inspect); err != nil {
+			return err
+		}
+		live, err := m.inspect(ctx, req.Target, name)
+		if err != nil {
+			return err
+		}
+		if live.pending && !writable(claimedState(record, claimed), record.State, record.AdoptionPending, record.AdoptionVersion, live) {
+			return fmt.Errorf("%w: KV path %s has an unresolved pending version", adapter.ErrOperatorReview, name)
+		}
+		return nil
+	}
+	for _, row := range rows {
+		record, claimed := ledger[adapter.NewLedgerKey(row.Surface, row.EffectiveName)]
+		if err := checkPending(row.EffectiveName, record, claimed); err != nil {
+			return adapter.SyncResult{}, err
+		}
+	}
+	for _, record := range ledger {
+		// Desired reservations were checked above. An undesired reservation
+		// has no dispatched provider effect and needs only a fenced local
+		// release, including when metadata access to its old path is denied.
+		if record.State == adapter.Reserved {
+			continue
+		}
+		if err := checkPending(record.EffectiveName, record, true); err != nil {
+			return adapter.SyncResult{}, err
+		}
+	}
 	desiredPaths := make(map[string]bool, len(rows))
 	for _, row := range rows {
 		desiredPaths[strings.ToUpper(row.EffectiveName)] = true
@@ -563,7 +614,9 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		casMoved := IsCASMismatch(writeErr)
 		var acknowledged *acknowledgedWriteError
 		if errors.As(writeErr, &acknowledged) {
-			completion.Outcome, completion.State = adapter.OutcomeSuccess, adapter.Owned
+			// Keep the successful value receipt without granting ordinary
+			// overwrite/prune authority while its ownership metadata is incomplete.
+			completion.Outcome, completion.State = adapter.OutcomeSuccess, adapter.Dispatched
 		} else if casMoved || definitive(writeErr) {
 			completion.Outcome = adapter.OutcomeFailure
 			// A stranded pending marker may name the racer's version. Keep
@@ -579,7 +632,10 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 			completion.Conflict = casMoved
 		}
 		if completion.Outcome == adapter.OutcomeUnknown {
-			completion.Conflict, completion.Finding = true, "operator_review_required"
+			// A lost response has the same unacknowledged-writer evidence as a
+			// crash window. Use the closed finding shared by storage and the API;
+			// operator review is enforced by held custody and ErrOperatorReview.
+			completion.Conflict, completion.Finding = true, "crash_window"
 		}
 		if missing && !completion.ReleaseLedger {
 			completion.Missing, completion.Finding = true, "owned_missing"
@@ -651,8 +707,9 @@ func (e *acknowledgedWriteError) Unwrap() error { return e.cause }
 // operator review: neither a matching pending version nor an unmarked version
 // one establishes its writer. A fresh plan's version-bound consent starts a
 // new CAS, never finalizes the old pending version as Hikyo's. Failed metadata
-// finalization after an acknowledged PUT retains known Owned custody but also
-// stops for review. errPendingStranded reports failed CAS-marker withdrawal.
+// finalization after an acknowledged PUT retains its successful receipt and
+// held Dispatched custody until review. errPendingStranded reports failed
+// CAS-marker withdrawal.
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version

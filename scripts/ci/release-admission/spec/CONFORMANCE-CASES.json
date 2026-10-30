@@ -1,0 +1,351 @@
+{
+  "schema": "hikyo-158/reusable-release-conformance-design/v1",
+  "status": "specified-not-executed",
+  "cases": [
+    {
+      "id": "positive-release",
+      "scenario": "Genuine reviewed release, explicit owner approval and Root adoption under same bank",
+      "expected": "eligible-source-only"
+    },
+    {
+      "id": "positive-main-advance",
+      "scenario": "Later signed first-parent main, same 15 trusted blobs, fresh complete candidate proof",
+      "expected": "eligible-source-only"
+    },
+    {
+      "id": "changed-trusted-file",
+      "scenario": "One of 15 byte hashes changes",
+      "expected": "hold-new-release-required"
+    },
+    {
+      "id": "missing-path",
+      "scenario": "One required trusted path missing",
+      "expected": "hold"
+    },
+    {
+      "id": "symlink",
+      "scenario": "Required path becomes symlink",
+      "expected": "hold"
+    },
+    {
+      "id": "go-work",
+      "scenario": "go.work exists at tested or current root",
+      "expected": "hold"
+    },
+    {
+      "id": "toolchain",
+      "scenario": "Release data requests different Go directive",
+      "expected": "hold-policy-successor-required"
+    },
+    {
+      "id": "helper-change",
+      "scenario": "A frozen helper or consumer guard differs",
+      "expected": "hold-policy-successor-required"
+    },
+    {
+      "id": "job-contract-change",
+      "scenario": "Data changes exact names/shard counts/skips",
+      "expected": "hold-policy-successor-required"
+    },
+    {
+      "id": "missing-job",
+      "scenario": "48-job release inventory lacks one success",
+      "expected": "hold"
+    },
+    {
+      "id": "duplicate-job",
+      "scenario": "Correct total count with duplicate IDs/names",
+      "expected": "hold"
+    },
+    {
+      "id": "wrong-attempt",
+      "scenario": "Jobs from another attempt or mixed attempts",
+      "expected": "hold"
+    },
+    {
+      "id": "candidate-only-queue",
+      "scenario": "Queue admission succeeds without all 49 candidate jobs",
+      "expected": "hold"
+    },
+    {
+      "id": "changed-mutable-run",
+      "scenario": "Final exact run metadata differs from initial read",
+      "expected": "hold-no-reselection"
+    },
+    {
+      "id": "wrong-tree",
+      "scenario": "Tested SHA/tree differs from public merged commit",
+      "expected": "hold"
+    },
+    {
+      "id": "swapped-parents",
+      "scenario": "Same tree with reversed parent order",
+      "expected": "hold"
+    },
+    {
+      "id": "squash",
+      "scenario": "Merged source tree matches but merge form differs",
+      "expected": "hold-policy-successor-required"
+    },
+    {
+      "id": "source-range",
+      "scenario": "Incomplete/unsigned/DCO-mismatched source range",
+      "expected": "hold"
+    },
+    {
+      "id": "lineage-gap",
+      "scenario": "Missing, repeated, unsigned or unrelated first-parent ancestor",
+      "expected": "hold"
+    },
+    {
+      "id": "new-file-outside-vector",
+      "scenario": "Untrusted other source changes while fixed vector same; fresh full CI and other unchanged candidate gates pass",
+      "expected": "eligible-source-only"
+    },
+    {
+      "id": "unknown-field",
+      "scenario": "Extra approval/model override key or unknown record schema",
+      "expected": "hold"
+    },
+    {
+      "id": "boolean-id",
+      "scenario": "true supplied for run ID 1",
+      "expected": "hold"
+    },
+    {
+      "id": "forged-review",
+      "scenario": "Matching checksums but missing genuine review/original correspondence",
+      "expected": "hold"
+    },
+    {
+      "id": "design-choice-only",
+      "scenario": "Reusable-design user selection used as a release approval",
+      "expected": "hold"
+    },
+    {
+      "id": "approval-other-release",
+      "scenario": "Owner approval digest names another release",
+      "expected": "hold"
+    },
+    {
+      "id": "approval-other-bank",
+      "scenario": "Owner approval names a different bank/configuration",
+      "expected": "hold"
+    },
+    {
+      "id": "earlier-queue-episode",
+      "scenario": "Earlier removed queue episode is selected as a historical causal approval under the new mode",
+      "expected": "reject-unsupported-causal-claim"
+    },
+    {
+      "id": "removal-before-merge",
+      "scenario": "Bot removal precedes merge; all exact PR/commit/run originals and genuinely later explicit owner approval match",
+      "expected": "eligible-source-only-no-causal-claim"
+    },
+    {
+      "id": "merge-before-removal",
+      "scenario": "Owner merge precedes bot removal; all exact originals and genuinely later explicit owner approval match",
+      "expected": "eligible-source-only-no-causal-claim"
+    },
+    {
+      "id": "timeline-incomplete",
+      "scenario": "Missing page/header, duplicate event or unknown unsupported semantic event",
+      "expected": "hold"
+    },
+    {
+      "id": "missing-causal-original",
+      "scenario": "New current-release evidence omits historical pre/post enqueue observations but supplies all mandatory post-merge originals and explicit later owner approval",
+      "expected": "eligible-source-only-no-historical-causal-claim"
+    },
+    {
+      "id": "stale-proof",
+      "scenario": "Current pointer or status older than original freshness window",
+      "expected": "hold"
+    },
+    {
+      "id": "old-merge-time",
+      "scenario": "Old real merge time with fresh pointer reads",
+      "expected": "preserve-merge-time-no-freshening"
+    },
+    {
+      "id": "release-revoked",
+      "scenario": "Current authenticated status is revoked, caller supplies older eligible record",
+      "expected": "hold"
+    },
+    {
+      "id": "status-fork",
+      "scenario": "Two heads, sequence gap, stale read or wrong previous digest",
+      "expected": "hold"
+    },
+    {
+      "id": "post-revoke-new-adoption",
+      "scenario": "Caller reuses old owner approval in duplicate adoption after owner revocation",
+      "expected": "hold"
+    },
+    {
+      "id": "drift-before-reserve",
+      "scenario": "Canonical head or trusted file moves after preparation",
+      "expected": "hold-no-resource-effect"
+    },
+    {
+      "id": "drift-after-reserve",
+      "scenario": "Source/release/status changes before first provider effect",
+      "expected": "hold-no-switch-no-refund"
+    },
+    {
+      "id": "uncertain-send",
+      "scenario": "Effect uncertain after dispatch or click",
+      "expected": "hold-no-retry-use-existing-reconcile-cleanup"
+    },
+    {
+      "id": "cleanup-after-revoke",
+      "scenario": "Original exact resource cleanup ticket under unchanged cleanup safety checks",
+      "expected": "evaluate-existing-cleanup-authority-only"
+    },
+    {
+      "id": "extra-key",
+      "scenario": "New release requests second key or resets 176 consumed allowance",
+      "expected": "hold"
+    },
+    {
+      "id": "budget-expired",
+      "scenario": "Release approved but billable/reserve, lease, cutoff or horizon gate fails",
+      "expected": "hold"
+    },
+    {
+      "id": "deployment-missing",
+      "scenario": "All release/source tests pass, human deployment approval absent",
+      "expected": "hold-deployment"
+    },
+    {
+      "id": "hash-cycle",
+      "scenario": "Composite configuration transitively includes attempt binding through sourceManifest.configurationSHA256",
+      "expected": "reject-contract"
+    },
+    {
+      "id": "real-config-integration",
+      "scenario": "Same real configured successor model through collector, normalizers, preparation, claim, holder, bind and abort/finalizer",
+      "expected": "required-future-test"
+    },
+    {
+      "id": "historical-mutation",
+      "scenario": "New release attempts to rewrite #1017/c03/c04 originals or timestamps",
+      "expected": "hold"
+    },
+    {
+      "id": "collector-limit",
+      "scenario": "Complete collection exceeds existing request/byte/time/lineage bounds",
+      "expected": "hold-no-limit-increase"
+    },
+    {
+      "id": "output-authority",
+      "scenario": "Pure validation or synthetic positive claims runtime/authenticity/resource permission",
+      "expected": "reject-claim"
+    },
+    {
+      "id": "old-anchor-as-main-ci",
+      "scenario": "Later main uses release-anchor queue proof instead of own tested merge proof",
+      "expected": "hold"
+    },
+    {
+      "id": "candidate-ci-source",
+      "scenario": "Any of eight candidate CI paths differs at head or tested merge while job names still all pass",
+      "expected": "hold"
+    },
+    {
+      "id": "two-releases-same-code",
+      "scenario": "Two releases and separate owner approvals/adoptions through same exact implementation/map bytes",
+      "expected": "required-future-integration-test"
+    },
+    {
+      "id": "status-watermark-rollback",
+      "scenario": "Caller returns earlier status stream terminal sequence with valid old eligible digest",
+      "expected": "hold"
+    },
+    {
+      "id": "cleanup-current-main-moved",
+      "scenario": "Reconstruct valid original binding and current exact-resource cleanup when main/status has advanced",
+      "expected": "cleanup-only-no-new-forward"
+    },
+    {
+      "id": "unrelated-removal-merge",
+      "scenario": "Removal and later merged commit have different PR/commit/run subjects despite close timestamps",
+      "expected": "hold"
+    },
+    {
+      "id": "queue-exit-reentry-history",
+      "scenario": "Multiple genuine earlier queue exits/reentries, exact final merged/tested tuple and later explicit release approval",
+      "expected": "eligible-source-only-preserve-whole-history"
+    },
+    {
+      "id": "changed-final-head-base",
+      "scenario": "Final PR head/base or selected run tuple changes across required readbacks",
+      "expected": "hold"
+    },
+    {
+      "id": "missing-merged-original",
+      "scenario": "Post-merge mode lacks mandatory REST/GraphQL merged event or full native capture originals",
+      "expected": "hold"
+    },
+    {
+      "id": "approval-before-evidence",
+      "scenario": "Owner release approval predates completed exact evidence/change review or successful tests",
+      "expected": "hold"
+    },
+    {
+      "id": "transient-read-recovery",
+      "scenario": "Status query temporarily fails, then a new complete fresh proof succeeds before reserve without release status transition",
+      "expected": "new-preparation-may-qualify-no-new-owner-approval"
+    },
+    {
+      "id": "moved-pair-recovery",
+      "scenario": "Main advances with unchanged trusted source before reserve, old preparation refused, new exact pair full proof supplied",
+      "expected": "new-preparation-may-qualify-no-new-owner-approval"
+    },
+    {
+      "id": "intentional-hold-bypass",
+      "scenario": "Root intentionally holds a release, caller tries another initial adoption with old approval",
+      "expected": "hold"
+    },
+    {
+      "id": "root-hold-recovery",
+      "scenario": "Exact Root reason resolved and independently reviewed, genuine recovery decision and fresh owner stream confirm unchanged unexpired grant",
+      "expected": "new-adoption-may-qualify-old-chain-terminal"
+    },
+    {
+      "id": "root-recovery-changed-subject",
+      "scenario": "Root recovery changes implementation/policy/release/resource grant without new owner approval",
+      "expected": "hold-new-owner-approval-required"
+    },
+    {
+      "id": "root-cannot-revoke-owner",
+      "scenario": "Root recovery receipt tries to override actual owner revocation",
+      "expected": "hold"
+    },
+    {
+      "id": "owner-later-reauthorization",
+      "scenario": "New genuine owner decision explicitly reauthorizes exact subject and names prior revocation/adoption",
+      "expected": "new-adoption-may-qualify-old-chain-terminal"
+    },
+    {
+      "id": "no-reserved-revival",
+      "scenario": "Valid Root recovery/new adoption supplied to revive old reserved attempt",
+      "expected": "hold-cleanup-only"
+    },
+    {
+      "id": "configuration-dag",
+      "scenario": "Compute exact releaseConfiguration, manifest, binding, preparation then claim; vary two releases under same code",
+      "expected": "required-future-positive-integration"
+    },
+    {
+      "id": "adoption-cycle",
+      "scenario": "Root adoption references releaseConfiguration that contains that adoption",
+      "expected": "reject-contract"
+    },
+    {
+      "id": "impl-runtime-cycle",
+      "scenario": "Static implementation manifest includes runtime release configuration or approval/adoption data",
+      "expected": "reject-contract"
+    }
+  ]
+}

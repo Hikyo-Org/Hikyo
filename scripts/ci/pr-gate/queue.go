@@ -278,7 +278,7 @@ func (q *queueController) executeProof(ctx context.Context, name string, e event
 	}
 	var failures []error
 	if name == "workflow_run" && len(numbers) == 0 {
-		return q.retiredHead(ctx)
+		return q.reconciliation.retireHead(ctx, false)
 	}
 	for _, n := range numbers {
 		if err := q.admit(ctx, n); err != nil {
@@ -315,10 +315,10 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return err
 	}
 	if p.State != "open" {
-		return q.retiredHead(ctx)
+		return q.reconciliation.retireHead(ctx, false)
 	}
 	if p.Head.SHA != q.expectedHead {
-		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.retiredHead(ctx))
+		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.reconciliation.retireHead(ctx, false))
 	}
 	if captured != nil {
 		initial, exists := captured.roles.AllPulls[number]
@@ -423,7 +423,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					break
 				}
 				b = newBinding(q.repo.ID, p, r)
-				if err := q.changedBinding(ctx, p, b); err != nil {
+				if err := q.reconciliation.changedBinding(ctx, p, b); err != nil {
 					return err
 				}
 				if r.Status != "completed" || r.Conclusion == "action_required" {
@@ -451,7 +451,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	// This scan also establishes a blocking barrier if a foreign green appears
 	// before a later PR read fails. Its recovery side effect is required even
 	// though the final publication independently repeats the ownership scan.
-	own, err := q.ownedChecks(ctx, p)
+	_, err = q.ownedChecks(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -460,7 +460,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return err
 	}
 	if final.State != "open" {
-		return q.retiredHead(ctx)
+		return q.reconciliation.retireHead(ctx, false)
 	}
 	finalPolicy, err := q.policy(ctx)
 	if err != nil {
@@ -525,18 +525,6 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
 		}
 	}
-	// A native or foreign same-name check can arrive during the final source
-	// reads. Repeat the identity barrier immediately before any terminal write.
-	own, err = q.ownedChecks(ctx, final)
-	if err != nil {
-		return err
-	}
-	var selected *check
-	for i := range own {
-		if selected == nil || own[i].ID > selected.ID {
-			selected = &own[i]
-		}
-	}
 	if trace != nil && selectedRun != nil {
 		created, parseErr := time.Parse(time.RFC3339, selectedRun.CreatedAt)
 		if parseErr == nil && !created.After(time.Now()) {
@@ -545,7 +533,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			fmt.Fprintln(q.output, "Admission timing: authenticated useful source creation time unavailable; no event-to-eligibility claim.")
 		}
 	}
-	return q.publish(ctx, p, b, selected, result)
+	return q.reconciliation.completeAdmission(ctx, p, b, result)
 }
 func (q *queueController) queueMovement(ctx context.Context, number int) error {
 	return q.blockMovement(ctx, number, "queue admission final comparison")
@@ -564,21 +552,34 @@ func (q *queueController) sharedHead(ctx context.Context, p pull) (bool, error) 
 }
 
 func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
+	type runList struct {
+		Runs  []run `json:"workflow_runs"`
+		Total int   `json:"total_count"`
+	}
 	var w workflow
-	if err := q.api.read(ctx, q.endpoint("actions/workflows/ci-feedback.yml"), &w); err != nil {
+	var first runList
+	runsPath := func(page int) string {
+		return q.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page))
+	}
+	// The definition and first run page are independent reads of the same
+	// feedback phase. Join and validate both before trusting any run or job.
+	if err := parallelReads(ctx, func(ctx context.Context) error {
+		return q.api.read(ctx, q.endpoint("actions/workflows/ci-feedback.yml"), &w)
+	}, func(ctx context.Context) error {
+		return q.api.read(ctx, runsPath(1), &first)
+	}); err != nil {
 		return nil, err
 	}
 	if w.ID <= 0 || w.Path != feedbackWorkflowPath || w.Name != "ci-feedback" {
 		return nil, errors.New("invalid feedback workflow identity")
 	}
 	for page := 1; page <= 10; page++ {
-		var list struct {
-			Runs  []run `json:"workflow_runs"`
-			Total int   `json:"total_count"`
-		}
-		path := q.endpoint(fmt.Sprintf("actions/workflows/ci-feedback.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page))
-		if err := q.api.read(ctx, path, &list); err != nil {
-			return nil, err
+		list := first
+		if page > 1 {
+			list = runList{}
+			if err := q.api.read(ctx, runsPath(page), &list); err != nil {
+				return nil, err
+			}
 		}
 		if list.Runs == nil || list.Total < 0 || list.Total > 1000 {
 			return nil, errors.New("invalid feedback run list")
@@ -942,10 +943,10 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		var stale *staleQueueGroup
 		if errors.As(err, &stale) {
 			_, writeErr := fmt.Fprintln(q.output, "Merge group pending:", stale.reason)
-			err = errors.Join(writeErr, q.retiredGroup(ctx))
+			err = errors.Join(writeErr, q.reconciliation.retireHead(ctx, true))
 			return
 		}
-		err = q.retireMovedGroup(ctx, err)
+		err = q.reconciliation.retireMovedGroup(ctx, err)
 	}()
 
 	// A valid callback establishes held-head identity. Final proof adds queue
@@ -967,7 +968,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 		return q.roleCollision(ctx, roles)
 	}
 	if !roles.Group && len(roles.Pulls) == 0 {
-		return q.retiredHead(ctx)
+		return q.reconciliation.retireHead(ctx, false)
 	}
 	current, err := q.latestGroup(ctx, hint.HeadSHA)
 	if err != nil {
@@ -991,10 +992,8 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	if err != nil {
 		return err
 	}
-	if q.queueRefresh != nil {
-		if err := q.queueRefresh.proveGroup(&finishedGroupProof{run: r, policy: policy, snapshot: snap}); err != nil {
-			return err
-		}
+	if err := q.reconciliation.observeGroup(&finishedGroupProof{run: r, policy: policy, snapshot: snap}); err != nil {
+		return err
 	}
 	p.Number = snap.Entries[len(snap.Entries)-1].PR.Number
 	members, authorized, err := q.groupMembers(ctx, snap)
@@ -1005,7 +1004,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 	p.Base.SHA = members[0].Base.SHA
 	b = newBinding(q.repo.ID, p, &r)
 	b.BaseRef = sha256.Sum256(append(snap.Digest[:], []byte(r.HeadBranch)...))
-	if err := q.changedBinding(ctx, p, b); err != nil {
+	if err := q.reconciliation.changedBinding(ctx, p, b); err != nil {
 		return err
 	}
 	if err := q.proveCurrentBase(ctx, p.Base.SHA, r.HeadSHA); err != nil {
@@ -1124,11 +1123,7 @@ func (q *queueController) groupProof(ctx context.Context, hint run) (err error) 
 			return &staleQueueGroup{reason: "current member changed in final role snapshot"}
 		}
 	}
-	own, err := q.groupChecks(ctx, p)
-	if err != nil {
-		return err
-	}
-	return q.publish(ctx, p, b, newestQueueCheck(own), result)
+	return q.reconciliation.completeGroup(ctx, p, b, result)
 }
 
 // groupProofIncomplete means the completed successful run's proof jobs are not

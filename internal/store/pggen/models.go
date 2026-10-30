@@ -454,6 +454,12 @@ type AuthInstanceState struct {
 	ReactivatedAt   pgtype.Timestamptz
 }
 
+type AuthRefusalWindow struct {
+	ID          int32
+	WindowStart int64
+	State       string
+}
+
 type BackupState struct {
 	ID                      int64
 	LastSuccessAt           pgtype.Timestamptz

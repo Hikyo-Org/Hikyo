@@ -377,7 +377,7 @@ func (r *AdapterRuntime) tryEnqueue(ctx context.Context, job adapter.Job, now ti
 		}
 		if previousJob != "" {
 			payload, _ := json.Marshal(map[string]string{"previous_job_id": previousJob, "job_id": job.ID})
-			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.superseded", "success", now, payload); err != nil {
+			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.superseded", "success", now, payload); err != nil {
 				return err
 			}
 		}
@@ -403,7 +403,7 @@ func (r *AdapterRuntime) ClaimDue(ctx context.Context, worker string, now, lease
 		if _, err := q.adapterWorkerClaimDueUpdate(ctx, int64(out.Attempt), worker, leaseUntil, out.ID); err != nil {
 			return err
 		}
-		return r.closeIndeterminateEffects(ctx, tx, out, now)
+		return closeIndeterminateAdapterEffects(ctx, tx, out, now)
 	})
 	if errors.Is(err, ErrNotFound) {
 		return adapter.Job{}, false, nil
@@ -411,16 +411,16 @@ func (r *AdapterRuntime) ClaimDue(ctx context.Context, worker string, now, lease
 	return out, err == nil, err
 }
 
-// closeIndeterminateEffects settles the crash window (#157). An effect whose
+// closeIndeterminateAdapterEffects settles the crash window (#157). An effect whose
 // INTENT was written but whose OUTCOME never landed belongs to an attempt that
 // died between the two: the process crashed, or the lease lapsed mid-request.
-// At the moment a target's next attempt is claimed, every such effect on that
-// target is closed as OUTCOME unknown, correlated to the job that opened it,
+// When a next attempt is claimed or an operator cancels a held route, each
+// expired effect is closed as OUTCOME unknown, correlated to its opening job,
 // so INTENT and OUTCOME always pair in the trail. The ledger row stays
-// dispatched (presumed written); the retry converges it. An effect whose
+// dispatched; provider recovery still requires its explicit review. An effect whose
 // provider-write lease is still live is left alone: a stalled node may still
 // hold that request on the wire, and its Finish will close it.
-func (r *AdapterRuntime) closeIndeterminateEffects(ctx context.Context, tx adapterDBTX, claimed adapter.Job, now time.Time) error {
+func closeIndeterminateAdapterEffects(ctx context.Context, tx adapterDB, claimed adapter.Job, now time.Time) error {
 	q := tx.adapterRuntimeQueries()
 	open, err := q.adapterWorkerCloseIndeterminateEffectsQuery(ctx, claimed.TargetID, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, now)
 	if err != nil {
@@ -433,7 +433,7 @@ func (r *AdapterRuntime) closeIndeterminateEffects(ctx context.Context, tx adapt
 		if err != nil {
 			return err
 		}
-		if err := r.insertAdapterJobAuditWithID(ctx, tx, opener, outcomeID, "adapter.push_outcome", string(adapter.OutcomeUnknown), now, payload); err != nil {
+		if err := insertAdapterJobAuditWithID(ctx, tx, opener, outcomeID, "adapter.push_outcome", string(adapter.OutcomeUnknown), now, payload); err != nil {
 			return err
 		}
 		rowsAffected, err := q.adapterWorkerCloseIndeterminateEffectsUpdate(ctx, outcomeID, now, effect.ID, claimed.OrgID, claimed.ProjectID, claimed.EnvironmentID, claimed.TargetID)
@@ -803,14 +803,14 @@ func (j *adapterJournal) insertConflict(ctx context.Context, tx adapterDBTX, eff
 }
 
 func (j *adapterJournal) insertAudit(ctx context.Context, tx adapterDBTX, id, typ, outcome string, at time.Time, payload []byte) error {
-	return j.runtime.insertAdapterJobAuditWithID(ctx, tx, j.job, id, typ, outcome, at, payload)
+	return insertAdapterJobAuditWithID(ctx, tx, j.job, id, typ, outcome, at, payload)
 }
 
-func (r *AdapterRuntime) insertAdapterJobAudit(ctx context.Context, tx adapterDBTX, job adapter.Job, typ, outcome string, at time.Time, payload []byte) error {
-	return r.insertAdapterJobAuditWithID(ctx, tx, job, newAdapterID("aud"), typ, outcome, at, payload)
+func insertAdapterJobAudit(ctx context.Context, tx adapterDB, job adapter.Job, typ, outcome string, at time.Time, payload []byte) error {
+	return insertAdapterJobAuditWithID(ctx, tx, job, newAdapterID("aud"), typ, outcome, at, payload)
 }
 
-func (r *AdapterRuntime) insertAdapterJobAuditWithID(ctx context.Context, tx adapterDBTX, job adapter.Job, id, typ, outcome string, at time.Time, payload []byte) error {
+func insertAdapterJobAuditWithID(ctx context.Context, tx adapterDB, job adapter.Job, id, typ, outcome string, at time.Time, payload []byte) error {
 
 	stamp := at
 	_, err := tx.adapterRuntimeQueries().adapterWorkerInsertAdapterJobAuditWithIDQuery(ctx, id, typ, stamp, job.AuthorityPrincipal, job.OrgID, job.ProjectID, job.EnvironmentID, job.TargetID, outcome, job.ID, string(payload))
@@ -838,6 +838,12 @@ func (r *AdapterRuntime) Activate(ctx context.Context, job adapter.Job, connecti
 		stamp := at
 		journal := adapterJournal{runtime: r, job: job}
 		if err := journal.lockCurrentCustody(ctx, tx.adapterRuntimeQueries()); err != nil {
+			return err
+		}
+		// Prepare atomically changes a reservation to dispatched with its
+		// provider lease. Under this live activation fence, retire only unsent
+		// reservations so the next converge must claim the new route identity.
+		if _, err := tx.adapterRuntimeQueries().adapterWorkerActivateReleaseReservations(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID); err != nil {
 			return err
 		}
 		rows, err := tx.adapterRuntimeQueries().adapterWorkerActivateFinish(ctx, stamp, job.ID, job.RouteMoveID, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID, job.Generation, job.LeaseOwner)
@@ -952,7 +958,7 @@ func (r *AdapterRuntime) Activate(ctx context.Context, job adapter.Job, connecti
 		if err != nil {
 			return err
 		}
-		return r.insertAdapterJobAudit(ctx, tx, job, "adapter.test", "success", at, payload)
+		return insertAdapterJobAudit(ctx, tx, job, "adapter.test", "success", at, payload)
 	})
 }
 
@@ -969,7 +975,7 @@ func (r *AdapterRuntime) activateOriginRouteMove(ctx context.Context, tx adapter
 	if err != nil {
 		return err
 	}
-	if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.test", "success", at, payload); err != nil {
+	if err := insertAdapterJobAudit(ctx, tx, job, "adapter.test", "success", at, payload); err != nil {
 		return err
 	}
 	var unresolved int
@@ -1097,7 +1103,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				return err
 			}
 			payload, _ := json.Marshal(map[string]string{"cause": "generation"})
-			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
+			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 				return err
 			}
 			if job.Kind == adapter.Scrub {
@@ -1106,7 +1112,7 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 					return err
 				}
 				payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
-				return r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
+				return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
 			}
 			return nil
 		}
@@ -1138,9 +1144,9 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				return err
 			}
 			payload, _ := json.Marshal(map[string][]string{"orphaned": {}})
-			return r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "success", finished, payload)
+			return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "success", finished, payload)
 		}
-		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict)) {
+		if job.Kind == adapter.Activate && state == "failed" && (errors.Is(terminalErr, adapter.ErrProviderAuth) || errors.Is(terminalErr, adapter.ErrConflict) || errors.Is(terminalErr, adapter.ErrOperatorReview) || errors.Is(terminalErr, adapter.ErrUnauthorized)) {
 
 			rows, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobAttention(ctx, job.RouteMoveID, job.OrgID, job.ProjectID)
 			if err != nil {
@@ -1154,10 +1160,18 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				return err
 			}
 
-			if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID); err != nil {
+			if _, err := tx.adapterRuntimeQueries().adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID, adapter.ClassifyError(terminalErr), finished); err != nil {
 				return err
 			}
-			return r.insertAdapterJobAudit(ctx, tx, job, "adapter.test", "failure", finished, []byte(`{}`))
+			// Recovery changes no push authority. Preserve the opening job's
+			// refusal audit before this activation-specific settlement returns.
+			if errors.Is(terminalErr, adapter.ErrUnauthorized) {
+				payload, _ := json.Marshal(map[string]string{"cause": "authority"})
+				if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
+					return err
+				}
+			}
+			return insertAdapterJobAudit(ctx, tx, job, "adapter.test", "failure", finished, []byte(`{}`))
 		}
 		retainActiveJob := boolInt(state == "queued")
 		failureNames := make([]string, 0, len(failed))
@@ -1216,9 +1230,14 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 		if rows != 1 {
 			return adapter.ErrSuperseded
 		}
+		if job.Kind == adapter.Scrub && state == "failed" && errors.Is(terminalErr, adapter.ErrOperatorReview) {
+			if err := r.restoreReviewHeldScrub(ctx, tx, job, finished); err != nil {
+				return err
+			}
+		}
 		if state == "failed" && errors.Is(terminalErr, adapter.ErrUnauthorized) {
 			payload, _ := json.Marshal(map[string]string{"cause": "authority"})
-			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
+			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.abort", "failure", finished, payload); err != nil {
 				return err
 			}
 		}
@@ -1228,12 +1247,48 @@ func (r *AdapterRuntime) finishJob(ctx context.Context, job adapter.Job, state s
 				return err
 			}
 			payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
-			if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload); err != nil {
+			if err := insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+// restoreReviewHeldScrub preserves supported operator recovery without granting
+// another provider write. Removals reappear paused; route moves stop for a
+// cancel/review decision on the old route. Claims and credentials stay intact.
+func (r *AdapterRuntime) restoreReviewHeldScrub(ctx context.Context, tx adapterDBTX, job adapter.Job, at time.Time) error {
+	q := tx.adapterRuntimeQueries()
+	if job.RouteMoveID != "" {
+		rows, err := q.adapterWorkerFinishJobAttention(ctx, job.RouteMoveID, job.OrgID, job.ProjectID)
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return adapter.ErrSuperseded
+		}
+		if _, err := q.adapterWorkerFinishJobSupersede(ctx, at, job.RouteMoveID, job.OrgID, job.ProjectID, job.ID); err != nil {
+			return err
+		}
+		_, err = q.adapterWorkerFinishJobMarkTargets(ctx, job.OrgID, job.ProjectID, job.RouteMoveID, adapter.ErrorClassProviderAmbiguous, at)
+		return err
+	}
+	rows, err := q.adapterWorkerRestoreHeldScrubTarget(ctx, job, at)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return adapter.ErrSuperseded
+	}
+	// The generation-fenced target above remains locked in this transaction.
+	// Resolve its scoped parent before restoring that exact adapter row.
+	adapterID, err := q.adapterWorkerFinishJobLookup(ctx, job.TargetID, job.OrgID, job.ProjectID, job.EnvironmentID)
+	if err != nil {
+		return err
+	}
+	_, err = q.adapterWorkerRestoreHeldScrubAdapter(ctx, job, adapterID)
+	return err
 }
 
 // raiseDriftAttention flags a target as needing operator action (#157): an
@@ -1318,7 +1373,7 @@ func (r *AdapterRuntime) finishRouteMoveScrub(ctx context.Context, tx adapterDBT
 	if rows != 1 {
 		return adapter.ErrSuperseded
 	}
-	return r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", outcome, finished, payload)
+	return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", outcome, finished, payload)
 }
 
 func (r *AdapterRuntime) finishOriginRouteMoveScrub(ctx context.Context, tx adapterDBTX, job adapter.Job, finished time.Time, orphaned []string, payload []byte, outcome string) error {
@@ -1331,7 +1386,7 @@ func (r *AdapterRuntime) finishOriginRouteMoveScrub(ctx context.Context, tx adap
 	if rows != 1 {
 		return adapter.ErrSuperseded
 	}
-	if err := r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", outcome, finished, payload); err != nil {
+	if err := insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", outcome, finished, payload); err != nil {
 		return err
 	}
 	var pendingScrubs int
@@ -1415,5 +1470,5 @@ func (r *AdapterRuntime) finishDeadCredentialScrub(ctx context.Context, tx adapt
 		return err
 	}
 	payload, _ := json.Marshal(map[string][]string{"orphaned": orphaned})
-	return r.insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
+	return insertAdapterJobAudit(ctx, tx, job, "adapter.scrub", "failure", finished, payload)
 }

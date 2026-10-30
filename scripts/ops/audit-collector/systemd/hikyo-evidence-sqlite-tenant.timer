@@ -1,0 +1,11 @@
+[Unit]
+Description=Approved five-minute SQLite fixture tenant poll
+
+[Timer]
+OnBootSec=180
+OnUnitActiveSec=300
+AccuracySec=5
+Unit=hikyo-evidence-poll@sqlite-tenant.service
+
+[Install]
+WantedBy=timers.target

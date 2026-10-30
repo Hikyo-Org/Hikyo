@@ -79,10 +79,11 @@ func newAccessWireEnv(t *testing.T, db *store.DB) accessWireEnv {
 	// Creation granted this principal org-admin access and therefore killed the
 	// creating session. Re-login and present the already-enrolled passkey before
 	// the wire assertions begin.
-	login, err := auth.LocalLogin(ctx, waAdmin, administrator.password, service.ArtifactCLI)
+	browser, err := discoverableLogin(t, auth, ctx, dev)
 	if err != nil {
 		t.Fatalf("login after org create: %v", err)
 	}
+	login := cliLoginFromBrowser(t, auth, browser)
 	token = stepUpPasskey(t, auth, ctx, login.SessionToken, dev)
 
 	// The project and environment are seeded directly, as the harness seeds

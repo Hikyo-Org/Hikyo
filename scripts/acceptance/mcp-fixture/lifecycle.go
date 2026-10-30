@@ -1,0 +1,211 @@
+//go:build darwin || linux
+
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/mcpserver"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Exercise the actual operational commands against the owned local datastore.
+// The observer must finish while the helper holds the catalogue lock, without
+// repeating admission behind that lock. This is not public proxy proof.
+func exerciseStoreCommands(ctx context.Context, dir string) (result error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	binary, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	hold := exec.CommandContext(ctx, binary, "hold", "--runtime", dir)
+	hold.Stderr = io.Discard
+	input, err := hold.StdinPipe()
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := hold.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+	if err := hold.Start(); err != nil {
+		return err
+	}
+	defer func() {
+		input.Close()
+		result = errors.Join(result, hold.Wait())
+	}()
+	line, err := bufio.NewReader(output).ReadString('\n')
+	if err != nil || line != "LOCKED\n" {
+		return errors.New("actual fixture hold command failed")
+	}
+	raw, err := exec.CommandContext(ctx, binary, "observe", "--runtime", dir).Output()
+	var counts storeCounts
+	if err != nil || json.Unmarshal(raw, &counts) != nil || counts.Claims != 0 || len(counts.Blocked) != 2 || counts.Blocked[0] != 0 || counts.Blocked[1] != 0 {
+		return errors.New("read-only observer failed while catalogue was locked")
+	}
+	return nil
+}
+
+// Locks are permitted only on this disposable fixture. They simulate admitted
+// work stalled in the real store, not a timer or mocked service. Never use
+// this function against an existing installation or an unapproved database.
+func (p *probe) lifecycle(ctx context.Context, pool *pgxpool.Pool, processes []*serverProcess, sequence *atomic.Uint64) error {
+	for i := 0; i < 2; i++ {
+		lock, err := pool.Begin(ctx)
+		if err != nil {
+			return errors.New("fixture store lock unavailable")
+		}
+		if _, err := lock.Exec(ctx, "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE"); err != nil {
+			lock.Rollback(ctx)
+			return errors.New("fixture catalogue lock unavailable")
+		}
+		callCtx, cancel := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		index := int(sequence.Load()) % 2
+		go func() {
+			_, err := p.call(callCtx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["lifecycle"].Token)
+			done <- err
+		}()
+		admitted := func(ctx context.Context) bool {
+			var n int
+			err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&n)
+			if err != nil || n != 1 {
+				return false
+			}
+			err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock'", fmt.Sprintf("mcp651-%d", index)).Scan(&n)
+			return err == nil && n > 0
+		}
+		if err := wait(ctx, 4*time.Second, admitted); err != nil {
+			cancel()
+			lock.Rollback(ctx)
+			<-done
+			return errors.New("actual admitted blocked query not observed")
+		}
+		start := time.Now()
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			lock.Rollback(ctx)
+			return errors.New("proxy cancellation did not return")
+		}
+		// Keep the table lock held until BOTH the shared claim and the blocked
+		// backend query have disappeared. A client error alone cannot pass.
+		if err := wait(ctx, 3*time.Second, func(ctx context.Context) bool {
+			var claims, waiting int
+			if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&claims) != nil {
+				return false
+			}
+			if pool.QueryRow(ctx, "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock'", fmt.Sprintf("mcp651-%d", index)).Scan(&waiting) != nil {
+				return false
+			}
+			return claims == 0 && waiting == 0
+		}); err != nil {
+			lock.Rollback(ctx)
+			return errors.New("cancelled store work or shared claim persisted")
+		}
+		p.receipt.Measurements[fmt.Sprintf("local_proxy_cancel_process_%d", index)] = time.Since(start).Milliseconds()
+		lock.Rollback(ctx)
+	}
+	p.receipt.Checks["local_proxy_cancellation_store_context_claims_both"] = "PASS"
+	// Drain one process with an actual admitted query. The unchanged server
+	// grace is five seconds; this probe neither alters it nor waits 30 seconds.
+	lock, err := pool.Begin(ctx)
+	if err != nil {
+		return errors.New("drain lock unavailable")
+	}
+	defer lock.Rollback(context.Background())
+	if _, err := lock.Exec(ctx, "LOCK TABLE keys IN ACCESS EXCLUSIVE MODE"); err != nil {
+		return errors.New("drain catalogue lock unavailable")
+	}
+	index := int(sequence.Load()) % 2
+	done := make(chan error, 1)
+	go func() {
+		r, err := p.call(ctx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["lifecycle"].Token)
+		if err == nil && !successful(r) {
+			err = errors.New("draining admitted read failed")
+		}
+		done <- err
+	}()
+	if err := wait(ctx, 4*time.Second, func(ctx context.Context) bool {
+		var n int
+		return pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&n) == nil && n == 1
+	}); err != nil {
+		return errors.New("drain admission not observed")
+	}
+	start := time.Now()
+	drainCtx, cancelDrain := context.WithDeadline(ctx, start.Add(5*time.Second))
+	defer cancelDrain()
+	if accepting, err := listenerAccepting(drainCtx, processes[index].operational); err != nil || !accepting {
+		return errors.New("drain operational listener positive control failed")
+	}
+	if err := processes[index].cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		return errors.New("SIGTERM failed")
+	}
+	if err := wait(drainCtx, time.Until(start.Add(5*time.Second)), func(ctx context.Context) bool {
+		accepting, err := listenerAccepting(ctx, processes[index].operational)
+		if err != nil || accepting {
+			return false
+		}
+		var claims, blocked int
+		if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight WHERE principal_id=$1", p.fixture.Credentials["lifecycle"].Principal).Scan(&claims) != nil {
+			return false
+		}
+		if pool.QueryRow(ctx, "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock'", fmt.Sprintf("mcp651-%d", index)).Scan(&blocked) != nil {
+			return false
+		}
+		return claims == 1 && blocked > 0
+	}); err != nil {
+		return errors.New("shutdown start with admitted store work not observed")
+	}
+	p.receipt.event("shutdown_listener_closed_while_store_work_admitted", fmt.Sprint(index), 0)
+	// Releasing the owned store lock permits the already-admitted read to
+	// finish while shutdown refuses new work. No application state is edited.
+	if err := lock.Rollback(ctx); err != nil {
+		return errors.New("drain lock release failed")
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			return err
+		}
+	case <-drainCtx.Done():
+		return errors.New("inflight request exceeded drain budget")
+	}
+	select {
+	case err := <-processes[index].done:
+		if err != nil {
+			return errors.New("drained process exited unsuccessfully")
+		}
+	case <-drainCtx.Done():
+		return errors.New("server exceeded unchanged five-second drain budget")
+	}
+	if drainCtx.Err() != nil {
+		return errors.New("drain observation exceeded five-second budget")
+	}
+	var claims int
+	if pool.QueryRow(ctx, "SELECT COUNT(*) FROM mcp_inflight").Scan(&claims) != nil || claims != 0 {
+		return errors.New("drain left shared claims")
+	}
+	r, err := p.call(ctx, "tools/call", mcpserver.ToolListDefinitions, p.args(), p.fixture.Credentials["lifecycle"].Token)
+	if err != nil || !successful(r) || r.Process != processes[1-index].identity {
+		return errors.New("peer did not survive drain")
+	}
+	p.receipt.Measurements["SIGTERM_drain"] = time.Since(start).Milliseconds()
+	p.receipt.Checks["SIGTERM_inflight_drain_claim_release_peer_survives"] = "PASS"
+	return nil
+}

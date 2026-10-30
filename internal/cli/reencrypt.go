@@ -16,10 +16,10 @@ import (
 // resumable — safe to re-run.
 func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	var format string
-	var instance bool
+	var instanceScope bool
 	st, flags, err := parseCommon("reencrypt", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
-		fs.BoolVar(&instance, "instance", false, "reencrypt the instance credential tables instead of a project")
+		fs.BoolVar(&instanceScope, "instance-scope", false, "reencrypt the instance credential tables instead of a project")
 	})
 	if err != nil {
 		return err
@@ -28,24 +28,12 @@ func runReencrypt(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := flags.checkNoPositionals("reencrypt"); err != nil {
-		return err
-	}
-
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, org, project, err := prepareDEKTarget(st, ios, flags, instanceScope)
 	if err != nil {
 		return err
 	}
 	path := api.PathPrefix + "/instance/reencrypt"
-	if !instance {
-		org, err := resolved.Require(DimOrg)
-		if err != nil {
-			return err
-		}
-		project, err := resolved.Require(DimProject)
-		if err != nil {
-			return err
-		}
+	if !instanceScope {
 		path = api.PathPrefix + "/orgs/" + url.PathEscape(org) + "/projects/" + url.PathEscape(project) + "/reencrypt"
 	}
 

@@ -164,6 +164,7 @@ func Run(ctx context.Context, io IO, args []string) int {
 // dispatches on it and Verbs (exit.go) is derived from its keys, so a verb
 // cannot exist here without main's dispatch gate admitting it.
 var verbHandlers = map[string]func(context.Context, IO, []string) error{
+	"audit":               runAudit,
 	"login":               runLogin,
 	"logout":              runLogout,
 	"whoami":              runWhoami,
@@ -235,6 +236,7 @@ authentication:
   hikyo login <instance-url> [--device] [--provider KIND:SLUG] [--name REF] [--tls-mode spki|system-ca] [--trust-file PATH]
   hikyo login <instance-url> --local --as USER [--name REF] [--socket PATH] [--tls-mode spki|system-ca] [--trust-file PATH]
                                                  terminal-native local login
+      Use browser login (default) or --device for enrolled TOTP or passkeys.
   hikyo logout [--instance REF]                    revoke the stored session
   hikyo whoami [--instance REF] [-o table|json]    describe the stored session
 
@@ -271,6 +273,16 @@ managed configuration:
   hikyo instance-config test-email --revision N --expected-generation N --to ADDRESS
 
 diagnostics:
+  hikyo audit query (--instance-scope | --org O [--project P [--env E]]) [-o table|json]
+      [--limit N] [--after-seq N --to-seq N]
+      Filters: --from/--to RFC3339, --actor ID, --actor-name GLOB,
+      --operation GLOB, --outcome VALUE (repeatable), --object-type GLOB,
+      --object-id GLOB, --correlation-id ID. Login failures are instance events.
+  hikyo audit export (--instance-scope | --org O [--project P [--env E]])
+      emits JSONL to stdout; instance collection requires a human session
+      Filters: --from/--to RFC3339, --actor ID, --actor-name GLOB,
+      --operation GLOB, --outcome VALUE (repeatable), --object-type GLOB,
+      --object-id GLOB, --correlation-id ID. Login failures are instance events.
   hikyo doctor [--instance REF] [-o table|json] [--evidence]
                                                  report health or JSON collection evidence
   hikyo update channel stable|nightly|off           choose local release track
@@ -397,11 +409,12 @@ revisions:                                         --env selects the environment
   hikyo approval request bypass <request> --reason R emergency-bypass a request's quorum
   hikyo rotate-token-key --yes                      new token key; one full fetch, no restart wave
   hikyo rotate-scanning-key --yes                   new scanning key; every dismissal is dropped
-  hikyo rotate-dek --instance --yes                 new instance DEK version (old stays readable)
+  hikyo rotate-dek --instance-scope --yes           new instance DEK version (old stays readable)
   hikyo rotate-dek --org O --project P --yes         new project DEK version; follow with reencrypt
   hikyo rotate-master-key --yes                     new master; re-wrap every tier-3 key
   hikyo rotate-root-key --prepare|--verify|--finalize  crash-safe root rotation, one phase per run
-  hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
+  hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance-scope for instance
+    --instance <ref> selects the server; --instance-scope selects its DEK, never --env.
 
 adapters:
   hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
@@ -797,7 +810,7 @@ exit codes:
 func runLogin(ctx context.Context, ios IO, args []string) error {
 	fs := flag.NewFlagSet("login", flag.ContinueOnError)
 	fs.SetOutput(ios.Stderr)
-	local := fs.Bool("local", false, "terminal-native local login (password prompted, never argv)")
+	local := fs.Bool("local", false, "terminal password login for unenrolled accounts (password prompted, never argv)")
 	device := fs.Bool("device", false, "RFC 8628 device-code flow")
 	provider := fs.String("provider", "", "preselect a browser provider: kind:slug, or an unambiguous slug")
 	as := fs.String("as", "", "username to log in as")
@@ -1894,6 +1907,8 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 
 type commonFlags struct {
 	Flags
+	// provided distinguishes an empty explicit selector from an omitted flag.
+	provided  map[string]bool
 	operation AuthOperation
 	kinds     AuthKinds
 	Auth      string
@@ -1975,6 +1990,8 @@ func parseCommon(name string, ios IO, args []string, extra func(*flag.FlagSet)) 
 		return nil, commonFlags{}, err
 	}
 	c.positionals = positional
+	c.provided = make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) { c.provided[f.Name] = true })
 	if c.Auth != "" && c.Auth != "human" && c.Auth != "machine" {
 		return nil, commonFlags{}, failf(ExitUsage, "--auth must be human or machine, got %q", c.Auth)
 	}

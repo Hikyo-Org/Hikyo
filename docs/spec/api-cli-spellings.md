@@ -412,14 +412,14 @@ SCIM mappings are addressed by **binding, group and scope**, with the template a
 
 `import --environment` selects the destination; `import --env` selects the Infisical source slice. These selectors are intentionally distinct. `--kube-context` selects the Kubernetes source context; it does not change the Hikyo context. The top-level import wizard remains the no-source-arguments TTY mode. Retain `run --use-human-session` as an explicit authenticated delivery choice; it does not turn a machine token into a human ceremony.
 
-The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek`, `rotate-master-key` and `rotate-root-key`. `rotate-dek --instance` addresses the instance; otherwise the named org/project. `rotate-root-key` takes exactly one of `--prepare`, `--verify`, `--finalize`, one phase per invocation, with operator confirmation. `reencrypt --instance` or `reencrypt --org O --project P` completes the ciphertext walk separately. Doctor remains a read-only diagnostic verb; it does not silently rotate, repair or accept restored identities.
+The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek`, `rotate-master-key` and `rotate-root-key`. `rotate-dek --instance-scope` addresses the instance; otherwise the resolved org/project. `--instance` keeps its shared meaning, the target instance reference, and never selects a scope; `--instance-scope` with explicit `--org` or `--project` is a usage error. Both `rotate-dek` and `reencrypt` refuse explicit `--env`, since a project DEK covers every environment and retained history. Instance scope ignores inherited tenant defaults; project scope follows normal per-dimension resolution. `rotate-root-key` takes exactly one of `--prepare`, `--verify`, `--finalize`, one phase per invocation, with operator confirmation. `reencrypt --instance-scope` or `reencrypt --org O --project P` completes the ciphertext walk separately. Doctor remains a read-only diagnostic verb; it does not silently rotate, repair or accept restored identities.
 
 ### Revision and enum baseline
 
-**Source inventory, 2026-10-20, including manual remote pairing; final freeze
-baseline pending.** The earlier revision-2 inventory is historical.
-`api/spec.go` advertises **API revision 12** and `api/openapi.yaml` contains
-404 operations:
+**Source inventory, 2026-10-23, including instance audit query and export;
+final freeze baseline pending.** The earlier revision-2 inventory is historical.
+`api/spec.go` advertises **API revision 13** and `api/openapi.yaml` contains
+406 operations:
 
 | Minimum revision | Operation count |
 | --- | ---: |
@@ -435,12 +435,16 @@ baseline pending.** The earlier revision-2 inventory is historical.
 | 10 | 8 |
 | 11 | 3 |
 | 12 | 7 |
+| 13 | 2 |
 
 Revision 12 introduces only the seven manual pairing operations: authenticated
 request preparation, invitation creation/list/revocation, local completion,
 and the two capability-gated PAKE redemption endpoints. Existing operations
 keep their original minimum revisions. New clients refuse these pairing
 operations against a server advertising an earlier API revision.
+
+Revision 13 introduces only `queryInstanceAudit` and `exportInstanceAudit`,
+the instance audit trail routes.
 
 These are source counts, not a candidate test result. Refresh them after
 outstanding API changes, including #805, land. Retain published minima rather

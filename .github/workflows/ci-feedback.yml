@@ -73,11 +73,11 @@ jobs:
           plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)
           echo "plan=$plan" >> "$GITHUB_OUTPUT"
       - name: Check budget before runtime setup
-        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         timeout-minutes: 1
-        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).workflows || fromJSON(steps.plan.outputs.plan).go)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go
         with:
           go-version-file: feedback-tools/go.mod
           cache: false
@@ -86,13 +86,13 @@ jobs:
       # toolchain, source and dependency identities for every selected package.
       - name: Select Go build cache runner ABI
         id: runner-cache-abi
-        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-runner-cache-abi.sh"
       - name: Check budget before Go build cache restore
-        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - name: Restore bounded feedback Go cache
-        if: matrix.lane != 'frontend' && (fromJSON(steps.plan.outputs.plan).go || fromJSON(steps.plan.outputs.plan).workflows)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.go
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         with:
@@ -100,27 +100,27 @@ jobs:
           key: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('feedback-tools/go.mod', 'feedback-tools/go.sum', 'feedback-tools/scripts/ci/go-tool-modules.txt') }}-${{ env.FAST_FEEDBACK_BASE }}
           restore-keys: go-feedback-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Check budget before runtime setup
-        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.node
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         timeout-minutes: 1
-        if: (matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)) || (matrix.lane == 'tooling' && fromJSON(steps.plan.outputs.plan).docs)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.node
         with:
           node-version-file: source/.nvmrc
       - name: Install pinned Corepack
-        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.pnpm
         run: |
           bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/install-corepack.sh"
       - name: Select explicit pnpm cache path and ABI
         id: pnpm-cache
-        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.pnpm
         run: |
           bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$FAST_FEEDBACK_TOOLS_DIR/export-pnpm-cache.sh"
       - name: Check budget before cache restore
-        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.pnpm
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
       - name: Restore frontend dependencies
-        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.pnpm
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         timeout-minutes: 1
         with:
@@ -128,15 +128,15 @@ jobs:
           key: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-${{ hashFiles('source/.nvmrc', 'source/web/package.json', 'source/web/pnpm-lock.yaml', 'source/web/pnpm-workspace.yaml', 'source/clients/ts/package.json', 'source/clients/ts/pnpm-lock.yaml', 'source/clients/ts/pnpm-workspace.yaml') }}
           restore-keys: pnpm-store-v2-host-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cache.outputs.abi }}-
       - name: Install locked client dependencies
-        if: matrix.lane == 'frontend' && (fromJSON(steps.plan.outputs.plan).web || fromJSON(steps.plan.outputs.plan).client)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.clientDependencies
         working-directory: source/clients/ts
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install locked web dependencies
-        if: matrix.lane == 'frontend' && fromJSON(steps.plan.outputs.plan).web
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.webDependencies
         working-directory: source/web
         run: bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" pnpm install --frozen-lockfile
       - name: Install verified pinned ShellCheck
-        if: matrix.lane == 'tooling' && (fromJSON(steps.plan.outputs.plan).shell || fromJSON(steps.plan.outputs.plan).workflows)
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.shellcheck
         env:
           SHELLCHECK_VERSION: v0.11.0
           SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
@@ -149,5 +149,15 @@ jobs:
           tar -xJf "$archive" -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION" >> "$GITHUB_PATH"
           INSTALL_SHELLCHECK
+      - name: Prepare trusted release contract dependencies
+        if: fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].prerequisites.releaseDependencies
+        run: |
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" --reserve 60
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" python3 -m venv "$RUNNER_TEMP/release-admission-checks"
+          bash "$FAST_FEEDBACK_TOOLS_DIR/feedback-budget.sh" "$RUNNER_TEMP/release-admission-checks/bin/python" -m pip install -r scripts/ci/release-admission/requirements.txt
+          echo "$RUNNER_TEMP/release-admission-checks/bin" >> "$GITHUB_PATH"
       - name: Run fast feedback
-        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane=${{ matrix.lane == 'tooling' && 'go' || matrix.lane }} --go-scope=${{ matrix.lane == 'go' && 'application' || matrix.lane == 'tooling' && 'tooling' || 'all' }}
+        env:
+          FEEDBACK_LANE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].lane }}
+          FEEDBACK_GO_SCOPE: ${{ fromJSON(steps.plan.outputs.plan).lanes[matrix.lane].goScope }}
+        run: bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --lane="$FEEDBACK_LANE" --go-scope="$FEEDBACK_GO_SCOPE"

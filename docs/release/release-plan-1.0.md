@@ -1,29 +1,53 @@
 # Hikyo 1.0 release plan
 
-**Preparation snapshot, 2026-10-16, source
-`6769ee55dcd4087eeaf42547e9abde01c4f0818c`. Final candidate acceptance is pending.**
+**Scope and dependency reconciliation, 2026-10-28, inspected main
+`24e198b32a3ffd8d4013207b2f974d76ec49be6f`. Final candidate acceptance is pending.**
 The [acceptance ledger](acceptance-1.0.md) preserves September's executed
-results; those results are not certification of this source or the eventual
-combined candidate. This plan sequences [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)
-without changing its five done-verification gates or authorizing a release.
+results. Those results do not certify this source or the eventual combined
+candidate. This plan sequences [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)
+and [#527](https://github.com/Hikyo-Org/Hikyo/issues/527) without changing the
+five done-verification gates or declaring 1.0 accepted.
 
-Evidence preparation and a documentation merge do not authorize stable-policy
-activation, tag creation, release publication or production deployment. Those
-remain separate owner-authorized ceremonies. Record unexecuted checks as
-pending, never passed or waived.
+Source PRs require normal review, signatures, DCO, CI and the protected merge
+queue. The approved stabilization work ends at reviewable PRs unless later
+merge authority is given. Stable-policy activation, recovery signing, tags,
+Apple submissions, publication, production changes and external messages each
+retain their separate authorization. Unexecuted evidence stays pending,
+HOLD, NOTRUN or SKIPPED as appropriate.
 
 ## Source and accepted decisions
 
-- [#936 / PR #937](https://github.com/Hikyo-Org/Hikyo/pull/937) merged as the
-  snapshot above. Its [48-job run](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
-  succeeded at that SHA with event `merge_group`. This is exact merge-group
-  evidence, not the full-main release proof selected by
-  `scripts/release/require-green-main.sh`.
-- The [API/CLI source inventory](../spec/api-cli-spellings.md#revision-and-enum-baseline)
-  records revision 11 and migration source head 75 on both engines. Inventory
-  and artifact identities must be refreshed after outstanding changes land,
-  including #805; these are not the final freeze baseline.
-- Marc's [accepted error-enum and SOPS/KMS size dispositions](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183)
+- The inspected main above advertises API revision **12** in
+  [api/spec.go](../../api/spec.go). The highest migration filename on each
+  engine is `00079_remote_pairing.sql`:
+  [SQLite](../../internal/store/migrations/sqlite/00079_remote_pairing.sql) and
+  [PostgreSQL](../../internal/store/migrations/postgres/00079_remote_pairing.sql).
+  These are source identities, not a measured deployed schema, applied migration
+  count or final artifact baseline. The older
+  [API/CLI inventory](../spec/api-cli-spellings.md#revision-and-enum-baseline)
+  is historical; the qualification owner must refresh candidate identities.
+- **Accepted 1.0 exclusion:** AWS acceptance [#158](https://github.com/Hikyo-Org/Hikyo/issues/158),
+  its [PR #969](https://github.com/Hikyo-Org/Hikyo/pull/969), and extracted
+  controller follow-up [#1057](https://github.com/Hikyo-Org/Hikyo/issues/1057)
+  are outside this release path. This release-specific instruction supersedes
+  the older conditional AWS inclusion in this plan. It does not delete shipped
+  adapter code/tests, claim real-AWS acceptance, or waive review of later work.
+  #158 now has `release:post-1.0` and milestone v1.1; #1057 is post-1.0.
+- Preserve accepted deferrals: #805 publish/pin webhook push, #161 Cloudflare,
+  #148 scheduled rotation, and broad #1051 automation migration. Generic files
+  and sealed webhook remain v1.1 under their owning amendments. Existing Compose
+  pull delivery, internal key rotation and all tests for shipped code remain.
+- [PR #1014](https://github.com/Hikyo-Org/Hikyo/pull/1014) merged
+  2026-10-20T21:44:09Z as `0de713d2df6acbb9a3e344fbfba4827b31f86501`,
+  an ancestor of the inspected main. This satisfies the merge condition recorded
+  when [#71](https://github.com/Hikyo-Org/Hikyo/issues/71#issuecomment-6300682362)
+  and [#8](https://github.com/Hikyo-Org/Hikyo/issues/8#issuecomment-6300681859)
+  were reopened for the pairing amendment. The
+  [owner's review exception](https://github.com/Hikyo-Org/Hikyo/pull/1014#issuecomment-6300666440)
+  applies only to #1014. Cross-provider review remains SKIPPED, never CLEAN;
+  amendment bookkeeping closure is neither a new security review nor final
+  candidate acceptance.
+- Marc's [error-enum and SOPS/KMS size dispositions](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5353930183)
   stand. Keep KMS support and measure final binary sizes. The
   [floor amendment](https://github.com/Hikyo-Org/Hikyo/issues/79#issuecomment-5354009024)
   accepts constrained native ARM64 CI; physical Pi calibration is optional.
@@ -31,68 +55,96 @@ pending, never passed or waived.
   old offline-primary/USB recommendation. The existing online-generated root
   remains. Its `pending_release` bootstrap placeholder is not stable approval;
   recovery-authorized stable policy activation is still required.
-- Scoped review/disposition approvals for #930, #805, #631, #612, #15 and
-  the approved #589 / PR #945 head apply only to their recorded scope. They do
-  not approve later heads, waive unrelated ADR gates or establish completed
-  review. Claude subscription review is unavailable; no paid substitute or
-  blanket cross-provider waiver is authorized.
+- All other scoped review/disposition approvals retain their recorded limits.
+  Claude subscription review is unavailable; no paid substitute or blanket
+  cross-provider waiver is authorized. TLS #966, Transit and conditional
+  capability governance have separate owners. Their outcomes must be linked
+  before final sign-off; this scope reconciliation does not decide them.
+  The TLS owner reports #1004 delivered but final exact-contract approval and
+  a #966-only review disposition still unlocated. Governance and signed-consumer
+  closure stay **HOLD** pending that lane's correction/evidence handoff, rather
+  than becoming missing implementation.
 
 ## 1. Assemble one reviewed combined candidate
 
-1. Follow the [current roadmap](https://github.com/Hikyo-Org/Hikyo/issues/527)
-   and each owner's acceptance/handoff. Verify mergedAt, merge SHA, tested tree
-   and ancestry in main before treating a dependency as delivered. Queue
-   admission and a green group alone are not merge proof. Use current protected
-   policy and the [CI guide](../development/ci.md), not historical direct-merge
-   instructions.
-2. Reconcile operative capabilities, remaining defects and scoped governance
-   reviews. #589 owns A7's release-scope disposition; #15 owns the capability
-   ledger; #527 owns roadmap sequencing. Implemented capability, review approval,
-   release scope and candidate acceptance are separate facts. No historical
-   post-1.0 list silently excludes functionality now shipped or newly authorized.
-3. Select one clean main SHA after required implementation and trust changes.
-   Record source/tree, API revision, both-engine migration identities and the
-   exact binary/archive hashes, image RepoDigest and chart digest used by each
-   proof. Source equality does not imply byte equality. Later changes invalidate
-   affected proof and require fresh exact-main validation.
-4. Regenerate CLI goldens for the selected candidate, reviewing every
-   diff as a surface/spec change. Audit closed/extensible response enums and
-   operation minima against the final server revision. Preserve oasdiff negative
-   fixtures, generated-client unknown-value handling, operation parity,
-   eligibility and complete browser registry closure.
-5. Before `v1.0.0`, `check-api-freeze.sh` is explicitly dormant and
-   `check-client-skew.sh` executes a pre-freeze rehearsal. After the immutable
-   tag, they compare against its spec and unmodified checked-in generated
-   client. Report the actual mode; rehearsal does not prove frozen-tag execution.
+### Approved stabilization and dependency order
 
-Keep the current correctness and integration work visible: #930's approved
-retention/erasure contract, #934/#935 lease ceiling/TTL fixes, and #941's
-PostgreSQL schema rendering must be represented in final recovery and provider
-proof. Coordinate #941 with #930's non-UTC PostgreSQL restore path; a UTC-only
-fixture is not proof of that repair. #931/#932/#933 and browser administration
-under #807/#819/#820 retain their own acceptance obligations. This snapshot
-records only #936 as newly merged; it does not predict the other owners' results.
+This is the assigned stabilization set, in addition to the existing operative
+acceptance criteria. An assignment is not implementation, review or acceptance
+proof. The [dependency handoff](../handoff/79-527-release-scope-roadmap.md)
+records merge evidence and lane coordination; recheck live heads before acting.
 
-Release membership remains independently governed by accepted amendments.
-For example, generic file destinations remain v1.1 under mvp-boundary amendment
-9 and Cloudflare amendment 6 expressly leaves the 1.0 criteria unchanged.
-Their implementation/review work does not silently promote them into 1.0.
-Likewise, preserve #589's scoped A7 decision. Add proof for shipped surfaces
-without rewriting the owning release boundary.
+| Order / owner | Required result and dependency | State at this snapshot |
+| --- | --- | --- |
+| Scope: #79 / #527 | Record exclusions, operative capabilities and claims; reconcile #71/#8 merge bookkeeping | This documentation/admin lane; #79 and #527 remain open. |
+| CLI: #1033 / [#1042](https://github.com/Hikyo-Org/Hikyo/pull/1042) | Repair real rotation/re-encryption targeting and completion before #1039's operator procedure | Existing draft PR; repair and review it rather than duplicate it. |
+| Audit: #1034, #1035 / [#1045](https://github.com/Hikyo-Org/Hikyo/pull/1045), #1036 / [#1044](https://github.com/Hikyo-Org/Hikyo/pull/1044) | Attributable refusals, authorized instance query/export and detectable export completion; start source work in parallel, reconcile shared consumers | #1044/#1045 are drafts; #1037 consumes #1035/#1036, and #1038 consumes #1034/#1035/#1037. |
+| Admission: #1040 | Enforce source budgets through actual bearer resolvers with failure and anti-enumeration tests | Open; no implementation PR identified at inspection. |
+| Containment: #1039 | Tested scoped manual containment/recovery, after #1033; retain explicit limits of each revocation action | Open; broad automatic containment is not implicitly admitted. |
+| Network: #1041 / [#1043](https://github.com/Hikyo-Org/Hikyo/pull/1043) | Define chart boundaries and prove required allowed/denied traffic on an enforcing isolated CNI | Existing draft; deployed production posture remains #1055's separate operational gate. |
+| Development dependencies | Patch or explicitly disposition the two medium development-tool alerts #104/#105 before qualification | Tooling owner; alerts are not evidence of a production-server exploit. |
+| Governance and trust | TLS #966 and Transit/conditional-capability decisions; public stable-policy packet and separately authorized trust setup/merge | Separate lanes; trust changes must land before final source selection. No inherited #1014 waiver. |
+| External acceptance | Prepare authorized isolated GitHub/MCP fixtures, exact clients and disclosure evidence | Separate lane; #651's public-image/two-process/client proof remains required. No provider writes, paid use or notifications authorized here. |
+| Qualification and release: #79 | Select final source/artifacts after required merges, run the complete matrix, reconcile external proof, then seek separate ceremony authority | Separate qualification owner. No acceptance, freeze or release declared here. |
+
+### Operational claims and capability boundaries
+
+[#1037](https://github.com/Hikyo-Org/Hikyo/issues/1037) and
+[#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038) remain open release
+**decisions**. The approved recommendation permits a documented and tested
+operator-controlled collection/alert route to satisfy the agreed launch claim;
+it does not silently require a native SIEM, hash chain or generalized automatic
+containment product. Their full issue acceptance remains until satisfied or
+explicitly scoped by the owning decision. No independent retention, complete
+collection, intrusion detection or notification delivery claim is accepted
+without actual end-to-end evidence and receipts. Choose the claim and obtain
+any required audit/governance amendment through the separate owner before
+freezing support documentation. A mocked sender or send-success counter is
+not a receipt.
+
+[#1055](https://github.com/Hikyo-Org/Hikyo/issues/1055) concerns actual public
+deployments and retains its operational authorization boundary. Coordinate any
+isolated #651 ingress proof with that owner; do not use an unverified production
+installation as the candidate. Source/API revision 12, published artifacts and
+older observed deployments are distinct facts. The code release does not
+certify every running installation or authorize their upgrade.
 
 Use the [amended capability inventory](acceptance-1.0.md#amended-capability-inventory-for-the-final-candidate)
-as part of candidate selection: HA #146, dynamic credentials #147, change
-approvals #151, temporary access #152, PKI #154, SSH #155, transit #156 and each
-provider's own scope/review conditions. C-ACC was absent from the historical
-49-row ledger; its new pending row restores the operative requirement. Signed
-upgrade compatibility and Kubernetes condition reporting have designs and
-source implementations; final proof and pending repairs remain separate.
-AWS #158's conditional In amendment remains governed by its merge/review
-conditions. The [audit label correction](https://github.com/Hikyo-Org/Hikyo/issues/158#issuecomment-6220607066)
-marks conditional 1.0 relevance and a required decision; it is not promotion or
-acceptance. Reconcile the unchanged title/milestone with its owner before final
-membership sign-off. Vault KV's proposed governance condition and developer credentials'
-implementation-merge condition likewise remain explicit.
+for HA #146, dynamic credentials #147, change approvals #151, temporary access
+#152 including C-ACC, PKI #154, SSH #155, Transit #156, multi-instance #71,
+member access rules #15, developer credentials, signed upgrades and Kubernetes
+reporting, plus each
+provider's own scope/review conditions. Do not restore an obsolete small MVP
+inventory. Vault KV destination membership was approved on October 29 subject
+to qualifying review and acceptance; its proposed amendment closeout remains
+HOLD under the [scoped packet](../handoff/162-vault-1.0-closeout.md). Social
+registration's implemented presence does not override its post-1.0 A7 ruling.
+
+Earlier integration is delivered source, with fresh final-candidate proof still
+owed. In particular, dynamic ceiling/TTL repairs (#934/#935, PR #938), backup
+retention/recovery (#930, PR #952), developer administration (#807, PR #942),
+social synthesis/RFC8628 records (PRs #945/#946), and Transit WebUI (#820,
+PR #965) have merged and are current-main ancestors. Do not schedule them as
+missing implementation. Keep their acceptance assertions, including the
+#930/#941 non-UTC PostgreSQL restore interaction. The
+[historical October 16 merge-group run](https://github.com/Hikyo-Org/Hikyo/actions/runs/38929885843)
+remains evidence for its recorded source/event only.
+
+1. Verify each required merge SHA and ancestry, current protected policy and
+   owner's handoff; draft or queue admission alone is not delivery.
+2. After required implementation, governance and trust changes land, select one
+   clean main source/tree. Record API revision, both-engine migration identities,
+   binary/archive hashes, image RepoDigest and chart digest for every proof.
+   Source equality does not imply byte equality. Refresh affected evidence after
+   later changes.
+3. Regenerate CLI goldens for that candidate and review every diff as a
+   surface/spec change. Preserve closed/extensible enums, operation minima,
+   oasdiff negative fixtures, generated-client handling, parity, eligibility
+   and complete browser registry closure.
+4. Before `v1.0.0`, `check-api-freeze.sh` is dormant and
+   `check-client-skew.sh` is a pre-freeze rehearsal. After the immutable tag,
+   they compare against its spec and unmodified checked-in client. Report
+   the actual mode; rehearsal does not prove frozen-tag execution.
 
 ## 2. Run the complete acceptance matrix
 

@@ -250,6 +250,11 @@ jobs:
           node-version-file: .nvmrc
       - name: Fast feedback refusal and deadline fixtures
         run: bash scripts/ci/fast-feedback_test.sh
+      - name: Trusted release admission contract fixtures
+        run: |
+          python3 -m venv "$RUNNER_TEMP/release-admission-checks"
+          "$RUNNER_TEMP/release-admission-checks/bin/pip" install -r scripts/ci/release-admission/requirements.txt
+          "$RUNNER_TEMP/release-admission-checks/bin/python" -B scripts/ci/release-admission/run_checks.py --unit
       - name: Save lint Go cache
         if: >-
           success() && steps.lint-go-cache.outputs.cache-hit != 'true' &&
@@ -318,6 +323,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/managed-config-rehearsal"
           "$RUNNER_TEMP/managed-config-rehearsal/bin/pip" install -r scripts/ci/managed-config-upgrade/requirements.txt
           "$RUNNER_TEMP/managed-config-rehearsal/bin/python" -m unittest discover -s scripts/ci/managed-config-upgrade -p 'test_*.py'
+      - name: Independent audit receiver rehearsal
+        run: python3 -I -B -m unittest discover -s scripts/ops/audit-collector -p 'test_*.py'
       - name: Interactive release ceremony fixture
         run: ./scripts/release/ceremony_test.sh
       - name: Release candidate resolver fixture

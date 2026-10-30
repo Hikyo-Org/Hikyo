@@ -16,23 +16,6 @@ type queueSnapshotChanged struct{ reason string }
 
 func (e *queueSnapshotChanged) Error() string { return e.reason }
 
-// Callbacks and group workers both renew complete retirement proof when queue
-// movement invalidates their role read. An active or uncertain head stays blocked.
-func (q *queueController) retireMovedGroup(ctx context.Context, err error) error {
-	var moved *queueSnapshotChanged
-	if !errors.As(err, &moved) {
-		return err
-	}
-	if retireErr := q.retiredGroup(ctx); retireErr != nil {
-		return errors.Join(err, retireErr)
-	}
-	if q.queueRefresh != nil && q.queueRefresh.verifiedRetired {
-		_, writeErr := fmt.Fprintln(q.output, "Merge group retired after queue movement:", moved.reason)
-		return writeErr
-	}
-	return err
-}
-
 func (q *queueController) liveQueue(ctx context.Context) (*queueData, error) {
 	var last error
 	for attempt := 1; attempt <= queueSnapshotAttempts; attempt++ {

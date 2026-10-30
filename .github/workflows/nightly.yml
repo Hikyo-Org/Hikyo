@@ -363,7 +363,7 @@ jobs:
           name: apple-signed-nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-nightly-inputs.tar.gz
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   apple-notarize:
     environment: apple-signing
@@ -373,9 +373,12 @@ jobs:
     outputs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       inputs_verified: ${{ steps.notarize.outputs.inputs_verified }}
+      recovery_pending: ${{ steps.defer.outputs.recovery_pending || steps.notarize.outputs.recovery_pending || (steps.notarize.outcome == 'skipped' && (steps.submit-arm64.outcome == 'success' || steps.submit-x86_64.outcome == 'success') && 'true') || 'false' }}
+      fallback_authorized: ${{ steps.notarize.outputs.fallback_authorized }}
       notarize_outcome: ${{ steps.notarize.outcome }}
       diagnostics_outcome: ${{ steps.notarization-diagnostics.outcome }}
     permissions:
+      actions: read
       contents: read
     env:
       # The macOS 15 default client traps during API-key authentication.
@@ -404,19 +407,137 @@ jobs:
           set -euo pipefail
           darwin_sha256=$(./scripts/release/apple-artifact-digest.sh dist "$VERSION")
           test "$darwin_sha256" = "$SIGNED_DARWIN_SHA256"
+      - name: Restore the original run's notarization checkpoint
+        id: restore-notary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLE_RELEASE_CHANNEL: nightly
+        run: python3 scripts/release/apple_notary_state.py restore "$RUNNER_TEMP/apple-notarization"
+      - name: Prepare bound submission intents without credentials
+        id: prepare
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-sign.outputs.artifact_id }}
+          APPLE_NOTARY_INPUT_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
+          APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+        run: ./scripts/release/sign-apple-artifacts.sh --prepare-only dist
+      - name: Checkpoint submission intent before any upload to Apple
+        env:
+          APPLE_RECOVERY_PENDING: 'true'
+          APPLE_RELEASE_CHANNEL: nightly
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/prepared/checkpoint.tar" prepared
+      - name: Persist submission intent
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-prepared
+          path: ${{ runner.temp }}/prepared/checkpoint.tar
+          if-no-files-found: error
+          retention-days: 90
+      - name: Submit arm64 once or reconcile its UUID
+        id: submit-arm64
+        env:
+          APPLE_NOTARY_UNSTARTED_ARCHITECTURES: ${{ steps.restore-notary.outputs.unstarted_architectures }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-sign.outputs.artifact_id }}
+          APPLE_NOTARY_INPUT_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
+          APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: ./scripts/release/sign-apple-artifacts.sh --submit-only --architecture arm64 dist
+      - name: Checkpoint arm64 UUID before advancing
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.submit-arm64.outcome != 'skipped' }}
+        id: snapshot-arm64
+        env:
+          APPLE_RECOVERY_PENDING: 'true'
+          APPLE_RELEASE_CHANNEL: nightly
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/submitted-arm64/checkpoint.tar" submitted-arm64
+      - name: Persist arm64 UUID before advancing
+        if: ${{ always() && steps.snapshot-arm64.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-submitted-arm64
+          path: ${{ runner.temp }}/submitted-arm64/checkpoint.tar
+          if-no-files-found: error
+          retention-days: 90
+      - name: Submit x86_64 once or reconcile its UUID
+        id: submit-x86_64
+        env:
+          APPLE_NOTARY_UNSTARTED_ARCHITECTURES: ${{ steps.restore-notary.outputs.unstarted_architectures }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-sign.outputs.artifact_id }}
+          APPLE_NOTARY_INPUT_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
+          APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: ./scripts/release/sign-apple-artifacts.sh --submit-only --architecture x86_64 dist
+      - name: Checkpoint x86_64 UUID before advancing
+        if: ${{ always() && steps.prepare.outcome == 'success' && steps.submit-x86_64.outcome != 'skipped' }}
+        id: snapshot-x86_64
+        env:
+          APPLE_RECOVERY_PENDING: 'true'
+          APPLE_RELEASE_CHANNEL: nightly
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/submitted-x86_64/checkpoint.tar" submitted-x86_64
+      - name: Persist x86_64 UUID before advancing
+        if: ${{ always() && steps.snapshot-x86_64.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-submitted-x86_64
+          path: ${{ runner.temp }}/submitted-x86_64/checkpoint.tar
+          if-no-files-found: error
+          retention-days: 90
+      # Qualification deliberately interrupts after real submissions are retained.
+      # The next attempt queries the same UUIDs; it never fabricates Apple results.
+      - name: Qualify automatic continuation after retained UUIDs
+        id: defer
+        if: github.run_attempt == 1 && github.event.client_payload.qualify_recovery == true
+        run: |
+          echo 'recovery_pending=true' >>"$GITHUB_OUTPUT"
+          echo 'Qualification interruption after real UUID persistence; await automatic recovery.'
+          exit 75
       - name: Notarize and staple nightly macOS disk images
         id: notarize
         env:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
-          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_EVIDENCE_DIR: ${{ runner.temp }}/apple-notarization
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-sign.outputs.artifact_id }}
+          APPLE_NOTARY_INPUT_SHA256: ${{ needs.apple-sign.outputs.darwin_sha256 }}
           APPLE_RELEASE_CHANNEL: nightly
           APPLE_RELEASE_VERSION: ${{ needs.build-artifacts.outputs.version }}
           APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
-        run: ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
+          APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          APPLE_NOTARY_KEY_ID: ${{ vars.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ vars.APPLE_NOTARY_ISSUER_ID }}
+        run: ./scripts/release/with-apple-ticket-network.sh ./scripts/release/sign-apple-artifacts.sh --notarize-only dist
+      - name: Checkpoint final provider decision and exact submitted bytes
+        if: ${{ always() && steps.prepare.outcome == 'success' }}
+        id: snapshot-final
+        env:
+          APPLE_RELEASE_CHANNEL: nightly
+          APPLE_RECOVERY_PENDING: ${{ steps.defer.outputs.recovery_pending == 'true' || steps.notarize.outputs.recovery_pending == 'true' || (steps.notarize.outcome == 'skipped' && (steps.submit-arm64.outcome == 'success' || steps.submit-x86_64.outcome == 'success')) }}
+        run: python3 scripts/release/apple_notary_state.py snapshot "$RUNNER_TEMP/apple-notarization" "$RUNNER_TEMP/finalized/checkpoint.tar" finalized
+      - name: Persist final stage checkpoint
+        if: ${{ always() && steps.snapshot-final.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-notary-state-${{ github.run_id }}-${{ github.run_attempt }}-finalized
+          path: ${{ runner.temp }}/finalized/checkpoint.tar
+          if-no-files-found: error
+          retention-days: 90
       - name: Retain Apple notarization diagnostics
         id: notarization-diagnostics
         if: ${{ always() }}
@@ -425,6 +546,15 @@ jobs:
           name: apple-notarization-nightly-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-notarization/*.json
           if-no-files-found: warn
+          retention-days: 90
+      - name: Bind Apple evidence to the finalized candidate
+        run: |
+          jq -n --slurpfile arm "$RUNNER_TEMP/apple-notarization/arm64-receipt.json" \
+            --slurpfile intel "$RUNNER_TEMP/apple-notarization/x86_64-receipt.json" \
+            --slurpfile armlog "$RUNNER_TEMP/apple-notarization/arm64-notary-log.json" \
+            --slurpfile intellog "$RUNNER_TEMP/apple-notarization/x86_64-notary-log.json" \
+            '{schema:"hikyo.dev/apple-release-evidence/v1",receipts:[$arm[0],$intel[0]],logs:[$armlog[0],$intellog[0]]}' \
+            >dist/apple-notarization-evidence.json
       - name: Retain finalized nightly artifacts and predecessor context
         run: COPYFILE_DISABLE=1 tar -czf "$RUNNER_TEMP/apple-nightly-inputs.tar.gz" dist nightly-context
       - id: upload-inputs
@@ -433,17 +563,65 @@ jobs:
           name: apple-nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/apple-nightly-inputs.tar.gz
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
+
+  apple-acceptance:
+    needs: [build-artifacts, apple-notarize]
+    if: github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'
+    environment: apple-signing
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.apple-notarize.outputs.artifact_id }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/apple-native-inputs
+      - name: Restore exact finalized candidate
+        run: tar -xzf "$RUNNER_TEMP/apple-native-inputs/apple-nightly-inputs.tar.gz"
+      - name: Verify native installation with quarantine retained
+        env:
+          VERSION: ${{ needs.build-artifacts.outputs.version }}
+          ARCH: ${{ matrix.arch }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_NOTARY_INPUT_ARTIFACT_ID: ${{ needs.apple-notarize.outputs.artifact_id }}
+        run: ./scripts/release/verify-apple-install.sh dist "$VERSION" "$ARCH" "$RUNNER_TEMP/install-$ARCH.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apple-install-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/install-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 90
 
   publish:
-    needs: [validation, build-artifacts, apple-sign, apple-notarize]
+    needs: [validation, build-artifacts, apple-sign, apple-notarize, apple-acceptance]
     if: >-
       always() && !cancelled() && github.ref == 'refs/heads/main' &&
       needs.validation.result == 'success' && needs.build-artifacts.result == 'success' &&
       (needs.build-artifacts.outputs.skip == 'true' || (needs.apple-sign.result == 'success' &&
       needs.apple-notarize.outputs.inputs_verified == 'true' &&
-      ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success') ||
+      ((needs.apple-notarize.result == 'success' && needs.apple-notarize.outputs.notarize_outcome == 'success' &&
+      needs.apple-acceptance.result == 'success') ||
       (needs.apple-notarize.result == 'failure' && needs.apple-notarize.outputs.notarize_outcome == 'failure' &&
+      needs.apple-notarize.outputs.recovery_pending != 'true' &&
+      needs.apple-notarize.outputs.fallback_authorized == 'true' &&
       needs.apple-notarize.outputs.diagnostics_outcome == 'success'))))
     # Required operator gate: this environment must allow only main, and the
     # app private key must exist here, never as a repository-scoped secret.
@@ -565,13 +743,21 @@ jobs:
           fi
           go run ./scripts/release/nightly sources "$@" --out "$RUNNER_TEMP/nightly-sources.json"
           cmp nightly-context/nightly-sources.json "$RUNNER_TEMP/nightly-sources.json"
+      - name: Download native installation evidence from this original run
+        if: needs.build-artifacts.outputs.skip != 'true' && needs.apple-notarize.result == 'success'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: apple-install-${{ github.run_id }}-*
+          path: ${{ runner.temp }}/apple-installations
       - name: Stage the complete nightly payload inventory
         if: needs.build-artifacts.outputs.skip != 'true'
         env:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
           COMMIT: ${{ needs.build-artifacts.outputs.commit }}
           APPLE_NOTARIZATION_RESULT: ${{ needs.apple-notarize.result }}
+          APPLE_FINAL_ARTIFACT_ID: ${{ needs.apple-notarize.outputs.artifact_id }}
         run: |
+          set -euo pipefail
           mkdir nightly-payloads
           cp dist/hikyo_*_Darwin_*.tar.gz dist/hikyo_*_Linux_*.tar.gz dist/hikyo_*_Windows_*.zip \
             dist/hikyo_*.deb dist/hikyo-*.rpm dist/hikyo_*.apk dist/hikyo-*.pkg.tar.zst \
@@ -599,6 +785,12 @@ jobs:
             'Server installation requires the authenticated offline bundle and upgrade evidence.' \
             >nightly-payloads/NIGHTLY-BUILD.txt
           cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
+          if [ "$APPLE_NOTARIZATION_RESULT" = success ]; then
+            python3 scripts/release/apple_notary_state.py append-evidence dist \
+              "$RUNNER_TEMP/apple-installations" nightly-payloads/NIGHTLY-BUILD.txt
+            printf '\nApple notarization and native installation evidence is included in the NIGHTLY-BUILD.txt release asset.\n' \
+              >>"$RUNNER_TEMP/nightly-notes.md"
+          fi
           ./scripts/release/create-nightly-manifest.sh "$VERSION" "$COMMIT" "$GITHUB_RUN_NUMBER" nightly-payloads
       - name: Append changes since the previous published nightly
         if: needs.build-artifacts.outputs.skip != 'true'

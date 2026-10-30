@@ -2,12 +2,14 @@ package cli
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/importer"
 )
 
@@ -75,7 +77,7 @@ func vaultNamespaceMount(namespace, mount string) string {
 }
 
 func validLoopOrigin(origin *url.URL) bool {
-	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == "" && effectivePort(origin) != ""
+	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == "" && canonicalLoopEndpoint(origin) != ""
 }
 
 // pathsOverlap reports equal paths or ancestry at a slash boundary. Inputs
@@ -84,12 +86,25 @@ func pathsOverlap(a, b string) bool {
 	return a == "" || b == "" || a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
 
-// sameEndpoint compares hosts case-insensitively with the scheme's default
-// port made explicit, so https://vault.example and https://vault.example:443
-// name the same server.
+// sameEndpoint uses the adapter's canonical host identity with the scheme's
+// default port made explicit, including DNS dots, IDNA and mapped IP aliases.
 func sameEndpoint(a, b *url.URL) bool {
-	port := effectivePort(a)
-	return port != "" && strings.EqualFold(a.Hostname(), b.Hostname()) && port == effectivePort(b)
+	aEndpoint := canonicalLoopEndpoint(a)
+	return aEndpoint != "" && aEndpoint == canonicalLoopEndpoint(b)
+}
+
+func canonicalLoopEndpoint(origin *url.URL) string {
+	port := effectivePort(origin)
+	if port == "" {
+		return ""
+	}
+	// Import also accepts HTTP. Keep its effective port and conservatively
+	// compare endpoints across schemes, as before, using one host normalizer.
+	endpoint, err := adapter.CanonicalOrigin(adapter.VaultKVProvider, (&url.URL{Scheme: "https", Host: net.JoinHostPort(origin.Hostname(), port)}).String())
+	if err != nil {
+		return ""
+	}
+	return endpoint
 }
 
 // effectivePort returns an explicit URL port, or the default for HTTP or HTTPS.

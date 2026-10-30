@@ -80,6 +80,7 @@ func (a *TxAuthorizer) refuseAdmission(ctx context.Context, caller Identity, ope
 	}
 	a.CaptureAudit(audit.TrailInstance, domain.Scope{}, audit.Event{
 		ID:            id,
+		CorrelationID: audit.RefusalRequestID(ctx),
 		AuthorityID:   string(caller.AuthorityPrincipal),
 		Type:          audit.EventAuthArtifactClassRefused,
 		SchemaVersion: 1,

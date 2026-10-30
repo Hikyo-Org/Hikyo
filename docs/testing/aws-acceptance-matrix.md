@@ -1,25 +1,18 @@
 # AWS #158 / #844 acceptance source matrix
 
-## Current continuation
+## Current continuation, 2026-10-30
 
-Signed merge commit `c64a4f9` records the October 22 integration of PR #969 head
-`44ef873` with main `70a34271`, without conflicts, and was pushed to the PR.
-The PR remains unmerged to main. Migration 80 preserves main's migration 77 authorization indexes,
-78 project capacity policy and 79 remote pairing. Earlier local generation,
-compatibility and test results remain historical evidence for their recorded
-candidates. Full candidate run `39653750185` passed 48 jobs at `44ef873` against
-base `e886fa`; the final changed head/base pair needs fresh validation.
-All 15 review threads are resolved, but aggregate review still says changes
-requested. The user authorizes eventual merge after gates; human deployment
-approval remains distinct. See the
-[current issue handoff](../handoff/158-aws-secrets-manager.md#current-status-2026-10-22)
-for the banked manual-series directive, 176 + 32 = 208 lifetime reservations,
-unused c05 generation, four preserved KMS deletion schedules and failed-run
-cleanup history. The human confirmed Chrome MFA sign-in; official CLI refresh
-and actual AWS admission/acceptance remain pending. Historical real
-execution failed; successful real AWS acceptance is unproven.
-The source matrix below retains its historical evidence boundaries and does
-not establish current fixture readiness or provider success.
+The owner directed merge of PR #969 with remaining repairs and no further AWS
+runs. This PR may merge after source review and required current-base CI without
+another real-AWS acceptance attempt. The failed c11 gate is not a pass, and issue
+#158 remains open for successful provider acceptance. No cloud operation,
+credential change, spending, release or deployment is authorized.
+
+The integration retains main's migration 80 for authentication refusal state;
+AWS witness persistence and scoped adoption indexes now occupy migrations 81
+and 82 on both engines. The previous migration numbers and results below refer
+to their historical candidates. See the [current issue handoff](../handoff/158-aws-secrets-manager.md#current-merge-disposition-2026-10-30)
+for the operative merge disposition and retained c11 failure/cleanup evidence.
 
 ## Historical evidence and subsequent source reconciliation
 

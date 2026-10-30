@@ -15,7 +15,29 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
-## Current status, 2026-10-28
+## Current merge disposition, 2026-10-30
+
+The owner explicitly directed PR #969 to be merged, remaining issues repaired,
+and no more AWS runs. This supersedes this PR's earlier requirement for another
+successful real-AWS acceptance run before application merge and its separate
+human merge hold. It grants no AWS execution, provisioning, credential change,
+cleanup operation, spending, release or deployment authority.
+
+The failed c11 result and independent cleanup below remain historical evidence.
+Successful real-provider acceptance is still unproven. Issue #158 remains open
+for that acceptance gap; merging this repair does not complete its acceptance
+criteria. Reusable controller qualification remains in #1057. No additional
+owner-assisted AWS review round or provider run is requested.
+
+Current-main integration retains main's migration 80 (`auth_refusal_window`)
+and moves the unmerged AWS witness and lookup indexes to migrations 81 and 82
+on both engines. The compatibility declaration is regenerated from actual
+SQLite/PostgreSQL catalogs, and the legacy archive fixture retains all three
+additions and its evidence refusal checks. Current source Standards and Spec
+review, signed/DCO commits, exact-head feedback and mandatory current-base merge
+queue validation remain required. Controlled loopback tests are local evidence.
+
+## Prior c11 status, 2026-10-28
 
 Issue #158 remains unfinished. The c11 owner-assisted attempt is closed after
 failed real AWS acceptance and independently verified cleanup. Reusable

@@ -303,9 +303,13 @@ func runMachineAllowlist(t *testing.T, db *store.DB) {
 		{"workload_reveal", mchWork, domain.CapReveal, envScope(envA1), service.ErrMachineRevealOptIn},
 		{"workload_reveal_history", mchWork, domain.CapRevealHistory, envScope(envA1), service.ErrMachineRevealOptIn},
 		{"workload_edit", mchWork, domain.CapEdit, prjScope(), service.ErrMachineCapability},
+		{"workload_audit_read", mchWork, domain.CapAuditRead, envScope(envA1), service.ErrMachineCapability},
 		// The automation class holds edit/publish/definitions-edit; mch_a1 is
 		// backfilled to that class by migration 00010.
 		{"automation_manage_members", mchA1, domain.CapManageMembers, prjScope(), service.ErrMachineCapability},
+		{"automation_audit_read_org", mchA1, domain.CapAuditRead, orgAScope, service.ErrMachineScope},
+		{"automation_audit_read_instance", mchA1, domain.CapAuditRead, domain.Scope{}, service.ErrMachineScope},
+		{"automation_audit_read_foreign_project", mchA1, domain.CapAuditRead, domain.Scope{Org: orgA, Project: prjA2}, service.ErrMachineProject},
 		// scim-provision is system-created with its binding (#73), never
 		// grantable through this API — to a human OR a machine.
 		{"scim_provision_machine", mchWork, domain.CapSCIMProvision, orgAScope, service.ErrSystemCreatedOnly},
@@ -329,6 +333,13 @@ func runMachineAllowlist(t *testing.T, db *store.DB) {
 		Target: mchWork, Capability: domain.CapRead, Scope: envScope(envA1),
 	}); err != nil {
 		t.Fatalf("a workload credential must be grantable `read`: %v", err)
+	}
+	for _, scope := range []domain.Scope{prjScope(), envScope(envA1)} {
+		if _, err := g.Create(ctx, service.LocalPrincipal(root), service.GrantSpec{
+			Target: mchA1, Capability: domain.CapAuditRead, Scope: scope,
+		}); err != nil {
+			t.Fatalf("automation must be grantable audit-read in its own subtree: %v", err)
+		}
 	}
 }
 

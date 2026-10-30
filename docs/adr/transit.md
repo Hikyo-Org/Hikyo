@@ -1,5 +1,18 @@
 # Hikyo transit: versioned cryptographic operations (ADR, decision locked 2026-09-26)
 
+> **Scoped amendment closeout preparation (2026-10-29):** The owner requested
+> completion of #156 under the updated independent Standards/Spec review
+> policy. The [source-bound closeout](../handoff/156-transit-amendment-closeout.md)
+> fixes the covered contract, original Claude provenance, later mixed edits and
+> required final-byte review receipts. This note changes no decision below and
+> grants no ADR waiver. The D3 consumer repair preserves the existing absolute
+> custody-availability rule; it introduces no public-verification exception.
+> The September/October 28 skipped reviews remain
+> historical SKIPPED records. The amendment-review obligation is discharged
+> only by qualifying review of the bound scope, its recorded owner-ticket
+> ceremony and an explicitly authorized merge of this closeout. Until then,
+> closeout remains HOLD; delivered #156 and #820 stay closed.
+
 > **Status: decision locked; operative upon the implementing PR merging.** The
 > owner approved redrawing the map for
 > [#156](https://github.com/Hikyo-Org/Hikyo/issues/156) on 2026-09-26 and chose
@@ -13,6 +26,18 @@
 > cross-provider adversarial review normally required by the
 > [oss-mechanics.md](./oss-mechanics.md) amendment procedure is owed and is
 > recorded as open in [the handoff](../handoff/156-transit.md).
+
+> **Delivery and governance reconciliation (2026-10-28, no new amendment):**
+> The implementation condition above was met by merged
+> [PR #826](https://github.com/Hikyo-Org/Hikyo/pull/826); the WebUI was delivered
+> by merged [PR #965](https://github.com/Hikyo-Org/Hikyo/pull/965). The owner's
+> promotion and delivered implementation remain recorded. The owed amendment
+> review remains **HOLD** before freeze: no qualifying review or Transit-scoped
+> owner disposition discharging the gate was found in the inspected records.
+> Unavailable cross-provider review is **SKIPPED**, not CLEAN. Implementation delivery does
+> not discharge it, and exceptions for other amendments do not transfer. The
+> [governance packet](../handoff/156-162-589-capability-governance.md) binds the
+> evidence and the exact remaining decision.
 
 ## Context
 

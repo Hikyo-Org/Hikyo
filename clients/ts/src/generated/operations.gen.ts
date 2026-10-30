@@ -150,6 +150,7 @@ import {
   establishCredential,
   exportDefinitions,
   exportEnvAudit,
+  exportInstanceAudit,
   exportOrgAudit,
   exportProjectAudit,
   exportValues,
@@ -292,6 +293,7 @@ import {
   putOrgRegistrationPolicy,
   putSamlProvider,
   queryEnvAudit,
+  queryInstanceAudit,
   queryOrgAudit,
   queryProjectAudit,
   reauthPasskeyFinish,
@@ -552,6 +554,7 @@ import type {
   EstablishCredentialData,
   ExportDefinitionsData,
   ExportEnvAuditData,
+  ExportInstanceAuditData,
   ExportOrgAuditData,
   ExportProjectAuditData,
   ExportValuesData,
@@ -694,6 +697,7 @@ import type {
   PutOrgRegistrationPolicyData,
   PutSamlProviderData,
   QueryEnvAuditData,
+  QueryInstanceAuditData,
   QueryOrgAuditData,
   QueryProjectAuditData,
   ReauthPasskeyFinishData,
@@ -933,6 +937,7 @@ import {
   zEnrolTotpStartResponse,
   zExportDefinitionsResponse,
   zExportEnvAuditResponse,
+  zExportInstanceAuditResponse,
   zExportOrgAuditResponse,
   zExportProjectAuditResponse,
   zExportValuesResponse,
@@ -1074,6 +1079,7 @@ import {
   zPutOrgRegistrationPolicyResponse,
   zPutSamlProviderResponse,
   zQueryEnvAuditResponse,
+  zQueryInstanceAuditResponse,
   zQueryOrgAuditResponse,
   zQueryProjectAuditResponse,
   zReauthPasskeyFinishResponse,
@@ -1286,6 +1292,7 @@ export const enrolTotpConfirmOp: BodyOperation<EnrolTotpConfirmData, typeof zEnr
 export const enrolTotpStartOp: BodyOperation<EnrolTotpStartData, typeof zEnrolTotpStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolTotpStart, [200], zEnrolTotpStartResponse);
 export const exportDefinitionsOp: BodyOperation<ExportDefinitionsData, typeof zExportDefinitionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportDefinitions, [200], zExportDefinitionsResponse);
 export const exportEnvAuditOp: BodyOperation<ExportEnvAuditData, typeof zExportEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportEnvAudit, [200], zExportEnvAuditResponse);
+export const exportInstanceAuditOp: BodyOperation<ExportInstanceAuditData, typeof zExportInstanceAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportInstanceAudit, [200], zExportInstanceAuditResponse);
 export const exportOrgAuditOp: BodyOperation<ExportOrgAuditData, typeof zExportOrgAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportOrgAudit, [200], zExportOrgAuditResponse);
 export const exportProjectAuditOp: BodyOperation<ExportProjectAuditData, typeof zExportProjectAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportProjectAudit, [200], zExportProjectAuditResponse);
 export const exportValuesOp: BodyOperation<ExportValuesData, typeof zExportValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(exportValues, [200], zExportValuesResponse);
@@ -1427,6 +1434,7 @@ export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOi
 export const putOrgRegistrationPolicyOp: BodyOperation<PutOrgRegistrationPolicyData, typeof zPutOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOrgRegistrationPolicy, [200], zPutOrgRegistrationPolicyResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
 export const queryEnvAuditOp: BodyOperation<QueryEnvAuditData, typeof zQueryEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryEnvAudit, [200], zQueryEnvAuditResponse);
+export const queryInstanceAuditOp: BodyOperation<QueryInstanceAuditData, typeof zQueryInstanceAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryInstanceAudit, [200], zQueryInstanceAuditResponse);
 export const queryOrgAuditOp: BodyOperation<QueryOrgAuditData, typeof zQueryOrgAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryOrgAudit, [200], zQueryOrgAuditResponse);
 export const queryProjectAuditOp: BodyOperation<QueryProjectAuditData, typeof zQueryProjectAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryProjectAudit, [200], zQueryProjectAuditResponse);
 export const reauthPasskeyFinishOp: BodyOperation<ReauthPasskeyFinishData, typeof zReauthPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthPasskeyFinish, [200], zReauthPasskeyFinishResponse);

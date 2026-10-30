@@ -929,19 +929,11 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	if err := kvAddressing(&kind, &owner, &repo, mount, kvPath, destinationEnvironment, visibility, selectedRepositories); err != nil {
 		return err
 	}
-	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
+	prepared, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	project, err := resolved.Require(DimProject)
-	if err != nil {
-		return err
-	}
-	base := adapterBase(org, project)
+	client, artifact, base := prepared.client, prepared.artifact, prepared.base
 	switch sub {
 	case "list":
 		var out apigen.AdapterTargetList
@@ -950,10 +942,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, targetTable(out))
 	case "add":
-		envID, err := resolved.Require(DimEnv)
-		if err != nil {
-			return err
-		}
+		envID := prepared.environment
 		provider, err := adapterProvider(ctx, client, base, adapterID)
 		if err != nil {
 			return err
@@ -1055,19 +1044,12 @@ func runAdapterAction(ctx context.Context, ios IO, sub string, args []string) er
 	if err != nil {
 		return err
 	}
-	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
+	prepared, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	project, err := resolved.Require(DimProject)
-	if err != nil {
-		return err
-	}
-	path := adapterBase(org, project) + "/adapter-targets/" + url.PathEscape(target) + "/" + sub
+	client, artifact, base := prepared.client, prepared.artifact, prepared.base
+	path := base + "/adapter-targets/" + url.PathEscape(target) + "/" + sub
 	switch sub {
 	case "plan":
 		var out apigen.AdapterPlan
@@ -1084,10 +1066,10 @@ func runAdapterAction(ctx context.Context, ios IO, sub string, args []string) er
 		return Render(ios.Stdout, f, Table{Columns: []string{"SURFACE", "NAME", "DISPOSITION"}, Rows: rows, JSON: out})
 	case "sync":
 		var detail apigen.AdapterTargetDetail
-		if err := client.Do(ctx, http.MethodGet, adapterBase(org, project)+"/adapter-targets/"+url.PathEscape(target), nil, &detail); err != nil {
+		if err := client.Do(ctx, http.MethodGet, base+"/adapter-targets/"+url.PathEscape(target), nil, &detail); err != nil {
 			return err
 		}
-		if err := runAdapterCeremony(ctx, ios, client, st, artifact, adapterBase(org, project), string(detail.Target.AdapterId), "adapter.sync"); err != nil {
+		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, string(detail.Target.AdapterId), "adapter.sync"); err != nil {
 			return err
 		}
 		var out apigen.AdapterJob
@@ -1127,19 +1109,12 @@ func runAdapterAdopt(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitUsage, "adapter adopt names must be unique")
 		}
 	}
-	client, artifactSession, resolved, err := authenticatedTarget(st, ios, flags)
+	prepared, err := prepareScopedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
-	org, err := resolved.Require(DimOrg)
-	if err != nil {
-		return err
-	}
-	project, err := resolved.Require(DimProject)
-	if err != nil {
-		return err
-	}
-	base := adapterBase(org, project) + "/adapter-targets/" + url.PathEscape(target)
+	client, artifactSession := prepared.client, prepared.artifact
+	base := prepared.base + "/adapter-targets/" + url.PathEscape(target)
 	var detail apigen.AdapterTargetDetail
 	if err := client.Do(ctx, http.MethodGet, base, nil, &detail); err != nil {
 		return err
@@ -1162,7 +1137,7 @@ func runAdapterAdopt(ctx context.Context, ios IO, args []string) error {
 	if len(eligible) != 1 {
 		return failf(ExitRefused, "adoption requires exactly one eligible exact-match artifact; found %d (use --artifact <id> to select)", len(eligible))
 	}
-	if err := runAdapterCeremony(ctx, ios, client, st, artifactSession, adapterBase(org, project), string(detail.Target.AdapterId), "adapter.adopt"); err != nil {
+	if err := runAdapterCeremony(ctx, ios, client, st, artifactSession, prepared.base, string(detail.Target.AdapterId), "adapter.adopt"); err != nil {
 		return err
 	}
 	selected := eligible[0]

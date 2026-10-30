@@ -45,6 +45,10 @@ var reviewedWireExtras = wireExtras{
 		// not read answers exactly like a scope that is not there.
 		"http:GET /api/v1/orgs/{org}/audit":        {Events: []string{"EventAuditQuery"}},
 		"http:GET /api/v1/orgs/{org}/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
+		// The instance trail is instance-class: the formula is audit-read at
+		// instance scope, so a tenant grant never satisfies it.
+		"http:GET /api/v1/instance/audit":        {Events: []string{"EventAuditQuery"}},
+		"http:GET /api/v1/instance/audit/export": {Events: []string{"EventAuditExportStarted", "EventAuditExportCompleted"}},
 		// Temporary access (#152). Policy administration is manage-members at the
 		// project; the request queue and every decision are read@env with the
 		// finer eligibility checked after the grant (a reachable 403).
@@ -309,9 +313,19 @@ var reviewedWireExtras = wireExtras{
 			"EventAdapterPushIntent", "EventAdapterPushOutcome",
 		}},
 		"cli:approval": {Class: "ClassTenant"},
-		"cli:backup":   {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
-		"cli:cert":     {Class: "ClassTenant"},
-		"cli:compose":  {Class: "ClassTenant"},
+		// `audit` reaches both tenant and explicitly selected instance readers.
+		// Like `access`, the verb carries the instance probe contract; each
+		// tenant route retains its own uniform-nonexistent classification.
+		// Link every addressed reader so its audit disposition is inherited
+		// from the operation owner rather than duplicated or exemption-pinned.
+		"cli:audit": {Class: "ClassInstance", Ops: []string{
+			"OpAuditQueryOrg", "OpAuditQueryProject", "OpAuditQueryEnv",
+			"OpAuditExportOrg", "OpAuditExportProject", "OpAuditExportEnv",
+			"OpAuditInstanceQuery", "OpAuditInstanceExport",
+		}},
+		"cli:backup":  {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		"cli:cert":    {Class: "ClassTenant"},
+		"cli:compose": {Class: "ClassTenant"},
 		// `context` is entirely client-local: the trust store and the named
 		// contexts live on this box and reach no server.
 		"cli:context": {Class: "ClassUnauthenticated"},
@@ -428,7 +442,9 @@ var reviewedWireExtras = wireExtras{
 		// Their system-proof mint sites are enumerated in systemSites; the probe
 		// contract is network unreachability, which the totality check asserts
 		// by finding no HTTP route for them.
-		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped"}},
+		// The server owns the refusal sealer's startup and joined timer worker;
+		// it is not an adapter outbox job or a separate network entry point.
+		"cli:server": {Class: "ClassSystem", Events: []string{"EventBackupExported", "EventBackupExportSkipped", "EventRequestRefused"}},
 		// SSH user certificates (#155): client transport for the tenant-scoped
 		// CA, profile and certificate routes and nothing wider.
 		"cli:ssh-ca":      {Class: "ClassTenant"},

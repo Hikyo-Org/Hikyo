@@ -1027,6 +1027,51 @@ test.describe('deployment adapters', () => {
     await expect(panel.locator('.adapters__target')).toHaveCount(0);
   });
 
+  test('configures a Vault namespace, mount and path with a write-only credential', async () => {
+    // The browser fixture uses the --dev provider. Provider contracts and
+    // real Vault/OpenBao lifecycle proof live in the Go suites, separately.
+    const origin = 'https://vault-e2e.example/team-a';
+    const credential = '{"method":"token","token":"e2e-vault-private"}';
+    await page.getByRole('button', { name: 'Add adapter' }).click();
+    const form = page.getByRole('complementary', { name: 'New adapter' });
+    await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('vault-kv');
+    await form.getByLabel('Server address', { exact: true }).fill(origin);
+    await form.getByLabel('Credential', { exact: true }).fill(credential);
+    await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+    await form.getByLabel('KV v2 mount', { exact: true }).fill('secret');
+    await form.getByLabel('Path prefix', { exact: true }).fill('apps/prod');
+    await form.getByLabel('Name prefix', { exact: true }).fill('KV_');
+    await form.getByRole('checkbox', { name: ADAPTER_KEY, exact: true }).check();
+    await form.getByRole('button', { name: 'Save' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Adapter created');
+    const panel = page.getByRole('region', { name: `Adapter ${origin}` });
+    await expect(panel.getByText('credential set')).toBeVisible();
+    await expect(page.getByText('e2e-vault-private')).toHaveCount(0);
+    await panel.locator('.adapters__target').first().click();
+    const detail = page.getByRole('complementary', { name: 'Target detail' });
+    await expect(detail.getByRole('list', { name: 'Member keys' })).toContainText(ADAPTER_KEY);
+    await detail.getByRole('button', { name: 'Resync' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
+    await expect(detail.locator('.adapters__facts')).toContainText('secret/apps/prod');
+    await expect(detail.locator('.adapters__workflow')).toHaveText(`${ADAPTER_KEY}: KV_${ADAPTER_KEY}`);
+    await expect(detail).not.toContainText('e2e-vault-private');
+    await detail.getByRole('button', { name: 'Remove' }).click();
+    const remove = page.getByRole('dialog', { name: /Remove target/ });
+    await expect(remove.getByRole('button', { name: 'Remove target' })).toBeDisabled();
+    await remove.getByRole('radio', { name: /Retain/ }).check();
+    await remove.getByRole('button', { name: 'Remove target' }).click();
+    await expect(page.locator('.adapters__done')).toContainText(`KV_${ADAPTER_KEY}`);
+    await expect(panel.locator('.adapters__target')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Delete adapter' }).click();
+    const deleteAdapter = page.getByRole('dialog', { name: /Delete adapter/ });
+    await expect(deleteAdapter.getByRole('button', { name: 'Delete adapter' })).toBeDisabled();
+    await deleteAdapter.getByRole('radio', { name: /Retain/ }).check();
+    await deleteAdapter.getByRole('button', { name: 'Delete adapter' }).click();
+    await expect(panel).toHaveCount(0);
+  });
+
   test('keeps the GHES API base URL and requires explicit environment-create consent', async () => {
     const origin = 'https://ghes-e2e.example/api/v3';
     await page.getByRole('button', { name: 'Add adapter' }).click();
@@ -1302,21 +1347,18 @@ test.describe('project audit', () => {
   test('reads the project trail, narrows it to one environment, and exports each scope', async () => {
     const rows = page.locator('.audit__row');
     await expect(rows.first()).toBeVisible();
-    const exportLink = page.getByRole('link', { name: 'Export JSONL' });
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
-    );
+    const exportLink = page.getByRole('button', { name: 'Export JSONL' });
+    const projectRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`);
+    const projectDownload = page.waitForEvent('download');
+    await exportLink.click();
+    await projectRequest;
+    await projectDownload;
 
     // The environment picker narrows the trail to that environment's slice and
     // the export follows it; the seeded value publishes make it non-empty.
     await page.getByLabel('Environment').selectOption(seed.dev);
     await page.getByRole('button', { name: 'Apply filter' }).click();
     await expect(rows.first()).toBeVisible();
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`,
-    );
     await rows.first().click();
     const detail = page.getByRole('complementary', { name: 'Event detail' });
     await expect(detail).toContainText(seed.dev);
@@ -1325,7 +1367,9 @@ test.describe('project audit', () => {
     await expect(detail).toBeHidden();
 
     const download = page.waitForEvent('download');
+    const environmentRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/environments/${seed.dev}/audit/export`);
     await exportLink.click();
+    await environmentRequest;
     const file = await download;
     expect(file.suggestedFilename()).toMatch(/\.jsonl$/);
     const body = readFileSync(await file.path(), 'utf8').trim();
@@ -1338,10 +1382,12 @@ test.describe('project audit', () => {
     // Clear restores the whole project and the project export route.
     await page.getByRole('button', { name: 'Clear' }).click();
     await expect(page.getByLabel('Environment')).toHaveValue('');
-    await expect(exportLink).toHaveAttribute(
-      'href',
-      `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`,
-    );
+    await expect(exportLink).toBeEnabled();
+    const clearedRequest = page.waitForRequest((r) => new URL(r.url()).pathname === `/api/v1/orgs/${seed.org}/projects/${seed.project}/audit/export`);
+    const clearedDownload = page.waitForEvent('download');
+    await exportLink.click();
+    await clearedRequest;
+    await clearedDownload;
   });
 
   for (const scheme of COLOR_SCHEMES) {

@@ -189,7 +189,7 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 	roles, err := q.roles(ctx, q.expectedHead)
 	if err != nil {
 		if kind == "group" {
-			return q.retireMovedGroup(ctx, err)
+			return q.reconciliation.retireMovedGroup(ctx, err)
 		}
 		return err
 	}
@@ -217,7 +217,7 @@ func (q *queueController) runHeadProof(ctx context.Context, name string, e event
 		return q.group(ctx, *r)
 	}
 	if !roles.Group && len(roles.Pulls) == 0 {
-		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.retiredHead(ctx))
+		return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.reconciliation.retireHead(ctx, false))
 	}
 	return &staleHeadWork{expected: q.expectedHead}
 }

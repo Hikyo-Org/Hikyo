@@ -1,0 +1,207 @@
+{
+  "arguments": {
+    "fields": {
+      "attemptTrustBindingSHA256": {
+        "kind": "pattern",
+        "maxLength": 64,
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "expected": {
+        "fields": {
+          "browserContextId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "frameURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+            ]
+          },
+          "frameURLRelation": {
+            "kind": "enum",
+            "values": [
+              "same-url",
+              "target-url-without-fragment"
+            ]
+          },
+          "loaderId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "mainFrameId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetType": {
+            "kind": "literal",
+            "value": "page"
+          },
+          "targetURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+            ]
+          }
+        },
+        "kind": "object"
+      }
+    },
+    "kind": "object"
+  },
+  "effect": "read",
+  "file": "reviewed-scripts/aws-create-readout-v1.js",
+  "id": "aws-create-readout-v1",
+  "result": {
+    "fields": {
+      "after": {
+        "fields": {
+          "browserContextId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "frameURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+            ]
+          },
+          "frameURLRelation": {
+            "kind": "enum",
+            "values": [
+              "same-url",
+              "target-url-without-fragment"
+            ]
+          },
+          "loaderId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "mainFrameId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetType": {
+            "kind": "literal",
+            "value": "page"
+          },
+          "targetURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+            ]
+          }
+        },
+        "kind": "object"
+      },
+      "before": {
+        "fields": {
+          "browserContextId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "frameURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create",
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1"
+            ]
+          },
+          "frameURLRelation": {
+            "kind": "enum",
+            "values": [
+              "same-url",
+              "target-url-without-fragment"
+            ]
+          },
+          "loaderId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "mainFrameId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetId": {
+            "kind": "pattern",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "targetType": {
+            "kind": "literal",
+            "value": "page"
+          },
+          "targetURL": {
+            "kind": "enum",
+            "values": [
+              "https://eu-central-1.console.aws.amazon.com/kms/home?region=eu-central-1#/kms/keys/create"
+            ]
+          }
+        },
+        "kind": "object"
+      },
+      "controlLeaseClaimed": {
+        "kind": "literal",
+        "value": false
+      },
+      "exclusiveControlVerifiedByAdapter": {
+        "kind": "literal",
+        "value": false
+      },
+      "kind": {
+        "kind": "literal",
+        "value": "create"
+      },
+      "readAtMS": {
+        "kind": "integer",
+        "max": 9007199254740991,
+        "min": 0
+      },
+      "schema": {
+        "kind": "literal",
+        "value": "hikyo-158/chrome-public-readout/v1"
+      },
+      "value": {
+        "fields": {
+          "chunks": {
+            "items": {
+              "kind": "pattern",
+              "maxLength": 2048,
+              "pattern": "^[\\s\\S]*$"
+            },
+            "kind": "array",
+            "maxItems": 64
+          },
+          "schema": {
+            "kind": "literal",
+            "value": "hikyo-158/public-json-chunks/v1"
+          }
+        },
+        "kind": "object"
+      }
+    },
+    "kind": "object"
+  },
+  "sha256": "327035e8014c558fa33f88e7816b6f2d48ef3431db0dc10b1db4d1fdb4d5fff7"
+}

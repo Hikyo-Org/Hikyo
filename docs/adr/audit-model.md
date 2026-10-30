@@ -1,5 +1,7 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
+> **Owner-approved amendment (2026-10-28, #1034, operative when its implementation PR merges):** bounded `auth.request_refused` summaries replace generic invalid-artifact silence for the covered paths. The exact staging, sampling, attribution, sink-loss and health contract is [auth-refusal-signals.md](./auth-refusal-signals.md). The owner explicitly approved that contract and waived cross-provider review for #1034 only. Maintainer security review and the human merge gate remain. Earlier MCP silence is superseded only at this scope; dedicated refusals and `grant.denied` remain unchanged.
+
 > **Owner-locked declared amendment (2026-10-09, [#807](https://github.com/Hikyo-Org/Hikyo/issues/807), operative when its implementation PR merges; cross-provider review explicitly waived by the owner for this decision):** Mint, refused mint, revocation and rejected use are security events; list/policy read and successful delivery retain registered classes. Developer delivery records a distinct developer actor, credential identity, immutable scope and recorded human authority on the fetch envelope and every disclosed key before plaintext leaves the server. Lifecycle security mutation transactions record each terminal revocation. Bearers and plaintext never enter event payloads. The normative lifecycle and acceptance contract is [developer-credentials.md](./developer-credentials.md). Historical statements below are superseded only within this bounded scope.
 
 > **Declared amendment (2026-09-23, [#683](https://github.com/Hikyo-Org/Hikyo/issues/683), owner decision locked; cross-model review waived by the owner on 2026-09-23; operative upon the condition-reporting governance PR merging):** new event kinds for delivery-target reports: first report for a new target row, tombstone, purge, and every refused report (authorization, vocabulary, ordering, quota, size). Individual accepted reports emit **no** event; the report row is not an audit record. This banner is a pointer; the normative contract is [k8s-condition-reporting.md](./k8s-condition-reporting.md). Historical text below is preserved.
@@ -222,3 +224,21 @@ Environment deletion, including deletion through definitions apply, records one
 `grant.revoked` per removed environment-scoped grant using the existing revocation
 schema. Origin release, grant deletion, principal generation advance, human session
 invalidation and all audit records commit atomically with environment deletion.
+
+## Supported operator surfaces (#1035)
+
+The instance trail is addressed by `GET /api/v1/instance/audit` and
+`GET /api/v1/instance/audit/export`, `hikyo audit query|export --instance-scope`,
+and Instance settings → Audit. These expose the existing instance `audit-read`
+proof to human sessions with the MFA floor, without an additional reveal
+ceremony or a new machine artifact class. Login failures remain instance-trail
+events and are absent from tenant-only views. Event details include actor and
+source metadata, with missing fields stated explicitly.
+
+The same CLI commands address organisation, project and environment trails
+through `--org`, `--project` and `--env`. Project automation remains restricted
+to its owning project subtree. Interactive queries retain bounded allocation-
+ordered pages with a pinned `to_seq`; exports retain fixed snapshots, fresh
+page authorization and commit ordering. The completion-receipt protocol and
+shared consumer validation are owned by #1036. Consumers must verify completion
+before publishing an export or changing collection state.

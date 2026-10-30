@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -146,19 +147,20 @@ func TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets(t *testing.T
 		execRealAdoption(t, db, `INSERT INTO adapter_route_move_targets(move_id,org_id,project_id,environment_id,target_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix) SELECT 'arm_cleanup_other',org_id,project_id,environment_id,id,destination_kind,destination_owner,destination_name,destination_id,name_prefix FROM adapter_targets WHERE id='tgt_gitlab_b'`)
 
 		snapshot := func(id string) string {
-			return queryString(t, db, `SELECT sync_status||'|'||CAST(failure_names AS TEXT)||'|'||COALESCE(active_job_id,'') FROM adapter_targets WHERE id='`+id+`'`)
+			return queryString(t, db, `SELECT sync_status||'|'||CAST(failure_names AS TEXT)||'|'||COALESCE(active_job_id,'')||'|'||COALESCE(last_error_class,'')||'|'||COALESCE(CAST(last_attempted_at AS TEXT),'')||'|'||CAST(drift_attention AS TEXT) FROM adapter_targets WHERE id='`+id+`'`)
 		}
 		beforeA, beforeB := snapshot("tgt_gitlab_a"), snapshot("tgt_gitlab_b")
+		attempted := time.Now().UTC()
 		var mark func(adapterQueryScope, string) (int64, error)
 		if db.Engine() == store.EngineSQLite {
 			q := sqlitegen.New(db.SQLiteWrite())
 			mark = func(scope adapterQueryScope, move string) (int64, error) {
-				return q.AdapterWorkerFinishJobMarkTargets(t.Context(), sqlitegen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: scope.org, ChainProject: scope.project, RouteMoveID: move})
+				return q.AdapterWorkerFinishJobMarkTargets(t.Context(), sqlitegen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: scope.org, ChainProject: scope.project, RouteMoveID: move, ErrorClass: sql.NullString{String: string(adapter.ErrorClassProviderAmbiguous), Valid: true}, At: sql.NullString{String: attempted.Format(time.RFC3339Nano), Valid: true}})
 			}
 		} else {
 			q := pggen.New(db.PG())
 			mark = func(scope adapterQueryScope, move string) (int64, error) {
-				return q.AdapterWorkerFinishJobMarkTargets(t.Context(), pggen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: scope.org, ChainProject: scope.project, RouteMoveID: move})
+				return q.AdapterWorkerFinishJobMarkTargets(t.Context(), pggen.AdapterWorkerFinishJobMarkTargetsParams{ChainOrg: scope.org, ChainProject: scope.project, RouteMoveID: move, ErrorClass: pgtype.Text{String: string(adapter.ErrorClassProviderAmbiguous), Valid: true}, At: pgtype.Timestamptz{Time: attempted, Valid: true}})
 			}
 		}
 		own := adapterQueryScope{org: "org_gitlab", project: "prj_gitlab"}
@@ -185,6 +187,12 @@ func TestAdapterRuntimeGeneratedFinishJobMarksOnlyScopedMoveTargets(t *testing.T
 		}
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND active_job_id IS NULL`); n != 1 {
 			t.Fatal("owning active job was not cleared")
+		}
+		if got := queryString(t, db, `SELECT last_error_class FROM adapter_targets WHERE id='tgt_gitlab_a'`); got != string(adapter.ErrorClassProviderAmbiguous) {
+			t.Fatalf("owning bounded error class=%q", got)
+		}
+		if queryInt(t, db, `SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND last_attempted_at IS NOT NULL AND drift_attention=TRUE`) != 1 {
+			t.Fatal("owning move lost attempt stamp or operator attention")
 		}
 		if snapshot("tgt_gitlab_b") != beforeB {
 			t.Fatal("unrelated moving target changed")

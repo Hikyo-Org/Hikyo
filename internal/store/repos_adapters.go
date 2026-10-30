@@ -462,11 +462,36 @@ func (r adapterQueries) ResumeTarget(ctx context.Context, p authz.Proof, targetI
 		return AdapterResumeResult{}, adapter.ErrSuperseded
 	}
 	target.authority = authorityPrincipalID
-	results, err := enqueuePublishedTargets(ctx, r.db, chain, []publishedAdapterTarget{target}, at)
+	// Adoption advances once to the only generation that may consume its
+	// provider-version witness. Resume must not advance it a second time.
+	ledger, err := r.db.adapterStoreQueries().planLedger(ctx, chain, target.id, target.environmentID, target.generation)
 	if err != nil {
 		return AdapterResumeResult{}, err
 	}
-	out := AdapterResumeResult{Enqueue: results[0]}
+	resumeAdoption := false
+	for _, row := range ledger {
+		if row.AdoptionPending && row.AdoptionVersion != nil {
+			resumeAdoption = true
+			break
+		}
+	}
+	var out AdapterResumeResult
+	if resumeAdoption {
+		rows, err := r.db.adapterStoreQueries().resumeAdoptedJob(ctx, chain, target, at)
+		if err != nil {
+			return AdapterResumeResult{}, err
+		}
+		if rows != 1 {
+			return AdapterResumeResult{}, adapter.ErrSuperseded
+		}
+		out.Enqueue = AdapterEnqueueResult{TargetID: target.id, JobID: target.activeJob, Generation: target.generation, AuthorityPrincipalID: target.authority}
+	} else {
+		results, err := enqueuePublishedTargets(ctx, r.db, chain, []publishedAdapterTarget{target}, at)
+		if err != nil {
+			return AdapterResumeResult{}, err
+		}
+		out.Enqueue = results[0]
+	}
 	out.Revision, err = r.db.adapterStoreQueries().resumeRevision(ctx, chain, target.environmentID)
 	if err != nil {
 		return AdapterResumeResult{}, err

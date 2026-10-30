@@ -827,7 +827,7 @@ func (a *API) observe(next http.Handler) http.Handler {
 		// same discipline the counters enforce.
 		if a.Log != nil {
 			a.Log.DebugContext(r.Context(), "request",
-				"method", r.Method,
+				"method", loggedHTTPMethod(r.Method),
 				"class", classNames[class],
 				"status", sw.status,
 				"duration_ms", dur.Milliseconds())

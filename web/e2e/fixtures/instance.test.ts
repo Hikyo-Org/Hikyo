@@ -27,7 +27,14 @@ describe('security fixture child environment', () => {
   it('preserves existing flow defaults and ambient inheritance only for the flow profile', () => {
     expect(fixtureEnvironment('flows', '/fixture/owned', 'http://localhost:28789', ambient)).toEqual({
       ...ambient, HIKYO_EXTERNAL_ORIGIN: 'http://localhost:28789',
+      HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '2000',
     });
+  });
+
+  it('does not inherit the flow source allowance into the real-limit security profile', () => {
+    const flows = fixtureEnvironment('flows', '/fixture/flow', 'http://localhost:28789', ambient);
+    expect(fixtureEnvironment('security', '/fixture/security', 'http://localhost:28789', flows))
+      .not.toHaveProperty('HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE');
   });
 });
 

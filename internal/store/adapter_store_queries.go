@@ -63,6 +63,7 @@ type adapterStoreQueries interface {
 	pauseTarget(context.Context, domain.Scope, string, time.Time) (adapterTeardownTarget, int64, error)
 	pauseTargetUpdate(context.Context, domain.Scope, adapterTeardownTarget, int64, time.Time) (int64, error)
 	resumeTarget(context.Context, domain.Scope, publishedAdapterTarget) (int64, error)
+	resumeAdoptedJob(context.Context, domain.Scope, publishedAdapterTarget, time.Time) (int64, error)
 	resumeRevision(context.Context, domain.Scope, string) (int64, error)
 	enqueueTarget(context.Context, domain.Scope, publishedAdapterTarget, string, int64) (int64, error)
 	healthCounts(context.Context) (AdapterHealthCounts, error)

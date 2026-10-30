@@ -21,7 +21,7 @@ func TestAdapterAdoptionIndexesPostgres(t *testing.T) {
 func testAdapterAdoptionIndexes(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
-	if err := RunUpTo(ctx, cfg, 80); err != nil {
+	if err := RunUpTo(ctx, cfg, 81); err != nil {
 		t.Fatal(err)
 	}
 	db := migrationFixtureSQL(t, cfg)

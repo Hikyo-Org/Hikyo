@@ -654,6 +654,32 @@ func (q *Queries) AdapterWorkerActivateOriginRouteMoveTargetQuery(ctx context.Co
 	return items, nil
 }
 
+const adapterWorkerActivateReleaseReservations = `-- name: AdapterWorkerActivateReleaseReservations :execrows
+DELETE FROM adapter_ledger WHERE target_id=?1 AND org_id=?2 AND project_id=?3 AND environment_id=?4 AND state='reserved'
+`
+
+type AdapterWorkerActivateReleaseReservationsParams struct {
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+}
+
+// Only unsent claims are retired after the activation job obtains its live
+// generation and provider fence. Dispatched and owned custody is never removed.
+func (q *Queries) AdapterWorkerActivateReleaseReservations(ctx context.Context, arg AdapterWorkerActivateReleaseReservationsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterWorkerActivateReleaseReservations,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const adapterWorkerActivateSetResolved = `-- name: AdapterWorkerActivateSetResolved :execrows
 UPDATE adapter_route_move_targets SET destination_id=?1,repository_id=?2 WHERE move_id=?3 AND target_id=?4 AND org_id=?5 AND project_id=?6 AND environment_id=?7 AND destination_id=0
 `
@@ -1073,7 +1099,7 @@ func (q *Queries) AdapterWorkerFinishDeadCredentialScrubReleaseLedger(ctx contex
 }
 
 const adapterWorkerFinishJobAttention = `-- name: AdapterWorkerFinishJobAttention :execrows
-UPDATE adapter_route_moves SET state='attention_required' WHERE id=?1 AND org_id=?2 AND project_id=?3 AND state='activating'
+UPDATE adapter_route_moves SET state='attention_required' WHERE id=?1 AND org_id=?2 AND project_id=?3 AND state IN ('activating','scrubbing','attention_required')
 `
 
 type AdapterWorkerFinishJobAttentionParams struct {
@@ -1158,17 +1184,25 @@ func (q *Queries) AdapterWorkerFinishJobMarkTarget(ctx context.Context, arg Adap
 }
 
 const adapterWorkerFinishJobMarkTargets = `-- name: AdapterWorkerFinishJobMarkTargets :execrows
-UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]',active_job_id=NULL WHERE adapter_targets.org_id=?1 AND adapter_targets.project_id=?2 AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=?3 AND mt.org_id=?1 AND mt.project_id=?2) AND adapter_targets.state='moving'
+UPDATE adapter_targets SET sync_status='failed',failure_names='["route"]',active_job_id=NULL,last_error_class=?1,last_attempted_at=?2,drift_attention=1 WHERE adapter_targets.org_id=?3 AND adapter_targets.project_id=?4 AND adapter_targets.id IN (SELECT mt.target_id FROM adapter_route_move_targets mt WHERE mt.move_id=?5 AND mt.org_id=?3 AND mt.project_id=?4) AND adapter_targets.state='moving'
 `
 
 type AdapterWorkerFinishJobMarkTargetsParams struct {
+	ErrorClass   sql.NullString
+	At           sql.NullString
 	ChainOrg     string
 	ChainProject string
 	RouteMoveID  string
 }
 
 func (q *Queries) AdapterWorkerFinishJobMarkTargets(ctx context.Context, arg AdapterWorkerFinishJobMarkTargetsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobMarkTargets, arg.ChainOrg, arg.ChainProject, arg.RouteMoveID)
+	result, err := q.db.ExecContext(ctx, adapterWorkerFinishJobMarkTargets,
+		arg.ErrorClass,
+		arg.At,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.RouteMoveID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -1216,7 +1250,7 @@ func (q *Queries) AdapterWorkerFinishJobQuery(ctx context.Context, arg AdapterWo
 }
 
 const adapterWorkerFinishJobSupersede = `-- name: AdapterWorkerFinishJobSupersede :execrows
-UPDATE adapter_outbox SET state='superseded',finished_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=?2 AND org_id=?3 AND project_id=?4 AND id<>?5 AND kind='activate' AND state IN ('queued','running')
+UPDATE adapter_outbox SET state='superseded',finished_at=?1,lease_owner=NULL,lease_expires_at=NULL WHERE route_move_id=?2 AND org_id=?3 AND project_id=?4 AND id<>?5 AND kind IN ('activate','scrub') AND state IN ('queued','running')
 `
 
 type AdapterWorkerFinishJobSupersedeParams struct {
@@ -1257,6 +1291,23 @@ func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubActivateMove(ctx contex
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const adapterWorkerFinishOriginRouteMoveScrubCountHeld = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountHeld :one
+SELECT COUNT(*) FROM adapter_outbox jobs JOIN adapter_ledger held ON held.target_id=jobs.target_id AND held.org_id=jobs.org_id AND held.project_id=jobs.project_id AND held.environment_id=jobs.environment_id WHERE jobs.route_move_id=?1 AND jobs.org_id=?2 AND jobs.project_id=?3 AND jobs.kind='scrub' AND held.state IN ('dispatched','owned')
+`
+
+type AdapterWorkerFinishOriginRouteMoveScrubCountHeldParams struct {
+	RouteMoveID  sql.NullString
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) AdapterWorkerFinishOriginRouteMoveScrubCountHeld(ctx context.Context, arg AdapterWorkerFinishOriginRouteMoveScrubCountHeldParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, adapterWorkerFinishOriginRouteMoveScrubCountHeld, arg.RouteMoveID, arg.ChainOrg, arg.ChainProject)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const adapterWorkerFinishOriginRouteMoveScrubCountPending = `-- name: AdapterWorkerFinishOriginRouteMoveScrubCountPending :one
@@ -2850,6 +2901,53 @@ func (q *Queries) AdapterWorkerReserveSelectQuery(ctx context.Context, arg Adapt
 	var state string
 	err := row.Scan(&state)
 	return state, err
+}
+
+const adapterWorkerRestoreHeldScrubAdapter = `-- name: AdapterWorkerRestoreHeldScrubAdapter :execrows
+UPDATE adapters SET state='active' WHERE id=?1 AND org_id=?2 AND project_id=?3 AND state='tombstoned'
+`
+
+type AdapterWorkerRestoreHeldScrubAdapterParams struct {
+	AdapterID    string
+	ChainOrg     string
+	ChainProject string
+}
+
+func (q *Queries) AdapterWorkerRestoreHeldScrubAdapter(ctx context.Context, arg AdapterWorkerRestoreHeldScrubAdapterParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterWorkerRestoreHeldScrubAdapter, arg.AdapterID, arg.ChainOrg, arg.ChainProject)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const adapterWorkerRestoreHeldScrubTarget = `-- name: AdapterWorkerRestoreHeldScrubTarget :execrows
+UPDATE adapter_targets SET state='active',paused_at=?1 WHERE id=?2 AND org_id=?3 AND project_id=?4 AND environment_id=?5 AND generation=?6 AND state='tombstoned' AND provider_lease_job_id IS NULL
+`
+
+type AdapterWorkerRestoreHeldScrubTargetParams struct {
+	At           sql.NullString
+	TargetID     string
+	ChainOrg     string
+	ChainProject string
+	ChainEnv     string
+	Generation   int64
+}
+
+// A review-held removal remains visible and paused, with all custody intact.
+func (q *Queries) AdapterWorkerRestoreHeldScrubTarget(ctx context.Context, arg AdapterWorkerRestoreHeldScrubTargetParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adapterWorkerRestoreHeldScrubTarget,
+		arg.At,
+		arg.TargetID,
+		arg.ChainOrg,
+		arg.ChainProject,
+		arg.ChainEnv,
+		arg.Generation,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const adapterWorkerTryEnqueueDepthQuery = `-- name: AdapterWorkerTryEnqueueDepthQuery :one

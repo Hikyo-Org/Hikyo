@@ -32,7 +32,7 @@ func TestSQLiteSettlementPreservesDriverErrors(t *testing.T) {
 					_ = conn.Close()
 					t.Fatal(err)
 				}
-				owner := &SQLiteTransaction{tx: native, conn: conn}
+				owner := &SQLiteTransaction{tx: native, ctx: t.Context(), conn: conn}
 				if commit {
 					err = owner.Commit()
 				} else {
@@ -67,7 +67,7 @@ func TestSQLiteSettlementAfterAutomaticDiscard(t *testing.T) {
 		_ = conn.Close()
 		t.Fatal(err)
 	}
-	owner := &SQLiteTransaction{tx: native, conn: conn}
+	owner := &SQLiteTransaction{tx: native, ctx: ctx, conn: conn}
 	cancel()
 	awaitSettlementSignal(t, connector.closed)
 	// Automatic discard has claimed Conn.Close. The transaction is still done,

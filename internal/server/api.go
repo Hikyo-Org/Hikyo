@@ -161,6 +161,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	Refusals     RefusalRecorder
 	Runtime      RuntimeStatusSource
 	SelfConfig   *service.SelfConfig
 	Mail         MailService
@@ -283,6 +284,8 @@ func bearer(ctx context.Context) string {
 // Meta
 // ---------------------------------------------------------------------------
 
+// GetMeta applies the public discovery allowance before returning the closed,
+// tenant-free protocol capability and instance-identity response.
 func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apigen.GetMetaResponseObject, error) {
 	// Under the instance-wide pre-auth admission limits like every other
 	// pre-auth path, with its own looser per-IP allowance: `login` calls this
@@ -291,6 +294,7 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// throttles the client.
 	if a.Admission != nil {
 		if err := a.Admission.AdmitDiscovery(audit.FromContext(ctx).SourceIP); err != nil {
+			audit.NoteRefusal(ctx, audit.RefusalAdmission)
 			return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		}
 	}
@@ -391,6 +395,7 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			DisplayName: optional(id.DisplayName),
 		},
 		Capabilities: apigen.PrincipalCapabilities{
+			InstanceAuditRead:   &id.InstanceAuditRead,
 			InstanceOperator:    id.InstanceOperator,
 			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},
@@ -658,13 +663,19 @@ func (a *API) Middleware() []func(http.Handler) http.Handler {
 
 func (a *API) admitAuthenticatedRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := operation.WithRequestAdmission(r.Context(), a.RequestBudget.AdmitAuthenticatedAPI)
-		if a.Admission != nil {
-			sourceIP := audit.FromContext(r.Context()).SourceIP
-			ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
-		}
+		ctx := a.withRequestAdmission(r.Context(), audit.FromContext(r.Context()).SourceIP)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// withRequestAdmission also covers authenticated SPA policy reads outside the
+// API route group. Only accounting is shared; each resolver still reads live.
+func (a *API) withRequestAdmission(ctx context.Context, sourceIP string) context.Context {
+	ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
+	if a.Admission != nil {
+		ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
+	}
+	return ctx
 }
 
 // requestKey carries the raw request so the OIDC handlers can read cookies (the
@@ -798,6 +809,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 		}
 		if value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "DPoP "); ok {
 			if r.Method != http.MethodGet || r.URL.Path != "/api/v1/instance/directory" || len(r.Header.Values("Authorization")) != 1 || len(r.Header.Values("DPoP")) != 1 || strings.TrimSpace(r.Header.Get("DPoP")) == "" {
+				audit.NoteRefusal(r.Context(), audit.RefusalProof)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
@@ -815,6 +827,7 @@ func (a *API) extractBearer(next http.Handler) http.Handler {
 		// contracts; accepting both would let a caller pick which contract
 		// applies. The refusal is uniform.
 		if headerVal != "" && cookieVal != "" {
+			audit.NoteRefusal(r.Context(), audit.RefusalConflict)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(errorBody(apigen.ErrorCodeUnauthenticated, ""))
@@ -849,6 +862,8 @@ func (a *API) validateAgainstContract(next http.Handler) http.Handler {
 	return a.validateAgainstContractWith(api.MatchRequest, next)
 }
 
+// validateAgainstContractWith matches once and shares that trusted operation
+// across SCIM handling, refusal attribution and request-shape validation.
 func (a *API) validateAgainstContractWith(
 	matchRequest func(*http.Request) (*api.MatchedRequest, error),
 	next http.Handler,
@@ -876,6 +891,7 @@ func (a *API) validateAgainstContractWith(
 		// pre-authentication Hikyo 400 describing the request — which is the
 		// thing the wire must never do.
 		operation := match.Operation()
+		audit.SetRefusalOperation(r.Context(), operation.ID)
 		if api.IsSCIMWireOperation(operation.ID) {
 			if !a.scimBodyIsOneValue(w, r) {
 				return

@@ -7,6 +7,30 @@ the #157 multi-target workflow. Design authority:
 mvp-boundary § 4.1 amendment it depends on still needs the #26 governance
 review, see "Open").
 
+## Current membership (2026-10-29)
+
+Marc approved 1.0 inclusion subject to qualifying review and acceptance:
+"A, in separate t3code thread sol 6.1 xhigh". Undecided membership under V1
+is superseded; amendment review and runtime acceptance remain HOLD.
+The [current closeout packet](./162-vault-1.0-closeout.md) owns fresh evidence
+and provenance. #162 remains closed for implementation. The historical
+delivery and test records below are preserved with their original bindings.
+
+## Historical delivery and governance (2026-10-28)
+
+[#162](https://github.com/Hikyo-Org/Hikyo/issues/162) is closed following
+[PR #823](https://github.com/Hikyo-Org/Hikyo/pull/823), merge
+`d118f0bbf45a6366828358adc873d9940bcb2e01`, an ancestor of assessed main
+`24e198b32a3ffd8d4013207b2f974d76ec49be6f`. The provider is compiled in;
+the proposed ADR gate is governance, not an unimplemented adapter or runtime
+feature switch. Its distinct outbound destination amendment and 1.0 membership
+remain conditional. The import-source capability does not settle that decision.
+
+The [scoped governance packet](./156-162-589-capability-governance.md) retains
+**HOLD**, binds the inspected review record and offers owner choices. No new
+provider run or release acceptance is claimed. Historical local tests below
+remain evidence from their original session.
+
 ## What landed
 
 - **Provider kind** `vault-kv` in `adapter.SupportedProviders`, the app module

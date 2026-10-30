@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { seedTenant, totpCode } from './seed.ts';
 import { startMailSink } from './mail.ts';
-import { SECURITY_SEEDED, seedSecurityTenant } from '../security/seed.ts';
+import { SECURITY_SEEDED, seedSecurityTenant, type SecuritySeed } from '../security/seed.ts';
 import { instanceFetch as fetch, SERVING_HOST } from './instance-fetch.ts';
 
 /**
@@ -706,7 +706,12 @@ export function fixtureEnvironment(
     ...ambient,
     // Existing flow tests exercise many logins/publishes and deployment adapters.
     // These three dev-only overrides remain exclusive to that flow profile.
-    HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '500',
+    // Complete case traces reached 980 browser API requests in 60 seconds,
+    // excluding fixture traffic; the browser-only lifecycle alone issued 513.
+    // Leave bounded room for adjoining cases, SPA refetches and fixture
+    // authentication on this shared loopback source. This profile is not a
+    // rate-limit oracle; the clean security profile above keeps product limits.
+    HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: '2000',
     HIKYO_DEV_SERVICE_BUDGETS_DISABLED: 'true',
     HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
     HIKYO_EXTERNAL_ORIGIN: base,
@@ -1140,7 +1145,7 @@ function repointRemoteAtB(instance: Instance): void {
  * It uses the same operator bootstrap and issued TOTP session as the flows,
  * without remote-directory or fake external-provider setup.
  */
-export async function startSecurityInstance(): Promise<void> {
+export async function startSecurityInstance(prepare?: (page: Page, seed: SecuritySeed) => Promise<void>): Promise<void> {
   if (process.env['HIKYO_E2E_BINARY'] === undefined &&
       !existsSync(join(repoRoot, 'internal', 'webui', 'dist', 'index.html'))) {
     throw new Error('build the production SPA before running browser security');
@@ -1163,6 +1168,7 @@ export async function startSecurityInstance(): Promise<void> {
         cwd: instance.dir, env: adminEnv(instance), inheritEnv: false,
       });
     }, (draw) => establishChallengeSession(page, draw));
+    await prepare?.(page, seeded);
     writeFileSync(SECURITY_SEEDED, JSON.stringify(seeded));
     await context.storageState({ path: STORAGE_STATE });
   } finally {
@@ -1960,7 +1966,7 @@ export async function passEnrolmentGate(page: Page, password: string): Promise<s
   await page.getByLabel('Authenticator code').fill(totpCode(otpauth));
   await page.getByRole('button', { name: 'Confirm and enrol' }).click();
   // The reissued session carries no gate, so `/login` hands over to the app.
-  await expect(page).not.toHaveURL(/\/login$/);
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   return otpauth;
 }
 

@@ -163,6 +163,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   // only be refused with a 403). The reads still swallow a 403 as belt-and-
   // suspenders; this just stops us provoking it.
   const isInstanceOperator = session.capabilities.instance_operator;
+  const canReadInstanceAudit = session.capabilities.instance_audit_read === true;
   const retentionHealth = useRetentionHealth(isInstanceOperator);
   const updateStatus = useUpdateStatus(isInstanceOperator);
   const serverVersion = useServerVersion();
@@ -264,7 +265,8 @@ export function Shell({ session }: { session: WhoAmI }) {
   const isPrototype = import.meta.env.MODE === 'prototype';
   const activeOrgRole = isPrototype ? 'org admin' : null;
   const visibleRetentionHealth = retentionHealth.data?.health;
-  const showInstanceAdministration = isInstanceOperator;
+  const showInstanceAdministration = isInstanceOperator || canReadInstanceAudit;
+  const instanceEntry = surfaceById(isInstanceOperator ? 'instance-admin' : 'instance-audit');
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
   const storageWarning = storageBanner(visibleRetentionHealth);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
@@ -387,6 +389,7 @@ export function Shell({ session }: { session: WhoAmI }) {
     projectId: routeProjectId !== '' ? activeProjectId : rememberedProject?.id ?? '',
     remote,
     isInstanceOperator,
+    canReadInstanceAudit,
     systemScope,
     projects: projects.isSuccess && projects.data !== null ? projectItems : null,
     onOrgPage,
@@ -462,9 +465,9 @@ export function Shell({ session }: { session: WhoAmI }) {
         {showInstanceAdministration ? (
           <NavLink
             className="rail__action"
-            to={surfaceById('instance-admin').path}
-            aria-label={surfaceById('instance-admin').label}
-            title={surfaceById('instance-admin').label}
+            to={instanceEntry.path}
+            aria-label={instanceEntry.label}
+            title={instanceEntry.label}
           >
             <Glyph name="settings" />
           </NavLink>

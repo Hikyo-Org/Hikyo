@@ -1,0 +1,8 @@
+{
+  "name": "hikyo-mcp-651-clients",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/inspector": "2.11.0",
+    "@openai/codex": "0.160.1"
+  }
+}

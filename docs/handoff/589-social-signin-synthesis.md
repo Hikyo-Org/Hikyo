@@ -1,6 +1,45 @@
 # #589: synthesis of social sign-in and open registration (handoff)
 
-## Current acceptance record (2026-10-16)
+## Current acceptance record (2026-10-28)
+
+[#589](https://github.com/Hikyo-Org/Hikyo/issues/589) is closed. The
+[October 18 closeout](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-6250614401)
+records completed synthesis reconciliation and its separate #612 dependency.
+Live PR/run readback and Git ancestry were rechecked against main
+`24e198b32a3ffd8d4013207b2f974d76ec49be6f`:
+
+- [#945](https://github.com/Hikyo-Org/Hikyo/pull/945) merged the approved head
+  `8f7b34b76abf8709b4cdaf1366f1ad3a84838515` as
+  `73b00f4d7eca27c36334c693d81c38300f715b52`.
+  [Integration 39030048102](https://github.com/Hikyo-Org/Hikyo/actions/runs/39030048102)
+  succeeded on that exact merge. The
+  [#589-only exception](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-6220313789)
+  qualifies that editorial head only; its
+  [later direction](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-6224728411)
+  preserves substantive final-byte review for repairs within the same scope.
+- [#946](https://github.com/Hikyo-Org/Hikyo/pull/946) merged as
+  `888d9b61fb20aea8cc8addec488adadba2bd6d7f`.
+  [Integration 39026644027](https://github.com/Hikyo-Org/Hikyo/actions/runs/39026644027)
+  succeeded on that exact merge. It completed the
+  [separately dispositioned #612 polling amendment](./32-rfc8628-amendment-closeout.md).
+  Global closure of shared #32 was not required for #589.
+
+Both merges are ancestors of the assessed main. A7 remains **post-1.0, first**
+under the [September 3 owner ruling](https://github.com/Hikyo-Org/Hikyo/issues/589#issuecomment-5531905677)
+and `mvp-boundary.md` section 4.3. Delivered implementation does not promote
+A7 into the 1.0 gate, and this disposition does not authorize removing shipped
+code or tests. Historical unavailable cross-provider review remains SKIPPED,
+not CLEAN; neither exception transfers to Transit or Vault KV. This update
+records completed decisions and does not extend the exact-head exception to
+its own new bytes. See the
+[capability governance packet](./156-162-589-capability-governance.md) for the
+release coordinator's inputs and evidence limits.
+
+## Historical acceptance assessment (2026-10-16)
+
+The prospective review/merge requirements in this dated assessment are
+discharged only as recorded above. Its test evidence and original limitations
+remain historical.
 
 The synthesis deliverables landed in [PR #614](https://github.com/Hikyo-Org/Hikyo/pull/614),
 merge `fc165413e5923f9cadaada75f6ed910342b86cf4`. This record reconciles

@@ -52,6 +52,9 @@ func (q sqliteAdapterStoreQueries) teardownAuthority(ctx context.Context, chain 
 func (q sqliteAdapterStoreQueries) teardownUnfinishedMoves(ctx context.Context, chain domain.Scope, adapterID string) (int64, error) {
 	return q.queries.AdapterTeardownUnfinishedMoves(ctx, sqlitegen.AdapterTeardownUnfinishedMovesParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 }
+func (q sqliteAdapterStoreQueries) resumeAdoptedJob(ctx context.Context, chain domain.Scope, target publishedAdapterTarget, at time.Time) (int64, error) {
+	return adapterAffected(q.queries.AdapterResumeAdoptedJob(ctx, sqlitegen.AdapterResumeAdoptedJobParams{AuthorityPrincipalID: target.authority, At: at.UTC().Format(timeFormat), JobID: target.activeJob, TargetID: target.id, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: target.environmentID, Generation: target.generation}))
+}
 func (q sqliteAdapterStoreQueries) resumeRevision(ctx context.Context, chain domain.Scope, envID string) (int64, error) {
 	return q.queries.AdapterResumeRevision(ctx, sqlitegen.AdapterResumeRevisionParams{EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
 }
@@ -104,6 +107,9 @@ func (q pgAdapterStoreQueries) teardownAuthority(ctx context.Context, chain doma
 
 func (q pgAdapterStoreQueries) teardownUnfinishedMoves(ctx context.Context, chain domain.Scope, adapterID string) (int64, error) {
 	return q.queries.AdapterTeardownUnfinishedMoves(ctx, pggen.AdapterTeardownUnfinishedMovesParams{AdapterID: adapterID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})
+}
+func (q pgAdapterStoreQueries) resumeAdoptedJob(ctx context.Context, chain domain.Scope, target publishedAdapterTarget, at time.Time) (int64, error) {
+	return adapterAffected(q.queries.AdapterResumeAdoptedJob(ctx, pggen.AdapterResumeAdoptedJobParams{AuthorityPrincipalID: target.authority, At: pgRequiredTime(at), JobID: target.activeJob, TargetID: target.id, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: target.environmentID, Generation: target.generation}))
 }
 func (q pgAdapterStoreQueries) resumeRevision(ctx context.Context, chain domain.Scope, envID string) (int64, error) {
 	return q.queries.AdapterResumeRevision(ctx, pggen.AdapterResumeRevisionParams{EnvironmentID: envID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project)})

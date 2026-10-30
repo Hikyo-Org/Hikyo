@@ -1,0 +1,24 @@
+[Unit]
+Description=Hikyo submit-only evidence SSH receiver
+RequiresMountsFor=/srv/hikyo-evidence
+ConditionPathIsMountPoint=/srv/hikyo-evidence
+After=network.target
+
+[Service]
+ExecStartPre=/usr/sbin/sshd -t -f /etc/hikyo-evidence/sshd_config
+ExecStart=/usr/sbin/sshd -D -e -f /etc/hikyo-evidence/sshd_config
+Restart=on-failure
+RestartSec=5
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/hikyo-evidence /run
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+MemoryMax=256M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

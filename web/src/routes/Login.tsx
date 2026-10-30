@@ -16,6 +16,7 @@ import {
   usePasskeyLogin,
 } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { loginReturnTarget } from '../app/loginReturn.ts';
 import {
   LoginForm,
   type ProviderIdentity,
@@ -104,8 +105,9 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
  * discovery, which is about the page rather than the credential, stays outside
  * the card.
  */
-export function Login({ intent = 'sign-in', returnTo, signInOnly = false, providerHint }: { intent?: SignInIntent; returnTo?: string; signInOnly?: boolean; providerHint?: string } = {}) {
+export function Login({ intent = 'sign-in', returnTo: explicitReturnTo, signInOnly = false, providerHint }: { intent?: SignInIntent; returnTo?: string; signInOnly?: boolean; providerHint?: string } = {}) {
   const [search] = useSearchParams();
+  const returnTo = loginReturnTarget(explicitReturnTo ?? search.get('returnTo'));
   const signupOrg = !signInOnly && intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
   const passkey = usePasskeyLogin();
@@ -128,9 +130,7 @@ export function Login({ intent = 'sign-in', returnTo, signInOnly = false, provid
   const finishLogin = () => {
     // Cookie authentication changes document CSP authority. API responses and
     // SPA navigation cannot refresh the active document's connect-src policy.
-    const target = new URL(returnTo ?? '/', globalThis.location.origin);
-    globalThis.location.assign(target.origin === globalThis.location.origin && target.username === '' && target.password === ''
-      ? `${target.pathname}${target.search}${target.hash}` : '/');
+    globalThis.location.assign(returnTo ?? '/');
   };
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<ProviderIdentity | null>(null);
