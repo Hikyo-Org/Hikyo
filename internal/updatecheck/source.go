@@ -21,10 +21,12 @@ import (
 )
 
 const (
-	githubReleasesURL       = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases?per_page=100"
-	githubLatestReleaseURL  = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/latest"
-	githubReleasePageBase   = "https://github.com/Hikyo-Org/Hikyo/releases/tag/"
-	maxReleaseResponseBytes = 2 << 20
+	githubReleasesURL      = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases?per_page=100"
+	githubLatestReleaseURL = "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/latest"
+	githubReleasePageBase  = "https://github.com/Hikyo-Org/Hikyo/releases/tag/"
+	// Full pages include asset metadata and release notes for up to 100
+	// releases. Keep reads bounded with room for the published release feed.
+	maxReleaseResponseBytes = 8 << 20
 )
 
 // Source lists published releases from one fixed release authority.

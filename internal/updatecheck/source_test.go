@@ -2,6 +2,8 @@ package updatecheck
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -88,6 +90,60 @@ func TestGitHubSourceKeepsLatestStableAfterNightliesFillFirstPage(t *testing.T) 
 	}
 	if !status.Available || status.LatestVersion != "1.0.1" {
 		t.Fatalf("stable status = %+v, want latest stable outside first page", status)
+	}
+}
+
+func TestGitHubSourceAcceptsFullReleasePage(t *testing.T) {
+	// GitHub includes release notes and other unused metadata. A full page of
+	// otherwise valid releases can exceed the former 2 MiB response limit.
+	type pageRelease struct {
+		githubRelease
+		Body string `json:"body"`
+	}
+	var records []pageRelease
+	for i := range 100 {
+		records = append(records, pageRelease{
+			githubRelease: githubRelease{
+				TagName:     fmt.Sprintf("v1.1.0-nightly.20261030.%d.gbbbbbbbb", i+1),
+				Prerelease:  true,
+				PublishedAt: "2026-10-30T02:00:00Z",
+			},
+			Body: strings.Repeat("release notes ", 4096),
+		})
+	}
+	body, err := json.Marshal(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) <= 2<<20 {
+		t.Fatal("fixture must exceed the former 2 MiB response limit")
+	}
+	source := NewGitHubSource(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() == githubLatestReleaseURL {
+			return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+		}
+		if request.URL.String() != githubReleasesURL {
+			t.Fatalf("unexpected request URL: %s", request.URL)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+		}, nil
+	})})
+	releases, err := source.Releases(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(releases) != len(records) {
+		t.Fatalf("got %d releases, want %d", len(releases), len(records))
+	}
+	status, err := Select("1.0.0", ChannelNightly, releases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Available || status.LatestVersion != "1.1.0-nightly.20261030.100.gbbbbbbbb" {
+		t.Fatalf("status = %+v, want newest nightly from full page", status)
 	}
 }
 
