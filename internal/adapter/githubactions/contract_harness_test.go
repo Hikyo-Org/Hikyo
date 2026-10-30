@@ -81,8 +81,11 @@ func contractEvidence(t *testing.T, record map[string]any) {
 	t.Logf("GITHUB_CONTRACT_EVIDENCE %s", encoded)
 }
 
-func ownContractName(t *testing.T, client *Client, destination adapter.Destination, surface adapter.Surface, name string) {
+func ownContractName(t *testing.T, client API, destination adapter.Destination, surface adapter.Surface, name string) {
 	t.Helper()
+	if observed, ok := client.(*observedContractClient); ok {
+		observed.own(destination, surface, name)
+	}
 	contractEvidence(t, map[string]any{"kind": "owned_name", "destination": destination.Kind, "surface": surface, "name": name})
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
