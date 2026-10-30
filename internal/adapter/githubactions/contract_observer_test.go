@@ -28,16 +28,15 @@ type contractValueFingerprint struct {
 
 type contractOperation struct {
 	name, operation string
-	value           contractValueFingerprint
 }
 
 type contractOperationObserver struct {
-	base       http.RoundTripper
-	scope      contractObserverScope
-	emit       func(map[string]any)
-	credential contractValueFingerprint
-	mu         sync.Mutex
-	owned      map[string]contractValueFingerprint
+	base      http.RoundTripper
+	scope     contractObserverScope
+	emit      func(map[string]any)
+	mu        sync.Mutex
+	owned     map[string]struct{}
+	sensitive map[contractValueFingerprint]struct{}
 }
 
 type contractObserverScope struct {
@@ -52,7 +51,10 @@ var (
 )
 
 func observeContractClient(client *Client, cfg githubContractConfig, emit func(map[string]any)) *observedContractClient {
-	observer := &contractOperationObserver{base: client.http.Transport, scope: contractObserverScope{cfg.owner, cfg.organizationID, cfg.repositoryID}, emit: emit, credential: fingerprintContractValue(client.token), owned: make(map[string]contractValueFingerprint)}
+	observer := &contractOperationObserver{
+		base: client.http.Transport, scope: contractObserverScope{cfg.owner, cfg.organizationID, cfg.repositoryID}, emit: emit,
+		owned: make(map[string]struct{}), sensitive: map[contractValueFingerprint]struct{}{fingerprintContractValue(client.token): {}},
+	}
 	client.http.Transport = observer
 	return &observedContractClient{Client: client, observer: observer}
 }
@@ -72,7 +74,7 @@ func (c *observedContractClient) own(destination adapter.Destination, surface ad
 	}
 	c.observer.mu.Lock()
 	defer c.observer.mu.Unlock()
-	c.observer.owned[name] = contractValueFingerprint{}
+	c.observer.owned[name] = struct{}{}
 }
 
 func (c *observedContractClient) operationContext(ctx context.Context, d adapter.Destination, surface adapter.Surface, name, operation string, value *string) context.Context {
@@ -81,15 +83,14 @@ func (c *observedContractClient) operationContext(ctx context.Context, d adapter
 	}
 	c.observer.mu.Lock()
 	defer c.observer.mu.Unlock()
-	fingerprint, owned := c.observer.owned[name]
+	_, owned := c.observer.owned[name]
 	if !owned {
 		return ctx
 	}
 	if value != nil {
-		fingerprint = fingerprintContractValue(*value)
-		c.observer.owned[name] = fingerprint
+		c.observer.sensitive[fingerprintContractValue(*value)] = struct{}{}
 	}
-	return context.WithValue(ctx, contractOperationKey{}, contractOperation{name: name, operation: operation, value: fingerprint})
+	return context.WithValue(ctx, contractOperationKey{}, contractOperation{name: name, operation: operation})
 }
 
 func (c *observedContractClient) CreateVariable(ctx context.Context, d adapter.Destination, name, value string) (WriteResult, error) {
@@ -156,7 +157,7 @@ func (o *contractOperationObserver) RoundTrip(request *http.Request) (*http.Resp
 				continue
 			}
 			if len(values) != 1 || len(values[0]) > header.limit || !header.pattern.MatchString(values[0]) ||
-				contractHeaderContainsValue(values[0], o.credential) || contractHeaderContainsValue(values[0], op.value) {
+				o.headerContainsSensitiveValue(values[0]) {
 				record[header.field+"_redacted"] = true
 				continue
 			}
@@ -165,6 +166,17 @@ func (o *contractOperationObserver) RoundTrip(request *http.Request) (*http.Resp
 	}
 	o.emit(record)
 	return response, err
+}
+
+func (o *contractOperationObserver) headerContainsSensitiveValue(header string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for value := range o.sensitive {
+		if contractHeaderContainsValue(header, value) {
+			return true
+		}
+	}
+	return false
 }
 
 // The source values remain outside the observer. Even a reflected value that

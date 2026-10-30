@@ -151,6 +151,38 @@ func TestContractObserverRedactsUntrustedAndReflectedHeaders(t *testing.T) {
 	}
 }
 
+func TestContractObserverRedactsEarlierOwnedValuesAfterOverwrite(t *testing.T) {
+	calls := 0
+	var records []map[string]any
+	client, destination := syntheticObservedClient(t, roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		switch calls {
+		case 1:
+			return response(http.StatusCreated, ""), nil
+		case 2:
+			return response(http.StatusConflict, ""), nil
+		default:
+			return response(http.StatusCreated, "", http.Header{
+				"X-Github-Request-Id": {"ABCD:1:2:3:4"}, "X-Accepted-Github-Permissions": {"organization_variables=write"},
+			}), nil
+		}
+	}), func(record map[string]any) { records = append(records, record) })
+	if _, err := client.CreateVariable(t.Context(), destination, observedVariableName, "ABCD"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CreateVariable(t.Context(), destination, observedVariableName, "write"); !IsStatus(err, http.StatusConflict) {
+		t.Fatalf("duplicate create error=%v, want unchanged conflict", err)
+	}
+	other := "HIKYO_CONTRACT_SYNTHETIC_ORG_OTHER"
+	client.own(destination, adapter.Variable, other)
+	if _, err := client.CreateVariable(t.Context(), destination, other, "different-value"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 || len(records) != 3 || records[2]["request_id"] != nil || records[2]["accepted_permissions"] != nil || records[2]["request_id_redacted"] != true || records[2]["accepted_permissions_redacted"] != true {
+		t.Fatal("earlier owned values escaped through a later name's headers")
+	}
+}
+
 type unreadableContractBody struct{ io.ReadCloser }
 
 func (unreadableContractBody) Read([]byte) (int, error) { panic("observer read a body") }

@@ -51,8 +51,9 @@ documents organization Variables write and a successful 204 response.
 The transport observer never reads Authorization, request/response bodies,
 variable values, raw transport errors, arbitrary headers or signed URLs. The
 test client wrapper supplies only internal length/SHA-256 fingerprints of its
-credential and owned create values to
-reject reflected header content; these fingerprints are never emitted. It
+credential and every observed owned create value, retaining earlier values
+across names and failed/duplicate attempts, to reject reflected header content.
+These fingerprints are never emitted. It
 returns the original response/error, forwards each request once, preserves idle
 connection cleanup, and adds no retry or workflow dispatch.
 
