@@ -16,7 +16,7 @@ reporter is still credited unless they opt out.
 
 1. Report privately through [GitHub Private Vulnerability Reporting](https://github.com/Hikyo-Org/Hikyo/security/advisories/new).
 2. If GitHub is unavailable or you cannot access it, email
-   [security@developwent.io](mailto:security@developwent.io). This address is
+   [security@hikyo.app](mailto:security@hikyo.app). This address is
    fallback-only so reports stay consolidated in the primary channel.
 3. Include affected versions, impact, reproduction steps, and any known
    mitigations. Do not include secrets that are not needed to reproduce the
@@ -43,7 +43,7 @@ they opt out.
 
 The default embargo is 90 days from the report itself. The clock never waits on
 acknowledgement. If acknowledgement is missed, reporters are expressly invited
-to escalate through `security@developwent.io`; disclosure at the 90-day deadline
+to escalate through `security@hikyo.app`; disclosure at the 90-day deadline
 is legitimate regardless of maintainer response.
 
 The embargo may be shortened by mutual agreement. Active exploitation

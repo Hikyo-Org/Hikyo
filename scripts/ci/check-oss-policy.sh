@@ -79,7 +79,7 @@ require_text "$repo_root/TRADEMARK.md" 'Permission is required to offer a hosted
 require_text "$repo_root/TRADEMARK.md" 'does not limit the code freedoms granted by the Mozilla Public License 2.0.'
 require_text "$repo_root/CONTRIBUTING.md" 'Every commit in a pull request must carry a Developer Certificate of Origin'
 require_text "$repo_root/SECURITY.md" 'Do not report vulnerabilities in public issues.'
-require_text "$repo_root/SECURITY.md" 'security@developwent.io'
+require_text "$repo_root/SECURITY.md" 'security@hikyo.app'
 require_text "$repo_root/SECURITY.md" 'acknowledged within 7 days'
 require_text "$repo_root/SECURITY.md" 'critical: 14 days;'
 require_text "$repo_root/SECURITY.md" 'high: 30 days;'
@@ -115,7 +115,7 @@ touch_icon="$repo_root/docs/site/public/apple-touch-icon.png"
 require_file "$favicon"
 require_file "$touch_icon"
 require_text "$security_txt" 'Contact: https://github.com/Hikyo-Org/Hikyo/security/advisories/new'
-require_text "$security_txt" 'Contact: mailto:security@developwent.io'
+require_text "$security_txt" 'Contact: mailto:security@hikyo.app'
 require_text "$security_txt" 'Expires:'
 require_text "$security_txt" 'Canonical: https://hikyo.app/.well-known/security.txt'
 source_expires=$(awk -F ': ' '$1 == "Expires" {print $2}' "$security_txt")
@@ -129,7 +129,7 @@ if (!Number.isFinite(expiry) || expiry <= Date.now()) process.exit(1);
 
 fallback_evidence="$repo_root/release/repository/fallback-channel-test.json"
 require_file "$fallback_evidence"
-require_text "$fallback_evidence" '"address": "security@developwent.io"'
+require_text "$fallback_evidence" '"address": "security@hikyo.app"'
 
 require_text "$repo_root/SUPPORT.md" 'Hikyo supports exactly one version: the latest patch release of the latest minor'
 require_text "$repo_root/SUPPORT.md" 'end-of-life on the same day a new minor is released'
@@ -211,7 +211,7 @@ cmp "$touch_icon" "$site_root/apple-touch-icon.png" >/dev/null || {
 }
 
 require_text "$site_root/security/index.html" 'The default embargo is 90 days from the report itself.'
-require_text "$site_root/security/index.html" 'security@developwent.io'
+require_text "$site_root/security/index.html" 'security@hikyo.app'
 require_text "$site_root/security/index.html" 'Latest patch release of the latest minor'
 require_text "$site_root/security/index.html" 'All older stable releases'
 require_text "$site_root/support/index.html" 'Hikyo supports exactly one version'

@@ -401,7 +401,7 @@ jobs:
         run: >-
           ./scripts/ci/check-fallback-channel-test.sh
           release/repository/fallback-channel-test.json
-          security@developwent.io
+          security@hikyo.app
       - name: Surface fallback-channel degradation
         if: failure()
         env:

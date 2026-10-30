@@ -9,7 +9,7 @@ trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 cat >"$fixture_dir/passed.json" <<'EOF'
 {
   "schema": "hikyo.dev/fallback-channel-test/v1",
-  "address": "security@developwent.io",
+  "address": "security@hikyo.app",
   "status": "passed",
   "sent_at": "2026-08-01T10:00:00Z",
   "received_at": "2026-08-01T10:05:00Z",
@@ -19,13 +19,24 @@ EOF
 
 HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/passed.json" security@developwent.io
+	"$fixture_dir/passed.json" security@hikyo.app
+
+# A valid receipt for the former mailbox must not qualify the new address.
+sed 's/security@hikyo.app/security@developwent.io/' \
+	"$fixture_dir/passed.json" >"$fixture_dir/mismatched.json"
+if HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
+	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
+	"$fixture_dir/mismatched.json" security@hikyo.app >"$fixture_dir/mismatched.log" 2>&1; then
+	printf 'fallback fixture failed: receipt for a different mailbox was accepted\n' >&2
+	exit 1
+fi
+grep -F 'evidence address does not match fallback address' "$fixture_dir/mismatched.log" >/dev/null
 
 sed 's/"status": "passed"/"status": "pending"/' \
 	"$fixture_dir/passed.json" >"$fixture_dir/pending.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/pending.json" security@developwent.io >/dev/null 2>&1; then
+	"$fixture_dir/pending.json" security@hikyo.app >/dev/null 2>&1; then
 	printf 'fallback fixture failed: pending test was accepted\n' >&2
 	exit 1
 fi
@@ -36,7 +47,7 @@ sed \
 	"$fixture_dir/passed.json" >"$fixture_dir/stale.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/stale.json" security@developwent.io >/dev/null 2>&1; then
+	"$fixture_dir/stale.json" security@hikyo.app >/dev/null 2>&1; then
 	printf 'fallback fixture failed: stale test was accepted\n' >&2
 	exit 1
 fi
@@ -45,7 +56,7 @@ sed 's/2026-08-01T10:05:00Z/2026-08-09T10:01:00Z/' \
 	"$fixture_dir/passed.json" >"$fixture_dir/late.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/late.json" security@developwent.io >/dev/null 2>&1; then
+	"$fixture_dir/late.json" security@hikyo.app >/dev/null 2>&1; then
 	printf 'fallback fixture failed: receipt outside acknowledgement window was accepted\n' >&2
 	exit 1
 fi
@@ -54,10 +65,10 @@ fi
 # time as well as the date so a calendar-day calculation cannot extend custody.
 HIKYO_FALLBACK_TEST_NOW=2026-11-02T10:05:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/passed.json" security@developwent.io
+	"$fixture_dir/passed.json" security@hikyo.app
 if HIKYO_FALLBACK_TEST_NOW=2026-11-02T10:05:01Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
-	"$fixture_dir/passed.json" security@developwent.io >"$fixture_dir/stale-boundary.log" 2>&1; then
+	"$fixture_dir/passed.json" security@hikyo.app >"$fixture_dir/stale-boundary.log" 2>&1; then
 	printf 'fallback fixture failed: receipt older than 93 days was accepted\n' >&2
 	exit 1
 fi
