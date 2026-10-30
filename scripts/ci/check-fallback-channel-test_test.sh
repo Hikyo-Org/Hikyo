@@ -21,6 +21,17 @@ HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
 	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
 	"$fixture_dir/passed.json" security@hikyo.app
 
+# A valid receipt for the former mailbox must not qualify the new address.
+sed 's/security@hikyo.app/security@developwent.io/' \
+	"$fixture_dir/passed.json" >"$fixture_dir/mismatched.json"
+if HIKYO_FALLBACK_TEST_NOW=2026-08-09T00:00:00Z \
+	"$repo_root/scripts/ci/check-fallback-channel-test.sh" \
+	"$fixture_dir/mismatched.json" security@hikyo.app >"$fixture_dir/mismatched.log" 2>&1; then
+	printf 'fallback fixture failed: receipt for a different mailbox was accepted\n' >&2
+	exit 1
+fi
+grep -F 'evidence address does not match fallback address' "$fixture_dir/mismatched.log" >/dev/null
+
 sed 's/"status": "passed"/"status": "pending"/' \
 	"$fixture_dir/passed.json" >"$fixture_dir/pending.json"
 if HIKYO_FALLBACK_TEST_NOW=2026-08-10T00:00:00Z \
