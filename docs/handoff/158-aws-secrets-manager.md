@@ -15,6 +15,38 @@ the §4.1 row) with a banner on `docs/adr/deployment-adapter.md`; the
 owner-approved review disposition below now governs both AWS portions.
 Historical cross-provider SKIP remains; no additional formal pass is required.
 
+## Merge queue repair, 2026-10-30
+
+Merge-group run 41119940247, attempt 1, tested
+`b08f85d20eb6ba1f7c3ca260b01a72b236353376`: base
+`142b0916e3479d4a6e40e1e1602d23cdf197a2ae` and PR head
+`5ef53b13cc92b33f6c281afe80dc461ccf45f3d6`. The run failed: 43 of 48
+jobs passed; three leaf jobs and two aggregate/proof jobs failed.
+
+- Preflight reported the missing explicit `v4` signer import alias in
+  `internal/adapter/awssm/awssmtest/server_test.go`. The pinned repository
+  goimports check reproduces it; the alias is restored without behavior changes.
+- Isolation shard 0 and web-go failed during Go cache restoration, before their
+  test steps started. Both job annotations report runner disk exhaustion;
+  their log downloads return BlobNotFound. Passing sibling jobs restored the
+  same approximately 1.9 GiB compressed compiler archive. These failures do not
+  establish failing isolation or transport tests.
+- Every shared compiler-cache consumer now reserves 20 GiB on the actual Go
+  cache filesystem before restoration. Only disposable GitHub-hosted Linux
+  runners may reclaim the two fixed, unused Android/.NET SDK directories.
+  Go/Node toolchains, Actions caches, Docker resources, source and artifacts
+  are preserved. Insufficient capacity or failed measurement/deletion refuses
+  the job. No existing test, runner, cache key/authority or job deadline changes.
+- Offline fixtures cover the hosted-runner boundary, capacity/no-op threshold,
+  actual cache-filesystem selection, exact cleanup paths and permanent failures.
+  Workflow mutation checks require the exact unconditional preparation before
+  all eight shared-cache restores. The frozen coverage baseline remains intact;
+  only this exact additive preparation is normalized after validation.
+
+Hosted execution of the repaired candidate and a new current-base full-suite
+merge group remain required. The failed run remains failed. No live AWS run,
+credential change, provisioning, spending, release or deployment is authorized.
+
 ## Current merge disposition, 2026-10-30
 
 The owner explicitly directed PR #969 to be merged, remaining issues repaired,

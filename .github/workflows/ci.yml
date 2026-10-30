@@ -288,6 +288,10 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - &prepare-go-cache-disk
+        name: Reserve disk for shared Go cache restore
+        timeout-minutes: 3
+        run: ./scripts/ci/prepare-go-cache-disk.sh
       - name: Restore shared test Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -458,6 +462,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore app-build Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -794,6 +799,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore shared test Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -859,6 +865,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore shared test Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1204,6 +1211,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore web Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1394,6 +1402,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore test Go cache
         id: test-go-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1690,6 +1699,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore test Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -2010,6 +2020,7 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      - *prepare-go-cache-disk
       - name: Restore test Go cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
