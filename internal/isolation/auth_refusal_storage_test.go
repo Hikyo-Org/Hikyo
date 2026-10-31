@@ -372,27 +372,36 @@ func TestRequestRefusalUnavailableDatabaseKeepsEarlyRefusal(t *testing.T) {
 	})
 }
 
+// holdRefusalWriter holds the real engine writer until explicit release or
+// test cleanup; both release paths share exactly one rollback owner.
+func holdRefusalWriter(t *testing.T, db *store.DB) func() {
+	t.Helper()
+	var rollback func()
+	if db.Engine() == store.EngineSQLite {
+		held, err := db.BeginSQLite(t.Context(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rollback = func() { _ = held.Rollback() }
+	} else {
+		held, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := held.Exec(t.Context(), "SELECT id FROM auth_refusal_window WHERE id=1 FOR UPDATE"); err != nil {
+			_ = held.Rollback(t.Context())
+			t.Fatal(err)
+		}
+		rollback = func() { _ = held.Rollback(t.Context()) }
+	}
+	release := sync.OnceFunc(rollback)
+	t.Cleanup(release)
+	return release
+}
+
 func TestRequestRefusalBlockedDatastoreHonorsDeadline(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
-		var release func()
-		if db.Engine() == store.EngineSQLite {
-			held, err := db.BeginSQLite(t.Context(), false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			release = func() { _ = held.Rollback() }
-		} else {
-			held, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			release = func() { _ = held.Rollback(t.Context()) }
-			defer release()
-			if _, err := held.Exec(t.Context(), "SELECT id FROM auth_refusal_window WHERE id=1 FOR UPDATE"); err != nil {
-				t.Fatal(err)
-			}
-		}
-		defer release()
+		release := holdRefusalWriter(t, db)
 		signals := service.NewRefusalSignals(db)
 		start := time.Now()
 		err := signals.Record(t.Context(), refusalStorageSample(t))

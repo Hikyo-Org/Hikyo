@@ -61,6 +61,8 @@ rejected that same mutation on both engines with the sealed total unchanged.
 The mutation is retained as evidence and removed from committed source. The
 review also prompted one shared accounting snapshot owner, preserving each
 caller's aggregate or stage-specific bounds and the PostgreSQL settlement fence.
+The wire negative control and blocked-datastore deadline fixture also share one
+held-writer owner, with exactly-once explicit release and test cleanup.
 
 ## Focused verification
 

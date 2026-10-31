@@ -222,7 +222,7 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 		var accepted, failures int64
 		var releaseWriter func()
 		if blockFirst {
-			releaseWriter = holdRefusalWireWriter(t, db)
+			releaseWriter = holdRefusalWriter(t, db)
 		}
 		for i := 0; i < 96; i++ {
 			resultBefore := len(recorder.results)
