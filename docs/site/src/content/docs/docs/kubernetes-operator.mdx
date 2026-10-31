@@ -26,15 +26,26 @@ operator access to the protected instance project.
 
 ## Install the operator
 
-Generate the root key and create both required server Secrets first:
+For a **fresh server installation**, start with the
+[singleton PostgreSQL runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md)
+and [artifact/topology matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
+That complete example keeps the delivery controller disabled until the server
+works. The setup below instead shows the manual server-plus-delivery-operator
+shape; the delivery operator does not manage server releases.
+
+Generate the root key once and create both required server Secrets first.
+Prepare a private `database-dsn` file containing the PostgreSQL DSN, with
+`sslmode=verify-full`; its value must not appear in argv or chart values:
 
 ```bash
+umask 077
+test ! -e root-key
 openssl rand -hex 32 > root-key
 kubectl create namespace hikyo
 kubectl --namespace hikyo create secret generic hikyo-root-key \
   --from-file=root-key=./root-key
 kubectl --namespace hikyo create secret generic hikyo-database \
-  --from-literal=HIKYO_DB='postgres://hikyo:password@postgres.example.com/hikyo?sslmode=verify-full'
+  --from-file=HIKYO_DB=./database-dsn
 kubectl --namespace hikyo create secret tls hikyo-server-tls \
   --cert=./tls.crt \
   --key=./tls.key

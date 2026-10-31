@@ -24,6 +24,13 @@ treat a development build or a nightly as a supported production release.
 | Upgrade an existing instance | [Upgrades](/docs/upgrades/) | Pre-migration export and verified rollout |
 | Enroll a new container deployment for unattended updates | [Container upgrades](/docs/container-upgrades/) | Explicit opt-in, persistent encrypted custody and verified scratch restore |
 
+For a consolidated artifact/topology inventory, use the
+[deployment support matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
+For a new singleton Kubernetes/PostgreSQL installation, follow the
+[complete first-install runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md).
+It distinguishes chart publication from source availability and keeps existing
+manual installations on their separate upgrade path.
+
 <Callout type="info" title="Stable release installers are not published yet">
   The repository contains the signed-release pipeline, installer template,
   OCI image, and Helm chart. Those become stable installation options only

@@ -975,8 +975,25 @@ jobs:
         with:
           cosign-release: v3.1.3
       - name: Verify payloads, smoke, sign and promote current nightly
+        id: verified-image
         env:
           IMAGE: ${{ steps.inputs.outputs.image }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest || steps.existing.outputs.digest }}
           IMAGE_BUILT: ${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}
         run: ./scripts/release/nightly-image.sh promote
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.3
+      - name: Prepare chart inspection dependency
+        run: |
+          python3 -m venv "$RUNNER_TEMP/nightly-chart-python"
+          "$RUNNER_TEMP/nightly-chart-python/bin/python" -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
+          printf '%s\n' "$RUNNER_TEMP/nightly-chart-python/bin" >>"$GITHUB_PATH"
+      - name: Authenticate Helm publication
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Publish and verify immutable nightly Helm chart
+        env:
+          IMAGE_DIGEST: ${{ steps.verified-image.outputs.digest }}
+        run: ./scripts/release/nightly-chart.sh

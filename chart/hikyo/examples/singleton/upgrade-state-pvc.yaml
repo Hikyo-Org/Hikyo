@@ -1,0 +1,13 @@
+# Select and qualify your cluster's default StorageClass before applying.
+# Provisioning this claim does not initialize the required custody permissions.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hikyo-upgrade-state
+  namespace: hikyo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

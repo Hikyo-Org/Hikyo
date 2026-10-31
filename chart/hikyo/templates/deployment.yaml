@@ -149,6 +149,8 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            - name: HIKYO_ROOT_KEY_FILE
+              value: /run/hikyo-root-key/root-key
             {{- if .Values.database.storageMonitoring.enabled }}
             - name: HIKYO_PG_STORAGE_KUBELET_URL
               value: {{ .Values.database.storageMonitoring.kubeletURL | quote }}

@@ -175,6 +175,59 @@ existing release identity. Existing version images are checked and reused, never
 overwritten. An older release cannot move `:nightly` backward. A registry or
 verification failure leaves the moving tag unchanged.
 
+## Nightly Helm charts
+
+The container job also packages `chart/hikyo` after authenticating the canonical
+nightly image. This mechanism does not retroactively add charts to old releases.
+Use an exact version from a successful chart publication, never infer package
+availability from the existence of a GitHub archive release.
+
+The OCI chart is `ghcr.io/hikyo-org/charts/hikyo`. Its version and `appVersion`
+match the nightly release; packaged defaults pin the verified image digest and
+select the nightly notification channel. Chart metadata records the full source
+revision. Chart and image digest signatures use the same main-workflow OIDC
+identity and source-commit constraint. Charts remain outside the closed
+`nightly/v1` archive inventory and do not replace runtime release admission.
+
+The publisher renders and checks the chart, pushes only after a conclusive
+absence result, compares every packaged file on immutable readback, signs the
+new digest and verifies its signature. A rerun reuses an already signed chart
+only when every file matches the package prepared from the same source and
+image. It never overwrites or re-signs a conflicting or unsigned existing chart.
+An upload interrupted before signing requires operator investigation; rerunning
+does not grant that upload signing authority.
+
+Finally, an isolated client with empty Helm and Docker credential files pulls
+the exact version and checks its digest and contents. Both chart and image
+signatures must also be retrievable without those credentials. A private
+package or unreadable registry fails this step. An organization package owner
+must establish the intended public visibility and repository access in package
+settings before retrying; this script does not change organization policy or
+mistake an authorization failure for an absent version. The 31 October initial
+anonymous inspection returned HTTP 403, so public chart availability remains
+unverified until a successful publication and clean-client retrieval.
+
+Copy the exact chart digest, image digest, version and source commit from the
+successful workflow summary. Verify the chart with the same flags shown above,
+including `--certificate-github-workflow-sha` for the selected full source SHA,
+then pull by digest:
+
+```sh
+cosign verify \
+  --certificate-identity='https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --certificate-github-workflow-sha="$HIKYO_SOURCE_COMMIT" \
+  "ghcr.io/hikyo-org/charts/hikyo@$HIKYO_CHART_DIGEST"
+helm pull "oci://ghcr.io/hikyo-org/charts/hikyo@$HIKYO_CHART_DIGEST" \
+  --destination "$HIKYO_RELEASE_DIR"
+```
+
+The [deployment matrix](deployment-support.md) records support boundaries. The
+[fresh singleton Kubernetes runbook](kubernetes-singleton.md) supplies the
+Secret, persistent-storage, TLS, administrator and recovery steps. Multi-node
+HA still requires the existing manual full-stop migration procedure; this
+publisher adds no cluster deployment credential or automatic GitOps updater.
+
 ## Revoke one published nightly
 
 Every nightly bundles the policy it was built under, and a GitHub release is
