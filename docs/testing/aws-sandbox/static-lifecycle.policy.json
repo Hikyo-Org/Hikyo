@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RestoreLifecycleFixture",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:RestoreSecret"
+      ],
+      "Resource": "${WRITER_SECRET_ARN_PATTERN}",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    },
+    {
+      "Sid": "ListRegionalMetadata",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "${REGION}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    }
+  ]
+}

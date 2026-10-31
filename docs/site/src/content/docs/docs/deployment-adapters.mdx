@@ -445,7 +445,9 @@ must be valid UTF-8 without NUL; per-key values must be non-empty and at most
 ### Authentication
 
 The adapter credential is a JSON access descriptor that is sealed on save and
-never returned. The CLI and the web form assemble it; the API takes it as the
+never returned. The CLI assembles workload descriptors from nonsecret flags or
+reads a complete descriptor through protected input. The web form assembles it;
+the API takes it as the
 `credential` string.
 
 | Mode | Uses | Secret material |
@@ -453,7 +455,7 @@ never returned. The CLI and the web form assemble it; the API takes it as the
 | `assume-role` | The node's AWS identity assumes `role_arn` (optional `external_id`, `session_seconds` 900 to 3600). | None |
 | `web-identity` | The node's projected token (`AWS_WEB_IDENTITY_TOKEN_FILE`, as on EKS with IRSA) assumes `role_arn`. The descriptor cannot name a token file. | None |
 | `ambient` | The node's default AWS credential chain (environment, ECS task role, EC2 instance role). | None |
-| `static` | An access key id and secret access key. | The secret access key |
+| `static` | An access key id, secret access key, and optional session token. | The complete credential tuple uses protected input only |
 
 `ambient`, `assume-role`, and `web-identity` act with the server's own AWS
 identity, so they are refused until the node operator sets
@@ -470,10 +472,17 @@ hikyo adapter create --provider aws-secrets-manager \
   --aws-external-id hikyo-prod --names DATABASE_URL,API_TOKEN
 ```
 
-For `--aws-auth static`, pass `--aws-access-key-id`; the secret access key is
-read like any adapter credential (no-echo prompt, `--stdin`, or
-`--value-file`). `--aws-*` flags also apply to `hikyo adapter update --origin`
-and `hikyo adapter credential set`.
+For static authentication, supply the complete one-line JSON descriptor through
+the no-echo prompt, `--stdin`, or an owner-only `--value-file`. It must include
+`mode: static`, `access_key_id`, `secret_access_key`, optional `session_token`
+for temporary credentials, and any `region` or `sts_origin` settings. Do not use
+`--aws-*` flags with descriptor input. The former identifier/static flag form is
+refused before reading credentials or making HTTP requests.
+
+Nonsecret `--aws-*` flags remain available for ambient, AssumeRole, and
+WebIdentity on `hikyo adapter create`, `hikyo adapter update --origin`, and
+`hikyo adapter credential set`. Complete protected descriptors also work for
+these commands and explicit origin-move resume; no credentials are read back.
 
 The IAM policy needs, on the target secret ARNs:
 `secretsmanager:DescribeSecret`, `CreateSecret`, `PutSecretValue`,

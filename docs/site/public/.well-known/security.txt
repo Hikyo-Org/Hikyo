@@ -1,5 +1,5 @@
 Contact: https://github.com/Hikyo-Org/Hikyo/security/advisories/new
-Contact: mailto:security@developwent.io
+Contact: mailto:security@hikyo.app
 Expires: 2027-08-09T00:00:00Z
 Preferred-Languages: en
 Canonical: https://hikyo.app/.well-known/security.txt

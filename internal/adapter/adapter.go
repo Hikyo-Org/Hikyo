@@ -175,6 +175,9 @@ type LedgerEntry struct {
 	// AdoptionVersion is the non-secret provider version observed by the fresh
 	// plan artifact, never a value hash or a guessed write outcome.
 	AdoptionVersion *int64
+	// AdoptionWitness binds AWS consent to the complete resource and current version.
+	// It is canonical metadata, never plaintext or a value hash.
+	AdoptionWitness string
 }
 
 type Disposition string
@@ -194,6 +197,7 @@ type Change struct {
 	// ObservedProviderVersion remains internal to plan/adoption custody. The
 	// public API still carries only the opaque plan artifact and name selection.
 	ObservedProviderVersion *int64
+	ObservedProviderWitness string `json:"-"`
 }
 
 type PlanRequest struct {

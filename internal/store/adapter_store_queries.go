@@ -484,7 +484,7 @@ func (q sqliteAdapterStoreQueries) planLedger(ctx context.Context, chain domain.
 		return nil, err
 	}
 	return mapRows(rows, func(c sqlitegen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing != 0, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid), AdoptionWitness: c.AdoptionWitness}, nil
 	})
 }
 func (q sqliteAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
@@ -520,7 +520,7 @@ func (q sqliteAdapterStoreQueries) planTarget(ctx context.Context, chain domain.
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q sqliteAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: adapterOptionalVersion(entry.ObservedProviderVersion), CreatedAt: fixedStamp(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, sqlitegen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: adapterOptionalVersion(entry.ObservedProviderVersion), ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: fixedStamp(at)}))
 }
 
 func (q pgAdapterStoreQueries) mapping(ctx context.Context, chain domain.Scope, targetID string) ([]adapter.ManifestEntry, error) {
@@ -553,7 +553,7 @@ func (q pgAdapterStoreQueries) planLedger(ctx context.Context, chain domain.Scop
 		return nil, err
 	}
 	return mapRows(rows, func(c pggen.AdapterPlanLedgerRow) (adapter.LedgerEntry, error) {
-		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid)}, nil
+		return adapter.LedgerEntry{Surface: adapter.Surface(c.Surface), EffectiveName: c.EffectiveName, State: adapter.LedgerState(c.State), Missing: c.Missing, AdoptionPending: c.AdoptionPending != 0, AdoptionVersion: adapterVersionWitness(c.AdoptionVersion.Int64, c.AdoptionVersion.Valid), AdoptionWitness: c.AdoptionWitness}, nil
 	})
 }
 func (q pgAdapterStoreQueries) targetEnvironments(ctx context.Context, chain domain.Scope, targetID string) ([]string, error) {
@@ -589,7 +589,7 @@ func (q pgAdapterStoreQueries) planTarget(ctx context.Context, chain domain.Scop
 	return adapterPlanTarget{environmentID: c.EnvironmentID, destinationID: c.DestinationID, repositoryID: c.RepositoryID, generation: c.Generation}, err
 }
 func (q pgAdapterStoreQueries) insertConflict(ctx context.Context, chain domain.Scope, id, artifactID, envID, targetID string, destinationID, repositoryID, generation int64, entry AdapterConflictEntry, at time.Time) (int64, error) {
-	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: pgtype.Int8{Int64: adapterOptionalVersion(entry.ObservedProviderVersion).Int64, Valid: adapterOptionalVersion(entry.ObservedProviderVersion).Valid}, CreatedAt: pgRequiredTime(at)}))
+	return adapterAffected(q.queries.AdapterInsertConflict(ctx, pggen.AdapterInsertConflictParams{ID: id, ArtifactID: artifactID, ChainOrg: string(chain.Org), ChainProject: string(chain.Project), EnvironmentID: envID, TargetID: targetID, DestinationID: destinationID, RepositoryID: repositoryID, TargetGeneration: generation, Surface: entry.Surface, EffectiveName: entry.EffectiveName, ObservedProviderVersion: pgtype.Int8{Int64: adapterOptionalVersion(entry.ObservedProviderVersion).Int64, Valid: adapterOptionalVersion(entry.ObservedProviderVersion).Valid}, ObservedProviderWitness: entry.ObservedProviderWitness, CreatedAt: pgRequiredTime(at)}))
 }
 
 func adapterAffected(rows int64, err error) (int64, error) { return rows, constraint(err) }

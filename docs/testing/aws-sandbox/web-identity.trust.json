@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "${OIDC_PROVIDER_ARN}"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "${OIDC_ISSUER}:aud": "${OIDC_AUDIENCE}",
+          "${OIDC_ISSUER}:sub": "${OIDC_SUBJECT}"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "${AUTH_EXPIRES_AT}"
+        }
+      }
+    }
+  ]
+}

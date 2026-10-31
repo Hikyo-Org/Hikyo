@@ -20,7 +20,7 @@ func seedOriginAdoptionPeer(t *testing.T, db *store.DB, provider, currentOrigin,
 	execAdapter(t, db, fmt.Sprintf(`UPDATE adapters SET provider='%s',origin='%s' WHERE id='adp_1'`, provider, currentOrigin))
 	if aws {
 		execAdapter(t, db, `UPDATE adapter_targets SET destination_kind='json-object',destination_owner='123456789012',destination_name='TOKEN',destination_id=123456789012 WHERE id='tgt_1'`)
-		execAdapter(t, db, `UPDATE adapter_conflicts SET destination_id=123456789012 WHERE target_id='tgt_1'`)
+		execAdapter(t, db, `UPDATE adapter_conflicts SET destination_id=123456789012,observed_provider_witness='["arn:aws:secretsmanager:us-east-1:123456789012:secret:TOKEN-abcdef","reviewed-version"]' WHERE target_id='tgt_1'`)
 	}
 	execAdapter(t, db, fmt.Sprintf(`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_peer','org_adopt','prj_adopt','%s','%s','usr_adopt','active','2026-08-17T00:00:00Z')`, foreignProvider, foreignOrigin))
 	execAdapter(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,destination_scope,name_prefix,generation,state,sync_status,created_at) SELECT 'tgt_peer',org_id,project_id,environment_id,'adp_peer',destination_kind,destination_owner,destination_name,destination_id,'','',1,'active','never',created_at FROM adapter_targets WHERE id='tgt_1'`)
@@ -136,7 +136,7 @@ func runConcurrentAWSOriginAdoption(t *testing.T, engine store.Engine) {
 		if err != nil {
 			return err
 		}
-		return repos.Adapters().RecordPlan(ctx, p, "tgt_peer", "plan_peer", 1, 0, 123456789012, []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN"}}, time.Now().UTC())
+		return repos.Adapters().RecordPlan(ctx, p, "tgt_peer", "plan_peer", 1, 0, 123456789012, []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN", ObservedProviderWitness: `["arn:aws:secretsmanager:us-east-1:123456789012:secret:TOKEN-abcdef","reviewed-version"]`}}, time.Now().UTC())
 	}); err != nil {
 		t.Fatal(err)
 	}

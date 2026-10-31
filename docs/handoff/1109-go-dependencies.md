@@ -72,6 +72,11 @@ Run `41145320403`, attempt 1, reached release-snapshot with no compiler cache
 and four simultaneous target builds. That job exhausted disk space while
 writing temporary compiler archives. Snapshot validation now limits GoReleaser
 to two concurrent targets and sets `GOMAXPROCS=2` for each inheriting Go process.
+It also reuses main's guarded disk preparation immediately before restoring
+the snapshot compiler cache. That existing helper requires 20 GiB available
+on a disposable GitHub-hosted Linux runner, reclaims only unused Android/.NET
+SDK directories if needed, and fails if capacity remains insufficient.
+Its ordering, exact command/deadline and refusal fixtures now cover snapshots.
 All six targets, archive/package checks, image smoke and publication guards
 remain selected. This addresses concurrent temporary storage pressure; actual
 hosted completion is still required to prove the runner has sufficient space.

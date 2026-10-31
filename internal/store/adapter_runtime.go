@@ -149,7 +149,7 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 			return AdapterExecution{}, err
 		}
 		for _, entry := range ledger {
-			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing, AdoptionPending: entry.AdoptionPending, AdoptionVersion: entry.AdoptionVersion})
+			out.Ledger = append(out.Ledger, adapter.LedgerEntry{Surface: adapter.Surface(entry.Surface), EffectiveName: entry.EffectiveName, State: adapter.LedgerState(entry.State), Missing: entry.Missing, AdoptionPending: entry.AdoptionPending, AdoptionVersion: entry.AdoptionVersion, AdoptionWitness: entry.AdoptionWitness})
 		}
 		if job.Kind == adapter.Scrub {
 			return out, nil

@@ -166,6 +166,13 @@ func normalizeTargetInput(provider string, input *AdapterTargetInput) error {
 	if input.DestinationScope != "" || input.VariableProtected || input.VariableHidden || input.VariableExpand {
 		return fmt.Errorf("%w: environment scope and variable flags apply only to GitLab targets", domain.ErrInvalid)
 	}
+	if provider == string(adapter.AWSSecretsManagerProvider) {
+		if err := adapter.ValidateAWSSecretsManagerDestination(adapterDestination(*input)); err != nil {
+			// This validator uses only fixed wording and caller-supplied routing,
+			// never a provider response or credential descriptor.
+			return invalidDetail("%s", err)
+		}
+	}
 	return nil
 }
 
@@ -1853,7 +1860,7 @@ func (s *Adapters) Plan(ctx context.Context, actor Actor, scope domain.Scope, ta
 		for _, change := range plan.Changes {
 			changes = append(changes, string(change.Surface)+":"+change.EffectiveName+":"+string(change.Disposition))
 			if change.Disposition == adapter.Conflict {
-				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName, ObservedProviderVersion: change.ObservedProviderVersion})
+				conflicts = append(conflicts, store.AdapterConflictEntry{Surface: string(change.Surface), EffectiveName: change.EffectiveName, ObservedProviderVersion: change.ObservedProviderVersion, ObservedProviderWitness: change.ObservedProviderWitness})
 			}
 		}
 		if len(conflicts) != 0 {
