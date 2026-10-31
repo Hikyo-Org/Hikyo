@@ -1,9 +1,9 @@
 {
   "schema": "hikyo.dev/fallback-channel-test/v1",
   "address": "security@hikyo.app",
-  "status": "pending",
-  "sent_at": null,
-  "received_at": null,
-  "message_id_sha256": null,
-  "note": "Canonical fallback contact migrated to security@hikyo.app. New-address intake is owner-reported only; actual transport and acknowledgment evidence remains pending. Historical August metadata is preserved separately and does not qualify this address."
+  "status": "passed",
+  "sent_at": "2026-10-28T13:53:35Z",
+  "received_at": "2026-10-28T13:53:47Z",
+  "message_id_sha256": "82be0c88124869b240f8286c7f868b347de0d252fd86d3cbd4a0784cea3df2c1",
+  "note": "Externally sent October 28 test received through security@hikyo.app; send and receipt times and the Message-ID hash were recovered from original mailbox headers. Original records remain protected. This record covers fallback delivery, not separate private-report or external acknowledgment-receipt acceptance."
 }
