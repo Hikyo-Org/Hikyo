@@ -12,7 +12,11 @@ import (
 
 func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 	type step struct {
-		Run string `yaml:"run"`
+		ID   string            `yaml:"id"`
+		Run  string            `yaml:"run"`
+		If   string            `yaml:"if"`
+		Uses string            `yaml:"uses"`
+		With map[string]string `yaml:"with"`
 	}
 	type job struct {
 		If          string            `yaml:"if"`
@@ -45,6 +49,25 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 	}
 	if _, ok := build.On["push"]; !ok {
 		t.Fatal("stable signing push trigger is missing")
+	}
+	var source, evidence *step
+	for i := range build.Jobs["build-artifacts"].Steps {
+		candidate := &build.Jobs["build-artifacts"].Steps[i]
+		if candidate.ID == "release-source" {
+			source = candidate
+		}
+		if candidate.With["name"] == "release-source-tests-${{ github.run_id }}-${{ github.run_attempt }}" {
+			evidence = candidate
+		}
+	}
+	if source == nil || !strings.Contains(source.Run, "createdb -U hikyo hikyo_release_tests") ||
+		!strings.Contains(source.Run, "./scripts/release/test-source.sh") || strings.Contains(source.Run, "go test ./...") {
+		t.Fatal("release source must preserve its dedicated database and use complete prepared partitions")
+	}
+	if evidence == nil || evidence.If != "${{ always() && steps.release-source.outcome != 'skipped' }}" ||
+		!strings.HasPrefix(evidence.Uses, "actions/upload-artifact@") || evidence.With["if-no-files-found"] != "error" ||
+		evidence.With["path"] != "${{ runner.temp }}/release-source-tests/" {
+		t.Fatal("release source inventories and group results must survive failed test runs")
 	}
 	signer := build.Jobs["build-signed-draft"]
 	if signer.Permissions["id-token"] != "write" {
