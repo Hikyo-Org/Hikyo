@@ -419,11 +419,12 @@ chart_values=(
 	--set externalOrigin=https://localhost:18080
 )
 
-# Retained broken-shape fixture: removing the root-key file argument recreates
+# Retained broken-shape fixture: removing both root-key file inputs recreates
 # the pre-#200 chart boot failure. The real cluster must refuse readiness and
 # logs must name the missing source before the fixed chart is installed.
 cp -R chart/hikyo "$work/broken-chart"
-sed '/--root-key-file=\/run\/hikyo-root-key\/root-key/d' \
+sed -e '/--root-key-file=\/run\/hikyo-root-key\/root-key/d' \
+	-e '/- name: HIKYO_ROOT_KEY_FILE/,+1d' \
 	"$work/broken-chart/templates/deployment.yaml" >"$work/broken-deployment.yaml"
 mv "$work/broken-deployment.yaml" "$work/broken-chart/templates/deployment.yaml"
 helm install broken "$work/broken-chart" --namespace "$NAMESPACE" "${chart_values[@]}" >/dev/null
@@ -505,43 +506,23 @@ for path in readyz healthz; do
 done
 
 # Bootstrap actual chart authority through the supported local-admin command.
-# Reuse the candidate image, datastore, and protected mounts in short-lived
-# Jobs. admin takes the existing root source through a Secret reference; no
-# root value or establishment authority appears in command arguments or logs.
+# Exercise the documented exec flow with the server's own environment and
+# protected mounts. No shell, injected root value, or separate Job is needed.
+# The establishment authority is written only to the private custody volume.
 doctor_private="$work/doctor-private"
 mkdir -m 0700 "$doctor_private"
-kubectl --namespace "$NAMESPACE" get deployment "$RELEASE-hikyo" -o json >"$work/doctor-deployment.json"
-chart_admin() {
-	local name=$1 args=$2
-	jq --arg name "$name" --arg namespace "$NAMESPACE" --argjson args "$args" '
-		.spec.template as $template |
-		{apiVersion:"batch/v1",kind:"Job",metadata:{name:$name,namespace:$namespace},
-		 spec:{backoffLimit:0,activeDeadlineSeconds:90,template:($template |
-			.metadata={labels:{app:"hikyo-chart-doctor"}} |
-			.spec.restartPolicy="Never" |
-			del(.spec.initContainers) |
-			.spec.containers |= map(select(.name=="server") |
-				.args=$args |
-				.env += [{name:"HIKYO_ROOT_KEY",valueFrom:{secretKeyRef:{name:"hikyo-root-key",key:"root-key"}}}] |
-				del(.ports,.livenessProbe,.readinessProbe,.startupProbe)))}}
-	' "$work/doctor-deployment.json" >"$work/$name.json"
-	kubectl apply --filename "$work/$name.json" >/dev/null
-	if ! kubectl --namespace "$NAMESPACE" wait --for=condition=Complete "job/$name" --timeout=100s >/dev/null; then
-		kubectl --namespace "$NAMESPACE" logs "job/$name" >"$doctor_private/$name.log" 2>&1 || true
-		echo "chart-kind: supported admin bootstrap job $name failed" >&2
-		return 1
-	fi
-	kubectl --namespace "$NAMESPACE" logs "job/$name" >"$doctor_private/$name.log" 2>&1
-}
-chart_admin chart-doctor-create \
-	'["admin","create","--username","chart-doctor","--display-name","Chart Doctor","--output-file","/var/lib/hikyo-upgrade/operator-custody/chart-doctor-authority"]'
+kubectl --namespace "$NAMESPACE" exec "deployment/$RELEASE-hikyo" -c server -- \
+	/usr/local/bin/hikyo admin create --username chart-doctor --display-name 'Chart Doctor' \
+	--output-file /var/lib/hikyo-upgrade/operator-custody/chart-doctor-authority \
+	>"$doctor_private/chart-doctor-create.log" 2>&1
 doctor_principal=$(sed -n 's/.*principal \([^)]*\)).*/\1/p' "$doctor_private/chart-doctor-create.log")
 if [[ -z "$doctor_principal" ]]; then
 	echo 'chart-kind: admin bootstrap did not report a principal' >&2
 	exit 1
 fi
-chart_admin chart-doctor-grant "$(jq -cn --arg principal "$doctor_principal" \
-	'["admin","grant","--principal",$principal,"--capability","instance-config"]')"
+kubectl --namespace "$NAMESPACE" exec "deployment/$RELEASE-hikyo" -c server -- \
+	/usr/local/bin/hikyo admin grant --principal "$doctor_principal" --capability instance-config \
+	>"$doctor_private/chart-doctor-grant.log" 2>&1
 # The authority was written 0600 into this run's owned node-backed private
 # custody directory. Copy it privately; the distroless image needs no shell.
 doctor_node=$(kind get nodes --name "$CLUSTER")

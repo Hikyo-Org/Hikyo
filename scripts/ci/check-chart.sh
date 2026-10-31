@@ -490,6 +490,7 @@ def assert_server_network(docs, mode, tls):
     env_names = {e["name"] for e in server.get("env", [])}
     env = {e["name"]: e.get("value") for e in server.get("env", [])}
     for name, path in {
+        "HIKYO_ROOT_KEY_FILE": "/run/hikyo-root-key/root-key",
         "HIKYO_UPGRADE_BUNDLE": "/run/hikyo-upgrade/bundle",
         "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY": "/run/hikyo-upgrade/operator.pub",
         "HIKYO_UPGRADE_STATE_DIR": "/var/lib/hikyo-upgrade/operator-custody",

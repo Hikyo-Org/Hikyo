@@ -134,6 +134,8 @@ for required in \
 	'./scripts/release/nightly-image.sh prepare' \
 	'./scripts/release/nightly-image.sh resolve' \
 	'./scripts/release/nightly-image.sh promote' \
+	'./scripts/release/nightly-chart.sh' \
+	'IMAGE_DIGEST: ${{ steps.verified-image.outputs.digest }}' \
 	"IMAGE_BUILT: \${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}" \
 	'file: Dockerfile.release' \
 	'platforms: linux/amd64,linux/arm64' \
@@ -147,6 +149,8 @@ if sed -n '1,/^  container:/p' "$workflow" | grep -F 'packages: write' >/dev/nul
 	fail 'package write permission escapes the container job'
 fi
 "$repo_root/scripts/release/nightly-image_test.sh"
+"$repo_root/scripts/release/nightly-chart_test.sh"
+python3 -I -B -m unittest discover -s "$repo_root/scripts/release" -p test_nightly_chart.py
 "$repo_root/scripts/release/create-nightly-manifest_test.sh"
 
 "$repo_root/scripts/release/next-nightly-version_test.sh"

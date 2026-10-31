@@ -1,0 +1,43 @@
+# Fresh, empty PostgreSQL installation only. See docs/operations/kubernetes-singleton.md.
+# Select the exact signed chart; its packaged defaults pin the matching image.
+replicaCount: 1
+ha:
+  enabled: false
+rollout:
+  enabled: false
+operator:
+  enabled: false
+
+database:
+  existingSecret: hikyo-database
+rootKey:
+  existingSecret: hikyo-root-key
+  key: root-key
+tls:
+  existingSecret: hikyo-server-tls
+
+externalOrigin: https://hikyo.example.com
+network:
+  trustedProxyCIDRs: []
+  allowPlaintextOrigin: false
+
+upgrade:
+  existingClaim: hikyo-upgrade-public
+  stateExistingClaim: hikyo-upgrade-state
+  evidence: false
+  targetManifestSHA256: ""
+  legacyWritersStopped: false
+  unattended:
+    enabled: false
+
+# Starting requests, not a measured production capacity guarantee. Size for your workload.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Optional image admission requires an installed, qualified Kyverno version.
+# The packaged chart binds nightly keyless verification to its exact source SHA.
+releaseTrust:
+  admissionPolicy:
+    enabled: false
