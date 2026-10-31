@@ -64,6 +64,26 @@ GOMAXPROCS=2 go test -p 2 ./scripts/ci/queue-report -count=1
 GOMAXPROCS=2 go test -race -p 2 ./scripts/ci/queue-report -run '^TestNonTransientReadFailuresAreNotRetried$' -count=100
 ```
 
+## Snapshot resource repair
+
+The next group, `9bc81281d592451fc79d741a7e1f7ea20bbe26fa`, combined main
+`929ce90ff70986ef3482f68acaa51185e0ec6ce7` with head `194c566969b254efe82c9cb871a034c92d301afd`.
+Run `41145320403`, attempt 1, reached release-snapshot with no compiler cache
+and four simultaneous target builds. That job exhausted disk space while
+writing temporary compiler archives. Snapshot validation now limits GoReleaser
+to two concurrent targets and sets `GOMAXPROCS=2` for each inheriting Go process.
+All six targets, archive/package checks, image smoke and publication guards
+remain selected. This addresses concurrent temporary storage pressure; actual
+hosted completion is still required to prove the runner has sufficient space.
+The resource-policy regression test failed before the change and passes after.
+The frozen coverage inventory retains its historical hashes. An exact
+normalization permits only the two resource limits; mutation fixtures still
+reject skipped builds, missing limits, extra environment, conditional or
+fail-open execution, and missing or duplicated build steps. The first local
+owner-suite run caught the inventory mismatch; its affected coverage and
+resource tests were rerun after adding this exact normalization.
+See [GoReleaser's concurrency guidance](https://goreleaser.com/customization/builds/builders/go/).
+
 ## Follow-up
 
 Revisit oasdiff only after the freeze gate independently preserves Hikyo's

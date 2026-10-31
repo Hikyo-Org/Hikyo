@@ -573,10 +573,14 @@ jobs:
         run: ./scripts/ci/build-spa.sh
       - name: GoReleaser configuration and snapshot
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        # Cold compiler caches make each target retain a large temporary
+        # archive graph. Bound both targets and their compiler workers.
+        env:
+          GOMAXPROCS: '2'
         with:
           distribution: goreleaser
           version: v2.17.1
-          args: release --snapshot --clean --skip=publish
+          args: release --snapshot --clean --skip=publish --parallelism=2
       - name: Verify every native package payload
         run: go run ./scripts/release/verify-native-packages.go dist "$(jq -r '.version' dist/metadata.json)"
       - name: Prepare canonical image inputs

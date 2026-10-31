@@ -119,6 +119,9 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := normalizeSharedRaceReuse(workflow.Jobs["race_shard"]); err != nil {
 		return err
 	}
+	if err := normalizeSnapshotConcurrency(workflow.Jobs["release-snapshot"]); err != nil {
+		return err
+	}
 	// The feedback fixtures execute the real documentation checker. Pin its
 	// owner runtime before the fixtures, and normalize only this exact addition.
 	expectedNode := map[string]any{
