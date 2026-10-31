@@ -43,6 +43,8 @@ func expireRefusalWindow(t *testing.T, db *store.DB) {
 	execRaw(t, db, fmt.Sprintf("UPDATE auth_refusal_window SET window_start=%d WHERE id=1", start-60))
 }
 
+// runRefusalAuditLifecycle stages a durable fixture sample and runs the actual
+// recovery sealer so registry closure requires a committed refusal event.
 func runRefusalAuditLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	before := sealedRefusalCount(t, db)
