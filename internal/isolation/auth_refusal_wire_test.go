@@ -3,7 +3,7 @@ package isolation
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,15 +29,27 @@ import (
 // The real refusal producer preserves wire responses and dedicated event
 // ownership while accumulating bounded, correlated summaries on both engines.
 func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
+	runAuthenticationRefusalWireCompatibility(t, false)
+}
+
+// The identical wire, redaction and durable-count checks must also hold when
+// a real writer makes one runtime accounting attempt exceed its budget.
+func TestAuthenticationRefusalWireUnconfirmedAccounting(t *testing.T) {
+	runAuthenticationRefusalWireCompatibility(t, true)
+}
+
+func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
+	t.Helper()
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		identityFixtures(t, db)
 		auth := authService(t, db)
 		metrics := server.NewMetrics(nil)
 		signals := service.NewRefusalSignals(db)
+		recorder := &refusalWireRecorder{signals: signals}
 		metrics.SetRefusalSource(signals)
 		var logs bytes.Buffer
 		handler := server.New(&server.API{
-			Refusals: signals, Auth: auth, Settings: &service.ProjectSettings{DB: db, Auth: auth},
+			Refusals: recorder, Auth: auth, Settings: &service.ProjectSettings{DB: db, Auth: auth},
 			Metrics: metrics, Log: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		}, nil)
 		const settings = api.PathPrefix + "/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings"
@@ -205,27 +217,72 @@ func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
 		}
 		// Flooding changes neither storage shape nor telemetry labels. Each
 		// request gets a new server request id, independent of spoofed input.
-		acceptedBefore := signals.RefusalHealth().Failures
+		_, committedBefore := refusalWireAccounting(t, db)
+		failuresBefore := signals.RefusalHealth().Failures
+		var accepted, failures int64
+		var releaseWriter func()
+		if blockFirst {
+			releaseWriter = holdRefusalWriter(t, db)
+		}
 		for i := 0; i < 96; i++ {
-			request(http.MethodGet, api.PathPrefix+"/auth/whoami", "", false, func(r *http.Request) {
+			resultBefore := len(recorder.results)
+			healthBefore := signals.RefusalHealth()
+			w := request(http.MethodGet, api.PathPrefix+"/auth/whoami", "", false, func(r *http.Request) {
 				r.RemoteAddr = fmt.Sprintf("192.0.2.%d:12345", i+1)
 				r.Header.Set("X-Request-ID", secret)
 			})
+			if releaseWriter != nil && i == 0 {
+				releaseWriter()
+			}
+			if w.Code != http.StatusUnauthorized || w.Body.String() != refusalBody {
+				t.Fatalf("flood refusal %d changed its wire response: %d: %s", i, w.Code, w.Body)
+			}
+			if len(recorder.results) != resultBefore+1 {
+				t.Fatalf("flood refusal %d recorded %d attempts, want exactly one", i, len(recorder.results)-resultBefore)
+			}
+			err := recorder.results[resultBefore]
+			health := signals.RefusalHealth()
+			if err != nil {
+				failures++
+				if health.Healthy || health.Failures != healthBefore.Failures+1 {
+					t.Fatalf("flood refusal %d hid unconfirmed accounting: err=%v health=%+v", i, err, health)
+				}
+			} else {
+				accepted++
+				if !health.Healthy || health.Failures != healthBefore.Failures {
+					t.Fatalf("flood refusal %d misreported acknowledged accounting: %+v", i, health)
+				}
+			}
+			if health.InFlight != 0 || health.Waiting != 0 {
+				t.Fatalf("flood refusal %d retained completed work: %+v", i, health)
+			}
+			if blockFirst && i == 0 {
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("held writer did not exercise the accounting deadline: %v", err)
+				}
+				t.Logf("real held-writer wire refusal returned accounting deadline: %v", err)
+			}
 		}
-		var staged audit.RefusalWindow
-		if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &staged); err != nil {
-			t.Fatal(err)
-		}
+		staged, committed := refusalWireAccounting(t, db)
 		if len(staged.Samples) > audit.RefusalSampleLimit {
 			t.Fatalf("sample count %d", len(staged.Samples))
 		}
-		if signals.RefusalHealth().Failures != acceptedBefore {
-			t.Fatal("serial flood unexpectedly failed accounting")
+		if accepted == 0 || accepted+failures != 96 || signals.RefusalHealth().Failures-failuresBefore != uint64(failures) {
+			t.Fatalf("flood lost progress or failure accounting: accepted=%d failed=%d health=%+v", accepted, failures, signals.RefusalHealth())
 		}
-		start := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id=1")
-		execRaw(t, db, fmt.Sprintf("UPDATE auth_refusal_window SET window_start=%d WHERE id=1", start-60))
-		if err := signals.Seal(t.Context()); err != nil {
-			t.Fatal(err)
+		// A failed COMMIT acknowledgement is unconfirmed, not proof of rollback.
+		// Aggregate committed counts cover acknowledgements without exceeding
+		// attempts; they do not identify each individual request's durable result.
+		if delta := committed - committedBefore; delta < accepted || delta > 96 {
+			t.Fatalf("flood durable count delta %d outside acknowledged/attempted bounds [%d,96]", delta, accepted)
+		}
+		expireRefusalWindow(t, db)
+		waitForRefusalSeal(t, db, signals, committed)
+		// The worker has joined. Verify persisted reset independently of health.
+		recovered, sealed := refusalAccountingSnapshot(t, db)
+		windowStart := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id=1")
+		if windowStart != 0 || !recovered.Empty() || len(recovered.Samples) != 0 || sealed != committed {
+			t.Fatalf("recovery retained staging or changed sealed evidence: start=%d window=%+v sealed=%d want=%d", windowStart, recovered, sealed, committed)
 		}
 		if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.request_refused'"); got < 4 {
 			t.Fatalf("sealed %d stage summaries, need artifact/conflict/proof/csrf", got)
@@ -246,6 +303,9 @@ func TestAuthenticationRefusalWireCompatibility(t *testing.T) {
 		op.ServeHTTP(w, scrape)
 		if w.Code != http.StatusOK {
 			t.Fatalf("metrics capture: %d", w.Code)
+		}
+		if want := fmt.Sprintf("\n%s %d\n", server.MetricRefusalFailures, signals.RefusalHealth().Failures); !strings.Contains(w.Body.String(), want) {
+			t.Fatalf("metrics lost the fixed failure counter: want %q", want)
 		}
 		outputs.Write(w.Body.Bytes())
 		outputs.Write(logs.Bytes())
