@@ -359,10 +359,17 @@ func TestNonTransientReadFailuresAreNotRetried(t *testing.T) {
 	t.Run("cancelled context", func(t *testing.T) {
 		probe := stubRetry(t)
 		ctx, cancel := context.WithCancel(context.Background())
-		c, hits := stepClient(t, func(http.ResponseWriter) {
+		defer cancel()
+		var hits atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			hits.Add(1)
 			cancel()
-			panic(http.ErrAbortHandler)
-		}, respondOK)
+			// Let cancellation reach the transport before the handler returns.
+			// Aborting here races that cancellation with a connection EOF.
+			<-r.Context().Done()
+		}))
+		t.Cleanup(server.Close)
+		c := client{http: server.Client(), base: server.URL, token: "test", repo: "owner/repo"}
 		err := c.read(ctx, "pulls/7", nil)
 		if !errors.Is(err, context.Canceled) || hits.Load() != 1 || len(probe.waits) != 0 {
 			t.Fatalf("err=%v hits=%d waits=%v", err, hits.Load(), probe.waits)

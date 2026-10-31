@@ -21,6 +21,7 @@ func normalizeGoReuseDiskPreparation(jobs map[string]map[string]any) error {
 		"supply-chain-checks": true, "app-build": true, "client": true,
 		"compose-demo": true, "web-go": true, "test_core": true,
 		"isolation_shard": true, "headline-guarantee": true,
+		"release-snapshot": true,
 	}
 	want := map[string]any{"name": goReuseDiskStep, "run": goReuseDiskScript, "timeout-minutes": 3}
 	for name, job := range jobs {
@@ -41,7 +42,11 @@ func normalizeGoReuseDiskPreparation(jobs map[string]map[string]any) error {
 			with, _ := step["with"].(map[string]any)
 			key, _ := with["key"].(string)
 			uses, _ := step["uses"].(string)
-			if strings.HasPrefix(uses, "actions/cache/restore@") && strings.HasPrefix(key, "go-test-v2-") {
+			prefix := "go-test-v2-"
+			if name == "release-snapshot" {
+				prefix = "go-release-snapshot-v2-"
+			}
+			if strings.HasPrefix(uses, "actions/cache/restore@") && strings.HasPrefix(key, prefix) {
 				if restored >= 0 {
 					return fmt.Errorf("%s: duplicate shared Go cache restore", name)
 				}
@@ -80,36 +85,40 @@ func TestGoReuseDiskPreparationWorkflow(t *testing.T) {
 	if err := normalizeGoReuseDiskPreparation(load()); err != nil {
 		t.Fatal(err)
 	}
-	for _, mutation := range []string{"missing", "conditional", "command", "deadline", "late", "duplicate", "unrelated-job"} {
-		t.Run(mutation, func(t *testing.T) {
-			jobs := load()
-			steps := jobs["web-go"]["steps"].([]any)
-			index := -1
-			for i, value := range steps {
-				if value.(map[string]any)["name"] == goReuseDiskStep {
-					index = i
-				}
-			}
-			step := steps[index].(map[string]any)
-			switch mutation {
-			case "missing":
-				steps = append(steps[:index], steps[index+1:]...)
-			case "conditional":
-				step["if"] = "false"
-			case "command":
-				step["run"] = "true"
-			case "deadline":
-				step["timeout-minutes"] = 4
-			case "late":
-				steps[index], steps[index+1] = steps[index+1], steps[index]
-			case "duplicate":
-				steps = append(steps, step)
-			case "unrelated-job":
-				jobs["preflight"]["steps"] = append(jobs["preflight"]["steps"].([]any), step)
-			}
-			jobs["web-go"]["steps"] = steps
-			if err := normalizeGoReuseDiskPreparation(jobs); err == nil {
-				t.Fatal("accepted weakened or misplaced disk preparation")
+	for _, owner := range []string{"web-go", "release-snapshot"} {
+		t.Run(owner, func(t *testing.T) {
+			for _, mutation := range []string{"missing", "conditional", "command", "deadline", "late", "duplicate", "unrelated-job"} {
+				t.Run(mutation, func(t *testing.T) {
+					jobs := load()
+					steps := jobs[owner]["steps"].([]any)
+					index := -1
+					for i, value := range steps {
+						if value.(map[string]any)["name"] == goReuseDiskStep {
+							index = i
+						}
+					}
+					step := steps[index].(map[string]any)
+					switch mutation {
+					case "missing":
+						steps = append(steps[:index], steps[index+1:]...)
+					case "conditional":
+						step["if"] = "false"
+					case "command":
+						step["run"] = "true"
+					case "deadline":
+						step["timeout-minutes"] = 4
+					case "late":
+						steps[index], steps[index+1] = steps[index+1], steps[index]
+					case "duplicate":
+						steps = append(steps, step)
+					case "unrelated-job":
+						jobs["preflight"]["steps"] = append(jobs["preflight"]["steps"].([]any), step)
+					}
+					jobs[owner]["steps"] = steps
+					if err := normalizeGoReuseDiskPreparation(jobs); err == nil {
+						t.Fatal("accepted weakened or misplaced disk preparation")
+					}
+				})
 			}
 		})
 	}
