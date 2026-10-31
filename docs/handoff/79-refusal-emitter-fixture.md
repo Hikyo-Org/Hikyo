@@ -27,8 +27,11 @@ transaction owner. It then expires the window and starts and joins the real
 The observer requires healthy, empty staging and the exact prior sealed count
 plus one. The registered-emitter inventory assertion remains intact.
 
-The new regression holds a real writer transaction during staging on SQLite and
-PostgreSQL, then requires exactly one sealed sample. The existing blocked-sink
+The new regression observes staging waiting on SQLite's single writer pool or
+the exact PostgreSQL refusal query blocked by the fixture owner's backend. Only
+then does it retain the writer beyond the runtime accounting budget. An unmet
+contention precondition or lifecycle completion while held fails the test.
+It then requires exactly one sealed sample. The existing blocked-sink
 test independently requires runtime accounting failure to remain visible,
 release ownership and avoid a later unobserved write. The production 100 ms
 deadline, eight writers, 64 waiters, worker interval, transaction retry policy
