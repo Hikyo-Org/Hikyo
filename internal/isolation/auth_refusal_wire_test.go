@@ -271,12 +271,19 @@ func runAuthenticationRefusalWireCompatibility(t *testing.T, blockFirst bool) {
 			t.Fatalf("flood lost progress or failure accounting: accepted=%d failed=%d health=%+v", accepted, failures, signals.RefusalHealth())
 		}
 		// A failed COMMIT acknowledgement is unconfirmed, not proof of rollback.
-		// Every acknowledged attempt must commit, and no attempt may commit twice.
+		// Aggregate committed counts cover acknowledgements without exceeding
+		// attempts; they do not identify each individual request's durable result.
 		if delta := committed - committedBefore; delta < accepted || delta > 96 {
 			t.Fatalf("flood durable count delta %d outside acknowledged/attempted bounds [%d,96]", delta, accepted)
 		}
 		expireRefusalWindow(t, db)
 		waitForRefusalSeal(t, db, signals, committed)
+		// The worker has joined. Verify persisted reset independently of health.
+		recovered, sealed := refusalAccountingSnapshot(t, db)
+		windowStart := queryInt(t, db, "SELECT window_start FROM auth_refusal_window WHERE id=1")
+		if windowStart != 0 || !recovered.Empty() || len(recovered.Samples) != 0 || sealed != committed {
+			t.Fatalf("recovery retained staging or changed sealed evidence: start=%d window=%+v sealed=%d want=%d", windowStart, recovered, sealed, committed)
+		}
 		if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='auth.request_refused'"); got < 4 {
 			t.Fatalf("sealed %d stage summaries, need artifact/conflict/proof/csrf", got)
 		}

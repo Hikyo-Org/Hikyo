@@ -2,7 +2,6 @@ package isolation
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 
@@ -29,25 +28,7 @@ func (r *refusalWireRecorder) Record(ctx context.Context, sample audit.RefusalSa
 // commits settle behind the existing singleton writer fence.
 func refusalWireAccounting(t *testing.T, db *store.DB) (audit.RefusalWindow, int64) {
 	t.Helper()
-	var state string
-	var sealed int64
-	if db.Engine() == store.EnginePostgres {
-		var err error
-		state, sealed, err = readPostgresRefusalAccounting(t.Context(), db)
-		if err != nil {
-			t.Fatal(err)
-		}
-	} else {
-		state = queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")
-		sealed = sealedRefusalCount(t, db)
-	}
-	var window audit.RefusalWindow
-	if err := json.Unmarshal([]byte(state), &window); err != nil {
-		t.Fatal(err)
-	}
-	if err := window.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	window, sealed := refusalAccountingSnapshot(t, db)
 	total := sealed
 	for _, count := range window.Counts {
 		total += count

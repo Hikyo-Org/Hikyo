@@ -33,12 +33,18 @@ fixed failure metric must expose the actual cumulative counter.
 
 The test requires acknowledged progress and fences PostgreSQL settlement using
 the existing singleton writer before comparing staging plus sealed counts.
-Every acknowledged update must be durable, and no attempted update may be
-counted twice. A failed commit acknowledgement remains unconfirmed rather than
-being asserted rolled back. Existing sample limits, dedicated-event ownership,
-stage-summary positive controls, secret redaction and reader/export assertions
-remain. Quiet recovery uses the existing real sealer and three-second observer,
-requiring the exact durable total, healthy accounting and empty staging.
+Aggregate committed counts must cover acknowledgements without exceeding the
+attempt count; those bounds do not independently identify each request's durable
+result or establish per-request uniqueness. A failed commit acknowledgement
+remains unconfirmed rather than being asserted rolled back. Existing sample
+limits, dedicated-event ownership, stage-summary positive controls, secret
+redaction and reader/export assertions remain. Quiet recovery uses the existing
+real sealer and three-second observer,
+requiring the exact durable total and healthy accounting. After that worker
+joins, an independent persisted snapshot must have zero window start, zero
+counts, no samples and the unchanged exact sealed total. Storage and wire
+callers share engine dispatch, fenced reads, decoding and validation while
+retaining their own bounds.
 
 A second root runs the same complete wire lifecycle with the first flood
 writer held. It must observe an actual accounting deadline and still satisfy
@@ -47,6 +53,15 @@ is a deliberate negative control, not a retry or a synthetic accounting result.
 Production code, 100 ms budget, queue/writer capacities and retry policy do not
 change.
 
+The initial Standards review found that the recovery observer's health and
+sealed-count checks did not independently inspect persisted staging. A local
+mutation restored a nonzero window and count after the real worker joined:
+the old checks passed on both engines, while the added persisted-reset check
+rejected that same mutation on both engines with the sealed total unchanged.
+The mutation is retained as evidence and removed from committed source. The
+review also prompted one shared accounting snapshot owner, preserving each
+caller's aggregate or stage-specific bounds and the PostgreSQL settlement fence.
+
 ## Focused verification
 
 With the pinned Go toolchain and an isolated synthetic PostgreSQL fixture in
@@ -54,7 +69,7 @@ With the pinned Go toolchain and an isolated synthetic PostgreSQL fixture in
 
 ```sh
 GOMAXPROCS=2 go test -p 2 -parallel 2 -race -count=1 ./internal/isolation \
-  -run '^(TestAuthenticationRefusalWireCompatibility|TestAuthenticationRefusalWireUnconfirmedAccounting|TestRequestRefusalBlockedDatastoreHonorsDeadline|TestRequestRefusalSharedNodesCountEveryCommittedUpdate|TestRequestRefusalWorkerRecoversQuietPendingWindow)$'
+  -run '^(TestAuthenticationRefusalWireCompatibility|TestAuthenticationRefusalWireUnconfirmedAccounting|TestRequestRefusalSharedNodesCountEveryCommittedUpdate|TestRequestRefusalSnapshotWaitsForPostgresSettlement|TestRequestRefusalLostPostgresCommitReceiptRetainsEvidence)$'
 ```
 
 The shared complete-diff feedback driver, pinned import checks and independent

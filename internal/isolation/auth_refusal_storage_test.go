@@ -293,6 +293,21 @@ func TestRequestRefusalSharedNodesCountEveryCommittedUpdate(t *testing.T) {
 
 func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, attempts int64) int64 {
 	t.Helper()
+	window, sealed := refusalAccountingSnapshot(t, db)
+	committed := window.Counts[0] + sealed
+	// A failed COMMIT acknowledgement is unconfirmed accounting, not proof
+	// of rollback. Aggregate committed counts must cover acknowledged updates
+	// without exceeding the attempted count. Sealing preserves that exact total.
+	if committed < accepted || committed > attempts || len(window.Samples) > 32 {
+		t.Fatalf("shared count %d accepted %d attempts %d samples %d", committed, accepted, attempts, len(window.Samples))
+	}
+	return committed
+}
+
+// refusalAccountingSnapshot owns engine dispatch, commit-settlement fencing
+// and validation; each caller applies its own stage or aggregate bounds.
+func refusalAccountingSnapshot(t *testing.T, db *store.DB) (audit.RefusalWindow, int64) {
+	t.Helper()
 	var window audit.RefusalWindow
 	state := ""
 	var sealed int64
@@ -312,15 +327,7 @@ func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, atte
 	if err := window.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	committed := window.Counts[0] + sealed
-	// A failed COMMIT acknowledgement is unconfirmed accounting, not proof
-	// of rollback. Every acknowledged update must be durable; at most one
-	// update per attempt may commit. Sealing must preserve this exact durable
-	// count, including updates whose acknowledgement was lost.
-	if committed < accepted || committed > attempts || len(window.Samples) > 32 {
-		t.Fatalf("shared count %d accepted %d attempts %d samples %d", committed, accepted, attempts, len(window.Samples))
-	}
-	return committed
+	return window, sealed
 }
 
 func readPostgresRefusalAccounting(ctx context.Context, db *store.DB) (string, int64, error) {
