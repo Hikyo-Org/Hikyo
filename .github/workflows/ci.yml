@@ -412,6 +412,10 @@ jobs:
         run: ./scripts/release/check-tag_test.sh
       - name: Stable signing and reviewed publication fixture
         run: ./scripts/release/stable-workflow_test.sh
+      - name: Release source scheduling fixture
+        run: |
+          ./scripts/ci/test-core-packages_test.sh
+          ./scripts/release/test-source_test.sh
       - name: Online stable ceremony refusal and retry fixture
         run: ./scripts/release/stable-ceremony_test.sh
       - name: Stable installer verifier routing fixture
