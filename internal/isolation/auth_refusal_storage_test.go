@@ -14,11 +14,13 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -43,14 +45,20 @@ func expireRefusalWindow(t *testing.T, db *store.DB) {
 
 func runRefusalAuditLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
-	s := service.NewRefusalSignals(db)
-	if err := s.Record(t.Context(), refusalStorageSample(t)); err != nil {
-		t.Fatal(err)
+	before := sealedRefusalCount(t, db)
+	sample := refusalStorageSample(t)
+	// Registry closure needs one durable fixture sample. Runtime Record has an
+	// approved 100 ms accounting budget and may return an unconfirmed result;
+	// it is not a fixture-construction guarantee under race instrumentation.
+	// Use its canonical transactional writer, then exercise the real sealer.
+	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		_, err := az.UpdateRequestRefusals(ctx, &sample)
+		return err
+	}); err != nil {
+		t.Fatalf("stage refusal emitter fixture: %v", err)
 	}
 	expireRefusalWindow(t, db)
-	if err := s.Seal(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	waitForRefusalSeal(t, db, service.NewRefusalSignals(db), before+1)
 }
 
 func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source string) {
