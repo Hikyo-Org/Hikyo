@@ -109,8 +109,9 @@ successes. Remaining work retains its existing issue, owner and target:
 Vault membership and operative source closeout follow their accepted owning
 records. AWS #158 / PR #969 / #1057 and the other accepted deferrals are not
 silently promoted by publication. These residuals are not newly invented
-prerequisites for a release already public. #79 and #41 stay OPEN, and no
-all-green MVP checkbox or source ticket is blanket-closed here.
+prerequisites for a release already public. Read-only issue checks find #79
+OPEN and #41 already CLOSED; neither state is changed here. No all-green MVP
+checkbox or source ticket is blanket-closed by this closeout.
 
 ## Review, validation and next dependency
 

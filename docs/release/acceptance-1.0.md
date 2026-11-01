@@ -61,7 +61,7 @@ prerequisite for the release that is already public:
   PR and its actual merge/authenticated readback. This lane changes no trust
   files and claims no trust-sync merge without that owner's evidence.
 
-**#79 and #41 remain open.** Publication alone does not satisfy the all-green
+**#79 remains open; #41 is unchanged.** Publication alone does not satisfy the all-green
 MVP checkbox, authorize a deployment, supply an independent human review, or
 waive a criterion. Maintainer-authored source changes retain the explicit
 [solo-maintainer review boundary](../adr/oss-mechanics.md#contribution-model), with
