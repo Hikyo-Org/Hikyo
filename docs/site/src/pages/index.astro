@@ -23,7 +23,9 @@ const links = {
   demo: `${base}demo/`,
   docs: `${base}docs/`,
   governance: `${base}governance/`,
+  installation: `${base}docs/installation/`,
   license: `${base}license/`,
+  release: `${repository}/releases/tag/v1.0.0`,
   security: `${base}security/`,
   support: `${base}support/`,
 };
@@ -39,7 +41,7 @@ const faq = [
   {
     question: 'Is Hikyo ready for a stable production rollout?',
     answer:
-      'Hikyo is under active 0.x development and has not published its stable 1.0 release. Use the development server for local evaluation. Production serving requires a verified signed release and its authenticated public bundle; signed nightlies remain prereleases.',
+      'Hikyo 1.0.0 is published as a stable release. Install a verified signed release and its authenticated public bundle, then follow the self-hosting checklist for your deployment. The release notes record remaining qualification and operational follow-ups; signed nightlies remain unsupported prereleases.',
   },
   {
     question: 'Does self-hosting require a Hikyo cloud account?',
@@ -199,7 +201,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       <section class="hero">
         <div class="wrap hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow"><span class="live" aria-hidden="true"></span> 0.x · one Go binary · self-hosted</p>
+            <p class="eyebrow"><span class="live" aria-hidden="true"></span> 1.0 released · one Go binary · self-hosted</p>
             <h1>Every environment<br /><span>answers for itself.</span></h1>
             <p class="lede">
               Hikyo gives <strong>self-hosting</strong> teams one view of validated configuration and secrets. Every value is
@@ -227,7 +229,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
               >Read the docs <span aria-hidden="true">→</span></a>
             </div>
             <p class="subtrust">
-              <strong>MPL-2.0.</strong> Active 0.x development. No enterprise-only directory.
+              <strong>MPL-2.0.</strong>{' '}<span><a href={links.release}>1.0.0 is available.</a>{' '}No enterprise-only directory.</span>
             </p>
           </div>
 
@@ -433,7 +435,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
               or PostgreSQL, and hold the root key <strong>outside the datastore</strong> it protects.
             </p>
             <div class="section-actions">
-              <a class="button button-primary" href={repository} data-posthog-event="github_cta_clicked" data-posthog-placement="self_host">Inspect the source</a>
+              <a class="button button-primary" href={links.installation} data-posthog-event="documentation_cta_clicked" data-posthog-placement="self_host">Install Hikyo</a>
               <a class="button button-line" href={links.security}>Read the security policy</a>
             </div>
           </div>
@@ -564,7 +566,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
           <div class="comparison-notes">
             <p><span class="yes">✓ included</span><span>– partial or indirect</span><span>? not established</span><span>Adv/Pro paid tier</span><span>EE enterprise tier</span></p>
             <p>
-              Hikyo entries describe main-branch capabilities; the <a href="/docs/roadmap/">1.0 roadmap</a> records remaining release gates.
+              Hikyo entries describe main-branch capabilities; the <a href="/docs/roadmap/">release roadmap</a> records 1.0 publication and remaining follow-ups.
               Hikyo multi-node HA requires PostgreSQL. Clocks mark post-1.0 work without a promised minor version. Other products were checked against public documentation and plan
               availability on 9 October 2026: <a href="https://openbao.org/docs/use-cases/">OpenBao</a>,
               <a href="https://infisical.com/pricing">Infisical</a>, and <a href="https://phase.dev/pricing/">Phase</a>.
@@ -599,7 +601,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
             <p class="kicker">// before you evaluate it</p>
             <h2 id="faq-heading">Questions worth answering plainly.</h2>
             <p class="section-lede">
-              Hikyo is open, self-hosted, and still <strong>pre-1.0</strong>. These boundaries matter before you place it near real
+              Hikyo <strong>1.0 is released</strong>, open, and self-hosted. These boundaries matter before you place it near real
               configuration or secret material.
             </p>
             <a
@@ -623,7 +625,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       <section class="final-cta" aria-labelledby="final-heading">
         <div class="wrap">
           <h2 id="final-heading">Config you can reason about.</h2>
-          <p>Hikyo is under active 0.x development. Read the code, inspect the decisions, and follow the <strong>road to 1.0</strong>.</p>
+          <p><a href={links.release}>Hikyo 1.0.0 is available.</a> Install a verified release, inspect the decisions, and make every environment explicit.</p>
           <div class="section-actions">
             <a
               class="button button-primary"
