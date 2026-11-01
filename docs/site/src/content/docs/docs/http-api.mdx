@@ -57,8 +57,10 @@ Keep the operational listener private.
 
 ## Compatibility
 
-Hikyo is still `0.x`; interfaces are not frozen. Match generated clients to the
-server revision and check `/api/v1/meta` before using a newer operation.
+Hikyo 1.0.0 is the stable API/CLI baseline. For that release, use the
+[tagged OpenAPI contract](https://github.com/Hikyo-Org/Hikyo/blob/v1.0.0/api/openapi.yaml).
+These docs and the main-branch contract may describe newer operations. Match
+generated clients to the server revision and check `/api/v1/meta` before using one.
 
 For interactive work, prefer the [CLI](/docs/cli-reference/). It implements
 trust establishment, target echoing, safe secret input, and display-once output.
