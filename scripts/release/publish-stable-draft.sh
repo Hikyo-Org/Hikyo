@@ -74,9 +74,11 @@ else
   "$GH_BIN" release edit "$tag" --repo "$repository" --draft=false --prerelease=false --latest
 fi
 "$GH_BIN" release download "$tag" --repo "$repository" --dir "$scratch/public"
-read_release "$scratch/public-release.json"
+original_id=$(jq -er '.id' "$scratch/release.json")
+"$GH_BIN" api "repos/$repository/releases/$original_id" >"$scratch/public-release.json"
 jq -e --slurpfile original "$scratch/release.json" '
-  .id == $original[0].id and .draft == false and .immutable == true
+  .id == $original[0].id and .tag_name == $original[0].tag_name and
+  .draft == false and .immutable == true
 ' "$scratch/public-release.json" >/dev/null || { printf 'publication: public release identity or immutability differs\n' >&2; exit 1; }
 [ "$(sha256_file "$scratch/public/release-manifest.json")" = "$expected" ] || { printf 'publication: public manifest differs\n' >&2; exit 1; }
 go run ./scripts/release/stable verify --trust "$trust" --directory "$scratch/public" \
