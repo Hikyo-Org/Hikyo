@@ -1,7 +1,8 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
 # every validation domain affected by PR paths. The queue narrows verified
 # docs/site-only changes; backend changes, dependencies, explicit candidates,
-# manual main validation and nightly publication retain the complete suite.
+# manual main validation and dev integration retain the complete suite.
+# Nightly publication authenticates existing complete exact-source proof.
 # Merging a green PR
 # does not automatically run the same full suite again.
 # Merge groups, like PRs, load every planning/checking script from the base
@@ -11,7 +12,7 @@
 name: ci
 
 # Callers select the source: PR validation passes its authenticated head;
-# nightly and the input-free manual main wrapper pass github.sha.
+# dev integration and the input-free manual main wrapper pass github.sha.
 # Every job verifies the immutable input against that event before checkout.
 on:
   workflow_call:
@@ -22,6 +23,11 @@ on:
         type: string
       candidate:
         description: Full PR integration candidate for the completion gate
+        required: false
+        default: false
+        type: boolean
+      development:
+        description: Complete read-only integration validation of a dev push
         required: false
         default: false
         type: boolean
@@ -62,6 +68,7 @@ jobs:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
+          DEVELOPMENT: ${{ inputs.development }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
           PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
@@ -74,6 +81,17 @@ jobs:
           [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo 'Validation requires a full immutable revision.' >&2; exit 1; }
           test "$EVENT_REPOSITORY" = "$GITHUB_REPOSITORY"
           [[ "$EVENT_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
+          case "$DEVELOPMENT" in
+            false) ;;
+            true)
+              test "$DEFAULT_BRANCH" = main
+              test "$FULL_CANDIDATE" = false
+              test "$GITHUB_EVENT_NAME" = push
+              test "$GITHUB_REF" = refs/heads/dev
+              test "$TAG_DELETED" = false
+              ;;
+            *) echo 'Unknown development validation mode.' >&2; exit 1 ;;
+          esac
           case "$GITHUB_EVENT_NAME" in
             pull_request)
               [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
@@ -104,13 +122,17 @@ jobs:
               test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
               ;;
             push)
-              # Only canonical stable/prerelease tags, never branch pushes,
-              # deletions or nightly tags, may select the full release plan.
+              # Dev pushes are read-only complete integration runs. Other
+              # pushes remain canonical stable/prerelease tag validation.
               test "$FULL_CANDIDATE" = false
               test "$TAG_DELETED" = false
               test "$DEFAULT_BRANCH" = main
-              [[ "$GITHUB_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z][0-9A-Za-z-]*(\.([A-Za-z-][0-9A-Za-z-]*|[0-9]+[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*))*)?$ ]]
-              [[ "$GITHUB_REF" != *-nightly.* ]]
+              if [ "$DEVELOPMENT" = true ]; then
+                test "$GITHUB_REF" = refs/heads/dev
+              else
+                [[ "$GITHUB_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[A-Za-z][0-9A-Za-z-]*(\.([A-Za-z-][0-9A-Za-z-]*|[0-9]+[A-Za-z-][0-9A-Za-z-]*|0|[1-9][0-9]*))*)?$ ]]
+                [[ "$GITHUB_REF" != *-nightly.* ]]
+              fi
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
               ;;
             workflow_dispatch|schedule|repository_dispatch)
@@ -131,6 +153,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE_REVISION: ${{ inputs.revision }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
+          DEVELOPMENT: ${{ inputs.development }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -149,7 +172,11 @@ jobs:
             # checkout has the complete canonical tag and branch history. Bind
             # the peeled tag, not release.target_commitish (which may be main).
             test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$SOURCE_REVISION"
-            git merge-base --is-ancestor "$SOURCE_REVISION" refs/remotes/origin/main
+            if [ "$DEVELOPMENT" = true ]; then
+              test "$GITHUB_REF" = refs/heads/dev
+            else
+              git merge-base --is-ancestor "$SOURCE_REVISION" refs/remotes/origin/main
+            fi
             plan=$(./scripts/ci/classify-changed-paths.sh --all)
           elif [[ "$EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch)$ ]]; then
             test "$GITHUB_REF" = refs/heads/main || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
@@ -2055,6 +2082,7 @@ jobs:
     with:
       revision: ${{ inputs.revision }}
       candidate: ${{ inputs.candidate }}
+      development: ${{ inputs.development }}
     permissions:
       contents: read
 

@@ -51,7 +51,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
 			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
 		}
-		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, applePhasePermissions(name)) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
+		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"actions": "read", "contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
 			t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
 		}
 	}
@@ -154,7 +154,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		final.WriteByte('\n')
 	}
 	previous := -1
-	for _, gate := range []string{"test \"$COMMIT\" = \"$GITHUB_SHA\"", "sha256sum --check --strict checksums.txt", "Darwin_$arch.dmg", "test \"$non_darwin_sha256\" = \"$NON_DARWIN_SHA256\"", "sha256sum nightly-context/upgrade-compatibility.json", "cp nightly-context/upgrade-compatibility.json", "prepare-image-root.sh", "cmp nightly-context/nightly-sources.json", "dist/hikyo_*_Darwin_*.dmg", "create-nightly-manifest.sh", "cosign sign-blob", "nightly verify", "smoke-release-startup.sh", "TestPackagedNightlyReleaseUpgrade", "gh release create"} {
+	for _, gate := range []string{"test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"", "sha256sum --check --strict checksums.txt", "Darwin_$arch.dmg", "test \"$non_darwin_sha256\" = \"$NON_DARWIN_SHA256\"", "sha256sum nightly-context/upgrade-compatibility.json", "cp nightly-context/upgrade-compatibility.json", "prepare-image-root.sh", "cmp nightly-context/nightly-sources.json", "dist/hikyo_*_Darwin_*.dmg", "create-nightly-manifest.sh", "cosign sign-blob", "nightly verify", "smoke-release-startup.sh", "TestPackagedNightlyReleaseUpgrade", "gh release create"} {
 		position := strings.Index(final.String(), gate)
 		if position <= previous {
 			t.Fatalf("missing or reordered nightly publication gate %s", gate)

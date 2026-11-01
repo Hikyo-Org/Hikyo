@@ -621,7 +621,7 @@ func (c *controller) initRepository(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
 		return errors.New("invalid GH_REPO")
 	}
-	if c.checkName != "ci-required" && c.checkName != "ci-required-next" && c.checkName != queueCheckName {
+	if c.checkName != "ci-required" && c.checkName != "ci-required-next" && c.checkName != queueCheckName && c.checkName != devCheckName {
 		return errors.New("invalid PR_GATE_CHECK_NAME")
 	}
 	if err := c.api.read(ctx, "repos/"+c.repoName, &c.repo); err != nil {
@@ -668,7 +668,7 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 	// REST pull.base.sha may remain the branch divergence commit after main
 	// advances. Resolve the authenticated branch ref on every read, including
 	// final publication, instead of treating that PR metadata as the live tip.
-	if p.State == "open" && p.Base.Ref == c.repo.DefaultBranch {
+	if p.State == "open" && p.Base.Ref == c.admissionBranch() {
 		var ref struct {
 			Ref    string `json:"ref"`
 			Object struct {
@@ -676,10 +676,10 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 				SHA  string `json:"sha"`
 			} `json:"object"`
 		}
-		if err := c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.repo.DefaultBranch)), &ref); err != nil {
+		if err := c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.admissionBranch())), &ref); err != nil {
 			return p, err
 		}
-		if ref.Ref != "refs/heads/"+c.repo.DefaultBranch || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
+		if ref.Ref != "refs/heads/"+c.admissionBranch() || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
 			return p, errors.New("invalid live default-branch ref")
 		}
 		p.Base.SHA = ref.Object.SHA
@@ -1416,7 +1416,7 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
-	if c.checkName == queueCheckName || c.checkName == lifecycleName {
+	if c.checkName == queueCheckName || c.checkName == devCheckName || c.checkName == lifecycleName {
 		session := c.reconciliation
 		if session == nil {
 			// The independently bounded admission refusal may publish outside
@@ -1756,6 +1756,8 @@ func main() {
 	retire := flag.Bool("retire-checks", false, "retire only owned unfinished checks on an exact inactive SHA under its existing writer lease")
 	lifecycleProbe := flag.Bool("check-lifecycle-probe", false, "verify only the fixed non-required check lifecycle on trusted main")
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
+	devMode := flag.Bool("dev", false, "publish trusted fast admission for the dev integration branch")
+	devPR := flag.Int("dev-pr", 0, "current dev PR routing hint under an exact head lease")
 	queueMode := flag.Bool("queue", false, "publish the separately protected merge-queue context")
 	targeted := flag.Bool("targeted", false, "bound only a targeted queue admission invocation")
 	repairOnly := flag.Bool("repair-groups-only", false, "repair queue groups only on authenticated manual dispatch")
@@ -1763,6 +1765,21 @@ func main() {
 	dispatch := flag.Bool("dispatch-workers", false, "discover complete work and dispatch only fixed default-branch head workers")
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
+	if *devMode || *devPR != 0 {
+		if !*devMode || *devPR <= 0 || *discoverRetirement || *retire || *lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || flag.NArg() != 0 || !shaPattern.MatchString(*expectedHead) {
+			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
+			os.Exit(1)
+		}
+		if err := runDevCommand(*devPR, *expectedHead, *dryRun); err != nil {
+			if onlyStaleHeadWork(err) {
+				fmt.Fprintln(os.Stdout, err)
+				return
+			}
+			fmt.Fprintln(os.Stderr, "trusted dev gate:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *discoverRetirement && (*retire || *lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
 		fmt.Fprintln(os.Stderr, "retirement discovery is read-only and cannot hold or mix writer roles")
 		os.Exit(1)
@@ -1866,6 +1883,8 @@ func main() {
 		} else {
 			if checkName == queueCheckName {
 				err = errors.New("queue context requires --queue")
+			} else if checkName == devCheckName {
+				err = errors.New("dev context requires --dev")
 			} else {
 				err = c.execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
 			}

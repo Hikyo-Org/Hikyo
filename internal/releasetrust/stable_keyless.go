@@ -54,6 +54,13 @@ func verifyStablePolicy(pinned PinnedTrust, material SnapshotMaterial) (*StableP
 	if err := decodeDocument(material.StablePolicy, &policy); err != nil {
 		return nil, err
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(material.StablePolicy, &fields); err != nil {
+		return nil, err
+	}
+	if fields["source_ref"] != nil || fields["source_workflow_path"] != nil {
+		return nil, errors.New("stable delegation cannot carry dev nightly source authority")
+	}
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}

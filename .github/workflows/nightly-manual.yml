@@ -2,6 +2,13 @@ name: nightly-release-manual
 
 on:
   workflow_dispatch:
+    inputs:
+      source_mode:
+        description: Dev nightly, or an explicit main bridge for the client trust migration
+        type: choice
+        required: true
+        default: dev
+        options: [dev, main-bridge]
 
 permissions: {}
 
@@ -16,11 +23,18 @@ jobs:
     steps:
       # No checkout or release credentials: repository_dispatch loads the
       # publishing workflow and source from the default branch.
-      - name: Request nightly release from main
+      - name: Request the selected nightly source through trusted main
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          SOURCE_MODE: ${{ inputs.source_mode }}
         run: |
-          gh api --method POST "repos/$GH_REPO/dispatches" -f event_type=nightly-release
+          set -euo pipefail
+          case "$SOURCE_MODE" in
+            dev) event_type=nightly-release ;;
+            main-bridge) event_type=nightly-main-bridge ;;
+            *) echo 'Unknown nightly source mode.' >&2; exit 1 ;;
+          esac
+          gh api --method POST "repos/$GH_REPO/dispatches" -f "event_type=$event_type"
           printf 'Nightly release requested. Follow [nightly-release](%s/%s/actions/workflows/nightly.yml) for validation and publication.\n' \
             "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" >>"$GITHUB_STEP_SUMMARY"

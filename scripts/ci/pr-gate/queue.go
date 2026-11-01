@@ -86,6 +86,9 @@ type liveQueuePolicy struct {
 }
 
 func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
+	if q.checkName == devCheckName {
+		return q.devPolicy(ctx)
+	}
 	var owner struct {
 		ID          int               `json:"id"`
 		Target      string            `json:"target"`
@@ -376,9 +379,12 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	}
 	var selectedRun *run
 	if policy.Enabled {
-		if p.Base.Ref != q.repo.DefaultBranch {
+		if p.Base.Ref != q.admissionBranch() {
 			result = refused("Only the protected default branch can enter this merge queue.")
 		} else {
+			if err := q.devPublisherContract(ctx, p); err != nil {
+				return err
+			}
 			decision, err := q.verify(ctx, p.Number, p.Head.SHA)
 			if err != nil {
 				return err
@@ -443,6 +449,9 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					break
 				}
 				result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for protected merge queue", Summary: "Admission only. The mandatory queue must validate its current-base candidate against the trusted change plan before merging."}
+				if q.checkName == devCheckName {
+					result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for dev integration", Summary: "Exact-head fast feedback, canonical DCO and current trusted admission policy passed. Dev integration is asynchronous; main promotion still requires full current-base queue validation."}
+				}
 			default:
 				return errors.New("invalid queue policy verifier outcome")
 			}
@@ -622,15 +631,21 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			}
 			admitted, ignored := 0, 0
 			lanes := make(map[string]int)
+			usefulLanes := map[string]bool{"feedback (go)": true, "feedback (frontend)": true}
+			ignoredLanes := map[string]bool{"metadata (ignored) (go)": true, "metadata (ignored) (frontend)": true}
+			if q.checkName == devCheckName {
+				usefulLanes["feedback (tooling)"] = true
+				ignoredLanes["metadata (ignored) (tooling)"] = true
+			}
 			for _, j := range jobs {
 				lanes[j.Name]++
-				if j.Name == "metadata (ignored) (go)" || j.Name == "metadata (ignored) (frontend)" {
+				if ignoredLanes[j.Name] {
 					if j.Status != "completed" || j.Conclusion != "skipped" {
 						return nil, errors.New("invalid ignored metadata feedback")
 					}
 					ignored++
 				}
-				if j.Name == "feedback (go)" || j.Name == "feedback (frontend)" {
+				if usefulLanes[j.Name] {
 					admitted++
 					if j.HeadSHA != r.HeadSHA {
 						return nil, errors.New("feedback job source mismatch")
@@ -640,10 +655,18 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 					}
 				}
 			}
-			if ignored == 2 && admitted == 0 && lanes["metadata (ignored) (go)"] == 1 && lanes["metadata (ignored) (frontend)"] == 1 {
+			completeLanes := func(expected map[string]bool) bool {
+				for lane := range expected {
+					if lanes[lane] != 1 {
+						return false
+					}
+				}
+				return true
+			}
+			if ignored == len(ignoredLanes) && admitted == 0 && completeLanes(ignoredLanes) {
 				continue
 			}
-			if r.Status == "completed" && (admitted != 2 || lanes["feedback (go)"] != 1 || lanes["feedback (frontend)"] != 1) {
+			if r.Status == "completed" && (admitted != len(usefulLanes) || !completeLanes(usefulLanes)) {
 				return nil, errors.New("missing or duplicated useful feedback lane")
 			}
 			return &r, nil

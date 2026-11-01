@@ -1,17 +1,21 @@
 # CI guide
 
-Every pushed PR commit receives automatic **ci-feedback**. The required
-**ci-queue-required** check admits an exact PR head only after useful feedback,
-signatures/DCO, fork vouch where applicable, and current review/workflow authority.
-A maintainer then adds the reviewed PR to the mandatory merge queue. Admission
-success permits enqueueing; it never replaces full-suite merge proof.
+Feature PRs target **dev** and receive automatic **ci-feedback**. Required
+**ci-dev-required** admission verifies the exact head's three feedback lanes,
+signatures/DCO, fork vouch and trusted workflow authority. Dev has no full merge
+queue. Each merged dev SHA requests full **ci-dev** integration validation:
+one active run finishes, with only the newest pending run retained.
 
-The queue runs all 16 mandatory domains on its immutable current-base merge
-group. Trusted publication binds the exact group, current main, ordered members,
-workflow, run and attempt before the group can merge. An unchanged PR head can
-reuse successful useful feedback; rebuilt or reordered groups need fresh full
-proof. The permanent **ci:full / ci-required-next** path is the full-only recovery
-route when operators restore strict legacy policy.
+Frozen release candidates target **main** and enter its mandatory single-entry
+queue. **ci-queue-required** admits the exact PR head and then requires complete
+current-base merge-group proof. Branches under `release/` always select all 16
+domains. Dev movement never cancels a fixed candidate's validation.
+
+Stable consumers can reuse authenticated complete proof for the identical landed
+commit. Signed nightlies use the last fully green dev source with trusted main
+publication tooling and explicit v2 trust. See the [branching guide](branching.md)
+for activation, the main-source reader bridge, recovery policy rotation and
+operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
 
 ## Choose a task
 
@@ -22,15 +26,16 @@ route when operators restore strict legacy policy.
 | Refresh the production-fixture compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
 | Refresh the shared race compiler cache | `ci-race-cache` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
 | Run repository invariants before queueing | `repository-invariants` | Advisory, per PR push touching Go code, workflows, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
-| Prove queued changes | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
+| Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
+| Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
 | Prove a legacy recovery candidate | `pr-candidate` | Under restored strict legacy policy, a maintainer adds `ci:full`. Trusted `ci-required-next` requires the complete immutable current-main merge. |
 | Validate all of main | `ci-main` | Manual full graph, including development snapshot artifacts. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
 | Run operations-floor acceptance | `ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
 | Measure performance | `codspeed` or the PR benchmark control | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
-| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after full validation of the selected main commit. |
-| Publish stable releases | `release-build` | Signed release-tag pipeline; follow the existing release ceremony. |
+| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified dev source proof and v2 trust preflight. |
+| Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 
 New PR heads need fresh admission evidence. Main movement, membership changes,
@@ -55,14 +60,14 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 34 YAML workflow files. GitHub's sidebar also contains
+The source contains 37 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
 | --- | --- | --- |
-| Validation | `ci-feedback.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
+| Validation | `ci-feedback.yml`, `ci-dev.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-invariants.yml` | Read-only early signals for dependency bumps and repository-invariant suites that otherwise fail only in the serial queue. Neither is a required context. |
-| Trusted gates | `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
+| Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
 | Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
@@ -129,8 +134,8 @@ untouched, and creates its own queued barrier. That barrier is not a guarantee
 of GitHub's behavior for ambiguous same-name checks.
 
 Main-push publication and security checks retain their triggers. Full main
-validation remains manual and a nightly prerequisite. Stable releases keep their
-existing exact-commit validation ceremony. Preserve pins, signatures, cache
+validation remains manual recovery. Stable releases reuse exact-commit full
+source proof; nightlies use complete dev proof and explicit v2 trust authority. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
 
 ## Documentation prerequisites

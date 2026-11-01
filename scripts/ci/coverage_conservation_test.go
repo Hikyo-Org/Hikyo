@@ -101,6 +101,13 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return err
 	}
+	// The explicit dev caller propagates a source-authority boolean only. Keep
+	// the frozen full-suite inventory and all measurement steps unchanged.
+	floorWith, ok := workflow.Jobs["floor-bench"]["with"].(map[string]any)
+	if !ok || floorWith["development"] != "${{ inputs.development }}" {
+		return fmt.Errorf("floor benchmark lost exact development source binding")
+	}
+	delete(floorWith, "development")
 	if err := normalizeCompleteShardPlanning(workflow.Jobs["analysis_shards"]); err != nil {
 		return err
 	}

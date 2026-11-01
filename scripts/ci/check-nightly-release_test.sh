@@ -21,7 +21,7 @@ grep -F 'ref: ${{ github.sha }}' "$workflow" >/dev/null || fail 'nightly checkou
 if grep -F 'ref: refs/heads/main' "$workflow" >/dev/null; then
 	fail 'nightly checkout follows moving main'
 fi
-grep -F 'COMMIT: ${{ steps.source.outputs.commit }}' "$workflow" >/dev/null || fail 'nightly does not use the checked-out main SHA'
+grep -F 'COMMIT: ${{ steps.source.outputs.commit }}' "$workflow" >/dev/null || fail 'nightly does not use the selected exact source SHA'
 grep -F './scripts/release/latest-nightly-tag.sh' "$workflow" >/dev/null || fail 'published nightly discovery is missing'
 grep -F 'git/ref/tags/$latest_tag' "$workflow" >/dev/null || fail 'nightly deduplication trusts target_commitish instead of resolving the tag'
 grep -F './scripts/release/nightly-run-tag.sh "$RUN_NUMBER"' "$workflow" >/dev/null || fail 'reruns do not recover their durable tag identity'
@@ -34,11 +34,15 @@ latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow"
 if grep -F 'target_commitish' "$workflow" >/dev/null; then
 	fail 'nightly deduplication trusts mutable release metadata'
 fi
-grep -F 'uses: ./.github/workflows/ci.yml' "$workflow" >/dev/null || fail 'nightly does not run the full exact-source CI graph'
+grep -F 'go run ./scripts/ci/source-proof' "$workflow" >/dev/null || fail 'nightly does not verify complete exact-source CI proof'
+grep -F -- '--mode dev --latest --authority-commit "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'nightly does not pin the last green dev source'
+grep -F 'nightly-main-bridge' "$workflow" >/dev/null || fail 'explicit v1 reader bridge is unavailable'
+grep -F -- '--require-dev-policy' "$workflow" >/dev/null || fail 'dev publication lacks v2 policy enforcement'
+grep -F -- '--require-main-policy' "$workflow" >/dev/null || fail 'main bridge lacks v1 policy enforcement'
 grep -F 'needs: validation' "$workflow" >/dev/null || fail 'nightly publication does not wait for validation'
 # shellcheck disable=SC2016
 grep -F 'VALIDATION_RESULT: ${{ needs.validation.result }}' "$workflow" >/dev/null || fail 'nightly does not bind its validation result'
-grep -F 'run: test "$VALIDATION_RESULT" = success' "$workflow" >/dev/null || fail 'nightly does not require exact-head green main CI'
+grep -F 'run: test "$VALIDATION_RESULT" = success' "$workflow" >/dev/null || fail 'nightly does not require complete pinned source validation'
 grep -F 'INITIAL_NIGHTLY_VERSION: 0.0.1' "$workflow" >/dev/null || fail 'first nightly version is not explicit'
 grep -F 'set -o pipefail' "$workflow" >/dev/null || fail 'paginated release discovery can hide API failures'
 grep -F './scripts/release/latest-stable-version.sh' "$workflow" >/dev/null || fail 'stable release discovery is missing'
@@ -100,7 +104,8 @@ if grep -E 'sign-bundle|bind-manifest|ceremony\.sh|COSIGN_PASSWORD|\.key\.age' "
 fi
 
 grep -F 'id-token: write' "$workflow" >/dev/null || fail 'nightly lacks GitHub OIDC signing permission'
-grep -F 'test "$commit" = "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'checkout can differ from OIDC source identity'
+grep -F 'test "$commit" = "$EXPECTED_SOURCE"' "$workflow" >/dev/null || fail 'checkout can differ from validated dev source'
+grep -F 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'publisher can execute untrusted source tooling'
 grep -F 'go run ./scripts/release/nightly preflight' "$workflow" >/dev/null || fail 'nightly bootstrap is optional'
 if grep -F 'if [ -f release/trust/root.json ]' "$workflow" >/dev/null; then fail 'missing production stamp can be published'; fi
 for release_workflow in "$workflow" "$official"; do
@@ -130,7 +135,7 @@ container_block=$(sed -n '/^  container:/,$p' "$workflow")
 for required in \
 	'needs: publish' \
 	'packages: write' \
-	'ref: ${{ needs.publish.outputs.commit }}' \
+	'ref: ${{ github.sha }}' \
 	'./scripts/release/nightly-image.sh prepare' \
 	'./scripts/release/nightly-image.sh resolve' \
 	'./scripts/release/nightly-image.sh promote' \
@@ -156,3 +161,5 @@ fi
 "$repo_root/scripts/release/require-green-main_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'
+
+python3 -I -B -m unittest discover -s "$repo_root/scripts/release" -p test_nightly_inputs.py

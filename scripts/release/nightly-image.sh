@@ -4,8 +4,9 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$script_dir/../lib/release.sh"
 [ "$#" -eq 1 ] || { printf 'usage: %s prepare|resolve|promote\n' "$0" >&2; exit 2; }
-: "${REPOSITORY:?}" "${VERSION:?}" "${COMMIT:?}" "${TAG:?}" "${GITHUB_OUTPUT:?}"
+: "${REPOSITORY:?}" "${VERSION:?}" "${COMMIT:?}" "${PUBLISHER_COMMIT:?}" "${TAG:?}" "${GITHUB_OUTPUT:?}"
 is_full_sha "$COMMIT"
+is_full_sha "$PUBLISHER_COMMIT"
 printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[1-9][0-9]*\.g[0-9a-f]{8}$'
 [ "$TAG" = "v$VERSION" ]
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-image.XXXXXX")
@@ -21,7 +22,7 @@ image=$(printf 'ghcr.io/%s' "$REPOSITORY" | tr '[:upper:]' '[:lower:]')
 verify_source_signature() {
 	cosign verify --certificate-identity "https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" \
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com \
-		--certificate-github-workflow-sha "$COMMIT" "$ref" >"$work/signatures.json"
+		--certificate-github-workflow-sha "$PUBLISHER_COMMIT" "$ref" >"$work/signatures.json"
 }
 
 case "$1" in
@@ -32,7 +33,12 @@ prepare)
 	[ "$(gh api "repos/$REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')" = "$COMMIT" ] || fail 'release tag commit mismatch'
 	gh release download "$TAG" --repo "$REPOSITORY" --dir "$work/payloads"
 	go run ./scripts/release/nightly verify --directory "$work/payloads"
-	jq -e --arg version "$VERSION" --arg commit "$COMMIT" '.version == $version and .source_commit == $commit' "$work/payloads/release-manifest.json" >/dev/null
+	jq -e --arg version "$VERSION" --arg commit "$COMMIT" --arg publisher "$PUBLISHER_COMMIT" '
+		.version == $version and .source_commit == $commit and
+		(if .schema == "hikyo.dev/nightly-manifest/v1" then .source_commit
+		 elif .schema == "hikyo.dev/nightly-manifest/v2" then .publisher_commit
+		 else null end) == $publisher
+	' "$work/payloads/release-manifest.json" >/dev/null
 	validate_binary_provenance "$work/payloads/binary-provenance.json" "$COMMIT" "$VERSION"
 	[ ! -e image-root ] || fail 'image-root must be absent'
 	for arch in amd64 arm64; do

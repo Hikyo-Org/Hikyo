@@ -24,10 +24,13 @@ signing configuration and does not push, merge, or deploy without authorization.
 
 Start with the [CI guide](./docs/development/ci.md). It explains the required PR
 checks, the maintenance and release-acceptance menus, and which workflows are
-internal helpers. Every push receives automatic `ci-feedback`. Before merge, a
-maintainer adds the approved PR to the mandatory merge queue. `ci-queue-required`
-admits the exact head, then requires full validation of its current-base merge
-group. `ci:full` and `ci-required-next` remain the full-only rollback route.
+internal helpers. Feature PRs target `dev` and require automatic `ci-feedback`
+plus trusted `ci-dev-required` admission. Merged dev commits request complete
+background integration validation. Frozen release candidates target `main` and
+use its mandatory queue; `ci-queue-required` requires full current-base proof.
+See the [branching guide](docs/development/branching.md) for commands, protected
+activation and the signed-nightly client migration. `ci:full` and
+`ci-required-next` remain the main full-only rollback route.
 
 ## Developer Certificate of Origin
 
@@ -229,8 +232,12 @@ Application Go, tooling Go and frontend checks have independent runners with
 the same deadline. All three lanes must succeed before queue admission.
 This feedback does not authorize merge or replace any full-suite coverage.
 
-When the change is ready, a maintainer adds the reviewed PR to the mandatory
-merge queue. The trusted `ci-queue-required` check admits the exact head only
+When a feature is ready, merge its reviewed PR into dev after
+`ci-dev-required` succeeds. Full dev CI finishes one active run and coalesces
+pending work. Repair red integration before release promotion.
+
+For a frozen release candidate targeting main, a maintainer adds its reviewed
+PR to the mandatory merge queue. The trusted `ci-queue-required` check admits the exact head only
 with successful useful feedback, valid signatures/DCO, and current review and
 workflow authority. Admission alone cannot merge a PR. The queue runs the
 complete suite on its immutable merge group against current main; every rebuilt

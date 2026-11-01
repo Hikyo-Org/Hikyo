@@ -54,6 +54,12 @@ esac
 [ "$#" -eq 1 ] || fail 'usage: sign-apple-artifacts.sh [--sign-only|--prepare-only|--submit-only|--notarize-only] DIST'
 [ "$(uname -s)" = Darwin ] || fail 'macOS is required'
 dist=$(CDPATH='' cd -P -- "$1" && pwd)
+# Main supplies this descriptor only after live exact-source CI and nightly
+# policy verification. Check its pinned bytes before reading Apple credentials.
+channel=${APPLE_RELEASE_CHANNEL:-stable}
+source_identity=$(APPLE_RELEASE_CHANNEL="$channel" python3 -B "$script_dir/apple_notary_state.py" source-identity) || \
+  fail 'unverified release source identity'
+source_commit=$(printf '%s' "$source_identity" | jq -er '.source_commit')
 set -- APPLE_SIGNING_IDENTITY APPLE_TEAM_ID GITHUB_SHA GITHUB_REF
 if [ "$mode" = sign ] || [ "$mode" = full ]; then
   set -- "$@" APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD
@@ -74,7 +80,7 @@ case "$APPLE_SIGNING_IDENTITY" in
   *) fail 'identity must be Developer ID Application for the configured team' ;;
 esac
 printf '%s\n' "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$' || fail 'invalid team ID'
-case "${APPLE_RELEASE_CHANNEL:-stable}" in
+case "$channel" in
   stable)
     [ -n "${CANDIDATE_SHA256:-}" ] || fail 'missing CANDIDATE_SHA256'
     check_release_candidate_hash "$dist/release-candidate.json" "$CANDIDATE_SHA256"
@@ -87,8 +93,8 @@ case "${APPLE_RELEASE_CHANNEL:-stable}" in
     version=${APPLE_RELEASE_VERSION:-}
     is_semver "$version" || fail 'invalid nightly version'
     case "$version" in *-nightly.*) ;; *) fail 'nightly version required' ;; esac
-    [ "${APPLE_RELEASE_COMMIT:-}" = "$GITHUB_SHA" ] || fail 'nightly source differs from workflow SHA'
-    jq -e --arg version "$version" --arg commit "$GITHUB_SHA" \
+    [ "${APPLE_RELEASE_COMMIT:-}" = "$source_commit" ] || fail 'nightly source differs from verified source'
+    jq -e --arg version "$version" --arg commit "$source_commit" \
       '.version == $version and .commit == $commit' "$dist/metadata.json" >/dev/null || \
       fail 'nightly build metadata differs from source identity'
     ;;
@@ -333,7 +339,6 @@ if [ "$mode" = full ]; then
 else
   [ "$input_digest" = "$APPLE_NOTARY_INPUT_SHA256" ] || fail 'signed Actions input digest mismatch'
 fi
-channel=${APPLE_RELEASE_CHANNEL:-stable}
 candidate_sha256=${CANDIDATE_SHA256:-}
 [ "$channel" != nightly ] || candidate_sha256=
 
@@ -380,7 +385,7 @@ for arch in arm64 x86_64; do
   receipt=$evidence/$arch-receipt.json
   [ -f "$receipt" ] || continue
   submitted_sha256=$(sha256_file "$dmg")
-  jq -se --arg version "$version" --arg commit "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
+  jq -se --arg version "$version" --argjson source "$source_identity" \
     --arg channel "$channel" --arg candidate "$candidate_sha256" --arg arch "$arch" \
     --arg filename "${dmg##*/}" --arg sha "$submitted_sha256" --arg repo "$GITHUB_REPOSITORY" \
     --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
@@ -389,7 +394,11 @@ for arch in arm64 x86_64; do
     def uuid: type == "string" and test("^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$");
     length == 1 and (.[0] | type == "object" and
       .schema == "hikyo.dev/apple-notarization-receipt/v2" and
-      .version == $version and .source_commit == $commit and .source_ref == $ref and
+      .version == $version and .source_commit == $source.source_commit and .source_ref == $source.source_ref and
+      (if $source | has("source_validation") then
+        .publisher_commit == $source.publisher_commit and .publisher_ref == $source.publisher_ref and
+        .source_validation == $source.source_validation
+       else (has("publisher_commit") or has("publisher_ref") or has("source_validation") | not) end) and
       .channel == $channel and .candidate_sha256 == $candidate and
       .architecture == $arch and .archive_filename == $filename and .submitted_sha256 == $sha and
       .repository == $repo and .original_run_id == $run and
@@ -431,19 +440,19 @@ if [ ! -f "$evidence/arm64-receipt.json" ]; then
     filename=hikyo_${version}_Darwin_$arch.dmg
     submitted_sha256=$(sha256_file "$dist/$filename")
     atomic_copy "$dist/$filename" "$evidence/$arch-submitted.dmg"
-    jq -n --arg version "$version" --arg commit "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
+    jq -n --arg version "$version" --argjson source "$source_identity" \
       --arg channel "$channel" --arg candidate "$candidate_sha256" --arg arch "$arch" \
       --arg filename "$filename" --arg sha "$submitted_sha256" --arg repo "$GITHUB_REPOSITORY" \
       --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
       --arg artifact "$APPLE_NOTARY_INPUT_ARTIFACT_ID" --arg digest "$input_digest" \
       --arg binding "$input_binding" \
       --arg team "$APPLE_TEAM_ID" --arg identity "$APPLE_SIGNING_IDENTITY" '
-      {schema:"hikyo.dev/apple-notarization-receipt/v2",version:$version,source_commit:$commit,source_ref:$ref,
+      {schema:"hikyo.dev/apple-notarization-receipt/v2",version:$version,
        channel:$channel,candidate_sha256:$candidate,architecture:$arch,archive_filename:$filename,
        submitted_sha256:$sha,repository:$repo,original_run_id:$run,original_run_attempt:$attempt,
        input_artifact_id:$artifact,input_sha256:$digest,input_binding:$binding,team_id:$team,signing_identity:$identity,
        phase:"Prepared",submission_id:null,status:"Unknown",final_sha256:null,finalization_state:"NotStarted",
-       diagnostics:{availability:"unavailable",log_filename:null,warning_count:null}}
+       diagnostics:{availability:"unavailable",log_filename:null,warning_count:null}} + $source
     ' >"$scratch/receipt.json"
     atomic_copy "$scratch/receipt.json" "$evidence/$arch-receipt.json"
   done

@@ -87,10 +87,10 @@ func (c *controller) retireChecks(ctx context.Context, head string) error {
 }
 
 func (c *controller) retireChecksState(ctx context.Context, head string, allowLandedGroup bool) (bool, error) {
-	if c.checkName != queueCheckName && c.checkName != "ci-required-next" {
+	if c.checkName != queueCheckName && c.checkName != devCheckName && c.checkName != "ci-required-next" {
 		return false, errors.New("retirement requires a production queue or observation context")
 	}
-	if !shaPattern.MatchString(head) || c.repo.ID <= 0 || c.checkName == queueCheckName && c.expectedHead != head {
+	if !shaPattern.MatchString(head) || c.repo.ID <= 0 || (c.checkName == queueCheckName || c.checkName == devCheckName) && c.expectedHead != head {
 		return false, errors.New("retirement requires an authenticated repository and exact held head")
 	}
 	checks, err := c.listOwnedChecks(ctx, head)

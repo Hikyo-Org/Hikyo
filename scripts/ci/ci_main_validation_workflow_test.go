@@ -28,6 +28,8 @@ type mainValidationWorkflow struct {
 		With        map[string]string    `yaml:"with"`
 		If          string               `yaml:"if"`
 		Needs       yaml.Node            `yaml:"needs"`
+		Env         map[string]string    `yaml:"env"`
+		Outputs     map[string]string    `yaml:"outputs"`
 		Permissions map[string]string    `yaml:"permissions"`
 		Steps       []mainValidationStep `yaml:"steps"`
 	} `yaml:"jobs"`
@@ -65,8 +67,8 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
-		t.Fatal("CI must require an immutable revision and optional candidate mode")
+	if len(contract.Inputs) != 3 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" {
+		t.Fatal("CI must require an immutable revision with optional candidate and development modes")
 	}
 	if len(manual.On) != 1 {
 		t.Fatal("manual main wrapper must have only dispatch entrypoint")
@@ -92,9 +94,20 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		}
 	}
 	validation := nightly.Jobs["validation"]
-	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) ||
-		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
-		t.Fatal("nightly validation must use the unchanged read-only CI graph on main")
+	if validation.Uses != "" || validation.If != "github.ref == 'refs/heads/main'" ||
+		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+		t.Fatal("nightly validation must select verified dev proof using read-only trusted main tooling")
+	}
+	selected, authorized := false, false
+	for _, step := range validation.Steps {
+		if strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] != "${{ github.sha }}" {
+			t.Fatal("nightly selection must execute its immutable trusted publisher tooling")
+		}
+		selected = selected || (strings.Contains(step.Run, "./scripts/ci/source-proof") && strings.Contains(step.Run, "--mode dev --latest --authority-commit \"$GITHUB_SHA\""))
+		authorized = authorized || (strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-dev-policy") && strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-main-policy") && step.Env["MAIN_BRIDGE"] == "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}")
+	}
+	if !selected || !authorized {
+		t.Fatal("nightly must require explicit dev policy and complete green dev proof")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
 	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign", "apple-notarize", "apple-acceptance"}) {
@@ -105,7 +118,7 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		if strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] != "${{ github.sha }}" {
 			t.Fatal("nightly must publish its validated exact source")
 		}
-		if step.Name == "Require exact-head green main CI" {
+		if step.Name == "Require complete pinned source validation" {
 			proof = step
 		}
 	}

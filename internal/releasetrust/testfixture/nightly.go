@@ -48,6 +48,31 @@ func Nightly(t testing.TB, compatibility []byte, wrongCommit bool) (*Fixture, re
 // NightlyWithPayloads signs caller-provided test payload bytes using the same
 // ephemeral certificate and real transparency-log proof as Nightly.
 func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, payloads map[string][]byte, artifacts []releasetrust.Artifact) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
+	return nightlyWithOptions(t, compatibility, wrongCommit, payloads, artifacts, NightlyOptions{})
+}
+
+// NightlyOptions controls independently signed adversarial fixture subjects.
+// Mutations occur before DSSE and transparency-log signing, so verification
+// tests distinguish bad authorization from merely corrupted signatures.
+type NightlyOptions struct {
+	Dev               bool
+	Policy            func(*releasetrust.NightlyPolicy)
+	Manifest          func(*releasetrust.NightlyManifest)
+	RawManifest       func([]byte) []byte
+	CertificateCommit string
+	CertificateRef    string
+}
+
+func DevNightly(t testing.TB, compatibility []byte, options NightlyOptions) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
+	options.Dev = true
+	return nightlyWithOptions(t, compatibility, false, nil, nil, options)
+}
+
+func NightlyWithOptions(t testing.TB, compatibility []byte, options NightlyOptions) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
+	return nightlyWithOptions(t, compatibility, false, nil, nil, options)
+}
+
+func nightlyWithOptions(t testing.TB, compatibility []byte, wrongCommit bool, payloads map[string][]byte, artifacts []releasetrust.Artifact, options NightlyOptions) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
 	t.Helper()
 	virtual, err := ca.NewVirtualSigstore()
 	if err != nil {
@@ -89,6 +114,14 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 	policy.RequireSCT = &requireSCT
 	policy.RekorLogID = rekorID
 	policy.CheckpointOrigin = "rekor.fixture.invalid - 1"
+	if options.Dev {
+		policy.Schema = "hikyo.dev/nightly-policy/v2"
+		policy.SourceRef = "refs/heads/dev"
+		policy.SourceWorkflowPath = ".github/workflows/ci-dev.yml"
+	}
+	if options.Policy != nil {
+		options.Policy(&policy)
+	}
 	policyRaw = JSON(t, policy)
 	f := New(t)
 	f.Catalog.NightlyPolicies = append(f.Catalog.NightlyPolicies, releaseidentity.Hash(policyRaw))
@@ -101,18 +134,48 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 		}
 		payloads["nightly-policy.json"], payloads["sigstore-trusted-root.json"] = policyRaw, rootRaw
 		artifacts = append(artifacts, releasetrust.Artifact{Name: "nightly-policy.json", Kind: "nightly-policy"}, releasetrust.Artifact{Name: "sigstore-trusted-root.json", Kind: "sigstore-trusted-root"})
+		var validation *releasetrust.NightlySourceValidation
+		publisher := ""
+		if options.Dev {
+			publisher = strings.Repeat("c", 40)
+			proof := map[string]any{"schema": "hikyo.dev/source-validation/v1", "repository": "synthetic/hikyo", "repository_id": 123, "commit": commit, "ref": "refs/heads/dev", "workflow_path": ".github/workflows/ci-dev.yml", "event": "push", "run_id": 42, "run_attempt": 2, "workflow_id": 314, "authority_commit": publisher, "configuration_sha256": string(releaseidentity.Hash([]byte("approved complete graph")))}
+			raw := JSON(t, proof)
+			payloads[releasetrust.NightlySourceValidationArtifact] = raw
+			validation = &releasetrust.NightlySourceValidation{Schema: "hikyo.dev/source-validation/v1", Repository: "synthetic/hikyo", RepositoryID: 123, Commit: commit, Ref: "refs/heads/dev", WorkflowPath: ".github/workflows/ci-dev.yml", Event: "push", RunID: 42, RunAttempt: 2, WorkflowID: 314, AuthorityCommit: publisher, ConfigurationSHA256: releaseidentity.Hash([]byte("approved complete graph")), ProofSHA256: releaseidentity.Hash(raw)}
+			artifacts = append(artifacts, releasetrust.Artifact{Name: releasetrust.NightlySourceValidationArtifact, Kind: "build-provenance"})
+		}
 		for i := range artifacts {
 			artifacts[i].SHA256 = string(releaseidentity.Hash(payloads[artifacts[i].Name]))
 		}
-		manifest := JSON(t, releasetrust.NightlyManifest{Schema: "hikyo.dev/nightly-manifest/v1", Profile: releaseidentity.NightlyV1, Version: version, Tag: "v" + version, SourceCommit: commit, ReleaseSequence: sequence, Artifacts: artifacts})
-		workflow := policy.RepositoryURI + "/" + policy.WorkflowPath + "@" + policy.ProtectedRef
+		document := releasetrust.NightlyManifest{Schema: "hikyo.dev/nightly-manifest/v1", Profile: releaseidentity.NightlyV1, Version: version, Tag: "v" + version, SourceCommit: commit, PublisherCommit: publisher, SourceValidation: validation, ReleaseSequence: sequence, Artifacts: artifacts}
+		if options.Dev {
+			document.Schema = "hikyo.dev/nightly-manifest/v2"
+		}
+		if options.Manifest != nil {
+			options.Manifest(&document)
+		}
+		manifest := JSON(t, document)
+		if options.RawManifest != nil {
+			manifest = options.RawManifest(manifest)
+		}
+		certificateRef := policy.ProtectedRef
+		if options.CertificateRef != "" {
+			certificateRef = options.CertificateRef
+		}
+		workflow := policy.RepositoryURI + "/" + policy.WorkflowPath + "@" + certificateRef
 		uri, err := url.Parse(workflow)
 		if err != nil {
 			t.Fatal(err)
 		}
 		certCommit := commit
+		if options.Dev {
+			certCommit = publisher
+		}
 		if wrongCommit {
 			certCommit = strings.Repeat("b", 40)
+		}
+		if options.CertificateCommit != "" {
+			certCommit = options.CertificateCommit
 		}
 		extensions := []struct {
 			oid   asn1.ObjectIdentifier
@@ -120,7 +183,7 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 		}{
 			{certificate.OIDIssuerV2, policy.Issuer}, {certificate.OIDBuildSignerURI, workflow}, {certificate.OIDBuildSignerDigest, certCommit},
 			{certificate.OIDRunnerEnvironment, policy.RunnerEnvironment}, {certificate.OIDSourceRepositoryURI, policy.RepositoryURI}, {certificate.OIDSourceRepositoryDigest, certCommit},
-			{certificate.OIDSourceRepositoryRef, policy.ProtectedRef}, {certificate.OIDSourceRepositoryIdentifier, policy.RepositoryID}, {certificate.OIDSourceRepositoryOwnerURI, policy.RepositoryOwnerURI},
+			{certificate.OIDSourceRepositoryRef, certificateRef}, {certificate.OIDSourceRepositoryIdentifier, policy.RepositoryID}, {certificate.OIDSourceRepositoryOwnerURI, policy.RepositoryOwnerURI},
 			{certificate.OIDSourceRepositoryOwnerIdentifier, policy.RepositoryOwnerID}, {certificate.OIDBuildConfigURI, workflow}, {certificate.OIDBuildConfigDigest, certCommit},
 		}
 		// The leaf is expired at verification wall time. Its signed integrated time

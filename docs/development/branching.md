@@ -1,0 +1,164 @@
+# Development integration and release promotion
+
+Feature pull requests target `dev`. `main` remains the default, trusted release
+branch. This flow deliberately permits a temporarily broken integration branch;
+only fully validated release candidates may reach `main`.
+
+## Required behavior
+
+1. Feature PRs require bounded feedback, resolved review threads, cryptographic
+   commit signatures, matching DCO sign-offs, fork vouching where applicable, and
+   trusted workflow authority. They do not enter the full merge queue.
+2. Every merge to `dev` requests the complete validation graph against its exact
+   merged SHA. One active full run finishes; only the newest pending run is kept.
+   Opening or updating an unrelated feature PR does not cancel integration proof.
+3. A release candidate is a fixed branch created from a selected `dev` commit.
+   Further movement of `dev` cannot mutate that branch or cancel its validation.
+   Its PR to `main` enters the existing mandatory single-entry queue, which runs
+   the full graph on the exact current-main integration result.
+4. A complete, authenticated full validation for the identical landed commit may
+   satisfy the source-validation requirement of main and stable-tag consumers.
+   Docs-only or selective proof, missing jobs, failed or cancelled attempts,
+   changed workflow authority and ambiguous provenance cannot qualify. A newer
+   failed qualifying attempt cannot hide behind an older success.
+5. Release-shaped builds, final-artifact vulnerability scans, upgrade compatibility,
+   native installation, signing, notarization and publication retain their own
+   acceptance requirements. Reused source proof does not establish those results.
+6. The implementation operates within the existing GitHub storage limit. It does
+   not add persistent Go compiler-cache buckets or paid cache capacity. Evidence
+   receipts remain small; existing compiler-cache ownership is preserved.
+7. Main hotfixes follow the full promotion gate and are merged back into `dev`
+   before the next release is prepared.
+
+## Rollout
+
+Land the workflow, checker and protection tooling on `main` before enabling the
+new `dev` policy. Activation must prove the exact installed workflow bytes and
+read back the resulting branch protection. It must preserve main's queue,
+signatures, DCO, fork and workflow-approval boundaries. Existing default-branch
+release workflows keep their privileged execution on trusted code.
+
+Signed nightlies select the last fully green `dev` commit. The trusted publisher
+continues running on `main`; the successor nightly policy and manifest bind the
+publisher commit separately from the dev source and its exact validation receipt.
+The receipt is included in the signed artifact inventory. Publication repeats
+live source-proof verification before signing and refuses a changed run/attempt.
+
+Legacy v1 manifests retain their original certificate/source equality rule.
+Existing clients must receive the new reader in an explicitly requested v1
+main-source bridge before v2 adoption. Normal schedules and requests require the
+recovery-authorized v2 policy; there is no automatic main fallback.
+
+Repository changes are delivered through a signed PR. Live branch-policy
+activation follows the landed trusted implementation; creating this document or
+a PR does not itself prove hosted CI, activation, release or publication.
+
+## Feature work
+
+Keep main as the repository default so privileged workflow definitions and policy
+authority stay on the trusted branch. Select dev explicitly for feature PRs:
+
+```sh
+git fetch hikyo-upstream main dev
+git switch -c feat/example-change hikyo-upstream/dev
+# Make and validate the change; commit with git commit -S -s.
+git push --set-upstream origin HEAD
+gh pr create --repo Hikyo-Org/Hikyo --base dev
+```
+
+The required `ci-dev-required` check verifies all three feedback lanes, canonical
+DCO, signatures, fork admission and current workflow authority. Main's queue is
+not part of this path. Fix or revert red integration before promoting a release.
+CI/publisher definitions land through main first, then a reviewed main-to-dev
+backmerge supplies those approved definitions to integration. Do not force-reset
+branches to synchronize them.
+
+## Freeze and promote
+
+Create a separate fixed branch from a verified dev commit. This example uses
+`release/1.1.0`; select the actual version first. Keep the receipt temporary:
+
+```sh
+promotion_work=$(mktemp -d)
+trap 'rm -rf "$promotion_work"' EXIT HUP INT TERM
+go run ./scripts/ci/source-proof --repository Hikyo-Org/Hikyo \
+  --mode dev --latest --output "$promotion_work/source.json"
+promotion_commit=$(jq -er '.commit' "$promotion_work/source.json")
+git fetch hikyo-upstream "$promotion_commit"
+git switch -c release/1.1.0 "$promotion_commit"
+git push --set-upstream origin HEAD
+gh pr create --repo Hikyo-Org/Hikyo --base main --head release/1.1.0
+rm -rf "$promotion_work"
+trap - EXIT HUP INT TERM
+```
+
+New dev pushes do not move that release branch. Branches under `release/` always
+select the full main queue graph, including docs-only promotions. A changed
+candidate or base needs fresh integration proof. Main retains its single-entry
+queue and protected merge requirements. Backmerge main hotfixes before the next
+promotion.
+
+## Activate dev protection
+
+After the implementation lands on main, from an authenticated administrator
+checkout containing the landed code, run:
+
+```sh
+scripts/release/configure-dev.sh Hikyo-Org/Hikyo
+```
+
+The helper verifies installed immutable main definitions and complete source
+proof, initializes missing dev history only at verified main, installs distinct
+fast-admission rules and checks final live rules/ref readback. It preserves
+stronger review/App bindings and refuses unprotected divergent dev history.
+Main and tag protection remain intact. The admission controller refuses
+unfinished bootstrap state.
+
+## Migrate signed nightlies
+
+These are release/trust actions, separate from merging implementation:
+
+1. While the authorized policy is v1, request a reader bridge from fully checked
+   main using the explicit operator action:
+
+   ```sh
+   gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main \
+     -f source_mode=main-bridge
+   ```
+
+   This requests actual publication. Require normal Apple, installation,
+   compatibility and runtime acceptance. Upgrade clients to this reader before
+   v2 adoption; old clients cannot consume v2 dev manifests.
+2. Set `PROPOSAL_DIRECTORY` to a new output directory outside the checkout and
+   prepare exact unsigned successor documents from authenticated current trust:
+
+   ```sh
+   go run ./scripts/release/stable nightly-policy-proposal --trust release/trust \
+     --out "$PROPOSAL_DIRECTORY"
+   ```
+
+   The proposal contains nightly policy, stable policy, metadata, catalog and
+   their digest summary. It retains historical v1 authorization, release and
+   primary history, bridge authority and rollback floors. No signatures or
+   installed trust bytes are changed.
+3. Independently review those exact bytes, then use established recovery-signing
+   custody to sign `stable-policy.json`, `metadata.json` and `catalog.json`.
+   Keep v1 policy authorization for historical nightlies. Verify the complete
+   signed snapshot against the retained floor before installing it through the
+   existing trust ceremony. The proposal uses the existing recovery `rotation`
+   event, advancing metadata/catalog sequences without a new release claim.
+4. After reviewed trust lands and its public readback verifies, require:
+
+   ```sh
+   go run ./scripts/release/nightly preflight --require-dev-policy
+   ```
+
+   Normal manual requests default to dev. Scheduled nightlies and chain restarts
+   select the last completely green dev source. Main bridge requests are refused
+   after v2 activation.
+
+Stable tags consume complete proof for the identical landed main commit and
+revalidate it during construction. Fresh tag-bound floor/docs checks and actual
+artifact acceptance remain required. Missing or stale source proof blocks
+publication; full manual `ci-main` is the recovery route on selected main.
+Source proof does not establish signing, publication or native acceptance.
