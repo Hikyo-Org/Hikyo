@@ -65,8 +65,12 @@ matching verified Windows archive.
 
 The checkout's `release/trust` must already be independently authenticated and
 contain the current recovery-authorized stable policy and catalog. A checkout
-whose trust synchronization is incomplete must stop here. Do not bootstrap
-trust from the downloaded bundle. The [trust bootstrap guide](/release/signing/#one-time-trust-bootstrap)
+whose trust synchronization is incomplete must stop here: `main` synchronizes
+its trusted catalog to the 1.0.0 stable record only when the separate
+trust-sync pull request merges, so verify from a checkout of `main` on or
+after that merge; an earlier checkout fails this procedure even when the
+bundle itself is authentic. Do not bootstrap trust from the downloaded
+bundle. The [trust bootstrap guide](/release/signing/#one-time-trust-bootstrap)
 explains the maintainer-owned authorization boundary.
 
 ```sh
@@ -85,6 +89,21 @@ explains the maintainer-owned authorization boundary.
   printf 'Verified stable bundle: %s\n' "$bundle"
 )
 ```
+
+Once a later stable release has superseded 1.0.0, the bundle remains
+authentic but is no longer the signed latest release: historical verification
+then replaces the `--latest` selection.
+
+```sh
+go run ./scripts/release/stable verify --trust release/trust \
+  --state "$verification_state" --directory "$bundle" \
+  --version 1.0.0 --commit 2ac7bb36633d3ae0a99d7724968ca8c3cbf18334 \
+  --historical --published
+```
+
+The [per-release ceremony policy](/release/signing/#per-release-ceremony)
+records that an older authorized release requires explicit historical
+verification and cannot be presented as latest.
 
 Success prints the authenticated `identity` with version `1.0.0` and
 `published_oci_verified: true`, followed by the verified bundle directory.
