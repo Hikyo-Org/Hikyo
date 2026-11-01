@@ -1,0 +1,55 @@
+{
+  "format": "hikyo.security-maintenance-config/v1",
+  "state_directory": "/var/lib/hikyo-security-maintenance",
+  "feed": {
+    "metadata_url": "https://updates.example.org/hikyo/metadata/",
+    "targets_url": "https://updates.example.org/hikyo/targets/",
+    "root_file": "/etc/hikyo/security-feed-root.json"
+  },
+  "policy": {
+    "mode": "automatic",
+    "channel": "stable",
+    "upgrade_class": "compatible",
+    "allow_maintenance": true,
+    "minimum_severity": "low",
+    "window_start_minute": 0,
+    "window_duration_minutes": 0
+  },
+  "kind": "ecs",
+  "deployment": {
+    "kind": "ecs",
+    "state_directory": "/var/lib/hikyo-security-maintenance/deployment",
+    "image_repository": "ghcr.io/hikyo-org/hikyo",
+    "timeout_seconds": 1800,
+    "ecs": {
+      "aws": "/usr/local/bin/aws",
+      "profile": "hikyo-security-maintenance",
+      "region": "eu-west-1",
+      "cluster_arn": "arn:aws:ecs:eu-west-1:123456789012:cluster/hikyo",
+      "service_arn": "arn:aws:ecs:eu-west-1:123456789012:service/hikyo/hikyo-server",
+      "service_created_at": "2026-11-01T00:00:00Z",
+      "container": "hikyo",
+      "binary": "/usr/local/bin/hikyo",
+      "task_family": "hikyo",
+      "task_role_arn": "arn:aws:iam::123456789012:role/HikyoTask",
+      "execution_role_arn": "arn:aws:iam::123456789012:role/HikyoExecution",
+      "database_secret_arn": "arn:aws:secretsmanager:eu-west-1:123456789012:secret:hikyo-live-example",
+      "scratch_secret_arn": "arn:aws:secretsmanager:eu-west-1:123456789012:secret:hikyo-scratch-example",
+      "upgrade_volume": "upgrade",
+      "upgrade_file_system_id": "fs-0123456789abcdef0",
+      "upgrade_access_point_id": "fsap-0123456789abcdef0",
+      "upgrade_mount_path": "/var/lib/hikyo-upgrade",
+      "root_volume": "root",
+      "root_file_system_id": "fs-0123456789abcdef1",
+      "root_access_point_id": "fsap-0123456789abcdef1",
+      "root_mount_path": "/run/hikyo-root",
+      "temporary_volume": "temporary",
+      "log_group": "/hikyo/security-maintenance",
+      "log_prefix": "hikyo",
+      "readiness_target_group_arn": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:targetgroup/hikyo/0123456789abcdef",
+      "readiness_port": 8081,
+      "owner_tag": "hikyo-maintenance",
+      "exclusive_service_owner": true
+    }
+  }
+}

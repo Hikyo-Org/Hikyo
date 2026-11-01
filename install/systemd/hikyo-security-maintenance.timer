@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Hikyo security maintenance without an interactive session
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=hikyo-security-maintenance.service
+
+[Install]
+WantedBy=timers.target

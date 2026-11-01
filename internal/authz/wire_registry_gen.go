@@ -61,6 +61,7 @@ var wireRegistry = map[string]wireEntry{
 	"cli:sa":                              {Class: ClassTenant},
 	"cli:scan":                            {Class: ClassUnauthenticated},
 	"cli:scim":                            {Class: ClassTenant},
+	"cli:security-maintenance":            {Class: ClassSystem},
 	"cli:server":                          {Class: ClassSystem, Events: []audit.EventType{audit.EventBackupExported, audit.EventBackupExportSkipped, audit.EventRequestRefused}},
 	"cli:ssh-ca":                          {Class: ClassTenant},
 	"cli:ssh-cert":                        {Class: ClassTenant},

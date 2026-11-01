@@ -118,6 +118,9 @@ func RunUnattendedUpgrade(ctx context.Context, cfg *config.Config, options Unatt
 	source := updatecheck.NewGitHubSource(client)
 	target, cached := cachedUnattendedImage(ctx, cfg, directory, claim, pinned, installer)
 	if !cached {
+		target, cached = cachedSecurityStageImage(ctx, cfg, directory, claim, pinned, installer)
+	}
+	if !cached {
 		release, err := source.ReleaseByVersion(ctx, declaration.Version)
 		if err != nil {
 			return cleanup, err
@@ -268,7 +271,19 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 	if previous != nil && previous.Phase != "complete" && previous.Target != target.Identity {
 		return errors.New("unfinished unattended upgrade requires its original exact image")
 	}
-	route, err := discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+	var route automaticRoute
+	if concrete, ok := installer.(*selfupdate.Installer); ok {
+		var staged bool
+		route, staged, err = preparedSecurityImageRoute(ctx, cfg, directory, pinned, concrete, target, previous)
+		if err != nil {
+			return err
+		}
+		if !staged {
+			route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+		}
+	} else {
+		route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+	}
 	if err != nil {
 		return err
 	}

@@ -17,7 +17,9 @@ import (
 func checkAutomaticBundleFormat(ctx context.Context, executable string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, executable, "--upgrade-bundle-formats").Output()
+	command := exec.CommandContext(ctx, executable, "--upgrade-bundle-formats")
+	command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
+	output, err := command.Output()
 	if err != nil || !slices.Contains(strings.Fields(string(output)), upgradebundle.PlatformIndexFormat) {
 		return errors.New("release lacks platform-specific bundle support; select a compatible upgrade route")
 	}

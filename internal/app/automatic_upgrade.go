@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/securefile"
+	"github.com/Hikyo-Org/hikyo/internal/securitymaintenance"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -64,9 +65,15 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	fs.SetOutput(out)
 	configuration := fs.String("config", hostupgrade.ConfigPath, "root-owned deployment configuration")
 	version := fs.String("target", "", "exact nightly version; default is latest signed nightly")
+	releaseIdentity := fs.String("release-identity", "", "independently selected exact stable or nightly release identity JSON")
+	routeSHA256 := fs.String("route-sha256", "", "exact independently staged route digest; requires --release-identity")
+	eligibilityUntil := fs.String("eligibility-until", "", "verified security selection expiry (RFC3339); requires --release-identity")
+	maintenancePolicyFile := fs.String("maintenance-policy-file", "", "local maintenance policy guarded through target handoff")
+	maintenancePolicySHA256 := fs.String("maintenance-policy-sha256", "", "semantic SHA-256 of the guarded local policy")
+	maintenanceSource := fs.String("maintenance-source", "", "original native source and local authority guard through target handoff")
 	handoff := fs.Bool("handoff", false, "continue in the independently verified target executable")
 	fs.Usage = func() {
-		fmt.Fprintln(out, "Usage: sudo hikyo [-v|-vv|-vvv] upgrade [--target VERSION] [--config FILE]")
+		fmt.Fprintln(out, "Usage: sudo hikyo [-v|-vv|-vvv] upgrade [--target VERSION | --release-identity JSON] [--config FILE]")
 		fmt.Fprintln(out, "Verbosity: -v phases, -vv artifacts and requests, -vvv timings. Diagnostics go to stderr.")
 		fs.PrintDefaults()
 	}
@@ -74,11 +81,67 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 		return err
 	}
 	if fs.NArg() != 0 {
-		return errors.New("usage: sudo hikyo upgrade [--target VERSION] [--config FILE]")
+		return errors.New("usage: sudo hikyo upgrade [--target VERSION | --release-identity JSON] [--config FILE]")
+	}
+	var identitySupplied, targetSupplied, routeSupplied, eligibilitySupplied, policySupplied, sourceSupplied bool
+	fs.Visit(func(f *flag.Flag) {
+		identitySupplied = identitySupplied || f.Name == "release-identity"
+		targetSupplied = targetSupplied || f.Name == "target"
+		routeSupplied = routeSupplied || f.Name == "route-sha256"
+		eligibilitySupplied = eligibilitySupplied || f.Name == "eligibility-until"
+		policySupplied = policySupplied || f.Name == "maintenance-policy-file" || f.Name == "maintenance-policy-sha256"
+		sourceSupplied = sourceSupplied || f.Name == "maintenance-source"
+	})
+	expected, err := parseAutomaticReleaseIdentity(*releaseIdentity, identitySupplied, targetSupplied)
+	if err != nil {
+		return err
+	}
+	expectedRoute, err := parseAutomaticRouteDigest(*routeSHA256, routeSupplied, expected)
+	if err != nil {
+		return err
+	}
+	eligibleUntil, err := parseAutomaticEligibility(*eligibilityUntil, eligibilitySupplied, expected)
+	if err != nil {
+		return err
+	}
+	policyFile, policyDigest, err := parseAutomaticSecurityPolicy(*maintenancePolicyFile, *maintenancePolicySHA256, policySupplied, expected)
+	if err != nil {
+		return err
+	}
+	sourceGuard, err := parseAutomaticSecuritySource(*maintenanceSource, sourceSupplied, expected)
+	if err != nil {
+		return err
+	}
+	maintenanceStarted := false
+	defer func() {
+		var handoff *AutomaticHandoff
+		if sourceGuard != nil && err != nil && !maintenanceStarted && !errors.As(err, &handoff) {
+			err = errors.Join(securitymaintenance.ErrNotStarted, err)
+		}
+	}()
+	var authorizeSource func() error
+	authorizeMutation := func() error {
+		return authorizeAutomaticMutation(eligibleUntil, time.Now, func() error {
+			if authorizeSource != nil {
+				if err := authorizeSource(); err != nil {
+					return err
+				}
+			}
+			if policyFile != "" {
+				return verifySecurityPolicyFingerprint(policyFile, policyDigest)
+			}
+			return nil
+		})
+	}
+	if err := requireAutomaticEligibility(eligibleUntil, time.Now()); err != nil {
+		return err
 	}
 	defer diagnostics.Time(ctx, "automatic upgrade")()
 	if runtime.GOOS != "linux" || os.Geteuid() != 0 {
 		return errors.New("automatic upgrades require sudo hikyo upgrade on the Linux systemd server")
+	}
+	if err := authorizeMutation(); err != nil {
+		return err
 	}
 	pinned, err := buildcompat.ProductionTrust()
 	if err != nil {
@@ -125,14 +188,22 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	if err != nil {
 		return err
 	}
+	if sourceGuard != nil && previous != nil && previous.Phase != "complete" {
+		return errors.Join(securitymaintenance.ErrNotStarted, errors.New("guarded native security application cannot adopt an unfinished host operation"))
+	}
 	if previous != nil && previous.Phase == "restore-required" {
+		if err := authorizeMutation(); err != nil {
+			return err
+		}
+		maintenanceStarted = true
 		return errors.Join(errors.New("previous candidate failed post-write health; explicit operator recovery is required"), host.FenceAndStop(ctx))
 	}
-	if previous != nil && previous.Phase != "complete" {
-		if *version != "" && *version != previous.Target.Version {
-			return errors.New("unfinished upgrade pins a different target; rerun sudo hikyo upgrade to reconcile it")
-		}
-		*version = previous.Target.Version
+	*version, expected, err = resolveAutomaticReleaseIdentity(*version, expected, previous)
+	if err != nil {
+		return err
+	}
+	if expectedRoute != "" && previous != nil && previous.Phase != "complete" && previous.Route != expectedRoute {
+		return errors.New("unfinished upgrade pins a different exact route")
 	}
 	environment := host.Environment()
 	getenv := func(key string) string { return environment[key] }
@@ -144,6 +215,12 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 		cfg.Store.Path = filepath.Join(c.WorkingDirectory, cfg.Store.Path)
 	}
 	database := upgrade.Config{Engine: releaseidentity.SQLite, Path: cfg.Store.Path}
+	if sourceGuard != nil {
+		authorizeSource = func() error { return verifyNativeSecurityMutation(ctx, *configuration, host, database, *sourceGuard) }
+		if err := authorizeMutation(); err != nil {
+			return err
+		}
+	}
 	cache := filepath.Join(c.StateDirectory, "downloads")
 	installer, err := selfupdate.NewInstaller(selfupdate.Config{StateDir: cache, TrustRootBase64: base64.StdEncoding.EncodeToString(pinned.Root), RecoveryKeyBase64: base64.StdEncoding.EncodeToString(pinned.RecoveryPublicKey), TransientBundles: true})
 	if err != nil {
@@ -151,10 +228,7 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	}
 	// Reclaim abandoned work before the first download, while the operator
 	// lock is held. Recovery artifacts referenced by the journal stay public.
-	keep := []releaseidentity.Identity{}
-	if previous != nil {
-		keep = append(keep, previous.Target)
-	}
+	keep := automaticRetainedReleases(previous, sourceGuard)
 	diagnostics.Printf(ctx, 1, "Cleaning obsolete private download artifacts in %s", cache)
 	if previous != nil && previous.Phase != "complete" {
 		if err := installer.PruneNightlyScratch(ctx); err != nil {
@@ -197,23 +271,28 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	}
 	client.Transport = diagnostics.Transport{Base: client.Transport}
 	source := updatecheck.NewGitHubSource(client)
-	fmt.Fprintln(out, "1/5 Verifying the signed nightly and migration route.")
-	status, err := selectAutomaticRelease(ctx, source, *version)
-	if err != nil {
-		return err
-	}
-	diagnostics.Printf(ctx, 1, "  Selected nightly %s.", status.LatestVersion)
 	var target selfupdate.PreparedNightly
-	if previous != nil && previous.Phase != "complete" {
-		// An unfinished operation pins its exact authenticated target even if a
-		// later release has since been observed in the download cache.
-		target, err = installer.PrepareNightlySource(ctx, status, previous.Target)
+	if expected != nil {
+		fmt.Fprintln(out, "1/5 Verifying the selected signed release and migration route.")
+		target, err = prepareExactAutomaticRelease(ctx, source, installer, *expected)
 	} else {
-		target, err = installer.PrepareNightly(ctx, status)
+		fmt.Fprintln(out, "1/5 Verifying the signed nightly and migration route.")
+		var status updatecheck.Status
+		status, err = selectAutomaticRelease(ctx, source, *version)
+		if err != nil {
+			return err
+		}
+		if previous != nil && previous.Phase != "complete" {
+			// The unfinished operation pins its exact authenticated target.
+			target, err = installer.PrepareNightlySource(ctx, status, previous.Target)
+		} else {
+			target, err = installer.PrepareNightly(ctx, status)
+		}
 	}
 	if err != nil {
 		return err
 	}
+	diagnostics.Printf(ctx, 1, "  Selected release %s.", target.Identity.Version)
 	current, _, err := buildcompat.Current()
 	if err != nil {
 		return err
@@ -227,11 +306,23 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 			return errors.New("verified target binary does not match its signed compatibility declaration")
 		}
 		diagnostics.Printf(ctx, 1, "  Handing off to the verified %s executable; it restarts the five steps.", target.Identity.Version)
-		return &AutomaticHandoff{Executable: target.BinaryPath, Arguments: []string{"upgrade", "--config", *configuration, "--target", target.Identity.Version, "--handoff"}}
+		next, err := automaticReleaseHandoffWithAuthorization(target, *configuration, expected, nativeSecurityAuthorization{Route: expectedRoute, Until: eligibleUntil, PolicyFile: policyFile, PolicySHA256: policyDigest, Source: sourceGuard})
+		if err != nil {
+			return err
+		}
+		return next
 	}
 	diagnostics.Printf(ctx, 1, "  Resolving the migration route from the installed release.")
-	route, err := prepareAutomaticRoute(ctx, installer, source, target, pinned, database, previous)
+	var route automaticRoute
+	if expected != nil {
+		route, err = discoverReleaseRoute(ctx, unattendedRouteInstaller{installer}, source, target, pinned, automaticStore{database}, database.Engine, previous, true)
+	} else {
+		route, err = prepareAutomaticRoute(ctx, installer, source, target, pinned, database, previous)
+	}
 	if err != nil {
+		return err
+	}
+	if err := requireAutomaticRouteDigest(route, expectedRoute); err != nil {
 		return err
 	}
 	if len(route.Plan.Steps()) == 0 {
@@ -272,7 +363,7 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 			return err
 		}
 		if err := checkAutomaticBundleFormat(ctx, staged[step.Target]); err != nil {
-			return fmt.Errorf("nightly %s cannot use the platform bundle: %w", step.Target.Version, err)
+			return fmt.Errorf("release %s cannot use the platform bundle: %w", step.Target.Version, err)
 		}
 	}
 	resume := previous != nil && previous.Phase != "complete" && previous.Phase != "preparing"
@@ -292,11 +383,23 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 			return err
 		}
 		journal = &automaticJournal{Format: "hikyo.host-upgrade/v1", Phase: "preparing", Target: target.Identity, Source: upgradecompat.InstalledSource{Identity: route.Plan.Source(), Migrations: manifest, SchemaSHA256: route.Plan.SourceSchemaDigest()}, Instance: route.Instance, Route: route.Plan.Digest(), Runtime: hostupgrade.RuntimeEvidence{BundleDirectory: publicBundle, OperatorPublicKey: publicKey, TargetManifest: string(target.Identity.ManifestSHA256), LegacyWritersStopped: route.Plan.Source().Genesis == releaseidentity.LegacyGenesisV1}}
+		if sourceGuard != nil {
+			defer func() {
+				if err != nil && !maintenanceStarted {
+					err = errors.Join(err, restoreAutomaticUnstartedJournal(journalPath, previous))
+					retainPublicBundle = false
+				}
+			}()
+		}
 		if err := writeAutomaticJournal(journalPath, journal); err != nil {
 			return err
 		}
 		retainPublicBundle = true
 		fmt.Fprintln(out, "2/5 Stopping writers and creating the encrypted backup.")
+		if err := authorizeMutation(); err != nil {
+			return err
+		}
+		maintenanceStarted = true
 		if err := host.FenceAndStop(ctx); err != nil {
 			return err
 		}
@@ -311,6 +414,10 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 		}
 	} else {
 		journal.Runtime.BundleDirectory = publicBundle
+		if err := authorizeMutation(); err != nil {
+			return err
+		}
+		maintenanceStarted = true
 		if err := host.FenceAndStop(ctx); err != nil {
 			return err
 		}
@@ -328,6 +435,27 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	}
 	fmt.Fprintf(out, "Hikyo %s is upgraded and ready. Encrypted backup retained at %s.\n", target.Identity.Version, journal.Runtime.CiphertextPath)
 	return nil
+}
+
+func restoreAutomaticUnstartedJournal(path string, previous *automaticJournal) error {
+	if previous != nil {
+		return writeAutomaticJournal(path, previous)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return filedurability.SyncDirectory(filepath.Dir(path))
+}
+
+func automaticRetainedReleases(previous *automaticJournal, sourceGuard *nativeSecuritySourceGuard) []releaseidentity.Identity {
+	keep := []releaseidentity.Identity{}
+	if sourceGuard != nil {
+		keep = append(keep, sourceGuard.Source.Identity)
+	}
+	if previous != nil {
+		keep = append(keep, previous.Target)
+	}
+	return keep
 }
 
 // openAutomaticCustody unlocks the operator vault with a secret derived from
