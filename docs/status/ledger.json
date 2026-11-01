@@ -257,11 +257,12 @@
       "kind": "capability",
       "title": "Public release and distribution",
       "status": "partial",
-      "implemented": "Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification",
-      "remaining": "Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)",
+      "implemented": "Published stable v1.0.0 with signed release assets, six platform archives, Linux packages, notarized macOS DMGs, OCI image and Helm chart, SBOMs, provenance, and installer verification",
+      "remaining": "Public verification and trust synchronization, platform/install acceptance, and the provider, MCP, operational and receipt follow-ups recorded in the [1.0 release notes](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0); publication does not certify every deployment or qualification gate",
       "evidence": [
         { "label": "#46 handoff", "path": "docs/handoff/46-release-signing.md" },
-        { "label": "1.0 blockers", "path": "docs/handoff/v1-launch-blockers.md" }
+        { "label": "1.0 publication record", "path": "docs/release/1.0.0.md" },
+        { "label": "v1.0.0 release", "url": "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0" }
       ]
     },
     {

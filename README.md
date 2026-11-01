@@ -28,9 +28,10 @@
 </div>
 
 > [!IMPORTANT]
-> Release maturity, interface freeze, and distribution status live only under
-> [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) in the
-> machine-checked implementation-status ledger.
+> [Hikyo 1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+> Use the [installation guide](https://hikyo.app/docs/installation/) for verified
+> downloads. Distribution status and remaining qualification are recorded under
+> [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release).
 
 <!-- implementation-status:start -->
 ## Implementation status
@@ -74,7 +75,7 @@ remain immutable evidence.
 | Feature | What works now | Needed for complete implementation |
 | --- | --- | --- |
 | [`CAP-MEMBER-ACCESS-RULES`](./docs/status/README.md#cap-member-access-rules) Member access rules | Operative human access rules with project, environment and key/folder selectors; rule-local exceptions and widening confirmation; selector-bound delegation and atomic replacement; per-key publish/history and definition checks; unified Members cards and client-side Who can...? over disclosed grants and rules | Machine rules, all/future-project rules, environment-name binding and a server-side resolver. For #15 only, the owner accepted Astra-high verification plus independent Sol 6.1-high source review; the reconciliation preserves the skipped quota-gated pass and its limitations. |
-| [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification | Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) |
+| [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) Public release and distribution | Published stable v1.0.0 with signed release assets, six platform archives, Linux packages, notarized macOS DMGs, OCI image and Helm chart, SBOMs, provenance, and installer verification | Public verification and trust synchronization, platform/install acceptance, and the provider, MCP, operational and receipt follow-ups recorded in the [1.0 release notes](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0); publication does not certify every deployment or qualification gate |
 
 </details>
 <!-- implementation-status:end -->
@@ -108,6 +109,10 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
   your root key, and no enterprise-only implementation.
 
 ## Quick start
+
+For a published binary, start with the
+[installation guide](https://hikyo.app/docs/installation/). The source-build
+steps below run a local evaluation instance.
 
 Requires Go 1.27.3+, Node.js 26.12.1 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
 and pnpm 11.24.0.

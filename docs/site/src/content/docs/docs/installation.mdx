@@ -1,17 +1,20 @@
 ---
 title: Installation
-description: Choose a safe Hikyo installation path for local evaluation or production preparation.
+description: Install a verified Hikyo stable release, evaluate locally, or prepare a production deployment.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/installation.mdx
 ---
 
-Hikyo is in `0.x` development and has no published stable release yet. Signed
-nightly prereleases are published; build from source for evaluation. Do not
-treat a development build or a nightly as a supported production release.
+Hikyo [1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+Stable downloads include Linux, macOS and Windows archives, Linux packages,
+notarized macOS DMGs, a container image and a Helm chart. Verify the complete
+signed bundle before installation. Signed nightlies remain unsupported
+prereleases; source builds are available for local evaluation and development.
 
 ## Choose an installation path
 
 | Goal | Path | Result |
 | --- | --- | --- |
+| Install stable 1.0 | [Stable downloads](#stable-downloads) | Verified release archives, packages, image and chart |
 | Try Hikyo locally | [Getting started](/docs/getting-started/) | Loopback-only server, SQLite, embedded web UI |
 | Try the latest `main` build | [Unsigned development snapshot](#unsigned-development-snapshots) | Exact-commit archive for six desktop/server targets |
 | Install the macOS CLI | [macOS DMG and Homebrew](#macos-dmg-and-homebrew) | Apple Silicon or Intel executable from a published release |
@@ -24,14 +27,71 @@ treat a development build or a nightly as a supported production release.
 | Upgrade an existing instance | [Upgrades](/docs/upgrades/) | Pre-migration export and verified rollout |
 | Enroll a new container deployment for unattended updates | [Container upgrades](/docs/container-upgrades/) | Explicit opt-in, persistent encrypted custody and verified scratch restore |
 
-<Callout type="info" title="Stable release installers are not published yet">
-  The repository contains the signed-release pipeline, installer template,
-  OCI image, and Helm chart. Those become stable installation options only
-  after a stable release is published. Signed nightlies ship six archives and
-  the native packages under the `nightly/v1` keyless policy and are upgraded
-  with `sudo hikyo upgrade`. Development snapshots below are unsigned CI
-  output, not substitutes for either ceremony.
+## Stable downloads
+
+Download the complete [v1.0.0 release bundle](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)
+and follow [stable bundle verification](#verify-a-stable-bundle).
+Use independently authenticated trust material and preserve the verifier's
+cross-release state. Stop if public trust synchronization or verification is
+incomplete; do not replace verification with a checksum from the same download.
+
+| Distribution | 1.0.0 artifact |
+| --- | --- |
+| Linux, macOS and Windows | Archives for x86_64 and arm64, with the CLI and embedded browser UI |
+| Linux packages | DEB, RPM, APK and Arch packages for amd64 and arm64 |
+| macOS CLI | Developer ID signed, notarized and stapled DMGs for Apple Silicon and Intel |
+| Container image | `ghcr.io/hikyo-org/hikyo:1.0.0`, Linux amd64 and arm64 |
+| Helm chart | `oci://ghcr.io/hikyo-org/charts/hikyo`, version `1.0.0` |
+
+Use the image and chart digests in the release notes for repeatable deployments.
+For native installation, Compose and Helm runtime inputs, continue with
+[self-hosting](/docs/self-hosting/) and the
+[manual installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md).
+
+<Callout type="info" title="Publication and qualification">
+  The [1.0.0 release notes](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0)
+  retain platform/install, provider, MCP and operational follow-ups. A published
+  artifact does not establish acceptance of your deployment. Homebrew has a
+  separate tap publication step; use the verified DMG while its cask is unavailable.
 </Callout>
+
+## Verify a stable bundle
+
+Run this POSIX-shell procedure on Linux or macOS from a trusted Hikyo checkout.
+It requires the Go version in `go.mod`, GitHub CLI (`gh`), and Cosign from the
+pinned release toolchain in `.github/workflows/release.yml`. Windows users can
+verify the complete bundle on one of these hosts before transferring the
+matching verified Windows archive.
+
+The checkout's `release/trust` must already be independently authenticated and
+contain the current recovery-authorized stable policy and catalog. A checkout
+whose trust synchronization is incomplete must stop here. Do not bootstrap
+trust from the downloaded bundle. The [trust bootstrap guide](/release/signing/#one-time-trust-bootstrap)
+explains the maintainer-owned authorization boundary.
+
+```sh
+(
+  set -eu
+  printf 'Persistent verification-state file outside the download directory: '
+  IFS= read -r verification_state
+  : "${verification_state:?Persistent verification-state file is required}"
+  bundle=$(mktemp -d)
+  printf 'Download directory: %s\n' "$bundle"
+  gh release download v1.0.0 --repo Hikyo-Org/Hikyo --dir "$bundle"
+  go run ./scripts/release/stable verify --trust release/trust \
+    --state "$verification_state" --directory "$bundle" \
+    --version 1.0.0 --commit 2ac7bb36633d3ae0a99d7724968ca8c3cbf18334 \
+    --latest --published
+  printf 'Verified stable bundle: %s\n' "$bundle"
+)
+```
+
+Success prints the authenticated `identity` with version `1.0.0` and
+`published_oci_verified: true`, followed by the verified bundle directory.
+Only then extract the matching platform archive or install a native package
+below. Retain the state file across verifications for rollback and equivocation
+protection. Keep the verified bundle for production admission; remove the
+temporary download directory when it is no longer needed.
 
 ## Nightly container images
 
@@ -64,15 +124,15 @@ database, root key, or authenticated runtime bundle. Follow the
 [manual deployment runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md)
 for Compose and Helm inputs. The image has no shell.
 
-## Native packages after a signed release
+## Native packages
 
 Published releases include local-install packages for Linux amd64 and arm64:
 Debian (`.deb`), RPM (`.rpm`), Alpine (`.apk`), and Arch Linux
 (`.pkg.tar.zst`). Download the **complete** release bundle first and verify it
-against recovery-authorized trust with the release's pinned
-`verify-bundle.sh`. Follow the [release verification
-runbook](/release/signing/#per-release-ceremony);
-do not install a package copied out of an unverified or draft bundle.
+with a trusted verifier and recovery-authorized trust material.
+Follow [stable bundle verification](#verify-a-stable-bundle) for
+1.0.0, or the [signed-nightly runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md)
+for a nightly. Do not install a package copied out of an unverified or draft bundle.
 
 After verification, install the matching local file. These examples show amd64
 names for version `1.0.0`:
@@ -119,8 +179,8 @@ channels have separate casks and cannot be installed together:
 brew install --cask hikyo-org/tap/hikyo@nightly
 ```
 
-The `hikyo` cask is reserved for the first stable release. After its protected
-tap PR is merged, install it with:
+The stable `hikyo` cask has a separate protected tap PR. Once `Casks/hikyo.rb`
+is published on the tap's `main` branch, install it with:
 
 ```sh
 brew install --cask hikyo-org/tap/hikyo
@@ -171,8 +231,7 @@ continue with the copy-to-PATH instructions above.
 
 ### Verify a stable DMG
 
-This path becomes available after the first stable release is published.
-Enter its exact tag, such as `v1.0.0`, and a path for a persistent verification
+Enter the published stable tag `v1.0.0` and a path for a persistent verification
 state file outside the download directory. Keep that state file across future
 verifications to preserve remembered rollback and equivocation protection.
 
@@ -260,7 +319,7 @@ you:
 2. Place the 32-byte root key outside the database backup.
 3. Configure native TLS, or terminate HTTPS at a trusted reverse proxy with exact CIDRs.
 4. Configure encrypted exports and run a restore drill.
-5. Record the exact source commit used to build the binary.
+5. Record the verified release version, source commit and artifact identities.
 
 Production boot also requires the authenticated offline release bundle, the
 separately pinned operator public key and durable installation state. The
@@ -269,8 +328,8 @@ proof or operator private custody. Follow the
 [manual installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md)
 for native, Compose and Helm inputs. Helm requires separate prepopulated public
 artifact and writable installation-state PVCs. These are retained across pod
-replacement and database recovery. Official signed bundle publication is still
-required before the first production release can start.
+replacement and database recovery. The published bundle must pass verification
+before production startup.
 
 Hikyo fails closed when these boundaries are missing. Continue with the
 [self-hosting baseline](/docs/self-hosting/) and
@@ -278,10 +337,11 @@ Hikyo fails closed when these boundaries are missing. Continue with the
 
 ## Platform support
 
-Source builds follow Go's supported host platforms. Unsigned development
-snapshots and signed nightlies cover Linux, macOS, and Windows on `x86_64` and
-`arm64`. Stable downloads do not exist until the first stable release is
-published.
+Stable 1.0.0 archives, unsigned development snapshots and signed nightlies cover
+Linux, macOS, and Windows on `x86_64` and `arm64`. Source builds follow Go's
+supported host platforms. The Unix-socket local evaluation flow is for Linux
+and macOS; Windows CLI connections require HTTPS. Platform qualification limits
+remain recorded in the release notes.
 
 The server is designed to run as one binary. The browser UI is embedded when
 the binary is built with the `ui` build tag.

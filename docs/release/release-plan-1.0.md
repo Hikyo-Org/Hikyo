@@ -1,5 +1,14 @@
 # Hikyo 1.0 release plan
 
+## Published 1.0.0, 1 November 2026
+
+[Hikyo v1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+The [publication record](1.0.0.md) identifies its source, downloads and retained
+qualification follow-ups. This supersedes unpublished/paused wording in the
+dated plan below; it does not promote historical or unexecuted checks to PASS.
+
+## Historical scope and dependency snapshot, 28 October 2026
+
 **Scope and dependency reconciliation, 2026-10-28, inspected main
 `24e198b32a3ffd8d4013207b2f974d76ec49be6f`. Final candidate acceptance is pending.**
 The [acceptance ledger](acceptance-1.0.md) preserves September's executed

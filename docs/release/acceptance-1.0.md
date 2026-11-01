@@ -1,10 +1,20 @@
 # 1.0 acceptance ledger
 
+## Published 1.0.0, 1 November 2026
+
+[Hikyo v1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+The [publication record](1.0.0.md) links the released source and retained
+qualification limits. Publication supersedes the pending-release wording in
+the dated snapshots below. Their criterion outcomes and artifact identities
+remain historical; this update does not mark outstanding acceptance as passed.
+
+## Historical acceptance and preparation snapshots
+
 **Historical September candidate acceptance completed; current candidate acceptance and official release remain gated.** PR #673 tested source `4394dd497b7e35b2bcf585528cffd9f020eab795` passed all 49 exact-head checks and merged on 2026-09-05 at 15:20:28 UTC as `549726d96c2c5938636f31d9b85232a761bb75a2`. GitHub verified the merge and both commits have tree `38588db4b34af5ce97179a9c40b617a41e25831e`. [Merge proof](../reports/1.0/evidence/acceptance-refresh-2026-09-05/merge-549-verification.json) preserves this binding. This ledger records 42 INTERNAL-PASS criteria, four EXTERNAL-PENDING criteria, one FREEZE-PENDING, one CEREMONY-PENDING and one POST-1.0 disposition. Internal PASS does not mean an official 1.0 release has been published.
 
 Normative clauses remain in [mvp-boundary](../adr/mvp-boundary.md) sections 1.2/6 and the [SAML](../adr/saml-sp.md), [SCIM](../adr/scim-provisioning.md), [scanning](../adr/secret-scanning.md) and [GitHub](../adr/github-adapter.md) criteria. [Flat-model](../adr/flat-model.md) finalizes C1/C2, counted once. GH-E2E/GH-STUB/GH-CONTRACT name the three GitHub check classes, not new requirements.
 
-## Current candidate: pending
+## Candidate preparation snapshot: 28 October 2026
 
 Scope/dependency source: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, 2026-10-28.
 The criterion outcomes and artifact hashes below remain the September 5 record.
