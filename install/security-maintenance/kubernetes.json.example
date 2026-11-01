@@ -1,0 +1,36 @@
+{
+  "format": "hikyo.security-maintenance-config/v1",
+  "state_directory": "/var/lib/hikyo-security-maintenance",
+  "feed": {
+    "metadata_url": "https://updates.example.org/hikyo/metadata/",
+    "targets_url": "https://updates.example.org/hikyo/targets/",
+    "root_file": "/etc/hikyo/security-feed-root.json"
+  },
+  "policy": {
+    "mode": "automatic",
+    "channel": "stable",
+    "upgrade_class": "compatible",
+    "allow_maintenance": true,
+    "minimum_severity": "low",
+    "window_start_minute": 0,
+    "window_duration_minutes": 0
+  },
+  "kind": "kubernetes",
+  "deployment": {
+    "kind": "kubernetes",
+    "state_directory": "/var/lib/hikyo-security-maintenance/deployment",
+    "image_repository": "ghcr.io/hikyo-org/hikyo",
+    "timeout_seconds": 1800,
+    "kubernetes": {
+      "kubectl": "/usr/bin/kubectl",
+      "kubeconfig": "/etc/hikyo/security-maintenance.kubeconfig",
+      "context": "hikyo-security-maintenance",
+      "namespace": "hikyo",
+      "deployment": "hikyo",
+      "deployment_uid": "REPLACE_WITH_ACTUAL_DEPLOYMENT_UID",
+      "container": "hikyo",
+      "stage_pod": "hikyo-security-stage",
+      "binary": "/usr/local/bin/hikyo"
+    }
+  }
+}

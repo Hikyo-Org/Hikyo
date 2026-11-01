@@ -1,0 +1,46 @@
+# Draft automatic-maintenance recipe for a NEW enrolled SQLite installation.
+# The serving container has no Docker socket. The separate host coordinator
+# owns /etc/hikyo/security-maintenance.json and its private execution journal.
+services:
+  server:
+    image: ${HIKYO_SERVER_IMAGE:?set an independently verified image@sha256 digest}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [server]
+    environment:
+      HIKYO_DB: sqlite:/var/lib/hikyo/hikyo.db
+      HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the HTTPS browser origin}
+      HIKYO_TRUSTED_PROXY_CIDRS: ${HIKYO_TRUSTED_PROXY_CIDRS:?set exact reverse proxy CIDRs}
+      HIKYO_ROOT_KEY_FILE: /run/hikyo-root/root-key
+      HIKYO_LISTEN: 0.0.0.0:8080
+      HIKYO_OPERATIONAL_LISTEN: 0.0.0.0:8081
+      HIKYO_AUTO_MIGRATE: "true"
+      HIKYO_UPGRADE_UNATTENDED: "true"
+      HIKYO_UPGRADE_STATE_DIR: /var/lib/hikyo-upgrade
+    healthcheck:
+      test: [CMD, /usr/local/bin/hikyo, security-maintenance, health]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15m
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8081:8081"
+    tmpfs: [/tmp:mode=1777]
+    volumes:
+      - type: bind
+        source: ${HIKYO_UPGRADE_INSTALLATION_DIR:?set persistent private upgrade state}
+        target: /var/lib/hikyo-upgrade
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${HIKYO_SERVER_DATA_DIR:?set the SQLite data directory}
+        target: /var/lib/hikyo
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${HIKYO_SERVER_ROOT_KEY_FILE:?set the persistent root-key file}
+        target: /run/hikyo-root/root-key
+        read_only: true
+        bind: {create_host_path: false}

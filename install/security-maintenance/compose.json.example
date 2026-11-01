@@ -1,0 +1,34 @@
+{
+  "format": "hikyo.security-maintenance-config/v1",
+  "state_directory": "/var/lib/hikyo-security-maintenance",
+  "feed": {
+    "metadata_url": "https://updates.example.org/hikyo/metadata/",
+    "targets_url": "https://updates.example.org/hikyo/targets/",
+    "root_file": "/etc/hikyo/security-feed-root.json"
+  },
+  "policy": {
+    "mode": "automatic",
+    "channel": "stable",
+    "upgrade_class": "compatible",
+    "allow_maintenance": true,
+    "minimum_severity": "low",
+    "window_start_minute": 0,
+    "window_duration_minutes": 0
+  },
+  "kind": "compose",
+  "deployment": {
+    "kind": "compose",
+    "state_directory": "/var/lib/hikyo-security-maintenance/deployment",
+    "image_repository": "ghcr.io/hikyo-org/hikyo",
+    "timeout_seconds": 1800,
+    "compose": {
+      "docker": "/usr/bin/docker",
+      "directory": "/etc/hikyo",
+      "project": "hikyo",
+      "file": "/etc/hikyo/compose.yaml",
+      "environment_file": "/etc/hikyo/install.env",
+      "service": "server",
+      "binary": "/usr/local/bin/hikyo"
+    }
+  }
+}

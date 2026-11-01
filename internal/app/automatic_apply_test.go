@@ -419,3 +419,28 @@ func TestAutomaticPublicBundleCleanupChecksJournalPublication(t *testing.T) {
 		})
 	}
 }
+
+func TestAutomaticUnstartedSecurityRefusalRestoresPriorJournal(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprint(existing), func(t *testing.T) {
+			_, original, host, _ := automaticApplyFixture(t, 1)
+			var previous *automaticJournal
+			if existing {
+				original.Phase = "complete"
+				previous = original
+			}
+			attempt := *original
+			attempt.Phase = "preparing"
+			if err := writeAutomaticJournal(host.path, &attempt); err != nil {
+				t.Fatal(err)
+			}
+			if err := restoreAutomaticUnstartedJournal(host.path, previous); err != nil {
+				t.Fatal(err)
+			}
+			actual, err := readAutomaticJournal(host.path)
+			if err != nil || existing && (actual == nil || actual.Phase != "complete" || actual.Target != previous.Target || actual.Route != previous.Route) || !existing && actual != nil {
+				t.Fatalf("unstarted attempt replaced prior recovery state: %+v %v", actual, err)
+			}
+		})
+	}
+}

@@ -108,7 +108,7 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx = diagnostics.With(ctx, verbosity, os.Stderr)
-	if slices.Contains([]string{"server", "operator", "config-rollout", "updater", "migrate", "upgrade", "admin", "backup", "escrow", "restore"}, cmd) && !cli.HelpRequested(args) {
+	if slices.Contains([]string{"server", "operator", "config-rollout", "updater", "security-maintenance", "migrate", "upgrade", "admin", "backup", "escrow", "restore"}, cmd) && !cli.HelpRequested(args) {
 		diagnostics.Printf(ctx, 1, "starting %s", cmd)
 		defer diagnostics.Time(ctx, cmd)()
 	}
@@ -146,6 +146,16 @@ func run() int {
 		return runConfigRollout(ctx, args, os.Stderr)
 	case cmd == "updater":
 		return runUpdaterMode(ctx, args)
+	case cmd == "security-maintenance":
+		err := app.RunSecurityMaintenance(ctx, args, os.Stdout)
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "hikyo security-maintenance:", err)
+			return 1
+		}
+		return 0
 	case cmd == "migrate":
 		return runMigrate(ctx, args)
 	case cmd == "upgrade":
@@ -200,6 +210,13 @@ func runHelp(args []string, stdout, stderr io.Writer) (invocation []string, hand
 		app.RestoreUsage(stdout)
 	case "escrow":
 		app.EscrowUsage(stdout)
+	case "security-maintenance":
+		// The local operator role owns nested flag help before loading any
+		// configuration, datastore, signing key or deployment credential.
+		if len(args) > 2 {
+			return args, false, 0
+		}
+		app.SecurityMaintenanceUsage(stdout)
 	case "server", "migrate", "config-rollout":
 		// These parse their own flag sets, and the flag package's generated
 		// usage is the complete, always-current list of what they accept.
@@ -586,11 +603,11 @@ func runUpgradeOperator(ctx context.Context, args []string, channel updatecheck.
 			command := exec.CommandContext(ctx, handoff.Executable, cli.WithVerbosityArguments(handoff.Arguments, diagnostics.Level(ctx))...)
 			command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 			command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
-			err = command.Run()
+			err = app.AutomaticUpgradeHandoffError(command.Run())
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
-			return 1
+			return app.AutomaticUpgradeExitCode(err)
 		}
 		return 0
 	}
@@ -640,6 +657,13 @@ kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
 privileged local update helper (separate service; JSON config only):
   hikyo updater --config /etc/hikyo/updater.json
                                         remote apply is disabled; see hikyo upgrade
+
+local automatic security maintenance (separate deployment owner):
+  sudo hikyo security-maintenance enroll --config FILE
+  sudo hikyo security-maintenance run --config FILE [--once]
+  sudo hikyo security-maintenance check|status --config FILE
+  hikyo security-maintenance stage|inspect|health
+  hikyo security-maintenance feed init-root|publish --help
 
 information:
   hikyo version                         readable build summary
