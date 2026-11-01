@@ -318,6 +318,8 @@ jobs:
           grep -Fx "  digest: sha256:RELEASE_IMAGE_DIGEST" chart/hikyo/values.yaml
       - name: Chart renders across modes with hardening and refusal assertions
         run: ./scripts/ci/check-chart.sh
+      - name: GitOps chart trust, singleton values and controller policy fixtures
+        run: python3 -B -m unittest discover -s scripts/deploy -p 'test_*.py'
       - name: MCP Compose and reverse-proxy deployment contract
         run: ./scripts/ci/check-mcp-deployment.sh
       - name: Release trust and refusal fixtures

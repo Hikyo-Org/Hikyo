@@ -29,7 +29,17 @@ spec:
 {{- if eq $mode "keyless" }}
                 - keyless:
                     issuer: https://token.actions.githubusercontent.com
+{{- if eq (index (.Chart.Annotations | default dict) "hikyo.dev/release-profile") "nightly/v1" }}
+{{- $commit := index .Chart.Annotations "org.opencontainers.image.revision" | default "" }}
+{{- if not (regexMatch "^[0-9a-f]{40}$" $commit) }}
+{{- fail "nightly admission requires an exact chart source revision" }}
+{{- end }}
+                    subject: https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main
+                    additionalExtensions:
+                      githubWorkflowSha: {{ $commit | quote }}
+{{- else }}
                     subject: {{ printf "https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/v%s" .Chart.AppVersion | quote }}
+{{- end }}
                     rekor:
                       url: https://rekor.sigstore.dev
 {{- else }}

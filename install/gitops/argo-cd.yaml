@@ -1,0 +1,54 @@
+# Input template for scripts/deploy/render_gitops.py. Generate before applying.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hikyo
+  namespace: argocd
+spec:
+  description: Exact-digest singleton Hikyo with operator-approved synchronization
+  sourceRepos:
+    - oci://ghcr.io/hikyo-org/charts/hikyo
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hikyo
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hikyo
+  namespace: argocd
+  # No resource-deletion finalizer. Application removal retains application state.
+spec:
+  project: hikyo
+  source:
+    repoURL: oci://ghcr.io/hikyo-org/charts/hikyo
+    targetRevision: sha256:GENERATE_FROM_VERIFIED_CHART
+    path: .
+    helm:
+      releaseName: hikyo
+      skipCrds: true
+      valuesObject: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hikyo
+  syncPolicy:
+    automated:
+      enabled: false
+      prune: false
+      selfHeal: false
+      allowEmpty: false
+    retry:
+      limit: 0
+    syncOptions:
+      - Prune=false
+      - FailOnSharedResource=true
