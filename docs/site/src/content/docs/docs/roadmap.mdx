@@ -9,12 +9,16 @@ controlled human onboarding, workload delivery and recovery operations. Features
 that earlier roadmaps placed after 1.0 have since been implemented. This page
 separates that implementation from release and deployment acceptance.
 
-<Callout type="warn" title="Implementation snapshot, 16 October 2026">
-  These docs track the repository implementation. Local tests and implemented
-  surfaces do not certify a release, a deployed installation or a real identity
-  provider. The [implementation status](/implementation-status/) records owning
-  obligations; [release acceptance](https://github.com/Hikyo-Org/Hikyo/issues/79)
-  needs exact-candidate evidence. This roadmap sets no release date.
+<Callout type="info" title="Stable publication, 1 November 2026">
+  [Hikyo 1.0.0](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0) is public
+  and immutable, establishing the API/CLI compatibility baseline. Publication
+  is a bounded software claim; remaining native, provider, MCP and operational
+  qualifications retain their existing targets under
+  [#79](https://github.com/Hikyo-Org/Hikyo/issues/79). The
+  [implementation status](/implementation-status/) records the completed
+  published portion and the wider partial capability. The feature inventory
+  below retains its 16 October implementation snapshot; it is not a deployment
+  or complete qualification certificate.
 </Callout>
 
 ## Implemented capabilities
@@ -56,13 +60,11 @@ that every API operation already has a form.
 
 ## Execution and scope closeout
 
-The [execution tracker](https://github.com/Hikyo-Org/Hikyo/issues/527) sequences
-correctness repairs, browser completion, amendment closeout and final candidate
-evidence. Release-plan and historical-acceptance reconciliation belongs to
-[#79](https://github.com/Hikyo-Org/Hikyo/issues/79). Backup retention/erasure
-(#930), dynamic lease ceilings and TTL overflow (#934/#935), and PostgreSQL
-schema rendering (#941) need their
-own correction and acceptance evidence before freezing the affected contracts.
+The [execution tracker](https://github.com/Hikyo-Org/Hikyo/issues/527) now tracks
+post-publication record and qualification closeout. The immutable 1.0.0 release
+has shipped; [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) remains open for
+its remaining applicable evidence. The historical implementation sequence and
+feature boundaries below do not introduce new prerequisites for publication.
 
 Social sign-in and CLI browser/device login are implemented. Their accepted
 post-1.0 scope disposition remains separate from implementation; #589 owns its

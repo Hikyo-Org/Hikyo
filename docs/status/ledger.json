@@ -257,11 +257,25 @@
       "kind": "capability",
       "title": "Public release and distribution",
       "status": "partial",
-      "implemented": "Cosign trust, SBOM generation, GoReleaser/Helm packaging, and installer verification",
-      "remaining": "Run full acceptance, freeze API/CLI, and publish 1.0 under [#79](https://github.com/Hikyo-Org/Hikyo/issues/79)",
+      "implemented": "Immutable stable v1.0.0 published 2026-11-01 from source 2ac7bb36633d3ae0a99d7724968ca8c3cbf18334, establishing the API/CLI freeze; 80 retained public assets, signed manifest, SBOMs and verified image/chart subjects. Canonical publication and public-manifest readback passed within the bounded software claim.",
+      "remaining": "Wider normative acceptance remains partial: separate clean-Mac/Intel/Homebrew qualification; GitHub #1116 and owner-skipped GitLab #1119; MCP #651, collector #1037, alerts #1038 and per-installation #1055; PVR/acknowledgment receipts #1117. Separate signed trust-sync merge/readback belongs to the release coordinator. Existing result levels and future targets remain; publication alone does not close #79 or #41.",
       "evidence": [
-        { "label": "#46 handoff", "path": "docs/handoff/46-release-signing.md" },
-        { "label": "1.0 blockers", "path": "docs/handoff/v1-launch-blockers.md" }
+        {
+          "label": "#46 handoff",
+          "path": "docs/handoff/46-release-signing.md"
+        },
+        {
+          "label": "1.0 blockers",
+          "path": "docs/handoff/v1-launch-blockers.md"
+        },
+        {
+          "label": "Published v1.0.0",
+          "url": "https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0"
+        },
+        {
+          "label": "Publication closeout and qualification limits",
+          "path": "docs/handoff/79-527-publication-closeout.md"
+        }
       ]
     },
     {

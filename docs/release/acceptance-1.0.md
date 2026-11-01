@@ -1,10 +1,80 @@
 # 1.0 acceptance ledger
 
-**Historical September candidate acceptance completed; current candidate acceptance and official release remain gated.** PR #673 tested source `4394dd497b7e35b2bcf585528cffd9f020eab795` passed all 49 exact-head checks and merged on 2026-09-05 at 15:20:28 UTC as `549726d96c2c5938636f31d9b85232a761bb75a2`. GitHub verified the merge and both commits have tree `38588db4b34af5ce97179a9c40b617a41e25831e`. [Merge proof](../reports/1.0/evidence/acceptance-refresh-2026-09-05/merge-549-verification.json) preserves this binding. This ledger records 42 INTERNAL-PASS criteria, four EXTERNAL-PENDING criteria, one FREEZE-PENDING, one CEREMONY-PENDING and one POST-1.0 disposition. Internal PASS does not mean an official 1.0 release has been published.
+**Historical September acceptance is preserved. Official v1.0.0 publication and freeze are complete; wider candidate and operational acceptance remains partial.** PR #673 tested source `4394dd497b7e35b2bcf585528cffd9f020eab795` passed all 49 exact-head checks and merged on 2026-09-05 at 15:20:28 UTC as `549726d96c2c5938636f31d9b85232a761bb75a2`. GitHub verified the merge and both commits have tree `38588db4b34af5ce97179a9c40b617a41e25831e`. [Merge proof](../reports/1.0/evidence/acceptance-refresh-2026-09-05/merge-549-verification.json) preserves this binding. This ledger records 42 INTERNAL-PASS criteria, four EXTERNAL-PENDING criteria, one FREEZE-PENDING, one CEREMONY-PENDING and one POST-1.0 disposition. Internal PASS does not mean an official 1.0 release has been published.
 
 Normative clauses remain in [mvp-boundary](../adr/mvp-boundary.md) sections 1.2/6 and the [SAML](../adr/saml-sp.md), [SCIM](../adr/scim-provisioning.md), [scanning](../adr/secret-scanning.md) and [GitHub](../adr/github-adapter.md) criteria. [Flat-model](../adr/flat-model.md) finalizes C1/C2, counted once. GH-E2E/GH-STUB/GH-CONTRACT name the three GitHub check classes, not new requirements.
 
-## Current candidate: pending
+## Published 1.0.0: actual closeout, 2026-11-01
+
+[Hikyo v1.0.0](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0) is the
+latest public, immutable stable release: GitHub release **430295277**, published
+**2026-11-01T06:05:47Z**. The owner-authorized canonical publication exited zero
+at **06:14:50.326261 UTC**. This is a completed publication and API/CLI freeze,
+not a new preparation phase or a claim that every qualification is complete.
+
+| Published identity | Recorded value |
+| --- | --- |
+| Frozen artifact source | `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` |
+| Verified signed tag object | `4e716bfd43bf82350dbd6fc5e3abbdc52407c41e` (`v1.0.0`) |
+| Public release-manifest SHA-256 | `038fabba9529eb9880aa86002ecc2102d2c4f0c0fc75393da9c928f6accf6094` |
+| Retained immutable inventory | 80 asset identities, 906,021,764 bytes, unchanged |
+
+The three complete canonical verification identities match, each with
+`published_oci_verified=true`; image and chart Cosign verification passed before
+and after publication. Credential-free latest/public API and direct manifest
+readback match the recorded release. The
+[publication closeout](../handoff/79-527-publication-closeout.md) records public
+references, receipt digests and the bounded result levels. Source, tag, assets
+and signatures are unchanged by the owner's product-oriented display-note
+rewrite; original approved notes and current editable notes have separate hashes.
+
+**The current claim is published stable software with explicit qualification
+limits.** The frozen source's full-main run passed within its recorded scope;
+source/development/synthetic checks do not become native-package, real-provider,
+MCP, collector, alert or installation acceptance. The
+[capability authority](../status/README.md#cap-public-release) remains **partial**
+because its wider normative acceptance obligations are not all satisfied.
+September criterion outcomes and later candidate result levels remain intact.
+In particular, publication does not mark every historical FREEZE-PENDING or
+CEREMONY-PENDING criterion passed: those rows may contain additional assertions.
+
+Post-publication work follows the existing targets, without inventing a new
+prerequisite for the release that is already public:
+
+- Separate clean-Mac, Intel-native and Homebrew install/upgrade acceptance
+  remains unperformed under the distribution owner. Hosted Apple checks and
+  the recorded native ARM64 download check retain their actual limits.
+- Real GitHub contract follow-up [#1116](https://github.com/Hikyo-Org/Hikyo/issues/1116)
+  and owner-skipped disposable GitLab qualification
+  [#1119](https://github.com/Hikyo-Org/Hikyo/issues/1119) remain distinct from source tests.
+- MCP [#651](https://github.com/Hikyo-Org/Hikyo/issues/651), independent collection
+  [#1037](https://github.com/Hikyo-Org/Hikyo/issues/1037), alerting
+  [#1038](https://github.com/Hikyo-Org/Hikyo/issues/1038), and per-installation
+  [#1055](https://github.com/Hikyo-Org/Hikyo/issues/1055) retain their open operational
+  evidence, profile and resource boundaries.
+- PVR/external acknowledgment receipt reconciliation
+  [#1117](https://github.com/Hikyo-Org/Hikyo/issues/1117), development-tool advisories
+  [#1118](https://github.com/Hikyo-Org/Hikyo/issues/1118), and container-local
+  operator limitations [#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112)
+  keep their existing dispositions and future targets.
+- The release coordinator owns the separate exact-four-file signed trust-sync
+  PR and its actual merge/authenticated readback. This lane changes no trust
+  files and claims no trust-sync merge without that owner's evidence.
+
+**#79 and #41 remain open.** Publication alone does not satisfy the all-green
+MVP checkbox, authorize a deployment, supply an independent human review, or
+waive a criterion. Maintainer-authored source changes retain the explicit
+[solo-maintainer review boundary](../adr/oss-mechanics.md#contribution-model), with
+fresh independent Standards/Spec source reviews reported separately.
+
+## Historical October 28 preparation snapshot
+
+The following pending statuses describe the October 28 preparation source.
+They are preserved alongside September's measured outcomes, rather than being
+promoted wholesale by the later publication. The closeout above is the current
+publication/freeze record. Neither this update nor the public tag closes #79
+or certifies the complete MVP criterion inventory.
+
 
 Scope/dependency source: `24e198b32a3ffd8d4013207b2f974d76ec49be6f`, 2026-10-28.
 The criterion outcomes and artifact hashes below remain the September 5 record.
