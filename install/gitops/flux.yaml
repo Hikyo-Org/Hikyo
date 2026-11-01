@@ -1,0 +1,105 @@
+# Input template for scripts/deploy/render_gitops.py. Generate before applying.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hikyo-deployer
+  namespace: hikyo
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hikyo-deployer
+  namespace: hikyo
+rules:
+  # Helm stores release history in Secrets in this isolated application namespace.
+  - apiGroups: [""]
+    resources: [secrets, services, configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hikyo-deployer
+  namespace: hikyo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hikyo-deployer
+subjects:
+  - kind: ServiceAccount
+    name: hikyo-deployer
+    namespace: hikyo
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: hikyo
+  namespace: hikyo
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  interval: 10m
+  url: oci://ghcr.io/hikyo-org/charts/hikyo
+  ref:
+    digest: sha256:GENERATE_FROM_VERIFIED_CHART
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: '^https://token\.actions\.githubusercontent\.com$'
+        subject: '^https://github\.com/Hikyo-Org/Hikyo/\.github/workflows/nightly\.yml@refs/heads/main$'
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: hikyo
+  namespace: hikyo
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  suspend: true
+  interval: 10m
+  timeout: 10m
+  releaseName: hikyo
+  targetNamespace: hikyo
+  serviceAccountName: hikyo-deployer
+  chartRef:
+    kind: OCIRepository
+    name: hikyo
+  install:
+    crds: Skip
+    createNamespace: false
+    disableTakeOwnership: true
+    strategy:
+      name: RemediateOnFailure
+    remediation:
+      retries: 0
+      remediateLastFailure: false
+  upgrade:
+    crds: Skip
+    disableTakeOwnership: true
+    cleanupOnFail: false
+    preserveValues: false
+    strategy:
+      name: RemediateOnFailure
+    remediation:
+      retries: 0
+      remediateLastFailure: false
+  driftDetection:
+    mode: disabled
+  values: {}

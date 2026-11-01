@@ -30,6 +30,8 @@ For a new singleton Kubernetes/PostgreSQL installation, follow the
 [complete first-install runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md).
 It distinguishes chart publication from source availability and keeps existing
 manual installations on their separate upgrade path.
+For controller ownership, use [Kubernetes GitOps](/docs/kubernetes-gitops/) for
+Flux and Argo CD configurations with exact chart pins and explicit activation.
 
 <Callout type="info" title="Stable release installers are not published yet">
   The repository contains the signed-release pipeline, installer template,

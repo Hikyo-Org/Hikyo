@@ -1,0 +1,73 @@
+---
+title: Kubernetes GitOps
+description: Install an exact Hikyo chart with Flux or Argo CD and retain explicit migration approval.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/kubernetes-gitops.mdx
+---
+
+Hikyo provides Flux and Argo CD installation recipes for a fresh singleton
+PostgreSQL server with manual custody. Both select the exact OCI chart digest
+and matching image. Flux starts suspended; Argo CD requires manual sync.
+
+Use the [complete GitOps runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-gitops.md)
+for prerequisites, controller activation, maintenance, recovery and recorded
+validation boundaries. The [deployment support matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md)
+distinguishes artifact publication, controller reconciliation and application
+acceptance. A successful archive release does not prove that its chart exists.
+
+## Prepare the installation
+
+Complete the [singleton installation prerequisites](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md):
+empty PostgreSQL with verified TLS, existing root/database/server-TLS Secrets,
+the authenticated public bundle and operator pin, and separately qualified
+public/private installation claims. Keep keys, DSNs and recovery material outside
+Git. The [secrets delivery operator](/docs/kubernetes-operator/) has a separate role
+and is disabled in these server recipes.
+
+From a repository checkout, copy
+`chart/hikyo/examples/singleton-manual.yaml` to `operator-values.yaml` and set your
+HTTPS origin and existing Secret/PVC references. Use Python with PyYAML, Helm
+with OCI digest support and Cosign. Select the exact chart version, chart digest
+and full source commit from its verified publisher record.
+
+```sh
+python3 -B scripts/deploy/render_gitops.py \
+  --provider flux \
+  --chart-version "$HIKYO_CHART_VERSION" \
+  --chart-digest "$HIKYO_CHART_DIGEST" \
+  --source-commit "$HIKYO_SOURCE_COMMIT" \
+  --values operator-values.yaml --output hikyo-flux-reviewed.yaml
+```
+
+Choose `--provider argo-cd` and a new output filename for Argo instead. The
+generator verifies chart and image signatures against the exact nightly workflow
+and source, checks their metadata, renders the chart, and writes the selected
+controller configuration. It performs no cluster actions. Review the output and
+use the runbook's server dry-run and explicit activation steps.
+
+## Controller behavior
+
+Flux uses a digest-pinned `OCIRepository`, a suspended `HelmRelease`, namespaced
+deployment permissions, and explicit zero-retry failure policies. It does not
+automatically roll back or uninstall a failed candidate. Argo CD uses an OCI
+`Application` and restricted `AppProject`, with automatic sync, self-healing and
+pruning disabled. It renders the chart directly rather than creating a Helm
+release. Its Application has no cascading-deletion finalizer.
+
+The controller fixture pins Flux 2.10.0 and Argo CD 3.5.6. It exercises the actual
+chart at zero replicas with isolated local OCI artifacts. That validates
+controller mechanics; it does not establish a healthy Hikyo installation or
+populated-database migration acceptance. Record your actual controller, storage,
+network, application/admin, restart and restore results separately.
+
+## Upgrade with explicit maintenance
+
+For a populated installation, freeze parent reconciliation and finish any
+in-flight controller action before stopping every server writer. Follow
+[verified manual upgrades](/docs/upgrades/) for export, a readable same-engine
+scratch restore, exact-target migration and candidate admission. Update the
+controller's exact target only after those prerequisites pass, then approve one
+activation. Keep failed or uncertain schema writes in maintenance. Reverting Git
+to the old image is not recovery.
+
+These recipes do not provide an automated migration coordinator, HA rolling
+upgrades, unattended enrollment, controller installation or ownership transfer.

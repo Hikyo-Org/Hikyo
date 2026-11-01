@@ -2,13 +2,15 @@
 
 This is the deployment entry-point inventory. Read [installation](https://hikyo.app/docs/installation/)
 for verification and platform commands, [the singleton Kubernetes runbook](kubernetes-singleton.md)
-for a fresh PostgreSQL installation, and [manual upgrades](manual-upgrades.md) for
+for a fresh PostgreSQL installation, [Flux/Argo CD recipes](kubernetes-gitops.md)
+for controller-owned installation, and [manual upgrades](manual-upgrades.md) for
 existing installations. Artifact availability, a valid configuration, and a
 healthy installation are separate facts.
 
-Hikyo remains in `0.x` development. Signed nightlies are prereleases; no stable
-release was observed in the 31 October 2026 inventory. Do not describe a source
-checkout, nightly, template or installation example as a supported stable release.
+The 31 October 2026 inventory observed `0.x` development and no published stable
+release. That is a historical snapshot, not the status of the separate 1.0
+release process. Signed nightlies remain prereleases. Do not describe this source
+checkout, nightly, template or installation example as stable-release acceptance.
 
 ## Artifact matrix
 
@@ -47,7 +49,8 @@ a chart signature for runtime recovery custody or a signed migration route.
 | Multi-node application HA | Shared root authority and externally HA PostgreSQL | Full stop of all writers, one verified migrator, exact-target boot | App-node availability does not provide database HA, zero-downtime schema upgrades or multi-region DR |
 | Kubernetes configuration executor | Narrowly enrolled singleton bootstrap-source changes | Existing administrator-approved configuration protocol | Not a general server release updater; separate from secrets delivery |
 | Secrets delivery operator | `HikyoInstance` / `HikyoSecret` to native Secrets | Reconciles delivery and permitted consumer rollouts | Does not install or upgrade the Hikyo server |
-| Flux / Argo CD server lifecycle | No complete shipped controller recipe in this slice | Follow the signed-upgrade ADR before automating release changes | Helm compatibility alone is not migration-safe GitOps acceptance |
+| Flux server installation | Exact-digest OCIRepository and namespaced HelmRelease/RBAC; generated after chart/image verification | Suspended by default; explicit activation, no rollback/uninstall remediation; manual full-stop migration | Controller mechanics and actual application/migration acceptance are separate |
+| Argo CD server installation | Exact-digest generic OCI Application and restricted AppProject; generated after chart/image verification | Manual sync, no automatic self-heal/pruning; manual full-stop migration | Chart rendering is Argo-owned, not a Helm release; no built-in Cosign plugin is added |
 
 Kubernetes 1.36 is the existing configuration-rollout target. The repository's
 Kind tests pin their Kubernetes image and chart tooling in source; that does not
@@ -87,8 +90,10 @@ a real installation through ingress. Source tests and local templates do not
 replace those observations. Existing live installations need their own
 operational authorization; this inventory is not permission to upgrade them.
 
-The next deployment slices are controller-tested Flux and Argo CD installation
-recipes, their separately proven migration lifecycle, and packaged monitoring,
+The [Flux and Argo CD recipes](kubernetes-gitops.md) now provide controller
+installation configurations and an explicit manual migration procedure. A
+general automated migration coordinator, broader populated upgrade/recovery
+qualification, and packaged monitoring,
 off-host backup, placement and private-registry integration. The broader update
 initiative remains [#1068](https://github.com/Hikyo-Org/Hikyo/issues/1068), under
 the [signed-upgrade contract](../adr/signed-upgrade-compatibility.md).

@@ -11,6 +11,11 @@ Run repository commands from the repository root. Kubernetes changes below are
 operator actions in the explicitly selected cluster. No cluster, cloud account,
 database, root key or public route is created merely by reading this runbook.
 
+For Flux or Argo CD ownership, complete this guide's prerequisites and storage
+preparation, then replace the Helm install step with the
+[GitOps installation recipe](kubernetes-gitops.md). Return here for the public
+route, administrator, restart and recovery checks.
+
 ## 1. Prepare the dependencies and operator tools
 
 Use a selected Kubernetes context, Helm with OCI digest support, kubectl, Cosign
@@ -406,7 +411,8 @@ Future image changes follow [manual verified upgrades](manual-upgrades.md)
 and the [signed-upgrade ADR](../adr/signed-upgrade-compatibility.md). The app
 authenticates the exact selected release and migration route. An uncertain schema
 write remains fenced; never restore an old image or old installation journal to
-make readiness green. Full Flux/Argo orchestration is a later, separately tested
+make readiness green. The [Flux/Argo installation recipes](kubernetes-gitops.md)
+retain this manual migration boundary; automated release orchestration is a separate
 delivery slice, related to [#1068](https://github.com/Hikyo-Org/Hikyo/issues/1068).
 
 ## Removal and retained state

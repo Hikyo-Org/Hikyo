@@ -32,6 +32,8 @@ and [artifact/topology matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs
 That complete example keeps the delivery controller disabled until the server
 works. The setup below instead shows the manual server-plus-delivery-operator
 shape; the delivery operator does not manage server releases.
+Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install the server through
+Flux or Argo CD with the delivery operator disabled.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with

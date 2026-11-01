@@ -1,67 +1,148 @@
-# Issue 1111: nightly Helm distribution and singleton installation
+# Issue 1111 / PR 1113: nightly Helm, Flux and Argo CD deployment
 
-The first approved deployment-readiness slice adds a signed, retry-safe nightly Helm publisher and a complete manual-custody singleton PostgreSQL installation path. It also commits the [source-cited deployment comparison](../reports/deployment-landscape-2026-10-31.md) and an artifact/runtime support matrix. General Flux/Argo installation recipes, their automated migration lifecycle, monitoring/off-host backup integrations and additional platform paths remain later slices.
+This draft now includes verified nightly Helm publication, a complete manual
+singleton Kubernetes path, and both requested GitOps installation recipes.
+The owner extended the existing draft with "Fold it in" on 1 November 2026.
+The [deployment comparison](../reports/deployment-landscape-2026-10-31.md) remains
+an explicitly dated baseline; the [support matrix](../operations/deployment-support.md)
+and [GitOps runbook](../operations/kubernetes-gitops.md) describe this candidate.
 
-## Source and behavior
+## Source and authorized endpoint
 
-Base: `e9da355b5fd6a6e1c4cee4d6bbb84b26ef51304c`.
-Implementation patch SHA-256, excluding this handoff: `6673bbfc5074910e18a7fa208ffa634f83d7554c5ae6fc566a44c0822521839b`.
+- Original base: `e9da355b5fd6a6e1c4cee4d6bbb84b26ef51304c`.
+- Previously delivered signed head: `523b3b66387d6db0587bd607ebd9cab1a163ea76`.
+- Independently reviewed GitOps increment SHA-256, excluding this handoff:
+  `b20a7e2626ecbb1aa3b47ddc4bf3fe3fe9a5d49c18b81596eac926a2b3abcfef`.
+- Endpoint: signed source delivery to existing draft
+  [PR #1113](https://github.com/Hikyo-Org/Hikyo/pull/1113), with local checks,
+  independent source reviews and a self-contained delivery report.
 
-The nightly job packages only after authenticating its canonical image. Chart version/appVersion, full source revision and immutable image pin travel together. It inspects rendered workloads, compares all packaged file bytes on immutable readback and signs only a fresh source-owned upload. Existing charts must already have the correct source signature and matching contents; unsigned/conflicting bytes and inconclusive registry reads fail. An isolated anonymous Helm client resolves the exact version and verifies its digest/content; chart and image signatures must also be anonymously retrievable.
+The separately frozen 1.0 source is outside these bytes. This work does not
+reselect that source, add an unconditional stable-release gate, merge the draft,
+publish a release, or authorize a production installation/upgrade. Human
+maintainer/adversarial security review remains required under CONTRIBUTING.
 
-The optional nightly Kyverno policy binds the exact source SHA. Its rendering is tested; live Kyverno enforcement is not established here. Stable trust and Apple signing/submission behavior are unchanged.
+## Resulting behavior
 
-The chart now exports the existing staged root-key file path for local operator commands. The Kind gate exercises the actual same-container admin flow instead of injecting a root value into separate Jobs. Its retained broken fixture removes both flag and environment root-file sources, preserving the required readiness refusal.
+The nightly publisher binds chart version/appVersion, full source SHA and the
+verified immutable image. It renders the chart, compares packaged source bytes
+on immutable readback, signs only a fresh source-owned upload, refuses unsigned
+or conflicting existing artifacts, and checks anonymous exact-version access.
+Optional nightly Kyverno policy rendering binds its source SHA; live enforcement
+is separate. The existing staged root-file path is exposed to local admin
+commands, and the Kind missing-root fixture removes both flag and environment
+sources. Original trust, signing and runtime admission boundaries are retained.
 
-## Installation and discovered gap
+The GitOps generator verifies the selected chart and its matching image against
+the exact nightly workflow, issuer and source SHA. It checks source/version/profile
+metadata and the real Helm render before writing any output. Values accept the
+manual singleton surface with existing Secret references, independent claims and
+native TLS. Image overrides, secret-value fields, HA, delivery/configuration
+operators, unattended enrollment and cluster-wide admission installation refuse.
+The generator performs no Kubernetes operations and does not overwrite a prior
+reviewed output file.
 
-Use [the singleton runbook](../operations/kubernetes-singleton.md), [example values](../../chart/hikyo/examples/singleton-manual.yaml) and [support matrix](../operations/deployment-support.md). They cover exact artifact verification, file-backed Secrets, independent public/state PVCs, guarded empty-volume initialization, native TLS, first-admin authority disclosure, CLI trust/login and separately held recovery prerequisites.
+Flux uses an exact-digest OCIRepository, a suspended HelmRelease and a namespaced
+impersonation Role. It repeats keyless issuer/subject verification in-cluster,
+skips delivery CRDs and refuses silent resource adoption. Explicit zero-retry
+remediation policies avoid automatic uninstall/rollback or changed controller
+defaults. Drift correction is disabled. The shared chart label helper now
+normalizes Flux's OCI `+digest` version metadata into a valid Kubernetes label.
 
-Source tracing found that unattended startup resolves bundle/operator paths only in process-local configuration, so a separately executed host-only CLI does not inherit them. This is tracked in [#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112). The complete example deliberately uses the existing manual-custody contract rather than bypassing admission or launching a second updater.
+Argo uses a generic OCI source pinned by digest, an Application and a restricted
+AppProject. Automatic sync, self-healing, retries and pruning are disabled. The
+Application has no cascading-deletion finalizer. Argo renders the chart directly;
+this path does not create a Helm release or install a Cosign verification plugin.
+The operator retains the generator's independent verification result before sync.
 
-## Verification
+Both use manual custody and the [complete singleton prerequisites](../operations/kubernetes-singleton.md).
+The database, root/TLS/database Secrets, custody claims and public L4 Service stay
+operator-owned. For populated release changes the operator freezes parent
+reconciliation, waits for current controller work to finish, stops every writer,
+proves an encrypted export and same-engine readable restore, runs one verified
+migrator against the same installed custody, and explicitly activates the exact
+target. Failed/uncertain writes stay in maintenance; reverting Git to an old
+image is not recovery. No migration hook acquires private recovery authority.
 
-| Evidence | Result and scope |
+The separate unattended local-operator resolver remains
+[#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112). The broader automated
+maintenance initiative remains [#1068](https://github.com/Hikyo-Org/Hikyo/issues/1068).
+This draft does not implement either by changing an installation flag.
+
+## Verification for this increment
+
+| Evidence | Result and practical boundary |
 | --- | --- |
-| Shared fast-feedback plan and execution | PASS: shellcheck, pinned workflow lint, docs-content preparation and whitespace; no unrelated frontend checks selected |
-| Nightly publisher/consumer fixtures | PASS: real Helm 4.2.3 packaging/rendering with synthetic registry/OIDC boundaries; fresh/retry/refusal/public-readback cases |
-| Python package boundaries | PASS: 7 tests, including source symlinks, archive links/traversal/duplicates, changed contents and source/version mismatch |
-| Chart owner and unattended contract | PASS: structured chart/RBAC/security/probe/HA/configuration checks and retained incompatible-mode refusals |
-| Manual example | PASS: Helm 4.2.3 rendering, separate PVC references, TLS service selectors and missing-root fixture shape; no cluster execution |
-| Chart mutation consumers | PASS: valid chart accepted; all retained RBAC/env/args/hardening/network mutations refused |
-| CI-owner package | PASS: `go test -p 2 ./scripts/ci -count=1`, final candidate, 389.291 seconds |
-| Standards source review | Initial P1 missing-root consumer regression repaired; independent recheck found no remaining actionable findings |
-| Spec source review | Initial P1 actual Helm4 missing-tag response repaired; independent recheck found no remaining actionable findings |
-| Hosted CI / merge | Pending PR workflow and separate protected merge gates |
-| Published chart / anonymous registry acceptance | HOLD; initial anonymous attempt returned403; installed user token lacks read:packages for package inventory |
-| Live Kind/admin, CSI/CNI/remount, Kyverno and restore acceptance | NOTRUN |
-| Human maintainer/adversarial security review | Required, not supplied by automated source review |
+| GitOps generator and policy tests | PASS: 8 tests with real Helm 4.2.3 packaging/rendering, verification-boundary refusals, explicit controller policies and Flux label regression |
+| Structured chart owner checks | PASS: retained security/RBAC/probe/topology/custody assertions |
+| Chart mutation consumers | PASS: valid chart accepted; all retained security/network/bootstrap mutations refused |
+| Nightly publisher/release fixtures | PASS: retained source/image/version, retry/refusal and anonymous-client fixture checks; no real upload |
+| Changed-path routing | PASS: GitOps-only edits select their existing supply-chain owner suite, lint and Kubernetes consumers |
+| Docs | PASS: Astro check, 48 files, zero errors/warnings/hints; static build, 80 pages including Kubernetes GitOps; content preparation tests |
+| Shared fast feedback | PASS: selected shell/workflow/docs checks; Go/shell/workflow/docs feedback completed in 21 seconds |
+| Frozen CI coverage registration | PASS: unchanged baseline accepted; 13 narrowing/fail-open/ordering mutations refused; historical hashes retained |
+| CI-owner package | PASS: complete `scripts/ci` suite, two Go workers, final rerun 397.016 seconds |
+| Flux/Argo controller campaign | PASS: Flux 2.10.0 / Argo CD 3.5.6, Helm 4.2.3, Kubernetes 1.36.1; eight recorded controller-mechanics checks, 34 unchanged functional input hashes and successful cleanup |
+| Standards source review | Initial P2 CI-routing omission repaired; independent exact-increment recheck reports no remaining actionable source findings |
+| Spec source review | Initial pass and independent exact-increment recheck report no actionable source findings |
+| Hosted CI / protected merge / human security review | Pending on the new pushed head; local source review is not independent human acceptance |
+| Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher or proven that selected chart available |
+| Actual Hikyo boot/admin, CSI/CNI/remount, populated migration and restore | NOTRUN by the GitOps campaign; retain separate runtime acceptance |
 
-Initial reviews and exact-candidate rechecks were separate Standards and Spec passes. Rechecks used OpenAI `gpt-6.1-sol`, high reasoning. The Spec reviewer additionally ran local fixtures with Helm3.16.1; the parent performed the pinned Helm4.2.3 checks above. Optional cross-provider review was not requested.
+Review rechecks used OpenAI `gpt-6.1-sol` at high reasoning and inspected the
+exact increment hash above. They performed source review, not independent
+controller execution. Optional cross-provider review was not requested.
 
-## Reproduce local checks
+The live campaign installs the actual chart at **zero replicas**, checks unsigned
+Flux refusal and digest selection, holds target changes until explicit approval,
+retains a failed Flux candidate without remediation, and exercises Argo manual
+sync/failure/deletion semantics. Its local unsigned HTTP registry and unusable
+image digests are isolated fixtures, not production trust bypasses. It creates
+its own kubeconfig, cluster and registry, runs the controllers sequentially and
+finalizes Flux resources before deleting controller/RBAC dependencies. Functional
+input hashes and actual controller image IDs are recorded; a success receipt is
+written only after owned resource cleanup succeeds. This is controller-mechanics
+proof, not application/database or production-signature acceptance.
 
-Use the repository-pinned Go/Node toolchain, Helm4.2.3, ShellCheck0.11.0 and Python with PyYAML6.0.3. From the repository root:
+## Reproduce and continue
+
+Use repository-pinned Go/Node tooling, Helm 4.2.3, ShellCheck 0.11.0, Python 3.11+
+with PyYAML 6.0.3, and the separate Kind/Docker prerequisites for the live campaign.
+From the repository root:
 
 ```sh
 set -eu
-scripts/ci/fast-feedback.sh --working-tree --plan
-scripts/ci/fast-feedback.sh --working-tree
-scripts/ci/check-nightly-release_test.sh
+python3 -B -m unittest discover -s scripts/deploy -p 'test_*.py'
 scripts/ci/check-chart.sh
 scripts/ci/check-chart_test.sh
-scripts/ci/check-unattended-chart_test.sh
+scripts/ci/check-nightly-release_test.sh
+scripts/ci/classify-changed-paths_test.sh
+scripts/ci/fast-feedback.sh --working-tree --plan
+scripts/ci/fast-feedback.sh --working-tree
 GOMAXPROCS=2 go test -p 2 ./scripts/ci -count=1
+pnpm --dir docs/site install --frozen-lockfile
+pnpm --dir docs/site run check
+pnpm --dir docs/site run build
+node --test docs/site/scripts/test-prepare-content.mjs
+python3 -B scripts/ci/check_gitops_kind.py --receipt gitops-controller-receipt.json
 ```
 
-These commands do not publish, provision a cluster or establish runtime acceptance. The existing chart/Kind gate needs the exact candidate binary and matching fixture bundle specified by its runner; do not substitute an arbitrary source build or weaken its admission checks.
+The GitOps increment hash is reproducible in Bash or Zsh with:
 
-## Remaining delivery gates
+```sh
+set -o pipefail
+git diff 523b3b66387d6db0587bd607ebd9cab1a163ea76 HEAD --binary -- .   ':!docs/handoff/1111-nightly-helm-distribution.md' | sha256sum
+```
 
-1. Complete the exact-head workflow-change and human security review; use the normal protected merge process. No merge, stable release or production rollout is implied by this PR.
-2. After the change lands, inspect the selected main nightly's image/chart job. For the specific `hikyo-org/charts/hikyo` package, an organization package owner may need to establish repository Actions access and public visibility. Package permissions do not imply public visibility. Follow [GitHub's package access/visibility guidance](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility). Do not broaden organization-wide policy merely to clear a failure.
-3. Rerun the failed container/chart job only after its actual cause is repaired. A matching signed private upload can be reused after visibility repair. An unsigned interrupted upload is refused and needs explicit operator investigation; the script will not manufacture a signature for it.
-4. Require the clean-client exact-version pull and chart/image signature verification before advertising chart availability. Record version/source/digests and the real installation's storage, ingress, admin, restart and restore evidence separately.
-5. Repair #1112 before calling unattended deployments a complete host-operator experience. Deliver controller-tested Flux and Argo installation recipes against the demonstrated package/installation contract, then separately prove migration-safe automation.
+Require exact-head human/workflow security review and the normal protected merge
+proof before merging. After a future main nightly publishes, require its actual
+chart/image digest signatures and clean anonymous pull before advertising that
+artifact. Package access/visibility repair, if needed, belongs to the exact
+package owner rather than a blanket organization policy change. Follow the
+[GitOps runbook](../operations/kubernetes-gitops.md) for a separately authorized
+real installation and retain its storage, network, first-admin, restart and
+recovery evidence. No production action is supplied by this handoff.
 
-Temporary test directories are trap-cleaned. No runtime cluster, application server, container, database or cloud resource was created by this implementation task. Local reports and validation receipts remain as evidence; HTML companions are ignored local artifacts and are not committed.
+Task-owned controller clusters/registries and scratch tools are disposable;
+required source reviews, logs and the local offline HTML companion are retained
+as chat deliverables. No HTML report is committed.
