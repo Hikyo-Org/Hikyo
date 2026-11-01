@@ -13,6 +13,30 @@ cat >"$scratch/bin/gh" <<'SH'
 set -eu
 case "$*" in
   'api --paginate --slurp repos/owner/repo/releases?per_page=100')
+    if [ "${FIXTURE_PUBLICATION:-false}" = true ]; then
+      if [ "$FIXTURE_MODE" = post-list-failed ] && [ -f "$FIXTURE_SCRATCH/published" ]; then exit 1; fi
+      if [ -f "$FIXTURE_SCRATCH/downloaded" ]; then
+        case "$FIXTURE_MODE" in
+          recheck-lookup-failed) exit 1 ;;
+          recheck-missing) printf '[[]]\n'; exit 0 ;;
+          replaced-release) printf '[[{"id":2,"tag_name":"v1.0.0"}]]\n'; exit 0 ;;
+        esac
+      fi
+      case "$FIXTURE_MODE" in
+        lookup-failed) exit 1 ;;
+        missing-release) printf '[[]]\n' ;;
+        malformed-pages) printf '[{}]\n' ;;
+        malformed-release-rows) printf '[[null,{}, {"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+        wrong-row-tag-type) printf '[[{"id":99,"tag_name":{}},{"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+        invalid-unrelated-id) printf '[[{"id":-1,"tag_name":"v9.9.9"},{"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+        duplicate-release) printf '[[{"id":1,"tag_name":"v1.0.0"}],[{"id":2,"tag_name":"v1.0.0"}]]\n' ;;
+        invalid-release-id) printf '[[{"id":"1","tag_name":"v1.0.0"}]]\n' ;;
+        fractional-release-id) printf '[[{"id":1.5,"tag_name":"v1.0.0"}]]\n' ;;
+        zero-release-id) printf '[[{"id":0,"tag_name":"v1.0.0"}]]\n' ;;
+        *) printf '[[{"id":99,"tag_name":"v9.9.9"}],[{"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+      esac
+      exit 0
+    fi
     case "$FIXTURE_MODE" in
       unsynced) printf '[[{"draft":false,"tag_name":"v1.0.0"}]]\n' ;;
       outstanding-draft) printf '[[{"draft":true,"tag_name":"v1.0.0"}]]\n' ;;
@@ -42,11 +66,24 @@ case "$*" in
     [ "$FIXTURE_MODE" != red-release ] || conclusion=failure
     jq -nc --arg commit "$FIXTURE_COMMIT" --arg conclusion "$conclusion" '{workflow_runs:[{head_sha:$commit,head_branch:"v1.0.0",status:"completed",conclusion:$conclusion,run_number:1,run_attempt:1}]}' ;;
   'api repos/owner/repo/releases/tags/v1.0.0')
-    id=1 draft=true immutable=true
+    printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1 ;;
+  'api repos/owner/repo/releases/1' | 'api repos/owner/repo/releases/2')
+    id=1 release_id=${2##*/} tag=v1.0.0 draft=true immutable=true
     [ ! -f "$FIXTURE_SCRATCH/published" ] || draft=false
     if [ "$FIXTURE_MODE" = public-mutable ]; then draft=false; immutable=false; fi
     if [ "$FIXTURE_MODE" = changed-draft ] && [ -f "$FIXTURE_SCRATCH/downloaded" ]; then id=2; fi
-    jq -nc --argjson id "$id" --argjson draft "$draft" --argjson immutable "$immutable" '{id:1,tag_name:"v1.0.0",draft:$draft,immutable:(($draft|not) and $immutable),assets:[{id:$id,name:"release-manifest.json",size:1,updated_at:"2026-01-01"}]}' ;;
+    [ "$FIXTURE_MODE" != wrong-selected-id ] || release_id=2
+    [ "$FIXTURE_MODE" != wrong-selected-tag ] || tag=v2.0.0
+    if [ "$FIXTURE_MODE" = recheck-wrong-tag ] && [ -f "$FIXTURE_SCRATCH/downloaded" ]; then tag=v2.0.0; fi
+    if [ -f "$FIXTURE_SCRATCH/published" ]; then
+      case "$FIXTURE_MODE" in
+        post-wrong-id) release_id=2 ;;
+        post-wrong-tag) tag=v2.0.0 ;;
+        post-draft) draft=true ;;
+        post-mutable) immutable=false ;;
+      esac
+    fi
+    jq -nc --argjson release "$release_id" --arg tag "$tag" --argjson id "$id" --argjson draft "$draft" --argjson immutable "$immutable" '{id:$release,tag_name:$tag,draft:$draft,immutable:(($draft|not) and $immutable),assets:[{id:$id,name:"release-manifest.json",size:1,updated_at:"2026-01-01"}]}' ;;
   'release download '*)
     for last; do :; done
     cp "$FIXTURE_SCRATCH/manifest.json" "$last/release-manifest.json"
@@ -116,7 +153,8 @@ jq -nc --arg commit "$commit" '{version:"1.0.0",source_commit:$commit,artifacts:
 . "$script_dir/../lib/release.sh"
 digest=$(sha256_file "$scratch/manifest.json")
 export PATH="$scratch/bin:$PATH"
-for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable; do
+export FIXTURE_PUBLICATION=true
+for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
   export FIXTURE_MODE
   rm -f "$scratch/downloaded" "$scratch/published"
   if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then
@@ -146,6 +184,19 @@ if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$(printf '%064d' 0)"
 fi
 "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
 [ ! -e "$scratch/edited" ] || { printf 'stable fixture: public retry edited release\n' >&2; exit 1; }
+for FIXTURE_MODE in post-wrong-id post-wrong-tag post-draft post-mutable; do
+  export FIXTURE_MODE
+  rm -f "$scratch/downloaded" "$scratch/published" "$scratch/edited"
+  if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then
+    printf 'stable fixture: invalid post-publication release accepted: %s\n' "$FIXTURE_MODE" >&2; exit 1
+  fi
+  [ -e "$scratch/published" ] || { printf 'stable fixture: post-publication check was not reached\n' >&2; exit 1; }
+done
+export FIXTURE_MODE=post-list-failed
+rm -f "$scratch/downloaded" "$scratch/published" "$scratch/edited"
+"$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >/dev/null
+[ -e "$scratch/published" ] || exit 1
+export FIXTURE_MODE=valid
 mkdir "$scratch/signing"
 cp "$scratch/manifest.json" "$scratch/signing/release-manifest.json"
 printf 'policy\n' >"$scratch/signing/stable-policy.json"
