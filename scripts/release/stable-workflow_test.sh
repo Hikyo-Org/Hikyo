@@ -25,6 +25,9 @@ case "$*" in
         lookup-failed) exit 1 ;;
         missing-release) printf '[[]]\n' ;;
         malformed-pages) printf '[{}]\n' ;;
+        malformed-release-rows) printf '[[null,{}, {"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+        wrong-row-tag-type) printf '[[{"id":99,"tag_name":{}},{"id":1,"tag_name":"v1.0.0"}]]\n' ;;
+        invalid-unrelated-id) printf '[[{"id":-1,"tag_name":"v9.9.9"},{"id":1,"tag_name":"v1.0.0"}]]\n' ;;
         duplicate-release) printf '[[{"id":1,"tag_name":"v1.0.0"}],[{"id":2,"tag_name":"v1.0.0"}]]\n' ;;
         invalid-release-id) printf '[[{"id":"1","tag_name":"v1.0.0"}]]\n' ;;
         fractional-release-id) printf '[[{"id":1.5,"tag_name":"v1.0.0"}]]\n' ;;
@@ -142,7 +145,7 @@ jq -nc --arg commit "$commit" '{version:"1.0.0",source_commit:$commit,artifacts:
 digest=$(sha256_file "$scratch/manifest.json")
 export PATH="$scratch/bin:$PATH"
 export FIXTURE_PUBLICATION=true
-for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
+for FIXTURE_MODE in bad-signature bad-oci red-release changed-draft mutable lookup-failed missing-release malformed-pages malformed-release-rows wrong-row-tag-type invalid-unrelated-id duplicate-release invalid-release-id fractional-release-id zero-release-id wrong-selected-id wrong-selected-tag replaced-release recheck-lookup-failed recheck-missing recheck-wrong-tag; do
   export FIXTURE_MODE
   rm -f "$scratch/downloaded" "$scratch/published"
   if "$script_dir/publish-stable-draft.sh" owner/repo v1.0.0 "$digest" "$scratch" >"$scratch/error" 2>&1; then

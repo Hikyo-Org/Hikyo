@@ -21,10 +21,15 @@ read_release() (
   "$GH_BIN" api --paginate --slurp "repos/$repository/releases?per_page=100" >"$release_file.pages"
   release_id=$(jq -er --arg tag "$tag" '
     if type == "array" and all(.[]; type == "array") then
-      [.[][] | select(.tag_name == $tag)] |
-      if length == 1 then .[0].id |
-        select(type == "number" and . > 0 and . == floor)
-      else error("release tag must identify exactly one release") end
+      if all(.[][];
+        type == "object" and
+        (.tag_name | type == "string" and length > 0) and
+        (.id | type == "number" and . > 0 and . == floor)
+      ) then
+        [.[][] | select(.tag_name == $tag)] |
+        if length == 1 then .[0].id
+        else error("release tag must identify exactly one release") end
+      else error("invalid release row") end
     else error("invalid release pages") end
   ' "$release_file.pages")
   "$GH_BIN" api "repos/$repository/releases/$release_id" >"$release_file"
