@@ -196,7 +196,7 @@ func (e *Executor) registerECSTarget(ctx context.Context, source ecsSnapshot, ta
 	if err := e.writeECSRecord(e.ecsRegistrationPath(), intent); err != nil {
 		return result, err
 	}
-	request := make(map[string]json.RawMessage, len(registration)+1)
+	request := make(map[string]json.RawMessage)
 	for key, value := range registration {
 		request[key] = value
 	}
