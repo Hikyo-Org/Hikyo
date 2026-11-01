@@ -6,6 +6,10 @@ Operative with the implementing PR. Owner decision recorded in
 
 Handoff and progress: [docs/handoff/154-pki.md](../handoff/154-pki.md).
 
+Proposed ML-DSA lifecycle work: [draft amendment for #1133](./pki-ml-dsa.md).
+That draft is non-operative pending its prerequisite and security decisions;
+the accepted policy below remains authoritative.
+
 ## Context
 
 The MVP boundary listed "PKI / CA" as Out, "different product, no trigger, new
