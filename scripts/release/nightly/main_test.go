@@ -174,3 +174,85 @@ func TestNightlyPreparationRequiresRecoveryAuthorization(t *testing.T) {
 		}
 	}
 }
+
+func TestNightlyPreflightWithWorkflowSignedStableSnapshot(t *testing.T) {
+	f, nightly, _ := testfixture.Nightly(t, []byte("compatibility"), false)
+	commit := strings.Repeat("a", 40)
+	f.AddStable(t, "1.0.0", 1, commit, []byte("compatibility"))
+	f.Metadata.Sequence, f.Catalog.Sequence = 2, 2
+	f.Metadata.Event.Type, f.Metadata.Event.SignedBy = "release", releasetrust.StableWorkflowSigner
+	f.Metadata.SourceCommit, f.Metadata.ReleaseTag = commit, "v1.0.0"
+	policy, trustedRoot, sign := testfixture.WorkflowSigner(t)
+	policy.PrimaryKeysSHA256 = releasetrust.PrimaryKeysDigest(f.Metadata.PrimaryKeys)
+	policy.NightlyPolicies, policy.Bridges = f.Catalog.NightlyPolicies, f.Catalog.Bridges
+	material := f.Material(t)
+	material.StablePolicy = testfixture.JSON(t, policy)
+	material.StablePolicySignature = testfixture.Sign(t, f.RecoverySigner, material.StablePolicy)
+	material.StableTrustedRoot = trustedRoot
+	material.MetadataSignature = sign(material.Metadata, commit, "v1.0.0")
+	f.Catalog.StableMetadataSHA256 = releaseidentity.Hash(material.Metadata)
+	f.Catalog.StablePolicySHA256 = releaseidentity.Hash(material.StablePolicy)
+	material.Catalog = testfixture.JSON(t, f.Catalog)
+	material.CatalogSignature = sign(material.Catalog, commit, "v1.0.0")
+	if _, err := releasetrust.VerifySnapshot(f.Pinned, material, releaseidentity.SnapshotFloor{}); err != nil {
+		t.Fatalf("fixture is not an authenticated workflow snapshot: %v", err)
+	}
+
+	trust := t.TempDir()
+	put := func(name string, raw []byte) {
+		t.Helper()
+		path := filepath.Join(trust, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	documents := map[string][]byte{
+		"root.json": f.Pinned.Root, "recovery.pub": f.Pinned.RecoveryPublicKey, "primary.pub": f.PrimaryPublic,
+		"metadata.json": material.Metadata, "metadata.sigstore.json": material.MetadataSignature,
+		"catalog.json": material.Catalog, "catalog.sigstore.json": material.CatalogSignature,
+		"stable-policy.json": material.StablePolicy, "stable-policy.sigstore.json": material.StablePolicySignature,
+		"stable-trusted-root.json": material.StableTrustedRoot,
+		"nightly/policy.json":      nightly.Policy, "nightly/trusted-root.json": nightly.TrustedRoot,
+	}
+	for name, raw := range documents {
+		put(name, raw)
+	}
+	var output bytes.Buffer
+	if err := run(t.Context(), []string{"preflight", "--trust", trust}, &output); err != nil {
+		t.Fatalf("nightly preflight rejected authenticated stable workflow metadata: %v", err)
+	}
+	if got, want := output.String(), "Authenticated nightly policy "+string(releaseidentity.Hash(nightly.Policy))+"\n"; got != want {
+		t.Fatalf("nightly policy identity differs: got %q, want %q", got, want)
+	}
+	for _, name := range []string{"stable-policy.json", "stable-policy.sigstore.json", "stable-trusted-root.json"} {
+		for _, change := range []string{"missing", "invalid", "directory"} {
+			t.Run(name+"/"+change, func(t *testing.T) {
+				path := filepath.Join(trust, name)
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+						t.Fatal(err)
+					}
+					put(name, documents[name])
+				})
+				switch change {
+				case "invalid":
+					put(name, []byte("{}"))
+				case "directory":
+					if err := os.Mkdir(path, 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var output bytes.Buffer
+				if err := run(t.Context(), []string{"preflight", "--trust", trust}, &output); err == nil || output.Len() != 0 {
+					t.Fatalf("unauthenticated delegation accepted: err=%v, output=%q", err, output.String())
+				}
+			})
+		}
+	}
+}
