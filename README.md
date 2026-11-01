@@ -28,9 +28,10 @@
 </div>
 
 > [!IMPORTANT]
-> Release maturity, interface freeze, and distribution status live only under
-> [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release) in the
-> machine-checked implementation-status ledger.
+> [Hikyo 1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).
+> Use the [installation guide](https://hikyo.app/docs/installation/) for verified
+> downloads. Distribution status and remaining qualification are recorded under
+> [`CAP-PUBLIC-RELEASE`](./docs/status/README.md#cap-public-release).
 
 <!-- implementation-status:start -->
 ## Implementation status
@@ -108,6 +109,10 @@ ships as one Go binary and supports both SQLite and PostgreSQL.
   your root key, and no enterprise-only implementation.
 
 ## Quick start
+
+For a published binary, start with the
+[installation guide](https://hikyo.app/docs/installation/). The source-build
+steps below run a local evaluation instance.
 
 Requires Go 1.27.3+, Node.js 26.12.1 (see [`.nvmrc`](./.nvmrc)), Corepack 0.35.0,
 and pnpm 11.24.0.

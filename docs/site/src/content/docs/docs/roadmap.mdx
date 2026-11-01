@@ -1,13 +1,13 @@
 ---
 title: Implementation and release roadmap
-description: Current implemented capabilities, remaining boundaries, and release acceptance.
+description: Hikyo 1.0 publication, current capabilities, and remaining qualification and product boundaries.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/roadmap.mdx
 ---
 
-Hikyo's current codebase includes the core configuration and secrets service,
-controlled human onboarding, workload delivery and recovery operations. Features
-that earlier roadmaps placed after 1.0 have since been implemented. This page
-separates that implementation from release and deployment acceptance.
+Hikyo [1.0.0 is released](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0),
+with the self-hosted configuration and secrets service, controlled human
+onboarding, workload delivery and recovery operations. Start with
+[verified installation](/docs/installation/).
 
 <Callout type="info" title="Stable publication, 1 November 2026">
   [Hikyo 1.0.0](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0) is public
@@ -31,7 +31,7 @@ separates that implementation from release and deployment acceptance.
 | Workload delivery | Service accounts, federation, Compose, Kubernetes and multiple deployment-adapter targets | [Machine identities](/docs/machine-identities/), [Deployment adapters](/docs/deployment-adapters/) |
 | Dynamic secrets | PostgreSQL credentials with explicit mint, renew, revoke and settle; browser provider and lease management | [Dynamic secrets](/docs/dynamic-secrets/) |
 | Certificates | SSH user certificates and private X.509 service certificates under bounded profiles | [SSH certificates](/docs/ssh-certificates/), [Private PKI](/docs/private-pki/) |
-| Cryptography | Software-custody transit encryption, signing and MACs; CLI/API operations | [Transit](/docs/transit/) |
+| Cryptography | Software-custody transit encryption, signing and MACs; CLI, API and browser operations | [Transit](/docs/transit/) |
 | Repository scanning | Local files, staged/unstaged changes, Git history/ranges, JSON/SARIF and reviewed suppressions | [Repository scanning](/docs/repository-scanning/) |
 | Operations | SQLite/PostgreSQL, multi-node HA, backup/restore, signed upgrade gates, runtime configuration and enrolled singleton Kubernetes bootstrap rollouts | [High availability](/docs/high-availability/), [Backup and restore](/docs/backup-and-restore/), [Configuration rollouts](/docs/configuration-rollouts/) |
 
@@ -43,8 +43,6 @@ is not permission for uncontrolled registration. See
 
 ## Remaining implementation boundaries
 
-- Transit browser forms remain tracked by
-  [#820](https://github.com/Hikyo-Org/Hikyo/issues/820). Use the CLI or API today.
 - External transit custody has a tested provider seam but no production HSM,
   KMIP or cloud-KMS provider. Software custody is the shipped implementation.
 - Dynamic credential providers are a closed set containing PostgreSQL; they do
@@ -58,7 +56,7 @@ The narrower guides document additional limits. The browser parity manifest
 (`api/parity.yaml`) tracks outstanding browser surfaces; it is not a promise
 that every API operation already has a form.
 
-## Execution and scope closeout
+## Post-release work and scope
 
 The [execution tracker](https://github.com/Hikyo-Org/Hikyo/issues/527) now tracks
 post-publication record and qualification closeout. The immutable 1.0.0 release
@@ -73,19 +71,25 @@ narrow text reconciliation. Kubernetes condition reporting is implemented and
 should be presented as an unbuilt prerequisite solely because an older roadmap
 placed it after 1.0.
 
-Generic file destinations retain their accepted v1.1 boundary, with five browser
-administration operations tracked by #819. Four developer-credential project and
-policy administration operations remain under #807; own credential management
-stays CLI-only. Transit browser completion remains under #820. Implementation
-before a release does not automatically change an accepted release boundary.
+Generic file destinations retain their accepted v1.1 release boundary.
+Developer-credential project and policy administration and Transit browser
+operations are implemented; see [browser operations](/docs/browser-operations/)
+for the current browser boundary. Implementation before a release does not
+automatically change an accepted release boundary.
 
 ## Release and deployment evidence
 
-A final candidate must pass its required non-skipped SQLite/PostgreSQL,
-compatibility, recovery, operator and browser evidence, together with the real
-release-signing and trust-material checks. Earlier successful local runs do
-not establish a different candidate's acceptance. A tag or published artifact
-alone does not establish deployment or runtime health.
+The 1.0 release notes retain real GitHub token contract acceptance (#1116),
+explicitly skipped disposable GitLab CE qualification (#1119), public MCP client
+profiles (#651), independent audit collection (#1037), live alerts (#1038),
+installation-specific operations (#1055), external receipt reconciliation
+(#1117), development-tool advisories (#1118) and container-local operator command
+limitations (#1112). Clean-Mac, Intel native and Homebrew install/upgrade acceptance
+also remain separate. Public verification and trust synchronization follow
+publication. None is silently marked passed by announcing 1.0.
+
+Each result remains bound to its tested source, artifact and environment.
+A tag or published artifact alone does not establish deployment or runtime health.
 
 Machine MCP defaults to five read-only tools, configuration plaintext and no
 secret material. Explicit write opt-in adds staging and validation tools;

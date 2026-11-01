@@ -1,12 +1,16 @@
 # Candidate self-hoster reassertion
 
-## Current candidate: pending reassertion
+[Hikyo 1.0.0 is published](1.0.0.md). The reassertion snapshot below retains
+its original candidate and acceptance limits; publication does not promote
+its unexecuted journeys to PASS.
+
+## Candidate reassertion snapshot: 16 October 2026
 
 Preparation source: `6769ee55dcd4087eeaf42547e9abde01c4f0818c`, 2026-10-16.
 No final combined candidate or released artifact set is certified here. The
 September results below retain their original source, measured bytes and scope;
 they are not relabeled as current acceptance. Follow the
-[release plan](release-plan-1.0.md) and [current ledger gate](acceptance-1.0.md#current-candidate-pending).
+[release plan](release-plan-1.0.md) and [October ledger gate](acceptance-1.0.md#candidate-preparation-snapshot-28-october-2026).
 
 Record the final clean source/tree, actual engine migration identities, binary
 and archive hashes/sizes, image RepoDigest, chart digest and authenticated trust
