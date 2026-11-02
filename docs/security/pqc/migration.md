@@ -1,6 +1,7 @@
-# Migration policy, draft v0.4
+# Migration policy, draft v0.5
 
-Status: **DRAFT, approval HOLD**. Proposed policy and requirements for DEC-11 to
+Status: **owner decided, not operative; maintainer security approval HOLD**.
+Policy and requirements for DEC-11 to
 DEC-16, DEC-19 and DEC-20 in the
 [register](../../adr/post-quantum-migration.md#decision-register). This file
 states constraints on the child tickets; it designs no protocol. Nothing here
@@ -155,13 +156,14 @@ delivered cannot be recalled.
 
 ## Dispositions (DEC-13 to DEC-16, DEC-19, DEC-20)
 
-Recommendations are not decisions. Owner: Marc Went. Status: HOLD.
+Accepted as recommended on 2026-11-02. Owner: Marc Went. Not operative; see the
+[register](../../adr/post-quantum-migration.md#decision-register).
 
 ### Pairing and remote proofs (I20)
 
 2048-bit SRP and Ed25519 DPoP; no standards-backed maintained PQ PAKE in the
 pinned dependencies; `go-jose` v4.1.6 has no ML-DSA; a JOSE ML-DSA identifier's
-status was not checked. Recommendation: #1130 stays HOLD (E-01). Hybrid TLS
+status was not checked. Decision: #1130 stays HOLD (E-01). Hybrid TLS
 stops **recording** of the exchange; it does not stop an **active** forger of the
 classical pinned leaf, who captures the SRP transcript. Pairing pins are read over
 a classical chain unless the operator supplies an override
@@ -255,8 +257,9 @@ Claim limited: operator attestation authenticity is classical (E-16).
 
 ### Exception register
 
-Candidates, all HOLD; none is effective until recorded. Owner: Marc Went. Expiry
-and renewal: [profiles](profiles.md#configuration-downgrade-rollout-exceptions-dec-10).
+Accepted in principle through the owner's decisions. An exception is effective
+only once its row has its peer, version, expiry and recheck trigger, as DEC-10
+requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configuration-downgrade-rollout-exceptions-dec-10).
 
 | ID | Surface (IDs) | Limitation | Child | Decision |
 | --- | --- | --- | --- | --- |

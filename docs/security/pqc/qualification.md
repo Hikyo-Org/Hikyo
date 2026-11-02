@@ -1,8 +1,8 @@
-# Requirement-to-test matrix, scope and critical path, draft v0.4
+# Requirement-to-test matrix, scope and critical path, draft v0.5
 
-Status: **DRAFT, approval HOLD**. This tells dependent owners what evidence each
+Status: **owner decided, not operative; maintainer security approval HOLD**. This tells dependent owners what evidence each
 surface needs so no one invents policy. Every row is a plan: execution is
-NOTRUN, and dependence on an unrecorded decision is HOLD. Integrated execution,
+NOTRUN, and dependence on a missing approval or ADR amendment is HOLD. Integrated execution,
 measured budgets and the operator runbook belong to #1135. Inventory IDs are in
 [inventory](inventory.md); policy in [profiles](profiles.md) and
 [migration](migration.md); decisions `DEC-nn` in the
@@ -40,7 +40,8 @@ authenticity: classical | dual | PQ-only with anchor T; exceptions: E-nn." Never
 ## Per-surface requirement-to-test matrix
 
 "Starts from" lists existing test locations at the pin to extend; none covers PQ
-today. All status cells are HOLD (decision) and NOTRUN (execution).
+today. All status cells are HOLD (security approval and amendment) and NOTRUN
+(execution).
 
 | Surface (IDs) | Requirement | Starts from | New evidence required | PQ IDs | Owner |
 | --- | --- | --- | --- | --- | --- |
@@ -63,7 +64,7 @@ today. All status cells are HOLD (decision) and NOTRUN (execution).
 
 ## Refined scope, effort and critical path
 
-Proposed refinements; each needs the cited decision.
+Refinements following the cited decisions.
 
 | Child | Refinement | Decision |
 | --- | --- | --- |
@@ -101,11 +102,11 @@ covered broad first-party work and this count adds UI/client consumers,
 both-engine drills and qualification. The owner can narrow scope (for example
 defer #1133 and #1129); that keeps those surfaces HOLD, not removed.
 
-**Budget cycle (proposal under DEC-17, HOLD):** #1127 needs budgets and #1135
+**Budget cycle (DEC-17, owner decided):** #1127 needs budgets and #1135
 depends on #1127. Proposed: byte bounds from the derived sizes in profiles, and
 latency, CPU and memory thresholds set by the owner from each child's own
 baseline before that child's acceptance (#1127 TLS, #1129 Transit, #1132
-release, #1133 PKI), with #1135 verifying. Nothing here is decided.
+release, #1133 PKI), with #1135 verifying. No threshold number exists yet.
 
 Critical path (parent dependency order): #1124 approval, #1126, #1132 (blocked by
 #1126), #1135; in parallel #1127, then #1133 and #1128. Uncertainty concentrates
@@ -113,13 +114,13 @@ in #1132 (field installers, PQ custody), #1130 (no feasible
 protocol identified) and #1134 (external peers). No date for universal
 third-party PQ support is promised.
 
-## Unresolved choices
+## Decisions and what they govern
 
 Owner for all: Marc Went (sole maintainer; security review is a separate gate by
-the same person plus adversarial review). Status HOLD. Options and
-recommendations are in the register.
+the same person plus adversarial review). Accepted as recommended on 2026-11-02;
+security approval is HOLD. Options are in the register.
 
-| Decision | Blocks |
+| Decision | Governs |
 | --- | --- |
 | DEC-01, 02, 03, 07, 09 | every implementation child |
 | DEC-04 | #1126 wording, symmetric claims |

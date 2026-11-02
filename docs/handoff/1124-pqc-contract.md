@@ -1,6 +1,7 @@
 # #1124: post-quantum contract draft handoff
 
-Written 2026-11-02, revised the same day after review. It records what the draft
+Written 2026-11-02, revised the same day after review and after the owner's
+decision. It records what the draft
 contract delivers and what it does not prove, as of that date; it is evidence for
 one draft, not a live status board. The source pin is in the
 [contract README](../security/pqc/README.md#source-pin).
@@ -9,10 +10,12 @@ one draft, not a live status board. The source pin is in the
 
 [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124) asks for an
 owner-approvable contract so dependent implementers need not invent
-cryptographic policy. This draft supplies the documents; **approval is on
-HOLD**, no receipt exists, and nothing here is an approved parameter, default,
-profile, trust root, exception or ADR amendment. The issue may close only after
-owner approval or an explicit scoped owner disposition, not on this draft.
+cryptographic policy. This draft supplies the documents. On 2026-11-02 the owner
+accepted DEC-01 to DEC-20 as recommended, replying "As recommended" to the register
+at `383290434d2cf614cd8aa31600c1f79d1e53f4d7` after being told its final repairs were not re-reviewed. **Maintainer
+security approval is on HOLD and no ADR amendment has landed**, so nothing here is
+operative. The issue may close only after those gates or an explicit scoped owner
+disposition.
 
 | File | Content |
 | --- | --- |
@@ -38,9 +41,9 @@ Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 | 6 | Reader-first rollout, keys, retirement, floor, history, recovery, mixed-path refusal | [Migration](../security/pqc/migration.md); DEC-11, 12 | Proposal; HOLD |
 | 7 | Signature composition and stripping | [Profiles](../security/pqc/profiles.md#signature-composition-and-stripping-resistance-dec-03); DEC-03 | Proposal; HOLD |
 | 8 | Dispositions: SRP/DPoP, release root, Sigstore, SSH, federation, authenticators, custody | [Migration](../security/pqc/migration.md#dispositions-dec-13-to-dec-16-dec-19-dec-20); DEC-12 to DEC-16, 19, 20 | Proposal; HOLD |
-| 9 | ADR amendments, decisions, evidence; #26/#79 recheck | [ADR](../adr/post-quantum-migration.md) | Proposed only; no receipt; HOLD |
+| 9 | ADR amendments, decisions, evidence; #26/#79 recheck | [ADR](../adr/post-quantum-migration.md) | Owner decisions recorded; security approval and amendments HOLD |
 | 10 | Test matrix; scope, effort, critical path; unresolved choices | [Qualification](../security/pqc/qualification.md) | Drafted; estimates are estimates |
-| 11 | Commit approved inventory, ADRs and handoff with receipts | This handoff and the files above | Not satisfiable by a draft |
+| 11 | Commit approved inventory, ADRs and handoff with receipts | This handoff and the files above | Not yet: security approval and amendments outstanding |
 
 ## State on 2026-11-02
 
@@ -104,7 +107,8 @@ on them. Go's `Sign` hedging was read from `crypto/internal/fips140/mldsa`.
 
 ## Remaining HOLD and NOTRUN
 
-All DEC-01 to DEC-20 are HOLD with Marc Went as owner. Largest uncertainties:
+DEC-01 to DEC-20 are owner decided and not operative; maintainer security approval
+and every ADR amendment are HOLD. Largest uncertainties:
 pairing feasibility (#1130), release-root custody and field installers (#1132),
 external peers (#1134), and every measurement. The 22 to 38 engineer-week total
 is a low-confidence estimate above the issue's range; reasons are in
@@ -114,14 +118,13 @@ Key retention and rollback requirements are proposals in
 
 ## Next steps (state of 2026-11-02)
 
-1. Marc reviews the [register](../adr/post-quantum-migration.md#decision-register)
-   and decides each entry individually, with an immutable link and the reviewed
-   revision.
-2. Re-review the final bytes of this draft (Standards, Spec, adversarial
-   security) before any approval; cross-provider review stays SKIPPED.
-3. For each locked ADR follow the governance route in the ADR; settle DEC-18
-   first.
-4. Dependent children (#1126 to #1135) stay HOLD until their decisions are
-   recorded; recheck the pin, open PRs and ownership before taking one.
+1. Marc records maintainer security approval or holds it; the
+   [register](../adr/post-quantum-migration.md#decision-register) has the owner
+   decisions. The final repairs had no independent re-review; cross-provider
+   review stays SKIPPED.
+2. For each locked ADR follow the governance route in the ADR.
+3. Dependent children (#1126 to #1135) stay HOLD until that approval and their
+   amendments are recorded; recheck the pin, open PRs and ownership before taking
+   one.
 
 No step here authorizes key generation, provider action, release or deployment.

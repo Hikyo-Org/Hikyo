@@ -1,15 +1,14 @@
-# Post-quantum migration contract, draft v0.4
+# Post-quantum migration contract, draft v0.5
 
 Tracking: [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), under
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Assessed 2026-11-02.
 
-**Status: DRAFT, approval HOLD.** A reviewable inventory and proposed migration
-contract. This package grants no authority and approves no PQ parameter set,
-profile, protocol, trust root, exception or ADR amendment; the approved PQ
-allowlist is empty. Existing operative ADRs and runtime behavior remain
-authoritative. Source exploration and bounded planning may proceed in dependent
-tickets; implementation that depends on a policy decision stays HOLD until that
-decision is recorded.
+**Status: owner decided, not operative; maintainer security approval HOLD.** The
+owner accepted [the register](../../adr/post-quantum-migration.md#decision-register)
+as recommended on 2026-11-02. This package grants no authority, and no ADR amendment has landed, so existing
+operative ADRs and runtime behavior remain authoritative. Source exploration and
+bounded planning may proceed in dependent tickets; implementation stays HOLD until
+security approval and the ADR amendments it depends on are recorded.
 
 ## Read this package
 

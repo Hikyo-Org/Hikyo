@@ -1,8 +1,9 @@
 # Post-quantum migration: policy, decision register and proposed amendments (ADR, proposed 2026-11-02)
 
-> **Status: Proposed. Not operative. Nothing here is locked, approved or
-> authorized.** Approval is on HOLD: no owner or maintainer security receipt
-> exists. This file records the decisions that
+> **Status: Proposed. Not operative. Nothing here is locked or authorized.** The
+> owner accepted the register as recommended on 2026-11-02. Maintainer security
+> approval is on HOLD and no ADR amendment has landed. This file records the
+> decisions that
 > [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124) needs from the owner
 > and, for each affected locked ADR, the amendment text that would apply if the
 > owner decides accordingly. No locked ADR body or banner is edited by this
@@ -33,6 +34,7 @@ Recorded as made; no others are implied.
 | --- | --- |
 | The PQ program runs no cross-provider review. The owner said "No cross provider review" on 2026-11-02; signed commit `13068ab2460c44d226111322a99ca65b20a3d02e` on PR #1148 records the decision in its own words ("the PQ program runs no cross-provider review") | Each amendment banner records cross-provider review as **SKIPPED by explicit owner instruction**. It is not CLEAN. Independent adversarial review (Standards, Spec and security) remains required |
 | PR #1148 stays a draft | The program draft is not merge-ready; this contract is stacked on it |
+| DEC-01 to DEC-20 are accepted as recommended. The owner replied "As recommended" on 2026-11-02 to the register at `383290434d2cf614cd8aa31600c1f79d1e53f4d7`, after being told its final repairs were not re-reviewed | The Decision column below is the owner decision. This commit is the record |
 
 This is a **waiver of part of the amendment procedure, not a match with it**
 (see below). It is also broader than its precedent: the
@@ -51,14 +53,14 @@ cross-provider review waived as above, (4) banner and body update inside that
 ADR, (5) operative when the implementing PR merges, matching the banner
 convention. Step 2 applies to the existing ADRs below; this proposed ADR itself
 locks under #1124, which is still open. Whether adversarial review by models of one provider satisfies "the
-same cross-model review" after the waiver is not settled by GOVERNANCE; DEC-18
-asks the owner to say so explicitly. Marc Went is owner and sole maintainer, so
+same cross-model review" after the waiver is not settled by GOVERNANCE; under
+DEC-18 the owner accepts it for this program. Marc Went is owner and sole maintainer, so
 owner approval and maintainer security approval come from one person and are not
 independent human review; adversarial review compensates (see
 [CONTRIBUTING](../../CONTRIBUTING.md#security-sensitive-contributions)).
 
 Neither GOVERNANCE nor #1123 states that a reopened ticket covers only its
-amendment; DEC-18 asks the owner to confirm that reading. Recheck on 2026-11-02:
+amendment; DEC-18 records that as the owner's reading. Recheck on 2026-11-02:
 [#26](https://github.com/Hikyo-Org/Hikyo/issues/26) is closed;
 [#79](https://github.com/Hikyo-Org/Hikyo/issues/79) and
 [#527](https://github.com/Hikyo-Org/Hikyo/issues/527) are open and record the
@@ -68,10 +70,12 @@ and adds no release blocker.
 
 ## Decision register
 
-Decision owner for every row: **Marc Went**. Status of every row: **HOLD**. A
-recommendation is not a decision. Details are in the linked documents.
+Decision owner for every row: **Marc Went**. Status of every row: **owner
+decided, not operative**. A decision takes effect only after maintainer security
+approval (HOLD), its ADR amendment and the implementing PR. Details are in the
+linked documents.
 
-| ID | Decision | Options | Recommendation | Consequence |
+| ID | Topic | Options | Decision | Consequence |
 | --- | --- | --- | --- | --- |
 | DEC-01 | Allowed KEM sets ([profiles](../security/pqc/profiles.md#candidate-parameter-sets)) | (a) hybrid X25519 + ML-KEM-768 only; (b) also ML-KEM-1024 hybrids for TLS; (c) pure ML-KEM | (a) | NIST's default ML-KEM-768 (category 3) and existing library paths; (c) drops the classical hedge and has no age path |
 | DEC-02 | Allowed signature sets | (a) ML-DSA-65 only; (b) 65 default, 87 for roots; (c) include ML-DSA-44; (d) SLH-DSA | (a); revisit (b) at DEC-14 | ML-DSA-44 is category 2; SLH-DSA is not in the Go standard library. Pure ML-DSA with context, no pre-hash |
@@ -85,14 +89,14 @@ recommendation is not a decision. Details are in the linked documents.
 | DEC-10 | Precedence, downgrade, stale-node fencing, exceptions | (a) managed > bootstrap > default; stale nodes fenced; expiry 180 days, two renewals then an ADR-recorded decision; (b) environment overrides managed; (c) longer or no expiry | (a) | Single approver is a residual risk |
 | DEC-11 | Rollout, retirement, floor, historical access ([migration](../security/pqc/migration.md)) | (a) the ladder with observable gates; floor persistence stated as a child requirement; where strict is selected, archive restore needs receipt-bound provenance or quarantine, for hybrid and classical alike, never for default compat restores; re-encrypted copies; classical evidence read-only after a quantum break, countersigning an option for the owning child; (b) same without any countersigning | (a) | Floor is one-way. Provenance mechanism, receipt signer, pin and hold release are not designed here, and today only upgrade exports write a receipt, so strict backups stay HOLD (E-19). Audit exports are forgeable today; #1135 records the non-claim (E-12). Unobservable readers and local floors are registered (E-17); classical archive copies E-10 |
 | DEC-12 | Key generation, escrow, custody, `operator.age` ([migration](../security/pqc/migration.md#operator-custody-vault-operatorage-i08)) | Vault: (a) keep age-scrypt sealing and `Rewrap`; (b) seal with the existing 256-bit envelope keyed from the root. Consequences are in migration; the design is left to #1126. Custody: software only vs a named external provider first | (a) now, (b) as target; software custody | Old passphrase copies hold a live `root_escrow`, so retiring them needs root rotation; old identities still open history; `Rewrap` keeps stale escrow that drills use; removing the prompt strands interrupted hosts; under either option root rotation does not re-seal, so a root-sealed vault fails to unlock afterwards until #1126 re-seals it. The vault is outside "fields keep 256-bit". E-09, E-16 |
-| DEC-13 | Pairing SRP and DPoP | (a) HOLD with E-01; (b) invent a composition; (c) redesign pairing | (a) | (b) excluded by the issue; `go-jose` lacks ML-DSA; ML-DSA-65 DPoP exceeds its 8192-byte cap. **#1135 is blocked by #1130, so (a) deadlocks #1135 unless the owner also narrows scope with linked residual work, which #1123 permits: recommended, recorded here when decided** |
+| DEC-13 | Pairing SRP and DPoP | (a) HOLD with E-01; (b) invent a composition; (c) redesign pairing | (a) | (b) excluded by the issue; `go-jose` lacks ML-DSA; ML-DSA-65 DPoP exceeds its 8192-byte cap. **#1135 is blocked by #1130, so (a) deadlocks #1135 unless the owner also narrows scope with linked residual work, which #1123 permits: decided, with #1130 as the linked residual work** |
 | DEC-14 | Release trust and artifact signing ([migration](../security/pqc/migration.md#release-trust-and-install-paths)) | (a) requirements on #1132: PQ-capable trust documents, sequence-only progression, claim only after persisted all-required verification, every binary-replacement path closed or registered, anchor feasibility examined; ML-DSA recovery key custody and maintainer-held stable signer decided by the owner; (b) offline root ceremony; (c) defer | (a) | The PQ trust-anchor bootstrap is an unsolved gap and the release-authenticity claim stays HOLD until #1132 closes every replacement path (E-11, E-15). Nightly has no PQ signer. Losing the sole ML-DSA recovery key leaves no PQ-signed reinstall (E-18) |
 | DEC-15 | Sigstore and classical supply chain | (a) exceptions (E-03, including source supply chain I32) plus first-party PQ signature in addition; (b) no artifact PQ claim yet; (c) drop Sigstore | (a) | No claim these ecosystems migrated |
 | DEC-16 | SSH CA, federation, authenticators, imports | (a) exceptions E-02, E-04 to E-06 and E-13; no `@golang.org` certificate names; (b) ship those names; (c) hold the profile | (a) | OpenSSH has no PQ signatures |
 | DEC-17 | Budgets (PQ-11) | (a) byte bounds now; latency, CPU and memory thresholds set by the owner from each child's own baseline before that child's acceptance (#1127 TLS, #1129 Transit, #1132 release, #1133 PKI), #1135 verifies; (b) numbers now | (a) | Breaks the #1127 and #1135 cycle; (b) would invent numbers |
-| DEC-18 | Amendment governance | (a) one reopened ticket per ADR, that amendment only, adversarial review, cross-provider waiver as above, owner states the waiver sufficiency; (b) bundled amendment; (c) reopen all together | (a) | Waiver is explicit, not a match; 1.0 unchanged |
+| DEC-18 | Amendment governance | (a) one reopened ticket per ADR, that amendment only, adversarial review, cross-provider waiver as above, owner accepts the waiver as sufficient; (b) bundled amendment; (c) reopen all together | (a) | Waiver is explicit, not a match; 1.0 unchanged |
 | DEC-19 | Private PKI root (#1133) | (a) offline ML-DSA root, operator-held, signs intermediates; (b) online evaluation root only; (c) classical root over PQ intermediate | (a) | (c) is not a PQ-authenticated chain; no HSM assumed |
-| DEC-20 | Rollout authority (#1131) | (a) in-band transition "through the existing authenticated authority", as #1131 words it; (b) mailbox announcement; (c) operator re-enrollment out of band | (c), **a departure from #1131's wording that the owner must decide** | (a): the only algorithm required today is Ed25519, so a forger installs its own ML-DSA key, and the controller cannot check MFA. (c): enrollment is an immutable ConfigMap; a new key or id fails the existing journal check and emptying the journal loses the plan Restore needs; these are #1131 requirements (E-14) |
+| DEC-20 | Rollout authority (#1131) | (a) in-band transition "through the existing authenticated authority", as #1131 words it; (b) mailbox announcement; (c) operator re-enrollment out of band | (c), **a departure from #1131's wording, accepted by the owner** | (a): the only algorithm required today is Ed25519, so a forger installs its own ML-DSA key, and the controller cannot check MFA. (c): enrollment is an immutable ConfigMap; a new key or id fails the existing journal check and emptying the journal loses the plan Restore needs; these are #1131 requirements (E-14) |
 
 ## Proposed amendments to locked ADRs
 

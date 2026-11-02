@@ -1,4 +1,4 @@
-# Cryptographic inventory, draft v0.4
+# Cryptographic inventory, draft v0.5
 
 Status and source pin: [contract README](README.md). Inventory IDs (I01 to I32)
 are stable within this draft and are the keys used by [profiles](profiles.md),

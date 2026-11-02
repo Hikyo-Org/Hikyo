@@ -1,8 +1,9 @@
-# Target profiles, parameters and policy, draft v0.4
+# Target profiles, parameters and policy, draft v0.5
 
-Status: **DRAFT, approval HOLD**. Everything here is a proposal or a recorded
-source fact. Nothing is approved until the owner records a decision in the
-[register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`).
+Status: **owner decided, not operative; maintainer security approval HOLD**. The
+owner accepted the [register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`) as
+recommended on 2026-11-02. Text that says "proposal" follows that decision and
+takes effect only when the register's conditions are met.
 Inventory IDs `Inn` are in [inventory](inventory.md); rollout is in
 [migration](migration.md). "Candidate" means named for review, not selected.
 
