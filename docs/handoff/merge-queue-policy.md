@@ -19,15 +19,14 @@ frozen full-suite coverage remain unchanged.
   branch-up-to-date checking is false only with that mandatory queue/context.
 - Signatures, DCO, stale-review dismissal, resolved threads and zero owning
   bypass actors remain required. Fork vouch/run approval remain independent.
-- `ci-required-next` and `ci:full` remain the permanent full-only rollback route.
-  Queue admission never writes that context, so old admission greens cannot
-  satisfy restored strict legacy protection.
+- The `ci-required-next` and `ci:full` rollback route has since been retired, and
+  lives in Git history. Queue admission never wrote that context.
 
 ## Local configuration
 
 Run `scripts/release/configure-repository.sh --main-only Hikyo-Org/Hikyo` only
 with operator authorization and administrator access. It reads the unique
-existing main ruleset, validates its queue or legacy contract, preserves every
+existing main ruleset, validates its queue contract, preserves every
 unrelated live rule/PR parameter, atomically replaces only the queue/status-check
 rules, and verifies writable readback, treating absent/null unspecified integration
 bindings equivalently while retaining every explicit integer binding. Discovery
@@ -38,9 +37,8 @@ API errors and readback drift. It never changes tag/release settings, CodeQL,
 Actions permissions or git refs. Broad initial configuration retains those
 existing responsibilities and can still create the initial main ruleset.
 
-The canonical legacy JSON is a reference. Actual recovery uses the exact saved
-pre-transition legacy writable policy, not a newly synthesized approximation.
-The CI guide contains the validated capture, restore and equality commands.
+The canonical legacy JSON and its restore path have been removed. Recover them
+from Git history if strict legacy protection is ever needed again.
 
 ## Local validation
 
