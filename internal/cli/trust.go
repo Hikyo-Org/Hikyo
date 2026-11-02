@@ -83,6 +83,13 @@ type TrustEntry struct {
 	// identity-free TCP listener. Its directory and socket are euid-owned 0700
 	// and 0600, and both peers verify the other's kernel-reported UID.
 	CLISocket string `json:"cli_socket,omitempty"`
+	// TLSProfile selects the key-exchange policy for this HTTPS origin (#1127):
+	// omitted or "compat" is today's behavior; "strict" requires TLS 1.3 and the
+	// hybrid X25519MLKEM768 group and fails before the bearer leaves the process.
+	// It protects handshake confidentiality only. Authentication stays whatever
+	// TLSMode says, which is classical; an SPKI pin gives no authenticity claim.
+	// An established entry's profile changes only by deliberate re-establishment.
+	TLSProfile string `json:"tls_profile,omitempty"`
 }
 
 // TrustBundle is the provisioned-establishment file: the CI path's import
@@ -94,6 +101,8 @@ type TrustBundle struct {
 	SPKIPin   string  `json:"spki_pin,omitempty"`
 	TLSMode   TLSMode `json:"tls_mode,omitempty"`
 	CLISocket string  `json:"cli_socket,omitempty"`
+	// TLSProfile is carried into the entry unchanged; see TrustEntry.TLSProfile.
+	TLSProfile string `json:"tls_profile,omitempty"`
 }
 
 // ErrUntrusted reports an instance reference that is not in the local store.
@@ -171,6 +180,14 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	return nil
 }
 
+// effectiveTLSProfile makes an omitted profile and an explicit compat equivalent.
+func effectiveTLSProfile(entry TrustEntry) string {
+	if entry.TLSProfile == "" {
+		return string(tlspolicy.ProfileCompat)
+	}
+	return entry.TLSProfile
+}
+
 // effectiveTLSMode makes omitted legacy SPKI and explicit SPKI equivalent.
 func effectiveTLSMode(entry TrustEntry) TLSMode {
 	if strings.HasPrefix(entry.Origin, "https://") && entry.TLSMode == "" {
@@ -180,6 +197,14 @@ func effectiveTLSMode(entry TrustEntry) TLSMode {
 }
 
 func validateTLSMode(entry TrustEntry) error {
+	if entry.TLSProfile != "" {
+		if _, err := tlspolicy.ParseProfile(entry.TLSProfile); err != nil {
+			return err
+		}
+		if entry.TLSProfile == string(tlspolicy.ProfileStrict) && !strings.HasPrefix(entry.Origin, "https://") {
+			return errors.New("the strict TLS profile requires an https origin; a local CLI socket is not a TLS connection")
+		}
+	}
 	if entry.TLSMode != "" && entry.TLSMode != TLSModeSPKI && entry.TLSMode != TLSModeSystemCA {
 		return fmt.Errorf("unknown TLS verification mode %q", entry.TLSMode)
 	}
@@ -257,12 +282,12 @@ func (s *TrustStore) Put(e TrustEntry) error {
 		return err
 	}
 	if prior, ok := entries[e.Name]; ok {
-		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket {
+		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket || effectiveTLSProfile(prior) != effectiveTLSProfile(e) {
 			return failf(ExitRefused,
 				"instance %q is already established with a different identity\n"+
 					"  recorded: %s (mode %s, pin %s)\n"+
 					"  offered:  %s (mode %s, pin %s)\n"+
-					"A changed origin, mode or identity requires deliberate re-establishment. If the change is legitimate, "+
+					"A changed origin, mode, TLS profile or identity requires deliberate re-establishment. If the change is legitimate, "+
 					"remove the entry deliberately with `hikyo context delete --instance %s` and establish it again.",
 				e.Name, prior.Origin, effectiveTLSMode(prior), shortPin(prior.SPKIPin), e.Origin, effectiveTLSMode(e), shortPin(e.SPKIPin), e.Name)
 		}
