@@ -134,3 +134,39 @@ func TestRestoreUnlockReadsEitherIdentityFile(t *testing.T) {
 		}
 	}
 }
+
+// restore run refuses a header holding a hybrid stanza beside any other stanza
+// type before it opens the target, whichever identity the operator holds.
+func TestRestoreRunRefusesMixedHybridHeaderBeforeTarget(t *testing.T) {
+	identity, recipient, err := backup.GenerateHybridIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	w, err := backup.Encrypt(&archive, backup.Options{Recipients: []string{recipient}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("not a real archive")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw := archive.Bytes()
+	mac := bytes.Index(raw, []byte("\n---"))
+	mixed := append(append(append([]byte{}, raw[:mac+1]...), "-> X25519 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"...), raw[mac+1:]...)
+	from := filepath.Join(t.TempDir(), "mixed.age")
+	if err := os.WriteFile(from, mixed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "restored.db")
+	cfg := &config.Config{Dev: true, Store: config.Datastore{Engine: config.EngineSQLite, Path: target}}
+	err = RunRestore(t.Context(), cfg, quietLogger(), []string{"run", "--from", from, "--identity-file", writeSecret(t, identity)}, &bytes.Buffer{}, nil, nil)
+	if !errors.Is(err, backup.ErrMixedHybridStanzas) {
+		t.Fatalf("restore of a mixed header = %v, want ErrMixedHybridStanzas", err)
+	}
+	if _, statErr := os.Stat(target); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the refused restore touched the target: %v", statErr)
+	}
+}
