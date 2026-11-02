@@ -49,7 +49,8 @@ are not rewritten or promoted into PQ proof.
    and scope decisions; obtain immutable owner and maintainer security receipts,
    and complete each ADR amendment under the
    [governance procedure](../../GOVERNANCE.md#amendment-procedure), confirming that
-   a ticket reopened for an amendment covers only that amendment, before dependent
+   a ticket reopened for an amendment covers only that amendment and recording
+   cross-provider review as SKIPPED by explicit owner instruction, before dependent
    algorithm/default changes are marked ready. A closed issue or merged draft is
    not that receipt.
 3. Take only the child-owned delta after its prerequisites pass. Preserve

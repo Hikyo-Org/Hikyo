@@ -15,7 +15,11 @@ belong to [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124). Approval alon
 does not amend a locked ADR: each amendment follows the
 [amendment procedure](../../GOVERNANCE.md#amendment-procedure), which reopens that
 ADR's originating ticket, runs the same adversarial cross-model review that locked
-it and records the amendment in the ADR. Integrated
+it and records the amendment in the ADR. Owner decision, 2026-11-02: this program
+runs no cross-provider review. Following the waiver precedent in
+[developer credentials](../adr/developer-credentials.md), each amendment banner
+records cross-provider review as SKIPPED by explicit owner instruction, and
+independent adversarial review remains required. Integrated
 fixtures, measured budgets and executable staging/operator runbooks belong to
 [#1135](https://github.com/Hikyo-Org/Hikyo/issues/1135). This document replaces
 neither child. Read each child's full acceptance criteria before implementing it.
