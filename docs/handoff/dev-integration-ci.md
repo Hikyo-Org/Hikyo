@@ -44,8 +44,10 @@ Go build-cache bucket or paid cache capacity is added.
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
 - A promotion that changes `.github/` needs no second approval when it comes from
-  `hikyo-nightly-release[bot]` and its head is a green tip of protected dev. Otherwise
-  one independent maintainer must approve its exact head.
+  `hikyo-nightly-release[bot]` on a branch the `nightly promotion branches require
+  Hikyo release app` ruleset protects. Otherwise one independent maintainer must
+  approve its exact head. This relies on the app key staying in the `nightly-release`
+  environment.
 - A promotion that cannot land fails the `nightly-promote` run, even when the run also
   re-arms or replaces it.
 - A docs-only landing as the tip of main has only selective queue proof, so the
@@ -87,30 +89,37 @@ PR.
 1. Land this PR through the existing main gate. Use the landed checkout and
    [local verification prerequisites](../../CONTRIBUTING.md#local-verification).
    Do not execute activation from an unlanded candidate.
-2. Give the nightly release App the pull request permission, before the next
+2. Confirm the app key exists only in the `nightly-release` environment: remove the
+   organization-level `NIGHTLY_RELEASE_APP_PRIVATE_KEY`, and rotate the key, because
+   a branch workflow could read that copy. Otherwise anyone with write access could
+   author promotions as the app. This is a human step, in organization Settings,
+   Secrets and variables, Actions, and in the App's settings for the new key.
+3. Run `scripts/release/configure-repository.sh Hikyo-Org/Hikyo` from the landed
+   checkout. It installs the `release/nightly-*` branch ruleset and reads it back.
+4. Give the nightly release App the pull request permission, before the next
    22:17 UTC run. The promotion mints its token first, so until this is done the
    scheduled run fails, even while `dev` does not exist. This is a human step in
    GitHub: open the organization's Settings, then Developer settings, GitHub Apps,
    the nightly release App, Permissions & events, Repository permissions, set
    Pull requests to Read and write, and save. Then accept the new permission on the
    installation (organization Settings, GitHub Apps, Configure; GitHub shows a
-   request to review). To verify, run step 5: `actions/create-github-app-token` fails
+   request to review). To verify, run step 7: `actions/create-github-app-token` fails
    with HTTP 422 while the installation lacks the permission. If creating the branch
    fails with a message about workflow files, also grant Workflows: Read and write,
    and add `permission-workflows: write` to the token step. That also needs
    `nightly_promote_workflow_test.go` updated, because it forbids
    `permission-workflows` (line 106) and pins the token step to exactly six inputs
    (line 95).
-3. Authenticate main's exact complete validation and activate the dev rules with
+5. Authenticate main's exact complete validation and activate the dev rules with
    `scripts/release/configure-dev.sh Hikyo-Org/Hikyo`. The helper verifies its own
    installed inputs, preserves stronger live review/App bindings and checks the
    final effective policy. It refuses divergent unprotected dev history.
-4. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
+6. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
    active run completes and only the newest pending push remains during a burst.
    The CI speedup is live from this step.
-5. Run the first promotion:
+7. Run the first promotion:
 
    ```sh
    gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main

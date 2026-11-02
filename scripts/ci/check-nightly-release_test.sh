@@ -93,6 +93,13 @@ jq -e '
 	(.bypass_actors[0].actor_id | type) == "number" and
 	.bypass_actors[0].actor_id == 4700019
 ' "$repo_root/release/repository/nightly-tag-creation.json" >/dev/null || fail 'nightly tag creation is not restricted to the dedicated GitHub App'
+grep -F 'release/repository/nightly-promotion-branches.json' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'nightly promotion branches are not installed'
+jq -e '
+	.target == "branch" and .enforcement == "active" and
+	.conditions.ref_name.include == ["refs/heads/release/nightly-*"] and
+	.bypass_actors == [{actor_id: 4700019, actor_type: "Integration", bypass_mode: "always"}] and
+	([.rules[].type] | sort) == ["creation", "update"]
+' "$repo_root/release/repository/nightly-promotion-branches.json" >/dev/null || fail 'nightly promotion branches are not restricted to the dedicated app'
 jq -e '.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]' \
 	"$repo_root/release/repository/release-tag-creation.json" >/dev/null || fail 'stable creation policy still captures nightlies'
 

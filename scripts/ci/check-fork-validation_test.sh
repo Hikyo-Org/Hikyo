@@ -58,15 +58,7 @@ case $url in
 	fixture=permission
 	if [ "$count" -ge "${PERMISSION_REMOVED_AT:-99999}" ]; then fixture=permission-later; fi
 	;;
-*/workflows/ci-dev.yml/runs*)
-	case $url in
-	*"head_sha=$HEAD_SHA&"* | *"head_sha=$HEAD_SHA") ;;
-	*) printf 'stub gh: dev runs query lacks head_sha=%s: %s\n' "$HEAD_SHA" "$url" >&2; exit 1 ;;
-	esac
-	fixture=dev-runs
-	;;
-*/rulesets/31) fixture=dev-rules ;;
-*/rulesets\?*) fixture=rulesets ;;
+*/rules/branches/release%2Fnightly-20261103-abcdef0) fixture=promotion-rules ;;
 */pulls/7)
 	bump pr
 	if [ "${HEAD_MOVES_AFTER_PERMISSION:-false}" = true ] && [ -f "$FIXTURES/permission-calls" ]; then
@@ -136,9 +128,7 @@ promotion() {
 	same_repo
 	jq '.user = {id:320493937,login:"hikyo-nightly-release[bot]"} | .head.ref = "release/nightly-20261103-abcdef0" | .base.ref = "main"' "$work/pr.json" >"$work/pr-new.json"
 	mv "$work/pr-new.json" "$work/pr.json"
-	jq -n --arg head "$head" '{workflow_runs:[{head_sha:$head,head_branch:"dev",event:"push",conclusion:"success",path:".github/workflows/ci-dev.yml",head_repository:{full_name:"o/r"}}]}' >"$work/dev-runs.json"
-	printf '[{"id":30,"name":"other"},{"id":31,"name":"dev requires trusted fast feedback"}]\n' >"$work/rulesets.json"
-	printf '{"enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/dev"]}},"rules":[{"type":"pull_request"},{"type":"non_fast_forward"},{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci-dev-required"}]}}]}\n' >"$work/dev-rules.json"
+	printf '[{"type":"creation"},{"type":"update"}]\n' >"$work/promotion-rules.json"
 }
 
 # A promotion that misses the exemption gets the ordinary requirement, not acceptance.
@@ -219,11 +209,11 @@ expect_reject 'bot workflow edits still require independent maintainer approval'
 grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
 approval
 expect_accept 'bot workflow edits with independent exact-head maintainer approval'
-# A green tip of protected dev already passed this check when its PRs entered dev.
+# Only the release app can write this branch, and it promotes only green dev tips.
 promotion_files='[{"filename":".github/workflows/ci.yml"}]'
 fixture 1 "$promotion_files" "$done_run" success
 promotion
-expect_accept 'a promotion of a green tip of protected dev'
+expect_accept 'a promotion on a branch only the release app can write'
 for mutation in \
 	'.user.id = 320493938' \
 	'.head.ref = "release/1.1.0"' \
@@ -235,49 +225,18 @@ for mutation in \
 	mv "$work/pr-new.json" "$work/pr.json"
 	expect_ordinary_review "a promotion with $mutation"
 done
-# A commit inside a merged PR has no push run of its own.
-fixture 1 "$promotion_files" "$done_run" success
-promotion
-printf '{"workflow_runs":[]}\n' >"$work/dev-runs.json"
-expect_ordinary_review 'a promotion of a commit that was never a green dev tip'
-for run in \
-	'.head_sha = "fedcba9876543210fedcba9876543210fedcba98"' \
-	'.head_branch = "feature"' \
-	'.event = "workflow_dispatch"' \
-	'.conclusion = "failure"' \
-	'.path = ".github/workflows/other.yml"' \
-	'.head_repository.full_name = "fork/r"'; do
+for rules in '[{"type":"creation"}]' '[{"type":"update"}]' '[]'; do
 	fixture 1 "$promotion_files" "$done_run" success
 	promotion
-	jq ".workflow_runs[0] |= ($run)" "$work/dev-runs.json" >"$work/dev-runs-new.json"
-	mv "$work/dev-runs-new.json" "$work/dev-runs.json"
-	expect_ordinary_review "a promotion whose dev run has $run"
+	printf '%s\n' "$rules" >"$work/promotion-rules.json"
+	expect_ordinary_review "a promotion when the branch rules are $rules"
 done
-for rules in \
-	'.enforcement = "evaluate"' \
-	'.bypass_actors = [{"actor_id":5}]' \
-	'.conditions.ref_name.include = ["refs/heads/other"]' \
-	'.rules |= map(select(.type != "pull_request"))' \
-	'.rules |= map(select(.type != "non_fast_forward"))' \
-	'.rules |= map(select(.type != "deletion"))' \
-	'.rules |= map(select(.type != "required_status_checks"))' \
-	'(.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[0].context) = "ci-queue-required"'; do
-	fixture 1 "$promotion_files" "$done_run" success
-	promotion
-	jq "$rules" "$work/dev-rules.json" >"$work/dev-rules-new.json"
-	mv "$work/dev-rules-new.json" "$work/dev-rules.json"
-	expect_ordinary_review "a promotion when dev protection has $rules"
-done
-fixture 1 "$promotion_files" "$done_run" success
-promotion
-printf '[]\n' >"$work/rulesets.json"
-expect_ordinary_review 'a promotion when dev protection does not exist'
 # The ordinary route still works when the exemption does not apply.
 fixture 1 "$promotion_files" "$done_run" success
 promotion
-printf '{"workflow_runs":[]}\n' >"$work/dev-runs.json"
+printf '[]\n' >"$work/promotion-rules.json"
 approval
-expect_accept 'a promotion off the green tip with independent maintainer approval'
+expect_accept 'a promotion on an unguarded branch with independent maintainer approval'
 fixture 1 "$promotion_files" "$done_run" success
 promotion
 jq '.head.repo = {id:2,full_name:"fork/r"}' "$work/pr.json" >"$work/pr-new.json"

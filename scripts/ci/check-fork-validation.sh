@@ -7,7 +7,7 @@
 #   2. .github/ is untouched, or a same-repository PR has an independent,
 #      currently authorized maintainer's latest approval on this exact head,
 #      or is authored by the pinned BDFL who still has maintainer permission,
-#      or is a nightly promotion of a green tip of protected dev,
+#      or is a nightly promotion on a branch only the release app can write,
 #   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
 #      completed, and its aggregate gate ("validation / ci-required")
 #      succeeded. Another PR sharing the commit may target a different base,
@@ -141,31 +141,21 @@ check_current_pr() {
 		fail 'PR has merge conflicts; resolve them before pull_request validation can start' merge-conflict
 }
 
-# A green dev tip contains only what admitted PRs merged, and each of those passed this
-# same workflow-edit check. A commit merely reachable from dev does not qualify: one
-# inside a merged PR can carry a change the PR's net diff hides, so require the push
-# run that only a tip gets. Any unmet condition keeps the ordinary review requirement.
+# Only the release app can create or update release/nightly-* branches, and only
+# nightly-promote.yml uses it to do so, after source proof selects a green dev tip. A
+# tip's PRs each passed this same check. The gate's token cannot read bypass actors,
+# so configure-repository.sh owns that part. Any unmet condition keeps the ordinary
+# review requirement.
 promotion_already_reviewed() {
 	[ "$pr_author_id" = "$promotion_author_id" ] || return 1
 	refs=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.ref, .base.ref] | join(" ")') ||
 		fail 'cannot read promotion refs' api-failure
 	printf '%s\n' "$refs" | grep -Eq '^release/nightly-[0-9]{8}-[0-9a-f]{7} main$' || return 1
-	green_tip=$(gh_read "repos/$GH_REPO/actions/workflows/ci-dev.yml/runs?branch=dev&event=push&status=success&head_sha=$HEAD_SHA&per_page=100" \
-		--jq "[.workflow_runs[] | select(.head_sha == \"$HEAD_SHA\" and .head_branch == \"dev\" and .event == \"push\" and .conclusion == \"success\" and .path == \".github/workflows/ci-dev.yml\" and .head_repository.full_name == \"$GH_REPO\")] | length") ||
-		fail 'cannot read promotion head dev validation' api-failure
-	case "$green_tip" in '' | 0 | *[!0-9]*) return 1 ;; esac
-	ruleset=$(gh_read "repos/$GH_REPO/rulesets?per_page=100" --jq '[.[] | select(.name == "dev requires trusted fast feedback") | .id] | if length == 1 then .[0] else "" end') ||
-		fail 'cannot find dev protection' api-failure
-	case "$ruleset" in '' | *[!0-9]*) return 1 ;; esac
-	# shellcheck disable=SC2016 # jq variables, not shell ones.
-	protected=$(gh_read "repos/$GH_REPO/rulesets/$ruleset" --jq '
-		[.rules[].type] as $types |
-		[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] as $checks |
-		.enforcement == "active" and .bypass_actors == [] and .conditions.ref_name.include == ["refs/heads/dev"] and
-		($types | index("pull_request") != null) and ($types | index("non_fast_forward") != null) and
-		($types | index("deletion") != null) and ($checks | index("ci-dev-required") != null)') ||
-		fail 'cannot verify dev protection' api-failure
-	[ "$protected" = true ]
+	head_ref=${refs%% *}
+	guarded=$(gh_read "repos/$GH_REPO/rules/branches/release%2F${head_ref#release/}" \
+		--jq '[.[].type] | (index("creation") != null) and (index("update") != null)') ||
+		fail 'cannot verify promotion branch protection' api-failure
+	[ "$guarded" = true ]
 }
 
 require_workflow_review() {
