@@ -109,7 +109,14 @@ feedback recompile more as dev drifts from it. A promotion is one full run, and
 it does not have to be a tagged release.
 
 Feedback lanes select nothing on a same-repository `release/` PR to main, because
-its whole diff cannot fit their budget and the full queue graph runs next.
+its whole diff cannot fit their budget and the full queue graph runs next. They
+do the same on a `main` to `dev` backmerge. Admission still checks DCO on both,
+exempting only Dependabot's commits. Do not add the `ci:full` label to a promotion.
+
+If `main` conflicts with `dev` while `ci-dev-gate.yml` differs, dev admission
+accepts only an exact `main` head, so a conflict-fixing branch is refused. Promote
+first, cutting the release branch from a green `ci-dev` commit, which resolves the
+conflict on main. Then backmerge.
 
 New dev pushes do not move that release branch. Branches under `release/` always
 select the full main queue graph, including docs-only promotions. A changed
@@ -177,7 +184,7 @@ These are release/trust actions, separate from merging implementation:
    completely green dev source. Main bridge requests are refused after v2
    activation.
 
-A scheduled weekly `ci-main` run on main keeps the main-scoped compile caches
+A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies now reuse proof instead of running the full graph. It
 is qualifying evidence: a green run can prove main's tip, and a failed one refuses
 proof for that commit until a newer run passes.

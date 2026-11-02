@@ -273,23 +273,31 @@ var devPolicyPaths = map[string]bool{
 	"scripts/release/smoke-release-startup.sh": true,
 }
 
-// GitHub's compare response lists at most this many files.
-const compareFileLimit = 300
+// GitHub lists at most 3000 files for a pull request.
+const pullFilePages = 30
+
+type pullFile struct {
+	Name     string `json:"filename"`
+	Previous string `json:"previous_filename"`
+	Status   string `json:"status"`
+}
 
 // A PR may carry a policy path only when it already matches main, as a backmerge
-// does. Comparing from the merge base lets feature branches lag a CI change on main.
+// does. The PR's file list starts at the merge base, so feature branches can lag a
+// CI change on main.
 func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string, error) {
-	var compare struct {
-		Files []struct {
-			Name     string `json:"filename"`
-			Previous string `json:"previous_filename"`
-		} `json:"files"`
+	var files []pullFile
+	complete := false
+	for page := 1; page <= pullFilePages && !complete; page++ {
+		var list []pullFile
+		if err := q.api.read(ctx, q.endpoint(fmt.Sprintf("pulls/%d/files?per_page=100&page=%d", p.Number, page)), &list); err != nil {
+			return "", err
+		}
+		files = append(files, list...)
+		complete = len(list) < 100
 	}
-	if err := q.api.read(ctx, q.endpoint("compare/"+p.Base.SHA+"..."+p.Head.SHA), &compare); err != nil {
-		return "", err
-	}
-	if compare.Files == nil || len(compare.Files) >= compareFileLimit {
-		return "This PR's file list is missing or truncated, so CI definition changes cannot be ruled out.", nil
+	if !complete {
+		return "This PR changes too many files for GitHub to list, so CI definition changes cannot be ruled out.", nil
 	}
 	var mainRef struct {
 		Object struct {
@@ -305,12 +313,15 @@ func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string,
 	refusal := func(path string) string {
 		return "CI and publisher definitions land through main first, then a backmerge: " + path
 	}
-	for _, file := range compare.Files {
+	for _, file := range files {
 		if devPolicyPaths[file.Previous] {
 			return refusal(file.Previous), nil
 		}
 		if !devPolicyPaths[file.Name] {
 			continue
+		}
+		if file.Status == "removed" {
+			return refusal(file.Name), nil
 		}
 		trusted, err := q.contents(ctx, file.Name, mainRef.Object.SHA)
 		if err != nil {

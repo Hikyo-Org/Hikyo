@@ -531,15 +531,17 @@ func TestCompleteJobPagination(t *testing.T) {
 }
 
 func TestSyntheticChecksCannotSupplyJobCoverage(t *testing.T) {
-	f := newFixture(t, "main", mainProducers[0])
-	j := job{ID: 999999, RunID: 100, Attempt: 1, HeadSHA: testSource, Name: "ci-queue-required", Status: "completed", Conclusion: "success"}
-	f.jobLists[100] = append(f.jobLists[100], j)
-	if _, err := resolveFixture(f, options{Mode: "main", Commit: testSource}); err != nil {
-		t.Fatal(err)
-	}
-	f.jobLists[100] = f.jobLists[100][1:]
-	if _, err := resolveFixture(f, options{Mode: "main", Commit: testSource}); err == nil {
-		t.Fatal("synthetic record filled a missing native execution")
+	for _, name := range []string{"ci-queue-required", "ci-dev-required"} {
+		f := newFixture(t, "main", mainProducers[0])
+		j := job{ID: 999999, RunID: 100, Attempt: 1, HeadSHA: testSource, Name: name, Status: "completed", Conclusion: "success"}
+		f.jobLists[100] = append(f.jobLists[100], j)
+		if _, err := resolveFixture(f, options{Mode: "main", Commit: testSource}); err != nil {
+			t.Fatal(err)
+		}
+		f.jobLists[100] = f.jobLists[100][1:]
+		if _, err := resolveFixture(f, options{Mode: "main", Commit: testSource}); err == nil {
+			t.Fatal("synthetic record filled a missing native execution")
+		}
 	}
 }
 

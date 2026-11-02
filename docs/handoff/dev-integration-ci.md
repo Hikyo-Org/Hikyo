@@ -96,17 +96,24 @@ fall back to main: an unavailable dev source fails before publication.
 
 ## Pre-activation repairs
 
-A review of the unlanded branch against a real promotion found these, all fixed:
+Review of the unlanded branch against a real promotion found these, all fixed:
 
+- Every dev run died resolving `refs/heads/dev`, which checkout by SHA never creates.
+- A wide promotion or backmerge could not fit the feedback budget.
+- A CI definition changed on dev stalled dev proof with no way to promote out of it.
 - A failed rerun of an older run could hide behind a newer run's success.
-- Dependabot targets dev, so a human-opened promotion would fail DCO.
-- Squash or rebase merges on dev would leave unrepairable DCO failures.
+- Dependabot targets dev, so a human-opened promotion failed DCO.
+- Squash or rebase merges on dev left unrepairable DCO failures.
+- The main queue gate left a check on every dev PR head.
 - A full dev run held all 20 runners for about 15 minutes, starving PR feedback.
 - Nightly reuse removed the only automatic writer of main compile caches.
 - Scheduled nightlies would fail from landing until the v2 trust ceremony.
 
-The first CI fix to check on hosted dev runs is the replay-modelled runner headroom
-in the [branching guide](../development/branching.md).
+Not established before the first hosted dev run: the replay-modelled runner headroom,
+whether creating `dev` succeeds under its new ruleset, the publisher's 60-second
+budget on a backmerge touching many CI definitions, and source proof's job inventory
+against a real `ci-dev` run. If creating `dev` fails during activation, stop and
+report it. The helper's checks leave main untouched.
 
 ## Recovery and maintenance
 

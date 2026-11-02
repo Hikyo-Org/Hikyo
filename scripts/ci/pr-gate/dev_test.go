@@ -11,6 +11,10 @@ import (
 	"testing"
 )
 
+func devFilesPage(f *queueFixture, page int) string {
+	return fmt.Sprintf("pulls/%d/files?per_page=100&page=%d", f.pr.Number, page)
+}
+
 func newDevFixture(t *testing.T) *queueFixture {
 	t.Helper()
 	f := newQueueFixture(t)
@@ -30,7 +34,7 @@ func newDevFixture(t *testing.T) *queueFixture {
 	for _, revision := range []string{main, f.pr.Base.SHA, f.pr.Head.SHA} {
 		f.api.responses[f.c.endpoint("contents/"+devGateWorkflowPath+"?ref="+revision)] = map[string]string{"type": "file", "path": devGateWorkflowPath, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("trusted dev publisher"))}
 	}
-	f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": []map[string]string{{"filename": "internal/app/app.go"}}}
+	f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = []map[string]string{{"filename": "internal/app/app.go"}}
 	f.feedbackRun.Pulls = []pull{f.pr}
 	f.feedbackRefresh()
 	r := f.feedbackRun
@@ -240,12 +244,12 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 		"changed definition":   {[]map[string]string{{"filename": path}}, "feature bytes", true},
 		"backmerged from main": {[]map[string]string{{"filename": path}}, "main bytes", false},
 		"renamed definition":   {[]map[string]string{{"filename": "other.yml", "previous_filename": path}}, "", true},
+		"removed definition":   {[]map[string]string{{"filename": path, "status": "removed"}}, "", true},
 		"empty file list":      {[]map[string]string{}, "", false},
-		"truncated file list":  {make([]map[string]string, compareFileLimit), "", true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newDevFixture(t)
-			f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": tc.files}
+			f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = tc.files
 			f.api.responses[f.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
 			if tc.head != "" {
 				f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content(tc.head)
@@ -256,10 +260,28 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 			}
 		})
 	}
+	// A wide backmerge is read to its last page. GitHub's own listing cap refuses.
+	full := make([]map[string]string, 100)
+	for i := range full {
+		full[i] = map[string]string{"filename": fmt.Sprintf("file-%d", i)}
+	}
+	wide := newDevFixture(t)
+	for page := 1; page <= pullFilePages; page++ {
+		wide.api.responses[wide.c.endpoint(devFilesPage(wide, page))] = full
+	}
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal == "" {
+		t.Fatalf("unlistable PR was not refused: %q/%v", refusal, err)
+	}
+	wide.api.responses[wide.c.endpoint(devFilesPage(wide, 7))] = []map[string]string{{"filename": path}}
+	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
+	wide.api.responses[wide.c.endpoint("contents/"+path+"?ref="+wide.pr.Head.SHA)] = content("main bytes")
+	if refusal, err := wide.q.devPolicyRefusal(context.Background(), wide.pr); err != nil || refusal != "" {
+		t.Fatalf("wide backmerge was refused: %q/%v", refusal, err)
+	}
 	// Admission must publish this refusal instead of only failing the job.
 	f := newDevFixture(t)
 	f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
-	f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": []map[string]string{{"filename": path}}}
+	f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = []map[string]string{{"filename": path}}
 	f.api.responses[f.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
 	f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content("feature bytes")
 	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {

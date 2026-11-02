@@ -323,3 +323,26 @@ func TestDevPushGuardRunsAgainstDetachedCheckout(t *testing.T) {
 		})
 	}
 }
+
+// Skipping feedback is safe only on canonical heads a full graph has covered. A
+// fork naming its branch release/ or main must not reach this path.
+func TestFeedbackSkipsOnlyCanonicalPromotions(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci-feedback.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	const want = "${{ github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.base.ref == 'main' && startsWith(github.event.pull_request.head.ref, 'release/')) || (github.event.pull_request.base.ref == 'dev' && github.event.pull_request.head.ref == 'main')) }}"
+	for _, step := range workflow.Jobs["feedback"].Steps {
+		if step.Name == "Select fast feedback domains" {
+			if step.Env["PROMOTION"] != want || !strings.Contains(step.Run, `if [ "$PROMOTION" = true ]; then base=$FAST_FEEDBACK_HEAD; fi`) {
+				t.Fatalf("feedback skip condition changed: %q", step.Env["PROMOTION"])
+			}
+			return
+		}
+	}
+	t.Fatal("feedback plan step moved")
+}

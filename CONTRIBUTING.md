@@ -35,7 +35,8 @@ activation and the signed-nightly client migration. `ci:full` and
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin
-(DCO) sign-off. It must also carry a cryptographic signature that GitHub reports
+(DCO) sign-off. Dependabot's commits are the only exemption, including when a
+canonical `release/*` promotion or `main` backmerge carries them. It must also carry a cryptographic signature that GitHub reports
 as **Verified**.
 After completing the [signing setup](#commit-signing-setup), commit with:
 
