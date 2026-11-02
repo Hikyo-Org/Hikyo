@@ -139,8 +139,8 @@ jobs:
         run: go run ./scripts/ci/pr-gate --retire-checks --expected-head "$HEAD"
 
   observation:
-    # PR events reuse the existing pr-gate job/setup. Scheduled recovery and
-    # manual backfill must use that same repository-wide writer lease.
+    # No publisher writes this context any more. Scheduled recovery and manual
+    # backfill retire its existing unfinished records under one writer lease.
     needs: discover
     if: >-
       !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.head != '') ||

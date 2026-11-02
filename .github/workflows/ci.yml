@@ -1,18 +1,18 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
 # every validation domain affected by PR paths. The queue narrows verified
-# docs/site-only changes; backend changes, dependencies, explicit candidates,
+# docs/site-only changes; backend changes, dependencies,
 # manual main validation and dev integration retain the complete suite.
 # Nightly publication authenticates existing complete exact-source proof.
 # Merging a green PR
 # does not automatically run the same full suite again.
-# Merge groups, like PRs, load every planning/checking script from the base
+# Merge groups load every planning/checking script from the base
 # (merge_group.base_sha), never from the candidate being validated.
-# Validation checks out exact PR heads with read-only permissions and no cache
+# Validation checks out exact revisions with read-only permissions and no cache
 # writes. Actions and toolchains remain pinned.
 name: ci
 
-# Callers select the source: PR validation passes its authenticated head;
-# dev integration and the input-free manual main wrapper pass github.sha.
+# Callers select the source: merge groups, dev integration and the input-free
+# manual main wrapper pass github.sha.
 # Every job verifies the immutable input against that event before checkout.
 on:
   workflow_call:
@@ -21,11 +21,6 @@ on:
         description: Exact immutable commit bound to the caller's GitHub event
         required: true
         type: string
-      candidate:
-        description: Full PR integration candidate for the completion gate
-        required: false
-        default: false
-        type: boolean
       development:
         description: Complete read-only integration validation of a dev push
         required: false
@@ -37,14 +32,12 @@ permissions:
   contents: read
 
 concurrency:
-  # The caller owns exact-pair candidate cancellation. Isolate reusable runs
-  # so an out-of-order older request cannot cancel a newer candidate, merge
-  # group, manual request, or release's exact-SHA proof.
+  # Isolate reusable runs so an out-of-order older request cannot cancel a newer
+  # merge group, manual request, or release's exact-SHA proof.
   group: ci-${{ github.workflow }}-${{ github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}
+  cancel-in-progress: ${{ github.event_name == 'merge_group' }}
 
 jobs:
-  # Keep the required workflow present on every PR, then select jobs inside it.
   # Unknown paths and changes to this classifier fail closed to the full plan.
   changes:
     runs-on: ubuntu-latest
@@ -53,7 +46,6 @@ jobs:
       pull-requests: read
     outputs:
       plan: ${{ steps.classify.outputs.plan }}
-      base_sha: ${{ steps.classify.outputs.base_sha }}
     steps:
       - &validate-revision
         name: Validate the immutable caller revision
@@ -61,18 +53,8 @@ jobs:
           SOURCE_REVISION: ${{ inputs.revision }}
           EVENT_REPOSITORY: ${{ github.event.repository.full_name }}
           EVENT_REPOSITORY_ID: ${{ github.event.repository.id }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          FULL_CANDIDATE: ${{ inputs.candidate }}
           DEVELOPMENT: ${{ inputs.development }}
-          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
-          PR_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
-          PR_BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
           MERGE_GROUP_SHA: ${{ github.event.merge_group.head_sha }}
           TAG_DELETED: ${{ github.event.deleted }}
         shell: bash
@@ -85,7 +67,6 @@ jobs:
             false) ;;
             true)
               test "$DEFAULT_BRANCH" = main
-              test "$FULL_CANDIDATE" = false
               test "$GITHUB_EVENT_NAME" = push
               test "$GITHUB_REF" = refs/heads/dev
               test "$TAG_DELETED" = false
@@ -93,30 +74,6 @@ jobs:
             *) echo 'Unknown development validation mode.' >&2; exit 1 ;;
           esac
           case "$GITHUB_EVENT_NAME" in
-            pull_request)
-              [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
-              case "$FULL_CANDIDATE" in
-                true)
-                  test "$SOURCE_REVISION" = "$GITHUB_SHA"
-                  test "$GITHUB_REF" = "refs/pull/$PR_NUMBER/merge"
-                  # The labeled event can omit advisory merge metadata while
-                  # GITHUB_SHA already identifies its authenticated merge ref.
-                  if [ -n "$PR_MERGE_SHA" ]; then
-                    [[ "$PR_MERGE_SHA" =~ ^[0-9a-f]{40}$ ]]
-                    test "$SOURCE_REVISION" = "$PR_MERGE_SHA"
-                  fi
-                  [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-                  [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-                  test "$PR_BASE_REF" = "$DEFAULT_BRANCH"
-                  ;;
-                false) test "$SOURCE_REVISION" = "$PR_HEAD_SHA" ;;
-                *) echo 'Unknown candidate mode.' >&2; exit 1 ;;
-              esac
-              test "$PR_BASE_REPOSITORY" = "$GITHUB_REPOSITORY"
-              test "$PR_BASE_REPOSITORY_ID" = "$EVENT_REPOSITORY_ID"
-              [[ "$PR_HEAD_REPOSITORY_ID" =~ ^[1-9][0-9]*$ ]]
-              [[ "$PR_HEAD_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
-              ;;
             merge_group)
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
               test "$SOURCE_REVISION" = "$MERGE_GROUP_SHA"
@@ -124,7 +81,6 @@ jobs:
             push)
               # Dev pushes are read-only complete integration runs. Other
               # pushes remain canonical stable/prerelease tag validation.
-              test "$FULL_CANDIDATE" = false
               test "$TAG_DELETED" = false
               test "$DEFAULT_BRANCH" = main
               if [ "$DEVELOPMENT" = true ]; then
@@ -152,22 +108,11 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE_REVISION: ${{ inputs.revision }}
-          FULL_CANDIDATE: ${{ inputs.candidate }}
           DEVELOPMENT: ${{ inputs.development }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
-            BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')
-            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-            test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
-            test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
-            test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
-            printf 'base_sha=%s\n' "$BASE_SHA" >>"$GITHUB_OUTPUT"
-          fi
           if [ "$EVENT_NAME" = push ]; then
             # checkout has the complete canonical tag and branch history. Bind
             # the peeled tag, not release.target_commitish (which may be main).
@@ -191,27 +136,17 @@ jobs:
             git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$trusted_classifier"
             git show "$BASE_SHA:scripts/ci/ci-job-registry.json" >"$trusted_registry"
             chmod +x "$trusted_classifier"
-            if [ "$EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
-              test "$(git show -s --format=%P HEAD | wc -w | tr -d ' ')" = 2
-              test "$(git rev-parse HEAD^1)" = "$BASE_SHA"
-              test "$(git rev-parse HEAD^2)" = "$HEAD_SHA"
-              plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
-            elif [ "$EVENT_NAME" = merge_group ]; then
-              # Activate only once the policy exists on the immutable base.
-              # This policy change itself still passes the old full gate.
-              if git cat-file -e "$BASE_SHA:scripts/ci/plan-merge-group.sh" 2>/dev/null; then
-                git show "$BASE_SHA:scripts/ci/plan-merge-group.sh" >"$RUNNER_TEMP/plan-merge-group.sh"
-                decision=$(CI_JOB_REGISTRY="$trusted_registry" bash "$RUNNER_TEMP/plan-merge-group.sh")
-                plan=$(jq -ce '.plan' <<<"$decision")
-                if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-                  jq -r '"### Queue validation plan\n\nMode: " + .mode + "\n\n" + .reason + "\n\nRequired domains: " + ([.plan | to_entries[] | select(.value) | .key] | join(", "))' <<<"$decision" >>"$GITHUB_STEP_SUMMARY"
-                fi
-              else
-                plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
+            # Activate only once the policy exists on the immutable base.
+            # This policy change itself still passes the old full gate.
+            if git cat-file -e "$BASE_SHA:scripts/ci/plan-merge-group.sh" 2>/dev/null; then
+              git show "$BASE_SHA:scripts/ci/plan-merge-group.sh" >"$RUNNER_TEMP/plan-merge-group.sh"
+              decision=$(CI_JOB_REGISTRY="$trusted_registry" bash "$RUNNER_TEMP/plan-merge-group.sh")
+              plan=$(jq -ce '.plan' <<<"$decision")
+              if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+                jq -r '"### Queue validation plan\n\nMode: " + .mode + "\n\n" + .reason + "\n\nRequired domains: " + ([.plan | to_entries[] | select(.value) | .key] | join(", "))' <<<"$decision" >>"$GITHUB_STEP_SUMMARY"
               fi
             else
-              plan=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" |
-                CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --files)
+              plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
             fi
           else
             echo "trusted CI classifier or job registry is missing at $BASE_SHA" >&2
@@ -421,7 +356,7 @@ jobs:
       - name: Completion-driven PR gate and workflow trust fixtures
         run: |
           go test -count=1 ./scripts/ci/pr-gate
-          go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
+          go test -count=1 ./scripts/ci -run '^(TestRequiredJobCannotSkipOnPullRequests|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Staged impact CI fixtures
         run: |
           go test -count=1 ./scripts/ci/queue-report
@@ -673,13 +608,12 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.release-snapshot-go-cache.outputs.cache-primary-key }}
 
-  # The short repository checks share one runner: DCO (pull requests only), the
-  # API freeze guard and generated-code freshness each take under a minute, so
+  # The short repository checks share one runner: the API freeze guard and
+  # generated-code freshness each take under a minute, so
   # as separate jobs they mostly paid runner setup and held concurrency slots
   # while the shards fanned out. Each check keeps its old gate as a step
   # condition, and `!cancelled()` lets every selected check still run and name
-  # its own failure after an earlier one fails. Always runs: every PR checks
-  # DCO, and main's full plan selects the rest.
+  # its own failure after an earlier one fails.
   preflight:
     needs: changes
     runs-on: ubuntu-latest
@@ -761,25 +695,6 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
-      - name: Require DCO sign-off on every PR commit
-        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
-        env:
-          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # GitHub sets the PR actor from the authenticated opener; it cannot be
-          # spoofed by commit metadata. Only then do we exempt Dependabot's
-          # author identity from the sign-off requirement (it cannot produce a
-          # parseable trailer). Any other opener gets the full check, even for
-          # commits that forge Dependabot's git author header.
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          trusted_dco="$RUNNER_TEMP/check-dco.sh"
-          git show "$BASE_SHA:scripts/ci/check-dco.sh" >"$trusted_dco"
-          chmod +x "$trusted_dco"
-          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
-            export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
-          fi
-          "$trusted_dco" "$BASE_SHA" "$HEAD_SHA"
 
   # The TypeScript half of the contract chain. It is a separate job because it
   # needs a different toolchain, and because a Go-only change must not be able
@@ -1645,7 +1560,7 @@ jobs:
       - name: Plan complete test, race, and fuzz shards
         id: plan
         env:
-          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -1845,7 +1760,7 @@ jobs:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
           RACE_PLAN: ${{ needs.analysis_shards.outputs.race_plan }}
           RACE_SHARD: ${{ matrix.shard }}
-          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           packages="$RUNNER_TEMP/race-packages"
@@ -2089,7 +2004,6 @@ jobs:
     uses: ./.github/workflows/floor-bench.yml
     with:
       revision: ${{ inputs.revision }}
-      candidate: ${{ inputs.candidate }}
       development: ${{ inputs.development }}
     permissions:
       contents: read
@@ -2166,10 +2080,9 @@ jobs:
           retention-days: 30
       - name: Require every validation job
         env:
-          BASE_SHA: ${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           PLAN_JSON: ${{ needs.changes.outputs.plan }}
-          FULL_CANDIDATE: ${{ inputs.candidate }}
           SOURCE_REVISION: ${{ inputs.revision }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -2177,9 +2090,6 @@ jobs:
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"
           checker_event="$GITHUB_EVENT_NAME"
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$FULL_CANDIDATE" = true ]; then
-            checker_event=merge_group
-          fi
           if [[ "$GITHUB_EVENT_NAME" =~ ^(workflow_dispatch|schedule|repository_dispatch|push)$ ]]; then
             [[ "$GITHUB_REF" = refs/heads/main || "$GITHUB_EVENT_NAME" = push ]] || { echo 'Full CI requires the trusted main ref.' >&2; exit 1; }
             # The checker applies its existing full-main policy to these runs.

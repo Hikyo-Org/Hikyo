@@ -183,10 +183,10 @@ func TestCanonicalTagRevisionAdmission(t *testing.T) {
 	guard := w.Jobs["changes"].Steps[0].Run
 	sha := strings.Repeat("a", 40)
 	for name, change := range map[string]map[string]string{
-		"stable": {}, "prerelease": {"GITHUB_REF": "refs/tags/v1.2.3-rc.1"}, "branch": {"GITHUB_REF": "refs/heads/main"}, "nightly": {"GITHUB_REF": "refs/tags/v1.2.3-nightly.20261014.1.gaaaaaaaa"}, "deleted": {"TAG_DELETED": "true"}, "candidate": {"FULL_CANDIDATE": "true"}, "wrong-sha": {"SOURCE_REVISION": strings.Repeat("b", 40)}, "empty-tag": {"GITHUB_REF": "refs/tags/"}, "leading-zero": {"GITHUB_REF": "refs/tags/v01.2.3"}, "empty-identifier": {"GITHUB_REF": "refs/tags/v1.2.3-rc..1"}, "numeric-leading-zero": {"GITHUB_REF": "refs/tags/v1.2.3-rc.01"}, "wrong-default": {"DEFAULT_BRANCH": "feature"},
+		"stable": {}, "prerelease": {"GITHUB_REF": "refs/tags/v1.2.3-rc.1"}, "branch": {"GITHUB_REF": "refs/heads/main"}, "nightly": {"GITHUB_REF": "refs/tags/v1.2.3-nightly.20261014.1.gaaaaaaaa"}, "deleted": {"TAG_DELETED": "true"}, "wrong-sha": {"SOURCE_REVISION": strings.Repeat("b", 40)}, "empty-tag": {"GITHUB_REF": "refs/tags/"}, "leading-zero": {"GITHUB_REF": "refs/tags/v01.2.3"}, "empty-identifier": {"GITHUB_REF": "refs/tags/v1.2.3-rc..1"}, "numeric-leading-zero": {"GITHUB_REF": "refs/tags/v1.2.3-rc.01"}, "wrong-default": {"DEFAULT_BRANCH": "feature"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			env := map[string]string{"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v1.2.3", "GITHUB_SHA": sha, "SOURCE_REVISION": sha, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "DEFAULT_BRANCH": "main", "DEVELOPMENT": "false", "FULL_CANDIDATE": "false", "TAG_DELETED": "false"}
+			env := map[string]string{"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v1.2.3", "GITHUB_SHA": sha, "SOURCE_REVISION": sha, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "DEFAULT_BRANCH": "main", "DEVELOPMENT": "false", "TAG_DELETED": "false"}
 			for k, v := range change {
 				env[k] = v
 			}
@@ -258,7 +258,7 @@ func TestReleaseTagPlanRequiresPeeledCommitAndMainAncestry(t *testing.T) {
 			output := filepath.Join(dir, "output")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", w.Jobs["changes"].Steps[2].Run)
 			cmd.Dir = dir
-			cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "EVENT_NAME=push", "FULL_CANDIDATE=false", "SOURCE_REVISION="+source, "GITHUB_REF=refs/tags/v1.2.3", "GITHUB_OUTPUT="+output)
+			cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "EVENT_NAME=push", "SOURCE_REVISION="+source, "GITHUB_REF=refs/tags/v1.2.3", "GITHUB_OUTPUT="+output)
 			out, err := cmd.CombinedOutput()
 			if scenario != "exact-main-tag" {
 				if err == nil {

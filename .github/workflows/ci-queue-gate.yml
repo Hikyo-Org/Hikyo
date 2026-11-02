@@ -1,5 +1,3 @@
-# The queue context is separate from the legacy full-candidate context so an
-# atomic policy rollback cannot accept an earlier admission-only green.
 name: gate-queue
 
 on:

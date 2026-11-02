@@ -98,7 +98,7 @@ func (f *docsQueueFixture) env(t *testing.T) []string {
 		"QUEUE_FIXTURE_METADATA="+filepath.Join(f.dir, "metadata.json"),
 		"BASE_SHA="+f.base, "SOURCE_REVISION="+f.candidate,
 		"GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_REF=refs/heads/gh-readonly-queue/main/pr-7-"+f.base,
-		"EVENT_NAME=merge_group", "GITHUB_EVENT_NAME=merge_group", "FULL_CANDIDATE=false", "DEVELOPMENT=false", "HEAD_SHA="+f.head,
+		"EVENT_NAME=merge_group", "GITHUB_EVENT_NAME=merge_group", "DEVELOPMENT=false", "HEAD_SHA="+f.head,
 		"RUNNER_TEMP="+filepath.Join(f.dir, "runner"), "GITHUB_OUTPUT="+filepath.Join(f.dir, "output"),
 		"GITHUB_STEP_SUMMARY="+filepath.Join(f.dir, "summary"), "DEFAULT_BRANCH=main",
 	)

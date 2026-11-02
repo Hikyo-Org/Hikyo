@@ -68,13 +68,13 @@ func TestDevSourceAuthorityRefusesOtherEventsAndRevisions(t *testing.T) {
 			job = "measure"
 		}
 		guard := workflow.Jobs[job].Steps[0].Run
-		for _, mutation := range []string{"valid", "wrong-source", "wrong-ref", "unadmitted-dev", "wrong-event", "wrong-default", "deleted", "candidate"} {
+		for _, mutation := range []string{"valid", "wrong-source", "wrong-ref", "unadmitted-dev", "wrong-event", "wrong-default", "deleted"} {
 			t.Run(filename+"/"+mutation, func(t *testing.T) {
 				sha := strings.Repeat("a", 40)
 				env := map[string]string{
 					"GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10",
 					"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/dev", "GITHUB_SHA": sha,
-					"SOURCE_REVISION": sha, "DEVELOPMENT": "true", "FULL_CANDIDATE": "false", "DEFAULT_BRANCH": "main", "TAG_DELETED": "false",
+					"SOURCE_REVISION": sha, "DEVELOPMENT": "true", "DEFAULT_BRANCH": "main", "TAG_DELETED": "false",
 				}
 				switch mutation {
 				case "wrong-source":
@@ -89,8 +89,6 @@ func TestDevSourceAuthorityRefusesOtherEventsAndRevisions(t *testing.T) {
 					env["DEFAULT_BRANCH"] = "dev"
 				case "deleted":
 					env["TAG_DELETED"] = "true"
-				case "candidate":
-					env["FULL_CANDIDATE"] = "true"
 				}
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard)
 				cmd.Env = os.Environ()
