@@ -9,7 +9,7 @@ the full-stop, backup, readable-restore and migration procedure below.
 
 The generator accepts nightly charts only, and nightlies remain unsupported
 prereleases. It requires a nightly version, the `nightly.yml` signing identity and
-the `nightly/v1` chart profile, so it refuses the published stable 1.0.0 chart.
+the `nightly/v1` chart profile, so it refuses stable charts, including 1.0.0.
 See the [deployment matrix](deployment-support.md#runtime-matrix) for that chart.
 
 These recipes do not authorize installation into an existing cluster. Source

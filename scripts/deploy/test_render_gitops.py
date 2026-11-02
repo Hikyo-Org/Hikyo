@@ -183,13 +183,14 @@ class GitOpsTests(unittest.TestCase):
         output = self.directory / "stable.yaml"
         values = self.directory / "values.yaml"
         values.write_text(yaml.safe_dump(self.values))
-        arguments = ["render_gitops.py", "--provider", "flux", "--chart-version", "1.0.0",
-                     "--chart-digest", DIGEST, "--source-commit", COMMIT,
-                     "--values", str(values), "--output", str(output)]
-        with patch("sys.argv", arguments), patch.object(gitops, "run") as run, \
-                patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
+        argv = ["render_gitops.py", "--provider", "flux", "--chart-version", "1.0.0",
+                "--chart-digest", DIGEST, "--source-commit", COMMIT,
+                "--values", str(values), "--output", str(output)]
+        with patch("sys.argv", argv), patch.object(gitops, "run") as run, \
+                patch("sys.stderr", io.StringIO()) as errors, self.assertRaises(SystemExit):
             gitops.main()
         run.assert_not_called()
+        self.assertIn("chart-version must identify the selected nightly source", errors.getvalue())
         self.assertFalse(output.exists())
 
     def test_cli_verifies_chart_then_image_before_output_and_never_applies(self):

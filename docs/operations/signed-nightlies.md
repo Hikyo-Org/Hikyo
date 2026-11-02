@@ -140,7 +140,7 @@ web UI, with the same non-root distroless runtime as stable releases.
 
 The registry is `ghcr.io/hikyo-org/hikyo`. Each nightly gets its exact version
 tag without the leading `v`, such as
-`0.0.1-nightly.20260913.39.ga60e8dc3`. The moving `:nightly` tag is promoted only
+`1.0.0-nightly.20261102.103.gb22eb0ad`. The moving `:nightly` tag is promoted only
 after the image has passed its container smoke test and its digest signature
 has been verified. Stable version tags and `:latest` are not changed.
 

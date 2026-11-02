@@ -9,7 +9,7 @@ PostgreSQL server with manual custody. Both select the exact OCI chart digest
 and matching image. Flux starts suspended; Argo CD requires manual sync.
 
 These recipes accept signed nightly charts only, and nightlies remain unsupported
-prereleases. The generator refuses the stable 1.0.0 chart; for stable, use
+prereleases. The generator refuses stable charts, including 1.0.0; for stable, use
 [stable downloads](/docs/installation/#stable-downloads).
 
 Use the [complete GitOps runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-gitops.md)

@@ -26,14 +26,16 @@ operator access to the protected instance project.
 
 ## Install the operator
 
-For a **fresh server installation**, start with the
+For a **fresh server installation from a signed nightly chart**, start with the
 [singleton PostgreSQL runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md)
 and [artifact/topology matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
 That complete example keeps the delivery controller disabled until the server
 works. The setup below instead shows the manual server-plus-delivery-operator
 shape; the delivery operator does not manage server releases.
-Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install the server through
-Flux or Argo CD with the delivery operator disabled.
+Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install a nightly chart through
+Flux or Argo CD with the delivery operator disabled. To install stable 1.0.0, first
+[verify the stable bundle](/docs/installation/#verify-a-stable-bundle), then use the
+setup below with version `1.0.0`.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with
