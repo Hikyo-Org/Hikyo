@@ -35,10 +35,14 @@ upgrade checks. They need the installed v2 nightly trust policy (the version of 
 policy file format, not a Hikyo version), so until it is installed the run fails at
 preflight and publishes nothing.
 
-A nightly proceeds only when that `dev` commit is newer than the previous nightly.
-Otherwise the run ends green before anything is built, signed or published, and its
-log says which commit was selected and why. A full rerun of a run that already
-created its tag still proceeds, so it can resume publication. The downstream
+A nightly proceeds only when that `dev` commit is newer than the previous nightly,
+the one published last by tag date and run number. Otherwise the run ends green
+before anything is built, signed or published, and its log says which commit was
+selected and why. A commit that diverged from the previous nightly proceeds, as
+ancestry cannot order it. A run that already created its tag also proceeds, so a
+full rerun can resume publication, but only while dev still selects the tagged
+commit: `--latest` reselects, the tag's commit is not compared here, and the
+build fails closed on a mismatch, so the next run publishes. The downstream
 container job runs only after a publication: it can build or reuse the immutable
 image and promote its digest to `:nightly` if that release remains the latest
 published nightly. Selecting another branch skips the request job. Manual requests

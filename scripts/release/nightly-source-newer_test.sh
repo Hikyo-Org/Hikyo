@@ -7,6 +7,7 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 source_sha=$(printf 'a%.0s' $(seq 40))
 previous_sha=$(printf 'b%.0s' $(seq 40))
 previous_tag=v1.0.0-nightly.20261101.8.gbbbbbbbb
+other_sha=$(printf 'c%.0s' $(seq 40))
 run_tag=v1.0.0-nightly.20261102.9.gaaaaaaaa
 
 cat >"$work/gh" <<'STUB'
@@ -16,7 +17,9 @@ printf '%s\n' "$*" >>"$CALLS"
 case "$*" in
 *"/git/matching-refs/tags/v"*) [ "${FAIL_ON:-}" != refs ] || exit 1; printf '%s\n' "$REFS" ;;
 *"/releases?per_page=100"*) [ "${FAIL_ON:-}" != releases ] || exit 1; printf '%s\n' "$RELEASES" ;;
-*"/git/ref/tags/"*) [ "${FAIL_ON:-}" != tag ] || exit 1; printf '%s\n' "$PREVIOUS_SHA" ;;
+*"/git/ref/tags/$EXPECT_TAG"*) [ "${FAIL_ON:-}" != tag ] || exit 1; printf '%s\n' "$PREVIOUS_SHA" ;;
+# Any other tag resolves to a commit no comparison is served for.
+*"/git/ref/tags/"*) printf '%s\n' "$OTHER_SHA" ;;
 *"/compare/$PREVIOUS_SHA...$SOURCE"*) [ "${FAIL_ON:-}" != compare ] || exit 1; printf '%s\n' "$STATUS" ;;
 *) exit 8 ;;
 esac
@@ -46,7 +49,7 @@ refuses() {
 	if grep -q 'newer=' "$work/output"; then fail "$1 wrote a newer= line"; fi
 }
 
-export REFS RELEASES PREVIOUS_SHA=$previous_sha STATUS='' FAIL_ON=''
+export REFS RELEASES PREVIOUS_SHA=$previous_sha OTHER_SHA=$other_sha EXPECT_TAG=$previous_tag STATUS='' FAIL_ON=''
 REFS='[[{"ref":"refs/tags/v1.0.0-nightly.20261101.8.gbbbbbbbb"}]]'
 RELEASES="[[{\"tag_name\":\"$previous_tag\",\"draft\":false,\"prerelease\":true}]]"
 
@@ -58,12 +61,35 @@ RELEASES="[[{\"tag_name\":\"$previous_tag\",\"draft\":false,\"prerelease\":true}
 STATUS=ahead proceeds 'a source ahead of the previous nightly' true
 STATUS=identical proceeds 'the commit the previous nightly published' false
 STATUS=behind proceeds 'a source behind the previous nightly' false
-STATUS=diverged proceeds 'a divergence from a main bridge nightly' true
+STATUS=diverged proceeds 'a divergence from the previous nightly' true
+grep -F 'cannot be ordered by ancestry' "$work/stdout" >/dev/null || fail 'a divergence was not reported as unordered'
+grep -F 'main bridge' "$work/stdout" >/dev/null && fail 'a divergence was attributed to the main bridge alone'
+
+# GitHub lists releases by source commit date, so a main bridge nightly M can be
+# listed ahead of the nightly N published after it from an older dev commit. The
+# previous nightly is the last one published, by tag date and run number.
+bridge_tag=v1.0.0-nightly.20261102.9.gabcdef01
+later_tag=v1.0.0-nightly.20261102.10.gaaaaaaaa
+RELEASES="[[{\"tag_name\":\"$bridge_tag\",\"draft\":false,\"prerelease\":true},{\"tag_name\":\"$later_tag\",\"draft\":false,\"prerelease\":true}]]"
+REFS='[[]]'
+# The night after the bridge: only M exists, so the dev source diverges once and proceeds.
+only_bridge="[[{\"tag_name\":\"$bridge_tag\",\"draft\":false,\"prerelease\":true}]]"
+RELEASES=$only_bridge EXPECT_TAG=$bridge_tag STATUS=diverged proceeds 'the first dev source after the main bridge' true
+# The next night N is the previous nightly even though the listing puts M first, so the same source stops.
+EXPECT_TAG=$later_tag PREVIOUS_SHA=$source_sha STATUS=identical proceeds 'the same dev source after an out-of-order listing' false
+grep -F "$later_tag" "$work/stdout" >/dev/null || fail 'the previous nightly was not the last one published'
+EXPECT_TAG=$later_tag PREVIOUS_SHA=$source_sha STATUS=diverged proceeds 'a later dev source after an out-of-order listing' true
+RELEASES="[[{\"tag_name\":\"$previous_tag\",\"draft\":false,\"prerelease\":true}]]"
 
 # A full rerun resumes publication even when the source equals the nightly it created.
 REFS="[[{\"ref\":\"refs/tags/$run_tag\"}]]"
 STATUS=identical proceeds 'a run that already has its tag' true
 grep -F -- '/compare/' "$work/calls" >/dev/null && fail 'compared despite an existing run tag'
+# The run tag's commit is never compared here: a different selected commit still proceeds,
+# and the build identity step fails closed on the mismatch, so the next run publishes.
+grep -F -- '/git/ref/tags/' "$work/calls" >/dev/null && fail 'resolved the run tag in the newer check'
+PREVIOUS_SHA=$other_sha STATUS=behind proceeds 'a run tag on a different commit than the selected one' true
+grep -F -- '/git/ref/tags/' "$work/calls" >/dev/null && fail 'resolved a run tag on a different commit'
 REFS='[[]]'
 
 STATUS=surprise refuses 'an unexpected comparison status'

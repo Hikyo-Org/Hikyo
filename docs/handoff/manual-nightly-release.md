@@ -6,14 +6,18 @@ The publishing workflow lost its branch-selected manual trigger in security
 remediation commit `c3dbfacd0`. It retained the 02:00 UTC schedule and the
 default-branch-only `nightly-chain-restart` repository event.
 
-`nightly-release-manual` now provides an input-free Actions button. Its main-only
-job uses the built-in workflow token to send a normal `nightly-release`
-repository dispatch. It checks out no code and references no release secret.
-The existing publishing workflow consumes that event from the default branch.
-It retains exact-source full CI, signing, startup and upgrade checks, concurrency,
-and duplicate-source skipping for immutable GitHub release publication. The
-downstream container job still runs: it can build or reuse the immutable image
-and promote its digest to `:nightly` if that release remains the latest published
+`nightly-release-manual` now provides an Actions button with one choice,
+`source_mode`: `dev` (the default) or the one-time `main-bridge`. Its main-only
+job uses the built-in workflow token to send a normal `nightly-release` (or
+`nightly-main-bridge`) repository dispatch. It checks out no code and references
+no release secret. The existing publishing workflow consumes that event from the
+default branch. It reuses the recorded proof of the last green `dev` commit and
+checks it again before signing, skips when that commit is not newer than the
+previous nightly, and retains the signing, startup and upgrade checks,
+concurrency, and duplicate-source skipping for immutable GitHub release
+publication. It needs the installed v2 nightly trust policy. The
+downstream container job runs only after a publication: it can build or reuse the
+immutable image and promote its digest to `:nightly` if that release remains the latest published
 nightly. Only the explicit `nightly-chain-restart` event can opt into building
 without a predecessor.
 
@@ -27,7 +31,8 @@ gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main
 ```
 
 Follow the separate **nightly-release** run for publication. The release source
-is the default-branch commit at repository-dispatch time. Request acceptance is
+is the last green `dev` commit, except for the one-time `main-bridge`, which
+builds main's tip. Request acceptance is
 not publication success. GitHub offers the manual button after the wrapper
 exists on the default branch.
 

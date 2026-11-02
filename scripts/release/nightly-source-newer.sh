@@ -29,8 +29,9 @@ else
 		ahead) newer=true reason="it is ahead of $previous_tag ($previous)" ;;
 		identical) newer=false reason="$previous_tag already publishes it" ;;
 		behind) newer=false reason="it is behind $previous_tag ($previous)" ;;
-		# The only expected divergence is a previous nightly from the one-time main bridge, whose merge commit is not on dev.
-		diverged) newer=true reason="it diverged from $previous_tag ($previous), the one-time main bridge" ;;
+		# Ancestry cannot order them, as after the one-time main bridge whose merge commit is not on dev.
+		# The previous nightly is the last one published, so the next night compares identical and stops.
+		diverged) newer=true reason="it diverged from $previous_tag ($previous) and cannot be ordered by ancestry" ;;
 		*) fail "unexpected comparison status '$status' against $previous_tag" ;;
 		esac
 	fi

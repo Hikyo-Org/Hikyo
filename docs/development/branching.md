@@ -51,8 +51,8 @@ newer than the previous nightly. They need the recovery-authorized v2 policy, wh
 is the version of the nightly trust policy file format
 (`hikyo.dev/nightly-policy/v2`), not a Hikyo product version; Hikyo stays on 1.x.
 Until it is installed, ordinary nightlies do not publish and scheduled runs fail at
-preflight. The order is: land, optional bridge, close the blocker in the
-[handoff](../handoff/dev-integration-ci.md), then recovery-sign v2. The trusted
+preflight. The order is: land, run the one-time bridge and upgrade clients, close the
+blocker in the [handoff](../handoff/dev-integration-ci.md), then recovery-sign v2. The trusted
 publisher continues running on `main`, while `nightly-build.yml` builds the source
 in a run on `dev`, so build tooling from dev gets no main-scoped cache access.
 The publisher authenticates that run and pins its artifact; the successor nightly policy and manifest bind the
@@ -61,8 +61,9 @@ The receipt is included in the signed artifact inventory. Publication repeats
 live source-proof verification before signing and refuses a changed run/attempt.
 
 Legacy v1 manifests retain their original certificate/source equality rule.
-Existing clients receive the new reader from the one-time main bridge nightly
-before v2 adoption. Ordinary nightlies cannot fall back to main, and a broken dev
+Existing clients receive the new reader from the one-time main bridge nightly,
+which is required exactly once before the v2 policy is signed: they cannot read a
+v2 manifest, so skipping it strands them. Ordinary nightlies cannot fall back to main, and a broken dev
 source fails before publication.
 
 Repository changes are delivered through a signed PR. Live branch-policy
@@ -154,12 +155,16 @@ unfinished bootstrap state.
 
 These are release/trust actions, separate from merging implementation:
 
-1. Optionally, while the authorized policy is v1, publish the one-time main bridge
-   nightly. It is the only nightly built from main, because a v1 manifest requires
+1. While the authorized policy is v1, publish the one-time main bridge nightly
+   exactly once, before signing v2. It is required. It is the only nightly built
+   from main, because a v1 manifest requires
    its source commit to equal the publisher commit, and it delivers the reader to
    clients. Require normal Apple, installation, compatibility and runtime
    acceptance, and upgrade clients to this reader before v2 adoption; old clients
    cannot consume v2 dev manifests. The bridge needs complete proof for main's tip.
+   If main moves after the request starts, the build fails closed on the changed
+   tip, and a rerun cannot help because it keeps the old `github.sha`; send a
+   fresh request once the new tip has proof.
    After a docs-only landing, obtain it with
    `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`. To publish
    before the next schedule:
@@ -194,7 +199,11 @@ These are release/trust actions, separate from merging implementation:
 
    Scheduled nightlies, manual requests and chain restarts then build the last
    completely green dev commit, if it is newer than the previous nightly. Main
-   bridge requests are refused after v2 activation.
+   bridge requests are refused after v2 activation. Backmerge main's installed
+   trust into dev before the next 02:00 UTC schedule: a pre-backmerge dev commit
+   fails closed in the build job once a v2 nightly exists, because dev's old
+   catalog does not authorize the v2 policy. Clients are unaffected, since they
+   read the signed snapshot from main.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies now reuse proof instead of running the full graph. It

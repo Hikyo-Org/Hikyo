@@ -74,13 +74,18 @@ the policy.
    active run completes and only the newest pending push remains during a burst.
    The CI speedup is live from this step. Until the v2 policy is installed,
    ordinary nightlies do not publish: scheduled runs fail at preflight with its
-   clear message. The order is: land, optional bridge, close the blocker below,
-   then recovery-sign v2.
-4. Optionally deliver the reader to existing clients with the one-time main
-   bridge (`nightly-manual.yml` with `source_mode=main-bridge`). It is the only
-   nightly built from main, because a v1 manifest requires its source commit to
-   equal the publisher commit. Verify actual installation and upgrade clients to
-   the reader before enabling v2.
+   clear message. The order is: land, run the bridge and upgrade clients, close
+   the blocker below, then recovery-sign v2.
+4. Run the one-time main bridge exactly once, before signing the v2 policy
+   (`nightly-manual.yml` with `source_mode=main-bridge`). It is required, not
+   optional: existing nightly clients cannot read a v2 manifest, so skipping it
+   strands them. It is the only nightly built from main, because a v1 manifest
+   requires its source commit to equal the publisher commit, and v2 refuses it.
+   Verify actual installation and upgrade clients to the reader before enabling
+   v2. The bridge builds the main tip as of its request. If main moves after the
+   request starts, the build fails closed on the changed tip, and a rerun cannot
+   help because it keeps the old `github.sha`; send a fresh request with proof for
+   the new tip instead.
 5. Generate a fresh unsigned policy proposal against current authenticated trust:
 
    ```sh
@@ -100,7 +105,14 @@ the policy.
    complete green dev run. Installing v2 enables ordinary nightlies, which build
    from dev. Verify the published v2 source matches the selected receipt, while its
    certificate binds the trusted main publisher. Main bridge requests are refused
-   under v2.
+   under v2. The v2 files exist on main only after the install, so the backmerge
+   cannot precede it. Do both before the next 02:00 UTC schedule. A scheduled run
+   that picks a dev commit from before the backmerge cannot harm clients: the
+   binary embeds only `root.json` and the recovery key, which the rotation leaves
+   unchanged, and clients read the signed snapshot from main. It fails closed in
+   the build job, which verifies predecessors against dev's own `release/trust`: once a
+   v2 nightly exists, an old catalog does not authorize its policy, so that night
+   publishes nothing until the backmerge lands.
 
 Ordinary nightlies always select dev. They cannot fall back to main: an
 unavailable dev source fails before publication.
@@ -155,7 +167,8 @@ host access and no network.
 CodeQL's 8 `actions/cache-poisoning` alerts now point at `nightly-build.yml`. Its rule
 does not model that cache scope follows the run's ref, so they look like false
 positives for dev dispatches, by reading. On main the workflow now refuses any commit
-other than the publisher's own, so a writer cannot dispatch an older main commit.
+other than main's tip when the build is dispatched, so a writer cannot dispatch an
+older main commit.
 Triage the alerts when closing this blocker.
 
 ## Recovery and maintenance

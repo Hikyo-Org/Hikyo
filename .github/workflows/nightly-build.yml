@@ -55,8 +55,9 @@ jobs:
           [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]]
           case "$GITHUB_REF" in
             refs/heads/main)
-              # Only the main bridge builds here, and its source is the publisher's own
-              # commit. An ancestor would let a writer rebuild an older main commit.
+              # Only the main bridge builds here, and its source is main's tip at this
+              # dispatch. An ancestor would let a writer rebuild an older main commit,
+              # and a main that moved since the request fails closed.
               [[ "$SOURCE" = "$GITHUB_SHA" ]]
               ;;
             refs/heads/dev)
