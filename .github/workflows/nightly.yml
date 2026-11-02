@@ -28,6 +28,7 @@ jobs:
     outputs:
       commit: ${{ steps.source.outputs.commit }}
       source_mode: ${{ steps.source.outputs.source_mode }}
+      newer: ${{ steps.newer.outputs.newer || steps.source.outputs.newer }}
       artifact_id: ${{ steps.receipt.outputs.artifact-id }}
     permissions:
       actions: read
@@ -42,37 +43,48 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # The authenticated policy selects the source, never a failure: v1 keeps
-      # publishing main, and once v2 is installed only dev can be selected.
-      - name: Follow the installed nightly source policy
-        id: policy
+      # Ordinary nightlies come from dev only and need the installed v2 policy, so
+      # under v1 they fail here, before anything is built or published. The one-time
+      # main bridge is the only exception: v1 clients must receive the new reader in
+      # a v1 nightly, whose manifest requires source commit == publisher commit.
+      - name: Require the explicitly selected nightly source policy
         env:
           MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
         run: |
           set -euo pipefail
           if [ "$MAIN_BRIDGE" = true ]; then
             go run ./scripts/release/nightly preflight --require-main-policy
+          else
+            go run ./scripts/release/nightly preflight --require-dev-policy
           fi
-          mode=$(go run ./scripts/release/nightly source-mode)
-          echo "mode=$mode" >>"$GITHUB_OUTPUT"
       - name: Select and pin complete source validation
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
-          POLICY_MODE: ${{ steps.policy.outputs.mode }}
+          MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
         run: |
           set -euo pipefail
-          if [ "$POLICY_MODE" = main ]; then
+          if [ "$MAIN_BRIDGE" = true ]; then
             go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
               --mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA" \
               --output "$RUNNER_TEMP/source-validation.json" --github-output "$GITHUB_OUTPUT"
             echo 'source_mode=main' >>"$GITHUB_OUTPUT"
+            echo 'newer=true' >>"$GITHUB_OUTPUT"
           else
             go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
               --mode dev --latest --authority-commit "$GITHUB_SHA" \
               --output "$RUNNER_TEMP/source-validation.json" --github-output "$GITHUB_OUTPUT"
             echo 'source_mode=dev' >>"$GITHUB_OUTPUT"
           fi
+      # Before any build is dispatched, so an unchanged dev publishes nothing and
+      # the run stays green. The bridge is not compared: its source is main.
+      - name: Require a dev commit newer than the previous nightly
+        id: newer
+        if: ${{ !(github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ steps.source.outputs.commit }}
+        run: ./scripts/release/nightly-source-newer.sh
       - name: Retain the pinned source validation receipt
         id: receipt
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -84,7 +96,7 @@ jobs:
 
   build-artifacts:
     needs: validation
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.validation.outputs.newer == 'true'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.build.outputs.tag }}
@@ -106,7 +118,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Build on the source branch and authenticate the result
+      - name: Build on dev (or main for the bridge) and authenticate the result
         id: build
         env:
           GH_TOKEN: ${{ github.token }}

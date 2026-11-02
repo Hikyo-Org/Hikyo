@@ -20,19 +20,29 @@ gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main
 ```
 
 The request workflow must first be merged into the default branch for GitHub to
-offer the manual trigger. It sends an ordinary `nightly-release` repository
-dispatch using the built-in workflow token, without checking out code or using
-release credentials. The separate **nightly-release** run validates and publishes
-the default-branch commit at dispatch time. Follow that run for the release
-result; a successful request alone does not mean publication succeeded.
+offer the manual trigger. The `source_mode` input defaults to `dev`; the
+`main-bridge` choice is the one-time request described in the
+[branching guide](../development/branching.md#migrate-signed-nightlies). The
+request sends a `nightly-release` (or `nightly-main-bridge`) repository dispatch
+using the built-in workflow token, without checking out code or using release
+credentials. The separate **nightly-release** run publishes the last green `dev`
+commit. Follow that run for the release result; a successful request alone does
+not mean publication succeeded.
 
-Manual releases run the same full CI, signing, startup and upgrade checks as the
-02:00 UTC schedule. When the source commit already has a nightly, they skip
-creating another immutable GitHub release. The downstream container job still
-runs: it can build or reuse the immutable image and promote its digest to
-`:nightly` if that release remains the latest published nightly. Selecting
-another branch skips the request job. Manual requests cannot bypass the signed
-predecessor requirement.
+Nightlies do not rerun full CI. They reuse the recorded proof for the last green
+`dev` commit, check it again before signing, and then run the signing, startup and
+upgrade checks. They need the installed v2 nightly trust policy (the version of the
+policy file format, not a Hikyo version), so until it is installed the run fails at
+preflight and publishes nothing.
+
+A nightly proceeds only when that `dev` commit is newer than the previous nightly.
+Otherwise the run ends green before anything is built, signed or published, and its
+log says which commit was selected and why. A full rerun of a run that already
+created its tag still proceeds, so it can resume publication. The downstream
+container job runs only after a publication: it can build or reuse the immutable
+image and promote its digest to `:nightly` if that release remains the latest
+published nightly. Selecting another branch skips the request job. Manual requests
+cannot bypass the signed predecessor requirement.
 
 ## One-time public trust authorization
 

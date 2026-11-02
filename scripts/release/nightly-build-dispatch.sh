@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Starts nightly-build.yml on the source's own branch, waits for it, and exports
-# the authenticated result as this job's outputs. A build on dev cannot touch
-# main-scoped caches; only this trusted side continues to signing and publication.
+# Starts nightly-build.yml on dev, waits for it, and exports the authenticated
+# result as this job's outputs. A build on dev cannot touch main-scoped caches;
+# only this trusted side continues to signing and publication. The one-time main
+# bridge is the only source that builds on main.
 set -euo pipefail
 fail() { printf 'nightly build: %s\n' "$*" >&2; exit 1; }
 : "${GH_TOKEN:?}" "${GITHUB_REPOSITORY:?}" "${GITHUB_OUTPUT:?}" "${GITHUB_RUN_ID:?}" "${GITHUB_RUN_ATTEMPT:?}" "${GITHUB_RUN_NUMBER:?}"
@@ -14,7 +15,7 @@ case "$SOURCE_MODE" in main | dev) ;; *) fail 'invalid source mode' ;; esac
 [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid source commit'
 [[ "$RECEIPT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || fail 'invalid receipt artifact'
 
-# Refuse before spending a build: dev must already carry the approved definition.
+# Refuse before spending a build: the build branch must already carry the approved definition.
 definition=$(git hash-object "$workflow")
 tip=$($GH_BIN api "repos/$repo/contents/$workflow?ref=$SOURCE_MODE" --jq '.sha')
 [ "$tip" = "$definition" ] || fail "$SOURCE_MODE needs a backmerge: its build definition differs from approved main"

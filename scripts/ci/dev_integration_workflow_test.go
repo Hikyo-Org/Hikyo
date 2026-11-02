@@ -344,8 +344,9 @@ func TestFeedbackSkipsOnlyCanonicalPromotions(t *testing.T) {
 }
 
 // A run on main can write main-scoped Actions caches, so selected source is never
-// checked out in one. nightly-build.yml builds it on that source's own branch. This
-// covers source only: see the handoff for built binaries that still run on main.
+// checked out in one. nightly-build.yml builds it on dev, and only the one-time main
+// bridge builds on main. This covers source only: see the handoff for built binaries
+// that still run on main.
 func TestNightlySourceBuildsOutsideMainScopedRuns(t *testing.T) {
 	root := repositoryRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, ".github/workflows/nightly.yml"))
@@ -376,13 +377,20 @@ func TestNightlySourceBuildsOutsideMainScopedRuns(t *testing.T) {
 	}
 	job := build.Jobs["build"]
 	if job.If != "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'" || strings.Contains(string(raw), "environment:") || len(job.Permissions) != 0 {
-		t.Fatal("nightly build must run only on a source branch, with no environment or extra permissions")
+		t.Fatal("nightly build must run only on dev or main, with no environment or extra permissions")
 	}
 	if !strings.Contains(string(raw), "permissions:\n  actions: read\n  contents: read\n") || strings.Contains(string(raw), "secrets.") || strings.Contains(string(raw), "actions/cache") {
 		t.Fatal("nightly build must stay read-only, without secrets or cache use")
 	}
-	checkouts := 0
+	checkouts, guarded := 0, false
 	for _, step := range job.Steps {
+		if step.Name == "Require a commit on this branch" {
+			// On main only the bridge builds, and its source is the publisher's commit, so
+			// a writer cannot dispatch an older main commit. Dev keeps the ancestor check.
+			guarded = strings.Contains(step.Run, "refs/heads/main)\n") && strings.Contains(step.Run, `[[ "$SOURCE" = "$GITHUB_SHA" ]]`) &&
+				strings.Contains(step.Run, "refs/heads/dev)\n") && strings.Contains(step.Run, `compare/$SOURCE...$GITHUB_SHA`) &&
+				strings.Contains(step.Run, `[[ "$status" = ahead || "$status" = identical ]]`) && strings.Contains(step.Run, "*) exit 1 ;;")
+		}
 		if strings.HasPrefix(step.Uses, "actions/checkout@") {
 			checkouts++
 			if step.With["ref"] != "${{ inputs.commit }}" || step.With["persist-credentials"] != "false" {
@@ -392,5 +400,8 @@ func TestNightlySourceBuildsOutsideMainScopedRuns(t *testing.T) {
 	}
 	if checkouts != 1 {
 		t.Fatalf("nightly build has %d checkouts", checkouts)
+	}
+	if !guarded {
+		t.Fatal("nightly build must require the exact publisher commit on main and an ancestor on dev")
 	}
 }

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       source_mode:
-        description: Follow the installed nightly policy, or require the v1 main source
+        description: Dev nightly, or an explicit main bridge for the client trust migration
         type: choice
         required: true
-        default: policy
-        options: [policy, main-bridge]
+        default: dev
+        options: [dev, main-bridge]
 
 permissions: {}
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$SOURCE_MODE" in
-            policy) event_type=nightly-release ;;
+            dev) event_type=nightly-release ;;
             main-bridge) event_type=nightly-main-bridge ;;
             *) echo 'Unknown nightly source mode.' >&2; exit 1 ;;
           esac

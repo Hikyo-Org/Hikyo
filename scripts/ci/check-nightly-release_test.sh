@@ -40,7 +40,10 @@ fi
 grep -F 'go run ./scripts/ci/source-proof' "$workflow" >/dev/null || fail 'nightly does not verify complete exact-source CI proof'
 grep -F -- '--mode dev --latest --authority-commit "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'nightly does not pin the last green dev source'
 grep -F 'nightly-main-bridge' "$workflow" >/dev/null || fail 'explicit v1 reader bridge is unavailable'
-grep -F 'nightly source-mode' "$workflow" >/dev/null || fail 'nightly source does not follow the authenticated policy'
+grep -F -- '--require-dev-policy' "$workflow" >/dev/null || fail 'ordinary nightly lacks v2 policy enforcement'
+if grep -F 'source-mode' "$workflow" >/dev/null; then fail 'nightly source follows the installed policy instead of dev'; fi
+grep -F './scripts/release/nightly-source-newer.sh' "$workflow" >/dev/null || fail 'nightly does not require a source newer than the previous nightly'
+grep -F "needs.validation.outputs.newer == 'true'" "$workflow" >/dev/null || fail 'nightly build runs for an unchanged source'
 grep -F -- '--require-main-policy' "$workflow" >/dev/null || fail 'main bridge lacks v1 policy enforcement'
 grep -F 'needs: validation' "$workflow" >/dev/null || fail 'nightly publication does not wait for validation'
 # shellcheck disable=SC2016
@@ -163,6 +166,7 @@ fi
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
 "$repo_root/scripts/release/nightly-build-dispatch_test.sh"
+"$repo_root/scripts/release/nightly-source-newer_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'
 

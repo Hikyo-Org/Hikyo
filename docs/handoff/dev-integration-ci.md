@@ -13,8 +13,13 @@ merged commit. One active run completes while newer pushes replace the single
 pending run. A frozen `release/` branch promotes through main's full single-entry
 queue, including documentation-only promotions.
 
-Under the v2 nightly policy, nightlies select the last completely green dev
-source; under v1 they keep publishing fully proven main. Trusted main tooling
+Nightlies build from the last completely green dev commit, and only when that
+commit is newer than the previous nightly; an unchanged day builds, signs and
+publishes nothing and the run stays green. They require the installed v2 nightly
+policy, so under v1 they fail at preflight before publication. The only
+exception is the one-time main bridge. In this document, "v2" means the version of
+the nightly trust policy file format (`hikyo.dev/nightly-policy/v2`), not a Hikyo
+product version; Hikyo stays on 1.x. Trusted main tooling
 authenticates the producer, exact attempt, complete job inventory, immutable
 workflow definitions and ancestry, then repeats that verification before signing.
 The v2 nightly manifest binds distinct source and publisher commits and includes
@@ -46,7 +51,7 @@ Before activation, the required evidence classes are:
 | Source delivery | Signed/DCO PR and independent Standards and Spec reviews |
 | Hosted merge | Exact-head feedback, current authority, full queue proof, actual landed commit |
 | Dev activation | Installed main definitions, full exact-source proof, effective rules/ref readback |
-| Reader bridge | Explicit v1 main nightly publication and actual client upgrade acceptance |
+| Reader bridge | Explicit one-time v1 main bridge nightly publication and actual client upgrade acceptance |
 | Trust migration | Reviewed successor bytes, three recovery signatures, verified snapshot/floor and public readback |
 | Dev nightly | Complete selected dev CI plus artifact, signature, native and runtime acceptance |
 
@@ -67,10 +72,15 @@ the policy.
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
    active run completes and only the newest pending push remains during a burst.
-   The CI speedup is live from this step. Steps 4-6 move nightlies to dev and can
-   wait, because nightlies keep publishing fully proven main under v1.
-4. Let ordinary v1 main nightlies deliver the reader. Verify actual installation
-   and upgrade clients to the reader before enabling v2.
+   The CI speedup is live from this step. Until the v2 policy is installed,
+   ordinary nightlies do not publish: scheduled runs fail at preflight with its
+   clear message. The order is: land, optional bridge, close the blocker below,
+   then recovery-sign v2.
+4. Optionally deliver the reader to existing clients with the one-time main
+   bridge (`nightly-manual.yml` with `source_mode=main-bridge`). It is the only
+   nightly built from main, because a v1 manifest requires its source commit to
+   equal the publisher commit. Verify actual installation and upgrade clients to
+   the reader before enabling v2.
 5. Generate a fresh unsigned policy proposal against current authenticated trust:
 
    ```sh
@@ -87,12 +97,13 @@ the policy.
    changes before signatures are collected.
 6. Backmerge reviewed main policy/tooling changes into dev. Require
    `go run ./scripts/release/nightly preflight --require-dev-policy` on main and a
-   complete green dev run. Installing v2 switches every nightly to dev. Verify the
-   published v2 source matches the selected receipt, while its certificate binds
-   the trusted main publisher. Main bridge requests are refused under v2.
+   complete green dev run. Installing v2 enables ordinary nightlies, which build
+   from dev. Verify the published v2 source matches the selected receipt, while its
+   certificate binds the trusted main publisher. Main bridge requests are refused
+   under v2.
 
-The installed policy selects the source. After v2, schedules and requests cannot
-fall back to main: an unavailable dev source fails before publication.
+Ordinary nightlies always select dev. They cannot fall back to main: an
+unavailable dev source fails before publication.
 
 ## Pre-activation repairs
 
@@ -107,9 +118,16 @@ Review of the unlanded branch against a real promotion found these, all fixed:
 - The main queue gate left a check on every dev PR head.
 - A full dev run held all 20 runners for about 15 minutes, starving PR feedback.
 - Nightly reuse removed the only automatic writer of main compile caches.
-- Scheduled nightlies would fail from landing until the v2 trust ceremony.
 - A dev nightly built dev source inside a run on main, where its tooling could poison
-  main-scoped caches. The build now runs in `nightly-build.yml` on the source's branch.
+  main-scoped caches. The build now runs in `nightly-build.yml` on dev.
+- Selecting the source from the installed policy would have published main under v1.
+  Nightlies now come from dev only, so under v1 they fail at preflight until the
+  recovery ceremony installs v2. The owner accepted that: the blocker below must
+  close first, and a nightly never publishes main outside the one-time bridge.
+- An unchanged dev with a moved main publisher turned `container` red under v2, and
+  every day republished nothing useful. `validation` now compares the selected commit
+  with the previous nightly through `scripts/release/nightly-source-newer.sh`, and the
+  build and everything after it are skipped when it is not newer.
 
 Not established before the first hosted dev run: the replay-modelled runner headroom,
 whether creating `dev` succeeds under its new ruleset, the publisher's 60-second
@@ -130,14 +148,15 @@ caches:
 | `apple-acceptance`: native install via `verify-apple-install.sh` | Runs on a macOS runner in a run on main |
 | `container`: `nightly-image.sh promote` image smoke | Docker on the job that holds package and signing identity |
 
-Under v1 these binaries come from main, so nothing changes until the policy is
-installed. Move them to a run on the source branch, or isolate them with no host
-access and no network.
+Until the policy is installed, ordinary nightlies do not publish at all, so
+nothing here runs. Move these checks to a run on dev, or isolate them with no
+host access and no network.
 
 CodeQL's 8 `actions/cache-poisoning` alerts now point at `nightly-build.yml`. Its rule
 does not model that cache scope follows the run's ref, so they look like false
-positives for dev dispatches, by reading. A writer can still dispatch that workflow
-on main with an older main commit. Triage them when closing this blocker.
+positives for dev dispatches, by reading. On main the workflow now refuses any commit
+other than the publisher's own, so a writer cannot dispatch an older main commit.
+Triage the alerts when closing this blocker.
 
 ## Recovery and maintenance
 

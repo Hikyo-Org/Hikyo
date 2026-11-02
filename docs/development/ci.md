@@ -12,8 +12,8 @@ current-base merge-group proof. Branches under `release/` always select all 16
 domains. Dev movement never cancels a fixed candidate's validation.
 
 Stable consumers can reuse authenticated complete proof for the identical landed
-commit. Signed nightlies use the last fully green dev source with trusted main
-publication tooling and explicit v2 trust. See the [branching guide](branching.md)
+commit. Signed nightlies use the last fully green dev commit when it is newer than
+the previous nightly, with trusted main publication tooling and explicit v2 trust. See the [branching guide](branching.md)
 for activation, the main-source reader bridge, recovery policy rotation and
 operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
 
@@ -34,7 +34,7 @@ operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
 | Run operations-floor acceptance | `ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
 | Measure performance | `codspeed` or the PR benchmark control | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
-| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified source proof: main under the v1 trust policy, the last green dev commit under v2. |
+| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified source proof of the last green dev commit, only when it is newer than the previous nightly. Requires the v2 trust policy; the one-time main bridge is the exception. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 
@@ -135,8 +135,8 @@ of GitHub's behavior for ambiguous same-name checks.
 
 Main-push publication and security checks retain their triggers. Full main
 validation is manual recovery plus a weekly cache-writing run. Stable releases
-reuse exact-commit full source proof; nightlies publish main under the v1 policy
-and the last green dev commit under the v2 policy, always with complete proof. Preserve pins, signatures, cache
+reuse exact-commit full source proof; nightlies publish the last green dev commit
+under the v2 policy, always with complete proof. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
 
 ## Documentation prerequisites

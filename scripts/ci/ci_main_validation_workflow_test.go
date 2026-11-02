@@ -13,6 +13,7 @@ import (
 )
 
 type mainValidationStep struct {
+	ID   string            `yaml:"id"`
 	Name string            `yaml:"name"`
 	Uses string            `yaml:"uses"`
 	Run  string            `yaml:"run"`
@@ -99,17 +100,56 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
 		t.Fatal("nightly validation must select verified dev proof using read-only trusted main tooling")
 	}
-	selected, authorized, sourced := false, false, false
+	const mainBridge = "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}"
+	selected, authorized, bridged, compared := false, false, false, false
 	for _, step := range validation.Steps {
 		if strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] != "${{ github.sha }}" {
 			t.Fatal("nightly selection must execute its immutable trusted publisher tooling")
 		}
-		selected = selected || (strings.Contains(step.Run, "./scripts/ci/source-proof") && strings.Contains(step.Run, "--mode dev --latest --authority-commit \"$GITHUB_SHA\""))
-		authorized = authorized || (strings.Contains(step.Run, "go run ./scripts/release/nightly source-mode") && strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-main-policy") && step.Env["MAIN_BRIDGE"] == "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}")
-		sourced = sourced || (strings.Contains(step.Run, "./scripts/ci/source-proof") && step.Env["POLICY_MODE"] == "${{ steps.policy.outputs.mode }}" && step.Env["MAIN_BRIDGE"] == "")
+		if strings.Contains(step.Run, "source-mode") || step.Env["POLICY_MODE"] != "" {
+			t.Fatal("nightly source must not follow the installed policy; only the explicit bridge selects main")
+		}
+		// Ordinary nightlies need the v2 policy; the bridge is the only request that needs v1.
+		authorized = authorized || (step.Env["MAIN_BRIDGE"] == mainBridge &&
+			strings.Contains(step.Run, "if [ \"$MAIN_BRIDGE\" = true ]; then\n  go run ./scripts/release/nightly preflight --require-main-policy\nelse\n  go run ./scripts/release/nightly preflight --require-dev-policy\nfi"))
+		if step.ID == "source" {
+			selected = step.Env["MAIN_BRIDGE"] == mainBridge &&
+				strings.Contains(step.Run, "if [ \"$MAIN_BRIDGE\" = true ]; then\n  go run ./scripts/ci/source-proof") &&
+				strings.Contains(step.Run, "--mode main --commit \"$GITHUB_SHA\" --authority-commit \"$GITHUB_SHA\"") &&
+				strings.Contains(step.Run, "\nelse\n  go run ./scripts/ci/source-proof") &&
+				strings.Contains(step.Run, "--mode dev --latest --authority-commit \"$GITHUB_SHA\"")
+			// The bridge never runs the comparison, so it reports itself as proceeding.
+			bridged = strings.Contains(step.Run, "echo 'newer=true' >>\"$GITHUB_OUTPUT\"\nelse")
+		}
+		if step.ID == "newer" {
+			compared = step.If == "${{ !("+strings.TrimSuffix(strings.TrimPrefix(mainBridge, "${{ "), " }}")+") }}" &&
+				step.Run == "./scripts/release/nightly-source-newer.sh" &&
+				reflect.DeepEqual(step.Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "SOURCE": "${{ steps.source.outputs.commit }}"})
+		}
 	}
-	if !selected || !authorized || !sourced {
-		t.Fatal("nightly source must follow the authenticated policy and complete proof")
+	if !selected || !authorized {
+		t.Fatal("nightly must require the dev policy and green dev proof, and the bridge the main policy and main proof")
+	}
+	if !compared || !bridged || validation.Outputs["newer"] != "${{ steps.newer.outputs.newer || steps.source.outputs.newer }}" {
+		t.Fatal("ordinary nightlies must compare the source with the previous nightly, and the bridge must skip that comparison")
+	}
+	// Nothing is dispatched, signed or promoted unless the source is newer. Every
+	// later job depends on build-artifacts without a status function, or requires
+	// its success, so an unchanged day skips them and the run stays green.
+	if nightly.Jobs["build-artifacts"].If != "github.ref == 'refs/heads/main' && needs.validation.outputs.newer == 'true'" {
+		t.Fatal("nightly build must wait for a source newer than the previous nightly")
+	}
+	for _, name := range []string{"apple-sign", "apple-notarize", "apple-acceptance"} {
+		job := nightly.Jobs[name]
+		if strings.Contains(job.If, "always()") || !strings.Contains(job.If, "needs.build-artifacts.outputs.skip != 'true'") {
+			t.Fatalf("%s must be skipped with a skipped build", name)
+		}
+	}
+	if publish := nightly.Jobs["publish"].If; !strings.Contains(publish, "needs.build-artifacts.result == 'success'") {
+		t.Fatal("publication must require a successful build, not a skipped one")
+	}
+	if container := nightly.Jobs["container"].If; !strings.Contains(container, "needs.publish.result == 'success'") {
+		t.Fatal("the container must require a successful publication, not a skipped one")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
 	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign", "apple-notarize", "apple-acceptance"}) {

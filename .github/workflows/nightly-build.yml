@@ -1,8 +1,9 @@
-# Builds nightly artifacts in a run on the source's own branch, because a build runs
-# the source's tooling, and in a run on main that tooling could write main-scoped
-# Actions caches that queue and release builds restore. The publisher in nightly.yml starts this
-# run, authenticates it and pins its artifact; signing and publishing stay there.
-# Source proof requires these bytes to match approved main.
+# Builds nightly artifacts in a run on dev, because a build runs dev's tooling, and
+# in a run on main that tooling could write main-scoped Actions caches that queue
+# and release builds restore. The one-time main bridge is the only build on main.
+# The publisher in nightly.yml starts this run, authenticates it and pins its
+# artifact; signing and publishing stay there. Source proof requires these bytes to
+# match approved main.
 name: nightly-build
 
 on:
@@ -52,9 +53,18 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$GITHUB_REF" = refs/heads/main || "$GITHUB_REF" = refs/heads/dev ]]
-          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$SOURCE...$GITHUB_SHA" --jq .status)
-          [[ "$status" = ahead || "$status" = identical ]]
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              # Only the main bridge builds here, and its source is the publisher's own
+              # commit. An ancestor would let a writer rebuild an older main commit.
+              [[ "$SOURCE" = "$GITHUB_SHA" ]]
+              ;;
+            refs/heads/dev)
+              status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$SOURCE...$GITHUB_SHA" --jq .status)
+              [[ "$status" = ahead || "$status" = identical ]]
+              ;;
+            *) exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
