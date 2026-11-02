@@ -14,11 +14,13 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -41,16 +43,24 @@ func expireRefusalWindow(t *testing.T, db *store.DB) {
 	execRaw(t, db, fmt.Sprintf("UPDATE auth_refusal_window SET window_start=%d WHERE id=1", start-60))
 }
 
+// runRefusalAuditLifecycle stages a durable fixture sample and runs the actual
+// recovery sealer so registry closure requires a committed refusal event.
 func runRefusalAuditLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
-	s := service.NewRefusalSignals(db)
-	if err := s.Record(t.Context(), refusalStorageSample(t)); err != nil {
-		t.Fatal(err)
+	before := sealedRefusalCount(t, db)
+	sample := refusalStorageSample(t)
+	// Registry closure needs one durable fixture sample. Runtime Record has an
+	// approved 100 ms accounting budget and may return an unconfirmed result;
+	// it is not a fixture-construction guarantee under race instrumentation.
+	// Use its canonical transactional writer, then exercise the real sealer.
+	if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+		_, err := az.UpdateRequestRefusals(ctx, &sample)
+		return err
+	}); err != nil {
+		t.Fatalf("stage refusal emitter fixture: %v", err)
 	}
 	expireRefusalWindow(t, db)
-	if err := s.Seal(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	waitForRefusalSeal(t, db, service.NewRefusalSignals(db), before+1)
 }
 
 func assertRetainedRefusalRequest(t *testing.T, db *store.DB, requestID, source string) {
@@ -283,6 +293,21 @@ func TestRequestRefusalSharedNodesCountEveryCommittedUpdate(t *testing.T) {
 
 func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, attempts int64) int64 {
 	t.Helper()
+	window, sealed := refusalAccountingSnapshot(t, db)
+	committed := window.Counts[0] + sealed
+	// A failed COMMIT acknowledgement is unconfirmed accounting, not proof
+	// of rollback. Aggregate committed counts must cover acknowledged updates
+	// without exceeding the attempted count. Sealing preserves that exact total.
+	if committed < accepted || committed > attempts || len(window.Samples) > 32 {
+		t.Fatalf("shared count %d accepted %d attempts %d samples %d", committed, accepted, attempts, len(window.Samples))
+	}
+	return committed
+}
+
+// refusalAccountingSnapshot owns engine dispatch, commit-settlement fencing
+// and validation; each caller applies its own stage or aggregate bounds.
+func refusalAccountingSnapshot(t *testing.T, db *store.DB) (audit.RefusalWindow, int64) {
+	t.Helper()
 	var window audit.RefusalWindow
 	state := ""
 	var sealed int64
@@ -302,15 +327,7 @@ func assertRefusalCommittedAccounting(t *testing.T, db *store.DB, accepted, atte
 	if err := window.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	committed := window.Counts[0] + sealed
-	// A failed COMMIT acknowledgement is unconfirmed accounting, not proof
-	// of rollback. Every acknowledged update must be durable; at most one
-	// update per attempt may commit. Sealing must preserve this exact durable
-	// count, including updates whose acknowledgement was lost.
-	if committed < accepted || committed > attempts || len(window.Samples) > 32 {
-		t.Fatalf("shared count %d accepted %d attempts %d samples %d", committed, accepted, attempts, len(window.Samples))
-	}
-	return committed
+	return window, sealed
 }
 
 func readPostgresRefusalAccounting(ctx context.Context, db *store.DB) (string, int64, error) {
@@ -355,27 +372,36 @@ func TestRequestRefusalUnavailableDatabaseKeepsEarlyRefusal(t *testing.T) {
 	})
 }
 
+// holdRefusalWriter holds the real engine writer until explicit release or
+// test cleanup; both release paths share exactly one rollback owner.
+func holdRefusalWriter(t *testing.T, db *store.DB) func() {
+	t.Helper()
+	var rollback func()
+	if db.Engine() == store.EngineSQLite {
+		held, err := db.BeginSQLite(t.Context(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rollback = func() { _ = held.Rollback() }
+	} else {
+		held, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := held.Exec(t.Context(), "SELECT id FROM auth_refusal_window WHERE id=1 FOR UPDATE"); err != nil {
+			_ = held.Rollback(t.Context())
+			t.Fatal(err)
+		}
+		rollback = func() { _ = held.Rollback(t.Context()) }
+	}
+	release := sync.OnceFunc(rollback)
+	t.Cleanup(release)
+	return release
+}
+
 func TestRequestRefusalBlockedDatastoreHonorsDeadline(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
-		var release func()
-		if db.Engine() == store.EngineSQLite {
-			held, err := db.BeginSQLite(t.Context(), false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			release = func() { _ = held.Rollback() }
-		} else {
-			held, err := db.BeginPostgres(t.Context(), pgx.TxOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			release = func() { _ = held.Rollback(t.Context()) }
-			defer release()
-			if _, err := held.Exec(t.Context(), "SELECT id FROM auth_refusal_window WHERE id=1 FOR UPDATE"); err != nil {
-				t.Fatal(err)
-			}
-		}
-		defer release()
+		release := holdRefusalWriter(t, db)
 		signals := service.NewRefusalSignals(db)
 		start := time.Now()
 		err := signals.Record(t.Context(), refusalStorageSample(t))

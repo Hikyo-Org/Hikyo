@@ -138,14 +138,23 @@ jobs:
             "$candidate" "$candidate_sha256" "$resolved_version" "$resolved_commit" >>"$GITHUB_OUTPUT"
 
       - name: Test release source
+        id: release-source
         env:
           RELEASE_SCHEMA_CONTAINER: hikyo-ci-postgres
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_tests?sslmode=disable
+          RELEASE_SOURCE_TEST_OUTPUT: ${{ runner.temp }}/release-source-tests
         run: |
           # Preserve the separate empty database used by artifact generation.
           docker exec "$RELEASE_SCHEMA_CONTAINER" createdb -U hikyo hikyo_release_tests
-          go test ./...
-          ./scripts/release/test-fixtures.sh
+          ./scripts/release/test-source.sh
+
+      - name: Retain release source inventories and results
+        if: ${{ always() && steps.release-source.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-source-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-source-tests/
+          if-no-files-found: error
 
       - name: Assert fallback channel and live docs release gates
         run: |

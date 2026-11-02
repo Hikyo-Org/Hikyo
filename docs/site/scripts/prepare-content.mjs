@@ -70,6 +70,7 @@ const pages = [
 ];
 
 const siteLinks = new Map([
+  ['1.0.0.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/release/1.0.0.md'],
   ['scripts/dev/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/scripts/dev/README.md'],
   ['online-signing.md', '/release/online-signing/'],
   ['online-signing.md#one-time-setup', '/release/online-signing/#one-time-setup'],

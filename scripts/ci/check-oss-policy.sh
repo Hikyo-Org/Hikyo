@@ -189,7 +189,11 @@ require_text "$site_root/docs/index.html" 'href="/docs/installation/"'
 reject_text "$site_root/docs/index.html" 'href="/hikyo/'
 require_text "$site_root/docs/getting-started/index.html" 'Build Hikyo from source'
 require_text "$site_root/docs/getting-started/index.html" 'authority is single-use'
-require_text "$site_root/docs/installation/index.html" 'has no published stable release yet'
+for page in index.html docs/installation/index.html; do
+	require_text "$site_root/$page" 'href="https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0"'
+	reject_text "$site_root/$page" 'has no published stable release yet'
+	reject_text "$site_root/$page" 'active 0.x development'
+done
 require_text "$site_root/docs/installation/index.html" "pinned signing root"
 require_text "$site_root/docs/installation/index.html" 'not an official fail-closed installer'
 require_text "$site_root/docs/build-from-source/index.html" 'frozen lockfiles prevent dependency resolution'

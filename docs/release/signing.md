@@ -12,9 +12,10 @@ Apple signing before final artifact hashing and Cosign signing.
 The design combines SOPS-style keyless signing and provenance with OpenBao-style
 review before publication. It does not deploy SOPS or an OpenBao server.
 
-**Implementation is available; stable policy activation and 1.0 publication are
-still pending.** The owner delayed 1.0 for design work. A successful test or a
-signed draft does not mean a release is public.
+**[Hikyo 1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).**
+The [publication record](1.0.0.md) links the released source and remaining
+verification and qualification work. A successful test or signed draft alone
+does not establish publication of a future release.
 
 ## One-time trust bootstrap
 
@@ -25,7 +26,7 @@ One recovery signature authorizes the stable workflow's exact identity and its
 limited authority to add release records. Recovery custody is needed again for
 policy changes, revocation and recovery, not routine releases.
 
-After the implementation merges, follow [one-time setup](online-signing.md#one-time-setup).
+For signing setup, follow [one-time setup](online-signing.md#one-time-setup).
 Do not replace the deployed root or delete the nightly trust files.
 
 ## Per-release ceremony

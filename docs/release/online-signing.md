@@ -8,9 +8,11 @@ OpenBao-style review of a draft before publication. No SOPS or OpenBao service
 is installed. GitHub's short-lived OIDC identity signs routine releases; the
 existing recovery key authorizes that delegation once.
 
-**1.0 is paused for design work.** Merge and validate this implementation first.
-The checked-in bootstrap currently contains no approved stable release. None of
-the setup or release commands below have been run as part of implementation.
+**[Hikyo 1.0.0 is published](https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0).**
+The [publication record](1.0.0.md) records its identity and remaining closeout.
+Public verification and signed trust synchronization follow publication;
+confirm the selected checkout's authenticated trust state before verification
+or another release. The commands below remain the maintainer procedure.
 
 ## One-time setup
 
