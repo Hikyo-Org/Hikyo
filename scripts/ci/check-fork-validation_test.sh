@@ -60,7 +60,7 @@ case $url in
 	;;
 */rules/branches/release%2Fnightly-20261103-abcdef0) fixture=promotion-rules ;;
 */rules/branches/dev) fixture=dev-rules ;;
-*/commits/$HEAD_SHA/pulls*) fixture=head-pulls ;;
+*/pulls\?state=closed\&base=dev\&*) fixture=head-pulls ;;
 */pulls/7)
 	bump pr
 	if [ "${HEAD_MOVES_AFTER_PERMISSION:-false}" = true ] && [ -f "$FIXTURES/permission-calls" ]; then
@@ -213,7 +213,7 @@ expect_reject 'bot workflow edits still require independent maintainer approval'
 grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
 approval
 expect_accept 'bot workflow edits with independent exact-head maintainer approval'
-# Only the release app can write this branch, and it promotes only green dev tips.
+# A PR merge result on protected dev, on a branch only the release app can write.
 promotion_files='[{"filename":".github/workflows/ci.yml"}]'
 fixture 1 "$promotion_files" "$done_run" success
 promotion

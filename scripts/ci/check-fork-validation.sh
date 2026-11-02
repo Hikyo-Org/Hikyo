@@ -164,7 +164,9 @@ promotion_already_reviewed() {
 		($types | index("deletion") != null) and ($checks | index("ci-dev-required") != null)') ||
 		fail 'cannot verify dev protection' api-failure
 	[ "$dev_protected" = true ] || return 1
-	merged=$(gh_read "repos/$GH_REPO/commits/$HEAD_SHA/pulls?per_page=100" \
+	# A green tip merged recently. commits/{sha}/pulls can omit merged PRs for commits
+	# off the default branch. An older head falls back to the ordinary review.
+	merged=$(gh_read "repos/$GH_REPO/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=100" \
 		--jq "[.[] | select(.base.ref == \"dev\" and .base.repo.full_name == \"$GH_REPO\" and .merged_at != null and .merge_commit_sha == \"$HEAD_SHA\")] | length") ||
 		fail 'cannot read the dev pull request that merged the promotion head' api-failure
 	case "$merged" in '' | 0 | *[!0-9]*) return 1 ;; esac

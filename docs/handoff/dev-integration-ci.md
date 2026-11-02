@@ -45,9 +45,13 @@ Go build-cache bucket or paid cache capacity is added.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
 - A promotion that changes `.github/` needs no second approval when it comes from
   `hikyo-nightly-release[bot]` on a branch the `nightly promotion branches require
-  Hikyo release app` ruleset protects. Otherwise one independent maintainer must
-  approve its exact head. This relies on the app key staying in the `nightly-release`
-  environment.
+  Hikyo release app` ruleset protects, dev still has its protection, and the head is
+  the merge result of a recently merged dev PR. Otherwise one independent maintainer
+  must approve its exact head. This relies on the app key staying in the
+  `nightly-release` environment.
+- Known limit, shared with main's existing gate: the workflow-edit check reads a PR's
+  file list, and a crafted criss-cross merge might hide a change from it. This is
+  untested on GitHub and predates this flow.
 - A promotion that cannot land fails the `nightly-promote` run, even when the run also
   re-arms or replaces it.
 - A docs-only landing as the tip of main has only selective queue proof, so the
