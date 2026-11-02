@@ -24,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/transit"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/Hikyo-Org/hikyo/internal/webui"
@@ -57,11 +58,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	if err != nil {
 		return nil, err
 	}
-	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
+	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM, tlspolicy.Profile(cfg.TLSProfile))
 	if err != nil {
 		return nil, fmt.Errorf("managed TLS certificate: %w", err)
 	}
 	db, kr, log, resources := owner.server.db, owner.server.keyring, owner.server.log, owner.resources
+	certificate.reportTo(log)
 	sc := storeConfig(cfg)
 	// The secret-scanning ruleset compiles once at boot; a Load error refuses to
 	// serve (#74, ADR §7 fail-fast; a binary that ships a half-compiled ruleset

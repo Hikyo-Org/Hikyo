@@ -27,6 +27,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/updater"
 	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 )
@@ -387,10 +388,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		selfConfig: selfConfig, budget: serviceBudget(cfg), advisory: service.NewAdvisory(), fakeProvider: newDevFakeProvider(),
 		values: ownerValues, nodeValues: nodeValues, seedNodeValues: nodeValues,
 		endpointErrors: make(chan error, 4)}
-	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
+	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM, tlspolicy.Profile(cfg.TLSProfile))
 	if err != nil {
 		return nil, err
 	}
+	certificate.reportTo(log)
 	diagnostics.Printf(ctx, 1, "Preparing public and operational listeners")
 	listened := diagnostics.Time(ctx, "prepare server listeners")
 	endpoints, err := owner.prepareEndpoints(cfg, certificate)

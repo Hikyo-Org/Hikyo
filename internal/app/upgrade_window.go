@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/webui"
 )
 
@@ -52,7 +53,7 @@ func (u *UpgradeWindow) Start(cfg *config.Config) error {
 	if u.public != nil {
 		return errors.New("upgrade maintenance listener already started")
 	}
-	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
+	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM, tlspolicy.Profile(cfg.TLSProfile))
 	if err != nil {
 		return err
 	}
