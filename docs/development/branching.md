@@ -85,6 +85,10 @@ a PR that changes them otherwise. Dev proof stays unavailable between that main
 landing and a green run of the backmerge, so backmerge promptly. Do not force-reset
 branches to synchronize them.
 
+A red dev run opens one `Dev integration is red` issue listing the failed jobs
+and the PRs merged since the last green commit. Later red runs update it, and the
+first green run containing that commit closes it.
+
 ## Freeze and promote
 
 Create a separate fixed branch from a verified dev commit. This example uses

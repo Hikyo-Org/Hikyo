@@ -14,7 +14,7 @@ name: fuzz-report
 
 on:
   workflow_run:
-    workflows: [trusted-ci, ci, ci-main, nightly-release]
+    workflows: [trusted-ci, ci, ci-main, ci-dev, nightly-release]
     types: [completed]
 
 permissions:
@@ -194,3 +194,33 @@ jobs:
         run: >-
           ./scripts/ci/report-fuzz-finding.sh main "$HEAD_SHA"
           "$RUN_URL" "$RUN_ID" "$RUN_ATTEMPT"
+
+  # Dev merges without a queue, so a red run needs one visible place. One issue
+  # stays open while dev is red and names the PRs since the last green commit.
+  report-dev:
+    if: >-
+      ${{ github.event.workflow_run.name == 'ci-dev' &&
+      github.event.workflow_run.path == '.github/workflows/ci-dev.yml' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'dev' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Open, update or close the dev status issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: ./scripts/ci/report-dev-status.sh

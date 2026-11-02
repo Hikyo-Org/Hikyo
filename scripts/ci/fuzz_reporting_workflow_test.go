@@ -32,7 +32,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 	if err := trigger.Decode(&completed); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "ci-main", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
+	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "ci-main", "ci-dev", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
 		t.Fatal("reporter must receive completed manual, nightly, and existing PR validation")
 	}
 	job := reporter.Jobs["report-main"]
