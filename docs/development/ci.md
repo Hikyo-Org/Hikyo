@@ -317,8 +317,9 @@ completed/success and that the explicit-null candidate is rejected. Those
 canaries were cleaned up to neutral; neither protocol authorized activation.
 The immutable-verdict protocol instead uses creation and nonterminal updates;
 its actual workflow-token acceptance was independently verified before activation.
-The legacy `ci-required-next` publisher is retired. Check retirement still cancels
-its unfinished records once the exact commit has no live PR or merge-group role.
+The legacy `ci-required-next` publisher is retired. The hourly sweep cancels
+unfinished records on recent main commits. Those on closed or superseded PR heads
+stay queued until someone dispatches that exact head. None are required checks.
 
 ## Reading historical check results
 

@@ -100,7 +100,7 @@ rebuilds can still cost time.
 - [CI operator guide](../development/ci.md)
 - [Contributor guide](../../CONTRIBUTING.md)
 - [Canonical queue policy](../../release/repository/main-ci-gate.json)
-- [Legacy reference policy](../../release/repository/main-ci-gate-legacy.json)
+- Legacy reference policy: `release/repository/main-ci-gate-legacy.json`, since removed
 - [Historical bootstrap handoff](trusted-merge-queue.md)
 - [GitHub merge queue semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
 
