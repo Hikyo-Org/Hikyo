@@ -42,24 +42,27 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Require the explicitly selected nightly source policy
+      # The authenticated policy selects the source, never a failure: v1 keeps
+      # publishing main, and once v2 is installed only dev can be selected.
+      - name: Follow the installed nightly source policy
+        id: policy
         env:
           MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
         run: |
           set -euo pipefail
           if [ "$MAIN_BRIDGE" = true ]; then
             go run ./scripts/release/nightly preflight --require-main-policy
-          else
-            go run ./scripts/release/nightly preflight --require-dev-policy
           fi
+          mode=$(go run ./scripts/release/nightly source-mode)
+          echo "mode=$mode" >>"$GITHUB_OUTPUT"
       - name: Select and pin complete source validation
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
-          MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
+          POLICY_MODE: ${{ steps.policy.outputs.mode }}
         run: |
           set -euo pipefail
-          if [ "$MAIN_BRIDGE" = true ]; then
+          if [ "$POLICY_MODE" = main ]; then
             go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
               --mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA" \
               --output "$RUNNER_TEMP/source-validation.json" --github-output "$GITHUB_OUTPUT"

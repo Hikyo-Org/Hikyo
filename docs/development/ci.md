@@ -134,8 +134,9 @@ untouched, and creates its own queued barrier. That barrier is not a guarantee
 of GitHub's behavior for ambiguous same-name checks.
 
 Main-push publication and security checks retain their triggers. Full main
-validation remains manual recovery. Stable releases reuse exact-commit full
-source proof; nightlies use complete dev proof and explicit v2 trust authority. Preserve pins, signatures, cache
+validation is manual recovery plus a weekly cache-writing run. Stable releases
+reuse exact-commit full source proof; nightlies publish main under the v1 policy
+and the last green dev commit under the v2 policy, always with complete proof. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
 
 ## Documentation prerequisites

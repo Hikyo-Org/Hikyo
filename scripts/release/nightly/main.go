@@ -29,7 +29,7 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("require preflight, verify, sources, source-validation, or legacy-bridges")
+		return errors.New("require preflight, source-mode, verify, sources, source-validation, or legacy-bridges")
 	}
 	fs := flag.NewFlagSet("nightly", flag.ContinueOnError)
 	trust := fs.String("trust", "release/trust", "independently pinned public trust directory")
@@ -65,6 +65,20 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		return errors.New("only sources accepts multiple --directory values")
 	}
 	switch args[0] {
+	case "source-mode":
+		current, err := releasetrust.ParseNightlyPolicy(policy)
+		if err != nil {
+			return err
+		}
+		switch current.Schema {
+		case "hikyo.dev/nightly-policy/v1":
+			_, err = fmt.Fprintln(output, "main")
+		case "hikyo.dev/nightly-policy/v2":
+			_, err = fmt.Fprintln(output, "dev")
+		default:
+			err = errors.New("nightly policy does not select a source")
+		}
+		return err
 	case "source-validation":
 		current, err := releasetrust.ParseNightlyPolicy(policy)
 		if err != nil {

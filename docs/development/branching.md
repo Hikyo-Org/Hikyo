@@ -46,16 +46,18 @@ read back the resulting branch protection. It must preserve main's queue,
 signatures, DCO, fork and workflow-approval boundaries. Existing default-branch
 release workflows keep their privileged execution on trusted code.
 
-Signed nightlies select the last fully green `dev` commit. The trusted publisher
+Under the recovery-authorized v2 policy, signed nightlies select the last fully
+green `dev` commit. Until then they keep publishing the fully validated `main`
+commit, so landing this flow does not stop nightlies. The trusted publisher
 continues running on `main`; the successor nightly policy and manifest bind the
 publisher commit separately from the dev source and its exact validation receipt.
 The receipt is included in the signed artifact inventory. Publication repeats
 live source-proof verification before signing and refuses a changed run/attempt.
 
 Legacy v1 manifests retain their original certificate/source equality rule.
-Existing clients must receive the new reader in an explicitly requested v1
-main-source bridge before v2 adoption. Normal schedules and requests require the
-recovery-authorized v2 policy; there is no automatic main fallback.
+Existing clients receive the new reader from those ordinary v1 main nightlies
+before v2 adoption. The installed policy selects the source, never a failure: v2
+cannot fall back to main, and a broken dev source fails before publication.
 
 Repository changes are delivered through a signed PR. Live branch-policy
 activation follows the landed trusted implementation; creating this document or
@@ -130,17 +132,18 @@ unfinished bootstrap state.
 
 These are release/trust actions, separate from merging implementation:
 
-1. While the authorized policy is v1, request a reader bridge from fully checked
-   main using the explicit operator action:
+1. While the authorized policy is v1, nightlies publish fully checked main, which
+   delivers the reader to clients. Require normal Apple, installation,
+   compatibility and runtime acceptance, and upgrade clients to this reader before
+   v2 adoption; old clients cannot consume v2 dev manifests. A v1 nightly needs
+   complete proof for main's tip. After a docs-only landing, obtain it with
+   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`. To publish
+   before the next schedule:
 
    ```sh
    gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main \
      -f source_mode=main-bridge
    ```
-
-   This requests actual publication. Require normal Apple, installation,
-   compatibility and runtime acceptance. Upgrade clients to this reader before
-   v2 adoption; old clients cannot consume v2 dev manifests.
 2. Set `PROPOSAL_DIRECTORY` to a new output directory outside the checkout and
    prepare exact unsigned successor documents from authenticated current trust:
 
@@ -165,9 +168,9 @@ These are release/trust actions, separate from merging implementation:
    go run ./scripts/release/nightly preflight --require-dev-policy
    ```
 
-   Normal manual requests default to dev. Scheduled nightlies and chain restarts
-   select the last completely green dev source. Main bridge requests are refused
-   after v2 activation.
+   Scheduled nightlies, manual requests and chain restarts then select the last
+   completely green dev source. Main bridge requests are refused after v2
+   activation.
 
 A scheduled weekly `ci-main` run on main keeps the main-scoped compile caches
 written, because nightlies now reuse proof instead of running the full graph.

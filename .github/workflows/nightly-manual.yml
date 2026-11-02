@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_mode:
-        description: Dev nightly, or an explicit main bridge for the client trust migration
+        description: Follow the installed nightly policy, or require the v1 main source
         type: choice
         required: true
         default: dev

@@ -13,7 +13,8 @@ merged commit. One active run completes while newer pushes replace the single
 pending run. A frozen `release/` branch promotes through main's full single-entry
 queue, including documentation-only promotions.
 
-Nightlies select the last completely green dev source. Trusted main tooling
+Under the v2 nightly policy, nightlies select the last completely green dev
+source; under v1 they keep publishing fully proven main. Trusted main tooling
 authenticates the producer, exact attempt, complete job inventory, immutable
 workflow definitions and ancestry, then repeats that verification before signing.
 The v2 nightly manifest binds distinct source and publisher commits and includes
@@ -66,15 +67,10 @@ the policy.
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
    active run completes and only the newest pending push remains during a burst.
-4. Request the explicit v1 main-source reader bridge while v1 is still authorized:
-
-   ```sh
-   gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main \
-     -f source_mode=main-bridge
-   ```
-
-   This publishes a release and requires separate release authorization. Verify
-   actual installation and upgrade clients to the reader before enabling v2.
+   The CI speedup is live from this step. Steps 4-6 move nightlies to dev and can
+   wait, because nightlies keep publishing fully proven main under v1.
+4. Let ordinary v1 main nightlies deliver the reader. Verify actual installation
+   and upgrade clients to the reader before enabling v2.
 5. Generate a fresh unsigned policy proposal against current authenticated trust:
 
    ```sh
@@ -91,12 +87,26 @@ the policy.
    changes before signatures are collected.
 6. Backmerge reviewed main policy/tooling changes into dev. Require
    `go run ./scripts/release/nightly preflight --require-dev-policy` on main and a
-   complete green dev run before enabling ordinary nightly requests. Verify the
+   complete green dev run. Installing v2 switches every nightly to dev. Verify the
    published v2 source matches the selected receipt, while its certificate binds
    the trusted main publisher. Main bridge requests are refused under v2.
 
-Ordinary schedules and requests never silently fall back to main while dev or v2
-trust is unavailable. They fail before publication until the rollout is ready.
+The installed policy selects the source. After v2, schedules and requests cannot
+fall back to main: an unavailable dev source fails before publication.
+
+## Pre-activation repairs
+
+A review of the unlanded branch against a real promotion found these, all fixed:
+
+- A failed rerun of an older run could hide behind a newer run's success.
+- Dependabot targets dev, so a human-opened promotion would fail DCO.
+- Squash or rebase merges on dev would leave unrepairable DCO failures.
+- A full dev run held all 20 runners for about 15 minutes, starving PR feedback.
+- Nightly reuse removed the only automatic writer of main compile caches.
+- Scheduled nightlies would fail from landing until the v2 trust ceremony.
+
+The first CI fix to check on hosted dev runs is the replay-modelled runner headroom
+in the [branching guide](../development/branching.md).
 
 ## Recovery and maintenance
 

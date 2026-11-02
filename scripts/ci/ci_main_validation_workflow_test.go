@@ -99,16 +99,17 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
 		t.Fatal("nightly validation must select verified dev proof using read-only trusted main tooling")
 	}
-	selected, authorized := false, false
+	selected, authorized, sourced := false, false, false
 	for _, step := range validation.Steps {
 		if strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] != "${{ github.sha }}" {
 			t.Fatal("nightly selection must execute its immutable trusted publisher tooling")
 		}
 		selected = selected || (strings.Contains(step.Run, "./scripts/ci/source-proof") && strings.Contains(step.Run, "--mode dev --latest --authority-commit \"$GITHUB_SHA\""))
-		authorized = authorized || (strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-dev-policy") && strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-main-policy") && step.Env["MAIN_BRIDGE"] == "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}")
+		authorized = authorized || (strings.Contains(step.Run, "go run ./scripts/release/nightly source-mode") && strings.Contains(step.Run, "go run ./scripts/release/nightly preflight --require-main-policy") && step.Env["MAIN_BRIDGE"] == "${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}")
+		sourced = sourced || (strings.Contains(step.Run, "./scripts/ci/source-proof") && step.Env["POLICY_MODE"] == "${{ steps.policy.outputs.mode }}" && step.Env["MAIN_BRIDGE"] == "")
 	}
-	if !selected || !authorized {
-		t.Fatal("nightly must require explicit dev policy and complete green dev proof")
+	if !selected || !authorized || !sourced {
+		t.Fatal("nightly source must follow the authenticated policy and complete proof")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
 	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign", "apple-notarize", "apple-acceptance"}) {

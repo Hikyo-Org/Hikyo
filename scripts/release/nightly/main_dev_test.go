@@ -59,6 +59,12 @@ func TestDevNightlyPreparationRequiresAuthorizedSuccessorPolicy(t *testing.T) {
 	if err := run(t.Context(), []string{"preflight", "--trust", trust, "--require-main-policy", "--require-dev-policy"}, &output); err == nil {
 		t.Fatal("conflicting nightly source-policy requirements were accepted")
 	}
+	for trustDir, want := range map[string]string{legacy: "main\n", trust: "dev\n"} {
+		var mode bytes.Buffer
+		if err := run(t.Context(), []string{"source-mode", "--trust", trustDir}, &mode); err != nil || mode.String() != want {
+			t.Fatalf("nightly source mode %q/%v, want %q", mode.String(), err, want)
+		}
+	}
 	raw, err := io.ReadAll(material.Artifacts[releasetrust.NightlySourceValidationArtifact])
 	if err != nil {
 		t.Fatal(err)
