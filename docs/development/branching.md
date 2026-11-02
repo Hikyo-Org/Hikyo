@@ -166,8 +166,9 @@ These are release/trust actions, separate from merging implementation:
    tip, and a rerun cannot help because it keeps the old `github.sha`; send a
    fresh request once the new tip has proof.
    After a docs-only landing, obtain it with
-   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`. To publish
-   before the next schedule:
+   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`. The schedule
+   never runs the bridge, so request it explicitly. A further request after main
+   moves would publish another main nightly, so request it once:
 
    ```sh
    gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main \
@@ -200,7 +201,8 @@ These are release/trust actions, separate from merging implementation:
    Scheduled nightlies, manual requests and chain restarts then build the last
    completely green dev commit, if it is newer than the previous nightly. Main
    bridge requests are refused after v2 activation. Backmerge main's installed
-   trust into dev before the next 02:00 UTC schedule: a pre-backmerge dev commit
+   trust into dev straight after installing it, because scheduled runs start hours
+   after their 02:00 UTC cron: a pre-backmerge dev commit
    fails closed in the build job once a v2 nightly exists, because dev's old
    catalog does not authorize the v2 policy. Clients are unaffected, since they
    read the signed snapshot from main.

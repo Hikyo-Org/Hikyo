@@ -106,7 +106,8 @@ the policy.
    from dev. Verify the published v2 source matches the selected receipt, while its
    certificate binds the trusted main publisher. Main bridge requests are refused
    under v2. The v2 files exist on main only after the install, so the backmerge
-   cannot precede it. Do both before the next 02:00 UTC schedule. A scheduled run
+   cannot precede it. Do both together, because scheduled runs start hours after
+   their 02:00 UTC cron. A scheduled run
    that picks a dev commit from before the backmerge cannot harm clients: the
    binary embeds only `root.json` and the recovery key, which the rotation leaves
    unchanged, and clients read the signed snapshot from main. It fails closed in
