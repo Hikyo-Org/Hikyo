@@ -61,9 +61,19 @@ Commands are run from the repository root; `go test` uses `-p 2`.
 | `go test -p 2 -count=1 ./internal/tlspolicy/` | PASS (matrix, trust fields, resumption, GODEBUG subprocess, unknown groups, observation) |
 | `go test -p 2 -count=1 ./internal/cli/ ./internal/operator/client/ ./internal/diagnostics/` | PASS |
 | `go test -p 2 -count=1 ./internal/app/ -run 'TestNativeListenerProfiles\|TestListenerReports\|TestBootWithStrict\|TestStrictProfileRefuses\|TestProfileChange\|TestConfigAndPolicy'` | PASS (incl. real `Boot` with strict) |
-| `go test -p 2 -count=1 ./internal/config/...` | PASS |
+| `go test -p 2 -count=1 ./internal/config/ ./internal/runtimeconfig/ ./internal/operator/...` | PASS |
+| `go test -p 2 -count=1 ./internal/app/ ./internal/server/ ./internal/conformance/` | PASS (app 276 s) |
+| `go test -p 2 -count=1 ./internal/store/upgrade/ ./internal/store/migrate/` with a throwaway PostgreSQL 18 container (`HIKYO_TEST_POSTGRES_DSN`), then the same on SQLite only | PASS on both engines, including the new `old-tls-profile-catalogue` and `existing-strict-profile` migration scenarios; the container was removed |
+| `go test -p 2 -count=1 ./internal/service/ -run 'SelfConfig\|Seed\|Managed\|Config'` | PASS (subset, not the full package) |
 | `go test -p 2 -run '^$' -bench Handshake -benchtime 200x ./internal/tlspolicy/` | LOCAL numbers, Apple M2 Pro, arm64 darwin, in-memory pipe, P-256 test chain: compat 452 us, 873 allocs, 3799 handshake bytes; strict 446 us, 865 allocs, 3723 bytes. Go's default already offers the hybrid group, so strict's byte cost equals compat's on this toolchain. Not a target measurement, no budget |
-| `scripts/ci/fast-feedback.sh --working-tree` | see the PR evidence section for the final-candidate run |
+| `FAST_FEEDBACK_BASE=<stack base> scripts/ci/fast-feedback.sh --working-tree` (pinned Node 26.12.1) | PASS: diff check, Go formatting, test compile of nine packages, docs content check. Hosted CI NOT RUN |
+| `scripts/ci/check-go-imports.sh` | PASS |
+
+Queue note: `agent-heavy run` lost its daemon socket (`i/o timeout`) four times
+while waiting behind other jobs, so the broad `service`/`isolation` suites were
+not run; the packages above ran directly with `-p 2` as single-package runs and
+the orphaned queue jobs were cancelled. The full `internal/service` and
+`internal/isolation` suites are NOTRUN.
 
 Mutation check: removing the `Apply` call in `cli.NewClient` fails the CLI strict
 tests, so they do exercise the policy.
