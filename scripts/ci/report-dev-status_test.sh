@@ -39,7 +39,11 @@ case "$url" in
 */compare/*) json=$COMPARE ;;
 *) exit 8 ;;
 esac
-printf '%s' "$json" | jq -r "$filter"
+if [ -n "$filter" ]; then
+	printf '%s' "$json" | jq -r "$filter"
+else
+	printf '%s' "$json"
+fi
 STUB
 chmod +x "$work/gh"
 
@@ -80,6 +84,16 @@ grep -F 'PATCH repos/o/r/issues/12  state=closed' "$work/calls" >/dev/null || fa
 export COMPARE='{"status":"behind"}'
 run success
 [ ! -s "$work/calls" ] || fail 'rerun of an older commit closed the issue'
+run failure
+[ ! -s "$work/calls" ] || fail 'red rerun of an older commit moved the issue back'
+export ISSUES='[]'
+run failure
+[ ! -s "$work/calls" ] || fail 'red rerun older than the last green commit opened an issue'
+
+export COMPARE='{"status":"ahead","total_commits":300,"commits":[]}'
+run startup_failure
+grep -F 'POST repos/o/r/issues ' "$work/calls" >/dev/null || fail 'startup failure opened no issue'
+grep -F 'This list may be partial' "$work/calls" >/dev/null || fail 'truncated PR list not flagged'
 
 for conclusion in cancelled skipped; do
 	run "$conclusion"

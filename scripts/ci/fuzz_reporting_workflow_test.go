@@ -107,3 +107,37 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 		}
 	}
 }
+
+// report-dev holds issue write, so only a real dev push may reach it and it may
+// only run tooling from the default branch.
+func TestDevStatusReportIsBoundToDevPushes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "fuzz-report.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If          string            `yaml:"if"`
+			Permissions map[string]string `yaml:"permissions"`
+			Steps       []struct {
+				With map[string]string `yaml:"with"`
+				Run  string            `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job := workflow.Jobs["report-dev"]
+	for _, condition := range []string{"workflow_run.name == 'ci-dev'", "workflow_run.path == '.github/workflows/ci-dev.yml'", "workflow_run.event == 'push'", "workflow_run.head_branch == 'dev'"} {
+		if !strings.Contains(job.If, condition) {
+			t.Fatalf("dev status report lost %q", condition)
+		}
+	}
+	if !reflect.DeepEqual(job.Permissions, map[string]string{"actions": "read", "contents": "read", "issues": "write"}) {
+		t.Fatalf("dev status report permissions changed: %v", job.Permissions)
+	}
+	if len(job.Steps) != 2 || job.Steps[0].With["ref"] != "${{ github.event.repository.default_branch }}" || job.Steps[0].With["persist-credentials"] != "false" || job.Steps[1].Run != "./scripts/ci/report-dev-status.sh" {
+		t.Fatal("dev status report must run only default-branch tooling")
+	}
+}

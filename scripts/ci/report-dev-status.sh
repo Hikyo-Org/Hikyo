@@ -30,9 +30,17 @@ success)
 	$GH_BIN api -X PATCH "repos/$GH_REPO/issues/$number" -f state=closed >/dev/null
 	exit 0
 	;;
-failure | timed_out) ;;
+failure | timed_out | startup_failure) ;;
 *) exit 0 ;; # A cancelled or skipped run reached no verdict.
 esac
+
+# A rerun of an older commit says nothing about current dev: never report it once
+# a newer commit went green, and never move the issue back to it.
+red=$(printf '%s\n' "$issues" | head -n 1 | sed -n 's/.*red_sha=\([0-9a-f]\{40\}\).*/\1/p')
+if [ -n "$red" ]; then
+	status=$($GH_BIN api "repos/$GH_REPO/compare/$red...$HEAD_SHA" --jq '.status')
+	[ "$status" != behind ] || exit 0
+fi
 
 # Job names come from the workflow definition, so keep only plain characters.
 jobs=$($GH_BIN api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
@@ -41,12 +49,18 @@ jobs=$($GH_BIN api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN
 green=$($GH_BIN api "repos/$GH_REPO/actions/workflows/ci-dev.yml/runs?branch=dev&event=push&status=success&per_page=1" \
 	--jq '.workflow_runs[0].head_sha // ""')
 if printf '%s' "$green" | grep -Eq '^[0-9a-f]{40}$'; then
-	compare=$($GH_BIN api "repos/$GH_REPO/compare/$green...$HEAD_SHA" \
-		--jq '.commits[] | select(.commit.committer.name == "GitHub" and (.parents | length) == 2) | .commit.message | split("\n")[0]')
-	pulls=$(printf '%s\n' "$compare" | sed -n 's/^Merge pull request #\([1-9][0-9]*\) .*/- #\1/p')
+	compare=$($GH_BIN api "repos/$GH_REPO/compare/$green...$HEAD_SHA")
+	case "$(printf '%s' "$compare" | jq -r '.status')" in behind | identical) exit 0 ;; esac
+	pulls=$(printf '%s' "$compare" |
+		jq -r '.commits[] | select(.commit.committer.name == "GitHub" and (.parents | length) == 2) | .commit.message | split("\n")[0]' |
+		sed -n 's/^Merge pull request #\([1-9][0-9]*\) .*/- #\1/p')
 	scope="PRs merged since the [last green commit](https://github.com/$GH_REPO/commit/$green):"
 	[ -n "$pulls" ] || pulls='- None listed. See the commit range.'
 	range="Compare: https://github.com/$GH_REPO/compare/$green...$HEAD_SHA"
+	# The compare API lists a limited number of commits.
+	if printf '%s' "$compare" | jq -e '.total_commits > (.commits | length)' >/dev/null; then
+		range="This list may be partial. $range"
+	fi
 else
 	scope='No green dev commit exists yet.'
 	pulls=
