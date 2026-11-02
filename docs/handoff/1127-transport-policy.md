@@ -29,7 +29,7 @@ revision (E-21) is registered, not redesigned.
 | Policy seam | `internal/tlspolicy/profile.go`: `Profile` (`compat`, `strict`), exact `ParseProfile`, `Profile.Apply(*tls.Config)` (touches only version bounds, `CurvePreferences`, `SessionTicketsDisabled`, `ClientSessionCache`; never certificates, roots, names or verify callbacks), closed `VersionName`/`GroupName`, `Observed`, `Observe`. Unknown profile values fail closed to strict |
 | Configuration | `HIKYO_TLS_PROFILE`, owner-scoped, `app-reload`: parsed in `config.Load` (default `compat`, exact match), exported in `ManagedOwnerValues`, copied by `applyManagedOwnerValues`, catalogue enum, runtimeconfig migration 6 recording `compat`, inventory report regenerated, one managed-configuration guide row |
 | Precedence | managed > bootstrap > default `compat`. Bootstrap env only seeds `ManagedInputs`; an adopted value is complete and never reads stale environment |
-| No-certificate refusal | `requireStrictTLS`: startup (`Load`), managed Apply (`ApplyManagedOwnerValues` with a node), node documents that drop the certificate, and `newManagedCertificate` at generation preparation. Parser-only validation does not refuse (it has no node context) |
+| No-certificate refusal | `requireStrictTLS`: startup (`Load`), managed Apply (`ApplyManagedOwnerValues`, which also sees a node document's certificate through the combined `ApplyManagedOwnerAndNodeValues` path and uses the owner profile being applied, not the stale bootstrap one), and `newManagedCertificate` at generation preparation. Parser-only validation does not refuse (it has no node context) |
 | Native listener (I09) | `managedCertificate` carries the profile; `tlsConfig()` applies it; a profile-only change replaces the transport and closes existing connections (`listenerTransportChanged`); the upgrade maintenance listener uses the same certificate and profile |
 | CLI (I11) | `TrustEntry.TLSProfile` / `TrustBundle.TLSProfile` (`tls_profile`), validated, applied on top of the trust mode, sticky against silent relaxation, strict refused for local-socket entries |
 | Operator client (I11) | `client.WithTLSProfile` option; no CRD field |
@@ -81,7 +81,9 @@ refused", never a classical group.
   reads a strict entry as compat.
 - A server binary that does not know `HIKYO_TLS_PROFILE` refuses the managed
   owner configuration as containing an unsupported key (source reading; not run
-  against an old binary, NOTRUN).
+  against an old binary, NOTRUN). Migration 6 reaches nodes as a new desired
+  revision written by the offline upgrade gate, so an older binary cannot read
+  the post-upgrade configuration; binary rollback is a backup restore.
 - An unknown profile value is refused by `Load`, managed validation and the CLI.
 - Not covered: old and new nodes serving together, stale-node admission and
   restored settings. See remaining work.

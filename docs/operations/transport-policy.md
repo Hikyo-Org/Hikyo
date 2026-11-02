@@ -58,8 +58,10 @@ policy; not redesigned here).
 
 Strict needs a TLS certificate pair. Selecting it on a listener that would serve
 plaintext (trusted-proxy mode or loopback development) is refused at startup and
-at managed Apply, and a managed node document that drops the certificate while
-strict is adopted is refused. Parser-only validation does not know a node's
+at managed Apply. The check reads the owner profile being applied together with
+the node document's certificate, so a node document that drops the certificate is
+refused while the applied profile is strict, and one Apply can downgrade to
+`compat` and drop the certificate. Parser-only validation does not know a node's
 certificate and accepts the value; the refusal happens when a node applies it.
 
 Applying a profile change closes existing public connections even if the
@@ -104,8 +106,11 @@ ADR and needs its own amendment (see remaining work).
    can be strict; confirm every client of the listener is on a build whose TLS
    stack offers `X25519MLKEM768` (Go 1.24 and later does by default). A
    browser or tool that does not will be refused.
-2. Keep `compat`. Verify the new binary on every node (the configuration
-   catalogue and migration 6 must be present before strict is published).
+2. Keep `compat`. Verify the new binary on every node. The offline upgrade gate
+   runs migration 6, which writes `HIKYO_TLS_PROFILE=compat` into a new desired
+   configuration revision; a binary older than this change refuses that revision
+   because it does not know the key, as it does for earlier migrated keys. Binary
+   rollback therefore uses the upgrade's backup restore, not an in-place downgrade.
 3. Publish and Apply `HIKYO_TLS_PROFILE=strict` through managed configuration
    only after step 1 and 2. Watch node status until every node reports the new
    generation as active.
