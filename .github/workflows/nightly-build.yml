@@ -343,4 +343,3 @@ jobs:
       - name: Remove CI PostgreSQL
         if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
         run: docker container rm --force hikyo-ci-postgres
-
