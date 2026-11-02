@@ -46,7 +46,7 @@ func TestGateReconciliationWorkflowTrust(t *testing.T) {
 	if err := trigger.Decode(&callback); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(callback.Workflows, []string{"pr-candidate"}) || !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) {
+	if !slices.Equal(callback.Workflows, []string{"ci-full-candidate"}) || !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) {
 		t.Fatal("callback must invalidate starts/reruns and reassess completed full candidates")
 	}
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {

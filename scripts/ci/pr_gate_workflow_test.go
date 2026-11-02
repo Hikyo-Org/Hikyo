@@ -86,7 +86,7 @@ func TestPRGateWorkflowTrust(t *testing.T) {
 	if err := callbackEvent.Decode(&callback); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"pr-candidate"}) {
+	if !slices.Equal(callback.Types, []string{"requested", "in_progress", "completed"}) || !slices.Equal(callback.Workflows, []string{"ci-full-candidate"}) {
 		t.Fatal("callback must cover new runs, reruns and completion under both workflow names")
 	}
 	if len(workflow.Permissions) != 1 || workflow.Permissions["contents"] != "read" {

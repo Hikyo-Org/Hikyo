@@ -1,4 +1,4 @@
-name: floor-bench
+name: perf-floor
 
 # No production custody or secrets. Required CI calls this workflow for PR proof;
 # tagged builds retain their independent measurement.

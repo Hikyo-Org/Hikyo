@@ -106,7 +106,7 @@ func invariantsWorkflowErrors(raw, ci []byte) []error {
 		return []error{err}
 	}
 
-	if workflow.Name != "repository-invariants" {
+	if workflow.Name != "ci-advisory-invariants" {
 		fail("workflow name %q", workflow.Name)
 	}
 	trigger, ok := workflow.On["pull_request"]
@@ -282,7 +282,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 		"continue on error":        replace("    timeout-minutes: 20\n", "    timeout-minutes: 20\n    continue-on-error: true\n"),
 		"longer budget":            replace("timeout-minutes: 20", "timeout-minutes: 60"),
 		"no cancellation":          replace("cancel-in-progress: true", "cancel-in-progress: false"),
-		"shared concurrency group": replace("repository-invariants-${{ github.event.pull_request.number }}", "repository-invariants"),
+		"shared concurrency group": replace("repository-invariants-${{ github.event.pull_request.number }}", "ci-advisory-invariants"),
 		"extra job":                appendStep("  other:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"),
 		"unpinned checkout":        replace(checkoutPin, "actions/checkout@v7"),
 		"drifted checkout pin":     replace(checkoutPin, "actions/checkout@0000000000000000000000000000000000000000 # v7.0.1"),

@@ -511,7 +511,7 @@ func newFixture(t *testing.T) *fixture {
 	yes := true
 	f.pr = pull{Number: 7, State: "open", Head: reference{SHA: strings.Repeat("a", 40), Ref: "feature", Repo: repo}, Base: reference{SHA: strings.Repeat("b", 40), Ref: "main", Repo: repo}, MergeCommitSHA: strings.Repeat("c", 40), Mergeable: &yes}
 	f.pr.User.ID, f.pr.User.Login = 12, "valentinhl"
-	f.source = run{ID: 100, Attempt: 1, WorkflowID: 20, Path: workflowPath, Name: "pr-candidate", DisplayTitle: "candidate-ci #7", Event: "pull_request", HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success", Repository: repo, HeadRepository: repo, Pulls: []pull{f.pr}}
+	f.source = run{ID: 100, Attempt: 1, WorkflowID: 20, Path: workflowPath, Name: "ci-full-candidate", DisplayTitle: "candidate-ci #7", Event: "pull_request", HeadSHA: f.pr.Head.SHA, Status: "completed", Conclusion: "success", Repository: repo, HeadRepository: repo, Pulls: []pull{f.pr}}
 	f.source.References = append(f.source.References, struct {
 		Path string `json:"path"`
 		Ref  string `json:"ref"`
@@ -526,7 +526,7 @@ func newFixture(t *testing.T) *fixture {
 	f.api.responses["repos/"+repo.FullName] = repo
 	f.api.responses[f.c.endpoint("collaborators/valentinhl/permission")] = map[string]any{"permission": "read", "user": map[string]int{"id": 12}}
 	f.api.responses[f.c.endpoint("contents/.github/VOUCHED.td?ref=main")] = map[string]any{"type": "file", "encoding": "base64", "path": ".github/VOUCHED.td", "content": base64.StdEncoding.EncodeToString([]byte("github:valentinhl\n"))}
-	f.api.responses[f.c.endpoint("actions/workflows/ci-candidate.yml")] = workflow{ID: 20, Path: workflowPath, Name: "pr-candidate"}
+	f.api.responses[f.c.endpoint("actions/workflows/ci-candidate.yml")] = workflow{ID: 20, Path: workflowPath, Name: "ci-full-candidate"}
 	f.event.Repository = repo
 	f.event.Inputs.PR = "7"
 	f.refresh()

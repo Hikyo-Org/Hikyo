@@ -267,7 +267,7 @@ mutation after cancellation, owned-only failure fallback and foreign refusal.
 Previous source/member/authority/collision and full-suite coverage is retained.
 Local checks are separate from fresh exact-head hosted full-suite proof.
 
-The fixed [trusted-main lifecycle workflow](../../.github/workflows/ci-check-lifecycle-probe.yml)
+The fixed trusted-main lifecycle workflow, since removed from the repository,
 has no inputs and uses only its non-required canary name. Its CLI authenticates
 current main, source workflow/run/attempt, native job clock and effective
 non-required status before mutation. Normal work ends at job-start plus 120

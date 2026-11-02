@@ -1,6 +1,6 @@
 # Retire synthetic records asynchronously without extending admission work.
 # Event/input SHAs select a lease only; the controller proves live inactivity.
-name: check-retirement
+name: tidy-checks
 
 on:
   pull_request_target:

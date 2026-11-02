@@ -465,7 +465,7 @@ func stderrHTTPStatus(stderr []byte) int {
 // retryingAPI retries transient reads. Only the queue publisher opts in, since
 // its group proof has nothing that retriggers it after a blip. Retirement
 // discovery documents "no retries or backoff" and counts one request per read,
-// and the legacy gate and lifecycle probe keep their single attempt.
+// and the legacy gate keeps its single attempt.
 type retryingAPI struct{ api api }
 
 func (a retryingAPI) read(ctx context.Context, path string, result any) error {
@@ -615,7 +615,7 @@ type controller struct {
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
 func validWorkflow(w workflow) bool {
-	return w.ID > 0 && w.Path == workflowPath && w.Name == "pr-candidate"
+	return w.ID > 0 && w.Path == workflowPath && w.Name == "ci-full-candidate"
 }
 func (c *controller) initRepository(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
@@ -1416,7 +1416,7 @@ func (c *controller) reconcileCurrent(ctx context.Context, number int, callback 
 	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
 }
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
-	if c.checkName == queueCheckName || c.checkName == devCheckName || c.checkName == lifecycleName {
+	if c.checkName == queueCheckName || c.checkName == devCheckName {
 		session := c.reconciliation
 		if session == nil {
 			// The independently bounded admission refusal may publish outside
@@ -1754,7 +1754,6 @@ func (c *controller) repairHints(ctx context.Context, hints []pull) error {
 func main() {
 	discoverRetirement := flag.Bool("discover-retirements", false, "discover complete bounded main-history retirement targets without writing checks")
 	retire := flag.Bool("retire-checks", false, "retire only owned unfinished checks on an exact inactive SHA under its existing writer lease")
-	lifecycleProbe := flag.Bool("check-lifecycle-probe", false, "verify only the fixed non-required check lifecycle on trusted main")
 	dryRun := flag.Bool("dry-run", false, "read policy and live metadata without publishing checks")
 	devMode := flag.Bool("dev", false, "publish trusted fast admission for the dev integration branch")
 	devPR := flag.Int("dev-pr", 0, "current dev PR routing hint under an exact head lease")
@@ -1766,7 +1765,7 @@ func main() {
 	headWorker := flag.String("head-worker", "", "reconcile one typed discovery record under its exact head lease")
 	flag.Parse()
 	if *devMode || *devPR != 0 {
-		if !*devMode || *devPR <= 0 || *discoverRetirement || *retire || *lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || flag.NArg() != 0 || !shaPattern.MatchString(*expectedHead) {
+		if !*devMode || *devPR <= 0 || *discoverRetirement || *retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || flag.NArg() != 0 || !shaPattern.MatchString(*expectedHead) {
 			fmt.Fprintln(os.Stderr, "dev admission requires one PR and exact held head and cannot mix producer roles")
 			os.Exit(1)
 		}
@@ -1780,20 +1779,16 @@ func main() {
 		}
 		return
 	}
-	if *discoverRetirement && (*retire || *lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
+	if *discoverRetirement && (*retire || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
 		fmt.Fprintln(os.Stderr, "retirement discovery is read-only and cannot hold or mix writer roles")
 		os.Exit(1)
 	}
-	if *retire && (*lifecycleProbe || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || !shaPattern.MatchString(*expectedHead)) {
+	if *retire && (*queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || !shaPattern.MatchString(*expectedHead)) {
 		fmt.Fprintln(os.Stderr, "retirement requires an exact head and cannot mix producer roles")
 		os.Exit(1)
 	}
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "unexpected positional arguments")
-		os.Exit(1)
-	}
-	if *lifecycleProbe && (*dryRun || *queueMode || *targeted || *repairOnly || *dispatch || *headWorker != "" || *expectedHead != "") {
-		fmt.Fprintln(os.Stderr, "lifecycle probe cannot mix publication roles or caller-selected heads")
 		os.Exit(1)
 	}
 	if (*targeted || *repairOnly) && !*queueMode || *targeted && *repairOnly {
@@ -1843,22 +1838,6 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
 			err = c.retireEvent(ctx, os.Getenv("GITHUB_EVENT_NAME"), e)
-		} else if *lifecycleProbe {
-			receipt := lifecycleReceipt{Version: 2, Protocol: lifecycleProtocol}
-			path := os.Getenv("PR_GATE_PROBE_RECEIPT")
-			if path == "" {
-				err = errors.New("lifecycle probe receipt path is required before mutation")
-			} else {
-				err = c.checkLifecycle(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e, &receipt)
-				if err != nil {
-					receipt.Error = err.Error()
-				}
-				body, encodeErr := json.MarshalIndent(receipt, "", "  ")
-				if encodeErr == nil {
-					encodeErr = os.WriteFile(path, append(body, '\n'), 0600)
-				}
-				err = errors.Join(err, encodeErr)
-			}
 		} else if *queueMode {
 			q := &queueController{controller: &c, targeted: *targeted, repairOnly: *repairOnly}
 			if *dispatch {

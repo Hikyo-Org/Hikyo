@@ -3,7 +3,7 @@
 # artifacts. Activate the required context only after a proved full candidate.
 # A queued check does not reserve a runner. Completion callbacks reassess live
 # state; periodic repair covers delayed/missing callbacks and approval changes.
-name: pr-gate
+name: gate-full-candidate
 
 on:
   pull_request_target:
@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
   workflow_run:
-    workflows: [pr-candidate]
+    workflows: [ci-full-candidate]
     types: [requested, in_progress, completed]
   workflow_dispatch:
     inputs:

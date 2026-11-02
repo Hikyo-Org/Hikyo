@@ -23,18 +23,18 @@ for activation, promotion and operator commands. Legacy main recovery remains
 | What you need | Actions workflow | What it does |
 | --- | --- | --- |
 | Check each pushed commit | `ci-feedback` | Selected formatting, compilation, lint, package tests, workflow and docs checks on the exact PR head. Four-minute runner deadline includes setup; queue time is separate. |
-| Refresh the bounded feedback compiler cache | `ci-feedback-backend-cache` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
-| Refresh the production-fixture compiler cache | `ci-feedback-cache` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
-| Refresh the shared race compiler cache | `ci-race-cache` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
-| Run repository invariants before queueing | `repository-invariants` | Advisory, per PR push touching Go code, workflows, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
+| Refresh the bounded feedback compiler cache | `cache-seed-feedback-backend` | Daily or manual, trusted main only. Compiles application, CLI and CI tooling exports without DWARF in a fresh dedicated directory, checks its size and file count, then publishes the version-2 seed that the application and tooling feedback lanes read. Dispatch it manually after this workflow changes or a `go.mod`/`go.sum` change lands. |
+| Refresh the production-fixture compiler cache | `cache-seed-feedback` | Daily or manual, trusted main only. Publishes the version-1 CLI/CI seed with default compiler flags. Only `source-artifact-security` in the full suite reads it; feedback no longer does. |
+| Refresh the shared race compiler cache | `cache-seed-race` | Daily or manual, trusted main only. Compiles every race-instrumented package and test dependency without running tests, then publishes the single cache that all merge-group race shards and the reliability race suite restore. Run it manually after a `go.mod`/`go.sum` change lands. |
+| Run repository invariants before queueing | `ci-advisory-invariants` | Advisory, per PR push touching Go code, workflows, scripts, release policy, or the store, lint fixture and web e2e inputs those suites read. Runs the `internal/boundary`, `internal/lint` and `scripts/ci` suites on the exact PR head. Not a required context; the queue still runs everything. |
 | Validate integrated development | `ci-dev` | Complete read-only graph for the merged dev SHA; finishes one active run and coalesces pending work. |
 | Prove queued release candidates | `ci-merge-group` | Queue `checks_requested` runs the complete graph, including benchmark smoke and all 16 domains. Trusted `ci-queue-required` publication authorizes only the exact current group. |
-| Prove a legacy recovery candidate | `pr-candidate` | Under restored strict legacy policy, a maintainer adds `ci:full`. Trusted `ci-required-next` requires the complete immutable current-main merge. |
+| Prove a legacy recovery candidate | `ci-full-candidate` | Under restored strict legacy policy, a maintainer adds `ci:full`. Trusted `ci-required-next` requires the complete immutable current-main merge. |
 | Validate all of main | `ci-main` | Weekly or manual full graph, including development snapshot artifacts. The schedule is the automatic writer of main-scoped compile caches. |
 | Run maintenance checks | `reliability` | Choose `security`, `gitlab`, `reporting`, `race`, `channel`, or `all`. Original schedules run their matching suites. |
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
-| Run operations-floor acceptance | `ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
-| Measure performance | `codspeed` or the PR benchmark control | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
+| Run operations-floor acceptance | `release-ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
+| Measure performance | `perf-codspeed` or `perf-control` | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
 | Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. Opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
 | Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
@@ -62,7 +62,7 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 38 YAML workflow files. GitHub's sidebar also contains
+The source contains 36 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
@@ -70,11 +70,10 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Validation | `ci-feedback.yml`, `ci-dev.yml`, `ci-candidate.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and explicitly admitted full candidates have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-invariants.yml` | Read-only early signals for dependency bumps and repository-invariant suites that otherwise fail only in the serial queue. Neither is a required context. |
 | Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-pr-gate.yml` | Trusted callbacks publish queue admission/group proof and the separate legacy full-candidate context. Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
-| Queue lifecycle diagnostic | `ci-check-lifecycle-probe.yml` | Fixed non-required App-token immutable-verdict/neutral-cleanup proof on trusted main, before enabling new queue writers. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. `fuzz-report.yml` also keeps the one issue open while dev is red. |
-| Queue diagnostics | `ci-queue-report.yml`, `ci-impact-shadow.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run), and observe backend impact selection. Neither grants merge authority. |
+| Queue diagnostics | `ci-queue-report.yml` | Mirror merge-group progress onto the PR head (title shows failures and progress; the summary links the run). Neither grants merge authority. |
 | Performance | `benchmark-control.yml`, `pr-benchmark.yml`, `codspeed.yml`, `matrix-performance.yml`, `floor-bench.yml` | Budget control, PR measurement, main measurement, browser measurement, and native floor enforcement retain distinct trust/hardware contracts. |
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
@@ -83,6 +82,22 @@ provider-generated and historical entries; deleting YAML does not erase history.
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may
 differ from filenames. `ci.yml` and `matrix-performance.yml` are reusable graphs.
+
+GitHub sorts its sidebar by display name, so a prefix groups each responsibility:
+
+| Prefix | Meaning |
+| --- | --- |
+| `ci-`, `trusted-merge-ci` | Runs validation. `ci-advisory-` entries never block a merge. |
+| `gate-` | Publishes merge admission. Runs no PR code. |
+| `release-`, `nightly-`, `aws-acceptance`, `docs` | Publishes or accepts a release. |
+| `perf-` | Measures performance. |
+| `report-` | Writes comments and issues about other runs. |
+| `tidy-`, `cache-seed-` | Housekeeping and compile cache writers. |
+
+Do not rename `ci`, `ci-main`, `ci-dev`, `ci-feedback`, `trusted-merge-ci`,
+`nightly-release` or `aws-acceptance` for tidiness. Source proof and release
+consumers match those exact names, including on runs that already happened. CodeQL, Dependabot Updates and
+Dependency Graph are provider entries that the repository cannot rename or remove.
 
 Historical workflow entries can remain in GitHub even after source consolidation.
 The permanent legacy full-only publisher is retained for protected rollback.
@@ -309,17 +324,11 @@ mandatory queue protection were unchanged. Ordinary deployed PR admission
 within five minutes and a new complete queued group still require measurement.
 See the [policy handoff](../handoff/merge-queue-policy.md) for evidence and limits.
 
-The fixed `check-lifecycle-probe` manual workflow has no caller inputs and must
-run from current trusted main before enabling the new publishers. It creates
-only non-required `ci-check-lifecycle-probe` checks through the production
-immutable-verdict helper. It must supersede an authenticated terminal success
-with a different queued ID, verify that new pending record is effective, reuse
-and finalize it, and prove identical terminal publication adds no writes.
-Every known created ID must be independently read back as neutral after cleanup.
-Its version-2 `immutable-verdict` receipt is data, not a success flag: the operator
-also verifies exact workflow/run/attempt/source, actual owned identities and
-cleanup. Old reset receipts cannot qualify. Failure, lost identity or incomplete
-cleanup leaves `QUEUE_HEAD_WORKERS_ENABLED` disabled. The staged publication
+The lifecycle probe that gated this activation has been removed now it has served
+its purpose. Before re-enabling `QUEUE_HEAD_WORKERS_ENABLED` after any rollback,
+restore `ci-check-lifecycle-probe.yml`, `scripts/ci/pr-gate/check_lifecycle.go`, its
+`lifecycleName` allowance in `queue_publication.go` and the `--check-lifecycle-probe`
+flag together from Git history, and require a passing probe first. The staged publication
 hold preserves mandatory queue protection; old unleased templates refuse before
 publication and new production writers stay skipped while unset/false.
 
@@ -373,7 +382,7 @@ runner assignment before diagnosing capacity or test failure.
 Historical third-party review and optional performance-measurement results
 remain separate evidence from the required all-16 suite. Required benchmark
 smoke and floor enforcement still run; an optional paid measurement's skip or
-failure does not remove them. Likewise, failed non-required lifecycle probes
+failure does not remove them. Likewise, failed non-required diagnostics
 record diagnostic failures, even after product validation passes. A green main
 summary or a neutral canary does not erase an earlier failed result, and a stale
 merged-head placeholder does not authorize a later merge. Inspect the current

@@ -227,7 +227,7 @@ func (q *queueController) dispatchSlot(ctx context.Context, name string) (int64,
 	if err := q.api.read(ctx, q.endpoint(fmt.Sprintf("actions/runs/%d", id)), &r); err != nil {
 		return 0, err
 	}
-	if workflow.ID <= 0 || workflow.Path != ".github/workflows/ci-queue-gate.yml" || workflow.Name != "queue-gate" || r.ID != id || r.Attempt != attempt || r.WorkflowID != workflow.ID || r.Path != workflow.Path || r.Name != workflow.Name || r.Event != name || r.HeadBranch != q.repo.DefaultBranch || !shaPattern.MatchString(r.HeadSHA) || r.Repository.ID != q.repo.ID || r.HeadRepository.ID != q.repo.ID {
+	if workflow.ID <= 0 || workflow.Path != ".github/workflows/ci-queue-gate.yml" || workflow.Name != "gate-queue" || r.ID != id || r.Attempt != attempt || r.WorkflowID != workflow.ID || r.Path != workflow.Path || r.Name != workflow.Name || r.Event != name || r.HeadBranch != q.repo.DefaultBranch || !shaPattern.MatchString(r.HeadSHA) || r.Repository.ID != q.repo.ID || r.HeadRepository.ID != q.repo.ID {
 		return 0, errors.New("dispatch run is not the current trusted default-branch producer")
 	}
 	created, err := time.Parse(time.RFC3339, r.CreatedAt)

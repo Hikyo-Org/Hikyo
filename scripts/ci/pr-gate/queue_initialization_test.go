@@ -44,7 +44,7 @@ func TestAdmissionInitializationRequiresOnlyItsOwnWorkflow(t *testing.T) {
 				case "feedback path":
 					feedback.Path = workflowPath
 				case "feedback name":
-					feedback.Name = "pr-candidate"
+					feedback.Name = "ci-full-candidate"
 				}
 				f.api.responses["repos/"+f.pr.Base.Repo.FullName] = repo
 				if fault == "repository read" {
@@ -93,7 +93,7 @@ func TestLegacyInitializationStillRequiresCandidateWorkflow(t *testing.T) {
 		t.Run(fault, func(t *testing.T) {
 			f := newFixture(t)
 			path := f.c.endpoint("actions/workflows/ci-candidate.yml")
-			w := workflow{ID: 20, Path: workflowPath, Name: "pr-candidate"}
+			w := workflow{ID: 20, Path: workflowPath, Name: "ci-full-candidate"}
 			switch fault {
 			case "ID":
 				w.ID = 0

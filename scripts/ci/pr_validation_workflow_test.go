@@ -33,7 +33,7 @@ func TestPRValidationWorkflowAdmission(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if workflow.Name != "pr-candidate" {
+	if workflow.Name != "ci-full-candidate" {
 		t.Fatal("explicit full admission must retain the candidate workflow identity")
 	}
 	if len(workflow.On) != 1 || !slices.Equal(workflow.On["pull_request"].Types, []string{"labeled", "synchronize", "edited", "closed"}) {

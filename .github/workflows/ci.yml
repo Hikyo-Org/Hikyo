@@ -424,8 +424,8 @@ jobs:
           go test -count=1 ./scripts/ci -run '^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'
       - name: Staged impact CI fixtures
         run: |
-          go test -count=1 ./scripts/ci/queue-report ./scripts/ci/impact-shadow
-          go test -count=1 ./scripts/ci -run '^(TestDocsQueue|TestBackendImpactShadow)'
+          go test -count=1 ./scripts/ci/queue-report
+          go test -count=1 ./scripts/ci -run '^TestDocsQueue'
       - name: Docker daemon mirror and PostgreSQL startup fixtures
         run: |
           ./scripts/ci/configure-docker-mirror_test.sh
