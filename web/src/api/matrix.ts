@@ -31,8 +31,8 @@ import {
   zValueList,
   zValueOccurrenceList,
 } from '@hikyo/zod';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { hashKey, useMutation, useQueries, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { z } from 'zod';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
@@ -552,6 +552,7 @@ export function matrixPublishValidation(
 // The catalogue follows: deletion cascades explicit presence rules, and a
 // definitions apply can change groups/keys together with environment topology.
 export const ENVIRONMENT_TOPOLOGY_POLL_MS = 30_000;
+export const ADVISORY_BURST_MS = 250;
 
 export function useMatrixProject(ref: MatrixRef) {
   const queries = useQueryClient();
@@ -559,6 +560,26 @@ export function useMatrixProject(ref: MatrixRef) {
   const environments = useEnvironments(
     ref.org, ref.project, isDemo ? false : ENVIRONMENT_TOPOLOGY_POLL_MS,
   );
+  // One publish emits an event per changed cell, and each invalidation of a key
+  // with a request in flight starts another, every one charged. The first event
+  // still applies at once; the rest of a burst share one refetch per key.
+  const burst = useRef<{ keys: Map<string, QueryKey>; timer?: ReturnType<typeof setTimeout> }>({ keys: new Map() });
+  const flushBurst = useCallback((refetchType?: 'none') => {
+    const keys = [...burst.current.keys.values()];
+    burst.current.keys.clear();
+    for (const queryKey of keys) {
+      void queries.invalidateQueries({ queryKey, refetchType });
+    }
+  }, [queries]);
+  useEffect(() => {
+    const pending = burst.current;
+    return () => {
+      clearTimeout(pending.timer);
+      pending.timer = undefined;
+      // Leaving the route: stale the entries, but do not fetch for a page that is gone.
+      flushBurst('none');
+    };
+  }, [flushBurst]);
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
   // state gates the signals and pending drafts fallback polls below; and
@@ -570,8 +591,16 @@ export function useMatrixProject(ref: MatrixRef) {
     transport,
     (event) => {
       for (const queryKey of advisoryInvalidations(ref, event)) {
-        void queries.invalidateQueries({ queryKey });
+        burst.current.keys.set(hashKey(queryKey), queryKey);
       }
+      if (burst.current.timer !== undefined) {
+        return;
+      }
+      flushBurst();
+      burst.current.timer = setTimeout(() => {
+        burst.current.timer = undefined;
+        flushBurst();
+      }, ADVISORY_BURST_MS);
     },
     !isDemo && ref.org !== '' && ref.project !== '',
   );
@@ -672,7 +701,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // stream that has not connected or has failed. A healthy stream shows
       // `false` and the tab holds exactly one events connection, zero
       // periodic signals requests.
-      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream, environmentItems.length),
     })),
     combine: combineQueries.signals,
   });
@@ -690,7 +719,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // Same fallback as signals: a pending marker refreshed by the poll
       // needs its draft preview refreshed by the same cadence, or the sheet
       // shows a marker without the draft behind it until the stream is back.
-      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream, environmentItems.length),
     })),
     combine: combineQueries.pendingDrafts,
   });

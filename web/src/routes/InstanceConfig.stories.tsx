@@ -7,7 +7,7 @@ import { InstanceConfig } from './InstanceConfig.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 
-// The page reads its own configuration status (polled every 2s, the harness
+// The page reads its own configuration status (polled while open, the harness
 // answers each poll the same way) and, outside a remote workspace, the
 // connected-instance list. Wire bodies use plain numbers for the int64 fields:
 // `z.coerce.bigint` parses them, and JSON.stringify refuses bigint literals.

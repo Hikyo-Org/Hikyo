@@ -11,7 +11,7 @@ import {
   type AdvisoryEvent,
 } from './advisory.ts';
 import { environmentsKey, pendingDraftsKey, signalsKey } from './keys.ts';
-import { ENVIRONMENT_TOPOLOGY_POLL_MS, useMatrixProject } from './matrix.ts';
+import { ADVISORY_BURST_MS, ENVIRONMENT_TOPOLOGY_POLL_MS, useMatrixProject } from './matrix.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { createClient, createConfig } from '@hikyo/runtime-core';
 import { WorkspaceContextProvider } from './transport.tsx';
@@ -101,7 +101,15 @@ async function mountMatrix(remote = false) {
     container,
     failListing: (status: number) => { listStatus = status; },
     setEnvironments: (next: typeof environments) => { backendEnvironments = next; schemaRevision += 1; },
-    event: async (event: AdvisoryEvent) => { await act(async () => liveness.onEvent?.(event)); await settleTasks(); },
+    // Waits out the burst window, so each call stands alone like a quiet stream's event.
+    event: async (event: AdvisoryEvent) => {
+      await act(async () => {
+        liveness.onEvent?.(event);
+        await new Promise((resolve) => setTimeout(resolve, ADVISORY_BURST_MS));
+      });
+      await settleTasks();
+    },
+    burst: async (events: readonly AdvisoryEvent[]) => { await act(async () => { for (const event of events) liveness.onEvent?.(event); }); await settleTasks(); },
     requests,
     render,
     unmount: async () => {
@@ -150,6 +158,41 @@ describe('useMatrixProject stream recovery', () => {
       matrix.requests.length = 0;
       await matrix.render({ connection: 'healthy', recoveries: 1, lost: false });
       expect(matrix.requests).toEqual([]);
+    } finally {
+      await matrix.unmount();
+    }
+  });
+
+  it('slows the fallback as the project grows', async () => {
+    const matrix = await mountMatrix();
+    try {
+      const grown = Array.from({ length: 10 }, (_, index) => ({
+        ...addedEnvironment, id: `env_01989abc-def0-7123-8123-${String(index).padStart(12, '0')}`, name: `grown-${String(index)}`,
+      }));
+      matrix.setEnvironments(grown);
+      await act(async () => { await matrix.client.invalidateQueries(); });
+      await settleTasks();
+      const first = grown[0]?.id ?? '';
+      expect(matrix.client.getQueryCache().find({ queryKey: signalsKey(ref, first) })?.observers[0]?.options.refetchInterval).toBe(60_000);
+    } finally {
+      await matrix.unmount();
+    }
+  });
+
+  it('applies the first event at once and shares one refetch among the rest of a burst', async () => {
+    liveness.current = { connection: 'healthy', recoveries: 0, lost: false };
+    const matrix = await mountMatrix();
+    try {
+      matrix.requests.length = 0;
+      const signalReads = () => matrix.requests.filter((path) => path.endsWith('/signals')).length;
+      const cell = { type: 'cell.changed', environmentId: devId, keyId: 'key_1', keyName: 'LOG_LEVEL', revision: 3n } as const;
+      await matrix.burst([cell]);
+      expect(signalReads()).toBe(1);
+      await matrix.burst(Array.from({ length: 20 }, () => cell));
+      expect(signalReads()).toBe(1);
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, ADVISORY_BURST_MS)); });
+      await settleTasks();
+      expect(signalReads()).toBe(2);
     } finally {
       await matrix.unmount();
     }

@@ -3,7 +3,7 @@ import { adoptInstanceConfigOp, applyInstanceConfigOp, getInstanceConfigOp, prev
 import type { zInstanceConfigStatus, zSelfConfigReauthIntent } from '@hikyo/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
-import { parsed } from './client.ts';
+import { isThrottled, parsed } from './client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { notifySuccess } from '../app/notifications.tsx';
 import { forgetWorkspace } from './workspace.ts';
@@ -27,23 +27,55 @@ export type SystemScope = { readonly org: string; readonly project: string };
 export const SYSTEM_SCOPE_REFUSED_SURFACES = ['machine-access', 'adapters', 'scim'] as const;
 export type SystemScopeSurface = (typeof SYSTEM_SCOPE_REFUSED_SURFACES)[number];
 
-export function useSelfConfig(enabled = true) {
+const SETTLING_POLL_MS = 5_000;
+const LIVE_POLL_MS = 30_000;
+const BINDING_POLL_MS = 60_000;
+
+/**
+ * How often the configuration page re-reads status: quickly while a rollout is
+ * unsettled, including a partial one that may need an operator, slowly otherwise.
+ */
+export function selfConfigPollMs(status: SelfConfigStatus | undefined): number {
+  const settling = status?.state === 'pending' || status?.state === 'partial'
+    || status?.job?.state === 'preparing' || status?.job?.state === 'pending';
+  return settling ? SETTLING_POLL_MS : LIVE_POLL_MS;
+}
+
+/**
+ * Every status read is a charged, audited request, so only the page that shows
+ * live apply state asks for `live`. A surface reading the binding converges
+ * once a minute. Timers on one query reset together, so the shortest interval
+ * among its mounted observers sets the cadence. A refusal ends the poll, but a
+ * throttled read is not a refusal, so it resumes when the server says to.
+ */
+export function useSelfConfig({ live = false }: { live?: boolean } = {}) {
   const transport = useTransport();
-  return useQuery({ queryKey: configKey, queryFn: () => parsed(getInstanceConfigOp, { ...transport }), enabled, refetchInterval: (query) => query.state.status === 'error' ? false : 2000, retry: false });
+  return useQuery({
+    queryKey: configKey,
+    queryFn: () => parsed(getInstanceConfigOp, { ...transport }),
+    // The live page must not act on a read older than its own mount.
+    staleTime: live ? 0 : BINDING_POLL_MS,
+    refetchInterval: (query) => {
+      const cadence = live ? selfConfigPollMs(query.state.data) : BINDING_POLL_MS;
+      if (isThrottled(query.state.error)) return query.state.error.retryAfterMs ?? cadence;
+      return query.state.status === 'error' ? false : cadence;
+    },
+    retry: false,
+  });
 }
 
 /**
  * The Hikyo system organisation and project, or null while the binding is
  * unknown (not adopted, not disclosed to this session, or not yet read).
  * Shares the self-config query so a page that polls it keeps this fresh; on
- * its own it re-reads once a minute rather than every two seconds. Disabled
+ * its own it re-reads when a surface mounts over a minute-old answer. Disabled
  * for anyone but an instance operator: the status read needs
  * `instance-config` and records its denial, and the protected hierarchy is
  * hidden from everyone else anyway.
  */
 export function useSystemScope(enabled: boolean): { readonly pending: boolean; readonly scope: SystemScope | null } {
   const transport = useTransport();
-  const query = useQuery({ queryKey: configKey, queryFn: () => parsed(getInstanceConfigOp, { ...transport }), enabled, staleTime: 60_000, retry: false });
+  const query = useQuery({ queryKey: configKey, queryFn: () => parsed(getInstanceConfigOp, { ...transport }), enabled, staleTime: BINDING_POLL_MS });
   const binding = query.data?.binding;
   return { pending: enabled && query.isPending, scope: binding === undefined || binding === null ? null : { org: binding.org_id, project: binding.project_id } };
 }

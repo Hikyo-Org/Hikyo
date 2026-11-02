@@ -25,7 +25,7 @@ import { useWorkspaces, workspaceSession } from './workspace.ts';
  * nothing): a client that misses events refetches current state. Two things
  * are that refetch. The fallback poll runs precisely while the stream is not
  * healthy and keeps signals and pending drafts fresh, so a dropped stream
- * costs two seconds of age, never correctness. And every RECOVERY, a stream
+ * costs seconds of age, never correctness. And every RECOVERY, a stream
  * that went healthy again after it was lost, invalidates the whole matrix
  * working set once (system-architecture ADR § Real-time: "a reconnecting
  * client performs a normal authorized refetch of current state"), so what
@@ -155,23 +155,33 @@ export type AdvisoryHandlers = {
 /**
  * The client-side reconnect cadence for attempts the server never answered.
  * After a CONNECTED stream the server's own jittered `retry:` hint governs,
- * so this only bounds the dark: one second before the first retry, ten at the
- * ceiling, a compromise between a reconnect storm and a tab that sits stale
- * behind its fallback poll for half a minute.
+ * so this only bounds the dark: one second before the first retry, doubling to
+ * a thirty second ceiling, the same order as the fallback poll that keeps the
+ * tab fresh meanwhile. Each attempt is charged and the client does not read
+ * Retry-After on a handshake, so the ceiling is what paces a throttled stream.
  */
 const ADVISORY_RECONNECT_BASE_MS = 1_000;
-const ADVISORY_RECONNECT_MAX_MS = 10_000;
+const ADVISORY_RECONNECT_MAX_MS = 30_000;
 
-/** The matrix's fallback cadence: the poll #510 demotes from primary to fallback. */
-export const SIGNALS_FALLBACK_POLL_MS = 2_000;
+/** The matrix's fallback floor: the poll #510 demotes from primary to fallback. */
+export const SIGNALS_FALLBACK_POLL_MS = 30_000;
+/** Holds the poll at 20 requests per minute however many environments it covers. */
+const SIGNALS_FALLBACK_POLL_MS_PER_ENVIRONMENT = 6_000;
 
 /**
  * signalsPollInterval is the fallback-poll selector the signals and pending
  * drafts queries read: poll while the stream is not healthy, and never while
- * it is. Pure, so the connection logic is testable without a stream.
+ * it is. Each poll costs two requests per environment, and a throttled stream
+ * handshake is one reason it runs, so a larger project polls proportionally
+ * slower rather than spend the source allowance. Pure, so the connection logic
+ * is testable without a stream.
  */
-export function signalsPollInterval(state: AdvisoryConnectionState): number | false {
-  return state === 'healthy' ? false : SIGNALS_FALLBACK_POLL_MS;
+export function signalsPollInterval(
+  state: AdvisoryConnectionState,
+  environmentCount: number,
+): number | false {
+  if (state === 'healthy') return false;
+  return Math.max(SIGNALS_FALLBACK_POLL_MS, environmentCount * SIGNALS_FALLBACK_POLL_MS_PER_ENVIRONMENT);
 }
 
 /**
