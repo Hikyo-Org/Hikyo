@@ -83,6 +83,36 @@ fi
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
 	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
+# A refused or failed admission, or a PR that has sat for hours (for example one
+# waiting for a maintainer's approval), means this promotion cannot land.
+stuck_reason() {
+	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
+	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
+		--jq '.check_runs | max_by(.id) // {}')
+	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
+	reason=
+	case "$state" in
+	none/* | queued/* | in_progress/* | completed/success) ;;
+	*) reason="the ci-queue-required check is $state" ;;
+	esac
+	if [ -z "$reason" ] && [ "$3" = true ] && [ $((now - $2)) -gt "$max_age" ]; then
+		reason="it has not landed after more than $((max_age / 3600)) hours"
+	fi
+}
+# The check text is untrusted. Keep it in the log only, as plain printable lines that
+# cannot begin or embed a workflow command.
+quote_check() { printf '%s' "$check" | jq -r "$1 // \"\"" | tr -cd '[:print:]\n' | head -n 20 | cut -c1-300 | sed 's/##\[/## [/g; s/^/    | /'; }
+report_stuck() {
+	{
+		printf 'nightly-promote: promotion #%s (%s/%s/pull/%s) is stuck: %s.\n' "$1" "$server" "$GH_REPO" "$1" "$reason"
+		printf '  Check title:\n%s\n  Check summary:\n%s\n' "$(quote_check .output.title)" "$(quote_check .output.summary)"
+		printf '  If the PR changes .github/, an independent maintainer must approve its exact head. Otherwise read the check and the merge queue run, fix the cause, and run nightly-promote again.\n'
+	} >&2
+}
+
+now=${PROMOTE_NOW:-$(date +%s)}
+printf '%s\n' "$now" | grep -Eq '^[0-9]+$' || die 'invalid clock'
+stuck=false
 same=
 same_armed=false
 same_created=0
@@ -98,6 +128,9 @@ while IFS=$tab read -r number head ref armed created; do
 		same_created=$created
 		continue
 	fi
+	# Replacing a promotion that could not land must not hide why main stopped moving.
+	stuck_reason "$head" "$created" true
+	[ -z "$reason" ] || { report_stuck "$number"; stuck=true; }
 	write api -X POST "repos/$GH_REPO/issues/$number/comments" \
 		-f "body=A newer green dev commit exists, so nightly-promote.yml replaces this promotion." >/dev/null
 	write api -X PATCH "repos/$GH_REPO/pulls/$number" -f state=closed >/dev/null
@@ -109,38 +142,18 @@ done <<EOF
 $open
 EOF
 
-# A transient queue failure disarms the PR, so arm it again. Then make a promotion
-# that cannot land loud: a refused or failed admission, or a PR that has sat for
-# hours (for example one that waits for a maintainer's approval), fails the run.
+# A transient queue failure disarms the PR, so arm it again, and give that retry
+# its chance before judging the PR's age.
 if [ -n "$same" ]; then
+	check_age=true
 	if [ "$same_armed" != true ]; then
 		arm "$same"
 		note "nightly-promote: queued promotion #$same again for $commit."
+		check_age=false
 	fi
-	now=${PROMOTE_NOW:-$(date +%s)}
-	printf '%s\n%s\n' "$now" "$same_created" | grep -Eq '^[0-9]+$' || die 'invalid clock or pull request age'
-	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$commit/check-runs?check_name=ci-queue-required&per_page=100" \
-		--jq '.check_runs | max_by(.id) // {}')
-	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
-	reason=
-	case "$state" in
-	none/* | queued/* | in_progress/* | completed/success) ;;
-	*) reason="the ci-queue-required check is $state" ;;
-	esac
-	if [ -z "$reason" ] && [ $((now - same_created)) -gt "$max_age" ]; then
-		reason="it has not landed after more than $((max_age / 3600)) hours"
-	fi
-	if [ -n "$reason" ]; then
-		# The check text is untrusted. Keep it in the log only, as plain printable
-		# lines that cannot begin a workflow command.
-		quote() { printf '%s' "$check" | jq -r "$1 // \"\"" | tr -cd '[:print:]\n' | head -n 20 | cut -c1-300 | sed 's/^/    | /'; }
-		{
-			printf 'nightly-promote: promotion #%s (%s/%s/pull/%s) is stuck: %s.\n' "$same" "$server" "$GH_REPO" "$same" "$reason"
-			printf '  Check title:\n%s\n  Check summary:\n%s\n' "$(quote .output.title)" "$(quote .output.summary)"
-			printf '  If the PR changes .github/, an independent maintainer must approve its exact head. Otherwise read the check and the merge queue run, fix the cause, and run nightly-promote again.\n'
-		} >&2
-		exit 1
-	fi
+	stuck_reason "$commit" "$same_created" "$check_age"
+	[ -z "$reason" ] || { report_stuck "$same"; stuck=true; }
+	[ "$stuck" = false ] || exit 1
 	note "nightly-promote: promotion #$same already carries $commit and is queued."
 	exit 0
 fi
@@ -161,3 +174,4 @@ number=$(write api -X POST "repos/$GH_REPO/pulls" -f "title=chore(release): prom
 printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number from GitHub'
 arm "$number"
 note "nightly-promote: opened and queued promotion #$number for $commit."
+[ "$stuck" = false ] || exit 1

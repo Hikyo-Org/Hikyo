@@ -243,7 +243,7 @@ expect_ok 'armed young promotion with an admitted check'
 
 reset
 PULLS=$(pull 41 "$dev" "$branch" "$armed")
-CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval\n::error::forged command')
+CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval\n::error::forged command\nmid ##[error]forged')
 export PULLS CHECKS
 run
 [ "$status" -ne 0 ] || fail 'a refused promotion stayed green'
@@ -252,6 +252,7 @@ for text in 'https://github.com/o/r/pull/41' 'ci-queue-required check is complet
 	grep -F "$text" "$work/err" >/dev/null || fail "refusal report lacks: $text"
 done
 if grep -E '^::' "$work/err" "$work/out" >/dev/null; then fail 'check text can start a workflow command'; fi
+if grep -F '##[' "$work/err" "$work/out" >/dev/null; then fail 'check text can embed a workflow command'; fi
 if grep -F 'Admission refused' "$work/summary" >/dev/null 2>&1; then fail 'check text reached the step summary'; fi
 
 reset
@@ -276,6 +277,33 @@ PULLS=$(pull 41 "$dev" "$branch" "$armed" O/R "$hours4")
 export PULLS
 run
 [ "$status" -ne 0 ] || fail 'an old promotion with no check stayed green'
+
+# A retry just armed gets its chance, whatever the PR's age.
+reset
+PULLS=$(pull 41 "$dev" "$branch" null O/R "$hours4")
+CHECKS=$(check in_progress null 'Admission pending' 'Waiting')
+export PULLS CHECKS
+expect_ok 'an old promotion armed again'
+expect_calls 'an old promotion armed again' "$rearm"
+
+# Replacing a promotion that could not land still fails the run, after replacing it.
+reset
+PULLS=$(pull 41 "$old" "$stale" "$armed")
+CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval')
+export PULLS CHECKS
+run
+[ "$status" -ne 0 ] || fail 'replacing a refused promotion stayed green'
+grep -F 'promotion #41' "$work/err" >/dev/null || fail 'replaced promotion report lacks its number'
+grep -F "app-token|PATCH repos/o/r/pulls/41 state=closed" "$work/calls" >/dev/null || fail 'refused older promotion was not replaced'
+grep -F "POST repos/o/r/pulls" "$work/calls" >/dev/null || fail 'refused older promotion left no new promotion'
+
+reset
+PULLS=$(pull 41 "$old" "$stale" "$armed" O/R "$hours4")
+CHECKS=$(check in_progress null 'Admission pending' 'Waiting for approval')
+export PULLS CHECKS
+run
+[ "$status" -ne 0 ] || fail 'replacing an old pending promotion stayed green'
+grep -F 'not landed after more than 3 hours' "$work/err" >/dev/null || fail 'replaced old promotion report lacks its reason'
 
 reset
 PULLS=$(pull 41 "$old" "$stale" null)
