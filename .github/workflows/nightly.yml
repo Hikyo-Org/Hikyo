@@ -87,288 +87,34 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.identity.outputs.tag }}
-      version: ${{ steps.identity.outputs.version }}
-      commit: ${{ steps.source.outputs.commit }}
+      tag: ${{ steps.build.outputs.tag }}
+      version: ${{ steps.build.outputs.version }}
+      commit: ${{ steps.build.outputs.commit }}
       source_mode: ${{ needs.validation.outputs.source_mode }}
-      skip: ${{ steps.identity.outputs.skip }}
-      tag_exists: ${{ steps.identity.outputs.tag_exists }}
-      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
-      non_darwin_sha256: ${{ steps.retained-integrity.outputs.non_darwin_sha256 }}
-      compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
+      skip: ${{ steps.build.outputs.skip }}
+      tag_exists: ${{ steps.build.outputs.tag_exists }}
+      artifact_id: ${{ steps.build.outputs.artifact_id }}
+      build_run_id: ${{ steps.build.outputs.build_run_id }}
+      non_darwin_sha256: ${{ steps.build.outputs.non_darwin_sha256 }}
+      compatibility_sha256: ${{ steps.build.outputs.compatibility_sha256 }}
     permissions:
-      actions: read
+      actions: write
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out immutable trusted publisher tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
-          ref: ${{ needs.validation.outputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Start healthy PostgreSQL with Docker Hub cache fallback
-        id: ci-postgres
-        env:
-          POSTGRES_PASSWORD: release-schema-fixture
-          POSTGRES_DB: hikyo_release_schema
-          POSTGRES_HEALTH_RETRIES: 12
-        run: ./scripts/ci/start-ci-postgres.sh
-      - name: Pin the validated development source
-        id: source
-        env:
-          EXPECTED_SOURCE: ${{ needs.validation.outputs.commit }}
-        run: |
-          set -euo pipefail
-          commit=$(git rev-parse HEAD)
-          [[ "$EXPECTED_SOURCE" =~ ^[0-9a-f]{40}$ ]]
-          test "$commit" = "$EXPECTED_SOURCE"
-          printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
-      - name: Download the pinned source validation receipt
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          artifact-ids: ${{ needs.validation.outputs.artifact_id }}
-          merge-multiple: true
-          path: ${{ runner.temp }}/validated-source
-      - name: Require complete pinned source validation
-        env:
-          VALIDATION_RESULT: ${{ needs.validation.result }}
-        # The trusted selector binds a complete dev run and exact source SHA.
-        # Publication revalidates the same receipt before signing and tagging.
-        run: test "$VALIDATION_RESULT" = success
-      - name: Resolve stable-base nightly identity
-        id: identity
+      - name: Build on the source branch and authenticate the result
+        id: build
         env:
           GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          COMMIT: ${{ steps.source.outputs.commit }}
-          RUN_NUMBER: ${{ github.run_number }}
-          INITIAL_NIGHTLY_VERSION: 0.0.1
-        run: |
-          set -o pipefail
-          tag=$(gh api --paginate --slurp \
-            "repos/$REPOSITORY/git/matching-refs/tags/v" | \
-            ./scripts/release/nightly-run-tag.sh "$RUN_NUMBER")
-          tag_exists=false
-          if [ -n "$tag" ]; then
-            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
-            if ! existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
-              --jq '.object.sha' 2>"$tag_lookup_error"); then
-              cat "$tag_lookup_error" >&2
-              exit 1
-            fi
-            if [ "$existing_tag_sha" != "$COMMIT" ]; then
-              printf 'nightly: run %s tag %s resolves to %s, expected %s\n' \
-                "$RUN_NUMBER" "$tag" "$existing_tag_sha" "$COMMIT" >&2
-              exit 1
-            fi
-            release_lookup_error="$RUNNER_TEMP/nightly-release-lookup.err"
-            if release_state=$(gh api "repos/$REPOSITORY/releases/tags/$tag" \
-              --jq '"\(.draft):\(.prerelease)"' 2>"$release_lookup_error"); then
-              if [ "$release_state" != 'false:true' ]; then
-                printf 'nightly: existing release %s has unexpected state %s\n' \
-                  "$tag" "$release_state" >&2
-                exit 1
-              fi
-              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
-              printf 'tag=%s\nversion=%s\n' "$tag" "${tag#v}" >>"$GITHUB_OUTPUT"
-              printf 'nightly: workflow run %s already published as %s\n' \
-                "$RUN_NUMBER" "$tag"
-              exit 0
-            elif ! grep -F '(HTTP 404)' "$release_lookup_error" >/dev/null; then
-              cat "$release_lookup_error" >&2
-              exit 1
-            fi
-            version=${tag#v}
-            tag_exists=true
-          else
-            latest_tag=$(gh api --paginate --slurp \
-              "repos/$REPOSITORY/releases?per_page=100" | \
-              ./scripts/release/latest-nightly-tag.sh)
-            latest_commit=
-            if [ -n "$latest_tag" ]; then
-              latest_commit=$(gh api "repos/$REPOSITORY/git/ref/tags/$latest_tag" \
-                --jq '.object.sha')
-            fi
-            if [ "$latest_commit" = "$COMMIT" ]; then
-              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
-              printf 'tag=%s\nversion=%s\n' "$latest_tag" "${latest_tag#v}" >>"$GITHUB_OUTPUT"
-              printf 'nightly: commit %s already published\n' "$COMMIT"
-              exit 0
-            fi
-            stable_tag=$(gh api --paginate --slurp \
-              "repos/$REPOSITORY/releases?per_page=100" | \
-              ./scripts/release/latest-stable-version.sh)
-            release_date=$(date -u +%Y%m%d)
-            if [ -n "$stable_tag" ]; then
-              version=$(./scripts/release/next-nightly-version.sh \
-                "$stable_tag" "$release_date" "$RUN_NUMBER" "$COMMIT")
-            else
-              version=$(./scripts/release/nightly-version.sh "$INITIAL_NIGHTLY_VERSION" \
-                "$release_date" "$RUN_NUMBER" "$COMMIT")
-            fi
-            tag="v$version"
-            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
-            if existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
-              --jq '.object.sha' 2>"$tag_lookup_error"); then
-              if [ "$existing_tag_sha" != "$COMMIT" ]; then
-                printf 'nightly: tag %s resolves to %s, expected %s\n' \
-                  "$tag" "$existing_tag_sha" "$COMMIT" >&2
-                exit 1
-              fi
-              printf 'nightly: tag %s already resolves to %s; resuming publication\n' \
-                "$tag" "$COMMIT"
-              tag_exists=true
-            elif ! grep -F '(HTTP 404)' "$tag_lookup_error" >/dev/null; then
-              cat "$tag_lookup_error" >&2
-              exit 1
-            fi
-          fi
-          printf 'skip=false\nversion=%s\ntag=%s\ntag_exists=%s\n' \
-            "$version" "$tag" "$tag_exists" >>"$GITHUB_OUTPUT"
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.identity.outputs.skip != 'true'
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Require recovery-authorized nightly trust before building
-        if: steps.identity.outputs.skip != 'true'
-        run: go run ./scripts/release/nightly preflight
-      - name: Resolve and authenticate previous signed nightly
-        if: steps.identity.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ needs.validation.outputs.commit }}
+          SOURCE_MODE: ${{ needs.validation.outputs.source_mode }}
+          RECEIPT_ARTIFACT_ID: ${{ needs.validation.outputs.artifact_id }}
           ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}
-          PREDECESSOR_EDGES: 8
-        run: |
-          set -o pipefail
-          # Up to PREDECESSOR_EDGES signed predecessors, newest first, each
-          # becomes an exact-schema upgrade source of this nightly (#700), so a
-          # route can skip one revoked or missing release without a bridge.
-          # Directory 1 is the newest predecessor; the highest number the oldest.
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq '
-            map(map(select(any(.assets[]; .name == "release-manifest.sigstore.json"))))
-          ' | ./scripts/release/latest-nightly-tag.sh --limit "$PREDECESSOR_EDGES" >"$RUNNER_TEMP/predecessor-tags"
-          set --
-          index=0
-          while IFS= read -r previous_tag; do
-            [ -n "$previous_tag" ] || continue
-            index=$((index + 1))
-            gh release download "$previous_tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/previous-nightly/$index"
-            set -- "$@" --directory "$RUNNER_TEMP/previous-nightly/$index"
-          done <"$RUNNER_TEMP/predecessor-tags"
-          if [ "$index" -gt 0 ]; then
-            printf '%s\n' "$index" >"$RUNNER_TEMP/previous-nightly/count"
-            go run ./scripts/release/nightly sources "$@" --out "$RUNNER_TEMP/nightly-sources.json"
-          elif [ "$ALLOW_MISSING_PREDECESSOR" = true ]; then
-            echo '::warning::Building without a signed predecessor by explicit request; installations below this release need a recovery bridge.'
-            go run ./scripts/release/nightly sources --out "$RUNNER_TEMP/nightly-sources.json"
-          else
-            # Every nightly declares its signed predecessor as an upgrade source.
-            # No predecessor means the chain was cut, usually by deleting a
-            # release. A silent build here strands every installation below it.
-            echo '::error::No signed predecessor release is available. Revoke bad nightlies instead of deleting them; to restart the chain deliberately, send the nightly-chain-restart repository dispatch with allow_missing_predecessor=true and publish a recovery bridge.'
-            exit 1
-          fi
-      - name: Generate nightly compatibility from both migrated engines
-        id: compatibility
-        if: steps.identity.outputs.skip != 'true'
-        env:
-          VERSION: ${{ steps.identity.outputs.version }}
-          COMMIT: ${{ steps.source.outputs.commit }}
-          HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
-        run: |
-          candidate="$RUNNER_TEMP/nightly-candidate.json"
-          jq -n --arg version "$VERSION" --arg commit "$COMMIT" --argjson sequence "$GITHUB_RUN_NUMBER" \
-            '{version:$version,commit:$commit,sequence:$sequence,key_id:"",public_key:""}' >"$candidate"
-          declaration="$RUNNER_TEMP/upgrade-compatibility.json"
-          go run ./scripts/release/compatibility --profile nightly/v1 --candidate "$candidate" \
-            --sources "$RUNNER_TEMP/nightly-sources.json" --out "$declaration"
-          {
-            printf 'path=%s\n' "$declaration"
-            printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
-          } >>"$GITHUB_OUTPUT"
-      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
-        if: steps.identity.outputs.skip != 'true'
-        with:
-          node-version-file: .nvmrc
-      - name: Install Corepack and enable pnpm
-        if: steps.identity.outputs.skip != 'true'
-        run: ./scripts/ci/install-corepack.sh
-      - name: Build tested embedded WebUI
-        if: steps.identity.outputs.skip != 'true'
-        run: ./scripts/ci/build-spa.sh
-      - name: Embed mandatory production trust material
-        id: update-trust
-        if: steps.identity.outputs.skip != 'true'
-        run: |
-          test -s release/trust/root.json
-          recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
-          {
-            printf 'root='
-            base64 <release/trust/root.json | tr -d '\n'
-            printf '\nrecovery='
-            base64 <"release/trust/$recovery" | tr -d '\n'
-            printf '\n'
-          } >>"$GITHUB_OUTPUT"
-      - name: Build six nightly archives and eight native packages
-        if: steps.identity.outputs.skip != 'true'
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        env:
-          HIKYO_RELEASE_VERSION: ${{ steps.identity.outputs.version }}
-          HIKYO_RELEASE_COMMIT: ${{ steps.source.outputs.commit }}
-          HIKYO_UPDATE_CHANNEL: nightly
-          HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
-          HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
-          HIKYO_COMPATIBILITY_PATH: ${{ steps.compatibility.outputs.path }}
-          HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
-        with:
-          distribution: goreleaser
-          version: v2.17.1
-          args: release --snapshot --clean --skip=publish
-      - name: Verify nightly archive and package identity
-        if: steps.identity.outputs.skip != 'true'
-        env:
-          VERSION: ${{ steps.identity.outputs.version }}
-          COMMIT: ${{ steps.source.outputs.commit }}
-        run: |
-          jq -e --arg version "$VERSION" --arg commit "$COMMIT" '
-            .version == $version and .commit == $commit
-          ' dist/metadata.json >/dev/null
-          ./scripts/release/snapshot-manifest_test.sh
-      - name: Bind untouched nightly archive bytes
-        id: retained-integrity
-        if: steps.identity.outputs.skip != 'true'
-        env:
-          VERSION: ${{ steps.identity.outputs.version }}
-        run: |
-          set -o pipefail
-          for os in Linux Windows; do
-            extension=tar.gz
-            if [ "$os" = Windows ]; then extension=zip; fi
-            for arch in arm64 x86_64; do
-              sha256sum "dist/hikyo_${VERSION}_${os}_${arch}.$extension" || exit 1
-            done
-          done | LC_ALL=C sort >"$RUNNER_TEMP/non-darwin-checksums.txt"
-          non_darwin_sha256=$(sha256sum "$RUNNER_TEMP/non-darwin-checksums.txt" | awk '{print $1}')
-          printf 'non_darwin_sha256=%s\n' "$non_darwin_sha256" >>"$GITHUB_OUTPUT"
-      - name: Retain canonical nightly artifacts and authenticated predecessor identity
-        if: steps.identity.outputs.skip != 'true'
-        run: |
-          mkdir nightly-context
-          cp "$RUNNER_TEMP/upgrade-compatibility.json" "$RUNNER_TEMP/nightly-sources.json" \
-            "$RUNNER_TEMP/predecessor-tags" nightly-context/
-          cp "$RUNNER_TEMP/validated-source/source-validation.json" nightly-context/
-          tar -czf "$RUNNER_TEMP/nightly-inputs.tar.gz" dist nightly-context
-      - id: upload-inputs
-        if: steps.identity.outputs.skip != 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/nightly-inputs.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-      - name: Remove CI PostgreSQL
-        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
-        run: docker container rm --force hikyo-ci-postgres
+        run: ./scripts/release/nightly-build-dispatch.sh
 
   apple-sign:
     environment: apple-signing
@@ -398,6 +144,8 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-artifacts.outputs.artifact_id }}
+          run-id: ${{ needs.build-artifacts.outputs.build_run_id }}
+          github-token: ${{ github.token }}
           merge-multiple: true
           path: ${{ runner.temp }}/nightly-inputs
       - name: Restore canonical nightly artifacts

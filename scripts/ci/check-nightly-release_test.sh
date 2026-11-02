@@ -4,7 +4,10 @@
 set -eu
 
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
-workflow="$repo_root/.github/workflows/nightly.yml"
+# Publication and its source build are separate runs of one nightly contract.
+workflow=$(mktemp "${TMPDIR:-/tmp}/hikyo-nightly-contract.XXXXXX")
+trap 'rm -f "$workflow"' EXIT HUP INT TERM
+cat "$repo_root/.github/workflows/nightly-build.yml" "$repo_root/.github/workflows/nightly.yml" >"$workflow"
 official="$repo_root/.github/workflows/release.yml"
 goreleaser="$repo_root/.goreleaser.yaml"
 stable_resolver="$repo_root/scripts/release/latest-stable-version.sh"
@@ -159,6 +162,7 @@ fi
 "$repo_root/scripts/release/latest-nightly-tag_test.sh"
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
+"$repo_root/scripts/release/nightly-build-dispatch_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'
 

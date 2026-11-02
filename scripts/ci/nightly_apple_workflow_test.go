@@ -60,8 +60,8 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	}
 	build := workflow.Jobs["build-artifacts"]
 	for key, expected := range map[string]string{
-		"non_darwin_sha256":    "${{ steps.retained-integrity.outputs.non_darwin_sha256 }}",
-		"compatibility_sha256": "${{ steps.compatibility.outputs.sha256 }}",
+		"non_darwin_sha256":    "${{ steps.build.outputs.non_darwin_sha256 }}",
+		"compatibility_sha256": "${{ steps.build.outputs.compatibility_sha256 }}",
 	} {
 		if build.Outputs[key] != expected {
 			t.Fatalf("build must independently export %s", key)
@@ -84,10 +84,10 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	for name, job := range workflow.Jobs {
 		for _, step := range job.Steps {
 			if strings.Contains(step.Uses, "goreleaser/goreleaser-action@") {
-				builds++
-				if name != "build-artifacts" {
-					t.Fatal("nightly binaries may only be built before Apple signing")
-				}
+				t.Fatal("nightly binaries may only be built by nightly-build.yml, before Apple signing")
+			}
+			if step.With["artifact-ids"] == "${{ needs.build-artifacts.outputs.artifact_id }}" && step.With["run-id"] != "${{ needs.build-artifacts.outputs.build_run_id }}" {
+				t.Fatal("the canonical build artifact must come from the authenticated build run")
 			}
 			for key, value := range step.Env {
 				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") {
@@ -142,6 +142,11 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 			}
 		}
 	}
+	buildRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/nightly-build.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	builds += strings.Count(string(buildRaw), "goreleaser/goreleaser-action@")
 	if builds != 1 || signatures != 1 || notarizations != 1 {
 		t.Fatal("nightly requires exactly one canonical build and separate Apple signing and notarization stages")
 	}
@@ -184,7 +189,23 @@ func TestNightlyAppleTransferPreservesUnchangedBuildInputs(t *testing.T) {
 		t.Fatalf("missing %s/%s", job, name)
 		return mainValidationStep{}
 	}
-	bind := find("build-artifacts", "Bind untouched nightly archive bytes")
+	buildRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/nightly-build.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buildWorkflow mainValidationWorkflow
+	if err := yaml.Unmarshal(buildRaw, &buildWorkflow); err != nil {
+		t.Fatal(err)
+	}
+	var bind mainValidationStep
+	for _, step := range buildWorkflow.Jobs["build"].Steps {
+		if step.Name == "Bind untouched nightly archive bytes" {
+			bind = step
+		}
+	}
+	if bind.Name == "" {
+		t.Fatal("nightly build lost its archive binding")
+	}
 	verify := find("publish", "Verify untouched nightly archives and compatibility")
 	if bind.If != "steps.identity.outputs.skip != 'true'" || verify.If != "needs.build-artifacts.outputs.skip != 'true'" ||
 		bind.Env["VERSION"] != "${{ steps.identity.outputs.version }}" ||

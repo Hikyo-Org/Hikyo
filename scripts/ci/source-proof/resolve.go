@@ -460,7 +460,7 @@ func (r *resolver) file(ctx context.Context, path, commit string) ([]byte, error
 
 var policyPaths = []string{
 	".github/workflows/ci.yml", ".github/workflows/floor-bench.yml",
-	".github/workflows/nightly.yml",
+	".github/workflows/nightly.yml", ".github/workflows/nightly-build.yml",
 	"scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh",
 	"scripts/ci/classify-changed-paths.sh", "scripts/ci/plan-merge-group.sh",
 	"scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh",

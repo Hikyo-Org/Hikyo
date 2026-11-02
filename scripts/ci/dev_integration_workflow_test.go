@@ -123,11 +123,7 @@ func TestNightlySeparatesSourceFromTrustedPublisher(t *testing.T) {
 				continue
 			}
 			found = true
-			want := "${{ github.sha }}"
-			if name == "build-artifacts" {
-				want = "${{ needs.validation.outputs.commit }}"
-			}
-			if step.With["ref"] != want || step.With["persist-credentials"] != "false" {
+			if step.With["ref"] != "${{ github.sha }}" || step.With["persist-credentials"] != "false" {
 				t.Fatalf("%s must bind its source/tooling lane without credentials", name)
 			}
 		}
@@ -345,4 +341,56 @@ func TestFeedbackSkipsOnlyCanonicalPromotions(t *testing.T) {
 		}
 	}
 	t.Fatal("feedback plan step moved")
+}
+
+// A run on main can write main-scoped Actions caches, so selected source must never
+// execute in one. nightly.yml only runs its own commit; nightly-build.yml runs the
+// source on that source's own branch, without credentials or cache writes.
+func TestNightlySourceBuildsOutsideMainScopedRuns(t *testing.T) {
+	root := repositoryRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, ".github/workflows/nightly.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var publisher mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &publisher); err != nil {
+		t.Fatal(err)
+	}
+	for name, job := range publisher.Jobs {
+		for _, step := range job.Steps {
+			if strings.HasPrefix(step.Uses, "actions/checkout@") && step.With["ref"] != "${{ github.sha }}" {
+				t.Fatalf("nightly.yml/%s checks out %q in a run on main", name, step.With["ref"])
+			}
+		}
+	}
+	raw, err = os.ReadFile(filepath.Join(root, ".github/workflows/nightly-build.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var build mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &build); err != nil {
+		t.Fatal(err)
+	}
+	if _, dispatched := build.On["workflow_dispatch"]; !dispatched || len(build.On) != 1 {
+		t.Fatal("nightly build must start only from the publisher's branch-selected dispatch")
+	}
+	job := build.Jobs["build"]
+	if job.If != "github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'" || strings.Contains(string(raw), "environment:") || len(job.Permissions) != 0 {
+		t.Fatal("nightly build must run only on a source branch, with no environment or extra permissions")
+	}
+	if !strings.Contains(string(raw), "permissions:\n  actions: read\n  contents: read\n") || strings.Contains(string(raw), "secrets.") || strings.Contains(string(raw), "actions/cache") {
+		t.Fatal("nightly build must stay read-only, without secrets or cache use")
+	}
+	checkouts := 0
+	for _, step := range job.Steps {
+		if strings.HasPrefix(step.Uses, "actions/checkout@") {
+			checkouts++
+			if step.With["ref"] != "${{ inputs.commit }}" || step.With["persist-credentials"] != "false" {
+				t.Fatal("nightly build must check out the selected source without credentials")
+			}
+		}
+	}
+	if checkouts != 1 {
+		t.Fatalf("nightly build has %d checkouts", checkouts)
+	}
 }

@@ -261,7 +261,8 @@ func (q *queueController) devPolicy(ctx context.Context) (liveQueuePolicy, error
 var devPolicyPaths = map[string]bool{
 	".github/workflows/ci-dev.yml": true, ".github/workflows/ci.yml": true,
 	".github/workflows/floor-bench.yml": true, ".github/workflows/nightly.yml": true,
-	"scripts/ci/ci-job-registry.json": true, "scripts/ci/check-required-jobs.sh": true,
+	".github/workflows/nightly-build.yml": true,
+	"scripts/ci/ci-job-registry.json":     true, "scripts/ci/check-required-jobs.sh": true,
 	"scripts/ci/classify-changed-paths.sh": true, "scripts/ci/plan-merge-group.sh": true,
 	"scripts/ci/analysis-shards-go/main.go": true, "scripts/ci/test-race-packages.sh": true,
 	"scripts/ci/test-core-packages.sh": true, "scripts/release/nightly_inputs.py": true,
