@@ -42,9 +42,9 @@ func TestAdmissionInitializationRequiresOnlyItsOwnWorkflow(t *testing.T) {
 				case "feedback ID":
 					feedback.ID = 0
 				case "feedback path":
-					feedback.Path = workflowPath
+					feedback.Path = ".github/workflows/other.yml"
 				case "feedback name":
-					feedback.Name = "ci-full-candidate"
+					feedback.Name = "other"
 				}
 				f.api.responses["repos/"+f.pr.Base.Repo.FullName] = repo
 				if fault == "repository read" {
@@ -88,51 +88,15 @@ func TestAdmissionInitializationRequiresOnlyItsOwnWorkflow(t *testing.T) {
 	}
 }
 
-func TestLegacyInitializationStillRequiresCandidateWorkflow(t *testing.T) {
-	for _, fault := range []string{"valid", "missing", "unavailable", "ID", "path", "name"} {
-		t.Run(fault, func(t *testing.T) {
-			f := newFixture(t)
-			path := f.c.endpoint("actions/workflows/ci-candidate.yml")
-			w := workflow{ID: 20, Path: workflowPath, Name: "ci-full-candidate"}
-			switch fault {
-			case "ID":
-				w.ID = 0
-			case "path":
-				w.Path = feedbackWorkflowPath
-			case "name":
-				w.Name = "ci-feedback"
-			}
-			f.api.responses[path] = w
-			if fault == "missing" {
-				delete(f.api.responses, path)
-			} else if fault == "unavailable" {
-				f.api.responses[path] = errors.New("candidate unavailable")
-			}
-			err := f.execute()
-			if fault == "valid" {
-				if err != nil {
-					t.Fatal(err)
-				}
-				requireConclusion(t, f, "completed", "success")
-			} else if err == nil || len(f.api.writes) != 0 {
-				t.Fatalf("legacy identity refusal changed: error=%v, writes=%v", err, f.api.writes)
-			}
-			if f.api.reads[path] != 1 {
-				t.Fatal("legacy initializer did not authenticate the candidate workflow")
-			}
-		})
-	}
-}
-
-func TestGroupInitializationRetainsLegacyLookup(t *testing.T) {
+// The retired workflow's file is gone, so no queue path may depend on looking it up.
+func TestGroupInitializationIgnoresRetiredCandidateWorkflow(t *testing.T) {
 	f := newQueueFixture(t)
 	path := f.c.endpoint("actions/workflows/ci-candidate.yml")
 	f.api.responses[path] = errors.New("candidate unavailable")
-	if err := f.group(); err == nil {
-		t.Fatal("group initialization behavior changed")
+	if err := f.group(); err != nil {
+		t.Fatal(err)
 	}
-	if f.api.reads[path] != 1 {
-		t.Fatal("group initialization no longer reads the legacy workflow")
+	if f.api.reads[path] != 0 {
+		t.Fatal("group initialization read the retired workflow")
 	}
-	f.assertNoSuccess(t)
 }

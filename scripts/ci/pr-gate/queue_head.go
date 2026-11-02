@@ -147,11 +147,7 @@ func (q *queueController) roleCollision(ctx context.Context, roles headRoles) er
 
 func (q *queueController) runHead(ctx context.Context, name string, e event, kind string) error {
 	q.repo = repository{}
-	initialize := q.init
-	if kind == "admission" {
-		initialize = q.initRepository
-	}
-	if err := initialize(ctx); err != nil {
+	if err := q.initRepository(ctx); err != nil {
 		batch, parseErr := parseHeadBatch(e.Inputs.Work)
 		if name != "workflow_dispatch" || parseErr != nil {
 			return err

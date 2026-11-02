@@ -62,7 +62,7 @@ func (q *queueController) reassessHeld(ctx context.Context, rereads bool, work f
 		return errors.New("queue reconciliation requires a held head")
 	}
 	if q.repo.ID == 0 {
-		if err := q.init(ctx); err != nil {
+		if err := q.initRepository(ctx); err != nil {
 			return err
 		}
 	}

@@ -30,8 +30,8 @@ func (a *resetFailureAPI) write(ctx context.Context, method, path string, payloa
 	return nil
 }
 
-func TestQueueTransitionPreservesCreationAndLegacyPayload(t *testing.T) {
-	for _, role := range []string{"queue transition", "queue create", "legacy reset"} {
+func TestQueueTransitionPreservesCreationPayload(t *testing.T) {
+	for _, role := range []string{"queue transition", "queue create"} {
 		t.Run(role, func(t *testing.T) {
 			f := newQueueFixture(t)
 			b := newBinding(f.pr.Base.Repo.ID, f.pr, &f.feedbackRun)
@@ -42,17 +42,13 @@ func TestQueueTransitionPreservesCreationAndLegacyPayload(t *testing.T) {
 				selected = &old
 				f.api.checks = []check{old}
 			}
-			if role == "legacy reset" {
-				f.c.checkName, old.Name = "ci-required-next", "ci-required-next"
-				f.api.checks[0] = old
-			}
 			if err := f.c.publish(context.Background(), f.pr, b, selected, pending("new proof required")); err != nil {
 				t.Fatal(err)
 			}
 			w := f.api.writes[0]
 			for _, key := range []string{"conclusion", "completed_at"} {
 				if _, present := w[key]; present || w["method"] != "POST" {
-					t.Fatal("pending generations and legacy creation must omit terminal fields")
+					t.Fatal("pending generations must omit terminal fields")
 				}
 			}
 			if role == "queue transition" && f.api.checks[0].Status != "completed" {

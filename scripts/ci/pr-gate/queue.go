@@ -195,7 +195,7 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 
 func (q *queueController) execute(ctx context.Context, name string, e event) error {
 	if q.checkName != queueCheckName {
-		return errors.New("queue publisher cannot write the legacy full-proof context")
+		return errors.New("queue publisher can only write the queue context")
 	}
 	if q.repairOnly && name != "workflow_dispatch" {
 		return errors.New("group-only queue repair requires authenticated manual dispatch")
@@ -204,11 +204,7 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 		return errors.New("targeted admission cannot execute a group or batch repair")
 	}
 	q.repo = repository{}
-	initialize := q.init
-	if q.targeted {
-		initialize = q.initRepository
-	}
-	if err := initialize(ctx); err != nil {
+	if err := q.initRepository(ctx); err != nil {
 		return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
 	}
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
@@ -340,7 +336,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		q.admissions[number] = trace
 	}
 	b := newBinding(q.repo.ID, p, nil)
-	result := pending("Merge queue is not active; the legacy full-candidate check remains required.")
+	result := pending("Merge queue is not active; the main ruleset must require it before this PR can merge.")
 	var policy liveQueuePolicy
 	if captured != nil {
 		policy = captured.policy
@@ -961,7 +957,7 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 
 func (q *queueController) group(ctx context.Context, hint run) error {
 	if q.repo.ID == 0 {
-		if err := q.init(ctx); err != nil {
+		if err := q.initRepository(ctx); err != nil {
 			return err
 		}
 	}

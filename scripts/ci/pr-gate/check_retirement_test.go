@@ -141,12 +141,6 @@ func TestRetirementCancelsAllOwnedNonterminalHistoryAndNeverRevives(t *testing.T
 				if err := f.q.admit(context.Background(), 7); err != nil {
 					t.Fatal(err)
 				}
-			} else {
-				f.pr.State = "closed"
-				f.api.responses[f.c.endpoint("pulls/7")] = f.pr
-				if err := f.c.reconcile(context.Background(), 7, nil); err != nil {
-					t.Fatal(err)
-				}
 			}
 			if len(f.api.writes) != 101 {
 				t.Fatal("closed callback revived cancelled checks")
@@ -283,37 +277,6 @@ func TestActiveGroupDCOFailureRemainsBlocking(t *testing.T) {
 	}
 	if !blockingQueueCheck(newestQueueCheck(f.api.checks)) {
 		t.Fatal("active invalid range did not remain blocking")
-	}
-}
-func TestLegacyMergedCallbacksNeverReviveTerminalVerdicts(t *testing.T) {
-	for _, callback := range []string{"close", "late candidate"} {
-		t.Run(callback, func(t *testing.T) {
-			f, _ := retirementFixture(t, "ci-required-next")
-			f.api.checks[0].Status = "completed"
-			f.api.checks[0].Conclusion = "success"
-			prior := f.api.checks[0]
-			f.pr.State = "closed"
-			f.refresh()
-			noRetirementRoles(f)
-			e := f.event
-			name := "pull_request_target"
-			if callback == "close" {
-				e.Number = f.pr.Number
-				e.Pull = f.pr
-				e.Action = "closed"
-			} else {
-				name = "workflow_run"
-				e.Run = f.source
-			}
-			for i := 0; i < 2; i++ {
-				if err := f.c.execute(context.Background(), name, e); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if len(f.api.writes) != 0 || len(f.api.checks) != 1 || f.api.checks[0] != prior {
-				t.Fatal("legacy closed callback revived terminal history")
-			}
-		})
 	}
 }
 func TestRetirementRoutingRequiresExactTrustedIdentity(t *testing.T) {

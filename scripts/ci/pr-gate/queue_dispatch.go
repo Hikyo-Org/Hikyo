@@ -45,7 +45,7 @@ func parseHeadBatch(data string) ([]headWork, error) {
 }
 
 func (q *queueController) discover(ctx context.Context, name string, e event) ([]headWork, error) {
-	if err := q.init(ctx); err != nil {
+	if err := q.initRepository(ctx); err != nil {
 		return nil, err
 	}
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) || q.expectedHead != "" || name != "push" && name != "schedule" && name != "workflow_dispatch" {

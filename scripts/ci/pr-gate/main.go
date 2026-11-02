@@ -25,7 +25,6 @@ import (
 	"unicode/utf8"
 )
 
-const workflowPath = ".github/workflows/ci-candidate.yml"
 const externalPrefix = "hikyo-pr-gate:v2:"
 const legacyExternalPrefix = "hikyo-pr-gate:v1:"
 const externalIDLimit = 255
@@ -67,7 +66,6 @@ type run struct {
 	WorkflowID     int64      `json:"workflow_id"`
 	Path           string     `json:"path"`
 	Name           string     `json:"name"`
-	DisplayTitle   string     `json:"display_title"`
 	Event          string     `json:"event"`
 	HeadSHA        string     `json:"head_sha"`
 	HeadBranch     string     `json:"head_branch"`
@@ -603,7 +601,6 @@ type controller struct {
 	verify         verifier
 	repoName       string
 	repo           repository
-	workflow       workflow
 	checkName      string
 	expectedHead   string
 	queueDeadline  time.Time
@@ -614,14 +611,11 @@ type controller struct {
 }
 
 func (c *controller) endpoint(path string) string { return "repos/" + c.repoName + "/" + path }
-func validWorkflow(w workflow) bool {
-	return w.ID > 0 && w.Path == workflowPath && w.Name == "ci-full-candidate"
-}
 func (c *controller) initRepository(ctx context.Context) error {
 	if !repoPattern.MatchString(c.repoName) {
 		return errors.New("invalid GH_REPO")
 	}
-	if c.checkName != "ci-required" && c.checkName != "ci-required-next" && c.checkName != queueCheckName && c.checkName != devCheckName {
+	if c.checkName != "ci-required-next" && c.checkName != queueCheckName && c.checkName != devCheckName {
 		return errors.New("invalid PR_GATE_CHECK_NAME")
 	}
 	if err := c.api.read(ctx, "repos/"+c.repoName, &c.repo); err != nil {
@@ -629,18 +623,6 @@ func (c *controller) initRepository(ctx context.Context) error {
 	}
 	if c.repo.ID <= 0 || !strings.EqualFold(c.repo.FullName, c.repoName) {
 		return errors.New("repository identity mismatch")
-	}
-	return nil
-}
-func (c *controller) init(ctx context.Context) error {
-	if err := c.initRepository(ctx); err != nil {
-		return err
-	}
-	if err := c.api.read(ctx, c.endpoint("actions/workflows/ci-candidate.yml"), &c.workflow); err != nil {
-		return err
-	}
-	if !validWorkflow(c.workflow) {
-		return errors.New("validation workflow identity mismatch")
 	}
 	return nil
 }
@@ -709,102 +691,7 @@ func (c *controller) openPRs(ctx context.Context) ([]pull, error) {
 		}
 	}
 }
-func associated(r run, p pull, exactBase bool) bool {
-	if len(r.Pulls) == 0 {
-		// GitHub omits pull_requests for some fork runs. A GitHub-recorded
-		// reusable workflow merge ref and exact current merge SHA bind that PR
-		// without accepting its PR-controlled title. Acceptance additionally
-		// verifies the immutable merge commit and all author/workflow policy.
-		if r.HeadSHA != p.Head.SHA || r.HeadRepository.ID != p.Head.Repo.ID || !shaPattern.MatchString(p.MergeCommitSHA) {
-			return false
-		}
-		count := 0
-		for _, ref := range r.References {
-			parts := strings.Split(ref.Path, "@")
-			if len(parts) == 2 && strings.EqualFold(parts[0], p.Base.Repo.FullName+"/.github/workflows/ci.yml") && parts[1] == ref.SHA && ref.SHA == p.MergeCommitSHA && ref.Ref == fmt.Sprintf("refs/pull/%d/merge", p.Number) {
-				count++
-			}
-		}
-		return count == 1
-	}
-	count := 0
-	for _, a := range r.Pulls {
-		if a.Number == p.Number && a.Head.SHA == p.Head.SHA && a.Head.Repo.ID == p.Head.Repo.ID && a.Base.Repo.ID == p.Base.Repo.ID {
-			if !exactBase || (a.Base.Ref == p.Base.Ref) {
-				count++
-			}
-		}
-	}
-	return count == 1
-}
-func (c *controller) validRun(r run) bool {
-	if r.ID <= 0 || r.Attempt <= 0 || r.WorkflowID != c.workflow.ID || r.Path != workflowPath || r.Event != "pull_request" || r.Repository.ID != c.repo.ID || !strings.EqualFold(r.Repository.FullName, c.repoName) || !shaPattern.MatchString(r.HeadSHA) || r.HeadRepository.ID <= 0 {
-		return false
-	}
-	switch r.Status {
-	case "queued", "in_progress", "completed", "waiting", "pending", "requested":
-	default:
-		return false
-	}
-	if r.Status == "completed" && r.Conclusion == "" {
-		return false
-	}
-	if r.Status != "completed" && r.Conclusion != "" {
-		return false
-	}
-	return true
-}
-func (c *controller) latest(ctx context.Context, p pull) (*run, error) {
-	var latest *run
-	seen := make(map[int64]bool)
-	for page := 1; page <= 10; page++ {
-		var list struct {
-			Total int   `json:"total_count"`
-			Runs  []run `json:"workflow_runs"`
-		}
-		path := fmt.Sprintf("actions/workflows/ci-candidate.yml/runs?event=pull_request&head_sha=%s&per_page=100&page=%d", p.Head.SHA, page)
-		if err := c.api.read(ctx, c.endpoint(path), &list); err != nil {
-			return nil, err
-		}
-		if list.Runs == nil || list.Total < 0 || list.Total > 1000 {
-			return nil, errors.New("invalid or incomplete validation run list")
-		}
-		for _, r := range list.Runs {
-			if !c.validRun(r) || r.HeadSHA != p.Head.SHA || seen[r.ID] {
-				return nil, errors.New("invalid or duplicate validation run metadata")
-			}
-			seen[r.ID] = true
-			if r.HeadRepository.ID != p.Head.Repo.ID || !associated(r, p, false) || r.DisplayTitle != fmt.Sprintf("candidate-ci #%d", p.Number) {
-				continue
-			}
-			if latest == nil || r.ID > latest.ID {
-				copy := r
-				latest = &copy
-			}
-		}
-		if len(list.Runs) < 100 {
-			if len(seen) != list.Total {
-				return nil, errors.New("incomplete validation run list")
-			}
-			if latest != nil {
-				var live run
-				if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("actions/runs/%d", latest.ID)), &live); err != nil {
-					return nil, err
-				}
-				if !c.validRun(live) || !sameSourceEvent(*latest, live) || !associated(live, p, false) {
-					return nil, errors.New("source run changed during selection")
-				}
-				latest = &live
-			}
-			return latest, nil
-		}
-	}
-	return nil, errors.New("validation run pagination limit reached")
-}
 func (c *controller) jobs(ctx context.Context, r run) ([]job, error) {
-	return c.listJobs(ctx, r, false)
-}
-func (c *controller) listJobs(ctx context.Context, r run, latest bool) ([]job, error) {
 	var all []job
 	seen := make(map[int64]bool)
 	for page := 1; page <= 10; page++ {
@@ -813,9 +700,6 @@ func (c *controller) listJobs(ctx context.Context, r run, latest bool) ([]job, e
 			Jobs  []job `json:"jobs"`
 		}
 		path := fmt.Sprintf("actions/runs/%d/attempts/%d/jobs?per_page=100&page=%d", r.ID, r.Attempt, page)
-		if latest {
-			path = fmt.Sprintf("actions/runs/%d/jobs?filter=latest&per_page=100&page=%d", r.ID, page)
-		}
 		if err := c.api.read(ctx, c.endpoint(path), &list); err != nil {
 			return nil, err
 		}
@@ -823,7 +707,7 @@ func (c *controller) listJobs(ctx context.Context, r run, latest bool) ([]job, e
 			return nil, errors.New("invalid validation job list")
 		}
 		for _, j := range list.Jobs {
-			if j.ID <= 0 || j.RunID != r.ID || j.Attempt <= 0 || j.Attempt > r.Attempt || (!latest && j.Attempt != r.Attempt) || j.Name == "" || seen[j.ID] {
+			if j.ID <= 0 || j.RunID != r.ID || j.Attempt <= 0 || j.Attempt != r.Attempt || j.Name == "" || seen[j.ID] {
 				return nil, errors.New("invalid exact-attempt validation job")
 			}
 			seen[j.ID] = true
@@ -839,27 +723,6 @@ func (c *controller) listJobs(ctx context.Context, r run, latest bool) ([]job, e
 	return nil, errors.New("validation job pagination limit reached")
 }
 
-func (c *controller) reusedVouch(ctx context.Context, r run) (bool, error) {
-	if r.Attempt <= 1 {
-		return false, nil
-	}
-	// A partial rerun can retain successful admission dependencies. Accept only
-	// the vouch GitHub still lists in this run's current execution, never a job
-	// found by searching arbitrary historical attempts. The aggregate remains
-	// exact-attempt and current default-branch admission is checked separately.
-	jobs, err := c.listJobs(ctx, r, true)
-	if err != nil {
-		return false, err
-	}
-	count, successful := 0, false
-	for _, j := range jobs {
-		if j.Name == "vouch" {
-			count++
-			successful = j.Attempt < r.Attempt && j.HeadSHA == r.HeadSHA && j.Status == "completed" && j.Conclusion == "success"
-		}
-	}
-	return count == 1 && successful, nil
-}
 func (c *controller) ownedChecks(ctx context.Context, p pull) (checks []check, err error) {
 	defer func() {
 		if err != nil {
@@ -928,43 +791,10 @@ func (c *controller) listOwnedChecks(ctx context.Context, head string) ([]check,
 }
 
 type snapshot struct {
-	PR        pull
-	Run       *run
-	Collision bool
+	PR  pull
+	Run *run
 }
 
-func (c *controller) snapshot(ctx context.Context, number int) (snapshot, error) {
-	var s snapshot
-	p, err := c.readPR(ctx, number)
-	if err != nil {
-		return s, err
-	}
-	s.PR = p
-	if p.State != "open" {
-		return s, nil
-	}
-	all, err := c.openPRs(ctx)
-	if err != nil {
-		return s, err
-	}
-	found := false
-	for _, other := range all {
-		if other.Number == p.Number {
-			found = true
-			if other.Head != p.Head || other.Base.Ref != p.Base.Ref || other.Base.Repo != p.Base.Repo {
-				return s, &prStateMovement{phase: "collision scan"}
-			}
-		}
-		if other.Number != p.Number && other.Head.SHA == p.Head.SHA {
-			s.Collision = true
-		}
-	}
-	if !found {
-		return s, errors.New("open PR missing from collision scan")
-	}
-	s.Run, err = c.latest(ctx, p)
-	return s, err
-}
 func (s snapshot) binding(repoID int64) binding {
 	b := binding{RepoID: repoID, PR: s.PR.Number, Head: s.PR.Head.SHA, BaseRef: sha256.Sum256([]byte(s.PR.Base.Ref)), Base: s.PR.Base.SHA}
 	if s.Run != nil {
@@ -980,112 +810,6 @@ func pending(summary string) outcome {
 }
 func refused(summary string) outcome {
 	return outcome{Status: "completed", Conclusion: "failure", Title: "PR validation refused", Summary: summary}
-}
-func (c *controller) evaluate(ctx context.Context, s snapshot) (outcome, error) {
-	if s.PR.Base.Ref != c.repo.DefaultBranch {
-		return refused("The full candidate gate only authorizes the current default branch."), nil
-	}
-	policy, err := c.verify(ctx, s.PR.Number, s.PR.Head.SHA)
-	if err != nil {
-		return outcome{}, err
-	}
-	code := policy.Code
-	if code != 0 && code != 1 && code != 75 {
-		return outcome{}, errors.New("invalid one-shot verifier result")
-	}
-	if s.Collision {
-		return refused("Another open PR shares this head. A commit-level check cannot safely authorize distinct PR policy and integration candidates."), nil
-	}
-	if code == 75 {
-		return pending("Trusted policy verification is still pending; validation success alone cannot authorize the merge."), nil
-	}
-	if code == 1 {
-		return refused("The trusted exact-head policy verifier refused this PR. Inspect the controller workflow log for the policy or validation failure."), nil
-	}
-	if s.Run == nil {
-		return pending("No API-associated PR validation run exists yet. The completion callback or scheduled repair will reconcile it."), nil
-	}
-	if !associated(*s.Run, s.PR, true) {
-		return pending("The latest validation run targets a different base revision. Fresh validation of the current integration candidate is required."), nil
-	}
-	r := *s.Run
-	if r.Status != "completed" || r.Conclusion == "action_required" {
-		return pending(fmt.Sprintf("Validation run %d attempt %d is %s. No runner is held waiting for completion.", r.ID, r.Attempt, r.Status)), nil
-	}
-	jobs, err := c.jobs(ctx, r)
-	if err != nil {
-		return outcome{}, err
-	}
-	aggregates, candidates, vouches := 0, 0, 0
-	aggregateOK, candidateOK, candidateSourceOK, vouchOK := false, false, false, false
-	for _, j := range jobs {
-		if j.Name == "validation / ci-required" {
-			aggregates++
-			aggregateOK = j.Status == "completed" && j.Conclusion == "success"
-		}
-		if j.Name == "candidate-proof" {
-			candidates++
-			candidateSourceOK = j.Status == "completed" && j.HeadSHA == r.HeadSHA
-			candidateOK = candidateSourceOK && j.Conclusion == "success"
-		}
-		if j.Name == "vouch" {
-			vouches++
-			vouchOK = j.Status == "completed" && j.Conclusion == "success"
-		}
-	}
-	if aggregates != 1 {
-		return refused("Validation must contain exactly one validation / ci-required aggregate for the current attempt."), nil
-	}
-	if candidates != 1 || !candidateSourceOK {
-		return refused("Validation requires exactly one successful candidate-proof job for this source head and attempt. Earlier selective or head-only runs cannot authorize merge."), nil
-	}
-	// A completed marker from this exact source/attempt can fail because main
-	// moved during validation. Check its immutable integration before deciding
-	// whether that failure belongs to the current candidate. Invalid marker
-	// identity and unreadable provenance still fail closed above and below.
-	proved, err := c.proveIntegration(ctx, r, s.PR)
-	if err != nil {
-		return outcome{}, err
-	}
-	if !proved {
-		return pending("The validation run does not prove the current base/head integration candidate. Fresh validation is required."), nil
-	}
-	if !candidateOK {
-		return refused("Validation requires a successful candidate-proof job for the current integration candidate."), nil
-	}
-	if r.Conclusion != "success" || !aggregateOK {
-		return refused(fmt.Sprintf("Validation run %d attempt %d failed or did not produce a successful aggregate.", r.ID, r.Attempt)), nil
-	}
-	if s.PR.Head.Repo.ID != c.repo.ID {
-		if vouches == 0 {
-			vouchOK, err = c.reusedVouch(ctx, r)
-			if err != nil {
-				return outcome{}, err
-			}
-		} else if vouches != 1 {
-			vouchOK = false
-		}
-		if !vouchOK {
-			return refused("A fork requires exactly one successful author-vouch job in the current attempt or proved reused by GitHub's current execution."), nil
-		}
-	}
-	if s.PR.Head.Repo.ID != c.repo.ID {
-		vouched, err := c.currentVouch(ctx, s.PR)
-		if err != nil {
-			return outcome{}, err
-		}
-		if !vouched {
-			return refused("The fork author is no longer vouched by current default-branch policy or current collaborator permission."), nil
-		}
-	}
-	contract, err := c.proveWorkflowContract(ctx, s.PR, policy.WorkflowChangeAuthorized)
-	if err != nil {
-		return outcome{}, err
-	}
-	if !contract {
-		return refused("Candidate workflow or reusable validation differs from the trusted base without current exact-head workflow-change authority."), nil
-	}
-	return outcome{Status: "completed", Conclusion: "success", Title: "PR validation passed", Summary: fmt.Sprintf("Trusted policy and validation run %d attempt %d passed for PR #%d head %s against %s at %s.", r.ID, r.Attempt, s.PR.Number, s.PR.Head.SHA, s.PR.Base.Ref, s.PR.Base.SHA)}, nil
 }
 
 // Trustdown parsing follows mitchellh/vouch's file.nu and lib.nu at
@@ -1169,107 +893,6 @@ func (c *controller) currentVouch(ctx context.Context, p pull) (bool, error) {
 	}
 	return trustdownVouched(string(contents), login)
 }
-func (c *controller) proveIntegration(ctx context.Context, r run, p pull) (bool, error) {
-	// API PR associations can change after retargets. GitHub records the actual
-	// reusable workflow merge commit. Compare it with GitHub's current merge
-	// candidate. The first parent must be the current base itself: a synthetic
-	// stacked base is not proof of testing the exact current-main candidate.
-	var mergeSHA string
-	count := 0
-	for _, ref := range r.References {
-		parts := strings.Split(ref.Path, "@")
-		if len(parts) != 2 || !strings.EqualFold(parts[0], c.repoName+"/.github/workflows/ci.yml") {
-			continue
-		}
-		count++
-		if ref.Ref != fmt.Sprintf("refs/pull/%d/merge", p.Number) || !shaPattern.MatchString(ref.SHA) || parts[1] != ref.SHA {
-			return false, errors.New("invalid reusable validation workflow source")
-		}
-		mergeSHA = ref.SHA
-	}
-	if count == 0 {
-		return false, nil
-	}
-	if count != 1 {
-		return false, errors.New("ambiguous reusable validation workflow sources")
-	}
-	if p.Mergeable == nil || !*p.Mergeable || !shaPattern.MatchString(p.MergeCommitSHA) || mergeSHA != p.MergeCommitSHA {
-		return false, nil
-	}
-	var commit struct {
-		SHA     string `json:"sha"`
-		Parents []struct {
-			SHA string `json:"sha"`
-		} `json:"parents"`
-	}
-	if err := c.api.read(ctx, c.endpoint("git/commits/"+mergeSHA), &commit); err != nil {
-		return false, err
-	}
-	if commit.SHA != mergeSHA || commit.Parents == nil {
-		return false, errors.New("invalid immutable integration commit")
-	}
-	return len(commit.Parents) == 2 && commit.Parents[0].SHA == p.Base.SHA && commit.Parents[1].SHA == p.Head.SHA, nil
-}
-
-func (c *controller) proveWorkflowContract(ctx context.Context, p pull, authorizedChange bool) (bool, error) {
-	// A forged marker and aggregate are not proof. Normally the immutable
-	// candidate's workflow contract must equal the trusted base byte for byte.
-	// Differences retain the existing exact-head workflow approval/BDFL policy;
-	// they never obtain authority just by producing successful job names.
-	for _, path := range []string{workflowPath, ".github/workflows/ci.yml"} {
-		var versions [][]byte
-		for _, revision := range []string{p.Base.SHA, p.MergeCommitSHA} {
-			var file struct {
-				Type     string `json:"type"`
-				Path     string `json:"path"`
-				Encoding string `json:"encoding"`
-				Content  string `json:"content"`
-			}
-			if err := c.api.read(ctx, c.endpoint("contents/"+path+"?ref="+revision), &file); err != nil {
-				return false, err
-			}
-			if file.Type != "file" || file.Path != path || file.Encoding != "base64" {
-				return false, errors.New("invalid immutable workflow contract response")
-			}
-			data, err := base64.StdEncoding.DecodeString(file.Content)
-			if err != nil || len(data) == 0 {
-				return false, errors.New("invalid immutable workflow contract bytes")
-			}
-			versions = append(versions, data)
-		}
-		if !bytes.Equal(versions[0], versions[1]) && !authorizedChange {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-func sameSnapshot(a, b snapshot, repoID int64) bool {
-	if a.PR.State != b.PR.State || a.PR.Head != b.PR.Head || a.PR.Base != b.PR.Base || a.PR.MergeCommitSHA != b.PR.MergeCommitSHA || a.Collision != b.Collision || a.binding(repoID) != b.binding(repoID) {
-		return false
-	}
-	if a.Run == nil {
-		return b.Run == nil
-	}
-	return b.Run != nil && a.Run.Status == b.Run.Status && a.Run.Conclusion == b.Run.Conclusion && associated(*b.Run, b.PR, true) == associated(*a.Run, a.PR, true)
-}
-
-// prStateMovement identifies only observed authenticated metadata movement.
-// API, malformed identity and immutable proof failures never use this type.
-type prStateMovement struct{ phase string }
-
-func (e *prStateMovement) Error() string { return "PR state changed during " + e.phase }
-
-func (c *controller) reconcile(ctx context.Context, number int, callback *run) error {
-	err := c.reconcileCurrent(ctx, number, callback)
-	var moved *prStateMovement
-	if !errors.As(err, &moved) {
-		return err
-	}
-	// Recover once, without evaluating success or retrying a mutable proof. An
-	// expected transition is operationally healthy only after current PR policy
-	// is blocked; publication/listing failures still fail the controller.
-	return c.blockMovement(ctx, number, moved.phase)
-}
 
 func (c *controller) blockMovement(ctx context.Context, number int, phase string) error {
 	p, err := c.readPRMetadata(ctx, number)
@@ -1310,225 +933,19 @@ func (c *controller) blockMovement(ctx context.Context, number int, phase string
 	return err
 }
 
-func (c *controller) reconcileCurrent(ctx context.Context, number int, callback *run) error {
-	// Revoke our prior success before querying mutable source/policy APIs. If
-	// those later reads fail, an earlier result must not keep authorizing merge.
-	if err := c.invalidateSuccess(ctx, number); err != nil {
-		return err
-	}
-	s, err := c.snapshot(ctx, number)
-	if err != nil {
-		return err
-	}
-	if s.PR.State != "open" {
-		return nil
-	}
-	if callback != nil && (s.Run == nil || s.Run.ID != callback.ID || s.Run.Attempt != callback.Attempt || s.PR.Head.SHA != callback.HeadSHA) {
-		own, err := c.ownedChecks(ctx, s.PR)
-		if err != nil {
-			return err
-		}
-		if len(own) > 0 {
-			return c.reconcileCurrent(ctx, number, nil)
-		}
-		return nil
-	}
-	own, err := c.ownedChecks(ctx, s.PR)
-	if err != nil {
-		return err
-	}
-	result, err := c.evaluate(ctx, s)
-	if err != nil {
-		return err
-	}
-	// Repeat authorization just before publication, including current maintainer
-	// approval. Both reads and checks are intentionally bounded; this gate has
-	// no read retries (those are queue-only) and never sleeps.
-	var finalPolicy policyDecision
-	if result.Conclusion == "success" {
-		decision, err := c.verify(ctx, number, s.PR.Head.SHA)
-		if err != nil {
-			return err
-		}
-		finalPolicy = decision
-		switch decision.Code {
-		case 0:
-		case 1:
-			result = refused("Trusted policy was refused during the final authorization check.")
-		case 75:
-			result = pending("Trusted policy is pending during the final authorization check.")
-		default:
-			return errors.New("invalid final one-shot verifier result")
-		}
-		if result.Conclusion == "success" && s.PR.Head.Repo.ID != c.repo.ID {
-			vouched, err := c.currentVouch(ctx, s.PR)
-			if err != nil {
-				return err
-			}
-			if !vouched {
-				result = refused("Fork author admission was revoked before publication.")
-			}
-		}
-	}
-	final, err := c.snapshot(ctx, number)
-	if err != nil {
-		return err
-	}
-	if !sameSnapshot(s, final, c.repo.ID) {
-		return &prStateMovement{phase: "final publication"}
-	}
-	if result.Conclusion == "success" {
-		proved, err := c.proveIntegration(ctx, *final.Run, final.PR)
-		if err != nil {
-			return err
-		}
-		if !proved {
-			return errors.New("integration candidate changed before success publication")
-		}
-		contract, err := c.proveWorkflowContract(ctx, final.PR, finalPolicy.WorkflowChangeAuthorized)
-		if err != nil {
-			return err
-		}
-		if !contract {
-			return errors.New("workflow contract authority changed before success publication")
-		}
-	}
-	own, err = c.ownedChecks(ctx, final.PR)
-	if err != nil {
-		return err
-	}
-	var selected *check
-	currentBinding := final.binding(c.repo.ID)
-	for _, v := range own {
-		prior, decodeErr := decodeBinding(v.ExternalID)
-		if decodeErr == nil && prior.PR == currentBinding.PR && knownNewerLegacySource(prior, currentBinding) {
-			return errors.New("owned observation proves a newer source generation than the final source snapshot")
-		}
-		if selected == nil || v.ID > selected.ID {
-			copy := v
-			selected = &copy
-		}
-	}
-	externalID := final.binding(c.repo.ID).externalID()
-	if selected != nil && selected.ExternalID == externalID && selected.Status == result.Status && selected.Conclusion == result.Conclusion && selected.Output.Summary == result.Summary {
-		return nil
-	}
-	return c.publish(ctx, final.PR, final.binding(c.repo.ID), selected, result)
-}
 func (c *controller) publish(ctx context.Context, p pull, b binding, selected *check, result outcome) error {
-	if c.checkName == queueCheckName || c.checkName == devCheckName {
-		session := c.reconciliation
-		if session == nil {
-			// The independently bounded admission refusal may publish outside
-			// a normal pass, using the same immutable publication protocol.
-			session = &queueReconciliation{q: &queueController{controller: c}}
-		}
-		return session.publishVerified(ctx, p, b, selected, result)
+	if c.checkName != queueCheckName && c.checkName != devCheckName {
+		return errors.New("only the queue and dev contexts can publish; the legacy context is retirement-only")
 	}
-	if err := ctx.Err(); err != nil {
-		return err
+	session := c.reconciliation
+	if session == nil {
+		// The independently bounded admission refusal may publish outside
+		// a normal pass, using the same immutable publication protocol.
+		session = &queueReconciliation{q: &queueController{controller: c}}
 	}
-	if !shaPattern.MatchString(b.Head) || !shaPattern.MatchString(b.Base) {
-		return errors.New("refuse invalid publication binding")
-	}
-	externalID := b.externalID()
-	decoded, err := decodeBinding(externalID)
-	if err != nil {
-		return fmt.Errorf("refuse invalid publication binding: %w", err)
-	}
-	if decoded != b {
-		return errors.New("refuse invalid publication binding")
-	}
-	if selected != nil {
-		old, oldErr := decodeBinding(selected.ExternalID)
-		sameIdentity := oldErr == nil && c.authenticatedQueueCheck(selected, b.Head) && old.RepoID == b.RepoID && old.PR == b.PR && old.Head == b.Head
-		if sameIdentity && knownNewerLegacySource(old, b) {
-			return errors.New("legacy publication cannot replace a known newer source generation")
-		}
-		// The pre-ref-read barrier carries PR metadata, whose base SHA can be
-		// stale. An unbound barrier can acquire its first proved binding, but
-		// a bound observation retains its original run/attempt provenance.
-		placeholder := sameIdentity && selected.Status != "completed" && blockingQueueCheck(selected) && old.Run == 0 && old.BaseRef == b.BaseRef
-		if selected.Status == "completed" || !sameIdentity {
-			selected = nil
-		} else if !blockingQueueCheck(selected) {
-			return errors.New("legacy publication requires an authenticated nonterminal observation")
-		} else if selected.ExternalID != externalID && !placeholder {
-			// Complete the superseded generation before creating its successor.
-			// Otherwise a later terminal rollup can hide this unfinished record
-			// permanently when a close/synchronize callback is missed.
-			if err := c.supersedeLegacyObservation(ctx, old, *selected); err != nil {
-				return err
-			}
-			selected = nil
-		}
-	}
-	payload, err := c.checkPayload(b, result)
-	if err != nil {
-		return err
-	}
-	method, path := "POST", c.endpoint("check-runs")
-	if selected != nil {
-		method, path = "PATCH", c.endpoint(fmt.Sprintf("check-runs/%d", selected.ID))
-	} else {
-		payload["head_sha"] = p.Head.SHA
-	}
-	if c.dryRun {
-		_, err := fmt.Fprintf(c.output, "DRY RUN PR #%d: %s %s (%s), %s\n", p.Number, c.checkName, result.Status, result.Conclusion, result.Summary)
-		return err
-	}
-	var written check
-	if err := c.api.write(ctx, method, path, payload, &written); err != nil {
-		return err
-	}
-	if written.ID <= 0 || written.App.ID != actionsAppID || written.App.Slug != "github-actions" || written.ExternalID != externalID || written.HeadSHA != p.Head.SHA || written.Name != c.checkName || written.Status != result.Status || written.Conclusion != result.Conclusion || selected != nil && written.ID != selected.ID {
-		return errors.New("GitHub returned an unexpected check identity/result; no mutation retry attempted")
-	}
-	return nil
+	return session.publishVerified(ctx, p, b, selected, result)
 }
 
-// latest already orders independent validation runs by ID. An existing owned
-// binding can reveal a later run/attempt than lagging source API snapshots.
-// Run0 carries no source authority and may only establish a pending barrier.
-func knownNewerLegacySource(prior, current binding) bool {
-	return prior.RepoID == current.RepoID && prior.Head == current.Head && prior.BaseRef == current.BaseRef && prior.Run > 0 && current.Run > 0 && (prior.Run > current.Run || prior.Run == current.Run && prior.Attempt > current.Attempt)
-}
-
-func (c *controller) supersedeLegacyObservation(ctx context.Context, b binding, selected check) error {
-	if c.dryRun {
-		return nil
-	}
-	path := c.endpoint(fmt.Sprintf("check-runs/%d", selected.ID))
-	var current check
-	if err := c.api.read(ctx, path, &current); err != nil {
-		return err
-	}
-	if current != selected {
-		return errors.New("superseded observation changed before retirement; no mutation attempted")
-	}
-	result := outcome{Status: "completed", Conclusion: "cancelled", Title: "Superseded observation", Summary: "A new source binding supersedes this unfinished observation. Retiring its original generation without granting validation proof."}
-	payload, err := c.checkPayload(b, result)
-	if err != nil {
-		return err
-	}
-	payload["external_id"] = selected.ExternalID
-	delete(payload, "details_url")
-	var written check
-	if err := c.api.write(ctx, "PATCH", path, payload, &written); err != nil {
-		return err // Never retry an uncertain mutation or create its successor.
-	}
-	if !c.authenticatedQueueCheck(&written, b.Head) || written.ID != selected.ID || written.ExternalID != selected.ExternalID || written.Status != "completed" || written.Conclusion != "cancelled" {
-		return errors.New("superseded observation retirement returned an unexpected identity/result")
-	}
-	var fresh check
-	if err := c.api.read(ctx, path, &fresh); err != nil {
-		return err
-	}
-	if fresh != written {
-		return errors.New("superseded observation retirement readback disagrees")
-	}
-	return nil
-}
 func (c *controller) refuseCheckIdentity(ctx context.Context, p pull, err error) error {
 	// A native same-name check can hide an older owned success. Listing or
 	// identity refusal must still leave a fresh owned pending barrier; never
@@ -1551,205 +968,8 @@ func (c *controller) refuseCheckIdentity(ctx context.Context, p pull, err error)
 	}
 	return err
 }
-func (c *controller) invalidateSuccess(ctx context.Context, number int) error {
-	p, err := c.readPRMetadata(ctx, number)
-	if err != nil {
-		return err
-	}
-	if p.State != "open" {
-		return nil
-	}
-	own, err := c.ownedChecks(ctx, p)
-	if err != nil {
-		return err
-	}
-	var latest *check
-	for _, v := range own {
-		if latest == nil || v.ID > latest.ID {
-			copy := v
-			latest = &copy
-		}
-	}
-	if latest == nil || strings.HasPrefix(latest.ExternalID, legacyExternalPrefix) || (latest.Status == "completed" && latest.Conclusion == "success") {
-		current, err := c.readPRMetadata(ctx, number)
-		if err != nil {
-			return err
-		}
-		if current.State != "open" || current.Head != p.Head || current.Base != p.Base {
-			return &prStateMovement{phase: "initial pending barrier"}
-		}
-		b := (snapshot{PR: p}).binding(c.repo.ID)
-		if err := c.publish(ctx, p, b, latest, pending("Rechecking current policy, validation attempt and integration candidate.")); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 func sameSourceEvent(a, b run) bool {
 	return a.ID == b.ID && a.Attempt == b.Attempt && a.WorkflowID == b.WorkflowID && a.Path == b.Path && a.Event == b.Event && a.HeadSHA == b.HeadSHA && a.Repository.ID == b.Repository.ID && a.HeadRepository.ID == b.HeadRepository.ID
-}
-func (c *controller) execute(ctx context.Context, eventName string, e event) (err error) {
-	if err := c.init(ctx); err != nil {
-		return err
-	}
-	if e.Repository.ID != c.repo.ID || !strings.EqualFold(e.Repository.FullName, c.repoName) {
-		return errors.New("event repository identity mismatch")
-	}
-	// Reuse this observer's existing global writer lease and setup. Retirement
-	// follows current-head publication so old-head maintenance cannot delay it.
-	if eventName == "pull_request_target" && c.checkName == "ci-required-next" && (e.Action == "synchronize" || e.Action == "closed") {
-		head, routeErr := retirementHead(eventName, e)
-		if routeErr != nil {
-			return routeErr
-		}
-		defer func() { err = errors.Join(err, c.retireChecks(ctx, head)) }()
-	}
-	switch eventName {
-	case "pull_request_target":
-		if e.Number <= 0 || e.Pull.Number != e.Number {
-			return errors.New("invalid pull_request_target event")
-		}
-		p, err := c.readPRMetadata(ctx, e.Number)
-		if err != nil {
-			return err
-		}
-		if p.Head.SHA != e.Pull.Head.SHA || p.Base.Ref != e.Pull.Base.Ref || p.Head.Repo.ID != e.Pull.Head.Repo.ID || p.Base.Repo.ID != e.Pull.Base.Repo.ID {
-			return nil
-		}
-		return c.reconcile(ctx, e.Number, nil)
-	case "workflow_dispatch":
-		number, err := strconv.Atoi(e.Inputs.PR)
-		if err != nil || number <= 0 {
-			return errors.New("workflow_dispatch requires inputs.pr_number")
-		}
-		return c.reconcile(ctx, number, nil)
-	case "workflow_run":
-		if !c.validRun(e.Run) {
-			return errors.New("invalid callback source metadata")
-		}
-		if strings.HasPrefix(e.Run.DisplayTitle, "pr-metadata #") {
-			return nil
-		}
-		// Event associations are hints for revocation only. They never authorize
-		// success; the live source and current PR are checked below.
-		hints := e.Run.Pulls
-		if len(hints) == 0 {
-			all, err := c.openPRs(ctx)
-			if err != nil {
-				return err
-			}
-			for _, p := range all {
-				if p.Head.SHA == e.Run.HeadSHA && p.Head.Repo.ID == e.Run.HeadRepository.ID {
-					hints = append(hints, p)
-				}
-			}
-		}
-		for _, a := range hints {
-			if a.Number <= 0 {
-				return errors.New("invalid callback PR hint")
-			}
-			p, err := c.readPRMetadata(ctx, a.Number)
-			if err != nil {
-				return err
-			}
-			if p.Head.SHA != e.Run.HeadSHA || p.Head.Repo.ID != e.Run.HeadRepository.ID {
-				continue
-			}
-			if err := c.invalidateSuccess(ctx, a.Number); err != nil {
-				return err
-			}
-		}
-		var live run
-		if err := c.api.read(ctx, c.endpoint(fmt.Sprintf("actions/runs/%d", e.Run.ID)), &live); err != nil {
-			return err
-		}
-		if !c.validRun(live) {
-			return errors.New("invalid live callback source")
-		}
-		if live.Attempt != e.Run.Attempt {
-			return c.repairHints(ctx, hints)
-		}
-		if !sameSourceEvent(e.Run, live) {
-			return errors.New("callback differs from live source identity")
-		}
-		if len(live.Pulls) == 0 {
-			// Routing by head alone authorizes only reevaluation. A terminal pass
-			// still needs associated's immutable reusable merge-ref fallback.
-			for _, p := range hints {
-				if err := c.reconcile(ctx, p.Number, nil); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		seen := make(map[int]bool)
-		for _, a := range live.Pulls {
-			if a.Number <= 0 || seen[a.Number] {
-				return errors.New("invalid or ambiguous callback PR association")
-			}
-			seen[a.Number] = true
-			p, err := c.readPRMetadata(ctx, a.Number)
-			if err != nil {
-				return err
-			}
-			if p.State != "open" || p.Head.SHA != live.HeadSHA {
-				if err := c.repairHints(ctx, []pull{a}); err != nil {
-					return err
-				}
-				continue
-			}
-			if !associated(live, p, true) || live.HeadRepository.ID != p.Head.Repo.ID {
-				if err := c.repairHints(ctx, []pull{a}); err != nil {
-					return err
-				}
-				continue
-			}
-			if err := c.reconcile(ctx, a.Number, &live); err != nil {
-				return err
-			}
-		}
-		return nil
-	case "schedule", "push":
-		if eventName == "push" && e.Ref != "refs/heads/"+c.repo.DefaultBranch {
-			return nil
-		}
-		pulls, err := c.openPRs(ctx)
-		if err != nil {
-			return err
-		}
-		var failures []error
-		// Repair existing terminal checks too: a missed rerun/retarget event must
-		// not leave an earlier success authorizing a newer integration candidate.
-		for _, p := range pulls {
-			if err := c.reconcile(ctx, p.Number, nil); err != nil {
-				failures = append(failures, fmt.Errorf("PR #%d: %w", p.Number, err))
-			}
-		}
-		return errors.Join(failures...)
-	default:
-		return errors.New("unsupported trusted controller event")
-	}
-}
-func (c *controller) repairHints(ctx context.Context, hints []pull) error {
-	for _, hint := range hints {
-		p, err := c.readPRMetadata(ctx, hint.Number)
-		if err != nil {
-			return err
-		}
-		if p.State != "open" {
-			continue
-		}
-		own, err := c.ownedChecks(ctx, p)
-		if err != nil {
-			return err
-		}
-		if len(own) > 0 {
-			if err := c.reconcile(ctx, p.Number, nil); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 func main() {
 	discoverRetirement := flag.Bool("discover-retirements", false, "discover complete bounded main-history retirement targets without writing checks")
@@ -1814,6 +1034,7 @@ func main() {
 	}
 	checkName := os.Getenv("PR_GATE_CHECK_NAME")
 	if checkName == "" {
+		// Read-only retirement discovery sets no context; the name only passes validation.
 		checkName = "ci-required-next"
 	}
 	if *queueMode {
@@ -1860,13 +1081,7 @@ func main() {
 				}
 			}
 		} else {
-			if checkName == queueCheckName {
-				err = errors.New("queue context requires --queue")
-			} else if checkName == devCheckName {
-				err = errors.New("dev context requires --dev")
-			} else {
-				err = c.execute(context.Background(), os.Getenv("GITHUB_EVENT_NAME"), e)
-			}
+			err = errors.New("pr-gate requires --queue, --dev, --retire-checks or --discover-retirements")
 		}
 	}
 	if err != nil {
