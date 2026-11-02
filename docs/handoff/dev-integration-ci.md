@@ -115,6 +115,17 @@ budget on a backmerge touching many CI definitions, and source proof's job inven
 against a real `ci-dev` run. If creating `dev` fails during activation, stop and
 report it. The helper's checks leave main untouched.
 
+## Blocker before the v2 trust switch
+
+Do not install the v2 nightly policy until this is resolved. Under v2,
+`nightly.yml` checks out dev source inside a run on main, and any code in that run
+can write main-scoped Actions caches. Dev merges without a full run first, so a bad
+dev commit could poison caches that the queue and release builds later restore.
+CodeQL reports this as `actions/cache-poisoning/poisonable-step` on `nightly.yml`.
+Under v1 the source is main's own commit, so the path is not exercised. Build dev
+source in a run scoped to the dev ref, then hand the verified artifacts to the main
+publisher.
+
 ## Recovery and maintenance
 
 Keep main as default and keep its mandatory queue. CI/publisher definitions land
