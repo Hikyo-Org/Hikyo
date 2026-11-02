@@ -95,7 +95,7 @@ stuck_reason() {
 	none/* | queued/* | in_progress/* | completed/success) ;;
 	*) reason="the ci-queue-required check is $state" ;;
 	esac
-	if [ -z "$reason" ] && [ "$3" = true ] && [ $((now - $2)) -gt "$max_age" ]; then
+	if [ -z "$reason" ] && [ $((now - $2)) -gt "$max_age" ]; then
 		reason="it has not landed after more than $((max_age / 3600)) hours"
 	fi
 }
@@ -129,7 +129,7 @@ while IFS=$tab read -r number head ref armed created; do
 		continue
 	fi
 	# Replacing a promotion that could not land must not hide why main stopped moving.
-	stuck_reason "$head" "$created" true
+	stuck_reason "$head" "$created"
 	[ -z "$reason" ] || { report_stuck "$number"; stuck=true; }
 	write api -X POST "repos/$GH_REPO/issues/$number/comments" \
 		-f "body=A newer green dev commit exists, so nightly-promote.yml replaces this promotion." >/dev/null
@@ -142,16 +142,14 @@ done <<EOF
 $open
 EOF
 
-# A transient queue failure disarms the PR, so arm it again, and give that retry
-# its chance before judging the PR's age.
+# A transient queue failure disarms the PR, so arm it again. An old PR still reports,
+# so a promotion that fails every night cannot stay green while main stops moving.
 if [ -n "$same" ]; then
-	check_age=true
 	if [ "$same_armed" != true ]; then
 		arm "$same"
 		note "nightly-promote: queued promotion #$same again for $commit."
-		check_age=false
 	fi
-	stuck_reason "$commit" "$same_created" "$check_age"
+	stuck_reason "$commit" "$same_created"
 	[ -z "$reason" ] || { report_stuck "$same"; stuck=true; }
 	[ "$stuck" = false ] || exit 1
 	note "nightly-promote: promotion #$same already carries $commit and is queued."

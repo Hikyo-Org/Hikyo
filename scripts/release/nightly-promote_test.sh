@@ -278,12 +278,13 @@ export PULLS
 run
 [ "$status" -ne 0 ] || fail 'an old promotion with no check stayed green'
 
-# A retry just armed gets its chance, whatever the PR's age.
+# A retry is armed, but a promotion failing night after night must still report.
 reset
 PULLS=$(pull 41 "$dev" "$branch" null O/R "$hours4")
-CHECKS=$(check in_progress null 'Admission pending' 'Waiting')
+CHECKS=$(check completed '"success"' 'Ready' 'Admitted')
 export PULLS CHECKS
-expect_ok 'an old promotion armed again'
+run
+[ "$status" -ne 0 ] || fail 'an old promotion armed again stayed green'
 expect_calls 'an old promotion armed again' "$rearm"
 
 # Replacing a promotion that could not land still fails the run, after replacing it.
