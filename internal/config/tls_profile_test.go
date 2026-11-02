@@ -100,3 +100,21 @@ func TestBootstrapEnvironmentIsSeedOnlyAndManagedValueWins(t *testing.T) {
 		t.Fatalf("managed compat must win over bootstrap strict: %v %q", err, adopted.TLSProfile)
 	}
 }
+
+// The owner value being applied decides, not the stale bootstrap profile in
+// base, so one Apply can downgrade strict to compat and drop the certificate.
+func TestNodeDocumentWithoutCertificateFollowsTheAppliedOwnerProfile(t *testing.T) {
+	base, _, err := LoadBootstrap("server", []string{"--dev"}, env("HIKYO_TLS_PROFILE", "strict"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := base.ManagedOwnerValues()
+	owner["HIKYO_TLS_PROFILE"] = "compat"
+	if _, err := ApplyManagedOwnerAndNodeValues(base, owner, managedNodeTestValues()); err != nil {
+		t.Fatalf("a downgrade to compat in one Apply must not be refused by a stale bootstrap profile: %v", err)
+	}
+	owner["HIKYO_TLS_PROFILE"] = "strict"
+	if _, err := ApplyManagedOwnerAndNodeValues(base, owner, managedNodeTestValues()); err == nil || !strings.Contains(err.Error(), strictTLSNoCertMessage) {
+		t.Fatalf("strict with a node document that has no certificate must be refused: %v", err)
+	}
+}

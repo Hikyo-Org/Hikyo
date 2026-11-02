@@ -195,15 +195,20 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 		t.Fatal(err)
 	}
 	values := map[string]string{"HIKYO_REAUTH_WINDOW_SECONDS": "0", "HIKYO_MAIL_PASSWORD": "  preserve\nbytes  ", "HIKYO_MCP_ENABLED": "false"}
-	if scenario == "old-pairing-catalogue" || scenario == "existing-pairing-pin" {
+	if scenario == "old-pairing-catalogue" || scenario == "existing-pairing-pin" || scenario == "old-tls-profile-catalogue" {
 		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
 		values["HIKYO_SECOND_FACTOR"] = "optional"
 		values["HIKYO_MAX_KEYS_PER_PROJECT"] = "10000"
 		values["HIKYO_DEFAULT_KEYS_PER_PROJECT"] = "1000"
 		if scenario == "existing-pairing-pin" {
 			values["HIKYO_PAIRING_SPKI_PIN"] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+			values["HIKYO_TLS_PROFILE"] = "compat"
 		}
-		if _, err := s.conn.ExecContext(ctx, "UPDATE self_config_binding SET migration_version=4"); err != nil {
+		version := 4
+		if scenario == "old-tls-profile-catalogue" {
+			version = 5
+		}
+		if _, err := s.conn.ExecContext(ctx, "UPDATE self_config_binding SET migration_version=$1", version); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -214,7 +219,16 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 			t.Fatal(err)
 		}
 	}
+	if scenario == "existing-strict-profile" {
+		// An operator-chosen strict profile is a stored value and must survive.
+		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
+		values["HIKYO_SECOND_FACTOR"] = "optional"
+		values["HIKYO_MAX_KEYS_PER_PROJECT"] = "10000"
+		values["HIKYO_DEFAULT_KEYS_PER_PROJECT"] = "1000"
+		values["HIKYO_TLS_PROFILE"] = "strict"
+	}
 	if scenario == "existing-true" {
+		values["HIKYO_TLS_PROFILE"] = "compat"
 		values["HIKYO_MCP_ENABLED"] = "true"
 		values["HIKYO_MCP_WRITE_ENABLED"] = "true"
 		values["HIKYO_SECOND_FACTOR"] = "optional"
@@ -222,6 +236,7 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 		values["HIKYO_DEFAULT_KEYS_PER_PROJECT"] = "1000"
 	}
 	if scenario == "existing-false" {
+		values["HIKYO_TLS_PROFILE"] = "compat"
 		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
 		values["HIKYO_SECOND_FACTOR"] = "optional"
 		values["HIKYO_MAX_KEYS_PER_PROJECT"] = "2500"
@@ -234,10 +249,13 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 		if key.Name == "HIKYO_PAIRING_SPKI_PIN" && scenario == "old-pairing-catalogue" {
 			continue
 		}
+		if key.Name == "HIKYO_TLS_PROFILE" && scenario == "old-tls-profile-catalogue" {
+			continue
+		}
 		if (key.Name == "HIKYO_MAX_KEYS_PER_PROJECT" || key.Name == "HIKYO_DEFAULT_KEYS_PER_PROJECT") && scenario == "old-key-limit-catalogue" {
 			continue
 		}
-		if key.Name == "HIKYO_MCP_WRITE_ENABLED" && scenario != "missing-value" && scenario != "existing-true" && scenario != "existing-false" && scenario != "old-key-limit-catalogue" && scenario != "old-pairing-catalogue" && scenario != "existing-pairing-pin" {
+		if key.Name == "HIKYO_MCP_WRITE_ENABLED" && scenario != "missing-value" && scenario != "existing-true" && scenario != "existing-false" && scenario != "old-key-limit-catalogue" && scenario != "old-pairing-catalogue" && scenario != "existing-pairing-pin" && scenario != "old-tls-profile-catalogue" && scenario != "existing-strict-profile" {
 			continue
 		}
 		if _, err := s.conn.ExecContext(ctx, "INSERT INTO keys(id,org_id,project_id,name,folder_path,classification,description,deprecated,deprecation_note,declaration,required_mode,forbidden_mode,created_at) VALUES($1,'org','project',$1,'',$2,'',FALSE,'',$3,'none','none','2026-09-19T00:00:00Z')", key.Name, key.Classification, key.Declaration); err != nil {
@@ -268,7 +286,7 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 }
 
 func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
-	for _, scenario := range []string{"old-catalogue", "old-key-limit-catalogue", "old-pairing-catalogue", "missing-value", "existing-true", "existing-false", "existing-pairing-pin", "invalid-value", "catalogue-drift", "foreign-owner", "rollback", "stale-generation", "suspended", "restored", "retiring-only"} {
+	for _, scenario := range []string{"old-catalogue", "old-key-limit-catalogue", "old-pairing-catalogue", "old-tls-profile-catalogue", "missing-value", "existing-true", "existing-false", "existing-pairing-pin", "existing-strict-profile", "invalid-value", "catalogue-drift", "foreign-owner", "rollback", "stale-generation", "suspended", "restored", "retiring-only"} {
 		t.Run(scenario, func(t *testing.T) {
 			both(t, func(t *testing.T, cfg Config) {
 				err := WithLock(t.Context(), cfg, func(s *Session) error {
@@ -362,6 +380,10 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if _, ok := want["HIKYO_DEFAULT_KEYS_PER_PROJECT"]; !ok {
 						want["HIKYO_DEFAULT_KEYS_PER_PROJECT"] = "1000"
 					}
+					if _, ok := want["HIKYO_TLS_PROFILE"]; !ok {
+						// #1127: an upgraded instance records the explicit compatible profile.
+						want["HIKYO_TLS_PROFILE"] = "compat"
+					}
 					if !reflect.DeepEqual(got, want) {
 						return errors.New("operator values changed")
 					}
@@ -369,7 +391,7 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if err := s.conn.QueryRowContext(ctx, "SELECT generation,desired_revision,migration_version FROM self_config_binding").Scan(&generation, &revision, &version); err != nil {
 						return err
 					}
-					changed := scenario != "existing-true" && scenario != "existing-false" && scenario != "existing-pairing-pin"
+					changed := scenario != "existing-true" && scenario != "existing-false" && scenario != "existing-pairing-pin" && scenario != "existing-strict-profile"
 					wantRevision := 1
 					if changed {
 						wantRevision = 2
@@ -388,7 +410,7 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if scenario == "old-key-limit-catalogue" {
 						expectedSchema = 28
 					}
-					if scenario == "old-pairing-catalogue" {
+					if scenario == "old-pairing-catalogue" || scenario == "old-tls-profile-catalogue" {
 						expectedSchema = 28
 					}
 					if schemaRevision != expectedSchema {
