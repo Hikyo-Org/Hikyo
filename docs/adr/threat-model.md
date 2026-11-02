@@ -1,5 +1,7 @@
 # Hikyo threat model (ADR, locked 2026-07-29)
 
+> **Owner-locked declared amendment (2026-11-02, [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), decisions in the [post-quantum migration ADR](./post-quantum-migration.md#decision-register); originating ticket [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) reopened; operative when the [#1126](https://github.com/Hikyo-Org/Hikyo/issues/1126) and [#1127](https://github.com/Hikyo-Org/Hikyo/issues/1127) implementations, each for its own boundary, merge; cross-provider review SKIPPED by explicit owner instruction, not CLEAN; independent adversarial review is recorded on the amendment PR):** adds a defended attacker class: a recording adversary with a future quantum computer, for the surfaces and horizons of the confidentiality profile, on boundary 2 (strict-selected hops only) and boundary 5 (strict-selected backups only, once the strict backup HOLD in the migration policy clears). The claim does not extend to anything in the exception register, to anything at the compatibility profile, or to material already recorded, and re-encrypting retained material cannot revoke attacker-held copies. Hybrid key exchange gives no post-quantum authentication. The future quantum forger class is not added here; it lands with the authenticity children.
+>
 > **Declared amendment (2026-10-20, manual remote pairing, owner decision locked;
 > cross-provider review waived for PR #1014 only; operative when that PR merges):**
 > invitation creation adds the instance's configured public HTTPS origin as an

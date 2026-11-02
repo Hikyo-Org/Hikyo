@@ -70,7 +70,7 @@ file key. Consequences, stated for the owning child (#1126), not designed here:
   root must stay in separate domains.
 
 DEC-12 records the options; the "fields keep 256-bit protection" statement does
-not apply to this record, or to any field while a copy holding the current root
+not apply to this record, or to any field while a copy holding a root that opens it
 exists, because its `root_escrow` opens the whole hierarchy.
 
 ## Mixed paths and archive provenance

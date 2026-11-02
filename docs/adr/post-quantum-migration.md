@@ -82,7 +82,7 @@ linked documents.
 | DEC-01 | Allowed KEM sets ([profiles](../security/pqc/profiles.md#candidate-parameter-sets)) | (a) hybrid X25519 + ML-KEM-768 only; (b) also ML-KEM-1024 hybrids for TLS; (c) pure ML-KEM | (a) | NIST's default ML-KEM-768 (category 3) and existing library paths; (c) drops the classical hedge and has no age path |
 | DEC-02 | Allowed signature sets | (a) ML-DSA-65 only; (b) 65 default, 87 for roots; (c) include ML-DSA-44; (d) SLH-DSA | (a); revisit (b) at DEC-14 | ML-DSA-44 is category 2; SLH-DSA is not in the Go standard library. Pure ML-DSA with context, no pre-hash |
 | DEC-03 | Composition and stripping ([profiles](../security/pqc/profiles.md#signature-composition-and-stripping-resistance-dec-03)) | (a) all required signatures verify, required set from verifier trust state, suite-bound bytes; (b) PQ-only for new surfaces; (c) either signature suffices; (d) composite | (a) in the dual window, (b) as end state; (c) rejected | (c) gives no PQ forgery resistance; (d) has no stdlib support |
-| DEC-04 | Symmetric hierarchy and category-1 floor ([profiles](../security/pqc/profiles.md#symmetric-floor-and-assumptions)) | (a) retain it and declare a category-1 floor on the named objects (age file keys, `operator.age`, TLS 1.3 records); (b) patch or fork age; (c) add a 256-bit layer around archives | (a) | Archive payload and metadata, webhook payloads, the custody record holding root escrow and TLS records are 128-bit strength; fields keep 256-bit only while no `operator.age` copy holds the current root, because a `root_escrow` opens the whole hierarchy. (b) is a custom primitive change excluded by #1123 |
+| DEC-04 | Symmetric hierarchy and category-1 floor ([profiles](../security/pqc/profiles.md#symmetric-floor-and-assumptions)) | (a) retain it and declare a category-1 floor on the named objects (age file keys, `operator.age`, TLS 1.3 records); (b) patch or fork age; (c) add a 256-bit layer around archives | (a) | Archive payload and metadata, webhook payloads, the custody record holding root escrow and TLS records are 128-bit strength; fields keep 256-bit only while no `operator.age` copy holds a root that opens them, because a `root_escrow` opens the whole hierarchy. (b) is a custom primitive change excluded by #1123 |
 | DEC-05 | Profile structure and default | (a) two opt-in modes, existing behavior unchanged; (b) hybrid writes by default once qualified; (c) strict default | (a) now; reconsider (b) after #1135 | No silent change for existing installs |
 | DEC-06 | Strict TLS profile and hop scope | (a) TLS 1.3, explicit `[X25519MLKEM768]`, tickets off, `VerifyConnection` for authenticity; (b) also other Go hybrids; (c) Go defaults. Scope: the single [hop table](../security/pqc/profiles.md#hop-starting-profiles); strict first only on the listener and owned clients; pin-based hops excluded from authenticity | (a) with that table | (c) rejected: `GODEBUG` can remove defaults. Go has no signature-scheme setting. Every hop has one starting profile. The listener presents a chain and verifies no client chain. A strict ML-DSA listener certificate may exclude clients (E-18); pin-based owned clients get no authenticity claim (E-20) |
 | DEC-07 | Encodings, fingerprints, domain separation, identifiers | (a) new algorithm-bearing namespaces and labels; (b) reuse existing; (c) per child | (a) | (b) would reinterpret `age-x25519-sha256:`; (c) lets each child invent policy |
@@ -102,7 +102,9 @@ linked documents.
 
 ## Proposed amendments to locked ADRs
 
-Proposed text only, copied into the named ADR when its ticket is reopened. Common review sentence: "Independent adversarial review is
+Proposed text only, copied into the named ADR when its ticket is reopened. Backups and
+TLS come first: the encryption model, the confidentiality part of the threat model and
+the backup custody sentence of signed upgrade compatibility are recorded in those ADRs. Common review sentence: "Independent adversarial review is
 required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN."
 
@@ -125,34 +127,11 @@ proposes it: HOLD.
 
 ### Encryption model
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** The symmetric
-> hierarchy, envelope and nonce rules are unchanged. The backup container may use
-> age's native hybrid recipient (ML-KEM-768 + X25519) instead of X25519
-> recipients; the existing rule of one identity per retention class stands.
-> Under the strict profile a new export has hybrid recipients only, with the
-> single stanza type `mlkem768x25519`; X25519, SSH, plugin, scrypt and unknown
-> stanzas are refused, recipients are passed to age natively and wrapping to hide
-> its recipient labels is banned. A header mixing a hybrid with any other stanza
-> is always refused. Where strict is selected for backups, an archive (hybrid or
-> classical) is restored only with receipt-bound provenance, otherwise quarantined;
-> default compatibility restores are unchanged. The provenance mechanism is a
-> #1126/#1132 requirement, not defined here, and no integrity claim is made for an
-> archive restored without a receipt (age has no sender authentication). The
-> 16-byte age file key bounds archive payloads and metadata at 128-bit strength (a category-1 floor); field values keep 256-bit protection
-> only while no `operator.age` custody copy holds the current root, because root
-> escrow opens the whole hierarchy under that file key (see DEC-12). "FIPS 140-3 alignment is not a goal" stands: PQ algorithm use is
-> not FIPS validation. Fingerprint namespaces are algorithm-bearing;
-> `age-x25519-sha256:` keeps its meaning.
+Landed as the 2026-11-02 banner on [encryption-model](./encryption-model.md), which is the only copy.
 
 ### Threat model
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** Adds a defended
-> attacker class: a recording adversary with a future quantum computer, for the
-> surfaces and horizons of the confidentiality profile, and a future quantum
-> forger for the surfaces of the authenticity profile. Neither claim extends to
-> peers or authenticators in the exception register. Re-encrypting retained
-> material cannot revoke attacker-held copies. Boundaries 2 and 5 gain the
-> strict-profile requirements.
+The recording-adversary class landed as the 2026-11-02 banner on [threat-model](./threat-model.md). Still proposed: a future quantum forger class for the surfaces of the authenticity profile, added with the authenticity children.
 
 ### Transit
 
@@ -201,10 +180,8 @@ proposes it: HOLD.
 > the nightly track and image replacement have no PQ signer. Stable ML-DSA
 > signatures would come from a maintainer-held key at the local publish step,
 > not from keyless CI; keyless signing is unchanged and stays a classical
-> exception. Backup custody: receipts gain an algorithm-bearing recipient
-> namespace; historical receipts keep their meaning; the receipt itself is
-> unsigned, so provenance needs a signed binding; the operator P-256 attestation
-> key is unchanged until #1132 adds a PQ signature (E-16).
+> exception. Backup custody landed as the 2026-11-02 banner on that ADR's custody
+> section.
 
 ## Locked constraints preserved
 

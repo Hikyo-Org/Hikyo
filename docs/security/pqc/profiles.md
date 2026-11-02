@@ -116,7 +116,7 @@ a NIST-approved algorithm, so any category given to it is Hikyo's inference:
 
 | Object | Symmetric strength | Basis |
 | --- | --- | --- |
-| Stored fields, DEKs, master, root (I01-I06) | 256-bit keys; category 5 by key size, **inference** (IR 8547 lists AES-256, not XChaCha20). **Only where no `operator.age` copy holds the current root:** a `root_escrow` opens the whole hierarchy under a 16-byte file key, so while such a copy exists the field floor is category 1 | [src], [NIST] Table 6 |
+| Stored fields, DEKs, master, root (I01-I06) | 256-bit keys; category 5 by key size, **inference** (IR 8547 lists AES-256, not XChaCha20). **Only where no `operator.age` copy holds a root that opens them:** a `root_escrow` opens the whole hierarchy under a 16-byte file key, so while such a copy exists the field floor is category 1 | [src], [NIST] Table 6 |
 | age file key: backup archives (I07), upgrade archives (I08), sealed webhook payloads (I21) | 16 bytes: category 1 | [src] age `fileKeySize = 16` |
 | `operator.age` custody record (I08), which holds backup identity and root escrow | Sealed by age scrypt, so bounded by the lesser of the 16-byte file key (category 1) and the entropy of the sealing secret; the "fields keep 256-bit" statement does not apply to it (options in [migration](migration.md#operator-custody-vault-operatorage-i08)) | [src] `vault.go:126` |
 | Truncated client stamp (I06) | 128-bit truncated HMAC tag: no 256-bit claim | [src] `internal/crypto/stamp.go:102` |
