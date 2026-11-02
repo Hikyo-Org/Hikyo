@@ -29,12 +29,15 @@ prereleases; source builds are available for local evaluation and development.
 
 For a consolidated artifact/topology inventory, use the
 [deployment support matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
-For a new singleton Kubernetes/PostgreSQL installation, follow the
+To evaluate a new singleton Kubernetes/PostgreSQL installation from a signed
+nightly chart, follow the
 [complete first-install runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md).
 It distinguishes chart publication from source availability and keeps existing
 manual installations on their separate upgrade path.
-For controller ownership, use [Kubernetes GitOps](/docs/kubernetes-gitops/) for
-Flux and Argo CD configurations with exact chart pins and explicit activation.
+For controller ownership of a nightly chart, use
+[Kubernetes GitOps](/docs/kubernetes-gitops/) for Flux and Argo CD configurations
+with exact chart pins and explicit activation. These nightly recipes do not accept
+the stable 1.0.0 chart.
 
 ## Stable downloads
 

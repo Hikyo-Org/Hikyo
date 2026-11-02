@@ -7,10 +7,15 @@ chart's matching image digest. They do not enroll unattended updates or supply
 an automatic migration coordinator. Every populated release change still uses
 the full-stop, backup, readable-restore and migration procedure below.
 
-This source work belongs to PR #1113. It does not change the separately frozen
-1.0 release source or authorize installation into an existing cluster. Source
+The generator accepts nightly charts only, and nightlies remain unsupported
+prereleases. It requires a nightly version, the `nightly.yml` signing identity and
+the `nightly/v1` chart profile, so it refuses the published stable 1.0.0 chart.
+See the [deployment matrix](deployment-support.md#runtime-matrix) for that chart.
+
+These recipes do not authorize installation into an existing cluster. Source
 tests, controller reconciliation, application readiness and publication are
-separate evidence. Chart publication remains a prerequisite, not an assumption.
+separate evidence. Nightly chart publication remains a prerequisite, not an
+assumption.
 
 ## Prerequisites and artifact selection
 

@@ -179,6 +179,19 @@ class GitOpsTests(unittest.TestCase):
         self.assertIn("Prune=false", spec["syncPolicy"]["syncOptions"])
         self.assertIn("FailOnSharedResource=true", spec["syncPolicy"]["syncOptions"])
 
+    def test_cli_refuses_stable_chart_version_before_any_external_call(self):
+        output = self.directory / "stable.yaml"
+        values = self.directory / "values.yaml"
+        values.write_text(yaml.safe_dump(self.values))
+        arguments = ["render_gitops.py", "--provider", "flux", "--chart-version", "1.0.0",
+                     "--chart-digest", DIGEST, "--source-commit", COMMIT,
+                     "--values", str(values), "--output", str(output)]
+        with patch("sys.argv", arguments), patch.object(gitops, "run") as run, \
+                patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
+            gitops.main()
+        run.assert_not_called()
+        self.assertFalse(output.exists())
+
     def test_cli_verifies_chart_then_image_before_output_and_never_applies(self):
         values = self.directory / "input.yaml"
         values.write_text(yaml.safe_dump(self.values))

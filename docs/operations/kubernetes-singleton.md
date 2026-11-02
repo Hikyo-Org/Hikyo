@@ -2,8 +2,11 @@
 
 This installs a **new, empty** PostgreSQL-backed Hikyo server using explicit
 manual release/custody inputs. It is not HA, an upgrade command, or an
-unattended-enrollment procedure. Hikyo is still prerelease software; this
-example does not turn a nightly into a supported stable release. See the
+unattended-enrollment procedure. This example uses a signed nightly chart.
+Nightlies remain unsupported prereleases, and this example does not turn one into
+a supported release. Its commands authenticate the nightly publisher, so they do
+not apply to the stable 1.0.0 chart; see the
+[deployment matrix](deployment-support.md#runtime-matrix). See the
 [unattended operator-command gap](deployment-support.md#unattended-operator-command-gap)
 before choosing a different initial custody model.
 
@@ -71,16 +74,16 @@ Get the exact chart version, chart digest, image digest and full source commit
 from a successful nightly publisher record. Do not select `nightly` or a loose
 version range. The source chart's development image placeholder is not usable.
 
-The new nightly chart mechanism is available only after its change reaches main
-and a nightly publishes successfully. Original anonymous access returned 403;
-public retrieval remains **HOLD** until the selected package is readable. If no
-successful chart exists, stop here. Do not invent a chart version from an archive
+The chart repository is anonymously readable, but it holds a nightly chart only
+after the publisher reaches main and a nightly publishes successfully. Public
+retrieval of a selected nightly remains **HOLD** until that package is readable.
+If no successful chart exists, stop here. Do not invent a chart version from an archive
 tag or bypass authentication by rendering arbitrary source.
 
 Set these nonsecret inputs to that record's exact values:
 
 ```sh
-HIKYO_VERSION='0.0.1-nightly.YYYYMMDD.RUN.gSOURCE8'
+HIKYO_VERSION='1.0.0-nightly.YYYYMMDD.RUN.gSOURCE8'
 HIKYO_SOURCE_COMMIT='<40-lowercase-hex-source-commit>'
 HIKYO_CHART_DIGEST='sha256:<64-lowercase-hex-chart-digest>'
 HIKYO_IMAGE_DIGEST='sha256:<64-lowercase-hex-image-digest>'

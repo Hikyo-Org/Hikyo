@@ -1,12 +1,16 @@
 ---
 title: Kubernetes GitOps
-description: Install an exact Hikyo chart with Flux or Argo CD and retain explicit migration approval.
+description: Install an exact nightly Hikyo chart with Flux or Argo CD and retain explicit migration approval.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/kubernetes-gitops.mdx
 ---
 
 Hikyo provides Flux and Argo CD installation recipes for a fresh singleton
 PostgreSQL server with manual custody. Both select the exact OCI chart digest
 and matching image. Flux starts suspended; Argo CD requires manual sync.
+
+These recipes accept signed nightly charts only, and nightlies remain unsupported
+prereleases. The generator refuses the stable 1.0.0 chart; for stable, use
+[stable downloads](/docs/installation/#stable-downloads).
 
 Use the [complete GitOps runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-gitops.md)
 for prerequisites, controller activation, maintenance, recovery and recorded

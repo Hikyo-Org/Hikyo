@@ -203,9 +203,10 @@ signatures must also be retrievable without those credentials. A private
 package or unreadable registry fails this step. An organization package owner
 must establish the intended public visibility and repository access in package
 settings before retrying; this script does not change organization policy or
-mistake an authorization failure for an absent version. The 31 October initial
-anonymous inspection returned HTTP 403, so public chart availability remains
-unverified until a successful publication and clean-client retrieval.
+mistake an authorization failure for an absent version. Nightly versions share
+this repository with stable charts, and a readable stable chart says nothing about
+a nightly: each version stays unverified until its own publication and clean-client
+retrieval succeed.
 
 Copy the exact chart digest, image digest, version and source commit from the
 successful workflow summary. Verify the chart with the same flags shown above,
