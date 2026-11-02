@@ -1,9 +1,13 @@
-# Manual full validation is bound to the selected main commit. There is no
+# Full validation is bound to the selected main commit. There is no
 # user-provided source input; the reusable graph rechecks this event binding.
+# Nightly reuses CI proof, so this weekly run is the automatic writer of the
+# main-scoped compile caches in ci.yml. A cache hit writes nothing.
 name: ci-main
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * 0'
 
 permissions:
   actions: read

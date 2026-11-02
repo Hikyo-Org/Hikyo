@@ -18,6 +18,7 @@ func newDevFixture(t *testing.T) *queueFixture {
 	main := strings.Repeat("e", 40)
 	f.api.responses[f.c.endpoint("git/ref/heads/main")] = map[string]any{"ref": "refs/heads/main", "object": map[string]string{"type": "commit", "sha": main}}
 	f.rules = f.rules[:len(f.rules)-1]
+	f.rules[3] = encodedRule("pull_request", map[string]any{"required_review_thread_resolution": true, "dismiss_stale_reviews_on_push": true, "allowed_merge_methods": []string{"merge"}})
 	f.rules[4] = encodedRule("required_status_checks", map[string]any{"strict_required_status_checks_policy": false, "do_not_enforce_on_create": false, "required_status_checks": []map[string]string{{"context": devCheckName}}})
 	f.owner = map[string]any{"id": 31, "name": devRulesetName, "target": "branch", "enforcement": "active", "bypass_actors": []any{}, "updated_at": "2026-11-01T00:00:00Z", "conditions": map[string]any{"ref_name": map[string]any{"include": []string{"refs/heads/dev"}, "exclude": []string{}}}, "rules": f.rules}
 	f.api.responses[f.c.endpoint("rulesets?per_page=100&page=1")] = []map[string]any{{"id": 31, "name": devRulesetName}}

@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 )
 
 const maxPages = 20
@@ -48,6 +49,7 @@ type run struct {
 	HeadBranch     string              `json:"head_branch"`
 	Status         string              `json:"status"`
 	Conclusion     string              `json:"conclusion"`
+	StartedAt      string              `json:"run_started_at"`
 	Repository     repository          `json:"repository"`
 	HeadRepository repository          `json:"head_repository"`
 	References     []workflowReference `json:"referenced_workflows"`
@@ -252,7 +254,7 @@ func (r *resolver) runs(ctx context.Context, p producer, w workflow, commit stri
 
 func (r *resolver) validateRun(current run, p producer, w workflow, commit string) error {
 	if current.ID <= 0 || current.Attempt <= 0 || current.WorkflowID != w.ID || current.Name != p.Name || current.Path != w.Path ||
-		!shaPattern.MatchString(current.HeadSHA) || (commit != "" && current.HeadSHA != commit) ||
+		!shaPattern.MatchString(current.HeadSHA) || (commit != "" && current.HeadSHA != commit) || !validStart(current.StartedAt) ||
 		!equalRepository(current.Repository, r.repo) || !equalRepository(current.HeadRepository, r.repo) || current.HeadRepository.Fork {
 		return errors.New("invalid producer identity")
 	}
@@ -277,11 +279,34 @@ func latest(runs []selectedRun) (selectedRun, error) {
 	if len(runs) == 0 {
 		return selectedRun{}, errors.New("no qualifying full-validation source run")
 	}
-	sort.Slice(runs, func(i, j int) bool { return runs[i].run.ID > runs[j].run.ID })
+	// A rerun keeps its run ID, so only the latest attempt's start orders
+	// executions. RFC 3339 UTC seconds from the API compare as parsed times.
+	started := func(r selectedRun) time.Time {
+		t, _ := time.Parse(time.RFC3339, r.run.StartedAt)
+		return t
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		if a, b := started(runs[i]), started(runs[j]); !a.Equal(b) {
+			return a.After(b)
+		}
+		return runs[i].run.ID > runs[j].run.ID
+	})
 	if len(runs) > 1 && runs[0].run.ID == runs[1].run.ID {
 		return selectedRun{}, errors.New("ambiguous source run")
 	}
+	// One-second timestamps cannot order a same-second tie; never let it hide an
+	// unsuccessful execution behind a success.
+	for _, tied := range runs[1:] {
+		if started(tied).Equal(started(runs[0])) && (tied.run.Status != "completed" || tied.run.Conclusion != "success") {
+			return selectedRun{}, errors.New("ambiguous source run order")
+		}
+	}
 	return runs[0], nil
+}
+
+func validStart(value string) bool {
+	_, err := time.Parse(time.RFC3339, value)
+	return err == nil
 }
 
 func (r *resolver) selectMain(ctx context.Context, commit string) (selectedRun, error) {

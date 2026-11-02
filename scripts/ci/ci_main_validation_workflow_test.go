@@ -70,8 +70,9 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if len(contract.Inputs) != 3 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" {
 		t.Fatal("CI must require an immutable revision with optional candidate and development modes")
 	}
-	if len(manual.On) != 1 {
-		t.Fatal("manual main wrapper must have only dispatch entrypoint")
+	// Schedule is the automatic main cache writer now nightly reuses proof.
+	if _, scheduled := manual.On["schedule"]; len(manual.On) != 2 || !scheduled {
+		t.Fatal("main wrapper must have only dispatch and schedule entrypoints")
 	}
 	dispatch, ok := manual.On["workflow_dispatch"]
 	if !ok || dispatch.Kind != yaml.ScalarNode || dispatch.Tag != "!!null" {

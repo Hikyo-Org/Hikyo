@@ -35,7 +35,7 @@ func verifyQueueDCO(ctx context.Context, repoName string, p pull) (int, error) {
 		return 0, err
 	}
 	defer cleanupQueueDCOMetadata(dir)
-	code, err := checkQueueDCO(ctx, p, repo)
+	code, err := checkQueueDCO(ctx, repoName, p, repo)
 	if err != nil || code != 0 {
 		return code, err
 	}
@@ -81,13 +81,18 @@ func fetchQueueDCO(ctx context.Context, repoName string, p pull) (string, string
 	complete = true
 	return dir, repo, nil
 }
-func checkQueueDCO(ctx context.Context, p pull, repo string) (int, error) {
+func checkQueueDCO(ctx context.Context, repoName string, p pull, repo string) (int, error) {
 	if p.User.ID <= 0 || p.User.Login == "" {
 		return 0, errors.New("missing authenticated PR actor for DCO policy")
 	}
 	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
 	cmd.Env = queueDCOEnvironment()
-	if p.User.Login == "dependabot[bot]" {
+	// Promotions and backmerges carry Dependabot commits a human did not open.
+	// Those already passed actor-checked dev admission. Only write access reaches
+	// these canonical heads, so a fork or feature branch cannot claim the exemption.
+	canonical := strings.EqualFold(p.Head.Repo.FullName, repoName)
+	promotion := canonical && (strings.HasPrefix(p.Head.Ref, "release/") || p.Head.Ref == "main")
+	if p.User.Login == "dependabot[bot]" || promotion {
 		cmd.Env = append(cmd.Env, "DCO_EXEMPT_AUTHOR=dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>")
 	}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -133,7 +138,7 @@ func admissionDCOVerifier(repoName string) (queueDCOVerifier, func()) {
 		}
 		fetchSeconds := time.Since(fetchStart).Seconds()
 		checkStart := time.Now()
-		code, err := checkQueueDCO(ctx, p, repo)
+		code, err := checkQueueDCO(ctx, repoName, p, repo)
 		checkSeconds := time.Since(checkStart).Seconds()
 		mergeSeconds := 0.0
 		if err == nil && code == 0 {

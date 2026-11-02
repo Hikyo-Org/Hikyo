@@ -953,6 +953,7 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      max-parallel: ${{ inputs.development && 4 || 256 }}
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
@@ -1706,6 +1707,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+      max-parallel: ${{ inputs.development && 2 || 256 }}
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
     steps:
@@ -1789,6 +1791,8 @@ jobs:
   # in production. The probe-based isolation E2E suite exceeds the per-package
   # timeout under the detector, so its race-instrumented run lives in the
   # scheduled reliability race suite instead of on the PR wall-clock.
+  # Nobody waits on a dev run, so its widest matrices leave runners for PR
+  # feedback under the 20-runner limit. Merge-queue and main runs stay uncapped.
   race_shard:
     name: race shard (${{ matrix.shard }})
     needs:
@@ -1799,6 +1803,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: ${{ inputs.development && 7 || 256 }}
       matrix:
         shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
     steps:

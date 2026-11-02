@@ -54,7 +54,7 @@ func newFixture(t *testing.T, mode string, p producer) *fixture {
 	if p.Queue {
 		branch = "gh-readonly-queue/main/pr-7-" + testMain
 	}
-	r := run{ID: 100, Attempt: 1, WorkflowID: w.ID, Name: p.Name, Path: w.Path,
+	r := run{ID: 100, Attempt: 1, WorkflowID: w.ID, Name: p.Name, Path: w.Path, StartedAt: "2026-11-01T10:00:00Z",
 		Event: p.Events[0], HeadSHA: testSource, HeadBranch: branch,
 		Status: "completed", Conclusion: "success", Repository: f.repo, HeadRepository: f.repo}
 	for _, path := range []string{".github/workflows/ci.yml", ".github/workflows/floor-bench.yml"} {
@@ -356,6 +356,64 @@ func TestMainDoesNotHideNewerManualFailureBehindQueueProof(t *testing.T) {
 	f.addRun(newer, mainProducers[1])
 	if _, err := resolveFixture(f, options{Mode: "main", Commit: testSource}); err == nil {
 		t.Fatal("older queue proof hid a newer manual failure")
+	}
+}
+
+// Reruns keep their run ID, so an older run's later failed attempt must still
+// supersede a newer run's earlier success.
+func TestMainOrdersExecutionsByLatestAttemptNotRunID(t *testing.T) {
+	setup := func(t *testing.T, conclusion, rerunStart string) *fixture {
+		f := newFixture(t, "main", mainProducers[0])
+		manual := f.live[100]
+		manual.ID, manual.Name, manual.Path, manual.HeadBranch, manual.Event = 200, "ci-main", ".github/workflows/ci-main.yml", "main", "workflow_dispatch"
+		manual.WorkflowID, manual.StartedAt = f.workflows["ci-main.yml"].ID, "2026-11-01T11:00:00Z"
+		manual.References = append([]workflowReference{}, manual.References...)
+		for index := range manual.References {
+			manual.References[index].Ref = "refs/heads/main"
+		}
+		f.addRun(manual, mainProducers[1])
+		f.files[testMain+":"+manual.Path] = []byte("approved immutable definition\n")
+		f.files[testSource+":"+manual.Path] = f.files[testMain+":"+manual.Path]
+		rerun := f.live[100]
+		rerun.Attempt, rerun.Conclusion, rerun.StartedAt = 2, conclusion, rerunStart
+		f.histories["ci-merge-group.yml"][0] = rerun
+		f.live[100], f.attempts[100] = rerun, rerun
+		return f
+	}
+	for name, tc := range map[string]struct {
+		conclusion, start string
+		want              int64
+	}{
+		"later failed rerun refuses":     {"failure", "2026-11-01T12:00:00Z", 0},
+		"later cancelled rerun refuses":  {"cancelled", "2026-11-01T12:00:00Z", 0},
+		"same-second failure is refused": {"failure", "2026-11-01T11:00:00Z", 0},
+		"earlier failure stays older":    {"failure", "2026-11-01T10:30:00Z", 200},
+		"later success selects rerun":    {"success", "2026-11-01T12:00:00Z", 100},
+		"same-second success takes ID":   {"success", "2026-11-01T11:00:00Z", 200},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := setup(t, tc.conclusion, tc.start)
+			for index := range f.jobLists[100] {
+				f.jobLists[100][index].Attempt = 2
+			}
+			got, err := resolveFixture(f, options{Mode: "main", Commit: testSource})
+			if tc.want == 0 {
+				if err == nil {
+					t.Fatalf("selected run %d despite a newer unsuccessful execution", got.RunID)
+				}
+				return
+			}
+			if err != nil || got.RunID != tc.want {
+				t.Fatalf("selected %d/%v, want %d", got.RunID, err, tc.want)
+			}
+		})
+	}
+	for _, startedAt := range []string{"", "yesterday"} {
+		f := newFixture(t, "dev", devProducer)
+		f.mutateRun(func(r *run) { r.StartedAt = startedAt })
+		if _, err := resolveFixture(f, options{Mode: "dev", Commit: testSource}); err == nil {
+			t.Fatalf("accepted attempt start time %q", startedAt)
+		}
 	}
 }
 

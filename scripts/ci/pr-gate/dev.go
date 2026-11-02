@@ -147,14 +147,20 @@ func validateDevRules(rules []rule) error {
 			}
 		case "pull_request":
 			var p struct {
-				Threads *bool `json:"required_review_thread_resolution"`
-				Stale   *bool `json:"dismiss_stale_reviews_on_push"`
+				Threads *bool    `json:"required_review_thread_resolution"`
+				Stale   *bool    `json:"dismiss_stale_reviews_on_push"`
+				Methods []string `json:"allowed_merge_methods"`
 			}
 			if err := decode(r.Parameters, &p); err != nil {
 				return err
 			}
 			if p.Threads == nil || !*p.Threads || p.Stale == nil || !*p.Stale {
 				return errors.New("dev protection lost review safeguards")
+			}
+			// Squash and rebase rewrite signed-off commits, which promotion's DCO
+			// range check would refuse with no way to repair protected history.
+			if len(p.Methods) != 1 || p.Methods[0] != "merge" {
+				return errors.New("dev must preserve signed-off commits through merge commits")
 			}
 		}
 	}

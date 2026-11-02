@@ -108,6 +108,15 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		return fmt.Errorf("floor benchmark lost exact development source binding")
 	}
 	delete(floorWith, "development")
+	// Dev runner headroom only delays jobs. Every shard still runs, and other
+	// callers stay uncapped, so the frozen execution inventory is unchanged.
+	for name, limit := range map[string]string{"web": "4", "isolation_shard": "2", "race_shard": "7"} {
+		strategy, ok := workflow.Jobs[name]["strategy"].(map[string]any)
+		if !ok || strategy["max-parallel"] != "${{ inputs.development && "+limit+" || 256 }}" {
+			return fmt.Errorf("%s lost its dev-only runner headroom", name)
+		}
+		delete(strategy, "max-parallel")
+	}
 	if err := normalizeCompleteShardPlanning(workflow.Jobs["analysis_shards"]); err != nil {
 		return err
 	}

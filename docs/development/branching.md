@@ -29,6 +29,14 @@ only fully validated release candidates may reach `main`.
    receipts remain small; existing compiler-cache ownership is preserved.
 7. Main hotfixes follow the full promotion gate and are merged back into `dev`
    before the next release is prepared.
+8. PRs merge into `dev` with merge commits only. Squash and rebase rewrite
+   signed-off commits, which promotion's DCO range check would refuse with no way
+   to repair protected history.
+9. Dev runs cap their widest matrices (race 7, isolation 2, web 4) so PR feedback
+   still gets runners under the 20-runner limit. Replaying recent queue runs at
+   those caps gives about 30 minutes instead of 27-29, with about 5-6 minutes
+   instead of 15 of completely full runners. Merge-queue and main runs stay
+   uncapped. These figures are a replay model until measured on hosted dev runs.
 
 ## Rollout
 
@@ -91,6 +99,10 @@ gh pr create --repo Hikyo-Org/Hikyo --base main --head release/1.1.0
 rm -rf "$promotion_work"
 trap - EXIT HUP INT TERM
 ```
+
+Promote regularly. Main-scoped compile caches follow main, so dev runs and PR
+feedback recompile more as dev drifts from it. A promotion is one full run, and
+it does not have to be a tagged release.
 
 New dev pushes do not move that release branch. Branches under `release/` always
 select the full main queue graph, including docs-only promotions. A changed
@@ -156,6 +168,9 @@ These are release/trust actions, separate from merging implementation:
    Normal manual requests default to dev. Scheduled nightlies and chain restarts
    select the last completely green dev source. Main bridge requests are refused
    after v2 activation.
+
+A scheduled weekly `ci-main` run on main keeps the main-scoped compile caches
+written, because nightlies now reuse proof instead of running the full graph.
 
 Stable tags consume complete proof for the identical landed main commit and
 revalidate it during construction. Fresh tag-bound floor/docs checks and actual

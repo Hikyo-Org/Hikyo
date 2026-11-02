@@ -25,7 +25,8 @@ jq -se --argjson bootstrap "$bootstrap" '
   (one("deletion") | .type == "deletion") and
   (one("non_fast_forward") | .type == "non_fast_forward") and
   (one("pull_request").parameters |
-    .required_review_thread_resolution == true and .dismiss_stale_reviews_on_push == true) and
+    .required_review_thread_resolution == true and .dismiss_stale_reviews_on_push == true and
+    .allowed_merge_methods == ["merge"]) and
   (one("required_status_checks").parameters |
     .strict_required_status_checks_policy == false and
     .do_not_enforce_on_create == $bootstrap and

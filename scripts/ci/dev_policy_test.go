@@ -27,6 +27,7 @@ func TestDevProtectionRejectsWeakenedOrQueuePolicy(t *testing.T) {
 		"bypass":                 `.bypass_actors=[{actor_id:5,actor_type:"RepositoryRole",bypass_mode:"always"}]`,
 		"hidden bypass":          `del(.bypass_actors)`,
 		"stale approval":         `(.rules[]|select(.type=="pull_request").parameters.dismiss_stale_reviews_on_push)=false`,
+		"squash destroys DCO":    `(.rules[]|select(.type=="pull_request").parameters.allowed_merge_methods)=["merge","squash"]`,
 		"unresolved threads":     `(.rules[]|select(.type=="pull_request").parameters.required_review_thread_resolution)=false`,
 		"bootstrap":              `(.rules[]|select(.type=="required_status_checks").parameters.do_not_enforce_on_create)=true`,
 		"strict rebase":          `(.rules[]|select(.type=="required_status_checks").parameters.strict_required_status_checks_policy)=true`,
