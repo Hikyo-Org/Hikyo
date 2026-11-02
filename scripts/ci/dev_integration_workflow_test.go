@@ -343,9 +343,9 @@ func TestFeedbackSkipsOnlyCanonicalPromotions(t *testing.T) {
 	t.Fatal("feedback plan step moved")
 }
 
-// A run on main can write main-scoped Actions caches, so selected source must never
-// execute in one. nightly.yml only runs its own commit; nightly-build.yml runs the
-// source on that source's own branch, without credentials or cache writes.
+// A run on main can write main-scoped Actions caches, so selected source is never
+// checked out in one. nightly-build.yml builds it on that source's own branch. This
+// covers source only: see the handoff for built binaries that still run on main.
 func TestNightlySourceBuildsOutsideMainScopedRuns(t *testing.T) {
 	root := repositoryRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, ".github/workflows/nightly.yml"))

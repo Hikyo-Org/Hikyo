@@ -108,8 +108,8 @@ Review of the unlanded branch against a real promotion found these, all fixed:
 - A full dev run held all 20 runners for about 15 minutes, starving PR feedback.
 - Nightly reuse removed the only automatic writer of main compile caches.
 - Scheduled nightlies would fail from landing until the v2 trust ceremony.
-- A dev nightly ran dev code inside a run on main, where it could poison main-scoped
-  caches. The build now runs in `nightly-build.yml` on the source's own branch.
+- A dev nightly built dev source inside a run on main, where its tooling could poison
+  main-scoped caches. The build now runs in `nightly-build.yml` on the source's branch.
 
 Not established before the first hosted dev run: the replay-modelled runner headroom,
 whether creating `dev` succeeds under its new ruleset, the publisher's 60-second
@@ -117,6 +117,27 @@ budget on a backmerge touching many CI definitions, source proof's job inventory
 against a real `ci-dev` run, and the dispatched `nightly-build` run, which GitHub can
 only start once the workflow is on main. If creating `dev` fails during activation, stop and
 report it. The helper's checks leave main untouched.
+
+## Blocker before the v2 trust switch
+
+Do not install the v2 nightly policy until these are moved or accepted. Under v2,
+binaries built from dev still run inside runs on main, which can write main-scoped
+caches:
+
+| Where | Why it matters |
+| --- | --- |
+| `publish`: packaged startup smoke and populated upgrade proof | Same job later mints the release app token, on the same VM |
+| `apple-acceptance`: native install via `verify-apple-install.sh` | Runs on a macOS runner in a run on main |
+| `container`: `nightly-image.sh promote` image smoke | Docker on the job that holds package and signing identity |
+
+Under v1 these binaries come from main, so nothing changes until the policy is
+installed. Move them to a run on the source branch, or isolate them with no host
+access and no network.
+
+CodeQL's 8 `actions/cache-poisoning` alerts now point at `nightly-build.yml`. Its rule
+does not model that cache scope follows the run's ref, so they look like false
+positives for dev dispatches, by reading. A writer can still dispatch that workflow
+on main with an older main commit. Triage them when closing this blocker.
 
 ## Recovery and maintenance
 

@@ -14,6 +14,11 @@ case "$SOURCE_MODE" in main | dev) ;; *) fail 'invalid source mode' ;; esac
 [[ "$SOURCE" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid source commit'
 [[ "$RECEIPT_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] || fail 'invalid receipt artifact'
 
+# Refuse before spending a build: dev must already carry the approved definition.
+definition=$(git hash-object "$workflow")
+tip=$($GH_BIN api "repos/$repo/contents/$workflow?ref=$SOURCE_MODE" --jq '.sha')
+[ "$tip" = "$definition" ] || fail "$SOURCE_MODE needs a backmerge: its build definition differs from approved main"
+
 build_run=$($GH_BIN api --method POST "repos/$repo/actions/workflows/nightly-build.yml/dispatches" \
 	-f "ref=$SOURCE_MODE" \
 	-f "inputs[commit]=$SOURCE" \
@@ -26,10 +31,15 @@ build_run=$($GH_BIN api --method POST "repos/$repo/actions/workflows/nightly-bui
 [[ "$build_run" =~ ^[1-9][0-9]*$ ]] || fail 'dispatch returned no run'
 printf 'nightly build: run %s on %s for %s\n' "$build_run" "$SOURCE_MODE" "$SOURCE"
 
-# The result is judged below from the authenticated run, not from this exit code.
-$GH_BIN run watch "$build_run" --repo "$repo" --interval 30 >/dev/null || true
-
-run=$($GH_BIN api "repos/$repo/actions/runs/$build_run")
+# Poll rather than `gh run watch`, which gives up on its first API error and would
+# abandon a healthy build. Only a completed run can pass the checks below.
+deadline=$((SECONDS + ${NIGHTLY_BUILD_TIMEOUT_SECONDS:-7200}))
+run=
+until [ -n "$run" ] && [ "$(jq -r '.status // ""' <<<"$run")" = completed ]; do
+	[ "$SECONDS" -lt "$deadline" ] || fail "run $build_run did not complete in time"
+	sleep "${NIGHTLY_BUILD_POLL_SECONDS:-30}"
+	run=$($GH_BIN api "repos/$repo/actions/runs/$build_run") || run=
+done
 jq -e --arg repo "$repo" --arg path "$workflow" --arg branch "$SOURCE_MODE" '
 	.status == "completed" and .conclusion == "success" and .path == $path and
 	.event == "workflow_dispatch" and .head_branch == $branch and
@@ -39,7 +49,7 @@ jq -e --arg repo "$repo" --arg path "$workflow" --arg branch "$SOURCE_MODE" '
 # The definition that ran must be the one this trusted checkout approves.
 head_sha=$(jq -er '.head_sha' <<<"$run")
 ran=$($GH_BIN api "repos/$repo/contents/$workflow?ref=$head_sha" --jq '.sha')
-[ "$ran" = "$(git hash-object "$workflow")" ] || fail 'build definition differs from approved main'
+[ "$ran" = "$definition" ] || fail 'build definition differs from approved main'
 
 mkdir -p "$RUNNER_TEMP/nightly-build-identity"
 $GH_BIN run download "$build_run" --repo "$repo" --name nightly-build-identity --dir "$RUNNER_TEMP/nightly-build-identity"

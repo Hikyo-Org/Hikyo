@@ -1,6 +1,6 @@
-# Builds nightly artifacts in a run on the source's own branch. Code from dev must
-# never run in a run on main, where it could write main-scoped Actions caches that
-# queue and release builds later restore. The publisher in nightly.yml starts this
+# Builds nightly artifacts in a run on the source's own branch, because a build runs
+# the source's tooling, and in a run on main that tooling could write main-scoped
+# Actions caches that queue and release builds restore. The publisher in nightly.yml starts this
 # run, authenticates it and pins its artifact; signing and publishing stay there.
 # Source proof requires these bytes to match approved main.
 name: nightly-build

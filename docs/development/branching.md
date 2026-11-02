@@ -50,8 +50,8 @@ Under the recovery-authorized v2 policy, signed nightlies select the last fully
 green `dev` commit. Until then they keep publishing the fully validated `main`
 commit, so landing this flow does not stop nightlies. The trusted publisher
 continues running on `main`, while `nightly-build.yml` builds the source in a run on
-that source's own branch, so dev code never gets main-scoped cache access. The
-publisher authenticates that run and pins its artifact; the successor nightly policy and manifest bind the
+that source's own branch, so build tooling from dev gets no main-scoped cache access.
+The publisher authenticates that run and pins its artifact; the successor nightly policy and manifest bind the
 publisher commit separately from the dev source and its exact validation receipt.
 The receipt is included in the signed artifact inventory. Publication repeats
 live source-proof verification before signing and refuses a changed run/attempt.
