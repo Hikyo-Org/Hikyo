@@ -72,6 +72,7 @@ The catalogue includes the nine values above, shared owner settings,
 | --- | --- |
 | Argon2 memory, time and parallelism; reauthentication window | Replace authentication policy after checking production floors and each node's available admission capacity. |
 | `HIKYO_SECOND_FACTOR` | `required` sends password sign-in without an enrolled factor through enrollment; `optional` preserves the local factor floor. |
+| `HIKYO_TLS_PROFILE` | `compat` (default) keeps today's native listener TLS behavior. `strict` requires TLS 1.3 and the hybrid `X25519MLKEM768` group, and needs a TLS certificate pair. It protects handshake confidentiality only; certificate authentication stays classical. An adopted value outranks the bootstrap environment. A node still behind the desired generation is not fenced and keeps serving its old profile. |
 | `HIKYO_DEFAULT_KEYS_PER_PROJECT` | Declared-key limit inherited by projects without an override. Integer from `1` to `10000`; default `1000`; must not exceed the instance maximum. |
 | `HIKYO_MAX_KEYS_PER_PROJECT` | Operator-controlled ceiling on every project's effective limit. Integer from `1` to `10000`; default `10000`. Applies live and preserves existing keys and saved overrides when lowered. |
 | External origin, directory proxy, MCP enabled, write enabled and allowed origins | Replace the dependent HTTP, authentication, federation and outbound clients. Enabling MCP write tools grants no edit or publish authority. |
