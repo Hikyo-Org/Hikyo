@@ -89,14 +89,13 @@ PR.
 1. Land this PR through the existing main gate. Use the landed checkout and
    [local verification prerequisites](../../CONTRIBUTING.md#local-verification).
    Do not execute activation from an unlanded candidate.
-2. Confirm the app key exists only in the `nightly-release` environment: remove the
-   organization-level `NIGHTLY_RELEASE_APP_PRIVATE_KEY`, and rotate the key, because
-   a branch workflow could read that copy. Otherwise anyone with write access could
-   author promotions as the app. This is a human step, in organization Settings,
-   Secrets and variables, Actions, and in the App's settings for the new key.
-3. Run `scripts/release/configure-repository.sh Hikyo-Org/Hikyo` from the landed
-   checkout. It installs the `release/nightly-*` branch ruleset and reads it back.
-4. Give the nightly release App the pull request permission, before the next
+2. Keep the app key only in the `nightly-release` environment, because a branch
+   workflow could read an organization copy, and anyone with write access could then
+   author promotions as the app. These are human steps in GitHub: generate a new private
+   key in the App's settings, replace `NIGHTLY_RELEASE_APP_PRIVATE_KEY` in the
+   environment, delete the old key from the App, then delete the organization-level
+   secret of that name (organization Settings, Secrets and variables, Actions).
+3. Give the nightly release App the pull request permission, before the next
    22:17 UTC run. The promotion mints its token first, so until this is done the
    scheduled run fails, even while `dev` does not exist. This is a human step in
    GitHub: open the organization's Settings, then Developer settings, GitHub Apps,
@@ -110,10 +109,25 @@ PR.
    `nightly_promote_workflow_test.go` updated, because it forbids
    `permission-workflows` (line 106) and pins the token step to exactly six inputs
    (line 95).
-5. Authenticate main's exact complete validation and activate the dev rules with
+4. Authenticate main's exact complete validation and activate the dev rules with
    `scripts/release/configure-dev.sh Hikyo-Org/Hikyo`. The helper verifies its own
    installed inputs, preserves stronger live review/App bindings and checks the
    final effective policy. It refuses divergent unprotected dev history.
+   Run this straight after landing, because dev history from before its ruleset is
+   not protected. Expect `0` from
+   `gh api repos/Hikyo-Org/Hikyo/actions/workflows/ci-dev.yml/runs --jq .total_count`
+   before running it. If it is not, stop and investigate.
+5. Protect the promotion branches, from the landed checkout:
+
+   ```sh
+   gh api --method POST repos/Hikyo-Org/Hikyo/rulesets \
+     --input release/repository/nightly-promotion-branches.json --jq .name
+   gh api 'repos/Hikyo-Org/Hikyo/rules/branches/release%2Fnightly-20000101-0000000' \
+     --jq '[.[].type] | sort | join(" ")'
+   ```
+
+   Expect the ruleset's name, then `creation update`. Do not use the full
+   `configure-repository.sh` for this: it also resets CodeQL's languages.
 6. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one

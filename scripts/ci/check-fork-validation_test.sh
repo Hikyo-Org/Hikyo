@@ -59,6 +59,8 @@ case $url in
 	if [ "$count" -ge "${PERMISSION_REMOVED_AT:-99999}" ]; then fixture=permission-later; fi
 	;;
 */rules/branches/release%2Fnightly-20261103-abcdef0) fixture=promotion-rules ;;
+*/rules/branches/dev) fixture=dev-rules ;;
+*/commits/$HEAD_SHA/pulls*) fixture=head-pulls ;;
 */pulls/7)
 	bump pr
 	if [ "${HEAD_MOVES_AFTER_PERMISSION:-false}" = true ] && [ -f "$FIXTURES/permission-calls" ]; then
@@ -129,6 +131,8 @@ promotion() {
 	jq '.user = {id:320493937,login:"hikyo-nightly-release[bot]"} | .head.ref = "release/nightly-20261103-abcdef0" | .base.ref = "main"' "$work/pr.json" >"$work/pr-new.json"
 	mv "$work/pr-new.json" "$work/pr.json"
 	printf '[{"type":"creation"},{"type":"update"}]\n' >"$work/promotion-rules.json"
+	printf '[{"type":"pull_request"},{"type":"non_fast_forward"},{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci-dev-required"}]}}]\n' >"$work/dev-rules.json"
+	jq -n --arg head "$head" '[{base:{ref:"dev",repo:{full_name:"o/r"}},merged_at:"2026-11-03T00:00:00Z",merge_commit_sha:$head}]' >"$work/head-pulls.json"
 }
 
 # A promotion that misses the exemption gets the ordinary requirement, not acceptance.
@@ -230,6 +234,31 @@ for rules in '[{"type":"creation"}]' '[{"type":"update"}]' '[]'; do
 	promotion
 	printf '%s\n' "$rules" >"$work/promotion-rules.json"
 	expect_ordinary_review "a promotion when the branch rules are $rules"
+done
+for rules in \
+	'[.[] | select(.type != "pull_request")]' \
+	'[.[] | select(.type != "non_fast_forward")]' \
+	'[.[] | select(.type != "deletion")]' \
+	'[.[] | select(.type != "required_status_checks")]' \
+	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0].context) = "ci-queue-required"'; do
+	fixture 1 "$promotion_files" "$done_run" success
+	promotion
+	jq "$rules" "$work/dev-rules.json" >"$work/dev-rules-new.json"
+	mv "$work/dev-rules-new.json" "$work/dev-rules.json"
+	expect_ordinary_review "a promotion when dev protection has $rules"
+done
+# A commit inside a merged PR, or merged into another base, is not a merge result on dev.
+for pulls in \
+	'[]' \
+	'[.[0] | .merge_commit_sha = "fedcba9876543210fedcba9876543210fedcba98"]' \
+	'[.[0] | .merged_at = null]' \
+	'[.[0] | .base.ref = "main"]' \
+	'[.[0] | .base.repo.full_name = "fork/r"]'; do
+	fixture 1 "$promotion_files" "$done_run" success
+	promotion
+	jq "$pulls" "$work/head-pulls.json" >"$work/head-pulls-new.json"
+	mv "$work/head-pulls-new.json" "$work/head-pulls.json"
+	expect_ordinary_review "a promotion when the dev pull request list is $pulls"
 done
 # The ordinary route still works when the exemption does not apply.
 fixture 1 "$promotion_files" "$done_run" success

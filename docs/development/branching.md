@@ -189,14 +189,14 @@ What this means for main:
   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
   nightly with `nightly-manual.yml`.
 
-A promotion that changes `.github/` needs no second approval, because a ruleset lets
-only the release app create or update `release/nightly-*` branches, and only
-`nightly-promote` uses it to do so, after source proof selects a green dev tip. A tip
-contains only what admitted PRs merged, and each passed the same check. The exemption
-applies only to the `hikyo-nightly-release[bot]` user, a `release/nightly-*` head into
-main, and a branch that ruleset still protects. If any condition fails, one
+A promotion that changes `.github/` needs no second approval when its head is the
+merge result of a PR merged into protected dev, because that PR passed the same check
+at dev admission. The exemption applies only to the `hikyo-nightly-release[bot]` user,
+a `release/nightly-*` head into main that a ruleset lets only the release app write,
+dev still carrying its protection, and that merged PR. If any condition fails, one
 independent maintainer must approve the PR's exact head, as for any workflow edit.
-This relies on the app key staying in the `nightly-release` environment.
+This relies on the app key staying in the `nightly-release` environment, and on no
+dev history existing before dev was protected.
 
 A promotion that cannot land fails the `nightly-promote` run: a refused admission, or
 a PR over three hours old, even when the run also re-arms or replaces it.

@@ -7,7 +7,7 @@
 #   2. .github/ is untouched, or a same-repository PR has an independent,
 #      currently authorized maintainer's latest approval on this exact head,
 #      or is authored by the pinned BDFL who still has maintainer permission,
-#      or is a nightly promotion on a branch only the release app can write,
+#      or is a nightly promotion of a PR merge result on protected dev,
 #   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
 #      completed, and its aggregate gate ("validation / ci-required")
 #      succeeded. Another PR sharing the commit may target a different base,
@@ -141,11 +141,11 @@ check_current_pr() {
 		fail 'PR has merge conflicts; resolve them before pull_request validation can start' merge-conflict
 }
 
-# Only the release app can create or update release/nightly-* branches, and only
-# nightly-promote.yml uses it to do so, after source proof selects a green dev tip. A
-# tip's PRs each passed this same check. The gate's token cannot read bypass actors,
-# so configure-repository.sh owns that part. Any unmet condition keeps the ordinary
-# review requirement.
+# A promotion needs no second review when its head is the merge result of a PR merged
+# into protected dev, because that PR passed this same check at dev admission. Only the
+# release app can write release/nightly-* branches, so the head cannot be swapped. The
+# gate's token cannot read bypass actors, so activation owns that part. Any unmet
+# condition keeps the ordinary review requirement.
 promotion_already_reviewed() {
 	[ "$pr_author_id" = "$promotion_author_id" ] || return 1
 	refs=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.ref, .base.ref] | join(" ")') ||
@@ -155,7 +155,19 @@ promotion_already_reviewed() {
 	guarded=$(gh_read "repos/$GH_REPO/rules/branches/release%2F${head_ref#release/}" \
 		--jq '[.[].type] | (index("creation") != null) and (index("update") != null)') ||
 		fail 'cannot verify promotion branch protection' api-failure
-	[ "$guarded" = true ]
+	[ "$guarded" = true ] || return 1
+	# shellcheck disable=SC2016 # jq variables, not shell ones.
+	dev_protected=$(gh_read "repos/$GH_REPO/rules/branches/dev" --jq '
+		[.[].type] as $types |
+		[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] as $checks |
+		($types | index("pull_request") != null) and ($types | index("non_fast_forward") != null) and
+		($types | index("deletion") != null) and ($checks | index("ci-dev-required") != null)') ||
+		fail 'cannot verify dev protection' api-failure
+	[ "$dev_protected" = true ] || return 1
+	merged=$(gh_read "repos/$GH_REPO/commits/$HEAD_SHA/pulls?per_page=100" \
+		--jq "[.[] | select(.base.ref == \"dev\" and .base.repo.full_name == \"$GH_REPO\" and .merged_at != null and .merge_commit_sha == \"$HEAD_SHA\")] | length") ||
+		fail 'cannot read the dev pull request that merged the promotion head' api-failure
+	case "$merged" in '' | 0 | *[!0-9]*) return 1 ;; esac
 }
 
 require_workflow_review() {
