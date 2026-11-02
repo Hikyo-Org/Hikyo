@@ -89,9 +89,9 @@ This draft does not implement either by changing an installation flag.
 | Flux/Argo controller campaign | PASS: Flux 2.10.0 / Argo CD 3.5.6, Helm 4.2.3, Kubernetes 1.36.1; eight recorded controller-mechanics checks, 34 unchanged functional input hashes and successful cleanup |
 | Standards source review | Initial P2 CI-routing omission repaired; independent exact-increment recheck reports no remaining actionable source findings |
 | Spec source review | Initial pass and independent exact-increment recheck report no actionable source findings |
-| Post-merge focused checks on the merged tree | PASS with Helm 4.2.3: generator (9 tests), nightly chart, chart owner and mutation checks, publisher fixtures, classifier, and exact coverage-registration Go tests |
+| Post-merge focused checks at `dedea8424`; generator tests and fast feedback rerun after doc repairs | PASS with Helm 4.2.3: generator (9 tests), nightly chart, chart owner and mutation checks, publisher fixtures, classifier, and exact coverage-registration Go tests |
 | Full CI-owner suite and Astro check/build after merge | NOTRUN locally: the shared job queue was paused and host memory was under pressure. Hosted repository invariants own the full suite; candidate CI owns the site build and OSS policy |
-| Post-merge Standards and Spec review | Isolated reviews found no hard violations and confirmed the artifact claims live; stable routing gaps repaired. Stable first-install remains undocumented as a complete runbook |
+| Post-merge Standards and Spec review of `88484ec94`, rechecked at `ac19a140a` | Isolated reviews found no hard violations and confirmed the artifact claims live; stable routing and citation gaps repaired. No complete stable Kubernetes first-install runbook exists, and first-administrator on the 1.0.0 chart is unexercised |
 | Stable and nightly tag coexistence | PASS with Helm 3.16.1 and a disposable registry: unpinned and `>=1.0.0` pulls resolved to `1.0.0`, not a nightly. Helm 4 was not exercised |
 | Hosted CI / protected merge / human security review | Pending on the new pushed head; local source review is not independent human acceptance |
 | Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher. On 2 November 2026 the anonymous registry listed only stable `1.0.0` |

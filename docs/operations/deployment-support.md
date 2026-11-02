@@ -58,9 +58,9 @@ a chart signature for runtime recovery custody or a signed migration route.
 
 The singleton and GitOps guides cover nightly charts only, and the generator refuses
 stable charts, including 1.0.0. That chart also predates two changes in this source:
-the `helm.sh/chart` label normalization Flux's OCI digest version needs, and the
-staged root-key path for operator commands, so in-pod `admin` commands remain limited
-([#1112](https://github.com/Hikyo-Org/Hikyo/issues/1112)).
+the `helm.sh/chart` label normalization Flux's OCI digest version needs, and exposing
+the staged root-key path to in-pod operator commands. `admin` has no root-key flag of
+its own, and the first-administrator flow on that chart has not been exercised.
 
 No complete stable Kubernetes first-install runbook exists yet. For a stable chart,
 complete [stable bundle verification](https://hikyo.app/docs/installation/#verify-a-stable-bundle),

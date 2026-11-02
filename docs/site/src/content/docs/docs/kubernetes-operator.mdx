@@ -35,7 +35,10 @@ shape; the delivery operator does not manage server releases.
 Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install a nightly chart through
 Flux or Argo CD with the delivery operator disabled. To install stable 1.0.0, first
 [verify the stable bundle](/docs/installation/#verify-a-stable-bundle), then use the
-setup below with version `1.0.0`.
+setup below with version `1.0.0` and confirm its digest against the release notes.
+That setup is not a complete first-install runbook: the 1.0.0 chart does not expose
+its staged root-key path to in-pod `admin` commands, and that first-administrator
+flow has not been exercised.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with
