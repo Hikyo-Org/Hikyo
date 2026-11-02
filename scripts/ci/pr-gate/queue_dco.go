@@ -87,9 +87,10 @@ func checkQueueDCO(ctx context.Context, repoName string, p pull, repo string) (i
 	}
 	cmd := gateCommand(ctx, "sh", "scripts/ci/check-dco.sh", p.Base.SHA, p.Head.SHA, repo)
 	cmd.Env = queueDCOEnvironment()
-	// Promotions and backmerges carry Dependabot commits a human did not open.
-	// Those already passed actor-checked dev admission. Only write access reaches
-	// these canonical heads, so a fork or feature branch cannot claim the exemption.
+	// Promotions and backmerges carry Dependabot commits a human did not open,
+	// which passed actor-checked dev admission. A fork or feature branch cannot
+	// claim this. shortcut: a writer pushing to release/ could forge that author
+	// without a sign-off; check ancestry against dev if release/ gains non-writers.
 	canonical := strings.EqualFold(p.Head.Repo.FullName, repoName)
 	promotion := canonical && (strings.HasPrefix(p.Head.Ref, "release/") || p.Head.Ref == "main")
 	if p.User.Login == "dependabot[bot]" || promotion {

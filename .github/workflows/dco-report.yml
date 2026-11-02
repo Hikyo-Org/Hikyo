@@ -45,4 +45,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           # The authenticated opener, not commit metadata: see ci.yml's DCO step.
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: ./scripts/ci/report-dco.sh

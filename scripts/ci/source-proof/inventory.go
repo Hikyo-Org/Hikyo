@@ -178,9 +178,10 @@ func validateJobs(selected selectedRun, jobs []job) error {
 	wanted := expectedJobs(selected)
 	seen := map[string]bool{}
 	for _, current := range jobs {
-		if current.Name == "ci-queue-required" && current.RunnerName == "" && len(current.Steps) == 0 {
+		if (current.Name == "ci-queue-required" || current.Name == "ci-dev-required") && current.RunnerName == "" && len(current.Steps) == 0 {
 			// The Actions API can include the trusted publisher's synthetic
 			// record in this check suite. It supplies no execution evidence.
+			// A backmerge publishes the dev check on main's tip.
 			continue
 		}
 		expected, ok := wanted[current.Name]

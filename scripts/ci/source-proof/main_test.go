@@ -114,6 +114,13 @@ func (f *fixture) mutateRun(mut func(*run)) {
 	f.live[r.ID], f.attempts[r.ID] = r, r
 }
 
+func (f *fixture) mutateMain(mut func(*run)) {
+	r := f.histories["ci-main.yml"][0]
+	mut(&r)
+	f.histories["ci-main.yml"][0] = r
+	f.live[r.ID], f.attempts[r.ID] = r, r
+}
+
 func (f *fixture) read(_ context.Context, endpoint string, target any) error {
 	f.reads[endpoint]++
 	if f.override != nil {
@@ -414,6 +421,19 @@ func TestMainOrdersExecutionsByLatestAttemptNotRunID(t *testing.T) {
 		if _, err := resolveFixture(f, options{Mode: "dev", Commit: testSource}); err == nil {
 			t.Fatalf("accepted attempt start time %q", startedAt)
 		}
+	}
+}
+
+func TestScheduledMainRunIsQualifyingEvidence(t *testing.T) {
+	for conclusion, wantProof := range map[string]bool{"success": true, "failure": false} {
+		t.Run(conclusion, func(t *testing.T) {
+			f := newFixture(t, "main", mainProducers[1])
+			f.mutateMain(func(r *run) { r.Event, r.Conclusion = "schedule", conclusion })
+			got, err := resolveFixture(f, options{Mode: "main", Commit: testSource})
+			if (err == nil) != wantProof {
+				t.Fatalf("scheduled %s: %+v %v", conclusion, got, err)
+			}
+		})
 	}
 }
 

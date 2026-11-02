@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -27,6 +30,7 @@ func newDevFixture(t *testing.T) *queueFixture {
 	for _, revision := range []string{main, f.pr.Base.SHA, f.pr.Head.SHA} {
 		f.api.responses[f.c.endpoint("contents/"+devGateWorkflowPath+"?ref="+revision)] = map[string]string{"type": "file", "path": devGateWorkflowPath, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("trusted dev publisher"))}
 	}
+	f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": []map[string]string{{"filename": "internal/app/app.go"}}}
 	f.feedbackRun.Pulls = []pull{f.pr}
 	f.feedbackRefresh()
 	r := f.feedbackRun
@@ -218,5 +222,81 @@ func TestDevPublisherRepairRequiresExactMainBackmerge(t *testing.T) {
 				t.Fatalf("publisher repair %s: %v", route, err)
 			}
 		})
+	}
+}
+
+func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
+	const path = ".github/workflows/ci.yml"
+	content := func(data string) map[string]string {
+		return map[string]string{"type": "file", "path": path, "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(data))}
+	}
+	main := strings.Repeat("e", 40)
+	for name, tc := range map[string]struct {
+		files  []map[string]string
+		head   string
+		refuse bool
+	}{
+		"unrelated file":       {[]map[string]string{{"filename": "internal/app/app.go"}}, "", false},
+		"changed definition":   {[]map[string]string{{"filename": path}}, "feature bytes", true},
+		"backmerged from main": {[]map[string]string{{"filename": path}}, "main bytes", false},
+		"renamed definition":   {[]map[string]string{{"filename": "other.yml", "previous_filename": path}}, "", true},
+		"empty file list":      {[]map[string]string{}, "", false},
+		"truncated file list":  {make([]map[string]string, compareFileLimit), "", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": tc.files}
+			f.api.responses[f.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
+			if tc.head != "" {
+				f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content(tc.head)
+			}
+			refusal, err := f.q.devPolicyRefusal(context.Background(), f.pr)
+			if err != nil || (refusal != "") != tc.refuse {
+				t.Fatalf("refusal %q/%v, want refuse=%t", refusal, err, tc.refuse)
+			}
+		})
+	}
+	// Admission must publish this refusal instead of only failing the job.
+	f := newDevFixture(t)
+	f.q.dco = func(context.Context, pull) (int, error) { return 0, nil }
+	f.api.responses[f.c.endpoint("compare/"+f.pr.Base.SHA+"..."+f.pr.Head.SHA)] = map[string]any{"files": []map[string]string{{"filename": path}}}
+	f.api.responses[f.c.endpoint("contents/"+path+"?ref="+main)] = content("main bytes")
+	f.api.responses[f.c.endpoint("contents/"+path+"?ref="+f.pr.Head.SHA)] = content("feature bytes")
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.api.checks) != 1 || f.api.checks[0].Conclusion != "failure" {
+		t.Fatalf("policy-path refusal was not published: %+v", f.api.checks)
+	}
+}
+
+// Source proof is package main too, so compare the two lists through its source.
+func TestDevPolicyPathsCoverSourceProof(t *testing.T) {
+	raw, err := os.ReadFile("../source-proof/resolve.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := regexp.MustCompile(`(?s)var policyPaths = \[\]string\{(.*?)\n\}`).FindSubmatch(raw)
+	if block == nil {
+		t.Fatal("source-proof policy paths moved")
+	}
+	want := map[string]bool{".github/workflows/ci-dev.yml": true}
+	for _, match := range regexp.MustCompile(`"([^"]+)"`).FindAllSubmatch(block[1], -1) {
+		want[string(match[1])] = true
+	}
+	if !reflect.DeepEqual(want, devPolicyPaths) {
+		t.Fatalf("dev policy paths differ from source proof:\n got %v\nwant %v", devPolicyPaths, want)
+	}
+}
+
+func TestQueueGateLeavesDevPullRequestsAlone(t *testing.T) {
+	f := newQueueFixture(t)
+	f.pr.Base.Ref = "dev"
+	f.refresh()
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.api.checks) != 0 {
+		t.Fatalf("main queue gate published on a dev PR: %+v", f.api.checks)
 	}
 }

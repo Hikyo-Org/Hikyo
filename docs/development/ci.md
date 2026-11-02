@@ -34,7 +34,7 @@ operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
 | Run operations-floor acceptance | `ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
 | Measure performance | `codspeed` or the PR benchmark control | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
-| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified dev source proof and v2 trust preflight. |
+| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified source proof: main under the v1 trust policy, the last green dev commit under v2. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 

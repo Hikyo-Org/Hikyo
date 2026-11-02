@@ -37,7 +37,7 @@ fi
 grep -F 'go run ./scripts/ci/source-proof' "$workflow" >/dev/null || fail 'nightly does not verify complete exact-source CI proof'
 grep -F -- '--mode dev --latest --authority-commit "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'nightly does not pin the last green dev source'
 grep -F 'nightly-main-bridge' "$workflow" >/dev/null || fail 'explicit v1 reader bridge is unavailable'
-grep -F -- '--require-dev-policy' "$workflow" >/dev/null || fail 'dev publication lacks v2 policy enforcement'
+grep -F 'nightly source-mode' "$workflow" >/dev/null || fail 'nightly source does not follow the authenticated policy'
 grep -F -- '--require-main-policy' "$workflow" >/dev/null || fail 'main bridge lacks v1 policy enforcement'
 grep -F 'needs: validation' "$workflow" >/dev/null || fail 'nightly publication does not wait for validation'
 # shellcheck disable=SC2016

@@ -262,3 +262,64 @@ esac
 		})
 	}
 }
+
+// Checkout by SHA leaves no refs/heads/dev, so the guard has to run against real
+// Git: a static or stubbed check passed while every dev run died on this line.
+func TestDevPushGuardRunsAgainstDetachedCheckout(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow mainValidationWorkflow
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	guard := ""
+	const start, end = `if [ "$EVENT_NAME" = push ]; then`, `plan=$(./scripts/ci/classify-changed-paths.sh --all)`
+	for _, step := range workflow.Jobs["changes"].Steps {
+		if i := strings.Index(step.Run, start); i >= 0 {
+			guard = step.Run[i:]
+			guard = guard[:strings.Index(guard, end)] + "fi\n"
+		}
+	}
+	if guard == "" {
+		t.Fatal("dev push guard moved")
+	}
+	dir := t.TempDir()
+	git := func(cwd string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Dir = cwd
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	origin, clone := filepath.Join(dir, "origin"), filepath.Join(dir, "clone")
+	git(dir, "init", "-q", "-b", "dev", origin)
+	git(origin, "commit", "-q", "--allow-empty", "-m", "first")
+	first := git(origin, "rev-parse", "HEAD")
+	git(origin, "commit", "-q", "--allow-empty", "-m", "second")
+	tip := git(origin, "rev-parse", "HEAD")
+	git(origin, "switch", "-q", "--orphan", "other")
+	git(origin, "commit", "-q", "--allow-empty", "-m", "unrelated")
+	unrelated := git(origin, "rev-parse", "HEAD")
+	git(origin, "switch", "-q", "dev")
+	git(dir, "clone", "-q", origin, clone)
+	git(clone, "checkout", "-q", "--detach", tip)
+	git(clone, "branch", "-q", "-D", "dev")
+	for name, tc := range map[string]struct {
+		revision string
+		want     bool
+	}{"current tip": {tip, true}, "rerun after dev moved": {first, true}, "not on dev": {unrelated, false}} {
+		t.Run(name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard)
+			cmd.Dir = clone
+			cmd.Env = append(os.Environ(), "EVENT_NAME=push", "DEVELOPMENT=true", "GITHUB_REF=refs/heads/dev", "SOURCE_REVISION="+tc.revision)
+			if out, err := cmd.CombinedOutput(); (err == nil) != tc.want {
+				t.Fatalf("guard for %s: %v\n%s", tc.revision, err, out)
+			}
+		})
+	}
+}

@@ -7,8 +7,8 @@ on:
         description: Follow the installed nightly policy, or require the v1 main source
         type: choice
         required: true
-        default: dev
-        options: [dev, main-bridge]
+        default: policy
+        options: [policy, main-bridge]
 
 permissions: {}
 
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$SOURCE_MODE" in
-            dev) event_type=nightly-release ;;
+            policy) event_type=nightly-release ;;
             main-bridge) event_type=nightly-main-bridge ;;
             *) echo 'Unknown nightly source mode.' >&2; exit 1 ;;
           esac

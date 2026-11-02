@@ -43,8 +43,8 @@ func TestMainValidationWorkflowPolicyNightlyManual(t *testing.T) {
 		t.Fatal(err)
 	}
 	mode := inputs.Inputs["source_mode"]
-	if len(inputs.Inputs) != 1 || mode.Type != "choice" || !mode.Required || mode.Default != "dev" || !reflect.DeepEqual(mode.Options, []string{"dev", "main-bridge"}) {
-		t.Fatal("manual request must default to dev and offer only the explicit v1 bridge")
+	if len(inputs.Inputs) != 1 || mode.Type != "choice" || !mode.Required || mode.Default != "policy" || !reflect.DeepEqual(mode.Options, []string{"policy", "main-bridge"}) {
+		t.Fatal("manual request must default to the installed policy and offer only the explicit v1 bridge")
 	}
 	job := manual.Jobs["request"]
 	if len(manual.Jobs) != 1 || job.If != "github.ref == 'refs/heads/main'" || job.RunsOn != "ubuntu-latest" || job.Timeout.Value != "3" || !reflect.DeepEqual(job.Permissions, map[string]string{"contents": "write"}) || len(job.Steps) != 1 {
@@ -86,9 +86,9 @@ func TestMainValidationWorkflowPolicyNightlyManual(t *testing.T) {
 		apiFailure        bool
 		wantFailure       bool
 	}{
-		{name: "dev", mode: "dev", event: "nightly-release"},
+		{name: "policy", mode: "policy", event: "nightly-release"},
 		{name: "main bridge", mode: "main-bridge", event: "nightly-main-bridge"},
-		{name: "API failure", mode: "dev", event: "nightly-release", apiFailure: true, wantFailure: true},
+		{name: "API failure", mode: "policy", event: "nightly-release", apiFailure: true, wantFailure: true},
 		{name: "invalid mode", mode: "unknown", wantFailure: true},
 		{name: "missing mode", wantFailure: true},
 	} {

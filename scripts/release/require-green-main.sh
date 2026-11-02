@@ -25,7 +25,7 @@ repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 # approved execution definition and every native job; a same-name check or
 # candidate-authored artifact cannot replace source execution evidence.
 if ! "$GO_BIN" -C "$repo_root" run -p 2 ./scripts/ci/source-proof \
-	--repository "$repository" --mode main --commit "$commit" >/dev/null; then
+	--repository "$repository" --mode main --commit "$commit" --authority-commit "$commit" >/dev/null; then
 	printf 'green main: exact commit %s needs complete authenticated source proof; run full ci-main.yml on the selected main commit when proof is unavailable\n' "$commit" >&2
 	exit 1
 fi

@@ -80,7 +80,9 @@ The required `ci-dev-required` check verifies all three feedback lanes, canonica
 DCO, signatures, fork admission and current workflow authority. Main's queue is
 not part of this path. Fix or revert red integration before promoting a release.
 CI/publisher definitions land through main first, then a reviewed main-to-dev
-backmerge supplies those approved definitions to integration. Do not force-reset
+backmerge supplies those approved definitions to integration. Dev admission refuses
+a PR that changes them otherwise. Dev proof stays unavailable between that main
+landing and a green run of the backmerge, so backmerge promptly. Do not force-reset
 branches to synchronize them.
 
 ## Freeze and promote
@@ -105,6 +107,9 @@ trap - EXIT HUP INT TERM
 Promote regularly. Main-scoped compile caches follow main, so dev runs and PR
 feedback recompile more as dev drifts from it. A promotion is one full run, and
 it does not have to be a tagged release.
+
+Feedback lanes select nothing on a same-repository `release/` PR to main, because
+its whole diff cannot fit their budget and the full queue graph runs next.
 
 New dev pushes do not move that release branch. Branches under `release/` always
 select the full main queue graph, including docs-only promotions. A changed
@@ -173,7 +178,9 @@ These are release/trust actions, separate from merging implementation:
    activation.
 
 A scheduled weekly `ci-main` run on main keeps the main-scoped compile caches
-written, because nightlies now reuse proof instead of running the full graph.
+written, because nightlies now reuse proof instead of running the full graph. It
+is qualifying evidence: a green run can prove main's tip, and a failed one refuses
+proof for that commit until a newer run passes.
 
 Stable tags consume complete proof for the identical landed main commit and
 revalidate it during construction. Fresh tag-bound floor/docs checks and actual

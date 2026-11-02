@@ -380,6 +380,11 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	var selectedRun *run
 	if policy.Enabled {
 		if p.Base.Ref != q.admissionBranch() {
+			// Dev PRs have their own admission check. Feedback callbacks reach this
+			// main gate too, and must not leave a queue check on their head.
+			if q.checkName == queueCheckName && p.Base.Ref == "dev" {
+				return q.reconciliation.retireHead(ctx, false)
+			}
 			result = refused("Only the protected default branch can enter this merge queue.")
 		} else {
 			if err := q.devPublisherContract(ctx, p); err != nil {
@@ -450,6 +455,14 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 				}
 				result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for protected merge queue", Summary: "Admission only. The mandatory queue must validate its current-base candidate against the trusted change plan before merging."}
 				if q.checkName == devCheckName {
+					refusal, err := q.devPolicyRefusal(ctx, p)
+					if err != nil {
+						return err
+					}
+					if refusal != "" {
+						result = refused(refusal)
+						break
+					}
 					result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for dev integration", Summary: "Exact-head fast feedback, canonical DCO and current trusted admission policy passed. Dev integration is asynchronous; main promotion still requires full current-base queue validation."}
 				}
 			default:

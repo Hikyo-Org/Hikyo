@@ -599,6 +599,7 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				}
 			}
 		},
+		"cap race beyond dev runs":    func(j map[string]map[string]any) { j["race_shard"]["strategy"].(map[string]any)["max-parallel"] = 7 },
 		"skip feedback fixtures":      func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "if", "false") },
 		"fail open feedback fixtures": func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "continue-on-error", true) },
 		"drop supervisor fixtures":    func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "run", "true") },

@@ -65,9 +65,14 @@ jobs:
           persist-credentials: false
       - name: Select fast feedback domains
         id: plan
+        env:
+          PROMOTION: ${{ github.event.pull_request.base.ref == 'main' && startsWith(github.event.pull_request.head.ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           base=$(git -C ../feedback-tools rev-parse HEAD^1)
           test "$(git -C ../feedback-tools rev-parse HEAD^2)" = "$FAST_FEEDBACK_HEAD"
+          # A promotion's whole diff cannot fit this budget, and the mandatory
+          # queue runs the full graph on it next. An empty range selects nothing.
+          if [ "$PROMOTION" = true ]; then base=$FAST_FEEDBACK_HEAD; fi
           export FAST_FEEDBACK_BASE="$base"
           echo "FAST_FEEDBACK_BASE=$base" >> "$GITHUB_ENV"
           plan=$(bash "$FAST_FEEDBACK_TOOLS_DIR/fast-feedback.sh" --plan)

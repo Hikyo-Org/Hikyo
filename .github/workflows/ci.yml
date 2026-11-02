@@ -171,10 +171,13 @@ jobs:
           if [ "$EVENT_NAME" = push ]; then
             # checkout has the complete canonical tag and branch history. Bind
             # the peeled tag, not release.target_commitish (which may be main).
-            test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$SOURCE_REVISION"
             if [ "$DEVELOPMENT" = true ]; then
               test "$GITHUB_REF" = refs/heads/dev
+              # Checkout by SHA creates no local branch, and a rerun can follow
+              # a dev that has since moved.
+              git merge-base --is-ancestor "$SOURCE_REVISION" refs/remotes/origin/dev
             else
+              test "$(git rev-parse "$GITHUB_REF^{commit}")" = "$SOURCE_REVISION"
               git merge-base --is-ancestor "$SOURCE_REVISION" refs/remotes/origin/main
             fi
             plan=$(./scripts/ci/classify-changed-paths.sh --all)

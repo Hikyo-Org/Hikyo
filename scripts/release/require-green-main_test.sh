@@ -11,13 +11,14 @@ commit=176e6e67379d0675e6211f0491dc965cee4f1c5c
 cat >"$fixture_dir/go" <<'GO'
 #!/bin/sh
 set -eu
-[ "$#" -eq 12 ]
+[ "$#" -eq 14 ]
 [ "$1" = -C ] && [ "$2" = "$EXPECTED_ROOT" ]
 [ "$3" = run ] && [ "$4" = -p ] && [ "$5" = 2 ]
 [ "$6" = ./scripts/ci/source-proof ]
 [ "$7" = --repository ] && [ "$8" = Hikyo-Org/hikyo ]
 [ "$9" = --mode ] && [ "${10}" = main ]
 [ "${11}" = --commit ] && [ "${12}" = "$EXPECTED_COMMIT" ]
+[ "${13}" = --authority-commit ] && [ "${14}" = "$EXPECTED_COMMIT" ]
 printf 'called\n' >>"$CALLS"
 exit "$PROOF_STATUS"
 GO

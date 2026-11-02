@@ -63,7 +63,7 @@ type producer struct {
 
 var mainProducers = []producer{
 	{File: "ci-merge-group.yml", Name: "trusted-merge-ci", Events: []string{"merge_group"}, Queue: true},
-	{File: "ci-main.yml", Name: "ci-main", Branch: "main", Events: []string{"workflow_dispatch"}},
+	{File: "ci-main.yml", Name: "ci-main", Branch: "main", Events: []string{"workflow_dispatch", "schedule"}},
 	{File: "ci.yml", Name: "ci", Branch: "main", Events: []string{"push", "workflow_dispatch"}, Legacy: true},
 }
 
