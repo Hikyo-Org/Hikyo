@@ -13,20 +13,14 @@ merged commit. One active run completes while newer pushes replace the single
 pending run. A frozen `release/` branch promotes through main's full single-entry
 queue, including documentation-only promotions.
 
-Nightlies build from the last completely green dev commit, and only when that
-commit is newer than the previous nightly; an unchanged day builds, signs and
-publishes nothing and the run stays green. They require the installed v2 nightly
-policy, so under v1 they fail at preflight before publication. The only
-exception is the one-time main bridge. In this document, "v2" means the version of
-the nightly trust policy file format (`hikyo.dev/nightly-policy/v2`), not a Hikyo
-product version; Hikyo stays on 1.x. Trusted main tooling
-authenticates the producer, exact attempt, complete job inventory, immutable
-workflow definitions and ancestry, then repeats that verification before signing.
-The v2 nightly manifest binds distinct source and publisher commits and includes
-the exact validation receipt in its signed inventory. Legacy v1 verification
-retains source/certificate equality and rejects successor-only fields.
-The first-use installer, container verifier, Apple receipt/recovery state and
-post-publication security campaign all preserve those separate identities.
+Nightlies are unchanged for users. They are built and signed from main, with the
+same manifest format, signing identity (`nightly.yml@refs/heads/main`) and trust
+policy. There is no bridge and no recovery signing. A new workflow,
+`nightly-promote.yml`, lands the last green dev commit on main through the existing
+merge queue, daily and on demand. `nightly.yml` verifies the complete queue proof of
+the main commit it builds instead of running the full graph again. Its existing
+identity step already skips a commit that is published, so nightly publishes only
+when main has a newer commit.
 
 Stable tags reuse complete validation for the identical landed source. The tag
 retains one fresh floor measurement and docs check; repeated full source tests
@@ -35,15 +29,33 @@ scans, upgrade compatibility, native installation, Apple signing/notarization,
 publication and runtime acceptance remain separate requirements. No persistent
 Go build-cache bucket or paid cache capacity is added.
 
+## Behavior to expect
+
+- Main moves whenever a newer green dev commit exists. A stable release is a tag on
+  any main commit, and every main commit passed the full queue.
+- A failed promotion leaves main unchanged and means no new nightly. The workflow
+  run fails for a missing dev proof, an unexpected state or a refused write. A failed
+  queue run instead leaves the promotion PR open with a red `trusted-merge-ci` run;
+  the next promotion queues it again for the same commit, or replaces it.
+- A manual promotion takes about one queue run plus the nightly itself.
+- `nightly-manual.yml` still publishes main's tip now without promoting anything.
+- A promotion that changes `.github/` needs one independent maintainer approval of the
+  promotion PR's exact head, as any workflow edit does. Approve it in the GitHub UI.
+- A docs-only landing as the tip of main has only selective queue proof, so the
+  nightly's validation fails for that commit. Run
+  `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
+  nightly with `gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main`.
+- If main conflicts with dev, admission refuses the promotion PR. Resolve it with a
+  reviewed backmerge of main into dev, never by force-pushing.
+
 ## Evidence and limits
 
-Local verification covers workflow contracts, real-signature v1/v2 trust and
-revocation fixtures, unsigned policy-rotation conservation, source-proof refusal
-cases, dev admission, activation/discovery fixtures, safe payload restoration
-and documentation content mappings. Final local and independent review results
+Local verification covers workflow contracts, source-proof refusal cases, dev
+admission, activation and discovery fixtures, the promotion script against a stub
+`gh`, and documentation content mappings. Final local and independent review results
 are recorded in the delivery PR.
 
-New hosted dev integration and publication are not established by local fixtures.
+New hosted dev integration and promotion are not established by local fixtures.
 Before activation, the required evidence classes are:
 
 | Gate | Required proof |
@@ -51,13 +63,11 @@ Before activation, the required evidence classes are:
 | Source delivery | Signed/DCO PR and independent Standards and Spec reviews |
 | Hosted merge | Exact-head feedback, current authority, full queue proof, actual landed commit |
 | Dev activation | Installed main definitions, full exact-source proof, effective rules/ref readback |
-| Reader bridge | Explicit one-time v1 main bridge nightly publication and actual client upgrade acceptance |
-| Trust migration | Reviewed successor bytes, three recovery signatures, verified snapshot/floor and public readback |
-| Dev nightly | Complete selected dev CI plus artifact, signature, native and runtime acceptance |
+| Promotion | A real `release/nightly-*` PR authored by the App passes admission, the queue and lands |
+| Nightly | Complete queue proof for the promoted commit, then artifact, signature, native and runtime acceptance |
 
-No live rulesets, branch refs, production trust files or release pointers are
-changed by this PR. An unsigned proposal is a review artifact and cannot activate
-the policy.
+No live rulesets, branch refs, trust files or release pointers are changed by this
+PR.
 
 ## Activation sequence
 
@@ -68,55 +78,31 @@ the policy.
    `scripts/release/configure-dev.sh Hikyo-Org/Hikyo`. The helper verifies its own
    installed inputs, preserves stronger live review/App bindings and checks the
    final effective policy. It refuses divergent unprotected dev history.
-3. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
+3. Give the nightly release App the pull request permission. This is a human step in
+   GitHub: open the organization's Settings, then Developer settings, GitHub Apps,
+   the nightly release App, Permissions & events, Repository permissions, set
+   Pull requests to Read and write, and save. Then accept the new permission on the
+   installation (organization Settings, GitHub Apps, Configure; GitHub shows a
+   request to review). To verify, run step 5: `actions/create-github-app-token` fails
+   with HTTP 422 while the installation lacks the permission. If creating the branch
+   fails with a message about workflow files, also grant Workflows: Read and write,
+   and add `permission-workflows: write` to the token step.
+4. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
    active run completes and only the newest pending push remains during a burst.
-   The CI speedup is live from this step. Until the v2 policy is installed,
-   ordinary nightlies do not publish: scheduled runs fail at preflight with its
-   clear message. The order is: land, run the bridge and upgrade clients, close
-   the blocker below, then recovery-sign v2.
-4. Run the one-time main bridge exactly once, before signing the v2 policy
-   (`nightly-manual.yml` with `source_mode=main-bridge`). It is required, not
-   optional: existing nightly clients cannot read a v2 manifest, so skipping it
-   strands them. It is the only nightly built from main, because a v1 manifest
-   requires its source commit to equal the publisher commit, and v2 refuses it.
-   Verify actual installation and upgrade clients to the reader before enabling
-   v2. The bridge builds the main tip as of its request. If main moves after the
-   request starts, the build fails closed on the changed tip, and a rerun cannot
-   help because it keeps the old `github.sha`; send a fresh request with proof for
-   the new tip instead.
-5. Generate a fresh unsigned policy proposal against current authenticated trust:
+   The CI speedup is live from this step.
+5. Run the first promotion:
 
    ```sh
-   go run ./scripts/release/stable nightly-policy-proposal --trust release/trust \
-     --out "$PROPOSAL_DIRECTORY"
+   gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main
    ```
 
-   Set `PROPOSAL_DIRECTORY` to a new directory outside the checkout first.
-   Independently review `proposal.json` and all four proposed documents. Use the
-   existing recovery custody to sign stable policy, metadata and catalog, then
-   verify the complete successor snapshot against the retained floor. Install
-   through the established trust ceremony and verify public readback. Retain the
-   old policy digest for historical v1 nightlies. Regenerate the proposal if trust
-   changes before signatures are collected.
-6. Backmerge reviewed main policy/tooling changes into dev. Require
-   `go run ./scripts/release/nightly preflight --require-dev-policy` on main and a
-   complete green dev run. Installing v2 enables ordinary nightlies, which build
-   from dev. Verify the published v2 source matches the selected receipt, while its
-   certificate binds the trusted main publisher. Main bridge requests are refused
-   under v2. The v2 files exist on main only after the install, so the backmerge
-   cannot precede it. Do both together, because scheduled runs start hours after
-   their 02:00 UTC cron. A scheduled run
-   that picks a dev commit from before the backmerge cannot harm clients: the
-   binary embeds only `root.json` and the recovery key, which the rotation leaves
-   unchanged, and clients read the signed snapshot from main. It fails closed in
-   the build job, which verifies predecessors against dev's own `release/trust`: once a
-   v2 nightly exists, an old catalog does not authorize its policy, so that night
-   publishes nothing until the backmerge lands.
-
-Ordinary nightlies always select dev. They cannot fall back to main: an
-unavailable dev source fails before publication.
+   Confirm the job summary names a `release/nightly-*` PR, that the PR shows
+   `ci-queue-required` admission, that the queue lands it, and that the
+   `nightly-release` run starts from the landing. Approve the PR first if it touches
+   `.github/`. Then backmerge main into dev, because the promotion adds a merge
+   commit to main that dev lacks.
 
 ## Pre-activation repairs
 
@@ -131,61 +117,27 @@ Review of the unlanded branch against a real promotion found these, all fixed:
 - The main queue gate left a check on every dev PR head.
 - A full dev run held all 20 runners for about 15 minutes, starving PR feedback.
 - Nightly reuse removed the only automatic writer of main compile caches.
-- A dev nightly built dev source inside a run on main, where its tooling could poison
-  main-scoped caches. The build now runs in `nightly-build.yml` on dev.
-- Selecting the source from the installed policy would have published main under v1.
-  Nightlies now come from dev only, so under v1 they fail at preflight until the
-  recovery ceremony installs v2. The owner accepted that: the blocker below must
-  close first, and a nightly never publishes main outside the one-time bridge.
-- An unchanged dev with a moved main publisher turned `container` red under v2, and
-  every day republished nothing useful. `validation` now compares the selected commit
-  with the previous nightly through `scripts/release/nightly-source-newer.sh`, and the
-  build and everything after it are skipped when it is not newer.
+- The stable-workflow fixture's stub compared a shell-dependent expansion that never
+  matched.
 
 Not established before the first hosted dev run: the replay-modelled runner headroom,
 whether creating `dev` succeeds under its new ruleset, the publisher's 60-second
 budget on a backmerge touching many CI definitions, source proof's job inventory
-against a real `ci-dev` run, and the dispatched `nightly-build` run, which GitHub can
-only start once the workflow is on main. If creating `dev` fails during activation, stop and
-report it. The helper's checks leave main untouched.
-
-## Blocker before the v2 trust switch
-
-Do not install the v2 nightly policy until these are moved or accepted. Under v2,
-binaries built from dev still run inside runs on main, which can write main-scoped
-caches:
-
-| Where | Why it matters |
-| --- | --- |
-| `publish`: packaged startup smoke and populated upgrade proof | Same job later mints the release app token, on the same VM |
-| `apple-acceptance`: native install via `verify-apple-install.sh` | Runs on a macOS runner in a run on main |
-| `container`: `nightly-image.sh promote` image smoke | Docker on the job that holds package and signing identity |
-
-Until the policy is installed, ordinary nightlies do not publish at all, so
-nothing here runs. Move these checks to a run on dev, or isolate them with no
-host access and no network.
-
-CodeQL's 8 `actions/cache-poisoning` alerts now point at `nightly-build.yml`. Its rule
-does not model that cache scope follows the run's ref, so they look like false
-positives for dev dispatches, by reading. On main the workflow now refuses any commit
-other than main's tip when the build is dispatched, so a writer cannot dispatch an
-older main commit.
-Triage the alerts when closing this blocker.
+against a real `ci-dev` run, and whether the main ruleset's extra approval for
+unattributed changes affects an App-authored promotion. If creating `dev` fails
+during activation, stop and report it. The helper's checks leave main untouched.
 
 ## Recovery and maintenance
 
 Keep main as default and keep its mandatory queue. CI/publisher definitions land
 through main first, followed by a reviewed main-to-dev merge. Fix or revert red
 dev integration before a new promotion; do not force-reset shared branch history.
+A promotion fails with no green proof while main's CI definitions are ahead of dev.
 
 If identical landed-source proof is unavailable, dispatch full `ci-main` on the
 selected main commit and obtain new exact-source proof. Selective/docs-only,
 cancelled, missing-job or failed newer attempts never substitute for full proof.
 The source-proof inventory is closed: changes to job names, matrix sizes,
 required execution steps or reusable workflows must update its authenticated
-inventory and fixtures with the canonical graph.
-
-Source rollback alone cannot roll back an already signed trust floor. Preserve
-v2 reader support and authorized historical policies after activation; any later
-policy change follows the recovery ceremony. Keep native/platform release
+inventory and fixtures with the canonical graph. Keep native/platform release
 acceptance separate from source-validation receipts.

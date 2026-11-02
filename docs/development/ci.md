@@ -11,11 +11,12 @@ queue. **ci-queue-required** admits the exact PR head and then requires complete
 current-base merge-group proof. Branches under `release/` always select all 16
 domains. Dev movement never cancels a fixed candidate's validation.
 
-Stable consumers can reuse authenticated complete proof for the identical landed
-commit. Signed nightlies use the last fully green dev commit when it is newer than
-the previous nightly, with trusted main publication tooling and explicit v2 trust. See the [branching guide](branching.md)
-for activation, the main-source reader bridge, recovery policy rotation and
-operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
+Stable consumers and signed nightlies can reuse authenticated complete proof for
+the identical landed commit. Nightlies are built and signed from main as before.
+**nightly-promote** lands the last fully green dev commit on main through the
+queue first, so every main commit has queue proof. See the [branching guide](branching.md)
+for activation, promotion and operator commands. Legacy main recovery remains
+**ci:full / ci-required-next**.
 
 ## Choose a task
 
@@ -34,7 +35,8 @@ operator commands. Legacy main recovery remains **ci:full / ci-required-next**.
 | Prove release hardware/restore acceptance | `release-acceptance` | Choose `backup-restore`, `operator`, or `all`. Existing custody secrets stay confined to the backup step. This does not publish a release. |
 | Run operations-floor acceptance | `ops-floor` | Native ARM64/AMD64 operator diagnostics; also runs for relevant PR changes. |
 | Measure performance | `codspeed` or the PR benchmark control | Measurements preserve the paid-run budget. Required benchmark smoke does not use paid runners. |
-| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch restart path, after complete verified source proof of the last green dev commit, only when it is newer than the previous nightly. Requires the v2 trust policy; the one-time main bridge is the exception. |
+| Promote dev to main for the nightly | `nightly-promote` | Daily at 22:17 UTC or manual on main. Opens a `release/nightly-*` PR for the last green dev commit when main lacks it and queues it. A merged promotion starts the nightly. |
+| Publish nightly builds | `nightly-release` | Scheduled publication or the repository-dispatch path, built and signed from main after complete verified source proof of that exact commit. A commit that is already published is skipped. |
 | Publish stable releases | `release-build` | Signed tag pipeline consuming exact-source full proof; artifact acceptance remains fresh. |
 | Publish documentation | `docs` | Main-push Pages/Storybook build, deployment, and public-site verification. |
 
@@ -77,7 +79,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | Maintenance | `reliability.yml` | Original daily security and weekly integration/race/channel checks, plus one manual menu. |
 | Compiler cache seeds | `ci-feedback-backend-cache.yml`, `ci-feedback-cache.yml`, `ci-race-cache.yml` | Trusted-main-only producers of Go build entries. PR feedback, source-artifact validation, race shards and the reliability race suite only read them. One shared race entry replaces twelve per-shard entries that could not fit the 10 GB repository cache budget together. |
 | Release acceptance | `release-acceptance.yml`, `ops-floor.yml`, `aws-acceptance.yml` | Manual secret-bearing acceptance is separate from PR-capable operations validation. |
-| Publication | `nightly.yml`, `nightly-build.yml`, `nightly-manual.yml`, `release.yml`, `security-release.yml`, `docs.yml` | Nightly, stable tags, and Pages retain separate credentials and gates. |
+| Publication | `nightly-promote.yml`, `nightly.yml`, `nightly-manual.yml`, `release.yml`, `security-release.yml`, `docs.yml` | Promotion, nightly, stable tags, and Pages retain separate credentials and gates. Promotion opens its PR as the nightly App, because a PR opened with the workflow token starts no CI. |
 
 Files live in [`.github/workflows/`](../../.github/workflows/). Display names may
 differ from filenames. `ci.yml` and `matrix-performance.yml` are reusable graphs.
@@ -135,8 +137,8 @@ of GitHub's behavior for ambiguous same-name checks.
 
 Main-push publication and security checks retain their triggers. Full main
 validation is manual recovery plus a weekly cache-writing run. Stable releases
-reuse exact-commit full source proof; nightlies publish the last green dev commit
-under the v2 policy, always with complete proof. Preserve pins, signatures, cache
+and nightlies reuse exact-commit full source proof; a nightly is built from main,
+never from dev. Preserve pins, signatures, cache
 ownership, native runners, budget admission, and protected publication.
 
 ## Documentation prerequisites

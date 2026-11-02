@@ -2,7 +2,7 @@
 
 Feature pull requests target `dev`. `main` remains the default, trusted release
 branch. This flow deliberately permits a temporarily broken integration branch;
-only fully validated release candidates may reach `main`.
+only commits that passed the full merge queue may reach `main`.
 
 ## Required behavior
 
@@ -46,25 +46,9 @@ read back the resulting branch protection. It must preserve main's queue,
 signatures, DCO, fork and workflow-approval boundaries. Existing default-branch
 release workflows keep their privileged execution on trusted code.
 
-Signed nightlies build from the last fully green `dev` commit, and only when it is
-newer than the previous nightly. They need the recovery-authorized v2 policy, which
-is the version of the nightly trust policy file format
-(`hikyo.dev/nightly-policy/v2`), not a Hikyo product version; Hikyo stays on 1.x.
-Until it is installed, ordinary nightlies do not publish and scheduled runs fail at
-preflight. The order is: land, run the one-time bridge and upgrade clients, close the
-blocker in the [handoff](../handoff/dev-integration-ci.md), then recovery-sign v2. The trusted
-publisher continues running on `main`, while `nightly-build.yml` builds the source
-in a run on `dev`, so build tooling from dev gets no main-scoped cache access.
-The publisher authenticates that run and pins its artifact; the successor nightly policy and manifest bind the
-publisher commit separately from the dev source and its exact validation receipt.
-The receipt is included in the signed artifact inventory. Publication repeats
-live source-proof verification before signing and refuses a changed run/attempt.
-
-Legacy v1 manifests retain their original certificate/source equality rule.
-Existing clients receive the new reader from the one-time main bridge nightly,
-which is required exactly once before the v2 policy is signed: they cannot read a
-v2 manifest, so skipping it strands them. Ordinary nightlies cannot fall back to main, and a broken dev
-source fails before publication.
+Signed nightlies are unchanged for users: they are built and signed from `main`,
+with the same manifest format, signing identity (`nightly.yml@refs/heads/main`)
+and trust policy. [Nightlies](#nightlies) describes how dev reaches main for them.
 
 Repository changes are delivered through a signed PR. Live branch-policy
 activation follows the landed trusted implementation; creating this document or
@@ -117,7 +101,8 @@ trap - EXIT HUP INT TERM
 
 Promote regularly. Main-scoped compile caches follow main, so dev runs and PR
 feedback recompile more as dev drifts from it. A promotion is one full run, and
-it does not have to be a tagged release.
+it does not have to be a tagged release. [Nightlies](#nightlies) promote green dev
+commits daily.
 
 Feedback lanes select nothing on a same-repository `release/` PR to main, because
 its whole diff cannot fit their budget and the full queue graph runs next. They
@@ -151,64 +136,62 @@ stronger review/App bindings and refuses unprotected divergent dev history.
 Main and tag protection remain intact. The admission controller refuses
 unfinished bootstrap state.
 
-## Migrate signed nightlies
+## Nightlies
 
-These are release/trust actions, separate from merging implementation:
+`nightly-promote.yml` lands the last fully green dev commit on main through the
+existing merge queue. `nightly.yml` then builds and signs that main commit exactly
+as it did before. There is no bridge, no second trust policy and no recovery
+signing, and installed clients need no change.
 
-1. While the authorized policy is v1, publish the one-time main bridge nightly
-   exactly once, before signing v2. It is required. It is the only nightly built
-   from main, because a v1 manifest requires
-   its source commit to equal the publisher commit, and it delivers the reader to
-   clients. Require normal Apple, installation, compatibility and runtime
-   acceptance, and upgrade clients to this reader before v2 adoption; old clients
-   cannot consume v2 dev manifests. The bridge needs complete proof for main's tip.
-   If main moves after the request starts, the build fails closed on the changed
-   tip, and a rerun cannot help because it keeps the old `github.sha`; send a
-   fresh request once the new tip has proof.
-   After a docs-only landing, obtain it with
-   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`. The schedule
-   never runs the bridge, so request it explicitly. A further request after main
-   moves would publish another main nightly, so request it once:
+Promotion runs daily at 22:17 UTC, well before the 02:00 UTC nightly, and on demand:
 
-   ```sh
-   gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main \
-     -f source_mode=main-bridge
-   ```
-2. Set `PROPOSAL_DIRECTORY` to a new output directory outside the checkout and
-   prepare exact unsigned successor documents from authenticated current trust:
+```sh
+gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main
+```
 
-   ```sh
-   go run ./scripts/release/stable nightly-policy-proposal --trust release/trust \
-     --out "$PROPOSAL_DIRECTORY"
-   ```
+It does the following:
 
-   The proposal contains nightly policy, stable policy, metadata, catalog and
-   their digest summary. It retains historical v1 authorization, release and
-   primary history, bridge authority and rollback floors. No signatures or
-   installed trust bytes are changed.
-3. Independently review those exact bytes, then use established recovery-signing
-   custody to sign `stable-policy.json`, `metadata.json` and `catalog.json`.
-   Keep v1 policy authorization for historical nightlies. Verify the complete
-   signed snapshot against the retained floor before installing it through the
-   existing trust ceremony. The proposal uses the existing recovery `rotation`
-   event, advancing metadata/catalog sequences without a new release claim.
-4. After reviewed trust lands and its public readback verifies, require:
+1. Exits quietly while `dev` does not exist.
+2. Selects the last dev commit with complete verified source proof. This fails the
+   run if a CI definition on main has not been backmerged into dev yet.
+3. Exits when main already contains that commit or its content. Main has merge
+   commits dev lacks, so the histories ordinarily diverge and this is a real check.
+4. Closes an open `release/nightly-*` PR for an older commit and deletes its branch.
+   A PR for the same commit is queued again instead, which retries a failed queue run.
+5. Creates `release/nightly-<date>-<short commit>` at that commit, opens a PR to
+   main as the nightly App and queues it. The queue runs the full graph on the exact
+   current-base result.
 
-   ```sh
-   go run ./scripts/release/nightly preflight --require-dev-policy
-   ```
+When the promotion merges, a second job in the same workflow starts the nightly at
+once and deletes the branch. The 02:00 run covers any miss. `nightly.yml` verifies
+the complete queue proof of its own main commit instead of running the graph a
+second time, and its existing identity step skips a commit that is already
+published, so a day without a newer main commit publishes nothing.
 
-   Scheduled nightlies, manual requests and chain restarts then build the last
-   completely green dev commit, if it is newer than the previous nightly. Main
-   bridge requests are refused after v2 activation. Backmerge main's installed
-   trust into dev straight after installing it, because scheduled runs start hours
-   after their 02:00 UTC cron: a pre-backmerge dev commit
-   fails closed in the build job once a v2 nightly exists, because dev's old
-   catalog does not authorize the v2 policy. Clients are unaffected, since they
-   read the signed snapshot from main.
+What this means for main:
+
+- Main moves whenever a newer green dev commit exists. A stable release is a tag on
+  any main commit, and every main commit passed the full queue.
+- A failed promotion leaves main unchanged. There is then no new nightly: a failed
+  queue run shows as a red `trusted-merge-ci` run on the promotion PR, which stays
+  open. The next promotion queues it again for the same commit, or replaces it.
+- A manual promotion takes about one queue run plus the nightly itself.
+- `nightly-manual.yml` still publishes main's tip now without promoting anything.
+- If the tip of main is a docs-only landing, the queue produced only selective
+  proof for it and the nightly's validation fails. Obtain full proof with
+  `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
+  nightly with `nightly-manual.yml`.
+
+A promotion that changes anything under `.github/` follows the ordinary workflow-edit
+rule: one independent maintainer must approve the promotion PR's exact head before
+admission passes. Approve the PR in the GitHub UI.
+
+When main conflicts with dev, admission refuses the promotion PR for merge
+conflicts. Resolve it with a reviewed backmerge of main into dev (a PR from `main`
+to `dev`), not by force-pushing either branch. The next promotion then proceeds.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
-written, because nightlies now reuse proof instead of running the full graph. It
+written, because nightlies reuse proof instead of running the full graph. It
 is qualifying evidence: a green run can prove main's tip, and a failed one refuses
 proof for that commit until a newer run passes.
 

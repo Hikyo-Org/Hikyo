@@ -29,7 +29,7 @@ plus trusted `ci-dev-required` admission. Merged dev commits request complete
 background integration validation. Frozen release candidates target `main` and
 use its mandatory queue; `ci-queue-required` requires full current-base proof.
 See the [branching guide](docs/development/branching.md) for commands, protected
-activation and the signed-nightly client migration. `ci:full` and
+activation and the nightly promotion from dev to main. `ci:full` and
 `ci-required-next` remain the main full-only rollback route.
 
 ## Developer Certificate of Origin
