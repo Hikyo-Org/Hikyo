@@ -29,8 +29,7 @@ plus trusted `ci-dev-required` admission. Merged dev commits request complete
 background integration validation. Frozen release candidates target `main` and
 use its mandatory queue; `ci-queue-required` requires full current-base proof.
 See the [branching guide](docs/development/branching.md) for commands, protected
-activation and the nightly promotion from dev to main. `ci:full` and
-`ci-required-next` remain the main full-only rollback route.
+activation and the nightly promotion from dev to main.
 
 ## Developer Certificate of Origin
 
@@ -242,8 +241,7 @@ PR to the mandatory merge queue. The trusted `ci-queue-required` check admits th
 with successful useful feedback, valid signatures/DCO, and current review and
 workflow authority. Admission alone cannot merge a PR. The queue runs the
 complete suite on its immutable merge group against current main; every rebuilt
-or reordered group needs fresh full proof. You do not need `ci:full` in queue
-mode. The group remains blocked until it passes all mandatory domains, including:
+or reordered group needs fresh full proof. The group remains blocked until it passes all mandatory domains, including:
 
 - `lint`, `test`, and the sharded isolation suites;
 - `race`, the race detector over every package except `./internal/isolation/`
@@ -254,10 +252,8 @@ mode. The group remains blocked until it passes all mandatory domains, including
   and Kubernetes end-to-end checks.
 
 You do not need to run the complete suite locally. Follow automatic feedback,
-resolve review findings, and request maintainer queue admission. The permanent
-`ci:full` / `ci-required-next` route is used only when operators restore the
-strict legacy full-candidate policy. See the [CI guide](./docs/development/ci.md)
-for queue proof and protected rollback.
+resolve review findings, and request maintainer queue admission. See the
+[CI guide](./docs/development/ci.md) for queue proof.
 
 ### Fuzzing
 

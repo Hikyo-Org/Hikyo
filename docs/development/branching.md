@@ -107,7 +107,7 @@ commits daily.
 Feedback lanes select nothing on a same-repository `release/` PR to main, because
 its whole diff cannot fit their budget and the full queue graph runs next. They
 do the same on a `main` to `dev` backmerge. Admission still checks DCO on both,
-exempting only Dependabot's commits. Do not add the `ci:full` label to a promotion.
+exempting only Dependabot's commits.
 
 If `main` conflicts with `dev` while `ci-dev-gate.yml` differs, dev admission
 accepts only an exact `main` head, so a conflict-fixing branch is refused. Promote
