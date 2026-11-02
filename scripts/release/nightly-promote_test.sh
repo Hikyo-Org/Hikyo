@@ -12,6 +12,11 @@ dev=$(printf 'a%.0s' $(seq 40))
 old=$(printf 'b%.0s' $(seq 40))
 branch=release/nightly-20261102-aaaaaaa
 stale=release/nightly-20261101-bbbbbbb
+now=1793600000
+# Compare results from main to the dev commit: a merge and a real commit, only merges.
+merge='{"parents":[{},{}]}'
+plain='{"parents":[{}]}'
+content="{\"status\":\"diverged\",\"total_commits\":2,\"commits\":[$merge,$plain]}"
 
 cat >"$work/gh" <<'STUB'
 #!/bin/sh
@@ -68,12 +73,11 @@ ref() {
 case "$url" in
 repos/o/r/git/ref/heads/dev) ref "$DEV_REF" ;;
 repos/o/r/git/ref/heads/release/nightly-*) ref "$BRANCH_REF" ;;
-repos/o/r/compare/*)
+repos/o/r/compare/main...*)
 	[ "$COMPARE" != error ] || fail_with 'Bad Gateway (HTTP 502)'
-	json="{\"status\":\"$COMPARE\"}"
+	json=$COMPARE
 	;;
-repos/o/r/commits/main) json="{\"commit\":{\"tree\":{\"sha\":\"$MAIN_TREE\"}}}" ;;
-repos/o/r/commits/*) json="{\"commit\":{\"tree\":{\"sha\":\"$COMMIT_TREE\"}}}" ;;
+repos/o/r/commits/*/check-runs\?*) json=$CHECKS ;;
 repos/o/r/pulls\?*) json=$PULLS ;;
 *) exit 8 ;;
 esac
@@ -97,15 +101,16 @@ fail() {
 }
 # Defaults describe an ordinary promotion; each case overrides what it tests.
 reset() {
-	DEV_REF=$main COMPARE=diverged COMMIT_TREE=t1 MAIN_TREE=t2 PULLS='[]' BRANCH_REF=404
+	DEV_REF=$main COMPARE=$content PULLS='[]' CHECKS='{"check_runs":[]}' BRANCH_REF=404
 	DEV_COMMIT=$dev PROOF_FAIL='' MERGE_FAIL='' DELETE_MISSING=''
-	export DEV_REF COMPARE COMMIT_TREE MAIN_TREE PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING
+	export DEV_REF COMPARE CHECKS PULLS BRANCH_REF DEV_COMMIT PROOF_FAIL MERGE_FAIL DELETE_MISSING
 }
 run() {
 	for log in calls reads proof; do : >"$work/$log"; done
 	status=0
 	GH_BIN=$work/gh GO_BIN=$work/go CALLS=$work/calls READS=$work/reads PROOF_CALLS=$work/proof BODY=$work/body \
 		GH_REPO=o/r GITHUB_SHA=$main GH_TOKEN=read-token APP_TOKEN=app-token PROMOTE_DATE=20261102 \
+		PROMOTE_NOW=$now GITHUB_STEP_SUMMARY=$work/summary \
 		"$script" >"$work/out" 2>"$work/err" || status=$?
 	if grep -v '^read-token|' "$work/reads" >/dev/null; then fail 'a read used the App token'; fi
 	if grep -v '^app-token|' "$work/calls" >/dev/null; then fail 'a write used the workflow token'; fi
@@ -124,7 +129,12 @@ expect_calls() {
 	cmp -s "$work/want" "$work/calls" || fail "$1 made the wrong writes:
 $(cat "$work/calls")"
 }
-pull() { printf '[{"number":%s,"head":{"sha":"%s","ref":"%s","repo":{"full_name":"%s"}},"auto_merge":%s}]' "$1" "$2" "$3" "${5:-O/R}" "$4"; }
+# Arguments: number, head, ref, auto_merge, repository, age in seconds.
+pull() {
+	created=$(date -u -r $((now - ${6:-60})) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$((now - ${6:-60}))" +%Y-%m-%dT%H:%M:%SZ)
+	printf '[{"number":%s,"head":{"sha":"%s","ref":"%s","repo":{"full_name":"%s"}},"auto_merge":%s,"created_at":"%s"}]' "$1" "$2" "$3" "${5:-O/R}" "$4" "$created"
+}
+check() { printf '{"check_runs":[{"id":1,"status":"%s","conclusion":%s,"output":{"title":"%s","summary":"%s"}}]}' "$1" "$2" "$3" "$4"; }
 
 queue="app-token|pr merge 88 --repo o/r --auto --merge --match-head-commit $dev"
 create="app-token|POST repos/o/r/git/refs ref=refs/heads/$branch sha=$dev
@@ -138,25 +148,42 @@ grep -F -- "--mode dev --latest --authority-commit $main" "$work/proof" >/dev/nu
 grep -F "$dev" "$work/body" >/dev/null || fail 'PR body lacks the commit'
 grep -F 'https://github.com/o/r/actions/runs/77' "$work/body" >/dev/null || fail 'PR body lacks the proof run'
 
+# Statuses are the dev commit relative to main.
 reset
-COMPARE=behind
+COMPARE="{\"status\":\"ahead\",\"total_commits\":1,\"commits\":[$plain]}"
 export COMPARE
 expect_ok 'dev ahead of main'
 expect_calls 'dev ahead of main' "$create"
 
-for state in ahead identical; do
+for state in behind identical; do
 	reset
-	COMPARE=$state
+	COMPARE="{\"status\":\"$state\",\"total_commits\":0,\"commits\":[]}"
 	export COMPARE
 	expect_ok "main already containing dev ($state)"
 	expect_calls "main already containing dev ($state)" ''
 done
 
+# A backmerge alone has only a merge commit, whether or not main moved after it.
+for state in ahead diverged; do
+	reset
+	COMPARE="{\"status\":\"$state\",\"total_commits\":1,\"commits\":[$merge]}"
+	export COMPARE
+	expect_ok "dev with only a backmerge ($state)"
+	expect_calls "dev with only a backmerge ($state)" ''
+	grep -F 'only merge commits' "$work/out" >/dev/null || fail "no notice for a backmerge-only dev ($state)"
+done
+
 reset
-COMPARE=behind MAIN_TREE=t1
-export COMPARE MAIN_TREE
-expect_ok 'dev with the content of main'
-expect_calls 'dev with the content of main' ''
+COMPARE="{\"status\":\"diverged\",\"total_commits\":3,\"commits\":[$merge,$plain,$merge]}"
+export COMPARE
+expect_ok 'dev with a real commit between merges'
+expect_calls 'dev with a real commit between merges' "$create"
+
+reset
+COMPARE="{\"status\":\"diverged\",\"total_commits\":40,\"commits\":[$merge,$merge]}"
+export COMPARE
+expect_ok 'truncated commit list'
+expect_calls 'truncated commit list' "$create"
 
 reset
 DEV_REF=404
@@ -185,17 +212,70 @@ COMPARE=error
 export COMPARE
 expect_refused 'compare failure'
 
+rearm="app-token|pr merge 41 --repo o/r --auto --merge --match-head-commit $dev"
+armed='{"merge_method":"merge"}'
+hours4=14400
+
 reset
 PULLS=$(pull 41 "$dev" "$branch" null)
 export PULLS
-expect_ok 'unarmed promotion of the same commit'
-expect_calls 'unarmed promotion of the same commit' "app-token|pr merge 41 --repo o/r --auto --merge --match-head-commit $dev"
+expect_ok 'unarmed young promotion of the same commit'
+expect_calls 'unarmed young promotion of the same commit' "$rearm"
 
 reset
-PULLS=$(pull 41 "$dev" "$branch" '{"merge_method":"merge"}')
+PULLS=$(pull 41 "$dev" "$branch" "$armed")
 export PULLS
-expect_ok 'armed promotion of the same commit'
-expect_calls 'armed promotion of the same commit' ''
+expect_ok 'armed young promotion with no check yet'
+expect_calls 'armed young promotion with no check yet' ''
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed" O/R 1800)
+CHECKS=$(check in_progress null 'Admission pending' 'Waiting for feedback')
+export PULLS CHECKS
+expect_ok 'armed half-hour-old promotion with a pending check'
+expect_calls 'armed half-hour-old promotion with a pending check' ''
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed")
+CHECKS=$(check completed '"success"' 'Ready' 'Admitted')
+export PULLS CHECKS
+expect_ok 'armed young promotion with an admitted check'
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed")
+CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval\n::error::forged command')
+export PULLS CHECKS
+run
+[ "$status" -ne 0 ] || fail 'a refused promotion stayed green'
+[ ! -s "$work/calls" ] || fail "a refused promotion wrote: $(cat "$work/calls")"
+for text in 'https://github.com/o/r/pull/41' 'ci-queue-required check is completed/failure' 'Admission refused' 'Needs approval' 'independent maintainer'; do
+	grep -F "$text" "$work/err" >/dev/null || fail "refusal report lacks: $text"
+done
+if grep -E '^::' "$work/err" "$work/out" >/dev/null; then fail 'check text can start a workflow command'; fi
+if grep -F 'Admission refused' "$work/summary" >/dev/null 2>&1; then fail 'check text reached the step summary'; fi
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" null)
+CHECKS=$(check completed '"failure"' 'Admission refused' 'Needs approval')
+export PULLS CHECKS
+run
+[ "$status" -ne 0 ] || fail 'a refused disarmed promotion stayed green'
+expect_calls 'a refused disarmed promotion' "$rearm"
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed" O/R "$hours4")
+CHECKS=$(check in_progress null 'Admission pending' 'Waiting for approval')
+export PULLS CHECKS
+run
+[ "$status" -ne 0 ] || fail 'an old pending promotion stayed green'
+[ ! -s "$work/calls" ] || fail 'an old pending promotion wrote'
+grep -F 'not landed after more than 3 hours' "$work/err" >/dev/null || fail 'old promotion report lacks its reason'
+
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed" O/R "$hours4")
+export PULLS
+run
+[ "$status" -ne 0 ] || fail 'an old promotion with no check stayed green'
 
 reset
 PULLS=$(pull 41 "$old" "$stale" null)
@@ -238,4 +318,4 @@ export MERGE_FAIL
 run
 [ "$status" -ne 0 ] || fail 'a failed queue request was reported as success'
 
-printf 'nightly promote fixture: no-ops, refusals, in-flight handling and the exact write sequence behaved\n'
+printf 'nightly promote fixture: no-ops, refusals, stuck promotions, in-flight handling and the exact write sequence behaved\n'

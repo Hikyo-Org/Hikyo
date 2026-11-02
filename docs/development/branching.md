@@ -151,13 +151,19 @@ gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main
 
 It does the following:
 
-1. Exits quietly while `dev` does not exist.
+1. Exits quietly while `dev` does not exist. The App token is minted before this
+   check, so a missing App permission fails the run even then.
 2. Selects the last dev commit with complete verified source proof. This fails the
    run if a CI definition on main has not been backmerged into dev yet.
-3. Exits when main already contains that commit or its content. Main has merge
-   commits dev lacks, so the histories ordinarily diverge and this is a real check.
+3. Exits when main already contains that commit, or when the commit adds only merge
+   commits to main, such as a backmerge: the queue's DCO check skips merges and
+   refuses an empty range. Main has merge commits dev lacks, so the histories
+   ordinarily diverge and this is a real check.
 4. Closes an open `release/nightly-*` PR for an older commit and deletes its branch.
    A PR for the same commit is queued again instead, which retries a failed queue run.
+   It then fails the run, printing the PR link and the check's title and summary in
+   the job log, if that PR's `ci-queue-required` check was refused or failed, or if it
+   has not landed after 3 hours. A younger PR, such as one from a manual run, stays green.
 5. Creates `release/nightly-<date>-<short commit>` at that commit, opens a PR to
    main as the nightly App and queues it. The queue runs the full graph on the exact
    current-base result.
@@ -178,7 +184,8 @@ What this means for main:
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
 - If the tip of main is a docs-only landing, the queue produced only selective
-  proof for it and the nightly's validation fails. Obtain full proof with
+  proof for it and the nightly's validation fails until the next promotion lands or a
+  full `ci-main` run covers it. Obtain full proof with
   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
   nightly with `nightly-manual.yml`.
 
@@ -189,11 +196,14 @@ admission passes. Approve the PR in the GitHub UI.
 When main conflicts with dev, admission refuses the promotion PR for merge
 conflicts. Resolve it with a reviewed backmerge of main into dev (a PR from `main`
 to `dev`), not by force-pushing either branch. The next promotion then proceeds.
+Backmerge only when main has real commits dev lacks, such as CI definitions or a
+hotfix. A backmerge after a clean promotion is unnecessary and cannot pass admission,
+because it adds only a merge commit.
 
 A weekly `ci-main` run on main, scheduled clear of nightly's start, keeps the main-scoped compile caches
 written, because nightlies reuse proof instead of running the full graph. It
-is qualifying evidence: a green run can prove main's tip, and a failed one refuses
-proof for that commit until a newer run passes.
+is qualifying evidence: a green run can prove main's tip, while a failed one, or one
+still running, refuses proof for that commit until a newer run passes or it completes.
 
 Stable tags consume complete proof for the identical landed main commit and
 revalidate it during construction. Fresh tag-bound floor/docs checks and actual

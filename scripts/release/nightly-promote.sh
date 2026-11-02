@@ -12,6 +12,7 @@ set -eu
 GH_BIN=${GH_BIN:-gh}
 GO_BIN=${GO_BIN:-go}
 server=${GITHUB_SERVER_URL:-https://github.com}
+max_age=10800
 repo_root=$(CDPATH='' cd -- "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-promote.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -59,32 +60,34 @@ run_id=$(printf '%s' "$proof" | jq -er '.run_id')
 printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$' || die 'invalid dev commit from source proof'
 printf '%s\n' "$run_id" | grep -Eq '^[1-9][0-9]*$' || die 'invalid source proof run'
 
-# Main carries merge commits dev lacks, so diverged is the ordinary case.
-status=$("$GH_BIN" api "repos/$GH_REPO/compare/$commit...main" --jq '.status')
+# Commits the dev commit has that main lacks. Main carries merge commits dev
+# lacks, so diverged is the ordinary case.
+compare=$("$GH_BIN" api "repos/$GH_REPO/compare/main...$commit")
+status=$(printf '%s' "$compare" | jq -er '.status')
 case "$status" in
-ahead | identical)
+behind | identical)
 	note "nightly-promote: main already contains $commit."
 	exit 0
 	;;
-behind | diverged) ;;
+ahead | diverged) ;;
 *) die "unexpected compare status '$status' for $commit" ;;
 esac
-# A backmerge alone moves dev past main without adding content, and the queue's
-# DCO range would then be empty.
-commit_tree=$("$GH_BIN" api "repos/$GH_REPO/commits/$commit" --jq '.commit.tree.sha')
-main_tree=$("$GH_BIN" api "repos/$GH_REPO/commits/main" --jq '.commit.tree.sha')
-if [ "$commit_tree" = "$main_tree" ]; then
-	note "nightly-promote: main already has the content of $commit."
+# The queue's DCO check skips merge commits and refuses an empty range, so a dev
+# tip with only merges (a backmerge) can never be admitted. A truncated list may
+# hide a real commit, so it counts as content.
+if printf '%s' "$compare" | jq -e '(.commits | length) as $listed | .total_commits == $listed and all(.commits[]; (.parents | length) > 1)' >/dev/null; then
+	note "nightly-promote: $commit adds only merge commits to main, so there is nothing to promote."
 	exit 0
 fi
 
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
-	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null)] | @tsv")
+	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
 same=
 same_armed=false
+same_created=0
 tab=$(printf '\t')
-while IFS=$tab read -r number head ref armed; do
+while IFS=$tab read -r number head ref armed created; do
 	[ -n "$number" ] || continue
 	printf '%s\n' "$number" | grep -Eq '^[1-9][0-9]*$' || die 'invalid pull request number'
 	printf '%s\n' "$ref" | grep -Eq '^release/nightly-[0-9]{8}-[0-9a-f]{7}$' ||
@@ -92,6 +95,7 @@ while IFS=$tab read -r number head ref armed; do
 	if [ "$head" = "$commit" ]; then
 		same=$number
 		same_armed=$armed
+		same_created=$created
 		continue
 	fi
 	write api -X POST "repos/$GH_REPO/issues/$number/comments" \
@@ -105,14 +109,39 @@ done <<EOF
 $open
 EOF
 
-# A transient queue failure disarms the PR, so arm it again.
+# A transient queue failure disarms the PR, so arm it again. Then make a promotion
+# that cannot land loud: a refused or failed admission, or a PR that has sat for
+# hours (for example one that waits for a maintainer's approval), fails the run.
 if [ -n "$same" ]; then
-	if [ "$same_armed" = true ]; then
-		note "nightly-promote: promotion #$same already carries $commit and is queued."
-	else
+	if [ "$same_armed" != true ]; then
 		arm "$same"
 		note "nightly-promote: queued promotion #$same again for $commit."
 	fi
+	now=${PROMOTE_NOW:-$(date +%s)}
+	printf '%s\n%s\n' "$now" "$same_created" | grep -Eq '^[0-9]+$' || die 'invalid clock or pull request age'
+	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$commit/check-runs?check_name=ci-queue-required&per_page=100" \
+		--jq '.check_runs | max_by(.id) // {}')
+	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
+	reason=
+	case "$state" in
+	none/* | queued/* | in_progress/* | completed/success) ;;
+	*) reason="the ci-queue-required check is $state" ;;
+	esac
+	if [ -z "$reason" ] && [ $((now - same_created)) -gt "$max_age" ]; then
+		reason="it has not landed after more than $((max_age / 3600)) hours"
+	fi
+	if [ -n "$reason" ]; then
+		# The check text is untrusted. Keep it in the log only, as plain printable
+		# lines that cannot begin a workflow command.
+		quote() { printf '%s' "$check" | jq -r "$1 // \"\"" | tr -cd '[:print:]\n' | head -n 20 | cut -c1-300 | sed 's/^/    | /'; }
+		{
+			printf 'nightly-promote: promotion #%s (%s/%s/pull/%s) is stuck: %s.\n' "$same" "$server" "$GH_REPO" "$same" "$reason"
+			printf '  Check title:\n%s\n  Check summary:\n%s\n' "$(quote .output.title)" "$(quote .output.summary)"
+			printf '  If the PR changes .github/, an independent maintainer must approve its exact head. Otherwise read the check and the merge queue run, fix the cause, and run nightly-promote again.\n'
+		} >&2
+		exit 1
+	fi
+	note "nightly-promote: promotion #$same already carries $commit and is queued."
 	exit 0
 fi
 

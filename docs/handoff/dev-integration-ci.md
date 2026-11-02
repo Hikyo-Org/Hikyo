@@ -34,19 +34,29 @@ Go build-cache bucket or paid cache capacity is added.
 - Main moves whenever a newer green dev commit exists. A stable release is a tag on
   any main commit, and every main commit passed the full queue.
 - A failed promotion leaves main unchanged and means no new nightly. The workflow
-  run fails for a missing dev proof, an unexpected state or a refused write. A failed
-  queue run instead leaves the promotion PR open with a red `trusted-merge-ci` run;
-  the next promotion queues it again for the same commit, or replaces it.
+  run fails for a missing dev proof, an unexpected state or a refused write. It also
+  fails, printing the PR link and the check's title and summary in the job log, when
+  an open promotion for the same commit has a refused or failed `ci-queue-required`
+  check, or has not landed after 3 hours. A PR younger than that, such as one from a
+  manual run, stays green while it waits. A failed queue run leaves the promotion PR
+  open with a red `trusted-merge-ci` run; the next run queues it again for the same
+  commit, or replaces it when dev has moved.
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
 - A promotion that changes `.github/` needs one independent maintainer approval of the
   promotion PR's exact head, as any workflow edit does. Approve it in the GitHub UI.
 - A docs-only landing as the tip of main has only selective queue proof, so the
-  nightly's validation fails for that commit. Run
+  nightly's validation fails for that commit until the next promotion lands or a full
+  `ci-main` run covers it. Run
   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
   nightly with `gh workflow run nightly-manual.yml --repo Hikyo-Org/Hikyo --ref main`.
-- If main conflicts with dev, admission refuses the promotion PR. Resolve it with a
-  reviewed backmerge of main into dev, never by force-pushing.
+- A dev tip that adds only merge commits to main, such as a backmerge, is not
+  promoted: the queue's DCO check skips merges and refuses an empty range.
+- No backmerge is needed after a clean promotion, and one could not pass admission
+  for the same reason. Backmerge main into dev only when main has real commits dev
+  lacks, such as CI definitions or a hotfix. If main conflicts with dev, admission
+  refuses the promotion PR; resolve it with that reviewed backmerge, never by
+  force-pushing.
 
 ## Evidence and limits
 
@@ -74,11 +84,9 @@ PR.
 1. Land this PR through the existing main gate. Use the landed checkout and
    [local verification prerequisites](../../CONTRIBUTING.md#local-verification).
    Do not execute activation from an unlanded candidate.
-2. Authenticate main's exact complete validation and activate the dev rules with
-   `scripts/release/configure-dev.sh Hikyo-Org/Hikyo`. The helper verifies its own
-   installed inputs, preserves stronger live review/App bindings and checks the
-   final effective policy. It refuses divergent unprotected dev history.
-3. Give the nightly release App the pull request permission. This is a human step in
+2. Give the nightly release App the pull request permission, before the next
+   22:17 UTC run. The promotion mints its token first, so until this is done the
+   scheduled run fails, even while `dev` does not exist. This is a human step in
    GitHub: open the organization's Settings, then Developer settings, GitHub Apps,
    the nightly release App, Permissions & events, Repository permissions, set
    Pull requests to Read and write, and save. Then accept the new permission on the
@@ -86,7 +94,14 @@ PR.
    request to review). To verify, run step 5: `actions/create-github-app-token` fails
    with HTTP 422 while the installation lacks the permission. If creating the branch
    fails with a message about workflow files, also grant Workflows: Read and write,
-   and add `permission-workflows: write` to the token step.
+   and add `permission-workflows: write` to the token step. That also needs
+   `nightly_promote_workflow_test.go` updated, because it forbids
+   `permission-workflows` (line 106) and pins the token step to exactly six inputs
+   (line 95).
+3. Authenticate main's exact complete validation and activate the dev rules with
+   `scripts/release/configure-dev.sh Hikyo-Org/Hikyo`. The helper verifies its own
+   installed inputs, preserves stronger live review/App bindings and checks the
+   final effective policy. It refuses divergent unprotected dev history.
 4. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
@@ -101,8 +116,8 @@ PR.
    Confirm the job summary names a `release/nightly-*` PR, that the PR shows
    `ci-queue-required` admission, that the queue lands it, and that the
    `nightly-release` run starts from the landing. Approve the PR first if it touches
-   `.github/`. Then backmerge main into dev, because the promotion adds a merge
-   commit to main that dev lacks.
+   `.github/`. The promotion adds only a merge commit to main, so no backmerge is
+   needed afterwards.
 
 ## Pre-activation repairs
 

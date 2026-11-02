@@ -1,8 +1,11 @@
 # Release source test scheduling
 
-The stable build runs `scripts/release/test-source.sh` after creating its
-dedicated PostgreSQL test database. The separate empty schema-generation
-database remains untouched.
+The stable build no longer runs `scripts/release/test-source.sh`. It revalidates
+the complete exact-source proof of the tagged main commit with
+`scripts/ci/source-proof` and retains `release-source-proof-RUN-ATTEMPT`. No
+workflow runs the driver now; it and its fixture remain, and this note records its
+scheduling policy. It needs a dedicated PostgreSQL test database, separate from the
+empty schema-generation database.
 
 [Release run 41239870691](https://github.com/Hikyo-Org/Hikyo/actions/runs/41239870691)
 passed all 47 validation jobs and standalone docs/floor jobs, then failed its
@@ -33,9 +36,8 @@ test scheduling policy:
 bound both direct work and nested lint compiler loads. No test roots, product
 deadlines, signing checks or release trust constraints are removed.
 
-The workflow retains `release-source-tests-RUN-ATTEMPT` even when source tests
-fail. It contains the compiled inventory, each planned partition, core and
-isolation output, release fixture output and `results.tsv`. A supplied
+The driver's evidence directory contains the compiled inventory, each planned
+partition, core and isolation output, release fixture output and `results.tsv`. A supplied
 `RELEASE_SOURCE_TEST_OUTPUT` directory must be new; existing evidence is never
 overwritten. Without that setting, the driver removes its temporary evidence
 directory when it exits.
