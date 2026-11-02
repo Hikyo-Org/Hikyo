@@ -458,19 +458,15 @@ func (r *resolver) file(ctx context.Context, path, commit string) ([]byte, error
 	return data, nil
 }
 
+// Definitions of the validation graph. A path must exist at main, or proof for an
+// already landed commit could not read it. prepare-image-root.sh is the one
+// release script the graph runs; nightly publication is not part of it.
 var policyPaths = []string{
 	".github/workflows/ci.yml", ".github/workflows/floor-bench.yml",
-	".github/workflows/nightly.yml", ".github/workflows/nightly-build.yml",
 	"scripts/ci/ci-job-registry.json", "scripts/ci/check-required-jobs.sh",
 	"scripts/ci/classify-changed-paths.sh", "scripts/ci/plan-merge-group.sh",
 	"scripts/ci/analysis-shards-go/main.go", "scripts/ci/test-race-packages.sh",
-	"scripts/ci/test-core-packages.sh",
-	"scripts/release/nightly_inputs.py", "scripts/release/nightly/main.go",
-	"scripts/release/sign-apple-artifacts.sh", "scripts/release/apple-artifact-digest.sh",
-	"scripts/release/apple_notary_state.py", "scripts/release/with-apple-ticket-network.sh",
-	"scripts/release/verify-apple-install.sh", "scripts/release/prepare-image-root.sh",
-	"scripts/release/create-nightly-manifest.sh", "scripts/release/assemble-nightly.sh",
-	"scripts/release/nightly-image.sh", "scripts/release/smoke-release-startup.sh",
+	"scripts/ci/test-core-packages.sh", "scripts/release/prepare-image-root.sh",
 }
 
 func (r *resolver) verify(ctx context.Context, selected selectedRun) (string, error) {

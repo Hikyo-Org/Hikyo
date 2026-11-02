@@ -12,11 +12,10 @@ import (
 // after checkout to allow daemon mirror configuration with canonical fallback.
 func TestPostgresFixturesStartAfterCheckout(t *testing.T) {
 	for workflow, jobs := range map[string][]string{
-		"ci":            {"client", "test_core", "isolation_shard", "race_shard", "headline-guarantee"},
-		"reliability":   {"race-isolation", "gitlab-e2e"},
-		"release":       {"build-artifacts"},
-		"nightly":       {"publish"},
-		"nightly-build": {"build"},
+		"ci":          {"client", "test_core", "isolation_shard", "race_shard", "headline-guarantee"},
+		"reliability": {"race-isolation", "gitlab-e2e"},
+		"release":     {"build-artifacts"},
+		"nightly":     {"build-artifacts", "publish"},
 	} {
 		raw, err := os.ReadFile("../../.github/workflows/" + workflow + ".yml")
 		if err != nil {
@@ -52,7 +51,7 @@ func TestPostgresFixturesStartAfterCheckout(t *testing.T) {
 					if step.Run != "./scripts/ci/start-ci-postgres.sh" {
 						t.Fatalf("%s/%s: fixture bypasses checked startup", workflow, name)
 					}
-					if workflow == "release" || workflow == "nightly" || workflow == "nightly-build" {
+					if workflow == "release" || workflow == "nightly" {
 						if step.Env["POSTGRES_DB"] != "hikyo_release_schema" || step.Env["POSTGRES_PASSWORD"] != "release-schema-fixture" || step.Env["POSTGRES_HEALTH_RETRIES"] != "12" {
 							t.Fatalf("%s/%s: release fixture settings changed", workflow, name)
 						}

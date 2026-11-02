@@ -97,7 +97,8 @@ cat >"$scratch/bin/go" <<'SH'
 set -eu
 case "$*" in
   *' run -p 2 ./scripts/ci/source-proof --repository owner/repo --mode main --commit '*)
-    [ "${*##* --commit }" = "$FIXTURE_COMMIT" ]
+    args=$*
+    [ "${args##* --commit }" = "$FIXTURE_COMMIT --authority-commit $FIXTURE_COMMIT" ]
     [ "$FIXTURE_MODE" != red-ci ]
     exit 0 ;;
   'run ./scripts/release/stable verify '*) ;;

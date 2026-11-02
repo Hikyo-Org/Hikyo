@@ -29,7 +29,7 @@ func main() {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("require preflight, verify, sources, source-validation, or legacy-bridges")
+		return errors.New("require preflight, verify, sources, or legacy-bridges")
 	}
 	fs := flag.NewFlagSet("nightly", flag.ContinueOnError)
 	trust := fs.String("trust", "release/trust", "independently pinned public trust directory")
@@ -37,22 +37,11 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	fs.Var(&directories, "directory", "complete signed nightly download; sources accepts it repeatedly, newest predecessor first")
 	sources := fs.String("sources", "release/compatibility/sources.json", "reviewed genesis/source edges")
 	out := fs.String("out", "", "new source edges file")
-	requireDevPolicy := fs.Bool("require-dev-policy", false, "require a recovery-authorized dev-source nightly policy")
-	requireMainPolicy := fs.Bool("require-main-policy", false, "require the legacy main-source nightly policy for an explicit reader bridge")
-	sourceProof := fs.String("source-proof", "", "complete exact-source CI receipt selected by trusted tooling")
-	sourceCommit := fs.String("source-commit", "", "validated dev source commit")
-	publisherCommit := fs.String("publisher-commit", "", "trusted main publisher's OIDC commit")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
-	}
-	if *requireDevPolicy && *requireMainPolicy {
-		return errors.New("nightly preflight must select exactly one source policy")
-	}
-	if (*requireDevPolicy || *requireMainPolicy) && args[0] != "preflight" {
-		return errors.New("source-policy requirements are only valid for preflight")
 	}
 	snapshot, policy, err := loadTrust(*trust)
 	if err != nil {
@@ -65,37 +54,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		return errors.New("only sources accepts multiple --directory values")
 	}
 	switch args[0] {
-	case "source-validation":
-		current, err := releasetrust.ParseNightlyPolicy(policy)
-		if err != nil {
-			return err
-		}
-		raw, err := read(*sourceProof)
-		if err != nil {
-			return err
-		}
-		proof, err := releasetrust.BindNightlySourceValidation(current, raw, *sourceCommit, *publisherCommit)
-		if err != nil {
-			return err
-		}
-		file, err := os.OpenFile(*out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-		if err != nil {
-			return err
-		}
-		return errors.Join(json.NewEncoder(file).Encode(proof), file.Close())
 	case "preflight":
-		if *requireDevPolicy || *requireMainPolicy {
-			current, err := releasetrust.ParseNightlyPolicy(policy)
-			if err != nil {
-				return err
-			}
-			if *requireDevPolicy && current.Schema != "hikyo.dev/nightly-policy/v2" {
-				return errors.New("dev nightlies require recovery authorization of the v2 policy before publication")
-			}
-			if *requireMainPolicy && current.Schema != "hikyo.dev/nightly-policy/v1" {
-				return errors.New("the explicit main reader bridge requires the legacy v1 nightly policy")
-			}
-		}
 		_, err = fmt.Fprintf(output, "Authenticated nightly policy %s\n", releaseidentity.Hash(policy))
 		return err
 	case "verify":
@@ -287,8 +246,11 @@ func loadTrust(directory string) (releasetrust.Snapshot, []byte, error) {
 	if err != nil {
 		return snapshot, nil, err
 	}
-	policy, err := releasetrust.ParseNightlyPolicy(policyRaw)
-	if err != nil {
+	var policy releasetrust.NightlyPolicy
+	if err := definitions.DecodeStrict(policyRaw, &policy); err != nil {
+		return snapshot, nil, err
+	}
+	if err := policy.Validate(); err != nil {
 		return snapshot, nil, err
 	}
 	trustedRoot, err := read(filepath.Join(directory, "nightly", "trusted-root.json"))

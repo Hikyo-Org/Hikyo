@@ -34,8 +34,8 @@ case "$repository" in
 	*[!A-Za-z0-9._/-]* | */*/* | /* | */ | '') fail 'invalid source repository' ;;
 esac
 
-jq -e --arg schema "$schema" --arg channel "$channel" '
-	(.schema == $schema or ($channel == "nightly" and .schema == "hikyo.dev/nightly-manifest/v2")) and
+jq -e --arg schema "$schema" '
+	.schema == $schema and
 	(.version | type == "string") and
 	.tag == ("v" + .version) and
 	(.artifacts | type == "array")

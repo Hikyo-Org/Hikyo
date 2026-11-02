@@ -21,7 +21,6 @@ jobs:
       available: ${{ steps.resolve.outputs.available }}
       tag: ${{ steps.resolve.outputs.tag }}
       source: ${{ steps.resolve.outputs.source }}
-      publisher: ${{ steps.resolve.outputs.publisher }}
       harness: ${{ steps.resolve.outputs.harness }}
     steps:
       # This runner executes no release/source checkout or downloaded artifacts.
@@ -89,16 +88,10 @@ jobs:
             object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$source")
           done
           test "$type" = commit
-          publisher=
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
-            # Dev is the built source; the authenticated publishing run stays
-            # on main. Signed payload verification binds both exact identities.
-            test "${tag##*.g}" = "${source:0:8}"
-            publisher=$NIGHTLY_SHA
-          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then test "$source" = "$NIGHTLY_SHA"; fi
           harness=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
           [[ "$harness" =~ ^[0-9a-f]{40}$ ]]
-          printf 'available=true\ntag=%s\nsource=%s\npublisher=%s\nharness=%s\n' "$tag" "$source" "$publisher" "$harness" >>"$GITHUB_OUTPUT"
+          printf 'available=true\ntag=%s\nsource=%s\nharness=%s\n' "$tag" "$source" "$harness" >>"$GITHUB_OUTPUT"
 
   validate:
     needs: resolve
@@ -132,7 +125,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           SOURCE: ${{ needs.resolve.outputs.source }}
-          NIGHTLY_PUBLISHER_COMMIT: ${{ needs.resolve.outputs.publisher }}
         run: ./scripts/security/verify-release.sh "$GITHUB_REPOSITORY" "$TAG" "$SOURCE" "$RUNNER_TEMP/security-release"
       - name: Vulnerability scan of authenticated actual binary
         run: |

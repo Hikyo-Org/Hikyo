@@ -260,18 +260,11 @@ func (q *queueController) devPolicy(ctx context.Context) (liveQueuePolicy, error
 // every later dev proof until a promotion that itself starts from dev proof.
 var devPolicyPaths = map[string]bool{
 	".github/workflows/ci-dev.yml": true, ".github/workflows/ci.yml": true,
-	".github/workflows/floor-bench.yml": true, ".github/workflows/nightly.yml": true,
-	".github/workflows/nightly-build.yml": true,
-	"scripts/ci/ci-job-registry.json":     true, "scripts/ci/check-required-jobs.sh": true,
+	".github/workflows/floor-bench.yml": true,
+	"scripts/ci/ci-job-registry.json":   true, "scripts/ci/check-required-jobs.sh": true,
 	"scripts/ci/classify-changed-paths.sh": true, "scripts/ci/plan-merge-group.sh": true,
 	"scripts/ci/analysis-shards-go/main.go": true, "scripts/ci/test-race-packages.sh": true,
-	"scripts/ci/test-core-packages.sh": true, "scripts/release/nightly_inputs.py": true,
-	"scripts/release/nightly/main.go": true, "scripts/release/sign-apple-artifacts.sh": true,
-	"scripts/release/apple-artifact-digest.sh": true, "scripts/release/apple_notary_state.py": true,
-	"scripts/release/with-apple-ticket-network.sh": true, "scripts/release/verify-apple-install.sh": true,
-	"scripts/release/prepare-image-root.sh": true, "scripts/release/create-nightly-manifest.sh": true,
-	"scripts/release/assemble-nightly.sh": true, "scripts/release/nightly-image.sh": true,
-	"scripts/release/smoke-release-startup.sh": true,
+	"scripts/ci/test-core-packages.sh": true, "scripts/release/prepare-image-root.sh": true,
 }
 
 // GitHub lists at most 3000 files for a pull request.

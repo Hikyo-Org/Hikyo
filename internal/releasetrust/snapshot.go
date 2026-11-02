@@ -212,8 +212,11 @@ func VerifySnapshot(pinned PinnedTrust, material SnapshotMaterial, floor Snapsho
 		if len(material.NightlyPolicy) > MaxDocumentBytes || !slices.Contains(catalog.NightlyPolicies, releaseidentity.Hash(material.NightlyPolicy)) {
 			return Snapshot{}, errors.New("current nightly policy is not recovery-authorized")
 		}
-		policy, err := ParseNightlyPolicy(material.NightlyPolicy)
-		if err != nil {
+		var policy NightlyPolicy
+		if err := decodeDocument(material.NightlyPolicy, &policy); err != nil {
+			return Snapshot{}, err
+		}
+		if err := policy.Validate(); err != nil {
 			return Snapshot{}, err
 		}
 		nightlyRevoked = slices.Clone(policy.RevokedManifests)

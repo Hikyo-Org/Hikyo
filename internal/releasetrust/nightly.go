@@ -3,7 +3,6 @@ package releasetrust
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,8 +30,6 @@ type NightlyPolicy struct {
 	RepositoryOwnerID  string                   `json:"repository_owner_id"`
 	WorkflowPath       string                   `json:"workflow_path"`
 	ProtectedRef       string                   `json:"protected_ref"`
-	SourceRef          string                   `json:"source_ref,omitempty"`
-	SourceWorkflowPath string                   `json:"source_workflow_path,omitempty"`
 	RunnerEnvironment  string                   `json:"runner_environment"`
 	RequireSCT         *bool                    `json:"require_sct"`
 	RekorLogID         releaseidentity.Digest   `json:"rekor_log_id"`
@@ -41,62 +38,13 @@ type NightlyPolicy struct {
 }
 
 type NightlyManifest struct {
-	Schema           string                   `json:"schema"`
-	Profile          releaseidentity.Profile  `json:"profile"`
-	Version          string                   `json:"version"`
-	Tag              string                   `json:"tag"`
-	SourceCommit     string                   `json:"source_commit"`
-	PublisherCommit  string                   `json:"publisher_commit,omitempty"`
-	SourceValidation *NightlySourceValidation `json:"source_validation,omitempty"`
-	ReleaseSequence  uint64                   `json:"release_sequence"`
-	Artifacts        []Artifact               `json:"artifacts"`
-}
-
-// NightlySourceValidation binds the trusted publisher's selected complete CI
-// receipt to a distinct dev source. The signed receipt is also a payload, so
-// offline consumers verify the exact retained bytes without querying GitHub.
-type NightlySourceValidation struct {
-	Schema              string                 `json:"schema"`
-	Repository          string                 `json:"repository"`
-	RepositoryID        uint64                 `json:"repository_id"`
-	Commit              string                 `json:"commit"`
-	Ref                 string                 `json:"ref"`
-	WorkflowPath        string                 `json:"workflow_path"`
-	Event               string                 `json:"event"`
-	RunID               uint64                 `json:"run_id"`
-	RunAttempt          uint64                 `json:"run_attempt"`
-	WorkflowID          uint64                 `json:"workflow_id"`
-	AuthorityCommit     string                 `json:"authority_commit"`
-	ConfigurationSHA256 releaseidentity.Digest `json:"configuration_sha256"`
-	ProofSHA256         releaseidentity.Digest `json:"proof_sha256"`
-}
-
-const NightlySourceValidationArtifact = "source-validation.json"
-
-// BindNightlySourceValidation validates a producer receipt before the trusted
-// publisher embeds it. A receipt cannot supply its own hash or add fields that
-// the signed protocol would otherwise silently discard.
-func BindNightlySourceValidation(policy NightlyPolicy, raw []byte, source, publisher string) (NightlySourceValidation, error) {
-	var proof NightlySourceValidation
-	if err := policy.Validate(); err != nil {
-		return proof, err
-	}
-	if policy.Schema != "hikyo.dev/nightly-policy/v2" || !commitPattern.MatchString(source) || !commitPattern.MatchString(publisher) {
-		return proof, errors.New("dev source receipt requires a v2 policy and exact source/publisher commits")
-	}
-	if err := decodeDocument(raw, &proof); err != nil {
-		return proof, err
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &fields); err != nil {
-		return proof, err
-	}
-	if fields["proof_sha256"] != nil {
-		return proof, errors.New("source receipt cannot provide its own publisher-computed digest")
-	}
-	proof.ProofSHA256 = releaseidentity.Hash(raw)
-	_, err := nightlyPublisherCommit(policy, NightlyManifest{Schema: "hikyo.dev/nightly-manifest/v2", SourceCommit: source, PublisherCommit: publisher, SourceValidation: &proof}, nil)
-	return proof, err
+	Schema          string                  `json:"schema"`
+	Profile         releaseidentity.Profile `json:"profile"`
+	Version         string                  `json:"version"`
+	Tag             string                  `json:"tag"`
+	SourceCommit    string                  `json:"source_commit"`
+	ReleaseSequence uint64                  `json:"release_sequence"`
+	Artifacts       []Artifact              `json:"artifacts"`
 }
 
 // Artifacts is the actual closed payload inventory, excluding the fixed
@@ -119,8 +67,11 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	if !slices.Contains(snapshot.state.catalog.NightlyPolicies, policyDigest) {
 		return VerifiedRelease{}, errors.New("nightly policy is not currently recovery-authorized")
 	}
-	policy, err := ParseNightlyPolicy(material.Policy)
-	if err != nil {
+	var policy NightlyPolicy
+	if err := decodeDocument(material.Policy, &policy); err != nil {
+		return VerifiedRelease{}, err
+	}
+	if err := policy.Validate(); err != nil {
 		return VerifiedRelease{}, err
 	}
 	if len(material.TrustedRoot) == 0 || len(material.TrustedRoot) > MaxDocumentBytes || releaseidentity.Hash(material.TrustedRoot) != policy.TrustedRootSHA256 {
@@ -130,12 +81,8 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	if err := decodeDocument(material.Manifest, &manifest); err != nil {
 		return VerifiedRelease{}, err
 	}
-	if manifest.Profile != releaseidentity.NightlyV1 || manifest.Tag != "v"+manifest.Version {
+	if manifest.Schema != "hikyo.dev/nightly-manifest/v1" || manifest.Profile != releaseidentity.NightlyV1 || manifest.Tag != "v"+manifest.Version {
 		return VerifiedRelease{}, errors.New("invalid nightly manifest identity")
-	}
-	publisher, err := nightlyPublisherCommit(policy, manifest, material.Manifest)
-	if err != nil {
-		return VerifiedRelease{}, err
 	}
 	if err := releaseidentity.ValidateTarget(manifest.Profile, manifest.Version, manifest.ReleaseSequence, manifest.SourceCommit); err != nil {
 		return VerifiedRelease{}, err
@@ -144,14 +91,11 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	if slices.Contains(policy.RevokedManifests, manifestDigest) || slices.Contains(snapshot.state.nightlyRevoked, manifestDigest) {
 		return VerifiedRelease{}, errors.New("nightly manifest revoked by current policy")
 	}
-	if err := verifyNightlyEnvelope(policy, material.TrustedRoot, material.Bundle, material.Manifest, publisher); err != nil {
+	if err := verifyNightlyEnvelope(policy, material.TrustedRoot, material.Bundle, material.Manifest, manifest.SourceCommit); err != nil {
 		return VerifiedRelease{}, err
 	}
 	if err := validateArtifacts(manifest.Artifacts); err != nil {
 		return VerifiedRelease{}, err
-	}
-	if manifest.SourceValidation != nil && !bindsArtifact(manifest.Artifacts, NightlySourceValidationArtifact, "build-provenance", manifest.SourceValidation.ProofSHA256) {
-		return VerifiedRelease{}, errors.New("nightly source validation receipt missing or substituted")
 	}
 	if err := validateArtifactVersions(manifest.Artifacts, manifest.Version); err != nil {
 		return VerifiedRelease{}, err
@@ -186,26 +130,6 @@ func VerifyNightlyManifest(snapshot Snapshot, material NightlyMaterial) (Verifie
 	return release, nil
 }
 
-// ParseNightlyPolicy preserves the closed v1 document shape while allowing the
-// explicitly authorized v2 successor. Even empty successor-only fields are not
-// valid additions to a legacy policy.
-func ParseNightlyPolicy(raw []byte) (NightlyPolicy, error) {
-	var policy NightlyPolicy
-	if err := decodeDocument(raw, &policy); err != nil {
-		return policy, err
-	}
-	if policy.Schema == "hikyo.dev/nightly-policy/v1" {
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &fields); err != nil {
-			return policy, err
-		}
-		if fields["source_ref"] != nil || fields["source_workflow_path"] != nil {
-			return policy, errors.New("legacy nightly policy has successor-only fields")
-		}
-	}
-	return policy, policy.Validate()
-}
-
 // Disk images use the existing installer kind so earlier nightly readers can
 // verify their complete signed inventory. Other installers retain their existing
 // semantics. When DMGs are present, require the canonical pair for this version.
@@ -237,10 +161,6 @@ func VerifyNightly(snapshot Snapshot, material NightlyMaterial) (VerifiedRelease
 	if err != nil {
 		return VerifiedRelease{}, err
 	}
-	var manifest NightlyManifest
-	if err := decodeDocument(material.Manifest, &manifest); err != nil {
-		return VerifiedRelease{}, err
-	}
 	artifacts, err := release.NightlyArtifacts(material.Platform)
 	if err != nil {
 		return VerifiedRelease{}, err
@@ -249,29 +169,7 @@ func VerifyNightly(snapshot Snapshot, material NightlyMaterial) (VerifiedRelease
 		return VerifiedRelease{}, errors.New("nightly payload inventory is incomplete or has extra assets")
 	}
 	for _, artifact := range artifacts {
-		input := material.Artifacts[artifact.Name]
-		if manifest.SourceValidation != nil && artifact.Name == NightlySourceValidationArtifact {
-			if input == nil {
-				return VerifiedRelease{}, errors.New("nightly source validation payload is missing")
-			}
-			raw, err := io.ReadAll(io.LimitReader(input, MaxDocumentBytes+1))
-			if err != nil || len(raw) == 0 || len(raw) > MaxDocumentBytes {
-				return VerifiedRelease{}, errors.New("nightly source validation payload exceeds its document bound")
-			}
-			policy, err := ParseNightlyPolicy(material.Policy)
-			if err != nil {
-				return VerifiedRelease{}, err
-			}
-			proof, err := BindNightlySourceValidation(policy, raw, manifest.SourceCommit, manifest.PublisherCommit)
-			if err != nil {
-				return VerifiedRelease{}, err
-			}
-			if proof != *manifest.SourceValidation {
-				return VerifiedRelease{}, errors.New("nightly retained source proof differs from its signed validation identity")
-			}
-			input = bytes.NewReader(raw)
-		}
-		if err := release.VerifyArtifact(artifact.Name, input); err != nil {
+		if err := release.VerifyArtifact(artifact.Name, material.Artifacts[artifact.Name]); err != nil {
 			return VerifiedRelease{}, fmt.Errorf("nightly asset %s: %w", artifact.Name, err)
 		}
 	}
@@ -308,10 +206,6 @@ func (r VerifiedRelease) NightlyArtifacts(platform string) ([]Artifact, error) {
 			binaries++
 		case "nightly-policy", "sigstore-trusted-root", "upgrade-compatibility", "binary-provenance", "checksum", "release-notes", "sbom":
 			metadata[artifact.Kind] = true
-		case "build-provenance":
-			if artifact.Name != NightlySourceValidationArtifact {
-				continue
-			}
 		default:
 			continue
 		}
@@ -335,18 +229,7 @@ func (p NightlyPolicy) Validate() error {
 	if p.RekorLogID.Validate() != nil || p.CheckpointOrigin == "" || len(p.CheckpointOrigin) > 512 || strings.ContainsAny(p.CheckpointOrigin, "\r\n") {
 		return errors.New("nightly policy lacks exact checkpoint identity")
 	}
-	if p.Schema == "hikyo.dev/nightly-policy/v1" {
-		if p.SourceRef != "" || p.SourceWorkflowPath != "" {
-			return errors.New("legacy nightly policy cannot authorize a distinct dev source")
-		}
-	} else if p.Schema == "hikyo.dev/nightly-policy/v2" {
-		if p.SourceRef != "refs/heads/dev" || p.SourceWorkflowPath != ".github/workflows/ci-dev.yml" {
-			return errors.New("dev nightly policy requires the exact dev ref and validation workflow")
-		}
-	} else {
-		return errors.New("unsupported nightly policy schema")
-	}
-	if p.TrustedRootSHA256.Validate() != nil || p.Issuer != "https://token.actions.githubusercontent.com" ||
+	if p.Schema != "hikyo.dev/nightly-policy/v1" || p.TrustedRootSHA256.Validate() != nil || p.Issuer != "https://token.actions.githubusercontent.com" ||
 		!strings.HasPrefix(p.RepositoryURI, "https://github.com/") || strings.Count(strings.TrimPrefix(p.RepositoryURI, "https://github.com/"), "/") != 1 ||
 		!decimalID(p.RepositoryID) || !decimalID(p.RepositoryOwnerID) ||
 		p.RepositoryOwnerURI != p.RepositoryURI[:strings.LastIndex(p.RepositoryURI, "/")] ||
@@ -355,42 +238,6 @@ func (p NightlyPolicy) Validate() error {
 		return errors.New("invalid exact nightly issuer/repository/workflow/ref policy")
 	}
 	return digestInventory(p.RevokedManifests, 256)
-}
-
-// Preserve v1's source/certificate equality exactly. V2 is a separate,
-// recovery-authorized policy: the certificate authenticates trusted main code,
-// and that publisher signs both the selected dev commit and its CI receipt.
-func nightlyPublisherCommit(policy NightlyPolicy, manifest NightlyManifest, raw []byte) (string, error) {
-	switch manifest.Schema {
-	case "hikyo.dev/nightly-manifest/v1":
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &fields); err != nil {
-			return "", err
-		}
-		if policy.Schema != "hikyo.dev/nightly-policy/v1" || fields["publisher_commit"] != nil || fields["source_validation"] != nil {
-			return "", errors.New("legacy nightly manifest cannot carry dev publication authority")
-		}
-		return manifest.SourceCommit, nil
-	case "hikyo.dev/nightly-manifest/v2":
-		if policy.Schema != "hikyo.dev/nightly-policy/v2" || !commitPattern.MatchString(manifest.PublisherCommit) || manifest.SourceValidation == nil {
-			return "", errors.New("dev nightly requires its recovery-authorized policy and publisher identity")
-		}
-		proof := manifest.SourceValidation
-		if proof.Schema != "hikyo.dev/source-validation/v1" || proof.Repository != strings.TrimPrefix(policy.RepositoryURI, "https://github.com/") ||
-			fmt.Sprint(proof.RepositoryID) != policy.RepositoryID || proof.Commit != manifest.SourceCommit ||
-			proof.Ref != policy.SourceRef || proof.WorkflowPath != policy.SourceWorkflowPath || proof.Event != "push" ||
-			proof.AuthorityCommit != manifest.PublisherCommit || proof.ConfigurationSHA256.Validate() != nil || proof.ProofSHA256.Validate() != nil {
-			return "", errors.New("dev nightly source validation identity differs from its authorized source or publisher")
-		}
-		for _, id := range []uint64{proof.RepositoryID, proof.RunID, proof.RunAttempt, proof.WorkflowID} {
-			if id == 0 || id > 9007199254740991 {
-				return "", errors.New("dev nightly source validation requires exact positive GitHub identifiers")
-			}
-		}
-		return manifest.PublisherCommit, nil
-	default:
-		return "", errors.New("unsupported nightly manifest schema")
-	}
 }
 
 func decimalID(value string) bool {

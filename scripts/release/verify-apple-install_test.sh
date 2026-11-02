@@ -9,7 +9,7 @@ export NATIVE_FIXTURE_ROOT="$fixture"
 cat >"$fixture/payload/hikyo" <<'EOF'
 #!/bin/sh
 case "$1" in
-  --version) if [ "$NATIVE_FIXTURE_MODE" = wrong-version ]; then echo 0.0.0; else echo "${NATIVE_FIXTURE_VERSION:-1.2.3}"; fi ;;
+  --version) if [ "$NATIVE_FIXTURE_MODE" = wrong-version ]; then echo 0.0.0; else echo 1.2.3; fi ;;
   --help) [ "$NATIVE_FIXTURE_MODE" != failed-help ] ;;
   *) exit 1 ;;
 esac
@@ -74,51 +74,3 @@ for NATIVE_FIXTURE_MODE in accepted wrong-arch bad-signature bad-ticket rejected
   if grep -E '^xattr -(c|d)' "$fixture/log"; then exit 1; fi
   printf 'Apple native fixture: %s PASS\n' "$NATIVE_FIXTURE_MODE"
 done
-
-export APPLE_RELEASE_CHANNEL=nightly APPLE_RELEASE_SOURCE_MODE=dev
-export APPLE_RELEASE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GITHUB_REF=refs/heads/main
-export NATIVE_FIXTURE_VERSION=1.2.3-nightly.1 NATIVE_FIXTURE_MODE=accepted
-for extension in dmg tar.gz; do
-  cp "$fixture/dist/hikyo_1.2.3_Darwin_arm64.$extension" "$fixture/dist/hikyo_${NATIVE_FIXTURE_VERSION}_Darwin_arm64.$extension"
-done
-jq -n --arg version "$NATIVE_FIXTURE_VERSION" --arg commit "$APPLE_RELEASE_COMMIT" \
-  '{version:$version,commit:$commit}' >"$fixture/metadata.json"
-for source_case in accepted implicit-main wrong-source wrong-version wrong-metadata missing-metadata symlink-metadata wrong-ref stable-channel unknown-mode; do
-  rm -f "$fixture/receipt.json" "$fixture/dist/metadata.json"
-  cp "$fixture/metadata.json" "$fixture/dist/metadata.json"
-  : >"$fixture/log"
-  set -- env
-  case "$source_case" in
-    implicit-main) set -- "$@" APPLE_RELEASE_SOURCE_MODE=main ;;
-    wrong-source) set -- "$@" APPLE_RELEASE_COMMIT=cccccccccccccccccccccccccccccccccccccccc ;;
-    wrong-version) jq '.version = "0.0.0"' "$fixture/metadata.json" >"$fixture/dist/metadata.json" ;;
-    wrong-metadata) printf '{}\n' >"$fixture/dist/metadata.json" ;;
-    missing-metadata) rm "$fixture/dist/metadata.json" ;;
-    symlink-metadata) rm "$fixture/dist/metadata.json"; ln -s "$fixture/metadata.json" "$fixture/dist/metadata.json" ;;
-    wrong-ref) set -- "$@" GITHUB_REF=refs/heads/dev ;;
-    stable-channel) set -- "$@" APPLE_RELEASE_CHANNEL=stable ;;
-    unknown-mode) set -- "$@" APPLE_RELEASE_SOURCE_MODE=unknown ;;
-  esac
-  if "$@" "$script_dir/verify-apple-install.sh" "$fixture/dist" "$NATIVE_FIXTURE_VERSION" arm64 "$fixture/receipt.json" >"$fixture/out" 2>"$fixture/err"; then
-    [ "$source_case" = accepted ] || { cat "$fixture/err"; exit 1; }
-    jq -e --arg source "$APPLE_RELEASE_COMMIT" --arg publisher "$GITHUB_SHA" '
-      .source_commit == $source and .publisher_commit == $publisher and .publisher_ref == "refs/heads/main" and
-      .input_artifact_id == "7" and .run_id == "42" and .native_version and .native_help and .quarantine_retained
-    ' "$fixture/receipt.json" >/dev/null
-  else
-    [ "$source_case" != accepted ] || { cat "$fixture/err"; exit 1; }
-    [ ! -e "$fixture/receipt.json" ] || exit 1
-    if grep -Ev '^uname -m$' "$fixture/log"; then
-      printf 'native source refusal reached installation: %s\n' "$source_case" >&2; exit 1
-    fi
-  fi
-  printf 'Apple native dev source fixture: %s PASS\n' "$source_case"
-done
-jq -n --arg version "$NATIVE_FIXTURE_VERSION" --arg commit "$GITHUB_SHA" \
-  '{version:$version,commit:$commit}' >"$fixture/dist/metadata.json"
-env APPLE_RELEASE_SOURCE_MODE=main APPLE_RELEASE_COMMIT="$GITHUB_SHA" \
-  "$script_dir/verify-apple-install.sh" "$fixture/dist" "$NATIVE_FIXTURE_VERSION" arm64 "$fixture/receipt.json" >"$fixture/out" 2>"$fixture/err"
-jq -e --arg source "$GITHUB_SHA" '
-  .source_commit == $source and (has("publisher_commit") | not) and (has("publisher_ref") | not)
-' "$fixture/receipt.json" >/dev/null
-printf 'Apple native main nightly source fixture: legacy receipt PASS\n'

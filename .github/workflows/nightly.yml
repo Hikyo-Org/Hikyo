@@ -7,7 +7,7 @@ on:
   # The manual wrapper requests an ordinary release through this event, keeping
   # publication out of a branch-selected workflow definition.
   repository_dispatch:
-    types: [nightly-release, nightly-chain-restart, nightly-main-bridge]
+    types: [nightly-release, nightly-chain-restart]
 
 permissions:
   actions: read
@@ -21,21 +21,18 @@ env:
   GOFLAGS: -mod=readonly
 
 jobs:
+  # Every main commit passed the merge queue, and nightly-promote.yml lands the
+  # last green dev commit through it. Nightly reuses that complete proof instead
+  # of running the whole graph a second time.
   validation:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      commit: ${{ steps.source.outputs.commit }}
-      source_mode: ${{ steps.source.outputs.source_mode }}
-      newer: ${{ steps.newer.outputs.newer || steps.source.outputs.newer }}
-      artifact_id: ${{ steps.receipt.outputs.artifact-id }}
     permissions:
       actions: read
       contents: read
     steps:
-      - name: Check out immutable trusted publisher tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -43,90 +40,290 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # Ordinary nightlies come from dev only and need the installed v2 policy, so
-      # under v1 they fail here, before anything is built or published. The one-time
-      # main bridge is the only exception: v1 clients must receive the new reader in
-      # a v1 nightly, whose manifest requires source commit == publisher commit.
-      - name: Require the explicitly selected nightly source policy
-        env:
-          MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
-        run: |
-          set -euo pipefail
-          if [ "$MAIN_BRIDGE" = true ]; then
-            go run ./scripts/release/nightly preflight --require-main-policy
-          else
-            go run ./scripts/release/nightly preflight --require-dev-policy
-          fi
-      - name: Select and pin complete source validation
-        id: source
+      - name: Require complete exact-source proof for this main commit
         env:
           GH_TOKEN: ${{ github.token }}
-          MAIN_BRIDGE: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge' }}
-        run: |
-          set -euo pipefail
-          if [ "$MAIN_BRIDGE" = true ]; then
-            go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
-              --mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA" \
-              --output "$RUNNER_TEMP/source-validation.json" --github-output "$GITHUB_OUTPUT"
-            echo 'source_mode=main' >>"$GITHUB_OUTPUT"
-            echo 'newer=true' >>"$GITHUB_OUTPUT"
-          else
-            go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
-              --mode dev --latest --authority-commit "$GITHUB_SHA" \
-              --output "$RUNNER_TEMP/source-validation.json" --github-output "$GITHUB_OUTPUT"
-            echo 'source_mode=dev' >>"$GITHUB_OUTPUT"
-          fi
-      # Before any build is dispatched, so an unchanged dev publishes nothing and
-      # the run stays green. The bridge is not compared: its source is main.
-      - name: Require a dev commit newer than the previous nightly
-        id: newer
-        if: ${{ !(github.event_name == 'repository_dispatch' && github.event.action == 'nightly-main-bridge') }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SOURCE: ${{ steps.source.outputs.commit }}
-        run: ./scripts/release/nightly-source-newer.sh
-      - name: Retain the pinned source validation receipt
-        id: receipt
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: nightly-source-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/source-validation.json
-          if-no-files-found: error
-          retention-days: 1
+        run: >-
+          go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY"
+          --mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA"
 
   build-artifacts:
     needs: validation
-    if: github.ref == 'refs/heads/main' && needs.validation.outputs.newer == 'true'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.build.outputs.tag }}
-      version: ${{ steps.build.outputs.version }}
-      commit: ${{ steps.build.outputs.commit }}
-      source_mode: ${{ needs.validation.outputs.source_mode }}
-      skip: ${{ steps.build.outputs.skip }}
-      tag_exists: ${{ steps.build.outputs.tag_exists }}
-      artifact_id: ${{ steps.build.outputs.artifact_id }}
-      build_run_id: ${{ steps.build.outputs.build_run_id }}
-      non_darwin_sha256: ${{ steps.build.outputs.non_darwin_sha256 }}
-      compatibility_sha256: ${{ steps.build.outputs.compatibility_sha256 }}
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+      commit: ${{ steps.source.outputs.commit }}
+      skip: ${{ steps.identity.outputs.skip }}
+      tag_exists: ${{ steps.identity.outputs.tag_exists }}
+      artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
+      non_darwin_sha256: ${{ steps.retained-integrity.outputs.non_darwin_sha256 }}
+      compatibility_sha256: ${{ steps.compatibility.outputs.sha256 }}
     permissions:
-      actions: write
+      actions: read
       contents: read
     steps:
-      - name: Check out immutable trusted publisher tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Build on dev (or main for the bridge) and authenticate the result
-        id: build
+      - name: Start healthy PostgreSQL with Docker Hub cache fallback
+        id: ci-postgres
+        env:
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+          POSTGRES_HEALTH_RETRIES: 12
+        run: ./scripts/ci/start-ci-postgres.sh
+      - name: Pin checked-out main commit
+        id: source
+        run: |
+          commit=$(git rev-parse HEAD)
+          # OIDC certifies the triggering workflow SHA, not a later main checkout.
+          test "$commit" = "$GITHUB_SHA"
+          printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
+      - name: Require exact-head green main CI
+        env:
+          VALIDATION_RESULT: ${{ needs.validation.result }}
+        # The validation job authenticates complete proof for this run's exact
+        # github.sha before the protected publication job starts; no earlier main
+        # commit can substitute.
+        run: test "$VALIDATION_RESULT" = success
+      - name: Resolve stable-base nightly identity
+        id: identity
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE: ${{ needs.validation.outputs.commit }}
-          SOURCE_MODE: ${{ needs.validation.outputs.source_mode }}
-          RECEIPT_ARTIFACT_ID: ${{ needs.validation.outputs.artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          RUN_NUMBER: ${{ github.run_number }}
+          INITIAL_NIGHTLY_VERSION: 0.0.1
+        run: |
+          set -o pipefail
+          tag=$(gh api --paginate --slurp \
+            "repos/$REPOSITORY/git/matching-refs/tags/v" | \
+            ./scripts/release/nightly-run-tag.sh "$RUN_NUMBER")
+          tag_exists=false
+          if [ -n "$tag" ]; then
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if ! existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              cat "$tag_lookup_error" >&2
+              exit 1
+            fi
+            if [ "$existing_tag_sha" != "$COMMIT" ]; then
+              printf 'nightly: run %s tag %s resolves to %s, expected %s\n' \
+                "$RUN_NUMBER" "$tag" "$existing_tag_sha" "$COMMIT" >&2
+              exit 1
+            fi
+            release_lookup_error="$RUNNER_TEMP/nightly-release-lookup.err"
+            if release_state=$(gh api "repos/$REPOSITORY/releases/tags/$tag" \
+              --jq '"\(.draft):\(.prerelease)"' 2>"$release_lookup_error"); then
+              if [ "$release_state" != 'false:true' ]; then
+                printf 'nightly: existing release %s has unexpected state %s\n' \
+                  "$tag" "$release_state" >&2
+                exit 1
+              fi
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'tag=%s\nversion=%s\n' "$tag" "${tag#v}" >>"$GITHUB_OUTPUT"
+              printf 'nightly: workflow run %s already published as %s\n' \
+                "$RUN_NUMBER" "$tag"
+              exit 0
+            elif ! grep -F '(HTTP 404)' "$release_lookup_error" >/dev/null; then
+              cat "$release_lookup_error" >&2
+              exit 1
+            fi
+            version=${tag#v}
+            tag_exists=true
+          else
+            latest_tag=$(gh api --paginate --slurp \
+              "repos/$REPOSITORY/releases?per_page=100" | \
+              ./scripts/release/latest-nightly-tag.sh)
+            latest_commit=
+            if [ -n "$latest_tag" ]; then
+              latest_commit=$(gh api "repos/$REPOSITORY/git/ref/tags/$latest_tag" \
+                --jq '.object.sha')
+            fi
+            if [ "$latest_commit" = "$COMMIT" ]; then
+              printf 'skip=true\n' >>"$GITHUB_OUTPUT"
+              printf 'tag=%s\nversion=%s\n' "$latest_tag" "${latest_tag#v}" >>"$GITHUB_OUTPUT"
+              printf 'nightly: commit %s already published\n' "$COMMIT"
+              exit 0
+            fi
+            stable_tag=$(gh api --paginate --slurp \
+              "repos/$REPOSITORY/releases?per_page=100" | \
+              ./scripts/release/latest-stable-version.sh)
+            release_date=$(date -u +%Y%m%d)
+            if [ -n "$stable_tag" ]; then
+              version=$(./scripts/release/next-nightly-version.sh \
+                "$stable_tag" "$release_date" "$RUN_NUMBER" "$COMMIT")
+            else
+              version=$(./scripts/release/nightly-version.sh "$INITIAL_NIGHTLY_VERSION" \
+                "$release_date" "$RUN_NUMBER" "$COMMIT")
+            fi
+            tag="v$version"
+            tag_lookup_error="$RUNNER_TEMP/nightly-tag-lookup.err"
+            if existing_tag_sha=$(gh api "repos/$REPOSITORY/git/ref/tags/$tag" \
+              --jq '.object.sha' 2>"$tag_lookup_error"); then
+              if [ "$existing_tag_sha" != "$COMMIT" ]; then
+                printf 'nightly: tag %s resolves to %s, expected %s\n' \
+                  "$tag" "$existing_tag_sha" "$COMMIT" >&2
+                exit 1
+              fi
+              printf 'nightly: tag %s already resolves to %s; resuming publication\n' \
+                "$tag" "$COMMIT"
+              tag_exists=true
+            elif ! grep -F '(HTTP 404)' "$tag_lookup_error" >/dev/null; then
+              cat "$tag_lookup_error" >&2
+              exit 1
+            fi
+          fi
+          printf 'skip=false\nversion=%s\ntag=%s\ntag_exists=%s\n' \
+            "$version" "$tag" "$tag_exists" >>"$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.identity.outputs.skip != 'true'
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Require recovery-authorized nightly trust before building
+        if: steps.identity.outputs.skip != 'true'
+        run: go run ./scripts/release/nightly preflight
+      - name: Resolve and authenticate previous signed nightly
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
           ALLOW_MISSING_PREDECESSOR: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'nightly-chain-restart' && github.event.client_payload.allow_missing_predecessor == true }}
-        run: ./scripts/release/nightly-build-dispatch.sh
+          PREDECESSOR_EDGES: 8
+        run: |
+          set -o pipefail
+          # Up to PREDECESSOR_EDGES signed predecessors, newest first, each
+          # becomes an exact-schema upgrade source of this nightly (#700), so a
+          # route can skip one revoked or missing release without a bridge.
+          # Directory 1 is the newest predecessor; the highest number the oldest.
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq '
+            map(map(select(any(.assets[]; .name == "release-manifest.sigstore.json"))))
+          ' | ./scripts/release/latest-nightly-tag.sh --limit "$PREDECESSOR_EDGES" >"$RUNNER_TEMP/predecessor-tags"
+          set --
+          index=0
+          while IFS= read -r previous_tag; do
+            [ -n "$previous_tag" ] || continue
+            index=$((index + 1))
+            gh release download "$previous_tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/previous-nightly/$index"
+            set -- "$@" --directory "$RUNNER_TEMP/previous-nightly/$index"
+          done <"$RUNNER_TEMP/predecessor-tags"
+          if [ "$index" -gt 0 ]; then
+            printf '%s\n' "$index" >"$RUNNER_TEMP/previous-nightly/count"
+            go run ./scripts/release/nightly sources "$@" --out "$RUNNER_TEMP/nightly-sources.json"
+          elif [ "$ALLOW_MISSING_PREDECESSOR" = true ]; then
+            echo '::warning::Building without a signed predecessor by explicit request; installations below this release need a recovery bridge.'
+            go run ./scripts/release/nightly sources --out "$RUNNER_TEMP/nightly-sources.json"
+          else
+            # Every nightly declares its signed predecessor as an upgrade source.
+            # No predecessor means the chain was cut, usually by deleting a
+            # release. A silent build here strands every installation below it.
+            echo '::error::No signed predecessor release is available. Revoke bad nightlies instead of deleting them; to restart the chain deliberately, send the nightly-chain-restart repository dispatch with allow_missing_predecessor=true and publish a recovery bridge.'
+            exit 1
+          fi
+      - name: Generate nightly compatibility from both migrated engines
+        id: compatibility
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
+        run: |
+          candidate="$RUNNER_TEMP/nightly-candidate.json"
+          jq -n --arg version "$VERSION" --arg commit "$COMMIT" --argjson sequence "$GITHUB_RUN_NUMBER" \
+            '{version:$version,commit:$commit,sequence:$sequence,key_id:"",public_key:""}' >"$candidate"
+          declaration="$RUNNER_TEMP/upgrade-compatibility.json"
+          go run ./scripts/release/compatibility --profile nightly/v1 --candidate "$candidate" \
+            --sources "$RUNNER_TEMP/nightly-sources.json" --out "$declaration"
+          {
+            printf 'path=%s\n' "$declaration"
+            printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
+          } >>"$GITHUB_OUTPUT"
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        if: steps.identity.outputs.skip != 'true'
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        if: steps.identity.outputs.skip != 'true'
+        run: ./scripts/ci/install-corepack.sh
+      - name: Build tested embedded WebUI
+        if: steps.identity.outputs.skip != 'true'
+        run: ./scripts/ci/build-spa.sh
+      - name: Embed mandatory production trust material
+        id: update-trust
+        if: steps.identity.outputs.skip != 'true'
+        run: |
+          test -s release/trust/root.json
+          recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
+          {
+            printf 'root='
+            base64 <release/trust/root.json | tr -d '\n'
+            printf '\nrecovery='
+            base64 <"release/trust/$recovery" | tr -d '\n'
+            printf '\n'
+          } >>"$GITHUB_OUTPUT"
+      - name: Build six nightly archives and eight native packages
+        if: steps.identity.outputs.skip != 'true'
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        env:
+          HIKYO_RELEASE_VERSION: ${{ steps.identity.outputs.version }}
+          HIKYO_RELEASE_COMMIT: ${{ steps.source.outputs.commit }}
+          HIKYO_UPDATE_CHANNEL: nightly
+          HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
+          HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
+          HIKYO_COMPATIBILITY_PATH: ${{ steps.compatibility.outputs.path }}
+          HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
+        with:
+          distribution: goreleaser
+          version: v2.17.1
+          args: release --snapshot --clean --skip=publish
+      - name: Verify nightly archive and package identity
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          jq -e --arg version "$VERSION" --arg commit "$COMMIT" '
+            .version == $version and .commit == $commit
+          ' dist/metadata.json >/dev/null
+          ./scripts/release/snapshot-manifest_test.sh
+      - name: Bind untouched nightly archive bytes
+        id: retained-integrity
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -o pipefail
+          for os in Linux Windows; do
+            extension=tar.gz
+            if [ "$os" = Windows ]; then extension=zip; fi
+            for arch in arm64 x86_64; do
+              sha256sum "dist/hikyo_${VERSION}_${os}_${arch}.$extension" || exit 1
+            done
+          done | LC_ALL=C sort >"$RUNNER_TEMP/non-darwin-checksums.txt"
+          non_darwin_sha256=$(sha256sum "$RUNNER_TEMP/non-darwin-checksums.txt" | awk '{print $1}')
+          printf 'non_darwin_sha256=%s\n' "$non_darwin_sha256" >>"$GITHUB_OUTPUT"
+      - name: Retain canonical nightly artifacts and authenticated predecessor identity
+        if: steps.identity.outputs.skip != 'true'
+        run: |
+          mkdir nightly-context
+          cp "$RUNNER_TEMP/upgrade-compatibility.json" "$RUNNER_TEMP/nightly-sources.json" \
+            "$RUNNER_TEMP/predecessor-tags" nightly-context/
+          tar -czf "$RUNNER_TEMP/nightly-inputs.tar.gz" dist nightly-context
+      - id: upload-inputs
+        if: steps.identity.outputs.skip != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-inputs-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/nightly-inputs.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove CI PostgreSQL
+        if: ${{ always() && steps.ci-postgres.outcome == 'success' }}
+        run: docker container rm --force hikyo-ci-postgres
 
   apple-sign:
     environment: apple-signing
@@ -137,13 +334,10 @@ jobs:
       artifact_id: ${{ steps.upload-inputs.outputs.artifact-id }}
       darwin_sha256: ${{ steps.signed-digests.outputs.sha256 }}
     permissions:
-      actions: read
       contents: read
     env:
       # The macOS 15 default client traps during API-key authentication.
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      APPLE_RELEASE_SOURCE_MODE: ${{ needs.build-artifacts.outputs.source_mode }}
-      APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
     steps:
       - name: Report selected Apple notarization client
         run: |
@@ -156,43 +350,10 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.build-artifacts.outputs.artifact_id }}
-          run-id: ${{ needs.build-artifacts.outputs.build_run_id }}
-          github-token: ${{ github.token }}
           merge-multiple: true
           path: ${{ runner.temp }}/nightly-inputs
       - name: Restore canonical nightly artifacts
-        run: python3 scripts/release/nightly_inputs.py "$RUNNER_TEMP/nightly-inputs/nightly-inputs.tar.gz"
-      - &nightly-apple-go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - &nightly-apple-source
-        name: Authenticate the exact Apple source before loading credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          case "$APPLE_RELEASE_SOURCE_MODE" in
-            main)
-              test "$APPLE_RELEASE_COMMIT" = "$GITHUB_SHA"
-              go run ./scripts/release/nightly preflight --require-main-policy
-              ;;
-            dev)
-              go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
-                --mode dev --commit "$APPLE_RELEASE_COMMIT" --authority-commit "$GITHUB_SHA" \
-                --output "$RUNNER_TEMP/apple-source-current.json"
-              cmp nightly-context/source-validation.json "$RUNNER_TEMP/apple-source-current.json"
-              descriptor="$RUNNER_TEMP/apple-source-validation.json"
-              go run ./scripts/release/nightly source-validation \
-                --source-proof nightly-context/source-validation.json \
-                --source-commit "$APPLE_RELEASE_COMMIT" --publisher-commit "$GITHUB_SHA" --out "$descriptor"
-              digest=$(shasum -a 256 "$descriptor" | awk '{print $1}')
-              printf 'APPLE_RELEASE_SOURCE_VALIDATION=%s\nAPPLE_RELEASE_SOURCE_VALIDATION_SHA256=%s\n' \
-                "$descriptor" "$digest" >>"$GITHUB_ENV"
-              ;;
-            *) echo 'Unknown Apple nightly source mode.' >&2; exit 1 ;;
-          esac
+        run: tar -xzf "$RUNNER_TEMP/nightly-inputs/nightly-inputs.tar.gz"
       - name: Sign nightly macOS binaries and disk images
         env:
           APPLE_DEVELOPER_ID_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
@@ -239,8 +400,6 @@ jobs:
     env:
       # The macOS 15 default client traps during API-key authentication.
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      APPLE_RELEASE_SOURCE_MODE: ${{ needs.build-artifacts.outputs.source_mode }}
-      APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
     steps:
       - name: Report selected Apple notarization client
         run: |
@@ -256,9 +415,7 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/apple-nightly-inputs
       - name: Restore signed nightly artifacts
-        run: python3 scripts/release/nightly_inputs.py "$RUNNER_TEMP/apple-nightly-inputs/apple-nightly-inputs.tar.gz"
-      - *nightly-apple-go
-      - *nightly-apple-source
+        run: tar -xzf "$RUNNER_TEMP/apple-nightly-inputs/apple-nightly-inputs.tar.gz"
       - name: Verify exact signed macOS input bytes
         env:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
@@ -443,9 +600,6 @@ jobs:
       contents: read
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
-      APPLE_RELEASE_CHANNEL: nightly
-      APPLE_RELEASE_SOURCE_MODE: ${{ needs.build-artifacts.outputs.source_mode }}
-      APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -457,7 +611,7 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/apple-native-inputs
       - name: Restore exact finalized candidate
-        run: python3 scripts/release/nightly_inputs.py "$RUNNER_TEMP/apple-native-inputs/apple-nightly-inputs.tar.gz"
+        run: tar -xzf "$RUNNER_TEMP/apple-native-inputs/apple-nightly-inputs.tar.gz"
       - name: Verify native installation with quarantine retained
         env:
           VERSION: ${{ needs.build-artifacts.outputs.version }}
@@ -491,9 +645,6 @@ jobs:
     # See docs/handoff/nightly-release-custody.md before enabling publication.
     environment: nightly-release
     runs-on: ubuntu-latest
-    env:
-      APPLE_RELEASE_SOURCE_MODE: ${{ needs.build-artifacts.outputs.source_mode }}
-      APPLE_RELEASE_COMMIT: ${{ needs.build-artifacts.outputs.commit }}
     outputs:
       tag: ${{ needs.build-artifacts.outputs.tag }}
       version: ${{ needs.build-artifacts.outputs.version }}
@@ -516,7 +667,7 @@ jobs:
           POSTGRES_DB: hikyo_release_schema
           POSTGRES_HEALTH_RETRIES: 12
         run: ./scripts/ci/start-ci-postgres.sh
-      - name: Require complete pinned source validation
+      - name: Require exact-head green main CI
         env:
           VALIDATION_RESULT: ${{ needs.validation.result }}
         run: test "$VALIDATION_RESULT" = success
@@ -544,11 +695,9 @@ jobs:
           COMMIT: ${{ needs.build-artifacts.outputs.commit }}
           APPLE_NOTARIZATION_RESULT: ${{ needs.apple-notarize.result }}
         run: |
-          # OIDC binds the trusted publisher on main; v2 separately binds the
-          # selected, completely validated dev source in the signed manifest.
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          python3 scripts/release/nightly_inputs.py "$RUNNER_TEMP/apple-nightly-inputs/apple-nightly-inputs.tar.gz"
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          test "$COMMIT" = "$GITHUB_SHA"
+          tar -xzf "$RUNNER_TEMP/apple-nightly-inputs/apple-nightly-inputs.tar.gz"
           jq -e --arg version "$VERSION" --arg commit "$COMMIT" '
             .version == $version and .commit == $commit
           ' dist/metadata.json >/dev/null
@@ -617,28 +766,6 @@ jobs:
         with:
           pattern: apple-install-${{ github.run_id }}-*
           path: ${{ runner.temp }}/apple-installations
-      - name: Revalidate the pinned development proof before signing
-        if: needs.build-artifacts.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMMIT: ${{ needs.build-artifacts.outputs.commit }}
-          SOURCE_MODE: ${{ needs.validation.outputs.source_mode }}
-        run: |
-          set -euo pipefail
-          case "$SOURCE_MODE" in dev|main) ;; *) exit 1 ;; esac
-          go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY" \
-            --mode "$SOURCE_MODE" --commit "$COMMIT" --authority-commit "$GITHUB_SHA" \
-            --output "$RUNNER_TEMP/source-validation-current.json"
-          cmp nightly-context/source-validation.json "$RUNNER_TEMP/source-validation-current.json"
-          if [ "$SOURCE_MODE" = dev ]; then
-            descriptor="$RUNNER_TEMP/apple-source-validation.json"
-            go run ./scripts/release/nightly source-validation \
-              --source-proof nightly-context/source-validation.json \
-              --source-commit "$COMMIT" --publisher-commit "$GITHUB_SHA" --out "$descriptor"
-            digest=$(sha256sum "$descriptor" | awk '{print $1}')
-            printf 'APPLE_RELEASE_SOURCE_VALIDATION=%s\nAPPLE_RELEASE_SOURCE_VALIDATION_SHA256=%s\n' \
-              "$descriptor" "$digest" >>"$GITHUB_ENV"
-          fi
       - name: Stage the complete nightly payload inventory
         if: needs.build-artifacts.outputs.skip != 'true'
         env:
@@ -646,8 +773,6 @@ jobs:
           COMMIT: ${{ needs.build-artifacts.outputs.commit }}
           APPLE_NOTARIZATION_RESULT: ${{ needs.apple-notarize.result }}
           APPLE_FINAL_ARTIFACT_ID: ${{ needs.apple-notarize.outputs.artifact_id }}
-          HIKYO_NIGHTLY_PUBLISHER_COMMIT: ${{ needs.validation.outputs.source_mode == 'dev' && github.sha || '' }}
-          HIKYO_NIGHTLY_SOURCE_PROOF: ${{ needs.validation.outputs.source_mode == 'dev' && format('{0}/nightly-context/source-validation.json', github.workspace) || '' }}
         run: |
           set -euo pipefail
           mkdir nightly-payloads
@@ -668,9 +793,6 @@ jobs:
             *) echo 'Unexpected Apple notarization result' >&2; exit 1 ;;
           esac
           cp "$RUNNER_TEMP/upgrade-compatibility.json" nightly-payloads/
-          if [ -n "$HIKYO_NIGHTLY_SOURCE_PROOF" ]; then
-            cp "$HIKYO_NIGHTLY_SOURCE_PROOF" nightly-payloads/source-validation.json
-          fi
           cp release/trust/nightly/policy.json nightly-payloads/nightly-policy.json
           cp release/trust/nightly/trusted-root.json nightly-payloads/sigstore-trusted-root.json
           printf '%s\n' \
@@ -824,11 +946,10 @@ jobs:
       TAG: ${{ needs.publish.outputs.tag }}
       VERSION: ${{ needs.publish.outputs.version }}
       COMMIT: ${{ needs.publish.outputs.commit }}
-      PUBLISHER_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.publish.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

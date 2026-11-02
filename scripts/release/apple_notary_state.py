@@ -20,10 +20,6 @@ import zipfile
 
 WORKFLOW = ".github/workflows/nightly.yml"
 SCHEMA = "hikyo.dev/apple-notary-checkpoint/v1"
-DEV_SCHEMA = "hikyo.dev/apple-notary-checkpoint/v2"
-PUBLISHER_FIELDS = ("publisher_commit", "publisher_ref", "source_validation")
-PROOF_FIELDS = {"schema", "repository", "repository_id", "commit", "ref", "workflow_path", "event",
-                "run_id", "run_attempt", "workflow_id", "authority_commit", "configuration_sha256", "proof_sha256"}
 STAGES = {"prepared": 0, "submitted-arm64": 1, "submitted-x86_64": 2, "submitted": 3, "finalized": 4}
 FILES = {f"{arch}-{suffix}" for arch in ("arm64", "x86_64")
          for suffix in ("receipt.json", "notary-log.json", "submitted.dmg")}
@@ -58,84 +54,17 @@ def api(endpoint, *, method="GET", binary=False, paginate=False):
     return result.stdout if binary else parse_json(result.stdout)
 
 
-def validate_source_binding(binding):
-    """Validate retained identities without treating a receipt as CI authority.
-
-    The trusted workflow verifies live CI and the recovery-authorized nightly
-    policy before supplying a descriptor. Checkpoints retain that exact binding
-    under the original main run's authenticated Actions artifact digest.
-    """
-    require(re.fullmatch(r"[0-9a-f]{40}", binding["source_commit"]), "invalid source")
-    present = {key for key in PUBLISHER_FIELDS if key in binding}
-    if not present:
-        require(binding["channel"] != "nightly" or binding["source_ref"] == "refs/heads/main",
-                "legacy nightly source must remain main")
-        return
-    require(present == set(PUBLISHER_FIELDS) and binding["channel"] == "nightly" and
-            binding["source_ref"] == "refs/heads/dev" and binding["publisher_ref"] == "refs/heads/main" and
-            re.fullmatch(r"[0-9a-f]{40}", binding["publisher_commit"]), "invalid dev publisher binding")
-    proof = binding["source_validation"]
-    require(type(proof) is dict and set(proof) == PROOF_FIELDS, "invalid source validation fields")
-    require(proof["schema"] == "hikyo.dev/source-validation/v1" and
-            proof["repository"] == binding["repository"] and proof["commit"] == binding["source_commit"] and
-            proof["authority_commit"] == binding["publisher_commit"] and proof["ref"] == "refs/heads/dev" and
-            proof["workflow_path"] == ".github/workflows/ci-dev.yml" and proof["event"] == "push",
-            "source validation identity mismatch")
-    for field in ("repository_id", "run_id", "run_attempt", "workflow_id"):
-        require(type(proof[field]) is int and 0 < proof[field] <= 2**53 - 1, "invalid source validation run identity")
-    for field in ("configuration_sha256", "proof_sha256"):
-        require(type(proof[field]) is str and re.fullmatch(r"[0-9a-f]{64}", proof[field]),
-                "invalid source validation digest")
-
-
-def publisher_commit(binding):
-    return binding.get("publisher_commit", binding["source_commit"])
-
-
-def same_publisher_binding(left, right, fields=PUBLISHER_FIELDS):
-    return all((key in left) == (key in right) and left.get(key) == right.get(key) for key in fields)
-
-
-def source_identity(environ=os.environ):
-    """Read a descriptor pinned by a trusted pre-credential workflow step.
-
-    The expected digest must come from that step, never the downloaded build
-    payload. This local check does not replace its live CI and trust-policy gate.
-    """
-    channel = environ.get("APPLE_RELEASE_CHANNEL", "nightly")
-    mode = environ.get("APPLE_RELEASE_SOURCE_MODE", "main")
-    result = dict(source_commit=environ["GITHUB_SHA"], source_ref=environ["GITHUB_REF"])
-    require(channel in ("nightly", "stable") and mode in ("main", "dev"), "invalid source mode or channel")
-    if mode == "main":
-        require(not environ.get("APPLE_RELEASE_SOURCE_VALIDATION") and
-                not environ.get("APPLE_RELEASE_SOURCE_VALIDATION_SHA256"), "legacy source cannot carry dev validation")
-        require(not environ.get("APPLE_RELEASE_COMMIT") or environ["APPLE_RELEASE_COMMIT"] == result["source_commit"],
-                "legacy source differs from workflow SHA")
-    else:
-        require(channel == "nightly" and result["source_ref"] == "refs/heads/main", "dev source requires nightly main publisher")
-        result.update(publisher_commit=result["source_commit"], publisher_ref=result["source_ref"],
-                      source_commit=environ["APPLE_RELEASE_COMMIT"], source_ref="refs/heads/dev")
-        path = Path(environ["APPLE_RELEASE_SOURCE_VALIDATION"])
-        expected = environ["APPLE_RELEASE_SOURCE_VALIDATION_SHA256"]
-        require(re.fullmatch(r"[0-9a-f]{64}", expected), "invalid descriptor digest")
-        require(path.is_file() and not path.is_symlink() and 0 < path.stat().st_size <= 64 * 1024,
-                "missing regular source validation descriptor")
-        raw = path.read_bytes()
-        require(hashlib.sha256(raw).hexdigest() == expected, "source validation descriptor digest mismatch")
-        result["source_validation"] = parse_json(raw)
-    validate_source_binding(dict(result, channel=channel, repository=environ.get("GITHUB_REPOSITORY")))
-    return result
-
-
 def identity(environ=os.environ):
     result = {"repository": environ["GITHUB_REPOSITORY"],
               "run_id": environ["GITHUB_RUN_ID"],
               "attempt": environ["GITHUB_RUN_ATTEMPT"],
+              "source_commit": environ["GITHUB_SHA"],
               "channel": environ.get("APPLE_RELEASE_CHANNEL", "nightly"),
-              **source_identity(environ)}
+              "source_ref": environ["GITHUB_REF"]}
     require(re.fullmatch(r"[\w.-]+/[\w.-]+", result["repository"], re.ASCII), "invalid repository")
     for key in ("run_id", "attempt"):
         require(re.fullmatch(r"[1-9][0-9]{0,17}", result[key]), "invalid run identity")
+    require(re.fullmatch(r"[0-9a-f]{40}", result["source_commit"]), "invalid source")
     require(result["channel"] in ("nightly", "stable"), "invalid channel")
     return result
 
@@ -192,9 +121,7 @@ def read_checkpoint(artifact, repository, run_id):
     for arch in ("arm64", "x86_64"):
         require({f"{arch}-receipt.json", f"{arch}-submitted.dmg"} <= result.keys(), "incomplete checkpoint")
     record = parse_json(result.pop("checkpoint.json"))
-    validate_source_binding(record)
-    expected_schema = DEV_SCHEMA if "source_validation" in record else SCHEMA
-    require(record["schema"] == expected_schema and record["repository"] == repository and
+    require(record["schema"] == SCHEMA and record["repository"] == repository and
             record["run_id"] == str(run_id) and type(record["recovery_pending"]) is bool and
             record["stage"] in STAGES and
             artifact["name"] == f"apple-notary-state-{run_id}-{record['attempt']}-{record['stage']}",
@@ -203,13 +130,11 @@ def read_checkpoint(artifact, repository, run_id):
             "checkpoint inventory mismatch")
     for arch in ("arm64", "x86_64"):
         receipt = parse_json(result[f"{arch}-receipt.json"])
-        validate_source_binding(receipt)
         require(receipt["schema"] == "hikyo.dev/apple-notarization-receipt/v2" and
                 receipt["repository"] == repository and receipt["original_run_id"] == str(run_id) and
                 receipt["source_commit"] == record["source_commit"] and
                 receipt["architecture"] == arch and receipt["channel"] == record["channel"] and
                 receipt["source_ref"] == record["source_ref"] and
-                same_publisher_binding(receipt, record) and
                 receipt.get("input_binding", "actions-handoff") == "actions-handoff" and
                 receipt["submitted_sha256"] == hashlib.sha256(result[f"{arch}-submitted.dmg"]).hexdigest(),
                 "receipt checkpoint binding mismatch")
@@ -217,7 +142,6 @@ def read_checkpoint(artifact, repository, run_id):
 
 
 def snapshot(directory, destination, stage, pending, current):
-    validate_source_binding(current)
     files = {}
     receipts = []
     for path in directory.iterdir():
@@ -226,13 +150,11 @@ def snapshot(directory, destination, stage, pending, current):
     for arch in ("arm64", "x86_64"):
         require({f"{arch}-receipt.json", f"{arch}-submitted.dmg"} <= files.keys(), "missing stage intent")
         receipt = parse_json(files[f"{arch}-receipt.json"])
-        validate_source_binding(receipt)
         receipts.append(receipt)
         require(receipt["schema"] == "hikyo.dev/apple-notarization-receipt/v2" and
                 receipt["source_commit"] == current["source_commit"] and receipt["repository"] == current["repository"] and
                 receipt["original_run_id"] == current["run_id"] and receipt["channel"] == current["channel"] and
                 receipt["source_ref"] == current["source_ref"] and receipt["architecture"] == arch and
-                same_publisher_binding(receipt, current) and
                 receipt.get("input_binding", "actions-handoff") == "actions-handoff" and
                 receipt["submitted_sha256"] == hashlib.sha256(files[f"{arch}-submitted.dmg"]).hexdigest(),
                 "unbound checkpoint receipt")
@@ -252,7 +174,7 @@ def snapshot(directory, destination, stage, pending, current):
             pending = True
     if any(receipt.get("finalization_state") == "Blocked" for receipt in receipts):
         pending = False
-    record = dict(current, schema=DEV_SCHEMA if "source_validation" in current else SCHEMA, stage=stage, recovery_pending=pending,
+    record = dict(current, schema=SCHEMA, stage=stage, recovery_pending=pending,
                   files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
     files["checkpoint.json"] = json.dumps(record, sort_keys=True).encode()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -287,7 +209,7 @@ def unstarted_architectures(files, current):
             return []
         job = jobs[0]
         require(job["run_id"] == int(current["run_id"]) and job["run_attempt"] == attempt and
-                job["head_sha"] == publisher_commit(current), "previous job identity mismatch")
+                job["head_sha"] == current["source_commit"], "previous job identity mismatch")
         for arch, receipt in list(prepared.items()):
             if attempt < int(receipt["original_run_attempt"]):
                 continue
@@ -311,7 +233,7 @@ def no_previous_upload(current):
             return False
         job = jobs[0]
         require(job["run_id"] == int(current["run_id"]) and job["run_attempt"] == attempt and
-                job["head_sha"] == publisher_commit(current), "previous job identity mismatch")
+                job["head_sha"] == current["source_commit"], "previous job identity mismatch")
         if job["status"] == "completed" and job["conclusion"] == "skipped":
             continue
         for arch in ("arm64", "x86_64"):
@@ -322,11 +244,10 @@ def no_previous_upload(current):
 
 
 def restore(directory, current):
-    validate_source_binding(current)
     require(not directory.exists(), "restore destination already exists")
     run = api(f"repos/{current['repository']}/actions/runs/{current['run_id']}")
     trusted_run(run, current["repository"], current["channel"])
-    require(run["head_sha"] == publisher_commit(current), "run source changed")
+    require(run["head_sha"] == current["source_commit"], "run source changed")
     selected = select_checkpoint(artifacts(current["repository"], current["run_id"]),
                                  current["run_id"], int(current["attempt"]))
     directory.mkdir(parents=True)
@@ -335,8 +256,7 @@ def restore(directory, current):
                 "retry has no retained intent or proof of skipped uploads; do not resubmit")
         return
     record, files = read_checkpoint(selected, current["repository"], current["run_id"])
-    require(all(record[key] == current[key] for key in ("source_commit", "channel", "source_ref")) and
-            same_publisher_binding(record, current), "restored source mismatch")
+    require(all(record[key] == current[key] for key in ("source_commit", "channel", "source_ref")), "restored source mismatch")
     for name, raw in files.items():
         path = directory / name
         with path.open("xb") as stream:
@@ -366,15 +286,12 @@ def recover_one(repository, run):
     record, _files = read_checkpoint(selected, repository, run["id"])
     if not record["recovery_pending"] or int(record["attempt"]) != run["run_attempt"]:
         return False
-    validate_source_binding(record)
-    require(publisher_commit(record) == run["head_sha"] and record["channel"] == "nightly" and
-            record.get("publisher_ref", record["source_ref"]) == "refs/heads/main", "recovery source mismatch")
+    require(record["source_commit"] == run["head_sha"] and record["channel"] == "nightly" and
+            record["source_ref"] == "refs/heads/main", "recovery source mismatch")
     ancestry = api(f"repos/{repository}/compare/{run['head_sha']}...main")
     require(ancestry["status"] in ("ahead", "identical"), "recovery source left main history")
     # Recheck live state immediately before mutation, under worker concurrency.
     latest = api(f"repos/{repository}/actions/runs/{run['id']}")
-    trusted_run(latest, repository)
-    require(latest["id"] == run["id"] and latest["head_sha"] == run["head_sha"], "live recovery publisher changed")
     if latest["status"] != "completed" or latest["conclusion"] not in ("failure", "timed_out") or latest["run_attempt"] != run["run_attempt"]:
         return False
     api(f"repos/{repository}/actions/runs/{run['id']}/rerun-failed-jobs", method="POST", binary=True)
@@ -404,8 +321,6 @@ def append_evidence(dist, installations, notes, current, version, final_artifact
     This adds no artifact kind or trust authority. Native receipts are checked
     against the exact finalized DMG and original signed executable bytes.
     """
-    if any(key in current for key in PUBLISHER_FIELDS):
-        validate_source_binding(current)
     evidence = parse_json((dist / "apple-notarization-evidence.json").read_bytes())
     require(evidence["schema"] == "hikyo.dev/apple-release-evidence/v1" and
             len(evidence["receipts"]) == len(evidence["logs"]) == 2, "incomplete Apple release evidence")
@@ -415,7 +330,6 @@ def append_evidence(dist, installations, notes, current, version, final_artifact
         arch = receipt["architecture"]
         require(arch in ("arm64", "x86_64") and receipt["schema"] == "hikyo.dev/apple-install-receipt/v1" and
                 receipt["source_commit"] == current["source_commit"] and receipt["run_id"] == current["run_id"] and
-                same_publisher_binding(receipt, current, fields=("publisher_commit", "publisher_ref")) and
                 receipt["version"] == version and receipt["input_artifact_id"] == final_artifact and
                 all(receipt[key] is True for key in ("gatekeeper", "executable_notarization", "quarantine_retained", "native_version", "native_help")),
                 "native installation receipt mismatch")
@@ -434,12 +348,8 @@ def append_evidence(dist, installations, notes, current, version, final_artifact
         receipts = [item for item in evidence["receipts"] if item["architecture"] == arch]
         require(len(receipts) == 1, "duplicate Apple architecture")
         receipt = receipts[0]
-        if "source_validation" in current:
-            validate_source_binding(receipt)
-            require(receipt["schema"] == "hikyo.dev/apple-notarization-receipt/v2", "invalid dev notarization receipt")
         require(receipt["status"] == "Accepted" and receipt["diagnostics"]["availability"] == "available" and
                 receipt["source_commit"] == current["source_commit"] and receipt["original_run_id"] == current["run_id"] and
-                same_publisher_binding(receipt, current) and
                 receipt["version"] == version and receipt["archive_filename"] == name and
                 receipt["final_sha256"] == image_hash, "Accepted receipt differs from candidate")
         logs = [item for item in evidence["logs"] if item["jobId"].lower() == receipt["submission_id"]]
@@ -456,7 +366,6 @@ def append_evidence(dist, installations, notes, current, version, final_artifact
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("source-identity")
     command = commands.add_parser("restore")
     command.add_argument("directory", type=Path)
     command = commands.add_parser("snapshot")
@@ -470,9 +379,7 @@ def main():
     command.add_argument("notes", type=Path)
     args = parser.parse_args()
     try:
-        if args.command == "source-identity":
-            print(json.dumps(source_identity(), sort_keys=True, separators=(",", ":")))
-        elif args.command == "restore":
+        if args.command == "restore":
             restore(args.directory, identity())
         elif args.command == "snapshot":
             pending = os.environ.get("APPLE_RECOVERY_PENDING", "false")

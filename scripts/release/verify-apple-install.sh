@@ -12,32 +12,6 @@ script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 # shellcheck disable=SC1091
 . "$script_dir/../lib/release.sh"
 is_semver "$version" || fail 'invalid version'
-source_commit=$GITHUB_SHA
-publisher_binding='{}'
-case "${APPLE_RELEASE_SOURCE_MODE:-main}" in main | dev) ;; *) fail 'invalid source mode' ;; esac
-case "${APPLE_RELEASE_CHANNEL:-stable}" in
-  stable)
-    [ "${APPLE_RELEASE_SOURCE_MODE:-main}" = main ] || fail 'dev source requires nightly channel'
-    [ -z "${APPLE_RELEASE_COMMIT:-}" ] || [ "$APPLE_RELEASE_COMMIT" = "$GITHUB_SHA" ] || fail 'stable source differs from publisher'
-    ;;
-  nightly)
-    [ "${GITHUB_REF:-}" = refs/heads/main ] || fail 'nightly acceptance requires main publisher'
-    source_commit=${APPLE_RELEASE_COMMIT:-}
-    printf '%s\n' "$source_commit" | grep -Eq '^[0-9a-f]{40}$' || fail 'invalid nightly source'
-    if [ "${APPLE_RELEASE_SOURCE_MODE:-main}" = dev ]; then
-      printf '%s\n' "$GITHUB_SHA" | grep -Eq '^[0-9a-f]{40}$' || fail 'invalid nightly publisher'
-      publisher_binding=$(jq -n --arg commit "$GITHUB_SHA" \
-        '{publisher_commit:$commit,publisher_ref:"refs/heads/main"}')
-    else
-      [ "$source_commit" = "$GITHUB_SHA" ] || fail 'main source differs from publisher'
-    fi
-    [ -f "$dist/metadata.json" ] && [ ! -L "$dist/metadata.json" ] || fail 'missing regular nightly metadata'
-    jq -se --arg commit "$source_commit" --arg version "$version" \
-      'length == 1 and (.[0] | .commit == $commit and .version == $version)' "$dist/metadata.json" >/dev/null || \
-      fail 'nightly metadata differs from selected source'
-    ;;
-  *) fail 'invalid release channel' ;;
-esac
 image=$dist/hikyo_${version}_Darwin_$arch.dmg
 archive=$dist/hikyo_${version}_Darwin_$arch.tar.gz
 for file in "$image" "$archive"; do
@@ -92,12 +66,12 @@ codesign --verify --strict -R=notarized --check-notarization "$scratch/bin/hikyo
 installed_sha256=$(sha256_file "$scratch/bin/hikyo")
 hdiutil detach "$scratch/mount" >/dev/null
 mounted=false
-jq -n --arg source "$source_commit" --argjson publisher "$publisher_binding" --arg run "$GITHUB_RUN_ID" --arg architecture "$arch" \
+jq -n --arg source "$GITHUB_SHA" --arg run "$GITHUB_RUN_ID" --arg architecture "$arch" \
   --arg version "$version" --arg artifact "$APPLE_NOTARY_INPUT_ARTIFACT_ID" \
   --arg image "$(sha256_file "$image")" --arg binary "$installed_sha256" \
   '{schema:"hikyo.dev/apple-install-receipt/v1",source_commit:$source,run_id:$run,architecture:$architecture,
     version:$version,input_artifact_id:$artifact,final_dmg_sha256:$image,installed_binary_sha256:$binary,
-    gatekeeper:true,executable_notarization:true,quarantine_retained:true,native_version:true,native_help:true} + $publisher' >"$scratch/receipt.json"
+    gatekeeper:true,executable_notarization:true,quarantine_retained:true,native_version:true,native_help:true}' >"$scratch/receipt.json"
 rm -rf "${scratch:?}/archive" "${scratch:?}/bin" "${scratch:?}/mount" || fail 'installation cleanup failed'
 mv "$scratch/receipt.json" "$output"
 printf 'Apple install: %s native CLI, ticket, Gatekeeper and quarantine checks passed\n' "$arch"

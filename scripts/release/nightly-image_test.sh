@@ -7,7 +7,6 @@ mkdir -p "$work/bin" "$work/scripts/release" "$work/scripts/lib" "$work/assets"
 cp "$script_dir/nightly-image.sh" "$work/scripts/release/"
 cp "$script_dir/../lib/release.sh" "$work/scripts/lib/"
 export REPOSITORY=Hikyo-Org/Hikyo COMMIT=1234567812345678123456781234567812345678
-export PUBLISHER_COMMIT=$COMMIT
 export VERSION=0.0.1-nightly.20260913.39.g12345678
 TAG=v$VERSION
 export TAG
@@ -97,10 +96,10 @@ sign)
 verify)
 	[ "$2" = --certificate-identity ] && [ "$3" = "https://github.com/$REPOSITORY/.github/workflows/nightly.yml@refs/heads/main" ]
 	[ "$4" = --certificate-oidc-issuer ] && [ "$5" = https://token.actions.githubusercontent.com ]
-	[ "$6" = --certificate-github-workflow-sha ] && [ "$7" = "$PUBLISHER_COMMIT" ]
+	[ "$6" = --certificate-github-workflow-sha ] && [ "$7" = "$COMMIT" ]
 	[ "$8" = "ghcr.io/hikyo-org/hikyo@$IMAGE_DIGEST" ]
 	[ "${FAIL_SIGNATURE:-false}" = false ]
-	[ "${SIGNATURE_COMMIT:-$PUBLISHER_COMMIT}" = "$7" ]
+	[ "${SIGNATURE_COMMIT:-$COMMIT}" = "$7" ]
 	printf '[]\n'
 	;;
 *) exit 94 ;;
@@ -131,7 +130,7 @@ producer:{name:"goreleaser",build_id:"hikyo",config:".goreleaser.yaml",config_sh
 packages:(["amd64","arm64"] | map(. as $arch | (if $arch == "amd64" then $amd else $arm end) as $sha |
 {goos:"linux",goarch:$arch,archive_input:{build_id:"hikyo",sha256:$sha},oci_input:{path:("image-root/"+$arch+"/hikyo"),sha256:$sha}}))}
 ' >"$work/assets/binary-provenance.json"
-jq -n --arg version "$VERSION" --arg commit "$COMMIT" '{schema:"hikyo.dev/nightly-manifest/v1",version:$version,source_commit:$commit}' >"$work/assets/release-manifest.json"
+jq -n --arg version "$VERSION" --arg commit "$COMMIT" '{version:$version,source_commit:$commit}' >"$work/assets/release-manifest.json"
 jq -n --arg tag "$TAG" '[[{tag_name:$tag,draft:false,prerelease:true}]]' >"$work/releases.json"
 cd "$work"
 run() { "$work/scripts/release/nightly-image.sh" "$@"; }
@@ -217,21 +216,4 @@ jq -n --arg tag "$TAG" '[[{tag_name:$tag,draft:false,prerelease:true},{tag_name:
 : >"$work/log"
 run promote
 not_promoted
-# V2 image labels still describe the dev source, while the image signature
-# and signed nightly inventory bind the distinct trusted main publisher.
-rm -rf image-root
-export PUBLISHER_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-jq -n --arg version "$VERSION" --arg commit "$COMMIT" --arg publisher "$PUBLISHER_COMMIT" \
-	'{schema:"hikyo.dev/nightly-manifest/v2",version:$version,source_commit:$commit,publisher_commit:$publisher}' \
-	>"$work/assets/release-manifest.json"
-( PUBLISHER_COMMIT=cccccccccccccccccccccccccccccccccccccccc reject prepare )
-[ ! -e image-root ]
-run prepare
-: >"$work/log"
-run promote
-grep -F -- "--certificate-github-workflow-sha $PUBLISHER_COMMIT" "$work/log" >/dev/null
-if grep '^cosign sign ' "$work/log" >/dev/null; then echo 'reused dev image was re-signed' >&2; exit 1; fi
-: >"$work/log"
-( SIGNATURE_COMMIT="$COMMIT" reject promote )
-not_consumed_or_signed
 printf 'nightly image fixtures passed\n'

@@ -84,11 +84,7 @@ func TestMainValidationWorkflowPolicySecurityReleaseAuthenticatesImmutableCommit
 	stableCalls := []releaseResolverAPICall{published(stable), api("git/ref/tags/"+stable, object("commit", source)), main}
 	nightlyCalls := []releaseResolverAPICall{refs("v1.2.3-nightly.20261014.41.gdddddddd", nightly), published(nightly), api("git/ref/tags/"+nightly, object("commit", source)), main}
 	available := func(tag string) string {
-		publisher := ""
-		if tag == nightly {
-			publisher = source
-		}
-		return fmt.Sprintf("available=true\ntag=%s\nsource=%s\npublisher=%s\nharness=%s\n", tag, source, publisher, harness)
+		return fmt.Sprintf("available=true\ntag=%s\nsource=%s\nharness=%s\n", tag, source, harness)
 	}
 	for _, tt := range []struct {
 		name   string
@@ -102,7 +98,6 @@ func TestMainValidationWorkflowPolicySecurityReleaseAuthenticatesImmutableCommit
 		{name: "annotated stable tag", event: "release", calls: []releaseResolverAPICall{published(stable), api("git/ref/tags/"+stable, object("tag", annotated)), api("git/tags/"+annotated, object("commit", source)), main}, output: available(stable)},
 		{name: "nested annotated tag", event: "release", calls: []releaseResolverAPICall{published(stable), api("git/ref/tags/"+stable, object("tag", annotated)), api("git/tags/"+annotated, object("tag", harness)), api("git/tags/"+harness, object("commit", source)), main}, output: available(stable)},
 		{name: "scheduled nightly exact SHA across API pages", event: "workflow_run", calls: nightlyCalls, output: available(nightly)},
-		{name: "dev source differs from trusted main publisher", event: "workflow_run", env: map[string]string{"NIGHTLY_SHA": harness}, calls: nightlyCalls, output: strings.Replace(available(nightly), "publisher="+source, "publisher="+harness, 1)},
 		{name: "dispatched annotated nightly exact SHA", event: "workflow_run", env: map[string]string{"NIGHTLY_EVENT": "repository_dispatch"}, calls: []releaseResolverAPICall{refs(nightly), published(nightly), api("git/ref/tags/"+nightly, object("tag", annotated)), api("git/tags/"+annotated, object("commit", source)), main}, output: available(nightly)},
 		{name: "nightly resolved SHA mismatch", event: "workflow_run", calls: []releaseResolverAPICall{refs(nightly), published(nightly), api("git/ref/tags/"+nightly, object("commit", harness))}, reject: true},
 		{name: "annotated nightly resolved SHA mismatch", event: "workflow_run", calls: []releaseResolverAPICall{refs(nightly), published(nightly), api("git/ref/tags/"+nightly, object("tag", annotated)), api("git/tags/"+annotated, object("commit", harness))}, reject: true},

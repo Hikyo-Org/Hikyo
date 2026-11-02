@@ -14,84 +14,6 @@ import zipfile
 import apple_notary_state as state
 
 
-def dev_proof():
-    return dict(schema="hikyo.dev/source-validation/v1", repository="Hikyo-Org/Hikyo", repository_id=1,
-                commit="b" * 40, ref="refs/heads/dev", workflow_path=".github/workflows/ci-dev.yml", event="push",
-                run_id=17, run_attempt=2, workflow_id=3, authority_commit="a" * 40,
-                configuration_sha256="c" * 64, proof_sha256="d" * 64)
-
-
-class SourceIdentityTests(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / "source-validation.json"
-        self.proof = dev_proof()
-        self.environ = dict(GITHUB_REPOSITORY="Hikyo-Org/Hikyo", GITHUB_RUN_ID="42", GITHUB_RUN_ATTEMPT="1",
-                            GITHUB_SHA="a" * 40, GITHUB_REF="refs/heads/main", APPLE_RELEASE_CHANNEL="nightly",
-                            APPLE_RELEASE_SOURCE_MODE="dev", APPLE_RELEASE_COMMIT="b" * 40,
-                            APPLE_RELEASE_SOURCE_VALIDATION=str(self.path))
-        self.write_proof(self.proof)
-
-    def write_proof(self, proof):
-        raw = json.dumps(proof).encode()
-        self.path.write_bytes(raw)
-        self.environ["APPLE_RELEASE_SOURCE_VALIDATION_SHA256"] = hashlib.sha256(raw).hexdigest()
-
-    def test_exact_dev_source_and_original_publisher_are_distinct(self):
-        current = state.identity(self.environ)
-        self.assertEqual(current["source_commit"], "b" * 40)
-        self.assertEqual(current["source_ref"], "refs/heads/dev")
-        self.assertEqual(current["publisher_commit"], "a" * 40)
-        self.assertEqual(current["publisher_ref"], "refs/heads/main")
-        self.assertEqual(current["source_validation"], self.proof)
-        with patch.object(state, "api") as api:
-            state.source_identity(self.environ)
-        api.assert_not_called()  # Live CI/policy authentication is the trusted workflow's prior gate.
-
-    def test_descriptor_digest_and_all_source_proof_authority_fields_are_bound(self):
-        for key, value in (("schema", "other"), ("repository", "other/repo"), ("commit", "c" * 40),
-                           ("ref", "refs/heads/main"), ("workflow_path", ".github/workflows/ci.yml"),
-                           ("event", "pull_request"), ("authority_commit", "c" * 40), ("run_id", True),
-                           ("run_attempt", 0), ("workflow_id", "3"), ("repository_id", -1), ("run_id", 2**53),
-                           ("configuration_sha256", "invalid"), ("proof_sha256", "invalid"), ("extra", "ignored")):
-            with self.subTest(field=key), self.assertRaises(ValueError):
-                self.write_proof(dict(self.proof, **{key: value}))
-                state.identity(self.environ)
-        self.write_proof(self.proof)
-        self.path.write_text("{}")
-        with self.assertRaisesRegex(ValueError, "digest mismatch"):
-            state.identity(self.environ)
-
-    def test_source_validation_id_uses_the_signed_protocol_integer_bound(self):
-        self.write_proof(dict(self.proof, run_id=2**53 - 1))
-        self.assertEqual(state.identity(self.environ)["source_validation"]["run_id"], 2**53 - 1)
-
-    def test_explicit_mode_and_trusted_main_publisher_are_required(self):
-        for key, value in (("APPLE_RELEASE_SOURCE_MODE", "main"), ("APPLE_RELEASE_SOURCE_MODE", "unknown"),
-                           ("APPLE_RELEASE_CHANNEL", "stable"), ("GITHUB_REF", "refs/heads/dev"),
-                           ("GITHUB_SHA", "c" * 40), ("APPLE_RELEASE_COMMIT", "c" * 40),
-                           ("APPLE_RELEASE_SOURCE_VALIDATION_SHA256", "")):
-            with self.subTest(field=key), self.assertRaises(ValueError):
-                state.identity(dict(self.environ, **{key: value}))
-        self.path.unlink()
-        self.path.symlink_to("missing-descriptor")
-        with self.assertRaises(ValueError):
-            state.identity(self.environ)
-
-    def test_legacy_main_and_stable_identity_have_no_new_authority_fields(self):
-        environ = {key: value for key, value in self.environ.items()
-                   if key not in ("APPLE_RELEASE_SOURCE_MODE", "APPLE_RELEASE_SOURCE_VALIDATION", "APPLE_RELEASE_SOURCE_VALIDATION_SHA256")}
-        environ["APPLE_RELEASE_COMMIT"] = environ["GITHUB_SHA"]
-        current = state.identity(environ)
-        self.assertFalse(set(state.PUBLISHER_FIELDS) & current.keys())
-        current = state.identity(dict(environ, APPLE_RELEASE_CHANNEL="stable", GITHUB_REF="refs/tags/v1.2.3"))
-        self.assertEqual(current["source_commit"], environ["GITHUB_SHA"])
-        self.assertFalse(set(state.PUBLISHER_FIELDS) & current.keys())
-        with self.assertRaises(ValueError):
-            state.identity(dict(environ, APPLE_RELEASE_COMMIT="b" * 40))
-
-
 class CheckpointTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -127,106 +49,6 @@ class CheckpointTests(unittest.TestCase):
     def read(self):
         with patch.object(state, "api", return_value=self.raw):
             return state.read_checkpoint(self.artifact, self.current["repository"], "42")
-
-    def use_dev_source(self):
-        self.current.update(source_commit="b" * 40, source_ref="refs/heads/dev", publisher_commit="a" * 40,
-                            publisher_ref="refs/heads/main", source_validation=dev_proof())
-        for arch in ("arm64", "x86_64"):
-            path = self.directory / f"{arch}-receipt.json"
-            receipt = state.parse_json(path.read_bytes())
-            receipt.update({key: self.current[key] for key in ("source_commit", "source_ref", *state.PUBLISHER_FIELDS)})
-            path.write_text(json.dumps(receipt))
-        state.snapshot(self.directory, self.destination, "finalized", True, self.current)
-        self.set_archive(self.destination.read_bytes())
-
-    def test_dev_checkpoint_restores_original_source_and_publisher(self):
-        self.use_dev_source()
-        record, files = self.read()
-        self.assertEqual(record["schema"], state.DEV_SCHEMA)
-        self.assertEqual(record["source_commit"], "b" * 40)
-        self.assertEqual(record["publisher_commit"], self.run["head_sha"])
-        with patch.object(state, "api", return_value=self.run), patch.object(state, "artifacts", return_value=[self.artifact]), patch.object(state, "read_checkpoint", return_value=(record, files)):
-            state.restore(self.root / "dev-restored", dict(self.current, attempt="2"))
-        restored = state.parse_json((self.root / "dev-restored/arm64-receipt.json").read_bytes())
-        self.assertEqual(restored["source_validation"], dev_proof())
-        self.assertEqual(self.recover(), ["repos/Hikyo-Org/Hikyo/actions/runs/42/rerun-failed-jobs"])
-        with self.assertRaisesRegex(ValueError, "checkpoints refused"):
-            self.recover(run=dict(self.run, head_sha="b" * 40))
-
-    def test_dev_retry_upload_proofs_authenticate_original_publisher(self):
-        self.use_dev_source()
-        files = {path.name: path.read_bytes() for path in self.directory.iterdir()}
-        for arch in ("arm64", "x86_64"):
-            receipt = state.parse_json(files[f"{arch}-receipt.json"])
-            receipt.update(phase="Prepared", original_run_attempt="1", submission_id=None)
-            files[f"{arch}-receipt.json"] = json.dumps(receipt).encode()
-        job = dict(name="apple-notarize", run_id=42, run_attempt=1, head_sha="a" * 40,
-                   status="completed", conclusion="skipped", steps=[
-                       dict(name=f"Submit {arch} once or reconcile its UUID", status="completed", conclusion="skipped")
-                       for arch in ("arm64", "x86_64")])
-        with patch.object(state, "api", return_value=[dict(jobs=[job])]):
-            self.assertTrue(state.no_previous_upload(dict(self.current, attempt="2")))
-            self.assertEqual(state.unstarted_architectures(files, dict(self.current, attempt="2")), ["arm64", "x86_64"])
-        job["head_sha"] = "b" * 40
-        with patch.object(state, "api", return_value=[dict(jobs=[job])]):
-            with self.assertRaisesRegex(ValueError, "job identity mismatch"):
-                state.no_previous_upload(dict(self.current, attempt="2"))
-            with self.assertRaisesRegex(ValueError, "job identity mismatch"):
-                state.unstarted_architectures(files, dict(self.current, attempt="2"))
-
-    def test_snapshot_rejects_partial_or_changed_dev_binding(self):
-        self.use_dev_source()
-        path = self.directory / "arm64-receipt.json"
-        original = state.parse_json(path.read_bytes())
-        for key in state.PUBLISHER_FIELDS:
-            receipt = deepcopy(original)
-            receipt.pop(key)
-            path.write_text(json.dumps(receipt))
-            with self.subTest(field=key), self.assertRaises(ValueError):
-                state.snapshot(self.directory, self.destination, "finalized", True, self.current)
-        path.write_text(json.dumps(original))
-        record, files = self.read()
-        changed = deepcopy(self.current)
-        changed["source_validation"]["run_attempt"] = 3
-        with patch.object(state, "api", return_value=self.run), patch.object(state, "artifacts", return_value=[self.artifact]), patch.object(state, "read_checkpoint", return_value=(record, files)):
-            with self.assertRaisesRegex(ValueError, "restored source mismatch"):
-                state.restore(self.root / "changed-proof", dict(changed, attempt="2"))
-
-    def test_dev_checkpoint_cannot_downgrade_or_change_retained_proof(self):
-        self.use_dev_source()
-        original, files = self.read()
-        for mutation in ("legacy-schema", "missing-publisher", "publisher", "source", "unsafe-id", "proof-field", "receipt-proof", "receipt-proof-type"):
-            record, retained = deepcopy(original), dict(files)
-            if mutation == "legacy-schema": record["schema"] = state.SCHEMA
-            if mutation == "missing-publisher": record.pop("publisher_commit")
-            if mutation == "publisher": record["publisher_commit"] = "c" * 40
-            if mutation == "source": record["source_commit"] = "c" * 40
-            if mutation == "unsafe-id": record["source_validation"]["run_id"] = 2**53
-            if mutation == "proof-field": record["source_validation"]["unexpected"] = "ignored"
-            if mutation in ("receipt-proof", "receipt-proof-type"):
-                receipt = state.parse_json(retained["arm64-receipt.json"])
-                if mutation == "receipt-proof": receipt["source_validation"]["run_attempt"] = 3
-                else: receipt["source_validation"]["repository_id"] = True
-                retained["arm64-receipt.json"] = json.dumps(receipt).encode()
-                record["files"]["arm64-receipt.json"] = hashlib.sha256(retained["arm64-receipt.json"]).hexdigest()
-            retained["checkpoint.json"] = json.dumps(record).encode()
-            buffer = io.BytesIO()
-            with tarfile.open(fileobj=buffer, mode="w:") as archive:
-                for name, data in retained.items():
-                    entry = tarfile.TarInfo(name)
-                    entry.size = len(data)
-                    archive.addfile(entry, io.BytesIO(data))
-            self.set_archive(buffer.getvalue())
-            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
-                self.read()
-
-    def test_legacy_receipts_cannot_import_dev_publisher_fields(self):
-        path = self.directory / "arm64-receipt.json"
-        receipt = state.parse_json(path.read_bytes())
-        receipt["publisher_commit"] = "a" * 40
-        path.write_text(json.dumps(receipt))
-        with self.assertRaises(ValueError):
-            state.snapshot(self.directory, self.destination, "finalized", True, self.current)
 
     def test_roundtrip_and_restore_use_original_identity(self):
         record, files = self.read()
@@ -424,8 +246,6 @@ class CheckpointTests(unittest.TestCase):
         self.assertEqual(self.recover(run=dict(self.run, created_at="2020-01-01T00:00:00Z")), [])
         with self.assertRaisesRegex(ValueError, "checkpoints refused"):
             self.recover(ancestry="diverged")
-        with self.assertRaisesRegex(ValueError, "checkpoints refused"):
-            self.recover(latest=dict(self.run, head_sha="b" * 40))
 
     def test_stale_checkpoint_attempt_is_filtered_before_download(self):
         with patch.object(state, "artifacts", return_value=[self.artifact]), patch.object(state, "read_checkpoint") as read:
@@ -458,18 +278,12 @@ class CheckpointTests(unittest.TestCase):
 
 class ImmutableEvidenceTests(unittest.TestCase):
     def test_exact_installed_and_submitted_bytes_required_before_notes_change(self):
-        mutations = ("none", "source", "image", "binary", "log", "native-missing", "publisher", "proof", "receipt-source", "native-publisher")
-        cases = [(mode, mutation) for mode in ("main", "dev") for mutation in mutations] + [("dev", "source-ref")]
-        for mode, mutation in cases:
-            with self.subTest(mode=mode, mutation=mutation), tempfile.TemporaryDirectory() as directory:
+        for mutation in ("none", "source", "image", "binary", "log", "native-missing"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 native = root / "native"
                 native.mkdir()
                 current = dict(source_commit="a" * 40, run_id="42")
-                if mode == "dev":
-                    current.update(source_commit="b" * 40, source_ref="refs/heads/dev", channel="nightly",
-                                   repository="Hikyo-Org/Hikyo", publisher_commit="a" * 40,
-                                   publisher_ref="refs/heads/main", source_validation=dev_proof())
                 evidence = dict(schema="hikyo.dev/apple-release-evidence/v1", receipts=[], logs=[])
                 for number, arch in enumerate(("arm64", "x86_64")):
                     image = ("synthetic image " + arch).encode()
@@ -483,28 +297,18 @@ class ImmutableEvidenceTests(unittest.TestCase):
                         archive.addfile(entry, io.BytesIO(binary))
                     submission = f"00000000-1111-2222-3333-{number:012d}"
                     evidence["receipts"].append(dict(architecture=arch, status="Accepted", diagnostics=dict(availability="available"),
-                        source_commit=current["source_commit"], original_run_id="42", version="1.2.3", archive_filename=filename,
+                        source_commit="a" * 40, original_run_id="42", version="1.2.3", archive_filename=filename,
                         submission_id=submission, submitted_sha256="b" * 64, final_sha256=image_hash))
-                    if mode == "dev":
-                        evidence["receipts"][-1].update(schema="hikyo.dev/apple-notarization-receipt/v2",
-                            **deepcopy({key: current[key] for key in ("source_ref", "channel", "repository", *state.PUBLISHER_FIELDS)}))
                     evidence["logs"].append(dict(jobId=submission, status="Accepted", archiveFilename=filename, sha256="b" * 64))
-                    receipt = dict(schema="hikyo.dev/apple-install-receipt/v1", source_commit=current["source_commit"], run_id="42", architecture=arch,
+                    receipt = dict(schema="hikyo.dev/apple-install-receipt/v1", source_commit="a" * 40, run_id="42", architecture=arch,
                                    version="1.2.3", input_artifact_id="7", final_dmg_sha256=image_hash, installed_binary_sha256=binary_hash,
                                    gatekeeper=True, executable_notarization=True, quarantine_retained=True, native_version=True, native_help=True)
-                    if mode == "dev":
-                        receipt.update(publisher_commit=current["publisher_commit"], publisher_ref=current["publisher_ref"])
                     if arch == "arm64":
                         if mutation == "source": receipt["source_commit"] = "c" * 40
                         if mutation == "image": receipt["final_dmg_sha256"] = "c" * 64
                         if mutation == "binary": receipt["installed_binary_sha256"] = "c" * 64
                         if mutation == "log": evidence["logs"][0]["sha256"] = "c" * 64
                         if mutation == "native-missing": continue
-                        if mutation == "publisher": evidence["receipts"][0]["publisher_commit"] = "c" * 40
-                        if mutation == "proof": evidence["receipts"][0]["source_validation"] = dict(dev_proof(), run_attempt=3)
-                        if mutation == "receipt-source": evidence["receipts"][0]["source_commit"] = "c" * 40
-                        if mutation == "source-ref": evidence["receipts"][0]["source_ref"] = "refs/heads/main"
-                        if mutation == "native-publisher": receipt["publisher_commit"] = "c" * 40
                     (native / f"install-{arch}.json").write_text(json.dumps(receipt))
                 (root / "apple-notarization-evidence.json").write_text(json.dumps(evidence))
                 notes = root / "notes.txt"

@@ -65,9 +65,6 @@ printf '    "%s"\n' "$fixture/login fixture.keychain-db" "$fixture/secondary.key
 cat >"$fixture/bin/printenv" <<'EOF'
 #!/bin/sh
 set -eu
-case "${APPLE_FIXTURE_FORBID_CREDENTIAL_READ:-false}:$1" in
-  true:APPLE_*) printf 'credential read before source refusal %s\n' "$1" >>"$APPLE_FIXTURE_LOG"; exit 1 ;;
-esac
 case "${APPLE_FIXTURE_PHASE:-}:$1" in
   sign:APPLE_NOTARY_* | notarize:APPLE_DEVELOPER_ID_* | prepare:APPLE_DEVELOPER_ID_* | prepare:APPLE_NOTARY_KEY*)
     printf 'forbidden credential read %s\n' "$1" >>"$APPLE_FIXTURE_LOG"; exit 1 ;;
@@ -523,7 +520,7 @@ assert_evidence() {
     esac
     warnings=0
     [ "$APPLE_FIXTURE_MODE" != accepted-warnings ] || warnings=1
-    jq -e --arg version "$evidence_version" --arg commit "${APPLE_RELEASE_COMMIT:-$GITHUB_SHA}" --arg arch "$evidence_arch" \
+    jq -e --arg version "$evidence_version" --arg commit "$GITHUB_SHA" --arg arch "$evidence_arch" \
       --arg filename "hikyo_${evidence_version}_Darwin_$evidence_arch.dmg" \
       --arg sha "$submitted_fixture_sha256" --arg id "$expected_id" --arg status "$expected_status" \
       --arg availability "$availability" --argjson warnings "$warnings" '
@@ -895,7 +892,7 @@ prepare_nightly_dist() {
     mv "$file" "$fixture/dist/hikyo_${APPLE_RELEASE_VERSION}_${file##*1.2.3_}"
   done
   (cd "$fixture/dist" && shasum -a 256 hikyo_*.tar.gz hikyo_*.zip >checksums.txt)
-  jq -n --arg version "$APPLE_RELEASE_VERSION" --arg commit "$APPLE_RELEASE_COMMIT" \
+  jq -n --arg version "$APPLE_RELEASE_VERSION" --arg commit "$GITHUB_SHA" \
     '{version:$version,commit:$commit}' >"$fixture/dist/metadata.json"
 }
 for APPLE_FIXTURE_MODE in accepted nightly-wrong-ref nightly-wrong-commit nightly-wrong-version nightly-wrong-metadata unknown-channel; do
@@ -911,10 +908,10 @@ for APPLE_FIXTURE_MODE in accepted nightly-wrong-ref nightly-wrong-commit nightl
     set -- env
     case "$APPLE_FIXTURE_MODE" in
       nightly-wrong-ref) set -- "$@" GITHUB_REF=refs/heads/feature ;;
-      nightly-wrong-commit) set -- "$@" APPLE_RELEASE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
+      nightly-wrong-commit) export APPLE_RELEASE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
       nightly-wrong-version) set -- "$@" APPLE_RELEASE_VERSION=1.2.3 ;;
       nightly-wrong-metadata) printf '{}\n' >"$fixture/dist/metadata.json" ;;
-      unknown-channel) set -- "$@" APPLE_RELEASE_CHANNEL=preview ;;
+      unknown-channel) export APPLE_RELEASE_CHANNEL=preview ;;
     esac
     "$@" "$script_dir/sign-apple-artifacts.sh" "$fixture/dist"
   ) >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
@@ -972,79 +969,9 @@ for APPLE_FIXTURE_MODE in rejected second-rejected accepted nightly-wrong-ref ni
   assert_evidence "$APPLE_RELEASE_VERSION"
   assert_split_cleanup
 done
-
-# Dev binaries retain their tested source independently of the trusted main
-# publisher. The descriptor and its digest come from the workflow's prior
-# policy/live-CI check, never from an arbitrary archive-supplied environment.
-export APPLE_RELEASE_SOURCE_MODE=dev APPLE_RELEASE_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-export APPLE_RELEASE_SOURCE_VALIDATION="$fixture/dev-source-validation.json"
-jq -n --arg repo "$GITHUB_REPOSITORY" --arg source "$APPLE_RELEASE_COMMIT" --arg publisher "$GITHUB_SHA" '
-  {schema:"hikyo.dev/source-validation/v1",repository:$repo,repository_id:1,commit:$source,
-   ref:"refs/heads/dev",workflow_path:".github/workflows/ci-dev.yml",event:"push",run_id:321,
-   run_attempt:2,workflow_id:3,authority_commit:$publisher,
-   configuration_sha256:("c" * 64),proof_sha256:("d" * 64)}
-' >"$APPLE_RELEASE_SOURCE_VALIDATION"
-APPLE_RELEASE_SOURCE_VALIDATION_SHA256=$(shasum -a 256 "$APPLE_RELEASE_SOURCE_VALIDATION" | awk '{print $1}')
-export APPLE_RELEASE_SOURCE_VALIDATION_SHA256 APPLE_FIXTURE_MODE=accepted
-: >"$APPLE_FIXTURE_LOG"
-: >"$GITHUB_OUTPUT"
-rm -rf "$fixture/dist" "$fixture/evidence" "$fixture/state"
-mkdir "$fixture/state"
-prepare_nightly_dist
-for source_refusal in implicit-main missing-descriptor wrong-descriptor-hash wrong-source wrong-publisher wrong-ref stable-channel; do
-  : >"$APPLE_FIXTURE_LOG"
-  (
-    set -- env APPLE_FIXTURE_FORBID_CREDENTIAL_READ=true
-    case "$source_refusal" in
-      implicit-main) set -- "$@" APPLE_RELEASE_SOURCE_MODE=main ;;
-      missing-descriptor) set -- "$@" APPLE_RELEASE_SOURCE_VALIDATION= ;;
-      wrong-descriptor-hash) set -- "$@" APPLE_RELEASE_SOURCE_VALIDATION_SHA256=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ;;
-      wrong-source) set -- "$@" APPLE_RELEASE_COMMIT=cccccccccccccccccccccccccccccccccccccccc ;;
-      wrong-publisher) set -- "$@" GITHUB_SHA=cccccccccccccccccccccccccccccccccccccccc ;;
-      wrong-ref) set -- "$@" GITHUB_REF=refs/heads/dev ;;
-      stable-channel) set -- "$@" APPLE_RELEASE_CHANNEL=stable ;;
-    esac
-    "$@" "$script_dir/sign-apple-artifacts.sh" --sign-only "$fixture/dist"
-  ) >"$fixture/out" 2>"$fixture/err" && result=0 || result=$?
-  [ "$result" -ne 0 ] && [ ! -s "$APPLE_FIXTURE_LOG" ] || {
-    printf 'apple fixture: dev source refusal reached credentials: %s\n' "$source_refusal" >&2; exit 1;
-  }
-done
-cp "$fixture/original-search-list" "$APPLE_FIXTURE_SEARCH_LIST"
-run_sign_only >"$fixture/out" 2>"$fixture/err"
-assert_signed_outputs "$APPLE_RELEASE_VERSION"
-assert_sign_only_calls "$APPLE_RELEASE_VERSION"
-for dev_phase in --prepare-only --submit-only --submit-only --notarize-only; do
-  (
-    unset APPLE_DEVELOPER_ID_P12_BASE64 APPLE_DEVELOPER_ID_P12_PASSWORD
-    set -- env APPLE_FIXTURE_PHASE=notarize
-    if [ "$dev_phase" = --prepare-only ]; then
-      unset APPLE_NOTARY_KEY_P8 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID
-      set -- env APPLE_FIXTURE_PHASE=prepare
-    fi
-    "$@" "$script_dir/sign-apple-artifacts.sh" "$dev_phase" "$fixture/dist"
-  ) >"$fixture/out" 2>"$fixture/err"
-done
-[ "$(grep -c '^xcrun notarytool submit$' "$APPLE_FIXTURE_LOG")" -eq 2 ]
-for dev_arch in arm64 x86_64; do
-  jq -e --arg source "$APPLE_RELEASE_COMMIT" --arg publisher "$GITHUB_SHA" \
-    --slurpfile validation "$APPLE_RELEASE_SOURCE_VALIDATION" '
-    .source_commit == $source and .source_ref == "refs/heads/dev" and
-    .publisher_commit == $publisher and .publisher_ref == "refs/heads/main" and
-    .source_validation == $validation[0] and .status == "Accepted" and
-    .original_run_id == "1234" and .original_run_attempt == "1" and
-    .input_binding == "actions-handoff" and .final_sha256 != .submitted_sha256
-  ' "$fixture/evidence/$dev_arch-receipt.json" >/dev/null
-done
-python3 -B "$script_dir/apple_notary_state.py" snapshot "$fixture/evidence" "$fixture/dev-checkpoint.tar" finalized
-assert_evidence "$APPLE_RELEASE_VERSION"
-assert_split_cleanup
-printf 'apple fixture: distinct verified dev source, main publisher, pre-credential refusals, phased receipts/checkpoint and no resubmission PASS\n'
-
 # Durable phase/recovery regressions. These retain the same original signed
 # Actions handoff across attempts; no fixture can contact Apple or load a P12.
 unset APPLE_RELEASE_CHANNEL APPLE_RELEASE_VERSION APPLE_RELEASE_COMMIT
-unset APPLE_RELEASE_SOURCE_MODE APPLE_RELEASE_SOURCE_VALIDATION APPLE_RELEASE_SOURCE_VALIDATION_SHA256
 export GITHUB_REF=refs/tags/v1.2.3
 APPLE_NOTARY_INPUT_SHA256=$(expected_binding 1.2.3)
 export APPLE_NOTARY_INPUT_SHA256

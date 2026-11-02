@@ -32,15 +32,14 @@ func main() {
 
 func run(args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("require policy, nightly-policy-proposal, preflight, candidate, prepare, or verify")
+		return errors.New("require policy, preflight, candidate, prepare, or verify")
 	}
 	fs := flag.NewFlagSet("stable", flag.ContinueOnError)
 	trust := fs.String("trust", "release/trust", "independently pinned public trust directory")
 	directory := fs.String("directory", "", "complete signed release directory")
 	version := fs.String("version", "", "expected release version without v")
 	commit := fs.String("commit", "", "expected full source commit")
-	out := fs.String("out", "", "new public document or proposal directory")
-	nightlyPolicy := fs.String("nightly-policy", "", "reviewed successor nightly policy file")
+	out := fs.String("out", "", "new public document path")
 	state := fs.String("state", "", "persisted rollback/equivocation floor")
 	latest := fs.Bool("latest", false, "require signed latest release")
 	published := fs.Bool("published", false, "verify publication evidence (does not publish)")
@@ -61,9 +60,6 @@ func run(args []string, output io.Writer) error {
 	}
 	if args[0] == "policy" {
 		return createPolicy(loaded, *trust, *out)
-	}
-	if args[0] == "nightly-policy-proposal" {
-		return prepareNightlyPolicyRotation(loaded, *trust, *nightlyPolicy, *out)
 	}
 	if !loaded.snapshot.StableKeylessEnabled() && !(args[0] == "verify" && *historical) {
 		return errors.New("stable keyless policy has not been recovery-authorized; run the one-time setup")
@@ -195,8 +191,11 @@ func createPolicy(t publicTrust, directory, out string) error {
 	if err != nil {
 		return err
 	}
-	nightly, err := releasetrust.ParseNightlyPolicy(raw)
-	if err != nil {
+	var nightly releasetrust.NightlyPolicy
+	if err := definitions.DecodeStrict(raw, &nightly); err != nil {
+		return err
+	}
+	if err := nightly.Validate(); err != nil {
 		return err
 	}
 	if !slices.Contains(t.catalog.NightlyPolicies, releaseidentity.Hash(raw)) {
@@ -210,8 +209,6 @@ func createPolicy(t publicTrust, directory, out string) error {
 		return errors.New("Sigstore root hash mismatch")
 	}
 	nightly.Schema = "hikyo.dev/stable-policy/v1"
-	nightly.SourceRef = ""
-	nightly.SourceWorkflowPath = ""
 	nightly.WorkflowPath = ".github/workflows/release.yml"
 	nightly.ProtectedRef = "refs/tags/v*"
 	nightly.RevokedManifests = []releaseidentity.Digest{}

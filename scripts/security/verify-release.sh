@@ -12,24 +12,12 @@ gh api "repos/$repository/releases/tags/$tag" >"$work/release.json"
 jq -e --arg tag "$tag" '.tag_name == $tag and .draft == false and .published_at != null' "$work/release.json" >/dev/null
 # Reject tag movement and unpublished data, independently of release metadata.
 test "$(git rev-parse "refs/tags/$tag^{commit}")" = "$commit"
-case "$tag" in
-  *-nightly.*)
-    [[ "${NIGHTLY_PUBLISHER_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]]
-    git merge-base --is-ancestor "$NIGHTLY_PUBLISHER_COMMIT" HEAD
-    ;;
-  *) git merge-base --is-ancestor "$commit" HEAD ;;
-esac
+git merge-base --is-ancestor "$commit" HEAD
 gh release download "$tag" --repo "$repository" --dir "$work/bundle"
 case "$tag" in
   *-nightly.*)
     go run ./scripts/release/nightly verify --trust release/trust \
       --directory "$work/bundle" >"$work/identity.json"
-    jq -e --arg tag "$tag" --arg source "$commit" --arg publisher "$NIGHTLY_PUBLISHER_COMMIT" '
-      .tag == $tag and .source_commit == $source and
-      (if .schema == "hikyo.dev/nightly-manifest/v1" then .source_commit
-       elif .schema == "hikyo.dev/nightly-manifest/v2" then .publisher_commit
-       else null end) == $publisher
-    ' "$work/bundle/release-manifest.json" >/dev/null
     ;;
   *)
     go run ./scripts/release/stable verify --trust release/trust \

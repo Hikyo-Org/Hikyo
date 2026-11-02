@@ -204,7 +204,7 @@ func TestAppleSigningPhaseTransferBindsSignedBytes(t *testing.T) {
 					run := func(script string, extra ...string) error {
 						cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
 						cmd.Dir = dir
-						cmd.Env = append(append(os.Environ(), "HIKYO_NIGHTLY_SOURCE_PROOF=", "HIKYO_NIGHTLY_PUBLISHER_COMMIT="), "VERSION="+version, "GITHUB_OUTPUT="+outputFile)
+						cmd.Env = append(os.Environ(), "VERSION="+version, "GITHUB_OUTPUT="+outputFile)
 						cmd.Env = append(cmd.Env, extra...)
 						return cmd.Run()
 					}
@@ -320,7 +320,7 @@ func TestNightlyNotarizationOutcomeControlsPublishedDMGs(t *testing.T) {
 				write("scripts/release/apple_notary_state.py", "import sys\nassert sys.argv[1] == 'append-evidence'\n")
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", stage.Run)
 				cmd.Dir = dir
-				cmd.Env = append(append(os.Environ(), "HIKYO_NIGHTLY_SOURCE_PROOF=", "HIKYO_NIGHTLY_PUBLISHER_COMMIT="), "VERSION="+version, "COMMIT="+strings.Repeat("a", 40), "GITHUB_RUN_NUMBER=1", "RUNNER_TEMP="+filepath.Join(dir, "temp"), "APPLE_NOTARIZATION_RESULT="+outcome)
+				cmd.Env = append(os.Environ(), "VERSION="+version, "COMMIT="+strings.Repeat("a", 40), "GITHUB_RUN_NUMBER=1", "RUNNER_TEMP="+filepath.Join(dir, "temp"), "APPLE_NOTARIZATION_RESULT="+outcome)
 				output, err := cmd.CombinedOutput()
 				wantSuccess := outcome == "failure" || outcome == "success" && !missing
 				if (err == nil) != wantSuccess {

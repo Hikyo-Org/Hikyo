@@ -51,7 +51,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		if apple.Env["DEVELOPER_DIR"] != "/Applications/Xcode_26.3.app/Contents/Developer" {
 			t.Fatal("Apple notarization must select the tested Xcode 26.3 client instead of the runner default")
 		}
-		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, map[string]string{"actions": "read", "contents": "read"}) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
+		if apple.Environment != "apple-signing" || apple.RunsOn != "macos-15" || !reflect.DeepEqual(apple.Permissions, applePhasePermissions(name)) || apple.If != "github.ref == 'refs/heads/main' && needs.build-artifacts.outputs.skip != 'true'" {
 			t.Fatal("nightly Apple signing requires its protected credential environment, main, macOS and read-only repository access; only an already published release may skip it")
 		}
 	}
@@ -60,8 +60,8 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	}
 	build := workflow.Jobs["build-artifacts"]
 	for key, expected := range map[string]string{
-		"non_darwin_sha256":    "${{ steps.build.outputs.non_darwin_sha256 }}",
-		"compatibility_sha256": "${{ steps.build.outputs.compatibility_sha256 }}",
+		"non_darwin_sha256":    "${{ steps.retained-integrity.outputs.non_darwin_sha256 }}",
+		"compatibility_sha256": "${{ steps.compatibility.outputs.sha256 }}",
 	} {
 		if build.Outputs[key] != expected {
 			t.Fatalf("build must independently export %s", key)
@@ -84,10 +84,10 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 	for name, job := range workflow.Jobs {
 		for _, step := range job.Steps {
 			if strings.Contains(step.Uses, "goreleaser/goreleaser-action@") {
-				t.Fatal("nightly binaries may only be built by nightly-build.yml, before Apple signing")
-			}
-			if step.With["artifact-ids"] == "${{ needs.build-artifacts.outputs.artifact_id }}" && step.With["run-id"] != "${{ needs.build-artifacts.outputs.build_run_id }}" {
-				t.Fatal("the canonical build artifact must come from the authenticated build run")
+				builds++
+				if name != "build-artifacts" {
+					t.Fatal("nightly binaries may only be built before Apple signing")
+				}
 			}
 			for key, value := range step.Env {
 				if strings.HasPrefix(key, "APPLE_") && strings.Contains(value, "secrets.") {
@@ -142,11 +142,6 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 			}
 		}
 	}
-	buildRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/nightly-build.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	builds += strings.Count(string(buildRaw), "goreleaser/goreleaser-action@")
 	if builds != 1 || signatures != 1 || notarizations != 1 {
 		t.Fatal("nightly requires exactly one canonical build and separate Apple signing and notarization stages")
 	}
@@ -159,7 +154,7 @@ func TestNightlyAppleSigningGatesPublication(t *testing.T) {
 		final.WriteByte('\n')
 	}
 	previous := -1
-	for _, gate := range []string{"test \"$(git rev-parse HEAD)\" = \"$GITHUB_SHA\"", "sha256sum --check --strict checksums.txt", "Darwin_$arch.dmg", "test \"$non_darwin_sha256\" = \"$NON_DARWIN_SHA256\"", "sha256sum nightly-context/upgrade-compatibility.json", "cp nightly-context/upgrade-compatibility.json", "prepare-image-root.sh", "cmp nightly-context/nightly-sources.json", "dist/hikyo_*_Darwin_*.dmg", "create-nightly-manifest.sh", "cosign sign-blob", "nightly verify", "smoke-release-startup.sh", "TestPackagedNightlyReleaseUpgrade", "gh release create"} {
+	for _, gate := range []string{"test \"$COMMIT\" = \"$GITHUB_SHA\"", "sha256sum --check --strict checksums.txt", "Darwin_$arch.dmg", "test \"$non_darwin_sha256\" = \"$NON_DARWIN_SHA256\"", "sha256sum nightly-context/upgrade-compatibility.json", "cp nightly-context/upgrade-compatibility.json", "prepare-image-root.sh", "cmp nightly-context/nightly-sources.json", "dist/hikyo_*_Darwin_*.dmg", "create-nightly-manifest.sh", "cosign sign-blob", "nightly verify", "smoke-release-startup.sh", "TestPackagedNightlyReleaseUpgrade", "gh release create"} {
 		position := strings.Index(final.String(), gate)
 		if position <= previous {
 			t.Fatalf("missing or reordered nightly publication gate %s", gate)
@@ -189,23 +184,7 @@ func TestNightlyAppleTransferPreservesUnchangedBuildInputs(t *testing.T) {
 		t.Fatalf("missing %s/%s", job, name)
 		return mainValidationStep{}
 	}
-	buildRaw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github/workflows/nightly-build.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var buildWorkflow mainValidationWorkflow
-	if err := yaml.Unmarshal(buildRaw, &buildWorkflow); err != nil {
-		t.Fatal(err)
-	}
-	var bind mainValidationStep
-	for _, step := range buildWorkflow.Jobs["build"].Steps {
-		if step.Name == "Bind untouched nightly archive bytes" {
-			bind = step
-		}
-	}
-	if bind.Name == "" {
-		t.Fatal("nightly build lost its archive binding")
-	}
+	bind := find("build-artifacts", "Bind untouched nightly archive bytes")
 	verify := find("publish", "Verify untouched nightly archives and compatibility")
 	if bind.If != "steps.identity.outputs.skip != 'true'" || verify.If != "needs.build-artifacts.outputs.skip != 'true'" ||
 		bind.Env["VERSION"] != "${{ steps.identity.outputs.version }}" ||

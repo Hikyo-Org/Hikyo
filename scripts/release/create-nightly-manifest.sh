@@ -18,36 +18,6 @@ jq -e --arg version "$version" --arg commit "$commit" --arg sequence "$sequence"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-manifest.XXXXXX")
 publication=
 trap 'rm -rf "$scratch"; if [ -n "$publication" ]; then rm -f "$publication"; fi' EXIT HUP INT TERM
-schema=hikyo.dev/nightly-manifest/v1
-proof_count=0
-policy_schema=$(jq -er '.schema | select(type == "string")' "$directory/nightly-policy.json")
-case "$policy_schema" in
- hikyo.dev/nightly-policy/v1)
-  [ -z "${HIKYO_NIGHTLY_PUBLISHER_COMMIT:-}" ] && [ -z "${HIKYO_NIGHTLY_SOURCE_PROOF:-}" ] || {
-   printf 'nightly: dev publication requires the recovery-authorized v2 policy\n' >&2; exit 1;
-  }
-  ;;
- hikyo.dev/nightly-policy/v2)
-  if [ -z "${HIKYO_NIGHTLY_PUBLISHER_COMMIT:-}" ] || [ -z "${HIKYO_NIGHTLY_SOURCE_PROOF:-}" ]; then
-   printf 'nightly: exact publisher commit and complete source-validation receipt required\n' >&2; exit 1
-  fi
-  if [ ! -f "$HIKYO_NIGHTLY_SOURCE_PROOF" ] || [ -L "$HIKYO_NIGHTLY_SOURCE_PROOF" ]; then
-   printf 'nightly: source proof must be a regular file\n' >&2; exit 1
-  fi
-  if [ ! -f "$directory/source-validation.json" ] || [ -L "$directory/source-validation.json" ] ||
-   ! cmp -s "$HIKYO_NIGHTLY_SOURCE_PROOF" "$directory/source-validation.json"; then
-   printf 'nightly: retained source receipt differs from the selected proof\n' >&2; exit 1
-  fi
-  # Run the canonical verifier from its own checkout/module. The selected dev
-  # tree must not redirect imports or supply the publisher's policy verifier.
-  (cd "$script_dir/../.." && go run ./scripts/release/nightly source-validation \
-   --source-proof "$HIKYO_NIGHTLY_SOURCE_PROOF" --source-commit "$commit" \
-   --publisher-commit "$HIKYO_NIGHTLY_PUBLISHER_COMMIT" --out "$scratch/source-validation.json")
-  schema=hikyo.dev/nightly-manifest/v2
-  proof_count=1
-  ;;
- *) printf 'nightly: unsupported policy schema\n' >&2; exit 1 ;;
-esac
 : >"$scratch/records"
 record() {
  name=$1 kind=$2 platform=$3 format=$4 arch=$5
@@ -92,9 +62,6 @@ record upgrade-compatibility.json upgrade-compatibility '' '' ''
 record nightly-policy.json nightly-policy '' '' ''
 record sigstore-trusted-root.json sigstore-trusted-root '' '' ''
 record NIGHTLY-BUILD.txt release-notes '' '' ''
-if [ "$proof_count" -eq 1 ]; then
- record source-validation.json build-provenance '' '' ''
-fi
 # Inventory must contain exactly the canonical payloads (plus the DMG pair).
 # Never omit a file which gh release create would subsequently publish.
 count=0
@@ -106,18 +73,9 @@ for path in "$directory"/* "$directory"/.[!.]* "$directory"/..?*; do
  }
  count=$((count + 1))
 done
-[ "$count" -eq $((20 + dmg_count + proof_count)) ]
+[ "$count" -eq $((20 + dmg_count)) ]
 publication=$(mktemp "$directory/.nightly-manifest.XXXXXX")
-if [ "$proof_count" -eq 1 ]; then
- jq -s --arg schema "$schema" --arg version "$version" --arg commit "$commit" \
-  --arg publisher "$HIKYO_NIGHTLY_PUBLISHER_COMMIT" --argjson sequence "$sequence" \
-  --slurpfile proof "$scratch/source-validation.json" '
-  {schema:$schema,profile:"nightly/v1",version:$version,tag:("v"+$version),source_commit:$commit,
-   publisher_commit:$publisher,source_validation:$proof[0],release_sequence:$sequence,artifacts:sort_by(.name)}
- ' "$scratch/records" >"$publication"
-else
- jq -s --arg schema "$schema" --arg version "$version" --arg commit "$commit" --argjson sequence "$sequence" '
-  {schema:$schema,profile:"nightly/v1",version:$version,tag:("v"+$version),source_commit:$commit,release_sequence:$sequence,artifacts:sort_by(.name)}
- ' "$scratch/records" >"$publication"
-fi
+jq -s --arg version "$version" --arg commit "$commit" --argjson sequence "$sequence" '
+ {schema:"hikyo.dev/nightly-manifest/v1",profile:"nightly/v1",version:$version,tag:("v"+$version),source_commit:$commit,release_sequence:$sequence,artifacts:sort_by(.name)}
+' "$scratch/records" >"$publication"
 ln "$publication" "$directory/release-manifest.json"

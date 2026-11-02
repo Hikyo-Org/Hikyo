@@ -46,21 +46,11 @@ jq --arg version "$nightly_version" '
 grep -Fx 'cask "hikyo@nightly" do' "$fixture_dir/hikyo@nightly.rb" >/dev/null
 grep -Fx '  conflicts_with cask: "hikyo"' "$fixture_dir/hikyo@nightly.rb" >/dev/null
 grep -Fx "  version \"$nightly_version\"" "$fixture_dir/hikyo@nightly.rb" >/dev/null
-# Rendering consumes an already authenticated inventory. Both explicit nightly
-# manifest versions must produce the same cask from identical DMG bytes.
-jq '.schema = "hikyo.dev/nightly-manifest/v2"' "$bundle/nightly-manifest.json" >"$bundle/dev-nightly-manifest.json"
-"$(dirname "$0")/render-homebrew-cask.sh" --nightly \
-	"$bundle/dev-nightly-manifest.json" "$bundle" "$fixture_dir/dev-nightly.rb" Hikyo-Org/Hikyo
-cmp "$fixture_dir/hikyo@nightly.rb" "$fixture_dir/dev-nightly.rb"
 # Channel confusion must never render a stable cask from nightly metadata.
-for scenario in stable-as-nightly nightly-as-stable dev-nightly-as-stable unknown-nightly-schema; do
+for scenario in stable-as-nightly nightly-as-stable; do
 	case "$scenario" in
 		stable-as-nightly) set -- --nightly "$bundle/release-manifest.json" ;;
 		nightly-as-stable) set -- "$bundle/nightly-manifest.json" ;;
-		dev-nightly-as-stable) set -- "$bundle/dev-nightly-manifest.json" ;;
-		unknown-nightly-schema)
-			jq '.schema = "hikyo.dev/nightly-manifest/v3"' "$bundle/nightly-manifest.json" >"$bundle/unknown-nightly.json"
-			set -- --nightly "$bundle/unknown-nightly.json" ;;
 	esac
 	if "$(dirname "$0")/render-homebrew-cask.sh" "$@" "$bundle" "$fixture_dir/$scenario.rb" Hikyo-Org/Hikyo >"$fixture_dir/$scenario.out" 2>&1; then
 		printf 'homebrew cask fixture: accepted channel confusion %s\n' "$scenario" >&2; exit 1
