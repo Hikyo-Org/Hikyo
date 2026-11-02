@@ -218,8 +218,10 @@ func TestHybridReceiptSchemaIsBoundToItsAlgorithm(t *testing.T) {
 		t.Fatalf("32 hybrid fingerprints refused: %v", err)
 	}
 	for name, mutate := range map[string]func(*Receipt){
-		"33 hybrid fingerprints": func(r *Receipt) { r.Snapshot.RecipientFingerprints = hybridFingerprints(backup.MaxHybridRecipients + 1) },
-		"hybrid under v1":        func(r *Receipt) { r.Format = ReceiptFormat },
+		"33 hybrid fingerprints": func(r *Receipt) {
+			r.Snapshot.RecipientFingerprints = hybridFingerprints(backup.MaxHybridRecipients + 1)
+		},
+		"hybrid under v1": func(r *Receipt) { r.Format = ReceiptFormat },
 		"mixed inventory": func(r *Receipt) {
 			r.Snapshot.RecipientFingerprints = append(r.Snapshot.RecipientFingerprints, backup.FingerprintPrefixX25519+strings.Repeat("4", 64))
 		},

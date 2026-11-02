@@ -17,9 +17,15 @@ import (
 )
 
 func TestExportDirectorySyncFailurePreservesPublishedArtifact(t *testing.T) {
+	for algorithm, generate := range map[string]func() (string, string, error){"x25519": backup.GenerateIdentity, "hybrid": backup.GenerateHybridIdentity} {
+		t.Run(algorithm, func(t *testing.T) { exportDirectorySyncFailure(t, generate) })
+	}
+}
+
+func exportDirectorySyncFailure(t *testing.T, generate func() (string, string, error)) {
 	for _, failAt := range []int{0, 1, 2} {
 		t.Run([]string{"destination", "new-parent", "existing-ancestor"}[failAt], func(t *testing.T) {
-			identity, recipient, err := backup.GenerateIdentity()
+			identity, recipient, err := generate()
 			if err != nil {
 				t.Fatal(err)
 			}

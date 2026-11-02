@@ -18,9 +18,14 @@ import (
 )
 
 func TestBackupRestoreDiagnosticsLevels(t *testing.T) {
+	t.Run("x25519", func(t *testing.T) { backupRestoreDiagnosticsLevels(t, backup.GenerateIdentity) })
+	t.Run("hybrid", func(t *testing.T) { backupRestoreDiagnosticsLevels(t, backup.GenerateHybridIdentity) })
+}
+
+func backupRestoreDiagnosticsLevels(t *testing.T, generate func() (string, string, error)) {
 	source := upgradeDrillDatabase(t, store.EngineSQLite)
 	_, material := gatefixture.PrepareWithMaterial(t, backupGateConfig(source), store.MigrationsFS, "migrations/sqlite", bytes.Repeat([]byte{61}, 32))
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}

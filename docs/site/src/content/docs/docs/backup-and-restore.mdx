@@ -45,6 +45,74 @@ complete. A configured export that fails blocks the migration.
 No configured policy causes a loud, durable skip but does not block migration.
 There are no down migrations, so the only downgrade path is restore.
 
+## Hybrid post-quantum recipients (opt-in)
+
+By default `keygen` mints an X25519 identity and nothing changes for an install
+that does not ask. To protect new archives against a recorded archive being read
+later by a quantum computer, mint age's hybrid identity (X25519 plus ML-KEM-768):
+
+```bash
+hikyo backup keygen --hybrid --output-file /secure-custody/hikyo-backup-identity-pq
+```
+
+The private identity is 77 characters (`AGE-SECRET-KEY-PQ-1...`). The public
+recipient is 1959 characters (`age1pq1...`) and is safe in configuration. Delivery
+is the same display-once path as above.
+
+Selecting hybrid is configuring a hybrid recipient: `HIKYO_BACKUP_RECIPIENTS`
+(or repeated `--recipient`) must then hold only hybrid recipients.
+
+| Rule | Behavior |
+| --- | --- |
+| One class per export | All hybrid or all X25519. A mix is refused with `hybrid post-quantum and classical recipients cannot be mixed`, before any file is created, because the X25519 recipient would be an independent door to the same data. |
+| At most 32 hybrid recipients | 32 recipients are 62,719 characters of configuration, inside the 65,536-byte managed value limit. 33 are refused by count. The 256-recipient and 256 KiB header limits for reading are unchanged; 32 hybrid recipients measure a 49,846-byte header. |
+| No passphrase beside recipients | Unchanged. |
+| Duplicates | A hybrid recipient listed twice is refused. |
+| Hikyo readers | `restore run`, `restore drill` and `upgrade-drill` refuse an archive whose header holds a hybrid stanza beside any other stanza type. Hikyo never writes such an archive. Another age tool holding an X25519 identity could still open one, because age does not check this on decrypt. |
+
+An archive written to hybrid recipients needs a Hikyo binary that understands
+them. An older binary refuses the hybrid identity and the `backup-receipt/v2`
+receipt. Upgrade every host that may restore (the minimum capable reader is the
+release that contains this change) before the first hybrid export, and keep the
+X25519 identity: archives already written for it stay readable only with it.
+
+### Migrating retained archives without deleting anything
+
+1. Upgrade the binary on every host that may need to restore.
+2. `hikyo backup keygen --hybrid --output-file ...` on the custody host. Store it
+   apart from the root key and apart from the old X25519 identity.
+3. Keep the old identity. Existing archives are not rewritten and need it.
+4. Set `HIKYO_BACKUP_RECIPIENTS` to the hybrid recipient (alone), then run
+   `hikyo backup export` for a fresh recovery point.
+5. Prove it: `hikyo restore drill --from ARCHIVE --identity-file ...` with the
+   hybrid identity, against an empty scratch target. For an upgrade, run
+   `upgrade-export --recipient <hybrid recipient>` and the operator
+   `upgrade-drill` with the hybrid identity; the receipt is `backup-receipt/v2`
+   and its fingerprint begins `age-hybrid-mlkem768x25519-sha256:`.
+6. To roll back, set the recipient back to the X25519 recipient. Hybrid archives
+   already written remain readable with the hybrid identity, so keep it.
+
+The `age-x25519-sha256:` fingerprint namespace and `backup-receipt/v1` keep their
+meaning: a classical key is never relabeled, and receipts written before this
+change validate unchanged.
+
+### What hybrid recipients do not do
+
+* The age file key is 16 bytes. The archive payload and metadata are protected at
+  128-bit strength, not 256-bit. Secret fields inside the archive still need the
+  root key, and a copy of the custody record that holds root escrow opens them.
+* A passphrase export is only as strong as the passphrase's entropy. Hybrid
+  recipients do not apply to it, and the scrypt exclusivity rule is unchanged.
+* Re-encrypting to a new recipient cannot revoke a copy someone already holds.
+  Old identities keep opening old archives.
+* age has no sender authentication: anyone holding a public recipient can write
+  an archive for it, and a receipt is an unsigned public marker. Receipt-bound
+  restore provenance for a strict backup profile is not implemented.
+* Automatic upgrade custody (`operator.age`) still generates an X25519 identity
+  at enrollment. A manual upgrade with a separately held hybrid identity works.
+* The built-in secret scanner does not recognize `AGE-SECRET-KEY-PQ-1...`. Keep
+  identities out of managed values.
+
 ## 2b. Schedule automatic exports
 
 A complete export policy (recipients plus a destination) also enables an

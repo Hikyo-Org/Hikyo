@@ -63,7 +63,7 @@ func BackupUsage(w io.Writer) {
 
   hikyo backup export [--out DIR] [--recipient AGE-RECIPIENT]...
                       [--passphrase-file PATH]
-  hikyo backup keygen [--output-file PATH | --dangerously-print]
+  hikyo backup keygen [--hybrid] [--output-file PATH | --dangerously-print]
   hikyo backup upgrade-export [--bundle DIR] [--out DIR] [--recipient AGE-RECIPIENT]... [--json]
   hikyo backup upgrade-drill --from ARCHIVE --receipt PATH --identity-file PATH
                       --root-key-file PATH (--target-sqlite PATH | --target-postgres-dsn-file PATH)
@@ -90,6 +90,11 @@ keygen mints a backup identity and prints it once. Store the PRIVATE half in a
 custody store SEPARATE from the root key's - two keys in one password manager
 is one failure domain wearing two names, and the escrow runbook requires two.
 Delivery follows the print triad, as with every other display-once value.
+By default it mints an X25519 identity. --hybrid mints age's post-quantum
+hybrid identity (X25519 + ML-KEM-768) instead: its recipient is about 2000
+characters, an export takes at most 32 of them, and they cannot be mixed with
+X25519 recipients in one export. A hybrid archive needs a reader that knows the
+hybrid stanza; keep an X25519 identity for archives written before you switched.
 
 upgrade-export and upgrade-drill are the pre-upgrade evidence pair that
 sudo hikyo upgrade runs against a verified release bundle: export writes the
@@ -274,6 +279,7 @@ func runBackupKeygen(args []string, stderr io.Writer, terminalSession *disclose.
 	fs.SetOutput(stderr)
 	outputFile := fs.String("output-file", "", "write the identity to a file this command creates (0600)")
 	dangerous := fs.Bool("dangerously-print", false, "write the identity to stdout, and to whatever collects it")
+	hybrid := fs.Bool("hybrid", false, "mint a post-quantum hybrid identity (X25519 + ML-KEM-768) instead of X25519")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -288,7 +294,11 @@ func runBackupKeygen(args []string, stderr io.Writer, terminalSession *disclose.
 		return err
 	}
 	defer sink.AbortOnReturn(&returnErr)
-	identity, recipient, err := backup.GenerateIdentity()
+	generate := backup.GenerateIdentity
+	if *hybrid {
+		generate = backup.GenerateHybridIdentity
+	}
+	identity, recipient, err := generate()
 	if err != nil {
 		return err
 	}

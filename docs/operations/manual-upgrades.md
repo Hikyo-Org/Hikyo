@@ -192,6 +192,12 @@ the verified route order.
 hikyo backup upgrade-export --out /srv/upgrade-export --recipient "$AGE_RECIPIENT"
 ```
 
+`AGE_RECIPIENT` may be an X25519 recipient or, once every host that may restore
+runs a release that reads them, age's hybrid post-quantum recipient (`age1pq1...`,
+set `--recipient` once per recipient; all hybrid or all X25519, at most 32
+hybrid). A hybrid export writes a `backup-receipt/v2` receipt. See
+[Hybrid post-quantum recipients](/docs/backup-and-restore/#hybrid-post-quantum-recipients-opt-in).
+
 On the operator custody host, use the reported ciphertext and receipt paths,
 the same public trust and an independently empty scratch target:
 
