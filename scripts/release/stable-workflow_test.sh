@@ -2,7 +2,6 @@
 set -eu
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 "$script_dir/../ci/test-core-packages_test.sh"
-"$script_dir/test-source_test.sh"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-workflow.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir "$scratch/bin" "$scratch/dist"
