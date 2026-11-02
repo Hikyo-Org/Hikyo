@@ -108,6 +108,13 @@ describe('self-config cadence', () => {
     expect(reads()).toBe(2);
   });
 
+  it('keeps polling after a throttled read that says to retry at once', async () => {
+    const reads = await mount(<Live />, () => json({ error: { code: 'too_many_requests', message: 'too many requests' } }, 429, { 'Retry-After': '0' }));
+    expect(reads()).toBe(1);
+    await advance(30_000);
+    expect(reads()).toBe(2);
+  });
+
   it('refetches a fresh answer only when the live page mounts over it', async () => {
     const client = new QueryClient();
     client.setQueryData(['self-config'], active);

@@ -579,10 +579,10 @@ export function useMatrixProject(ref: MatrixRef) {
     return () => {
       clearTimeout(pending.timer);
       pending.timer = undefined;
-      // Leaving the route: stale the entries, but do not fetch for a page that is gone.
+      // Leaving the route or project: stale the entries, but do not fetch for a page that is gone.
       flushBurst('none');
     };
-  }, [flushBurst]);
+  }, [flushBurst, ref.org, ref.project]);
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
   // state gates the signals and pending drafts fallback polls below; and
@@ -652,18 +652,6 @@ export function useMatrixProject(ref: MatrixRef) {
     pendingDrafts: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixPendingDraftList>>[]) =>
       bindMatrixEnvironmentQueries('pending drafts', environmentItems, queries),
   }), [environmentItems]);
-  const values = useQueries({
-    queries: environmentItems.map((environment) => ({
-      queryKey: valuesKey({ ...ref, environment: environment.id }),
-      queryFn: () =>
-        parsed(listValuesOp, {
-          path: { ...ref, environment: environment.id },
-          ...transport,
-        }),
-      select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
-    })),
-    combine: combineQueries.values,
-  });
   const settings = useQueries({
     queries: environmentItems.map((environment) => {
       const options = environmentSettingsQueryOptions(
@@ -715,6 +703,21 @@ export function useMatrixProject(ref: MatrixRef) {
       refetchInterval: isDemo ? false : signalsPollInterval(signalsStream, environmentItems.length),
     })),
     combine: combineQueries.signals,
+  });
+  const values = useQueries({
+    queries: environmentItems.map((environment, index) => ({
+      queryKey: valuesKey({ ...ref, environment: environment.id }),
+      // Values carry no revision, so reading them after the first signals
+      // snapshot orders them without the refresh a parallel read would need.
+      enabled: signals[index]?.query.status !== 'pending',
+      queryFn: () =>
+        parsed(listValuesOp, {
+          path: { ...ref, environment: environment.id },
+          ...transport,
+        }),
+      select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
+    })),
+    combine: combineQueries.values,
   });
   const pendingDrafts = useQueries({
     queries: environmentItems.map((environment) => ({

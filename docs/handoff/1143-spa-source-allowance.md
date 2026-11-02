@@ -32,6 +32,11 @@ keeping:
   reconnect. Values follow from a signals revision that advanced, and no event refreshes
   settings. A value or settings read that had failed is retried, unless it was a denial.
   Topology stays in recovery as #931 decided.
+- A cold load reads values after each environment's first signals response, or its
+  failure. Values carry no revision, so a values read that finished before signals
+  answered was repeated, adding one request per environment. The cost is one round
+  trip before values render, and a signals read that never settles now holds its
+  environment's values back.
 - A background whoami 429 uses the existing `degraded` path, with `paced` keeping
   it from raising the fence. An earlier separate retry timer survived logout,
   looped at session expiry and bypassed the enrolment gate.
@@ -40,6 +45,14 @@ keeping:
 `api/sensitiveInventory.json` was re-pinned for `api/matrix.ts`, `api/rules.ts`,
 `api/selfConfig.ts` and `routes/InstanceConfig.tsx`. No operation, cache rule or
 plaintext lifetime changed.
+
+## Production evidence
+
+A 26 second HAR of an idle Matrix with 3 environments, recorded before this PR
+deployed: `instance/config` every 2.1 seconds, 30 per minute, and `runtime/status`
+every 15 seconds. With the 30 second topology poll from code, one idle tab costs about
+40 of the 60 per minute, so two tabs behind one source exceed it. No reconnect burst
+occurred in that window. The HAR holds session data and is not committed.
 
 ## Validation
 
@@ -83,6 +96,10 @@ Each of these still lets a browser reach or amplify a 429. None is fixed here.
    self-config denial per Matrix mount for non-operators. Gating that last one on
    `useInstanceOperator` hides the notice in stories that render without
    `AuthProvider`.
+
+8. **Unbounded signals refetch under sustained publishing.** Coalescing limits a
+   burst of `cell.changed` events to about one refetch per key every 250 ms, with no
+   per-minute bound. This predates the PR and an idle page never triggers it.
 
 ## Next steps
 

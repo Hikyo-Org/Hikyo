@@ -57,7 +57,7 @@ export function useSelfConfig({ live = false }: { live?: boolean } = {}) {
     staleTime: live ? 0 : BINDING_POLL_MS,
     refetchInterval: (query) => {
       const cadence = live ? selfConfigPollMs(query.state.data) : BINDING_POLL_MS;
-      if (isThrottled(query.state.error)) return query.state.error.retryAfterMs ?? cadence;
+      if (isThrottled(query.state.error)) return query.state.error.retryAfterMs || cadence; // an interval of 0 would stop the poll
       return query.state.status === 'error' ? false : cadence;
     },
     retry: false,
