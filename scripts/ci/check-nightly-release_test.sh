@@ -156,4 +156,5 @@ fi
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
+"$repo_root/scripts/release/nightly-promote_test.sh"
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'

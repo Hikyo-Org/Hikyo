@@ -1,0 +1,92 @@
+# Lands the last green dev commit on main through the merge queue, so nightly
+# builds and signs it from main exactly as before. Run it by hand with:
+#   gh workflow run nightly-promote.yml --ref main
+# Only trusted main tooling runs here. Dev is read as a commit id, never checked
+# out or executed. A failed promotion leaves main unchanged.
+name: nightly-promote
+
+on:
+  schedule:
+    # Well before the 02:00 nightly, so the queue run has finished by then.
+    - cron: "17 22 * * *"
+  workflow_dispatch:
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  promote:
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The environment holds the App key and allows only main.
+    environment: nightly-release
+    concurrency:
+      group: nightly-promote
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # A pull request opened with the workflow token starts no CI, so the
+      # promotion has to come from the App.
+      - name: Mint scoped promotion app token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.NIGHTLY_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.NIGHTLY_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Promote the last green dev commit through the merge queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/release/nightly-promote.sh
+
+  # Start the nightly as soon as a promotion lands, instead of waiting for the
+  # 02:00 run. Its concurrency group, dedupe and schedule absorb any overlap.
+  landed:
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
+      startsWith(github.event.pull_request.head.ref, 'release/nightly-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      # repository_dispatch and ref deletion both need contents: write.
+      contents: write
+    steps:
+      # No checkout, and the branch name only reaches the shell through env.
+      - name: Request the nightly and delete the promotion branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^release/nightly-[0-9]{8}-[0-9a-f]{7}$ ]]; then
+            echo 'Not a promotion branch from nightly-promote.yml; nothing to do.'
+            exit 0
+          fi
+          gh api --method POST "repos/$GH_REPO/dispatches" -f event_type=nightly-release
+          # The repository does not delete merged branches itself.
+          if ! gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$HEAD_REF" 2>"$RUNNER_TEMP/delete.err"; then
+            grep -E 'Reference does not exist|\(HTTP 404\)' "$RUNNER_TEMP/delete.err" >/dev/null || { cat "$RUNNER_TEMP/delete.err" >&2; exit 1; }
+          fi
