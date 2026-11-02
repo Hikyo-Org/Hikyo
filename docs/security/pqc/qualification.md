@@ -1,8 +1,8 @@
 # Requirement-to-test matrix, scope and critical path, draft v0.6
 
-Status: **owner decided, not operative; maintainer security approval HOLD**. This tells dependent owners what evidence each
+Status: **owner decided and security approved, not operative**. This tells dependent owners what evidence each
 surface needs so no one invents policy. Every row is a plan: execution is
-NOTRUN, and dependence on a missing approval or ADR amendment is HOLD. Integrated execution,
+NOTRUN, and dependence on a missing ADR amendment is HOLD. Integrated execution,
 measured budgets and the operator runbook belong to #1135. Inventory IDs are in
 [inventory](inventory.md); policy in [profiles](profiles.md) and
 [migration](migration.md); decisions `DEC-nn` in the
@@ -41,7 +41,7 @@ authenticity statement names E-11 and E-15 until #1132 closes them. Never
 ## Per-surface requirement-to-test matrix
 
 "Starts from" lists existing test locations at the pin to extend; none covers PQ
-today. All status cells are HOLD (security approval and amendment) and NOTRUN
+today. All status cells are HOLD (amendment) and NOTRUN
 (execution).
 
 | Surface (IDs) | Requirement | Starts from | New evidence required | PQ IDs | Owner |
@@ -118,8 +118,8 @@ third-party PQ support is promised.
 ## Decisions and what they govern
 
 Owner for all: Marc Went (sole maintainer; security review is a separate gate by
-the same person plus adversarial review). Accepted as recommended on 2026-11-02;
-security approval is HOLD. Options are in the register.
+the same person plus adversarial review). Accepted as recommended and security
+approved on 2026-11-02. Options are in the register.
 
 | Decision | Governs |
 | --- | --- |

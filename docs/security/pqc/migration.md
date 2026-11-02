@@ -1,6 +1,6 @@
 # Migration policy, draft v0.6
 
-Status: **owner decided, not operative; maintainer security approval HOLD**.
+Status: **owner decided and security approved, not operative**.
 Policy and requirements for DEC-11 to
 DEC-16, DEC-19 and DEC-20 in the
 [register](../../adr/post-quantum-migration.md#decision-register). This file

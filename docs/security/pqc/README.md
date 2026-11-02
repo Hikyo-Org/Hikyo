@@ -3,12 +3,12 @@
 Tracking: [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), under
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Assessed 2026-11-02.
 
-**Status: owner decided, not operative; maintainer security approval HOLD.** The
+**Status: owner decided and security approved, not operative.** The
 owner accepted [the register](../../adr/post-quantum-migration.md#decision-register)
-as recommended on 2026-11-02. This package grants no authority, and no ADR amendment has landed, so existing
+as recommended and gave maintainer security approval on 2026-11-02. This package grants no authority, and no ADR amendment has landed, so existing
 operative ADRs and runtime behavior remain authoritative. Source exploration and
-bounded planning may proceed in dependent tickets; implementation stays HOLD until
-security approval and the ADR amendments it depends on are recorded.
+bounded planning may proceed in dependent tickets; implementation needs the ADR
+amendments it depends on and its own security approval before it can merge.
 
 ## Read this package
 
@@ -36,8 +36,8 @@ the pin, not promises about future main; re-pin before reuse. The issue's
 Marc Went owns scope, strength and exception decisions and assigns the
 maintainer security reviewer; as sole maintainer he is both, so adversarial
 review compensates. A model review is not human approval. Each decision records
-the reviewed revision, package version, approver and an immutable receipt. No
-maintainer security approval exists yet. Changes to parameters, composition, trust, bounds or exceptions need a
+the reviewed revision, package version, approver and an immutable receipt. The
+receipts are in the ADR. Changes to parameters, composition, trust, bounds or exceptions need a
 new reviewed version. The 2026-11-02 owner decisions are recorded once, and the
 amendment route is stated, in the [ADR](../../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
 

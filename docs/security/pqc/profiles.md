@@ -1,6 +1,6 @@
 # Target profiles, parameters and policy, draft v0.6
 
-Status: **owner decided, not operative; maintainer security approval HOLD**. The
+Status: **owner decided and security approved, not operative**. The
 owner accepted the [register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`) as
 recommended on 2026-11-02. Text that says "proposal" follows that decision and
 takes effect only when the register's conditions are met.

@@ -1,8 +1,9 @@
 # Post-quantum migration: policy, decision register and proposed amendments (ADR, proposed 2026-11-02)
 
 > **Status: Proposed. Not operative. Nothing here is locked or authorized.** The
-> owner accepted the register as recommended on 2026-11-02. Maintainer security
-> approval is on HOLD and no ADR amendment has landed. This file records the
+> owner accepted the register as recommended and gave maintainer security approval
+> on 2026-11-02. It is not operative until each ADR amendment lands. This file
+> records the
 > decisions that
 > [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124) needs from the owner
 > and, for each affected locked ADR, the amendment text that would land through the
@@ -35,6 +36,7 @@ Recorded as made; no others are implied.
 | The PQ program runs no cross-provider review. The owner said "No cross provider review" on 2026-11-02; signed commit `13068ab2460c44d226111322a99ca65b20a3d02e` on PR #1148 records the decision in its own words ("the PQ program runs no cross-provider review") | Each amendment banner records cross-provider review as **SKIPPED by explicit owner instruction**. It is not CLEAN. Independent adversarial review (Standards, Spec and security) remains required |
 | PR #1148 stays a draft | The program draft is not merge-ready; this contract is stacked on it |
 | DEC-01 to DEC-20 are accepted as recommended. The owner replied "As recommended" on 2026-11-02 to the register at `383290434d2cf614cd8aa31600c1f79d1e53f4d7`, after being told its final repairs were not re-reviewed | The Decision column below is the owner decision. This commit is the record |
+| Maintainer security approval of this contract at `27a16c276c1834b4edb059d10414b13cd4e90729`. The owner replied "Continue as recommended" on 2026-11-02 to approving that text, after being told what the final pass changed and that its last repairs had no independent review | Covers the policy text only. Each implementation PR needs its own maintainer security approval. Owner and maintainer are one person, so this is not independent human review |
 
 This is a **waiver of part of the amendment procedure, not a match with it**
 (see below). It is also broader than its precedent: the
@@ -71,8 +73,8 @@ and adds no release blocker.
 ## Decision register
 
 Decision owner for every row: **Marc Went**. Status of every row: **owner
-decided, not operative**. A decision takes effect only after maintainer security
-approval (HOLD), its ADR amendment and the implementing PR. Details are in the
+decided and security approved, not operative**. A decision takes effect only after
+its ADR amendment and the implementing PR, which needs its own security approval. Details are in the
 linked documents.
 
 | ID | Topic | Options | Decision | Consequence |
