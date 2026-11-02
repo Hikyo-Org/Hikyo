@@ -13,13 +13,14 @@ type Migration struct {
 	Optional bool
 }
 
-const MigrationVersion int64 = 5
+const MigrationVersion int64 = 6
 
 func Migrations() []Migration {
 	disabled := "false"
 	optional := "optional"
 	keyLimit := "10000"
 	defaultKeys := "1000"
+	compat := "compat"
 	return []Migration{
 		{Version: 1, Name: "HIKYO_MCP_WRITE_ENABLED", Default: &disabled},
 		// #760: an upgraded instance keeps today's posture — a password login on
@@ -31,5 +32,8 @@ func Migrations() []Migration {
 		// Absence selects automatic public TLS discovery. A fabricated pin or
 		// empty value would change that posture and must never be introduced.
 		{Version: 5, Name: "HIKYO_PAIRING_SPKI_PIN", Optional: true},
+		// #1127: an upgraded instance records the explicit compatible profile, so
+		// the default TLS floor never changes silently (DEC-05). Strict is opt-in.
+		{Version: 6, Name: "HIKYO_TLS_PROFILE", Default: &compat},
 	}
 }

@@ -171,6 +171,13 @@ type Config struct {
 	// "required" (greenfield strict); an upgrade keeps "optional" via the
 	// runtimeconfig migration so an existing instance's posture is unchanged.
 	SecondFactor string
+	// TLSProfile is the native listener's transport key-exchange policy (#1127):
+	// "compat" is today's behavior and the default; "strict" requires TLS 1.3 and
+	// the hybrid X25519MLKEM768 group (handshake confidentiality only, not
+	// post-quantum authentication). Owner-managed: an adopted value outranks the
+	// bootstrap environment, which only seeds it. Vocabulary is owned by
+	// tlspolicy.ParseProfile; config stays a leaf package and mirrors the names.
+	TLSProfile string
 	// MaxKeysPerProject is shared owner policy, reloaded through managed config.
 	MaxKeysPerProject     int
 	DefaultKeysPerProject int
@@ -275,6 +282,12 @@ type Config struct {
 	NodeID string
 }
 
+// TLS profile names. tlspolicy.Profile owns the semantics; a test pins equality.
+const (
+	TLSProfileCompat = "compat"
+	TLSProfileStrict = "strict"
+)
+
 // knownEnv is the closed set of HIKYO_* keys this build understands.
 var knownEnv = map[string]bool{
 	"HIKYO_AUDIT_ACCESS_RETAIN_DAYS":       true,
@@ -290,6 +303,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_CLI_SOCKET":                     true,
 	"HIKYO_TLS_CERT_FILE":                  true,
 	"HIKYO_TLS_KEY_FILE":                   true,
+	"HIKYO_TLS_PROFILE":                    true,
 	"HIKYO_EXTERNAL_ORIGIN":                true,
 	"HIKYO_MCP_ENABLED":                    true,
 	"HIKYO_MCP_WRITE_ENABLED":              true,
@@ -386,6 +400,9 @@ type loadOptions struct {
 	// legacy derived IP origin. Actual startup and node application still
 	// require a hostname after contextual legacy normalization.
 	allowIPOrigin bool
+	// parseOnly marks managed validation with no listener context, where the
+	// absence of a certificate says nothing about a real node.
+	parseOnly bool
 }
 
 func loadWithOptions(subcommand string, args []string, getenv func(string) string, environ []string, options loadOptions) (*Config, []string, error) {
@@ -512,6 +529,16 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 	default:
 		return nil, nil, fmt.Errorf("HIKYO_SECOND_FACTOR: policy must be required or optional, got %q", secondFactor)
 	}
+	// The value is matched exactly: a typo in a security setting must be visible
+	// rather than normalized into either profile.
+	switch profile := getenv("HIKYO_TLS_PROFILE"); profile {
+	case "":
+		cfg.TLSProfile = TLSProfileCompat
+	case TLSProfileCompat, TLSProfileStrict:
+		cfg.TLSProfile = profile
+	default:
+		return nil, nil, fmt.Errorf("HIKYO_TLS_PROFILE: profile must be %s or %s", TLSProfileCompat, TLSProfileStrict)
+	}
 	keyLimit, err := uintEnv(getenv, "HIKYO_MAX_KEYS_PER_PROJECT", DefaultMaxKeysPerProject)
 	if err != nil {
 		return nil, nil, err
@@ -615,6 +642,11 @@ func loadWithOptions(subcommand string, args []string, getenv func(string) strin
 		cfg.TrustedProxyCIDRs = trustedProxyCIDRs
 		if !deferOwner && !IsLoopbackListen(cfg.Listen) && cfg.TLSCertFile == "" && len(cfg.TrustedProxyCIDRs) == 0 {
 			return nil, nil, fmt.Errorf("non-loopback plaintext listen %q requires HIKYO_TRUSTED_PROXY_CIDRS or a TLS certificate pair", cfg.Listen)
+		}
+		if !deferOwner && !options.parseOnly {
+			if err := requireStrictTLS(cfg.TLSProfile, cfg.TLSCertFile != ""); err != nil {
+				return nil, nil, err
+			}
 		}
 		if raw := getenv("HIKYO_DIRECTORY_PROXY"); raw != "" {
 			u, err := url.Parse(raw)
@@ -1390,5 +1422,15 @@ func loadAuditRetention(cfg *Config, getenv func(string) string) error {
 		return fmt.Errorf("HIKYO_AUDIT_SECURITY_RETAIN_DAYS: must be within access retention..3650")
 	}
 	cfg.AuditAccessRetainDays, cfg.AuditSecurityRetainDays = int(access), int(security)
+	return nil
+}
+
+// requireStrictTLS fails closed: a strict profile on a listener that serves
+// plaintext (trusted-proxy mode or loopback development) would claim a
+// protection no connection has. Compat is never refused.
+func requireStrictTLS(profile string, hasCertificate bool) error {
+	if profile == TLSProfileStrict && !hasCertificate {
+		return errors.New("HIKYO_TLS_PROFILE=strict requires a TLS certificate pair; this listener would serve plaintext")
+	}
 	return nil
 }

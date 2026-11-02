@@ -275,6 +275,10 @@ func parseManagedNodeValues(base *Config, values map[string]string) (*Config, er
 	if err := validateManagedTLS(node.TLSCertPEM, node.TLSKeyPEM); err != nil {
 		return nil, err
 	}
+	// A node document that drops the certificate cannot leave strict adopted.
+	if err := requireStrictTLS(base.TLSProfile, node.TLSCertPEM != ""); err != nil {
+		return nil, err
+	}
 	node.AdapterEgressPolicy, err = parseManagedEgress(values["HIKYO_ADAPTER_EGRESS_POLICY_JSON"], "adapter")
 	if err != nil {
 		return nil, err
