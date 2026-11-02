@@ -1,4 +1,4 @@
-# Post-quantum migration contract, draft v0.5
+# Post-quantum migration contract, draft v0.6
 
 Tracking: [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), under
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Assessed 2026-11-02.
@@ -18,7 +18,7 @@ security approval and the ADR amendments it depends on are recorded.
 | [Profiles](profiles.md) | Confidentiality and authenticity defined separately; strength, parameters, encodings, bounds, strict and compatibility profiles, composition |
 | [Migration](migration.md) | Reader-first ladder, keys and escrow, mixed paths, retirement, floor, recovery, dispositions, exception register |
 | [Qualification](qualification.md) | Requirement-to-test matrix, scope, estimates, critical path |
-| [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the choices needing the owner), waiver and governance route, proposed amendment text |
+| [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the owner's decisions), waiver and governance route, proposed amendment text |
 | [Handoff](../../handoff/1124-pqc-contract.md) | Acceptance-criterion map, dated PR state, evidence, HOLD and NOTRUN, next steps |
 
 Start with the [decision register](../../adr/post-quantum-migration.md#decision-register).
@@ -36,10 +36,10 @@ the pin, not promises about future main; re-pin before reuse. The issue's
 Marc Went owns scope, strength and exception decisions and assigns the
 maintainer security reviewer; as sole maintainer he is both, so adversarial
 review compensates. A model review is not human approval. Each decision records
-the reviewed revision, package version, approver and an immutable receipt; none
-exists. Changes to parameters, composition, trust, bounds or exceptions need a
-new reviewed version. The 2026-11-02 owner decisions and the amendment route are
-recorded once, in the [ADR](../../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
+the reviewed revision, package version, approver and an immutable receipt. No
+maintainer security approval exists yet. Changes to parameters, composition, trust, bounds or exceptions need a
+new reviewed version. The 2026-11-02 owner decisions are recorded once, and the
+amendment route is stated, in the [ADR](../../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
 
 Claims are per surface, direction and peer version. Source capability, local
 fixtures, hosted CI, provider behavior, artifacts and observed runtime are

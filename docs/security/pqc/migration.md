@@ -1,4 +1,4 @@
-# Migration policy, draft v0.5
+# Migration policy, draft v0.6
 
 Status: **owner decided, not operative; maintainer security approval HOLD**.
 Policy and requirements for DEC-11 to
@@ -49,7 +49,8 @@ secret derived from the root key; the code accepts any nonempty secret up to
 caller migrates a legacy passphrase vault (`automatic_upgrade.go:372`) and
 preserves the record (`vault.go:155-157`). Drills use the vault's escrowed root
 (`automatic_upgrade.go:420`). `rotate-root-key` does not re-seal the vault.
-Root escrow cannot recover a lost root. The record is bounded by age's 16-byte
+A root-sealed record cannot recover the root it is sealed with; a passphrase-sealed
+record can yield a lost root, which is another reason its entropy matters. The record is bounded by age's 16-byte
 file key. Consequences, stated for the owning child (#1126), not designed here:
 
 * Old passphrase-sealed copies hold a live `root_escrow`, so retiring them needs
@@ -69,7 +70,8 @@ file key. Consequences, stated for the owning child (#1126), not designed here:
   root must stay in separate domains.
 
 DEC-12 records the options; the "fields keep 256-bit protection" statement does
-not apply to this record.
+not apply to this record, or to any field while a copy holding the current root
+exists, because its `root_escrow` opens the whole hierarchy.
 
 ## Mixed paths and archive provenance
 
@@ -129,7 +131,7 @@ Destroying a live key erases nothing already written to a retained backup.
 
 | Item | Requirement (DEC-11) |
 | --- | --- |
-| Floor | Per surface: minimum reader version, format or profile version, trust generation, raised at step 5. A binary that knows the floor and is below it refuses the surface before any write or authority use; a binary built before the floor existed cannot refuse (E-17) |
+| Floor | Per surface: minimum reader version, format or profile version, trust generation, raised at step 5. Outside strict the format floor does not make a frozen historical archive unrestorable; where strict is selected, receipt-or-quarantine applies to it (E-19). A binary that knows the floor and is below it refuses the surface before any write or authority use; a binary built before the floor existed cannot refuse (E-17) |
 | Persistence | The floor must survive a restore. Because a persisted floor is an untrusted local claim (`floor.go:5`), where it is kept and how a fresh host obtains it are #1126/#1132 requirements; until stated, strict claims are unavailable on a host without an operator-established floor (E-17) |
 | Rollback | Only to a build at or above the floor with valid trust and retained custody; never by stripping PQ verification, re-enabling a revoked key or destroying retained keys |
 | Historical classical verification | Classical signatures written before a surface moves to PQ-required remain checkable read-only for integrity. After a quantum break they are forgeable, so no non-repudiation or backdating claim is made for classical-only evidence (E-12). Countersigning retained evidence is an option for the owning child (DEC-11), not specified here. Audit exports have no chain and are forgeable by a datastore writer today (`docs/adr/audit-model.md`), so they carry no claim; #1135 records that |
@@ -211,8 +213,10 @@ the pre-PQ generation cannot reject forged classical documents, and whether PQ k
 hashes can reach existing installs at all is an open #1132 feasibility question
 (changing the embedded root bytes makes the gates above refuse). Claim limited
 (E-11, E-15): **the PQ release-authenticity claim stays HOLD** until #1132 closes
-every replacement path; no per-host or per-track claim is made meanwhile. The
-ML-DSA recovery key's custody is a DEC-14 owner decision; losing it is E-18.
+every replacement path; no per-host or per-track claim is made meanwhile. A forged
+classical update replaces the verifier behind every other authenticity surface, so
+E-11 and E-15 limit those claims too. The ML-DSA recovery key's custody is not
+yet named: HOLD under DEC-14 until the owner names it before #1132. Losing it is E-18.
 
 ### Sigstore and classical supply chain (I26, I27, I31, I32)
 
@@ -273,13 +277,14 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 | E-08 | Hops marked compat in the [hop table](profiles.md#hop-starting-profiles) (I10, I11 pairing and update paths, I12, I13, I30) | Peer group not controlled by Hikyo | #1127 | DEC-06 |
 | E-09 | Combined local upgrade custody (I08) | One failure domain by prior approval | #1126 | DEC-12 |
 | E-10 | Classical archive copies kept for retention (I07) | Classical door to old data | #1126 | DEC-11 |
-| E-11 | PQ trust-anchor bootstrap and fresh-install channel (I26) | Classical-only introduction; unsolved | #1132 | DEC-14 |
+| E-11 | PQ trust-anchor bootstrap and fresh-install channel (I26) | Classical-only introduction; unsolved. Limits every `pqc-auth` claim | #1132 | DEC-14 |
 | E-12 | Historical classical signatures (I08, I23, I26), audit exports (I29) | Signatures forgeable after a quantum break; audit exports forgeable today by a datastore writer | #1132; #1135 records the audit non-claim | DEC-11 |
 | E-13 | Import of external ciphertext and ambient SDK sources (I28, I30) | Source key policy is the source's | #1134 | DEC-16 |
 | E-14 | Rollout enrollment and journal (I23) | Trust rests on classical cluster access; journal reset | #1131 | DEC-20 |
-| E-15 | Nightly track, `sudo hikyo upgrade`, image replacement (I26) | Classical verification; no PQ signer | #1132 | DEC-14 |
+| E-15 | Nightly track, `sudo hikyo upgrade`, image replacement (I26) | Classical verification; no PQ signer. Limits every `pqc-auth` claim | #1132 | DEC-14 |
 | E-16 | Operator pin rotation and break-glass (I08) | P-256 authenticated | #1126 | DEC-12 |
 | E-17 | Unobservable readers, verifiers and local floors (I07, I26) | Third-party installs cannot be measured; floor is a local claim | #1126, #1132 | DEC-11 |
 | E-18 | Single listener certificate pair (`internal/app/tls.go:31`): a strict ML-DSA leaf may be rejected by browsers and compat clients; sole ML-DSA recovery key (I09, I26) | Availability and recovery | #1127, #1132 | DEC-06, DEC-14 |
 | E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today | #1126 | DEC-11 |
 | E-20 | Pin-based owned clients on strict hops (`internal/cli/client.go:151`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
+| E-21 | Host-authority recovery of configuration (`internal/service/self_config_recovery.go:55`, repair boot in `internal/app/app.go:369`; every strict surface, starting with I09, I11) | Can select a published revision below strict without the MFA-bound plan, and a repair boot runs the previous policy; host access is already operator-equivalent | #1127 | DEC-10 |

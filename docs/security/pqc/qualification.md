@@ -1,4 +1,4 @@
-# Requirement-to-test matrix, scope and critical path, draft v0.5
+# Requirement-to-test matrix, scope and critical path, draft v0.6
 
 Status: **owner decided, not operative; maintainer security approval HOLD**. This tells dependent owners what evidence each
 surface needs so no one invents policy. Every row is a plan: execution is
@@ -34,7 +34,8 @@ evidence record template applies.
 Per profile (`pqc-conf/1` or `pqc-auth/1`), surface, direction and peer version,
 only what the rows prove: "Surface S, direction D, candidate C, peer P:
 confidentiality: software capability | enforced policy | observed on hop H;
-authenticity: classical | dual | PQ-only with anchor T; exceptions: E-nn." Never
+authenticity: classical | dual | PQ-only with anchor T; exceptions: E-nn." Every
+authenticity statement names E-11 and E-15 until #1132 closes them. Never
 "PQ-ready" for a mix.
 
 ## Per-surface requirement-to-test matrix
@@ -77,7 +78,7 @@ Refinements following the cited decisions.
 | #1132 | PQ-capable trust documents, sequence-only progression, every replacement path closed or registered, anchor feasibility, signer per document and track, PQ signature on receipts and operator attestation | DEC-14, 15 |
 | #1133 | ML-DSA-65 issuer and leaf, offline PQ root, seed-only PKCS#8 | DEC-02, 19 |
 | #1134 | Populate E-02 to E-07 and E-13 with peer evidence | DEC-16 |
-| #1135 | One packet per surface, not one universal statement; blocked by #1130 unless the owner narrows scope | DEC-13 |
+| #1135 | One packet per surface, not one universal statement; scope narrowed under DEC-13, with #1130 as linked residual work | DEC-13 |
 
 Effort **estimates** (engineer-weeks, one primary engineer, low confidence, not
 measured; from the number of consumer packages in the inventory trace and the

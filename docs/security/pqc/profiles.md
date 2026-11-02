@@ -1,4 +1,4 @@
-# Target profiles, parameters and policy, draft v0.5
+# Target profiles, parameters and policy, draft v0.6
 
 Status: **owner decided, not operative; maintainer security approval HOLD**. The
 owner accepted the [register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`) as
@@ -19,6 +19,7 @@ NIST IR 8547 (final, October 2026; PDF text extracted locally 2026-11-02);
 | Protects against | Harvest now, decrypt later: recording ciphertext or a key exchange today for a future quantum computer | A future quantum adversary forging a signature, proof, certificate, command or artifact, or substituting a key |
 | Needs | Every independent path to the plaintext rests on a PQ-resistant KEM combined with a classical one; symmetric layers at or above the [symmetric floor](#symmetric-floor-and-assumptions) | Every signature the verifier accepts includes a PQ signature, and the anchor that vouches for the PQ key is itself PQ-authenticated |
 | Does not imply | Authentic peers, certificates, commands or artifacts | Confidential past traffic or backups |
+| Limited everywhere by | Copies already harvested | The update path: a forged classical update can replace the binary that does the verifying, so every `pqc-auth` claim is conditional on E-11 and E-15 until #1132 closes them, including surfaces whose delivery does not depend on #1132 |
 | Time pressure | Now, for long-lived secrets (horizon `H` in the inventory) | Before a quantum forger exists; trust roots live long, so bootstrap starts early ([migration](migration.md#release-trust-and-install-paths)) |
 
 A hybrid key exchange over a classical certificate chain is (a) only. A PQ
@@ -38,7 +39,8 @@ a "PQ-ready" badge.
 
 ## Candidate parameter sets
 
-The allowlist is empty until the owner decides. Sizes in bytes.
+DEC-01 and DEC-02 select hybrid X25519 + ML-KEM-768 and ML-DSA-65; the other rows are
+for comparison. Not operative. Sizes in bytes.
 
 | Role | Candidate | Public / ciphertext or signature | Private form | Surface | Basis |
 | --- | --- | --- | --- | --- | --- |
@@ -81,9 +83,9 @@ this table gives required size, proposed maximum and fit (DEC-08).
 | `HIKYO_BACKUP_RECIPIENTS` | 1959 characters per recipient plus a comma: 32 recipients = 62,719 bytes [arith] | 32 | The managed value cap is 65536 bytes, so 33 fit and 64 (125,439 bytes) cannot. Host environment-string limits not checked (NOTRUN) |
 | Count versus byte conflict | n/a | Refuse deterministically at configuration validation and again at export, before any output, naming the violated bound | Required by #1126 |
 | Upgrade custody | Fingerprints are fixed-length hash text; identity 77 characters | 32 (same number as exports) | Yes |
-| Webhook v2 | Signature 3309 (65), 4627 (87) decoded, 4412 or 6170 base64 characters; public key 1952 or 2592 | Signature field 4627 bytes decoded, public key field 2592 bytes decoded, ciphertext 1 MiB and ack 64 KiB unchanged, envelope cap recomputed | v1's 64-byte signature check cannot carry it: new protocol version |
+| Webhook v2 | Signature 3309 (65), 4627 (87) decoded, 4412 or 6170 base64 characters; public key 1952 or 2592 | Signature field 3309 bytes decoded, public key field 1952 bytes decoded (ML-DSA-65, DEC-02; ML-DSA-87 would need 4627 and 2592 and a new profile version), ciphertext 1 MiB and ack 64 KiB unchanged, envelope cap recomputed | v1's 64-byte signature check cannot carry it: new protocol version |
 | DPoP | If the JWK embeds the raw 1952-byte key: header about 3.6 KB, signature 4412 characters, payload a few hundred: 8.1 to 8.3 KB total [arith, assumed JWK form; no JOSE ML-DSA format verified] | n/a (HOLD) | At or above the 8192 cap even for ML-DSA-65; any path needs a new bound; `go-jose` v4.1.6 has no ML-DSA |
-| Transit | sig 3309 / 4627 | unchanged | Yes; closed CHECK constraints and enums need a roll-forward migration |
+| Transit | sig 3309 | unchanged | Yes; closed CHECK constraints and enums need a roll-forward migration |
 | Rollout record | sig 3309 | unchanged (512 KiB) | Yes; other mailbox boundaries not traced |
 | PKI | Leaf signed by ML-DSA-65 about 5.7 KB DER [est] (1952 + 3309 + about 400); 3-certificate chain about 17 KB DER, 23 KB PEM [est] | unchanged | Yes |
 | Release trust | pk 1952 / sig 3309 | unchanged (4 MiB) | Yes |
@@ -114,7 +116,7 @@ a NIST-approved algorithm, so any category given to it is Hikyo's inference:
 
 | Object | Symmetric strength | Basis |
 | --- | --- | --- |
-| Stored fields, DEKs, master, root (I01-I06) | 256-bit keys; category 5 by key size, **inference** (IR 8547 lists AES-256, not XChaCha20) | [src], [NIST] Table 6 |
+| Stored fields, DEKs, master, root (I01-I06) | 256-bit keys; category 5 by key size, **inference** (IR 8547 lists AES-256, not XChaCha20). **Only where no `operator.age` copy holds the current root:** a `root_escrow` opens the whole hierarchy under a 16-byte file key, so while such a copy exists the field floor is category 1 | [src], [NIST] Table 6 |
 | age file key: backup archives (I07), upgrade archives (I08), sealed webhook payloads (I21) | 16 bytes: category 1 | [src] age `fileKeySize = 16` |
 | `operator.age` custody record (I08), which holds backup identity and root escrow | Sealed by age scrypt, so bounded by the lesser of the 16-byte file key (category 1) and the entropy of the sealing secret; the "fields keep 256-bit" statement does not apply to it (options in [migration](migration.md#operator-custody-vault-operatorage-i08)) | [src] `vault.go:126` |
 | Truncated client stamp (I06) | 128-bit truncated HMAC tag: no 256-bit claim | [src] `internal/crypto/stamp.go:102` |
@@ -173,7 +175,7 @@ is in [qualification](qualification.md#claim-statement-template).
 | --- | --- |
 | Version | Strict: `MinVersion` and `MaxVersion` TLS 1.3. Compatibility keeps TLS 1.2 (no silent default raise) |
 | Groups | Strict: explicit `CurvePreferences` allowlist, initially `X25519MLKEM768`; a classical-only peer then fails with no common group before application data. Never rely on Go defaults or `GODEBUG` |
-| Authentication | Go has no signature-scheme setting, so strict authenticity refuses through `VerifyConnection`, walking the verified chain: leaf key, every certificate's signature algorithm and the anchor must be ML-DSA. A server without client authentication has no peer chain to walk. **Pin-based hops** (`InsecureSkipVerify` plus a leaf SPKI pin: `internal/cli/client.go:188`, `internal/remotefetch/remotefetch.go:248`) have empty `VerifiedChains`, and pairing pins are read over a classical chain unless overridden (`internal/remotefetch/pairing_identity.go:58`): they are excluded from strict authenticity claims (E-01, E-20). Compatibility only reports what was observed. TLS 1.3 alone or a hybrid group with a classical certificate is never labelled PQ authentication |
+| Authentication | Go has no signature-scheme setting, so strict authenticity refuses through `VerifyConnection`, walking the verified chain: leaf key, every certificate's signature algorithm and the anchor must be ML-DSA-65 (Go also accepts ML-DSA-44 and 87, which DEC-02 does not select). A server without client authentication has no peer chain to walk. **Pin-based hops** (`InsecureSkipVerify` plus a leaf SPKI pin: `internal/cli/client.go:188`, `internal/remotefetch/remotefetch.go:248`) have empty `VerifiedChains`, and pairing pins are read over a classical chain unless overridden (`internal/remotefetch/pairing_identity.go:58`): they are excluded from strict authenticity claims (E-01, E-20). Compatibility only reports what was observed. TLS 1.3 alone or a hybrid group with a classical certificate is never labelled PQ authentication |
 | Observation | After the handshake read `ConnectionState.CurveID` and `LocalCertificate`; record per hop. Client and server logs are separate evidence |
 | Resumption | Strict disables session tickets until profile-change invalidation is demonstrated |
 | Library | Go 1.27.3 exposes `MinVersion`, `MaxVersion` and `CurvePreferences`; no other group or version policy setting was found |
@@ -199,13 +201,14 @@ and moves only with peer evidence (exception E-08).
 | Federation, JWKS, OAuth2 exchange | I17 | compat | IdP-controlled |
 | Kubernetes API, kubelet, OpenBao import | I30 | compat | SDK-owned, cluster-controlled |
 | Proxy and ingress terminators | I10 | compat | Outside the process |
+| Plaintext public listener in trusted-proxy mode (`internal/config/config.go:616`) | I10 | compat, no claim | No TLS at this process. Requirement on #1127: selecting strict with no TLS certificate fails closed at startup and is refused at managed Apply |
 
 ### Configuration, downgrade, rollout, exceptions (DEC-10)
 
 | Topic | Proposal |
 | --- | --- |
-| Precedence | 1. Adopted managed configuration (changed only through the MFA-bound plan and Apply); 2. bootstrap file or environment before adoption; 3. default `compat`. `GODEBUG`, Go defaults and per-request flags never relax an adopted strict setting |
-| Downgrade rejection | Lowering strict is a managed change with durable redacted audit. Writers refuse classical output under strict; readers refuse objects below the persisted profile or format floor |
+| Precedence | 1. Adopted managed configuration (changed through the MFA-bound plan and Apply, or by host-authority recovery selecting a published revision, which can select one below strict: E-21); 2. bootstrap file or environment before adoption; 3. default `compat`. `GODEBUG`, Go defaults and per-request flags never relax an adopted strict setting |
+| Downgrade rejection | Lowering strict is a managed change with durable redacted audit. Writers refuse classical output under strict; readers refuse objects below the persisted profile or format floor. Outside strict, frozen historical archives stay restorable (DEC-05); where strict is selected, receipt-or-quarantine applies to them like any other archive, so an archive without a receipt waits on the undesigned hold release (E-19) |
 | Stale nodes | A node whose active generation is below the desired one is fenced: it does not admit credentials or data on the strict surface (fails closed) and is reported as not enforcing. Losing only the claim while still serving is not enough |
 | Managed rollout | Policy joins the prepared and active application generation, as certificates do |
 | Exceptions | Each names a person owner (default Marc Went), exact peer and version, scope, claim limitation, expiry and recheck trigger. **Expiry: at most 180 days or the next trigger; at most two renewals, a third requires an ADR-recorded scope decision.** The cap is a recorded rule, not a control: the sole approver can waive it by a recorded decision, which no mechanism prevents. Mitigation is only the dated record and the adversarial review of renewals |

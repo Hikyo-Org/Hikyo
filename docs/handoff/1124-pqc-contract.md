@@ -22,7 +22,7 @@ disposition.
 | [README](../security/pqc/README.md) | Entry point, source pin, claim rules |
 | [Inventory](../security/pqc/inventory.md) | 32 boundaries (I01 to I32), census, trace, bounds |
 | [Profiles](../security/pqc/profiles.md) | Two claims, strength, parameters, bounds, symmetric floor, profiles, composition |
-| [Migration](../security/pqc/migration.md) | Ladder, keys, mixed paths, retirement, floor, recovery, dispositions, exceptions E-01 to E-20 |
+| [Migration](../security/pqc/migration.md) | Ladder, keys, mixed paths, retirement, floor, recovery, dispositions, exceptions E-01 to E-21 |
 | [Qualification](../security/pqc/qualification.md) | Test matrix, scope, estimates, critical path |
 | [Proposed ADR](../adr/post-quantum-migration.md) | Register DEC-01 to DEC-20, waiver, governance route, proposed amendments; no locked ADR edited |
 
@@ -96,7 +96,7 @@ on them. Go's `Sign` hedging was read from `crypto/internal/fips140/mldsa`.
 | Item | Finding |
 | --- | --- |
 | #1123 links a "versioned TLS policy API" | The link is a version-pinned docs URL for `tls.Config`; Go 1.27.3 offers `MinVersion`, `MaxVersion` and `CurvePreferences` and no other group or version policy setting was found |
-| #1131 says to bootstrap PQ trust "through the existing authenticated authority" | DEC-20 option (a) is that wording and lets a classical forger install its own ML-DSA key; the recommended option (c), operator re-enrollment, departs from it. The departure is an owner decision, HOLD |
+| #1131 says to bootstrap PQ trust "through the existing authenticated authority" | DEC-20 option (a) is that wording and lets a classical forger install its own ML-DSA key; the decided option (c), operator re-enrollment, departs from it, and the owner accepted that on 2026-11-02 |
 | Earlier README: #1138, #1139 open | Both merged; #1140 is open and not a draft |
 | Earlier inventory: `charts` | The draft searched the wrong path. The real `chart/hikyo` exists at the pin and is now I31; open PR #1113 is a separate Helm distribution change |
 | Earlier census | Search 1 alone missed `internal/storagehealth` (kubelet TLS with a bearer token) and the Kubernetes, OpenBao and default-transport clients; now I30 |
