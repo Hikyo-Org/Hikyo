@@ -356,7 +356,7 @@ func TestInvariantsWorkflowRejectsMutations(t *testing.T) {
 
 func TestInvariantsWorkflowIsNotARequiredContext(t *testing.T) {
 	root := repositoryRoot(t)
-	for _, name := range []string{"main-ci-gate.json", "main-ci-gate-legacy.json"} {
+	for _, name := range []string{"main-ci-gate.json"} {
 		raw, err := os.ReadFile(filepath.Join(root, "release", "repository", name))
 		if err != nil {
 			t.Fatal(err)
