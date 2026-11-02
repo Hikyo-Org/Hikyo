@@ -189,9 +189,12 @@ What this means for main:
   `gh workflow run ci-main.yml --repo Hikyo-Org/Hikyo --ref main`, then request the
   nightly with `nightly-manual.yml`.
 
-A promotion that changes anything under `.github/` follows the ordinary workflow-edit
-rule: one independent maintainer must approve the promotion PR's exact head before
-admission passes. Approve the PR in the GitHub UI.
+A promotion that changes `.github/` needs no second approval when its head is on
+protected dev, because each of those changes passed the same check entering dev. The
+exemption applies only to the `hikyo-nightly-release[bot]` user, a canonical
+`release/nightly-*` head into main, a commit on dev, and a dev branch that still has
+its protection. If any condition fails, one independent maintainer must approve the
+promotion PR's exact head, as for any workflow edit.
 
 When main conflicts with dev, admission refuses the promotion PR for merge
 conflicts. Resolve it with a reviewed backmerge of main into dev (a PR from `main`

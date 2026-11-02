@@ -248,7 +248,7 @@ export PULLS CHECKS
 run
 [ "$status" -ne 0 ] || fail 'a refused promotion stayed green'
 [ ! -s "$work/calls" ] || fail "a refused promotion wrote: $(cat "$work/calls")"
-for text in 'https://github.com/o/r/pull/41' 'ci-queue-required check is completed/failure' 'Admission refused' 'Needs approval' 'independent maintainer'; do
+for text in 'https://github.com/o/r/pull/41' 'ci-queue-required check is completed/failure' 'Admission refused' 'Needs approval'; do
 	grep -F "$text" "$work/err" >/dev/null || fail "refusal report lacks: $text"
 done
 if grep -E '^::' "$work/err" "$work/out" >/dev/null; then fail 'check text can start a workflow command'; fi

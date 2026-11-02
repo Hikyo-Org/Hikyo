@@ -7,6 +7,7 @@
 #   2. .github/ is untouched, or a same-repository PR has an independent,
 #      currently authorized maintainer's latest approval on this exact head,
 #      or is authored by the pinned BDFL who still has maintainer permission,
+#      or is a nightly promotion of a commit already on protected dev,
 #   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
 #      completed, and its aggregate gate ("validation / ci-required")
 #      succeeded. Another PR sharing the commit may target a different base,
@@ -24,6 +25,8 @@ gate_job='validation / ci-required'
 # Repository policy, loaded from the trusted base, never from PR input or env.
 # Dunky13's immutable GitHub user ID survives account renames.
 bdfl_author_id=991668
+# hikyo-nightly-release[bot]'s immutable user ID, the only nightly promotion author.
+promotion_author_id=320493937
 
 # Retries apply only to read-only API transport failures. Policy checks and
 # malformed responses are never retried or turned into acceptance.
@@ -138,10 +141,35 @@ check_current_pr() {
 		fail 'PR has merge conflicts; resolve them before pull_request validation can start' merge-conflict
 }
 
+# Every commit on dev passed this same workflow-edit check when its PR entered dev,
+# so a promotion of one needs no second review. Any unmet condition falls back to the
+# ordinary review requirement.
+promotion_already_reviewed() {
+	[ "$pr_author_id" = "$promotion_author_id" ] || return 1
+	refs=$(gh_read "repos/$GH_REPO/pulls/$PR_NUMBER" --jq '[.head.ref, .base.ref] | join(" ")') ||
+		fail 'cannot read promotion refs' api-failure
+	printf '%s\n' "$refs" | grep -Eq '^release/nightly-[0-9]{8}-[0-9a-f]{7} main$' || return 1
+	on_dev=$(gh_read "repos/$GH_REPO/compare/$HEAD_SHA...dev" --jq '.status') ||
+		fail 'cannot compare promotion head with dev' api-failure
+	case "$on_dev" in ahead | identical) ;; *) return 1 ;; esac
+	# shellcheck disable=SC2016 # jq variables, not shell ones.
+	protected=$(gh_read "repos/$GH_REPO/rules/branches/dev" --jq '
+		[.[].type] as $types |
+		[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] as $checks |
+		($types | index("pull_request") != null) and ($types | index("non_fast_forward") != null) and
+		($types | index("deletion") != null) and ($checks | index("ci-dev-required") != null)') ||
+		fail 'cannot verify dev protection' api-failure
+	[ "$protected" = true ]
+}
+
 require_workflow_review() {
 	check_current_pr
 	[ "$head_repository" = "$GH_REPO" ] ||
 		fail 'a fork PR that changes .github/ needs a maintainer to land it from a branch in this repository'
+	if promotion_already_reviewed; then
+		[ "${PR_GATE_POLICY_ONLY:-0}" = 1 ] || check_current_pr
+		return
+	fi
 	if [ "$pr_author_id" = "$bdfl_author_id" ]; then
 		case "$pr_author" in '' | *[!a-zA-Z0-9-]*) fail 'invalid BDFL author identity' ;; esac
 		authority=$(gh_read "repos/$GH_REPO/collaborators/$pr_author/permission" \

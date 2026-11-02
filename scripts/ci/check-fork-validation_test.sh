@@ -58,6 +58,8 @@ case $url in
 	fixture=permission
 	if [ "$count" -ge "${PERMISSION_REMOVED_AT:-99999}" ]; then fixture=permission-later; fi
 	;;
+*/compare/*...dev) fixture=compare ;;
+*/rules/branches/dev) fixture=dev-rules ;;
 */pulls/7)
 	bump pr
 	if [ "${HEAD_MOVES_AFTER_PERMISSION:-false}" = true ] && [ -f "$FIXTURES/permission-calls" ]; then
@@ -121,6 +123,14 @@ bdfl_author() {
 	mv "$work/pr-new.json" "$work/pr.json"
 	printf '{"user":{"id":991668},"permission":"admin"}\n' >"$work/permission.json"
 	printf '{"user":{"id":991668},"permission":"none"}\n' >"$work/permission-later.json"
+}
+
+promotion() {
+	same_repo
+	jq '.user = {id:320493937,login:"hikyo-nightly-release[bot]"} | .head.ref = "release/nightly-20261103-abcdef0" | .base.ref = "main"' "$work/pr.json" >"$work/pr-new.json"
+	mv "$work/pr-new.json" "$work/pr.json"
+	printf '{"status":"ahead"}\n' >"$work/compare.json"
+	printf '[{"type":"pull_request"},{"type":"non_fast_forward"},{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci-dev-required"}]}}]\n' >"$work/dev-rules.json"
 }
 
 approval() {
@@ -194,6 +204,54 @@ expect_reject 'bot workflow edits still require independent maintainer approval'
 grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
 approval
 expect_accept 'bot workflow edits with independent exact-head maintainer approval'
+# A nightly promotion of a commit on protected dev already passed this check on dev.
+promotion_files='[{"filename":".github/workflows/ci.yml"}]'
+fixture 1 "$promotion_files" "$done_run" success
+promotion
+expect_accept 'a promotion of a commit on protected dev'
+printf '{"status":"identical"}\n' >"$work/compare.json"
+expect_accept 'a promotion of the exact dev tip'
+for mutation in \
+	'.user.id = 320493938' \
+	'.head.ref = "release/1.1.0"' \
+	'.head.ref = "release/nightly-oops"' \
+	'.base.ref = "dev"'; do
+	fixture 1 "$promotion_files" "$done_run" success
+	promotion
+	jq "$mutation" "$work/pr.json" >"$work/pr-new.json"
+	mv "$work/pr-new.json" "$work/pr.json"
+	expect_reject "a promotion with $mutation"
+	grep -F 'workflow edits require an independent current maintainer approval' "$work/stderr" >/dev/null
+done
+for status in behind diverged; do
+	fixture 1 "$promotion_files" "$done_run" success
+	promotion
+	printf '{"status":"%s"}\n' "$status" >"$work/compare.json"
+	expect_reject "a promotion whose head is $status dev"
+done
+for rules in \
+	'[.[] | select(.type != "pull_request")]' \
+	'[.[] | select(.type != "non_fast_forward")]' \
+	'[.[] | select(.type != "deletion")]' \
+	'[.[] | select(.type != "required_status_checks")]' \
+	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0].context) = "ci-queue-required"'; do
+	fixture 1 "$promotion_files" "$done_run" success
+	promotion
+	jq "$rules" "$work/dev-rules.json" >"$work/dev-rules-new.json"
+	mv "$work/dev-rules-new.json" "$work/dev-rules.json"
+	expect_reject "a promotion when dev protection lost: $rules"
+done
+# The ordinary route still works when the exemption does not apply.
+fixture 1 "$promotion_files" "$done_run" success
+promotion
+printf '{"status":"diverged"}\n' >"$work/compare.json"
+approval
+expect_accept 'a promotion off dev with independent maintainer approval'
+fixture 1 "$promotion_files" "$done_run" success
+promotion
+jq '.head.repo = {id:2,full_name:"fork/r"}' "$work/pr.json" >"$work/pr-new.json"
+mv "$work/pr-new.json" "$work/pr.json"
+expect_reject 'a fork head claiming the promotion author'
 for login in '[bot]' 'dependabot[other]' 'dependabot[bot][bot]' 'dependabot[bot]suffix' 'dependabot bot'; do
 	fixture 1 "$docs" "$done_run" success
 	jq --arg login "$login" '.user.login = $login' "$work/pr.json" >"$work/pr-new.json"

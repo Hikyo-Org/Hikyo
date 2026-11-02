@@ -83,8 +83,8 @@ fi
 repo_lower=$(printf '%s' "$GH_REPO" | tr '[:upper:]' '[:lower:]')
 open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_page=100" --jq \
 	".[] | select(((.head.repo.full_name // \"\") | ascii_downcase) == \"$repo_lower\" and (.head.ref | startswith(\"release/nightly-\"))) | [.number, .head.sha, .head.ref, (.auto_merge != null), (.created_at | fromdateiso8601)] | @tsv")
-# A refused or failed admission, or a PR that has sat for hours (for example one
-# waiting for a maintainer's approval), means this promotion cannot land.
+# A refused or failed admission, or a PR that has sat for hours, means this promotion
+# cannot land.
 stuck_reason() {
 	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
 	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
@@ -106,7 +106,7 @@ report_stuck() {
 	{
 		printf 'nightly-promote: promotion #%s (%s/%s/pull/%s) is stuck: %s.\n' "$1" "$server" "$GH_REPO" "$1" "$reason"
 		printf '  Check title:\n%s\n  Check summary:\n%s\n' "$(quote_check .output.title)" "$(quote_check .output.summary)"
-		printf '  If the PR changes .github/, an independent maintainer must approve its exact head. Otherwise read the check and the merge queue run, fix the cause, and run nightly-promote again.\n'
+		printf '  Read the check and the merge queue run, fix the cause, and run nightly-promote again.\n'
 	} >&2
 }
 

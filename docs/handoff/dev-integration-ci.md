@@ -43,8 +43,9 @@ Go build-cache bucket or paid cache capacity is added.
   commit, or replaces it when dev has moved.
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
-- A promotion that changes `.github/` needs one independent maintainer approval of the
-  promotion PR's exact head, as any workflow edit does. Approve it in the GitHub UI.
+- A promotion that changes `.github/` needs no second approval while its head is on
+  protected dev and it comes from `hikyo-nightly-release[bot]`. Otherwise one
+  independent maintainer must approve its exact head.
 - A docs-only landing as the tip of main has only selective queue proof, so the
   nightly's validation fails for that commit until the next promotion lands or a full
   `ci-main` run covers it. Run
@@ -115,8 +116,7 @@ PR.
 
    Confirm the job summary names a `release/nightly-*` PR, that the PR shows
    `ci-queue-required` admission, that the queue lands it, and that the
-   `nightly-release` run starts from the landing. Approve the PR first if it touches
-   `.github/`. The promotion adds only a merge commit to main, so no backmerge is
+   `nightly-release` run starts from the landing. The promotion adds only a merge commit to main, so no backmerge is
    needed afterwards.
 
 ## Pre-activation repairs
