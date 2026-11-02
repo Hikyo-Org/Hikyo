@@ -10,6 +10,8 @@ and [GitOps runbook](../operations/kubernetes-gitops.md) describe this candidate
 ## Source and authorized endpoint
 
 - Original base: `e9da355b5fd6a6e1c4cee4d6bbb84b26ef51304c`.
+- Current base: `b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`, merged in
+  `4d7925a6a` after stable 1.0.0 published.
 - Previously delivered signed head: `523b3b66387d6db0587bd607ebd9cab1a163ea76`.
 - Independently reviewed GitOps increment SHA-256, excluding this handoff:
   `b20a7e2626ecbb1aa3b47ddc4bf3fe3fe9a5d49c18b81596eac926a2b3abcfef`.
@@ -17,9 +19,11 @@ and [GitOps runbook](../operations/kubernetes-gitops.md) describe this candidate
   [PR #1113](https://github.com/Hikyo-Org/Hikyo/pull/1113), with local checks,
   independent source reviews and a self-contained delivery report.
 
-The separately frozen 1.0 source is outside these bytes. This work does not
-reselect that source, add an unconditional stable-release gate, merge the draft,
-publish a release, or authorize a production installation/upgrade. Human
+Stable 1.0.0 published from `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` while this
+draft was open, and its chart excludes this work. The guides and generator here
+cover nightly charts only and refuse the stable chart. This work does not add an
+unconditional stable-release gate, merge the draft, publish a release, or
+authorize a production installation/upgrade. Human
 maintainer/adversarial security review remains required under CONTRIBUTING.
 
 ## Resulting behavior
@@ -85,8 +89,12 @@ This draft does not implement either by changing an installation flag.
 | Flux/Argo controller campaign | PASS: Flux 2.10.0 / Argo CD 3.5.6, Helm 4.2.3, Kubernetes 1.36.1; eight recorded controller-mechanics checks, 34 unchanged functional input hashes and successful cleanup |
 | Standards source review | Initial P2 CI-routing omission repaired; independent exact-increment recheck reports no remaining actionable source findings |
 | Spec source review | Initial pass and independent exact-increment recheck report no actionable source findings |
+| Post-merge focused checks at `dedea8424` | PASS with Helm 4.2.3: generator (9 tests), nightly chart, chart owner and mutation checks, publisher fixtures, classifier, and exact coverage-registration Go tests |
+| Full CI-owner suite and Astro check/build after merge | NOTRUN locally: the shared job queue was paused and host memory was under pressure. Hosted repository invariants own the full suite; candidate CI owns the site build and OSS policy |
+| Stable and nightly tag coexistence | PASS with Helm 3.16.1 and a disposable registry: unpinned and `>=1.0.0` pulls resolved to `1.0.0`, not a nightly. Helm 4 was not exercised |
 | Hosted CI / protected merge / human security review | Pending on the new pushed head; local source review is not independent human acceptance |
-| Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher or proven that selected chart available |
+| Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher. On 2 November 2026 the anonymous registry listed only stable `1.0.0` |
+| Stable chart GitOps | NOT IN SCOPE: 1.0.0 lacks the Flux label normalization and staged root-key path. Generator refusal is tested; stable support is an owner decision |
 | Actual Hikyo boot/admin, CSI/CNI/remount, populated migration and restore | NOTRUN by the GitOps campaign; retain separate runtime acceptance |
 
 Review rechecks used OpenAI `gpt-6.1-sol` at high reasoning and inspected the
@@ -131,7 +139,7 @@ The GitOps increment hash is reproducible in Bash or Zsh with:
 
 ```sh
 set -o pipefail
-git diff 523b3b66387d6db0587bd607ebd9cab1a163ea76 HEAD --binary -- .   ':!docs/handoff/1111-nightly-helm-distribution.md' | sha256sum
+git diff 523b3b66387d6db0587bd607ebd9cab1a163ea76 8b49fa4feef99689edc40d5ae03294f41ddc22d2 --binary -- .   ':!docs/handoff/1111-nightly-helm-distribution.md' | sha256sum
 ```
 
 Require exact-head human/workflow security review and the normal protected merge
