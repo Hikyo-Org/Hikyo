@@ -309,3 +309,24 @@ func TestStrictIgnoresGODEBUG(t *testing.T) {
 		})
 	}
 }
+
+// DEC-06 allows exactly one group. Another Go hybrid, a group this build does
+// not know, and a peer that offers only those must all be refused by strict
+// before the credential leaves, without panicking.
+func TestStrictRefusesOtherAndUnknownGroups(t *testing.T) {
+	for name, curves := range map[string][]tls.CurveID{
+		"other Go hybrid":     {tls.SecP256r1MLKEM768},
+		"unmapped group":      {tls.CurveID(0x6399)},
+		"classical and other": {tls.CurveP256, tls.SecP384r1MLKEM1024},
+	} {
+		t.Run(name, func(t *testing.T) {
+			peer := tlstest.StartPeer(t, tlstest.PeerOptions{Curves: curves})
+			if _, err := call(t, client(peer.Pool, tlspolicy.ProfileStrict), peer.URL); err == nil {
+				t.Fatalf("strict negotiated with a peer offering only %v", curves)
+			}
+			if peer.Hits() != 0 || peer.RawContains(canary) {
+				t.Fatal("credential reached a peer strict must have refused")
+			}
+		})
+	}
+}
