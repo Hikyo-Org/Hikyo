@@ -41,7 +41,6 @@ type Peer struct {
 	hits           int
 	authorizations []string
 	states         []tls.ConnectionState
-	handshakeFails int
 	raw            bytes.Buffer
 }
 
@@ -61,9 +60,6 @@ func (p *Peer) States() []tls.ConnectionState {
 	defer p.mu.Unlock()
 	return append([]tls.ConnectionState(nil), p.states...)
 }
-
-// HandshakeFailures counts handshakes the server itself refused or saw fail.
-func (p *Peer) HandshakeFailures() int { p.mu.Lock(); defer p.mu.Unlock(); return p.handshakeFails }
 
 // RawContains reports whether the canary appeared in any byte the server read
 // from the socket before decryption.
@@ -97,15 +93,6 @@ func (l spyListener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 	return spyConn{Conn: conn, peer: l.peer}, nil
-}
-
-type failureLog struct{ peer *Peer }
-
-func (w failureLog) Write(b []byte) (int, error) {
-	w.peer.mu.Lock()
-	w.peer.handshakeFails++
-	w.peer.mu.Unlock()
-	return len(b), nil
 }
 
 // StartPeer serves HTTPS on a loopback port until the test ends.
@@ -156,7 +143,7 @@ func StartPeer(t testing.TB, options PeerOptions) *Peer {
 			peer.mu.Unlock()
 			_, _ = io.WriteString(w, "{}")
 		}),
-		ErrorLog: log.New(failureLog{peer}, "", 0),
+		ErrorLog: log.New(io.Discard, "", 0),
 	}
 	go func() { _ = server.Serve(tls.NewListener(spyListener{Listener: raw, peer: peer}, config)) }()
 	t.Cleanup(func() { _ = server.Close() })

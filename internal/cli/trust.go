@@ -180,6 +180,11 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	return nil
 }
 
+// samePolicy reports whether two entries verify an origin identically.
+func samePolicy(a, b TrustEntry) bool {
+	return effectiveTLSMode(a) == effectiveTLSMode(b) && a.SPKIPin == b.SPKIPin && a.CLISocket == b.CLISocket && effectiveTLSProfile(a) == effectiveTLSProfile(b)
+}
+
 // effectiveTLSProfile makes an omitted profile and an explicit compat equivalent.
 func effectiveTLSProfile(entry TrustEntry) string {
 	if entry.TLSProfile == "" {
@@ -280,6 +285,15 @@ func (s *TrustStore) Put(e TrustEntry) error {
 	entries, err := s.Load()
 	if err != nil {
 		return err
+	}
+	// The profile binds to a name, so a second name for the same origin with a
+	// different profile would leave the choice between them to chance.
+	for name, other := range entries {
+		if name != e.Name && other.Origin == e.Origin && effectiveTLSProfile(other) != effectiveTLSProfile(e) {
+			return failf(ExitRefused,
+				"origin %s is already established as %q with a different TLS profile; remove that entry deliberately before establishing %q",
+				e.Origin, name, e.Name)
+		}
 	}
 	if prior, ok := entries[e.Name]; ok {
 		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket || effectiveTLSProfile(prior) != effectiveTLSProfile(e) {

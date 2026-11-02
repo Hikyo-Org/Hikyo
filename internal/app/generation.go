@@ -63,7 +63,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		return nil, fmt.Errorf("managed TLS certificate: %w", err)
 	}
 	db, kr, log, resources := owner.server.db, owner.server.keyring, owner.server.log, owner.resources
-	certificate.reportTo(log)
+	certificate.observeTo(log)
 	sc := storeConfig(cfg)
 	// The secret-scanning ruleset compiles once at boot; a Load error refuses to
 	// serve (#74, ADR §7 fail-fast; a binary that ships a half-compiled ruleset

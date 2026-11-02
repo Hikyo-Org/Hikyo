@@ -282,6 +282,9 @@ type Config struct {
 	NodeID string
 }
 
+// TLSProfileKey is the managed owner key that carries the profile.
+const TLSProfileKey = "HIKYO_TLS_PROFILE"
+
 // TLS profile names. tlspolicy.Profile owns the semantics; a test pins equality.
 const (
 	TLSProfileCompat = "compat"

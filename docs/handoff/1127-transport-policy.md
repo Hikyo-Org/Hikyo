@@ -42,6 +42,7 @@ revision (E-21) is registered, not redesigned.
 | Criterion | Status | Notes |
 | --- | --- | --- |
 | Map hops and terminators; unexamined stays UNKNOWN | PARTIAL | Matrix below. Go-owned configs verified against current source (`MinVersion` search, unchanged since the draft map). SDK paths, browsers, TS client UNKNOWN |
+| Stale-node fencing on the strict surface (DEC-10) | HOLD | Not built, by decision of this round; the owner decides. Strict is a per-process property: a stale node keeps admitting credentials at its old profile and no fleet-wide claim can be made (see operations doc) |
 | Policy through the approved configuration path, validated default, upgrade compatibility, managed semantics, restart/reload | PASS for the listener | Default `compat`, migration 6 explicit, Apply closes old connections. Client selection is PARTIAL (see remaining work) |
 | Strict requires approved version and group; incompatible peers fail before credentials; certificate/hostname/trust intact; tickets and resumption reviewed | PASS for listener, CLI, operator client | Real handshakes; server-side non-delivery checked |
 | Sanitized negotiation evidence, three classes separate, no proxy inference | PARTIAL | Logs and CLI line. No metric (ops-spec registry is pinned and locked; needs its own amendment). Operator client and CLI-less clients have no evidence line |
@@ -86,9 +87,12 @@ refused", never a classical group.
 
 ### Mixed-version rollout: what source permits
 
-- A CLI that does not know `tls_profile` refuses the trust store (unknown fields
-  are disallowed); pinned by a test with the pre-#1127 entry shape. It never
-  reads a strict entry as compat.
+- A CLI since the system-CA trust change (nightlies from 2026-10-19, `v1.0.0`)
+  decodes with unknown fields disallowed and refuses a store holding `tls_profile`.
+  **Earlier CLI builds use `json.Unmarshal`, which drops the field: a strict entry
+  silently behaves as compat there (a downgrade).** The test
+  `TestCurrentTrustDecoderRefusesAFieldOutsideItsEntryShape` pins only the current
+  decoder and says nothing about older binaries.
 - A server binary that does not know `HIKYO_TLS_PROFILE` refuses the managed
   owner configuration as containing an unsupported key (source reading; not run
   against an old binary, NOTRUN). Migration 6 reaches nodes as a new desired
@@ -161,7 +165,8 @@ source. A proxy or database terminator outside the process is outside any claim.
    `http.Transport` shares the config. Fail-closed and documented, but a
    behavior to confirm with the maintainer.
 6. **Maintenance listener** honors the profile with the certificate, so a strict
-   node never serves classical TLS during an upgrade window.
+   node never serves classical TLS during an upgrade window (covered by
+   `TestUpgradeWindowHonorsTheStrictProfile`).
 7. **Loopback development plaintext** with strict is refused too (the hop table
    names trusted-proxy mode; a plaintext loopback strict claim would be as false).
 
@@ -184,6 +189,40 @@ source. A proxy or database terminator outside the process is outside any claim.
   (`SSL_CERT_FILE` and `x509sslcertoverrideplatform`): NOTRUN.
 - Managed-generation reload under load and connection drain with a real
   multi-node Apply: NOTRUN.
+
+## Repair-round findings (review of c02a6b2a3)
+
+- **Recovery baseline weakened strict (fixed).** A node missing from the node
+  document retried a refused owner configuration with the bootstrap seed, which
+  carries `compat`. `bootNodeConfiguration` now carries the adopted
+  `HIKYO_TLS_PROFILE` into that baseline, so the node keeps strict or refuses to
+  boot. Real-boot regressions: `TestRealBootKeepsAdoptedStrictWhenTheNodeIsMissingFromTheNodeDocument`
+  (no certificate refuses; a certificate-bearing node stays hybrid-only);
+  helper-level `TestBootNodeConfigurationCarriesAdoptedStrictIntoTheRecoveryBaseline`
+  covers the IP-origin trigger, which a full boot already refuses at candidate
+  health. Other `Prepare(seed)` sites are seed-only (unmanaged) paths and do not
+  override an adopted value.
+- **Repair path, as found.** `ResolveRepairRuntimeBundle` runs the previous
+  completed snapshot, so a repair boot uses that snapshot's profile (possibly
+  `compat`). Not changed: it is the same downgrade class as E-21, and carrying the
+  desired profile into an unverified repair graph would be new policy.
+- **Trust entries bind a profile to a name (fixed).** `Put` refuses a second name
+  for an origin with a different profile; `lookupByOrigin` refuses ambiguous
+  matches whose verification policies differ instead of returning a random one.
+  Interactive establishment cannot create a strict entry (no flag), so its prompt
+  needs no profile line yet.
+- **ADR check (api-cli-surface, not edited).** Its owner-locked #966 amendment
+  closes the bundle field set (clause 5: unknown trust-store and bundle fields
+  are refused) and lists what a change to an established entry covers (clause 4:
+  origin, mode, pin, socket). `tls_profile` extends both. A declared amendment is
+  needed through DEC-18 (reopen that ADR's originating ticket); the migration ADR's
+  amendment table does not list api-cli-surface.
+- **Migration 6 was not exercised end to end.** It ran only through
+  `MigrateConfiguration` scenarios on SQLite and PostgreSQL (the `store/upgrade`
+  tests). The upgrade gate never ran it with two real release identities: both dev
+  binaries share one identity, and a new binary refusing a base database with
+  "catalogue has changed" is a dev-build artifact observed by the reviewer, not
+  something these tests cover. NOTRUN.
 
 ## Rollback and key retention
 

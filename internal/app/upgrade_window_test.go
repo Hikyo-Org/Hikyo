@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
@@ -68,5 +69,47 @@ func TestUpgradeWindowRejectsInvalidTLSBeforeBinding(t *testing.T) {
 	window := NewUpgradeWindow()
 	if err := window.Start(cfg); err == nil || window.Started() {
 		t.Fatal("invalid transport started maintenance listener")
+	}
+}
+
+func TestUpgradeWindowHonorsTheStrictProfile(t *testing.T) {
+	cfg := devConfig(t)
+	cert, key, leaf := tlstest.MintServerCert(t, "127.0.0.1")
+	cfg.TLSCertPEM, cfg.TLSKeyPEM, cfg.TLSProfile = string(cert), string(key), config.TLSProfileStrict
+	cfg.Listen, cfg.OperationalListen = "127.0.0.1:0", "127.0.0.1:0"
+	window := NewUpgradeWindow()
+	if err := window.Start(cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = window.Close() })
+	roots := x509.NewCertPool()
+	roots.AddCert(leaf)
+	url := "https://" + window.publicAddr + "/api/v1/runtime/status"
+	for name, tlsCfg := range map[string]*tls.Config{
+		"classical TLS 1.3": {RootCAs: roots, MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519}},
+		"TLS 1.2":           {RootCAs: roots, MaxVersion: tls.VersionTLS12},
+	} {
+		client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsCfg, DisableKeepAlives: true}, Timeout: 3 * time.Second}
+		if resp, err := client.Get(url); err == nil {
+			resp.Body.Close()
+			t.Fatalf("%s peer was served by the strict maintenance listener", name)
+		}
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}, DisableKeepAlives: true}, Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		t.Fatalf("hybrid peer refused: %v", err)
+	}
+	resp.Body.Close()
+	if resp.TLS.Version != tls.VersionTLS13 || resp.TLS.CurveID != tls.X25519MLKEM768 {
+		t.Fatalf("maintenance listener negotiated %x %v", resp.TLS.Version, resp.TLS.CurveID)
+	}
+
+	plain := devConfig(t)
+	plain.TLSProfile = config.TLSProfileStrict
+	plain.Listen, plain.OperationalListen = "127.0.0.1:0", "127.0.0.1:0"
+	refused := NewUpgradeWindow()
+	if err := refused.Start(plain); err == nil || refused.Started() {
+		t.Fatal("strict without a certificate must not start a plaintext maintenance listener")
 	}
 }

@@ -330,3 +330,94 @@ func TestStrictRefusesOtherAndUnknownGroups(t *testing.T) {
 		})
 	}
 }
+
+// A caller that pre-set weaker groups, versions and a session cache gets none of
+// them back: the real handshake, not only the config, shows strict.
+func TestOverriddenClientSettingsDoNotSurviveAHandshake(t *testing.T) {
+	peer := tlstest.StartPeer(t, tlstest.PeerOptions{Tickets: true})
+	cfg := &tls.Config{
+		RootCAs: peer.Pool, MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12,
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256}, ClientSessionCache: tls.NewLRUClientSessionCache(4),
+	}
+	tlspolicy.ProfileStrict.Apply(cfg)
+	for range 2 {
+		state, err := call(t, cfg, peer.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Version != tls.VersionTLS13 || state.CurveID != tls.X25519MLKEM768 || state.DidResume {
+			t.Fatalf("overridden settings leaked into the handshake: %x %v resumed=%v", state.Version, state.CurveID, state.DidResume)
+		}
+	}
+}
+
+// The strict listener side under GODEBUG: the server's explicit group list does
+// not depend on the process default that tlsmlkem=0 removes.
+func TestStrictListenerUnderGODEBUGChild(t *testing.T) {
+	if os.Getenv("HIKYO_TLSPOLICY_CHILD") != "1" {
+		t.Skip("subprocess body")
+	}
+	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "localhost", "127.0.0.1")
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}
+	tlspolicy.ProfileStrict.Apply(server)
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { _, _ = conn.Read(make([]byte, 1)); conn.Close() }()
+		}
+	}()
+	roots := x509.NewCertPool()
+	roots.AppendCertsFromPEM(certPEM)
+	for label, cfg := range map[string]*tls.Config{
+		"strict-client":    client(roots, tlspolicy.ProfileStrict),
+		"classical-client": {RootCAs: roots, MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519}},
+		"default-client":   {RootCAs: roots},
+	} {
+		conn, err := tls.Dial("tcp", ln.Addr().String(), cfg)
+		if err != nil {
+			println("RESULT", label, "error")
+			continue
+		}
+		println("RESULT", label, tlspolicy.GroupName(conn.ConnectionState().CurveID))
+		conn.Close()
+	}
+}
+
+func TestStrictListenerIgnoresGODEBUG(t *testing.T) {
+	for _, godebug := range []string{"tlsmlkem=0", "tlsmlkem=0,tlssecpmlkem=0"} {
+		t.Run(godebug, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestStrictListenerUnderGODEBUGChild$", "-test.v")
+			cmd.Env = append(os.Environ(), "HIKYO_TLSPOLICY_CHILD=1", "GODEBUG="+godebug)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("child failed: %v\n%s", err, out)
+			}
+			results := map[string]string{}
+			for _, line := range strings.Split(string(out), "\n") {
+				if f := strings.Fields(line); len(f) == 3 && f[0] == "RESULT" {
+					results[f[1]] = f[2]
+				}
+			}
+			if results["strict-client"] != "x25519mlkem768" {
+				t.Fatalf("strict client against a strict listener under %s: %v\n%s", godebug, results, out)
+			}
+			for _, weak := range []string{"classical-client", "default-client"} {
+				if results[weak] != "error" {
+					t.Fatalf("%s was served by a strict listener under %s: %v", weak, godebug, results)
+				}
+			}
+		})
+	}
+}

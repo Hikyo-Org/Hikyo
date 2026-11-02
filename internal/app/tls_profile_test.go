@@ -210,7 +210,9 @@ func TestListenerReportsConfiguredAndObservedEvidenceSeparately(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out syncBuffer
-	certificate.reportTo(slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	logger := slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	certificate.observeTo(logger)
+	certificate.logConfigured(logger)
 	raw, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -235,5 +237,13 @@ func TestListenerReportsConfiguredAndObservedEvidenceSeparately(t *testing.T) {
 	}
 	if strings.Contains(logged, "secret") || strings.Contains(logged, "127.0.0.1") {
 		t.Fatalf("log leaked a request or peer detail:\n%s", logged)
+	}
+}
+
+func TestUnknownProfileWithoutCertificateFailsClosed(t *testing.T) {
+	for _, profile := range []tlspolicy.Profile{"future", "Strict", "pq"} {
+		if c, err := newManagedCertificate("", "", profile); err == nil {
+			t.Fatalf("profile %q returned a plaintext listener %v", profile, c)
+		}
 	}
 }

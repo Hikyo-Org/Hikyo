@@ -29,8 +29,9 @@ func newManagedCertificate(certPEM, keyPEM string, profile tlspolicy.Profile) (*
 		// Fail closed under every path that builds a generation, not only config
 		// parsing: strict on a plaintext listener would claim protection that no
 		// connection has.
-		if profile == tlspolicy.ProfileStrict {
-			return nil, errors.New("strict TLS profile requires a TLS certificate pair; the listener would serve plaintext")
+		// Anything other than compat fails closed, as Profile.Apply does.
+		if profile != tlspolicy.ProfileCompat && profile != "" {
+			return nil, errors.New("TLS profile other than compat requires a TLS certificate pair; the listener would serve plaintext")
 		}
 		return nil, nil
 	}
@@ -54,19 +55,29 @@ func (c *managedCertificate) tlsConfig() *tls.Config {
 	return cfg
 }
 
-// reportTo logs the configured profile once and every observed negotiation at
-// debug level, as separate evidence classes (#1127): "configured" says what the
-// listener is set to enforce; "observed" is a handshake this process completed.
-// Values come from closed vocabularies. Authentication is not claimed here.
-func (c *managedCertificate) reportTo(log *slog.Logger) {
+// observeTo logs every observed negotiation at debug level. Together with
+// logConfigured it keeps two evidence classes apart (#1127): "configured" says
+// what the active listener is set to enforce; "observed" is a handshake this
+// process completed. Values come from closed vocabularies. Authentication is not
+// claimed here.
+func (c *managedCertificate) observeTo(log *slog.Logger) {
+	if c == nil || log == nil {
+		return
+	}
+	c.observe = func(n tlspolicy.Negotiation) {
+		log.Debug("native listener TLS negotiation", "hop", n.Hop, "profile", n.Profile, "version", n.Version, "group", n.Group, "resumed", n.Resumed, "evidence", "observed")
+	}
+}
+
+// logConfigured is called when a generation becomes the active one, never while
+// it is only prepared: a candidate that later fails must not leave a record of a
+// profile that never activated.
+func (c *managedCertificate) logConfigured(log *slog.Logger) {
 	if c == nil || log == nil {
 		return
 	}
 	log.Info("native listener TLS policy", "hop", tlspolicy.HopNativeListener, "profile", c.profile, "evidence", "configured",
 		"authentication", "classical certificate chain; reported separately")
-	c.observe = func(n tlspolicy.Negotiation) {
-		log.Debug("native listener TLS negotiation", "hop", n.Hop, "profile", n.Profile, "version", n.Version, "group", n.Group, "resumed", n.Resumed, "evidence", "observed")
-	}
 }
 
 func (c *managedCertificate) TLSMetrics() (int64, uint64) {

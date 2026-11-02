@@ -44,8 +44,12 @@ toolchain change cannot widen what a strict hop accepts.
 ## Native listener
 
 Setting: `HIKYO_TLS_PROFILE` = `compat` or `strict`. The value is matched
-exactly; `Strict`, ` strict` or anything else is refused at startup and at
-managed validation.
+exactly; `Strict`, ` strict` or anything else is refused. The environment value
+is only a bootstrap seed. It is validated when it seeds a first adoption and at
+managed validation. Once an installation has adopted managed configuration the
+environment value is not read for policy, so a stale or invalid value does not
+stop startup; Hikyo logs a warning (`HIKYO_TLS_PROFILE in the environment is
+ignored`) when it differs from the adopted profile, without echoing it.
 
 Precedence: **managed > bootstrap > default `compat`.** The environment variable
 only seeds the managed configuration at first adoption. After adoption, the
@@ -74,9 +78,13 @@ upgrade maintenance listener uses the same certificate and profile.
   "strict"`. It is applied on top of the entry's trust mode (`system-ca` or
   `spki`) and never replaces it. Changing an established entry's profile needs
   deliberate re-establishment, like a changed pin. There is no interactive
-  `--tls-profile` flag yet, so use a provisioned bundle. A CLI release that does
-  not know the field refuses the whole trust store; it does not silently read a
-  strict entry as `compat`. A local-socket entry cannot be strict because it is
+  `--tls-profile` flag yet, so use a provisioned bundle. A CLI release since the system-CA
+  trust change (the nightlies from 2026-10-19 and `v1.0.0`) decodes the trust
+  store with unknown fields disallowed, so it refuses the store rather than
+  reading a strict entry as `compat`. **Earlier CLI builds decode with
+  `json.Unmarshal`, which silently drops the field: a strict entry then
+  behaves as a `compat` entry.** Do not rely on `tls_profile` for a CLI older
+  than that change. A local-socket entry cannot be strict because it is
   not a TLS connection. With `HTTPS_PROXY` naming an `https://` proxy the proxy
   leg shares the policy, so strict also refuses a classical-only proxy.
 - **Operator client.** `client.NewClient(..., client.WithTLSProfile(...))`
@@ -85,6 +93,24 @@ upgrade maintenance listener uses the same certificate and profile.
   strict today.
 - **MCP.** Hikyo serves MCP on the native listener, so MCP callers are covered
   by listener strictness. Hikyo contains no outbound MCP client.
+
+## Strict is a per-process property until a fence exists
+
+Strict is enforced by each process on its own listener. Hikyo does not yet fence
+a node whose active configuration generation is below the desired one (DEC-10
+requires the fence; it is not built and its criterion is HOLD). Until it exists:
+
+- A stale node keeps admitting credentials and data on the listener at the
+  profile it last activated, including `compat`. Node status reports it as
+  `pending`; that is a report, not enforcement.
+- **No fleet-wide claim can be made**, however many nodes are strict. A claim is
+  only about one node, at one activated generation, on its own listener.
+- Repair and recovery boots run the previous completed configuration snapshot
+  (`ResolveRepairRuntimeBundle`) and host-authority recovery can select an older
+  published revision (E-21). Those graphs use that snapshot's profile, which can
+  be `compat` while a newer revision adopted strict. A joining node that is
+  missing from the node document keeps the adopted profile and refuses to boot
+  when it cannot serve it (no certificate); it does not fall back to `compat`.
 
 ## Evidence: configured, test and observed are different things
 

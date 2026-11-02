@@ -341,10 +341,30 @@ func lookupByOrigin(st *State, origin, cfgName string) (TrustEntry, error) {
 	if err != nil {
 		return TrustEntry{}, err
 	}
+	// Map order is random, so more than one entry for an origin would make the
+	// verification policy (mode, pin, TLS profile) a coin flip. Entries that
+	// differ in policy are ambiguous and refused; identical-policy duplicates are
+	// harmless.
+	var found []TrustEntry
 	for _, e := range entries {
 		if e.Origin == origin {
-			return e, nil
+			found = append(found, e)
 		}
+	}
+	for _, e := range found[min(1, len(found)):] {
+		if !samePolicy(found[0], e) {
+			names := make([]string, 0, len(found))
+			for _, f := range found {
+				names = append(names, f.Name)
+			}
+			slices.Sort(names)
+			return TrustEntry{}, failf(ExitRefused,
+				"%s names instance %s, which matches trust entries %s with different verification policies; name one of them with --instance rather than picking by origin",
+				cfgName, origin, strings.Join(names, ", "))
+		}
+	}
+	if len(found) > 0 {
+		return found[0], nil
 	}
 	return TrustEntry{}, failf(ExitRefused,
 		"%s names instance %s, which is not in the local trust store; provision it with `hikyo context create --instance %s` or --trust-file (the machine path never establishes trust interactively)",

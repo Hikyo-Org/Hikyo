@@ -186,10 +186,10 @@ func TestCLIReportsObservedNegotiationUnderDiagnostics(t *testing.T) {
 	}
 }
 
-// Mixed-version rollout: an older CLI decodes trust JSON with unknown fields
-// disallowed, so it refuses a store holding a strict entry instead of silently
-// reading it as a compat one. This pins that discipline with the pre-#1127 shape.
-func TestOlderTrustReaderRefusesAStrictEntryInsteadOfDroppingTheProfile(t *testing.T) {
+// Narrow by design: this pins the CURRENT decoder (unknown fields disallowed),
+// using the pre-#1127 entry shape. It proves nothing about older binaries, whose
+// decoder (before 7dc30f973) used json.Unmarshal and silently drops tls_profile.
+func TestCurrentTrustDecoderRefusesAFieldOutsideItsEntryShape(t *testing.T) {
 	type legacyEntry struct {
 		Name      string  `json:"name"`
 		Origin    string  `json:"origin"`
@@ -201,5 +201,51 @@ func TestOlderTrustReaderRefusesAStrictEntryInsteadOfDroppingTheProfile(t *testi
 	raw := []byte(`{"a":{"name":"a","origin":"https://hikyo.example.test","tls_mode":"system-ca","tls_profile":"strict"}}`)
 	if err := decodeTrustJSON(raw, &legacy); err == nil {
 		t.Fatal("a reader that does not know tls_profile must refuse the entry, not ignore the field")
+	}
+}
+
+// The profile binds to the entry name, so two names for one origin with different
+// profiles would let a lookup by origin pick either one.
+func TestCLIRefusesSecondNameForAnOriginWithADifferentProfile(t *testing.T) {
+	store := &TrustStore{dir: t.TempDir()}
+	strict := TrustEntry{Name: "prod", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"}
+	if err := store.Put(strict); err != nil {
+		t.Fatal(err)
+	}
+	compat := strict
+	compat.Name, compat.TLSProfile = "prod-alias", ""
+	if err := store.Put(compat); err == nil || !strings.Contains(err.Error(), "different TLS profile") {
+		t.Fatalf("a compat alias beside a strict entry must be refused: %v", err)
+	}
+	// The same profile under another name stays allowed.
+	same := strict
+	same.Name = "prod-alias"
+	if err := store.Put(same); err != nil {
+		t.Fatalf("an identical-policy alias must stay valid: %v", err)
+	}
+}
+
+func TestLookupByOriginRefusesAmbiguousPoliciesDeterministically(t *testing.T) {
+	state := &State{dir: t.TempDir()}
+	store := state.Trust()
+	entries := map[string]TrustEntry{
+		"a": {Name: "a", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"},
+		"b": {Name: "b", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA},
+	}
+	if err := store.write(entries); err != nil {
+		t.Fatal(err)
+	}
+	for range 200 { // map order is random; the refusal must not depend on it
+		if _, err := lookupByOrigin(state, "https://hikyo.example.test", "hikyo.yaml"); err == nil || !strings.Contains(err.Error(), "different verification policies") {
+			t.Fatalf("ambiguous origin must be refused every time: %v", err)
+		}
+	}
+	entries["b"] = TrustEntry{Name: "b", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"}
+	if err := store.write(entries); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lookupByOrigin(state, "https://hikyo.example.test", "hikyo.yaml")
+	if err != nil || got.TLSProfile != "strict" {
+		t.Fatalf("identical policies resolve: %v %+v", err, got)
 	}
 }

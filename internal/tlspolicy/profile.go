@@ -63,7 +63,6 @@ type Hop string
 const (
 	HopNativeListener Hop = "native-listener"
 	HopCLIClient      Hop = "cli-client"
-	HopOperatorClient Hop = "operator-client"
 )
 
 // Negotiation is one observed handshake, sanitized to closed vocabularies. It

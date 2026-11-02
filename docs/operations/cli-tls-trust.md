@@ -29,6 +29,14 @@ Trust entries and provisioned bundles share these fields:
 | HTTPS, system CA verification | `system-ca` | Absent | Absent |
 | Existing loopback HTTP socket | Absent | Absent | Required for credential transport |
 
+Both also accept an optional `tls_profile` (#1127): omitted or `compat` keeps
+the table's behavior, and `strict` additionally requires TLS 1.3 and the hybrid
+`X25519MLKEM768` group on an HTTPS entry. It is allowed with either HTTPS mode,
+never with a local socket, and does not change the mode's trust model: strict
+protects handshake confidentiality only, and an SPKI pin still gives no
+authenticity claim beyond the pin. See
+[transport policy](./transport-policy.md#clients-that-call-hikyo).
+
 Unknown modes and conflicting combinations are refused. An absent mode on
 HTTPS always means SPKI, so deleting a pin cannot enable CA verification. In
 SPKI mode the exact leaf pin remains the identity check, including for
