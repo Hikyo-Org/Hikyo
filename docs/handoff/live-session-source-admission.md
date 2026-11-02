@@ -50,8 +50,8 @@ cannot grow or churn the memory.
   after eviction, or straight after login, a session is charged to the source once, so a saturated
   source can delay it until a slot frees. A parallel cold load can charge a few slots
   before the first resolution completes.
-- **Cross-model review was not run** for this amendment. The ADR records that, and
-  `GOVERNANCE.md` makes it a disposition for the owner.
+- **Cross-model review was waived by the owner** on 2026-11-02, as the ADR records.
+  Independent Standards and Spec reviews ran.
 
 ## Validation
 
@@ -70,8 +70,7 @@ have no case of their own, and a fault during resolution has no regression test.
 
 ## Remaining work
 
-1. Maintainer security review of the tradeoffs above, and the owner's disposition on
-   cross-model review.
+1. Maintainer security review of the tradeoffs above.
 2. After deployment, confirm on an instance that a browser session passes 60 requests
    per minute without a 429, and that an unknown bearer still gets one past the allowance.
 3. Fix source attribution behind chained proxies separately. Public discovery can
