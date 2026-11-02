@@ -26,10 +26,10 @@ import { useWorkspaces, workspaceSession } from './workspace.ts';
  * are that refetch. The fallback poll runs precisely while the stream is not
  * healthy and keeps signals and pending drafts fresh, so a dropped stream
  * costs seconds of age, never correctness. And every RECOVERY, a stream
- * that went healthy again after it was lost, invalidates the whole matrix
- * working set once (system-architecture ADR § Real-time: "a reconnecting
- * client performs a normal authorized refetch of current state"), so what
- * the poll does not cover (keys, groups, settings) converges too.
+ * that went healthy again after it was lost, refetches topology, signals and
+ * pending drafts once (system-architecture ADR § Real-time: "a reconnecting client
+ * performs a normal authorized refetch of current state"). Values follow from a
+ * signals revision that advanced, and a read that had failed is retried.
  */
 
 /** The event types the revision-model ADR enumerates. */

@@ -60,10 +60,11 @@ function Matrix() {
   </span>)}</section>;
 }
 
-async function mountMatrix(remote = false) {
+async function mountMatrix(remote = false, failing: ReadonlyMap<string, number> = new Map()) {
   let backendEnvironments = [...environments];
   let listStatus = 200;
   let schemaRevision = 1;
+  let devRevision = 2;
   const requests: string[] = [];
   vi.stubGlobal(
     'fetch',
@@ -71,8 +72,12 @@ async function mountMatrix(remote = false) {
       const url = input instanceof Request ? input.url : String(input);
       const path = new URL(url, 'http://localhost').pathname;
       requests.push(remote ? url : path);
+      const failure = failing.get(path);
+      if (failure !== undefined) {
+        return Promise.resolve(new Response(JSON.stringify({ error: 'refused' }), { status: failure, headers: { 'Content-Type': 'application/json' } }));
+      }
       return Promise.resolve(
-        new Response(JSON.stringify(path.endsWith('/environments') && listStatus !== 200 ? { error: 'temporarily unavailable' } : matrixResponse(path, backendEnvironments, schemaRevision)), {
+        new Response(JSON.stringify(path.endsWith('/environments') && listStatus !== 200 ? { error: 'temporarily unavailable' } : matrixResponse(path, backendEnvironments, schemaRevision, devRevision)), {
           status: path.endsWith('/environments') ? listStatus : 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -101,6 +106,7 @@ async function mountMatrix(remote = false) {
     container,
     failListing: (status: number) => { listStatus = status; },
     setEnvironments: (next: typeof environments) => { backendEnvironments = next; schemaRevision += 1; },
+    setDevRevision: (next: number) => { devRevision = next; },
     // Waits out the burst window, so each call stands alone like a quiet stream's event.
     event: async (event: AdvisoryEvent) => {
       await act(async () => {
@@ -136,7 +142,7 @@ function workingSet(): readonly string[] {
 }
 
 describe('useMatrixProject stream recovery', () => {
-  it('refetches the whole working set exactly once per recovery, and never on first connect', async () => {
+  it('catches up topology, signals and pending drafts once per recovery, and never on first connect', async () => {
     const matrix = await mountMatrix();
     try {
       expect(matrix.requests.filter((path) => path.endsWith('/environments'))).toHaveLength(1);
@@ -149,15 +155,46 @@ describe('useMatrixProject stream recovery', () => {
       await matrix.render({ connection: 'healthy', recoveries: 0, lost: false });
       expect(matrix.requests).toEqual([]);
 
-      // Lost, then back: one catch-up of the full set, and a re-render at the
-      // same count adds nothing.
+      // Lost, then back: one catch-up, and a re-render at the same count adds
+      // nothing. Neither revision advanced, so values do not follow.
       await matrix.render({ connection: 'failed', recoveries: 0, lost: true });
       expect(matrix.requests).toEqual([]);
       await matrix.render({ connection: 'healthy', recoveries: 1, lost: false });
-      expect([...matrix.requests].sort()).toEqual(workingSet());
+      expect([...matrix.requests].sort()).toEqual(
+        workingSet().filter((path) => !path.endsWith('/values') && !path.endsWith('/settings')),
+      );
       matrix.requests.length = 0;
       await matrix.render({ connection: 'healthy', recoveries: 1, lost: false });
       expect(matrix.requests).toEqual([]);
+    } finally {
+      await matrix.unmount();
+    }
+  });
+
+  it('refetches values on recovery only for an environment whose revision advanced', async () => {
+    const matrix = await mountMatrix();
+    try {
+      await matrix.render({ connection: 'healthy', recoveries: 0, lost: false });
+      matrix.setDevRevision(5);
+      matrix.requests.length = 0;
+      await matrix.render({ connection: 'failed', recoveries: 0, lost: true });
+      await matrix.render({ connection: 'healthy', recoveries: 1, lost: false });
+      const values = matrix.requests.filter((path) => path.endsWith('/values'));
+      expect(values).toEqual([`/api/v1/orgs/${ref.org}/projects/${ref.project}/environments/${devId}/values`]);
+    } finally {
+      await matrix.unmount();
+    }
+  });
+
+  it('retries on recovery only the reads that failed, and leaves a denial alone', async () => {
+    const path = (environmentId: string, leaf: string) => `/api/v1/orgs/${ref.org}/projects/${ref.project}/environments/${environmentId}/${leaf}`;
+    const matrix = await mountMatrix(false, new Map([[path(devId, 'settings'), 500], [path(prodId, 'settings'), 403]]));
+    try {
+      await matrix.render({ connection: 'healthy', recoveries: 0, lost: false });
+      matrix.requests.length = 0;
+      await matrix.render({ connection: 'failed', recoveries: 0, lost: true });
+      await matrix.render({ connection: 'healthy', recoveries: 1, lost: false });
+      expect(matrix.requests.filter((request) => request.endsWith('/settings') || request.endsWith('/values'))).toEqual([path(devId, 'settings')]);
     } finally {
       await matrix.unmount();
     }
@@ -225,7 +262,7 @@ async function settleTasks(rounds = 20): Promise<void> {
   }
 }
 
-function matrixResponse(path: string, backendEnvironments: typeof environments, schemaRevision: number): unknown {
+function matrixResponse(path: string, backendEnvironments: typeof environments, schemaRevision: number, devRevision: number): unknown {
   const projectPath = `/api/v1/orgs/${ref.org}/projects/${ref.project}`;
   if (path === `${projectPath}/environments`) {
     return { items: backendEnvironments, count: backendEnvironments.length };
@@ -242,7 +279,7 @@ function matrixResponse(path: string, backendEnvironments: typeof environments, 
       return { items: [], count: 0 };
     }
     if (path === `${environmentPath}/signals`) {
-      return { environment_id: environmentId, revision: environmentId === devId ? 2 : 3, cells: [] };
+      return { environment_id: environmentId, revision: environmentId === devId ? devRevision : 3, cells: [] };
     }
     if (path === `${environmentPath}/settings`) {
       return { protected: false, reauth_window_seconds: null };

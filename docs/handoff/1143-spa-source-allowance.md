@@ -27,6 +27,11 @@ keeping:
   requests per minute at any project size.
 - A burst of stream events flushes on the leading edge, so a single event keeps
   its latency and stays inside the `e2e/performance` budget.
+- A stream recovery refetches topology, signals and pending drafts, `3 + 2 x environments`
+  requests. It used to reload the whole working set, `3 + 4 x environments`, on every
+  reconnect. Values follow from a signals revision that advanced, and no event refreshes
+  settings. A value or settings read that had failed is retried, unless it was a denial.
+  Topology stays in recovery as #931 decided.
 - A background whoami 429 uses the existing `degraded` path, with `paced` keeping
   it from raising the fence. An earlier separate retry timer survived logout,
   looped at session expiry and bypassed the enrolment gate.

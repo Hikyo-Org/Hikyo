@@ -447,21 +447,20 @@ export function advisoryInvalidations(
 /**
  * advisoryRecoveryInvalidations is the catch-up a RECOVERED stream owes the
  * matrix (system-architecture ADR § Real-time): the channel replays nothing,
- * so whatever happened while it was lost is refetched, not reconstructed. The
- * whole working set, by project-wide prefix so no environment list is needed:
- * environments, keys, groups, and every environment's values, signals, pending
- * drafts and settings. Catch-up does not wait for the fallback polls, which
- * can miss updates immediately before reconnection.
+ * so whatever happened while it was lost is refetched, not reconstructed.
+ * Only what a missed event would have refreshed and has no cheaper proof: topology,
+ * and every environment's signals and pending drafts, by project-wide prefix so no
+ * environment list is needed. Values follow from signals when the revision advanced,
+ * and no event refreshes settings. A proxy that drops streams would otherwise reload
+ * the whole page on each reconnect, spending the source allowance on nothing.
  */
 export function advisoryRecoveryInvalidations(ref: MatrixRef): readonly (readonly string[])[] {
   return [
     environmentsKey(ref),
     matrixKeysKey(ref),
     matrixGroupsKey(ref),
-    valuesMatrixKey(ref),
     signalsMatrixKey(ref),
     pendingMatrixKey(ref),
-    environmentSettingsPrefix(ref.org, ref.project),
   ];
 }
 
@@ -554,6 +553,10 @@ export function matrixPublishValidation(
 export const ENVIRONMENT_TOPOLOGY_POLL_MS = 30_000;
 export const ADVISORY_BURST_MS = 250;
 
+function isDenial(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 404);
+}
+
 export function useMatrixProject(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
@@ -583,7 +586,7 @@ export function useMatrixProject(ref: MatrixRef) {
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
   // state gates the signals and pending drafts fallback polls below; and
-  // every recovery refetches the whole working set once. Subscribing here,
+  // every recovery catches up what the stream would have refreshed. Subscribing here,
   // inside the same hook that owns the matrix's queries, is what makes the
   // subscription die with the route and never outlive its ref.
   const stream = useAdvisoryStream(
@@ -612,6 +615,14 @@ export function useMatrixProject(ref: MatrixRef) {
     }
     for (const queryKey of advisoryRecoveryInvalidations({ org, project })) {
       void queries.invalidateQueries({ queryKey });
+    }
+    // Values and settings have no poll, so a read that failed while the stream was
+    // down has only this chance to heal. A denial is an answer, and stays one.
+    for (const queryKey of [valuesMatrixKey({ org, project }), environmentSettingsPrefix(org, project)]) {
+      void queries.refetchQueries({
+        queryKey,
+        predicate: (query) => query.state.status === 'error' && !isDenial(query.state.error),
+      });
     }
     // The counter, not the ref: a ref change re-subscribes and resets the
     // counter to zero, so it cannot smuggle a stale project into this effect.

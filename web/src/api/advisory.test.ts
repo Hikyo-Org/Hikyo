@@ -136,15 +136,13 @@ describe('advisory invalidation mapping', () => {
 });
 
 describe('recovery catch-up', () => {
-  it('refetches the whole matrix working set by project-wide prefix', () => {
+  it('refetches topology, signals and pending drafts by project-wide prefix', () => {
     expect(advisoryRecoveryInvalidations(ref)).toEqual([
       ['environments', ref.org, ref.project],
       ['matrix-keys', ref.org, ref.project],
       ['matrix-groups', ref.org, ref.project],
-      ['values', ref.org, ref.project],
       ['matrix-signals', ref.org, ref.project],
       ['matrix-pending', ref.org, ref.project],
-      ['environment-settings', ref.org, ref.project],
     ]);
   });
 });
