@@ -78,7 +78,7 @@ func TestBenchmarkSmokeUsesRequiredCoreValidation(t *testing.T) {
 	want := []string{"test", "-run", "^$", "-bench", ".", "-benchtime=1x", "./internal/crypto/", "./internal/dotenv/", "./internal/scanning/", "./internal/server/", "./internal/service/"}
 	for _, status := range []string{"0", "17"} {
 		cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", smoke.Run)
-		cmd.Env = append(os.Environ(), "PATH="+work+":"+os.Getenv("PATH"), "BENCHMARK_CAPTURE="+capture, "BENCHMARK_EXIT="+status)
+		cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "PATH="+work+":"+os.Getenv("PATH"), "BENCHMARK_CAPTURE="+capture, "BENCHMARK_EXIT="+status)
 		if out, err := cmd.CombinedOutput(); (err == nil) != (status == "0") {
 			t.Fatalf("benchmark exit %s was not preserved: %v %s", status, err, out)
 		}
@@ -92,7 +92,7 @@ func TestBenchmarkSmokeUsesRequiredCoreValidation(t *testing.T) {
 	}
 	for _, source := range []string{strings.Repeat("a", 40), strings.Repeat("b", 40), "main", ""} {
 		cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", core.Steps[0].Run)
-		cmd.Env = append(os.Environ(), "GITHUB_EVENT_NAME=pull_request", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "SOURCE_REVISION="+source,
+		cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "GITHUB_EVENT_NAME=pull_request", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "SOURCE_REVISION="+source,
 			"EVENT_REPOSITORY=Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID=10", "PR_NUMBER=882", "PR_HEAD_SHA="+strings.Repeat("a", 40),
 			"FULL_CANDIDATE=false", "PR_HEAD_REPOSITORY=fork/Hikyo", "PR_HEAD_REPOSITORY_ID=11", "PR_BASE_REPOSITORY=Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID=10")
 		if out, err := cmd.CombinedOutput(); (err == nil) != (source == strings.Repeat("a", 40)) {

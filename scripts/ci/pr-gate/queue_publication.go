@@ -68,7 +68,7 @@ func (s *queueReconciliation) publishRecord(ctx context.Context, p pull, b bindi
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if (c.checkName != queueCheckName && c.checkName != lifecycleName) || c.repo.ID <= 0 || !shaPattern.MatchString(c.expectedHead) {
+	if (c.checkName != queueCheckName && c.checkName != devCheckName && c.checkName != lifecycleName) || c.repo.ID <= 0 || !shaPattern.MatchString(c.expectedHead) {
 		return nil, errors.New("queue publication requires an authenticated repository and held head")
 	}
 	if p.Head.SHA != c.expectedHead || b.Head != c.expectedHead || selected != nil && selected.HeadSHA != c.expectedHead {

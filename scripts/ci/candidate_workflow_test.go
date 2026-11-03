@@ -97,7 +97,7 @@ func TestCandidateWorkflowAdmissionAndCoverage(t *testing.T) {
 	for _, mutation := range []string{"valid", "missing-merge-metadata", "head-only", "missing-metadata-head-only", "wrong-merge", "malformed-merge", "wrong-ref", "wrong-number-ref", "missing-base", "invalid-mode", "wrong-repository", "nondefault-target"} {
 		t.Run(mutation, func(t *testing.T) {
 			head, merge, base := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40)
-			env := map[string]string{"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": merge, "FULL_CANDIDATE": "true", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "1", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "PR_BASE_SHA": base, "PR_BASE_REF": "main", "DEFAULT_BRANCH": "main", "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10"}
+			env := map[string]string{"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/1/merge", "GITHUB_SHA": merge, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "SOURCE_REVISION": merge, "DEVELOPMENT": "false", "FULL_CANDIDATE": "true", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "PR_NUMBER": "1", "PR_HEAD_SHA": head, "PR_MERGE_SHA": merge, "PR_BASE_SHA": base, "PR_BASE_REF": "main", "DEFAULT_BRANCH": "main", "PR_HEAD_REPOSITORY": "fork/Hikyo", "PR_HEAD_REPOSITORY_ID": "11", "PR_BASE_REPOSITORY": "Hikyo-Org/Hikyo", "PR_BASE_REPOSITORY_ID": "10"}
 			switch mutation {
 			case "missing-merge-metadata":
 				env["PR_MERGE_SHA"] = ""
@@ -188,7 +188,7 @@ func TestCandidateBaseResolutionUsesLiveRefInsteadOfEventMetadata(t *testing.T) 
 			output := filepath.Join(dir, "output")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"), "EVENT_NAME=pull_request", "FULL_CANDIDATE=true", "BASE_SHA="+strings.Repeat("e", 40), "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output)
+			cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "PATH="+dir+":"+os.Getenv("PATH"), "EVENT_NAME=pull_request", "FULL_CANDIDATE=true", "BASE_SHA="+strings.Repeat("e", 40), "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output)
 			out, err := cmd.CombinedOutput()
 			if (err == nil) != fresh {
 				t.Fatalf("fresh=%v error=%v %s", fresh, err, out)
@@ -273,7 +273,7 @@ func TestTrustedClassifierUsesBaseToolsForEveryCandidateMode(t *testing.T) {
 			}
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "EVENT_NAME="+event, "FULL_CANDIDATE="+full, "BASE_SHA="+base, "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output, "RUNNER_TEMP="+runner)
+			cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "EVENT_NAME="+event, "FULL_CANDIDATE="+full, "BASE_SHA="+base, "HEAD_SHA="+head, "DEFAULT_BRANCH=main", "GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_OUTPUT="+output, "RUNNER_TEMP="+runner)
 			out, err := cmd.CombinedOutput()
 			if strings.HasPrefix(name, "missing-") {
 				if err == nil || !strings.Contains(string(out), "trusted CI classifier or job registry is missing") || strings.Contains(string(out), "source-tool-executed") {

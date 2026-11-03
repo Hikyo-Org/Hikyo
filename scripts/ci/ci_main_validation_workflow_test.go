@@ -65,11 +65,12 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" {
-		t.Fatal("CI must require an immutable revision and optional candidate mode")
+	if len(contract.Inputs) != 3 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" {
+		t.Fatal("CI must require an immutable revision with optional candidate and development modes")
 	}
-	if len(manual.On) != 1 {
-		t.Fatal("manual main wrapper must have only dispatch entrypoint")
+	// The weekly schedule is the automatic writer of main-scoped compile caches.
+	if _, scheduled := manual.On["schedule"]; len(manual.On) != 2 || !scheduled {
+		t.Fatal("manual main wrapper must have only dispatch and schedule entrypoints")
 	}
 	dispatch, ok := manual.On["workflow_dispatch"]
 	if !ok || dispatch.Kind != yaml.ScalarNode || dispatch.Tag != "!!null" {
@@ -92,9 +93,23 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		}
 	}
 	validation := nightly.Jobs["validation"]
-	if validation.Uses != "./.github/workflows/ci.yml" || validation.If != "github.ref == 'refs/heads/main'" || !reflect.DeepEqual(validation.With, map[string]string{"revision": "${{ github.sha }}"}) ||
-		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read", "pull-requests": "read"}) {
-		t.Fatal("nightly validation must use the unchanged read-only CI graph on main")
+	// Every main commit passed the merge queue, so nightly authenticates that
+	// proof for its exact commit instead of running the graph again.
+	if validation.Uses != "" || validation.If != "github.ref == 'refs/heads/main'" ||
+		!reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+		t.Fatal("nightly validation must be a read-only job on main")
+	}
+	reused := false
+	for _, step := range validation.Steps {
+		if strings.HasPrefix(step.Uses, "actions/checkout@") && (step.With["ref"] != "${{ github.sha }}" || step.With["persist-credentials"] != "false") {
+			t.Fatal("nightly validation must check out its exact commit without credentials")
+		}
+		reused = reused || (strings.Contains(step.Run, "go run ./scripts/ci/source-proof") &&
+			strings.Contains(step.Run, `--mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA"`) &&
+			step.Env["GH_TOKEN"] == "${{ github.token }}")
+	}
+	if !reused {
+		t.Fatal("nightly must authenticate complete exact-source proof for its commit")
 	}
 	needs, err := workflowNeeds(nightly.Jobs["publish"].Needs)
 	if err != nil || !reflect.DeepEqual(needs, []string{"validation", "build-artifacts", "apple-sign", "apple-notarize", "apple-acceptance"}) {

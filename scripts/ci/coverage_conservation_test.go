@@ -101,6 +101,22 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		return err
 	}
+	// The explicit dev caller propagates a source-authority boolean only. Keep
+	// the frozen full-suite inventory and all measurement steps unchanged.
+	floorWith, ok := workflow.Jobs["floor-bench"]["with"].(map[string]any)
+	if !ok || floorWith["development"] != "${{ inputs.development }}" {
+		return fmt.Errorf("floor benchmark lost exact development source binding")
+	}
+	delete(floorWith, "development")
+	// Dev runner headroom only delays jobs. Every shard still runs, and other
+	// callers stay uncapped, so the frozen execution inventory is unchanged.
+	for name, limit := range map[string]string{"web": "4", "isolation_shard": "2", "race_shard": "7"} {
+		strategy, ok := workflow.Jobs[name]["strategy"].(map[string]any)
+		if !ok || strategy["max-parallel"] != "${{ inputs.development && "+limit+" || 256 }}" {
+			return fmt.Errorf("%s lost its dev-only runner headroom", name)
+		}
+		delete(strategy, "max-parallel")
+	}
 	if err := normalizeCompleteShardPlanning(workflow.Jobs["analysis_shards"]); err != nil {
 		return err
 	}
@@ -583,6 +599,7 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				}
 			}
 		},
+		"cap race beyond dev runs":    func(j map[string]map[string]any) { j["race_shard"]["strategy"].(map[string]any)["max-parallel"] = 7 },
 		"skip feedback fixtures":      func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "if", "false") },
 		"fail open feedback fixtures": func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "continue-on-error", true) },
 		"drop supervisor fixtures":    func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "run", "true") },

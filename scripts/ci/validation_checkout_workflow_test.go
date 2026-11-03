@@ -25,6 +25,7 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 	guard := ci.Jobs["changes"].Steps[0]
 	expectedEnv := map[string]string{
 		"SOURCE_REVISION":     "${{ inputs.revision }}",
+		"DEVELOPMENT":         "${{ inputs.development }}",
 		"EVENT_REPOSITORY":    "${{ github.event.repository.full_name }}",
 		"EVENT_REPOSITORY_ID": "${{ github.event.repository.id }}",
 		"PR_NUMBER":           "${{ github.event.pull_request.number }}",
@@ -113,7 +114,7 @@ func TestValidationCheckoutWorkflowPolicy(t *testing.T) {
 						want = want && event != "merge_group"
 					}
 					cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard.Run)
-					cmd.Env = os.Environ()
+					cmd.Env = append(os.Environ(), "DEVELOPMENT=false")
 					for key, value := range env {
 						cmd.Env = append(cmd.Env, key+"="+value)
 					}

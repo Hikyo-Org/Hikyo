@@ -13,8 +13,10 @@ on:
         required: false
         default: false
         type: boolean
-  push:
-    tags: ['**']
+      development:
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -35,6 +37,8 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           FULL_CANDIDATE: ${{ inputs.candidate }}
+          DEVELOPMENT: ${{ inputs.development || false }}
+          TAG_DELETED: ${{ github.event.deleted }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
@@ -45,8 +49,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          case "$DEVELOPMENT" in
+            false) ;;
+            true)
+              test "$GITHUB_EVENT_NAME" = push
+              test "$GITHUB_REF" = refs/heads/dev
+              test "$DEFAULT_BRANCH" = main
+              test "$FULL_CANDIDATE" = false
+              test "$TAG_DELETED" = false
+              ;;
+            *) echo 'Unknown development floor mode.' >&2; exit 1 ;;
+          esac
           if [[ "$GITHUB_EVENT_NAME" = push ]]; then
-            [[ "$GITHUB_REF" == refs/tags/?* ]]
+            if [ "$DEVELOPMENT" = true ]; then
+              test "$GITHUB_REF" = refs/heads/dev
+              test "$FULL_CANDIDATE" = false
+            else
+              test "$DEVELOPMENT" = false
+              [[ "$GITHUB_REF" == refs/tags/?* ]]
+            fi
             [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
             [[ -z "$SOURCE_REVISION" ]] || test "$SOURCE_REVISION" = "$GITHUB_SHA"
             SOURCE_REVISION=$GITHUB_SHA
@@ -85,7 +106,12 @@ jobs:
               test "$GITHUB_REF" = refs/heads/main
               test "$SOURCE_REVISION" = "$GITHUB_SHA"
               ;;
-            push) ;;
+            push)
+              if [ "$DEVELOPMENT" = true ]; then
+                test "$DEFAULT_BRANCH" = main
+                test "$GITHUB_REF" = refs/heads/dev
+              fi
+              ;;
             *) echo 'Floor proof refuses this source context.' >&2; exit 1 ;;
           esac
       - name: Check out the validated immutable caller revision

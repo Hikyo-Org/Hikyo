@@ -33,21 +33,8 @@ func TestReleaseFloorBenchPRUsesRequiredValidation(t *testing.T) {
 	if _, ok := floor.On["workflow_call"]; !ok {
 		t.Fatal("floor benchmark must remain reusable by required validation")
 	}
-	if len(floor.On) != 2 {
-		t.Fatalf("floor benchmark must have only reusable and tag triggers, got %v", floor.On)
-	}
-	push, ok := floor.On["push"]
-	if !ok {
-		t.Fatal("floor benchmark must retain its tag trigger")
-	}
-	var tagTrigger struct {
-		Tags []string `yaml:"tags"`
-	}
-	if err := push.Decode(&tagTrigger); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(tagTrigger.Tags, []string{"**"}) {
-		t.Fatalf("floor benchmark tag trigger changed: %v", tagTrigger.Tags)
+	if len(floor.On) != 1 {
+		t.Fatalf("floor measurements must have one reusable entrypoint without duplicate tag runs: %v", floor.On)
 	}
 
 	var validation mainValidationWorkflow
@@ -58,7 +45,7 @@ func TestReleaseFloorBenchPRUsesRequiredValidation(t *testing.T) {
 	if job.Uses != "./.github/workflows/floor-bench.yml" || !reflect.DeepEqual(workflowPlanJobs(job.If), []string{"floor-bench"}) {
 		t.Fatalf("required validation must call the planned floor benchmark, got %+v", job)
 	}
-	if !reflect.DeepEqual(job.With, map[string]string{"revision": "${{ inputs.revision }}", "candidate": "${{ inputs.candidate }}"}) {
+	if !reflect.DeepEqual(job.With, map[string]string{"revision": "${{ inputs.revision }}", "candidate": "${{ inputs.candidate }}", "development": "${{ inputs.development }}"}) {
 		t.Fatal("required floor measurement must inherit CI's validated immutable revision")
 	}
 	dependencies, err := workflowNeeds(job.Needs)
@@ -124,7 +111,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["candidate"].Required || contract.Inputs["candidate"].Type != "boolean" || contract.Inputs["candidate"].Default == nil || *contract.Inputs["candidate"].Default {
+	if len(contract.Inputs) != 3 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["candidate"].Required || contract.Inputs["candidate"].Type != "boolean" || contract.Inputs["candidate"].Default == nil || *contract.Inputs["candidate"].Default || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" || contract.Inputs["development"].Default == nil || *contract.Inputs["development"].Default {
 		t.Fatal("reusable floor proof requires an immutable revision and optional boolean candidate input")
 	}
 	if !reflect.DeepEqual(read("release.yml").Jobs["floor-bench"].With, map[string]string{"revision": "${{ github.sha }}"}) {
@@ -137,6 +124,8 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 	guard := steps[0]
 	expectedEnv := map[string]string{
 		"SOURCE_REVISION":     "${{ inputs.revision }}",
+		"DEVELOPMENT":         "${{ inputs.development || false }}",
+		"TAG_DELETED":         "${{ github.event.deleted }}",
 		"EVENT_REPOSITORY":    "${{ github.event.repository.full_name }}",
 		"EVENT_REPOSITORY_ID": "${{ github.event.repository.id }}",
 		"PR_NUMBER":           "${{ github.event.pull_request.number }}",
@@ -218,7 +207,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 				env["FULL_CANDIDATE"] = "yes"
 			}
 			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard.Run)
-			cmd.Env = os.Environ()
+			cmd.Env = append(os.Environ(), "DEVELOPMENT=false")
 			for key, value := range env {
 				cmd.Env = append(cmd.Env, key+"="+value)
 			}
@@ -288,7 +277,7 @@ func TestReleaseFloorBenchImmutableSourceContract(t *testing.T) {
 						env["PR_HEAD_REPOSITORY"], env["PR_HEAD_REPOSITORY_ID"] = "Hikyo-Org/Hikyo", "10"
 					}
 					cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", guard.Run)
-					cmd.Env = os.Environ()
+					cmd.Env = append(os.Environ(), "DEVELOPMENT=false")
 					for key, value := range env {
 						cmd.Env = append(cmd.Env, key+"="+value)
 					}

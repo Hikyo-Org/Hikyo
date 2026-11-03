@@ -139,22 +139,28 @@ func TestReleaseTagsRequireFullValidationAndNativePostgres(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &release); err != nil {
 		t.Fatal(err)
 	}
-	if release.Jobs["validation"].Uses != "./.github/workflows/ci.yml" || release.Jobs["validation"].With["revision"] != "${{ github.sha }}" {
-		t.Fatal("release source is not exact full CI")
+	validation := release.Jobs["validation"]
+	verified := false
+	for _, step := range validation.Steps {
+		verified = verified || step.Run == `./scripts/release/require-green-main.sh "$GITHUB_REPOSITORY" "$GITHUB_SHA"`
 	}
+	if validation.Uses != "" || !verified || !reflect.DeepEqual(validation.Permissions, map[string]string{"actions": "read", "contents": "read"}) {
+		t.Fatal("release source must authenticate exact complete full validation without starting a duplicate graph")
+	}
+
 	needs, err := workflowNeeds(w.Jobs["build-artifacts"].Needs)
 	if err != nil || !contains(needs, "validation") {
 		t.Fatal("signing may run before full validation")
 	}
+	postgres, proof := false, false
 	for _, s := range w.Jobs["build-artifacts"].Steps {
-		if s.Name == "Test release source" {
-			if s.Env["RELEASE_SCHEMA_CONTAINER"] != "hikyo-ci-postgres" {
-				t.Fatal("release uses undeclared PostgreSQL service")
-			}
-			return
-		}
+		postgres = postgres || (s.Name == "Start healthy PostgreSQL with Docker Hub cache fallback" && s.Run == "./scripts/ci/start-ci-postgres.sh")
+		proof = proof || (s.Name == "Revalidate release source proof" && strings.Contains(s.Run, "--mode main --commit \"$GITHUB_SHA\""))
 	}
-	t.Fatal("release source checks absent")
+	if !postgres || !proof {
+		t.Fatal("release must retain native PostgreSQL artifact generation and fresh exact-source proof")
+	}
+
 }
 func contains(values []string, target string) bool {
 	for _, v := range values {
@@ -180,12 +186,12 @@ func TestCanonicalTagRevisionAdmission(t *testing.T) {
 		"stable": {}, "prerelease": {"GITHUB_REF": "refs/tags/v1.2.3-rc.1"}, "branch": {"GITHUB_REF": "refs/heads/main"}, "nightly": {"GITHUB_REF": "refs/tags/v1.2.3-nightly.20261014.1.gaaaaaaaa"}, "deleted": {"TAG_DELETED": "true"}, "candidate": {"FULL_CANDIDATE": "true"}, "wrong-sha": {"SOURCE_REVISION": strings.Repeat("b", 40)}, "empty-tag": {"GITHUB_REF": "refs/tags/"}, "leading-zero": {"GITHUB_REF": "refs/tags/v01.2.3"}, "empty-identifier": {"GITHUB_REF": "refs/tags/v1.2.3-rc..1"}, "numeric-leading-zero": {"GITHUB_REF": "refs/tags/v1.2.3-rc.01"}, "wrong-default": {"DEFAULT_BRANCH": "feature"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			env := map[string]string{"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v1.2.3", "GITHUB_SHA": sha, "SOURCE_REVISION": sha, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "DEFAULT_BRANCH": "main", "FULL_CANDIDATE": "false", "TAG_DELETED": "false"}
+			env := map[string]string{"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v1.2.3", "GITHUB_SHA": sha, "SOURCE_REVISION": sha, "GITHUB_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY": "Hikyo-Org/Hikyo", "EVENT_REPOSITORY_ID": "10", "DEFAULT_BRANCH": "main", "DEVELOPMENT": "false", "FULL_CANDIDATE": "false", "TAG_DELETED": "false"}
 			for k, v := range change {
 				env[k] = v
 			}
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", guard)
-			cmd.Env = os.Environ()
+			cmd.Env = append(os.Environ(), "DEVELOPMENT=false")
 			for k, v := range env {
 				cmd.Env = append(cmd.Env, k+"="+v)
 			}
@@ -252,7 +258,7 @@ func TestReleaseTagPlanRequiresPeeledCommitAndMainAncestry(t *testing.T) {
 			output := filepath.Join(dir, "output")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", w.Jobs["changes"].Steps[2].Run)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "EVENT_NAME=push", "FULL_CANDIDATE=false", "SOURCE_REVISION="+source, "GITHUB_REF=refs/tags/v1.2.3", "GITHUB_OUTPUT="+output)
+			cmd.Env = append(append(os.Environ(), "DEVELOPMENT=false"), "EVENT_NAME=push", "FULL_CANDIDATE=false", "SOURCE_REVISION="+source, "GITHUB_REF=refs/tags/v1.2.3", "GITHUB_OUTPUT="+output)
 			out, err := cmd.CombinedOutput()
 			if scenario != "exact-main-tag" {
 				if err == nil {

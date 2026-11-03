@@ -1,0 +1,124 @@
+# Only trusted main tooling publishes fast admission for dev. Main's full queue
+# has a separate context and writer lease. Neither can substitute for the other.
+name: dev-gate
+
+on:
+  pull_request_target:
+    branches: [dev]
+    types: [opened, synchronize, reopened, edited, closed]
+  push:
+    branches: [main, dev]
+  workflow_run:
+    workflows: [ci-feedback]
+    types: [requested, in_progress, completed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Dev PR to reassess, or leave empty to reassess all open dev PRs
+        required: false
+        type: string
+  schedule:
+    - cron: '19 * * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      work: ${{ steps.targets.outputs.work }}
+    steps:
+      - name: Check out trusted default-branch discovery tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Discover routing hints without check-write permission
+        id: targets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          work=$(bash scripts/ci/discover-dev-prs.sh)
+          printf 'work=%s\n' "$work" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: dev-publish-${{ matrix.work.head }}
+    needs: discover
+    if: needs.discover.outputs.work != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        work: ${{ fromJSON(needs.discover.outputs.work) }}
+    concurrency:
+      group: dev-check-${{ github.repository_id }}-${{ matrix.work.head }}
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Capture the setup-inclusive publisher budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD: ${{ matrix.work.head }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]]
+          case "$GITHUB_EVENT_NAME" in
+            pull_request_target) JOB_HEAD="$PR_HEAD" ;;
+            *) JOB_HEAD="$GITHUB_SHA" ;;
+          esac
+          [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          body=$(timeout --kill-after=1s 5s gh api --paginate --slurp "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
+          started=$(jq -ser --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "dev-publish-$HEAD" '
+            if length != 1 or (.[0] | type) != "array" then error("invalid publisher pages") else .[0] end |
+            if length == 0 or any(.[]; (.jobs | type) != "array") then error("invalid publisher jobs") else . end |
+            .[0].total_count as $total | [.[].jobs[]] |
+            if length != $total then error("incomplete publisher jobs") else . end |
+            [.[] | select(.name == $name)] |
+            if length != 1 then error("ambiguous publisher job") else .[0] end |
+            if (.id | type) != "number" or .id <= 0 or .id != (.id | floor) or
+               .run_id != $run or .run_attempt != $attempt or .head_sha != $head or
+               (.status != "in_progress" and .status != "queued" and .status != "pending") or
+               (.started_at | type) != "string"
+            then error("invalid publisher identity") else .started_at | fromdateiso8601 end' <<<"$body")
+          now=$(date +%s)
+          test "$started" -gt 0
+          test "$started" -le "$now"
+          test "$now" -lt "$((started + 60))"
+          echo "PR_GATE_STARTED_AT=$started" >> "$GITHUB_ENV"
+          echo "PR_GATE_DEADLINE=$((started + 60))" >> "$GITHUB_ENV"
+      - name: Check out trusted default-branch admission tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Compile trusted publisher inside the remaining work budget
+        run: |
+          set -euo pipefail
+          remaining=$((PR_GATE_DEADLINE - 15 - $(date +%s)))
+          test "$remaining" -gt 0
+          timeout --kill-after=1s "${remaining}s" bash scripts/ci/build-queue-publisher.sh
+      - name: Reconcile exact-head dev admission with a terminal publication reserve
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD: ${{ matrix.work.head }}
+          PR_NUMBER: ${{ matrix.work.pr }}
+        run: |
+          test -x "$RUNNER_TEMP/queue-publisher"
+          "$RUNNER_TEMP/queue-publisher" --dev --dev-pr "$PR_NUMBER" --expected-head "$HEAD"

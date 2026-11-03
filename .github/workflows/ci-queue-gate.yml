@@ -4,6 +4,7 @@ name: queue-gate
 
 on:
   pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened, edited, closed]
   push:
     branches: [main]

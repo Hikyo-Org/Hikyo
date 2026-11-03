@@ -184,6 +184,7 @@ if [ "$(grep -c 'ref:' "$dco_reporter")" -ne 1 ] ||
 	exit 1
 fi
 "$script_dir/report-dco_test.sh"
+"$script_dir/report-dev-status_test.sh"
 
 # Superseded PR runs must release workflow concurrency immediately. Aggregate
 # gates still run after ordinary failures, but cancellation must skip them.

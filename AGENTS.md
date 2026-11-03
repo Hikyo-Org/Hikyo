@@ -15,7 +15,10 @@ validate; keep them outside Git and share local links when needed.
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
 `validation / preflight` CI job's DCO step (`scripts/ci/check-dco.sh`) fails the build when any
-commit in the range is missing one.
+commit in the range is missing one. On PRs to `dev`, the `ci-dev-required` check runs the same
+script instead. The admission gates exempt only Dependabot's commits, on PRs
+it opened and on canonical `release/*` or `main` promotion heads that carry them. That preflight step
+does not, so do not add the `ci:full` label to a promotion: the queue runs the full graph anyway.
 
 - Add both the signature and sign-off when you commit: `git commit -S -s`.
 - The trailer must match the commit's author identity exactly:
