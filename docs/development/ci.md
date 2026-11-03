@@ -245,7 +245,7 @@ match its run, attempt, source head, unique job ID and original start timestamp,
 and that read gets one retry. The absolute deadline is retained without polling or
 another execution budget.
 
-The budget pays for setup first, so setup stays small. The queue publishers check
+The budget pays for setup first, so setup stays small. The publishers check
 out only `scripts/ci` and root files: a full tree costs 8 to 30 seconds or more. `pr-gate`
 must not import `net/http`, which adds 86 packages to its cold compile on Linux. A test
 pins that, the sparse checkout, its packages and the scripts it runs by name; it cannot
