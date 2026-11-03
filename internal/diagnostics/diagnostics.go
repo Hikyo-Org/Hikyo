@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 type contextKey struct{}
@@ -62,7 +64,17 @@ func Time(ctx context.Context, operation string) func() {
 // Transport reports request methods, destination origins and response status.
 // URL paths, queries, userinfo, headers, bodies and error strings are omitted:
 // even a failed transport error can contain an entire credential-bearing URL.
-type Transport struct{ Base http.RoundTripper }
+//
+// When Hop is set, a completed TLS response also reports the negotiated version
+// and group under the hop's policy profile (#1127). That line is observation of
+// this process's own connection only; it never infers a proxy's or peer-side
+// terminator's group, and it says nothing about certificate authentication.
+type Transport struct {
+	Base http.RoundTripper
+	// Hop and Profile name the controlled hop and its policy for the TLS line.
+	Hop     tlspolicy.Hop
+	Profile tlspolicy.Profile
+}
 
 func (t Transport) base() http.RoundTripper {
 	if t.Base == nil {
@@ -88,6 +100,10 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		Printf(ctx, 2, "HTTP %s failed", req.Method)
 	} else {
 		Printf(ctx, 2, "HTTP %s status=%d", req.Method, response.StatusCode)
+		if t.Hop != "" && response.TLS != nil {
+			n := tlspolicy.Observed(t.Hop, t.Profile, *response.TLS)
+			Printf(ctx, 2, "TLS hop=%s profile=%s version=%s group=%s resumed=%t evidence=observed", n.Hop, n.Profile, n.Version, n.Group, n.Resumed)
+		}
 	}
 	return response, err
 }

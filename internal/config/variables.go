@@ -139,6 +139,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_STATE_DIR", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_TLS_CERT_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_TLS_CERT_PEM"},
 	{Key: "HIKYO_TLS_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: true, Import: VariableFileContent, FileContentKey: "HIKYO_TLS_KEY_PEM", ReferencedContentSecret: true},
+	{Key: "HIKYO_TLS_PROFILE", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_TOKEN", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: true, Import: VariableExternal},
 	{Key: "HIKYO_TRUSTED_PROXY_CIDRS", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_TRUST_BUNDLE", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},

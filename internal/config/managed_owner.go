@@ -55,6 +55,7 @@ func (c *Config) ManagedOwnerValues() map[string]string {
 		// Omitted when a config path did not set it (e.g. the CLI compose paths):
 		// the runtimeconfig migration supplies the effective default (#760).
 		"HIKYO_SECOND_FACTOR": c.SecondFactor,
+		"HIKYO_TLS_PROFILE":   c.TLSProfile,
 	} {
 		if value != "" {
 			values[key] = value
@@ -177,7 +178,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 			inputs["HIKYO_REAUTH_WINDOW_SECONDS"] = "0"
 		}
 	}
-	parsed, _, err := loadWithOptions("server", args, func(key string) string { return inputs[key] }, nil, loadOptions{allowIPOrigin: !validateNode})
+	parsed, _, err := loadWithOptions("server", args, func(key string) string { return inputs[key] }, nil, loadOptions{allowIPOrigin: !validateNode, parseOnly: !validateNode})
 	if err != nil {
 		return nil, managedOwnerRefusal(err, keys)
 	}
@@ -198,6 +199,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.SecondFactor = parsed.SecondFactor
+	result.TLSProfile = parsed.TLSProfile
 	result.MaxKeysPerProject = parsed.MaxKeysPerProject
 	result.DefaultKeysPerProject = parsed.DefaultKeysPerProject
 	result.BackupRecipients = slices.Clone(parsed.BackupRecipients)

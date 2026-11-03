@@ -92,7 +92,15 @@ func bootNodeConfiguration(cfg *config.Config, coordinator *service.SelfConfig, 
 		if seedErr != nil {
 			return nil, nil, nil, true, errors.New("joining node requires valid bootstrap configuration for administrative recovery")
 		}
+		// The seed is only a recovery baseline for everything else. The adopted
+		// transport profile is a security property that must not be weakened on
+		// this path: carry it so a node that cannot serve strict refuses to boot
+		// instead of serving the seed's compat.
+		adopted := owner[config.TLSProfileKey]
 		owner = baseline.OwnerValues()
+		if adopted != "" {
+			owner[config.TLSProfileKey] = adopted
+		}
 		effective, err = config.ApplyManagedOwnerAndNodeValues(cfg, owner, node)
 	}
 	return effective, owner, node, missing, err

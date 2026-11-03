@@ -204,6 +204,8 @@ runtime writers, and crashes after each phase and each migration commit.
 
 ## Backup and restore custody
 
+> **Owner-locked declared amendment (2026-11-02, [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), decisions in the [post-quantum migration ADR](./post-quantum-migration.md#decision-register); originating ticket [#638](https://github.com/Hikyo-Org/Hikyo/issues/638) reopened; operative when the [#1126](https://github.com/Hikyo-Org/Hikyo/issues/1126) implementation merges; cross-provider review SKIPPED by explicit owner instruction, not CLEAN; independent adversarial review is recorded on the amendment PR):** receipts gain an algorithm-bearing recipient namespace and historical receipts keep their meaning. A receipt is an unsigned public marker, so provenance needs a signed binding. The operator P-256 attestation key is unchanged; #1132 may add a PQ signature alongside it. This amendment covers only this section; release identity and trust stay as locked.
+
 ### Approved local custody for opted-in containers (2026-09-13)
 
 Unattended container upgrades require an explicit, default-off enrollment chosen
