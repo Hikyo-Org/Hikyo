@@ -65,7 +65,7 @@ provider-generated and historical entries; deleting YAML does not erase history.
 | --- | --- | --- |
 | Validation | `ci-feedback.yml`, `ci-dev.yml`, `ci-main.yml`, `ci-merge-group.yml`, `ci.yml` | Fast per-commit feedback and full validation have different costs. Event entry points share a complete graph. PR code executes outside privileged controller contexts. |
 | Advisory PR checks | `ci-dependency-compatibility.yml`, `ci-invariants.yml` | Read-only early signals for dependency bumps and repository-invariant suites that otherwise fail only in the serial queue. Neither is a required context. |
-| Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml` | Trusted callbacks publish dev admission and queue admission/group proof. Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
+| Trusted gates | `ci-dev-gate.yml`, `ci-queue-gate.yml`, `ci-queue-worker.yml`, `ci-queue-retry.yml` | Trusted callbacks publish dev admission and queue admission/group proof; the retry workflow reruns a failed head publisher (see [Queue publisher head leases](#queue-publisher-head-leases)). Queued checks do not hold a polling runner; only a completed merge group whose GitHub job metadata lags, or whose reads fail transiently, is re-read for a bounded window. |
 | Retired checks | `ci-check-retirement.yml` | Trusted asynchronous cleanup of authenticated unfinished synthetic records, with the existing writer leases and live-role checks. Never grants merge proof. |
 | Superseded runs | `ci-run-retirement.yml` | Bounded asynchronous cancellation of authenticated obsolete merge-group runs. Preserves active PR/group/default-branch roles and verifies terminal readback. |
 | Reporting | `dco-report.yml`, `fuzz-report.yml` | Write-capable reports execute trusted code separately from PR validation. `fuzz-report.yml` also keeps the one issue open while dev is red. |
@@ -106,6 +106,9 @@ and 08:39 UTC
 ([run 38370804480](https://github.com/Hikyo-Org/Hikyo/actions/runs/38370804480)).
 Treat scheduled repair and cache seeding as hours-scale, not minutes-scale;
 dispatch the workflow manually when a fresher result matters.
+Between 16 October and 3 November 2026 the 15-minute `queue-gate` schedule ran
+100 times in 17.7 days: gaps of 109 minutes at the shortest, 253 at the median
+and 623 at the longest. A repair that waits for it is not a repair.
 
 ## Coverage and trust rules
 
@@ -232,7 +235,7 @@ permission. Workers have no workflow-dispatch permission.
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
 uses 45 seconds and reserves the remaining absolute budget for a fresh blocking
-terminal publication. Feedback retains its four-minute job limit; maintenance
+publication. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
@@ -240,6 +243,25 @@ The initial job lookup tolerates GitHub briefly reporting that same executing
 job as pending, queued or in progress. One complete bounded Jobs API read must
 match its run, attempt, source head, unique job ID and original start timestamp.
 The absolute deadline is retained without polling or another execution budget.
+
+Setup, checkout and compilation take 24 seconds at the median and up to 42 on
+hosted runners, so a pass can run out of its 45 seconds on a healthy head. That
+is a flake, not a verdict. While the run attempt (`GITHUB_RUN_ATTEMPT`) is below
+three, the reserve publishes a blocking, non-terminal "PR validation pending"
+record in place of the terminal refusal, and the run still fails.
+`ci-queue-retry.yml` then reruns only the failed jobs of that run (a new job,
+so a new sixty-second budget) when a head publisher's reconcile step failed.
+The run attempt is the only loop bound: attempt 3 publishes the terminal
+refusal and is never rerun, the retry workflow does not follow itself, and it
+holds only `actions: write`, checks nothing out and runs no repository code. A
+pass that already published its verdict keeps it when the work clock ends a
+moment later. A pending record blocks like any other; the rerun, not the cron,
+settles it. If the retry workflow is disabled the record stays pending (blocking)
+until the next event or discovery run.
+
+The final authority reads of an admission (policy verifier, fork vouching, DCO,
+feedback) run at once and are judged in their former order; the final role
+inventory is still read last. None of them is skipped or reused.
 
 Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 504, or with a `gh` failure that reports no status (except authentication and

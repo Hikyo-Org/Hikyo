@@ -1,0 +1,51 @@
+# A publisher job that overruns its sixty-second budget (or fails on a read)
+# leaves a blocking, non-terminal check and fails its run. GitHub throttles the
+# discovery cron to hours, so rerun that run's failed jobs here: each rerun is a
+# new job with its own budget. The run attempt is the only loop bound, so this
+# can neither loop nor multiply: attempt 3 publishes the terminal refusal. This
+# workflow runs no repository code and checks nothing out.
+name: gate-queue-retry
+
+on:
+  workflow_run:
+    workflows: [gate-queue, gate-queue-worker, gate-dev]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: queue-retry-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  rerun:
+    # Keep the attempt bound in step with admissionMaxAttempts in scripts/ci/pr-gate/queue_deadline.go.
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Rerun failed head publishers with a new budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$RUN_ATTEMPT" -lt 3
+          # Only a head publisher whose reconcile step failed is worth another
+          # budget. Group, discovery and setup failures are left alone.
+          failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.conclusion == "failure" and (.name | test("^(dev-)?publish-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure"))] | length' |
+            awk '{ n += $1 } END { print n + 0 }')
+          if [ "$failed" -eq 0 ]; then
+            echo "No head publisher failed while reconciling; nothing to rerun."
+            exit 0
+          fi
+          echo "Rerunning $failed failed head publisher(s) of run $RUN_ID (attempt $RUN_ATTEMPT)."
+          gh run rerun "$RUN_ID" --failed
