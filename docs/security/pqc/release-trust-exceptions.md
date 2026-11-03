@@ -1,0 +1,35 @@
+# Release trust exceptions: external signing and platform limits (#1132)
+
+Status: **drafted for review, not operative**. Nothing here authorizes a signer, a
+root, a release or a cutover. It records, for the release and update surface,
+the limits that sit outside Hikyo's control, so that no `pqc-auth` claim is made
+for a chain that includes them. It extends, and does not replace, the
+[exception register](migration.md#exception-register) (E-03, E-11, E-12, E-15,
+E-17, E-18) and the [register decisions](../../adr/post-quantum-migration.md#decision-register)
+DEC-14 and DEC-15. The route facts for X16, X20 and X24 are in
+`docs/security/pqc/external-compatibility.md` on the #1134 branch and are not
+copied or edited here.
+
+Owner for every row: **Marc Went** (a person, as DEC-10 requires). Expiry:
+180 days from the date a row becomes effective or the next trigger, whichever is
+first; two renewals, then an ADR-recorded decision. A row is effective only once
+its peer, version, expiry and trigger are filled in by the owner; the version
+column below says what was read and what was not.
+
+| ID | Limit | What stays classical | Peer and version read | Claim it blocks | Recheck trigger | Residual risk |
+| --- | --- | --- | --- | --- | --- | --- |
+| R-01 | Sigstore keyless stable and nightly signing (E-03, X16) | Fulcio certificate and Rekor log signatures (ECDSA/Ed25519 by the public-good operator), the GitHub OIDC token | Public-good instance. The only statement read is the Sigstore blog of 2025-06-06, which says the instance waits for PQ support in Go's `crypto` before issuing PQ material; nothing later was read | A PQ claim for any stable manifest, catalog, metadata or provenance that rests on a keyless bundle alone | Sigstore states PQ issuance; cosign or `sigstore-go` ships a PQ bundle profile | A quantum forger of the log or certificate chain can produce a bundle that verifies. The first-party ML-DSA release signature is required in addition, never instead (DEC-15), and only where a verifier is taught to require it |
+| R-02 | Nightly track (E-15) | Keyless only; the nightly manifest, the installer-side recovery check of nightly metadata and catalog by `openssl` with the P-256 recovery key (`install/upgrade-nightly.sh`) | `nightly/v1` profile as built | Any nightly claim, and every claim that depends on `sudo hikyo upgrade` (nightly only), the unattended image replacement or the first-use bridge | A nightly PQ signer is decided by the owner; `upgrade-nightly.sh` gains a reader its host OpenSSL supports | A forged classical update replaces the binary that does the verifying, so this limits every other `pqc-auth` surface too |
+| R-03 | Image replacement (E-15) | The replacement image verifies itself with its own stamped trust (`internal/app/unattended_upgrade.go`) | Chart and image as built | The same as R-02 | A PQ pin slot exists in the stamped trust | The verifier is whatever the new image brings; an image signed classically brings its own pin |
+| R-04 | Chart image policy (Kyverno), keyed or keyless mode (E-03) | Kyverno's image verification, Cosign signatures on OCI payloads | Chart templates as built (`chart/hikyo/templates/kyverno-verify-images.yaml`); Kyverno's PQ status was not read | A PQ claim for admitted images | Kyverno or Cosign states PQ verification | Admission accepts a classically signed image |
+| R-05 | Operating system and package signing | Debian, RPM, APK and Arch packages are verified only through the signed release bundle; no repository-level package signing is produced, and the host package manager's own trust is the host's | Not read: dpkg, rpm, apk, pacman signature algorithms on any distribution | A PQ claim for a package installed any other way than through the bundle verifier | A distribution states PQ package signatures | An attacker who can forge the distribution's signature ships a malicious package that the bundle verifier never sees |
+| R-06 | Homebrew cask (nightly and stable) | The cask pins a SHA-256 of the artifact; Homebrew's tap trust and Git transport are the host's | `scripts/release/publish-homebrew-cask.sh` as built | A PQ claim for a Homebrew install | Homebrew states PQ tap signing | The cask file is classically authenticated by Git hosting only |
+| R-07 | Apple code signing and notarization | Developer ID and notarization tickets | **Not touched by #1132.** `docs/release/apple-signing.md` is the canonical policy and notarization submission needs its own authority | A PQ claim for a macOS binary or disk image | Apple states PQ signing | Gatekeeper accepts a classically signed binary, and there is no first-party PQ path on macOS |
+| R-08 | Commit signing, Go checksum database, source supply chain (I32) | Git signatures, `sum.golang.org`, GitHub-hosted source | Not read beyond the register | A PQ claim for the source that was built | A source host or Go states PQ support | A forged commit or checksum is built into a signed artifact |
+| R-09 | Fresh-install and first-use transport (E-11, X20, X24) | HTTPS to `raw.githubusercontent.com`, `github.com` and `api.github.com` by the host `curl` library; the install script itself and the trust-root hash pinned inside it | Host `curl` and TLS library versions unknown (X24) | A PQ claim for any host that took its anchor through this channel | A bootstrap that does not rely on a classical channel exists; the owner decides | The pinned root hash is only as authentic as the script that carries it |
+| R-10 | Hosts with an OpenSSL below 3.5 or no PQ reader (E-17) | The bootstrap script verifies with `openssl dgst` and embedded Python; it has no ML-DSA reader, and it is not given one | OpenSSL on a Linux systemd host is the distribution's; the build host here has OpenSSL 4.0.3 only | A PQ claim for any host that updates through that script | The script is retired or a reader its target distributions all support exists | Legacy hosts stay classical indefinitely and cannot be counted by Hikyo |
+| R-11 | Older binaries without the PQ reader (E-17) | A binary built before the PQ reader accepts classical-only updates forever, ignores sidecars, and cannot refuse a floor it does not know | Every shipped version | Any fleet-wide claim | None can be observed; third-party and offline copies are unmeasurable | A forger of classical metadata can still update these hosts |
+| R-12 | Sole ML-DSA recovery key (E-18, DEC-14) | Custody is **not named**. Losing the sole key leaves no in-band PQ trust change and no PQ-signed reinstall | Not applicable; no key exists | Any activation of the PQ recovery set | The owner names custody before a root is activated | Recovery is an operator-installed root of a higher generation, which is not an authenticated transition |
+
+No row is closed by this change. Each is registered with a named owner and an
+unblocking trigger so that the missing control stays visible.

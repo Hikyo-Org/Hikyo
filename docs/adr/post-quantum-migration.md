@@ -170,18 +170,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Signed upgrade compatibility and stable workflow signing
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** Trust documents
-> (root, metadata, catalog, stable policy, nightly policies, bridges) gain a
-> PQ-capable form valid only when the pinned required signature set verifies;
-> progression is sequence-only; a PQ authenticity claim is made only after a
-> persisted verification that required every algorithm. How PQ keys first reach
-> existing installs is unsolved and is a #1132 feasibility question: the claim
-> stays HOLD until #1132 closes or registers every binary-replacement path, and
-> the nightly track and image replacement have no PQ signer. Stable ML-DSA
-> signatures would come from a maintainer-held key at the local publish step,
-> not from keyless CI; keyless signing is unchanged and stays a classical
-> exception. Backup custody landed as the 2026-11-02 banner on that ADR's custody
-> section.
+Landed as the 2026-11-02 banners on [signed-upgrade-compatibility](./signed-upgrade-compatibility.md#release-identity-and-trust), [stable-workflow-signing](./stable-workflow-signing.md), [system-architecture](./system-architecture.md) and [oss-mechanics](./oss-mechanics.md), which are the only copies; operative when #1132 merges, and none activates a signer or root.
 
 ## Locked constraints preserved
 
