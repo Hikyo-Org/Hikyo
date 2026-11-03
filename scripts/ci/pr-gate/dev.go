@@ -395,6 +395,9 @@ func (q *queueController) mainRouteRefusal(ctx context.Context, p pull) (string,
 	return fmt.Sprintf("Feature PRs target dev. Retarget this one with: gh pr edit %d --base dev. This check stays red on this commit afterwards, which does not block dev; merge dev into the branch if its admission then fails. Main takes only same-repository release/ and hotfix/ branches and the CI definitions dev admission refuses.", p.Number), nil
 }
 
+// A verdict, not a failed read: another attempt would find the same bytes.
+var errDevPublisherDiffers = errors.New("dev publisher differs from main")
+
 func (q *queueController) devPublisherContract(ctx context.Context, p pull) error {
 	if q.checkName != devCheckName {
 		return nil
@@ -438,7 +441,7 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 			if revision == p.Base.SHA && p.Head.SHA == mainRef.Object.SHA && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
 				continue
 			}
-			return errors.New("dev publisher changes must land through the full main promotion gate first")
+			return errDevPublisherDiffers
 		}
 	}
 	return nil

@@ -69,6 +69,12 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 			}
 		}
 	}
+	if publish.Steps[1].With["sparse-checkout"] != "scripts/ci" {
+		t.Fatal("dev publisher must fetch only what it builds and runs")
+	}
+	if !strings.Contains(publish.Steps[0].Run, "body=$(read_jobs) || body=$(read_jobs)") {
+		t.Fatal("a retried clock read must replace a failed response, not follow it")
+	}
 	if len(publish.Steps) != 4 || !strings.Contains(publish.Steps[0].Run, "PR_GATE_DEADLINE=$((started + 60))") ||
 		!strings.Contains(publish.Steps[2].Run, "PR_GATE_DEADLINE - 15") || publish.Steps[3].If != "always()" ||
 		!strings.Contains(publish.Steps[3].Run, "--dev --dev-pr") || !strings.Contains(publish.Steps[3].Run, `--expected-head "$HEAD"`) {

@@ -54,11 +54,6 @@ func TestAdmissionJudgesFailedReadsInSerialOrder(t *testing.T) {
 			want: "invalid trusted main identity"},
 		{name: "main authority alone", build: newDevFixture, fail: []string{contents(main)}, want: contents(main)},
 		{name: "base copy before head copy", build: newDevFixture, fail: []string{base, head}, want: base},
-		{name: "differing base copy before head copy", build: newDevFixture, fail: []string{head},
-			arrange: func(f *queueFixture) {
-				f.api.responses[f.c.endpoint(base)] = map[string]string{"type": "file", "path": devGateWorkflowPath, "encoding": "base64", "content": "b3RoZXI="}
-			},
-			want: "must land through the full main promotion gate"},
 		{name: "head copy alone", build: newDevFixture, fail: []string{head}, want: head},
 		{name: "DCO before the CI definition check", build: newDevFixture, fail: []string{files}, verifies: true,
 			arrange: func(f *queueFixture) {
@@ -259,6 +254,37 @@ func TestExecuteDevRoutingRefusesAMovedPR(t *testing.T) {
 				t.Fatalf("got %v, want stale head work", err)
 			}
 			f.assertNoSuccess(t)
+		})
+	}
+}
+
+// Reruns cannot change these bytes, so a difference is a published refusal and a green
+// job, and it is judged before a failed read of a later copy.
+func TestDevPublisherDifferenceIsAVerdict(t *testing.T) {
+	other := map[string]string{"type": "file", "path": devGateWorkflowPath, "encoding": "base64", "content": "b3RoZXI="}
+	for name, arrange := range map[string]func(f *queueFixture, base, head string){
+		"base differs": func(f *queueFixture, base, _ string) { f.api.responses[base] = other },
+		"head differs": func(f *queueFixture, _, head string) { f.api.responses[head] = other },
+		"base differs and head unreadable": func(f *queueFixture, base, head string) {
+			f.api.responses[base], f.api.responses[head] = other, errors.New("head copy failed")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			contents := f.c.endpoint("contents/" + devGateWorkflowPath + "?ref=")
+			arrange(f, contents+f.pr.Base.SHA, contents+f.pr.Head.SHA)
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+				t.Error("a publisher difference reached the verifier")
+				return policyDecision{}, nil
+			}
+			if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+				t.Fatalf("a verdict must not fail the job: %v", err)
+			}
+			f.assertNoSuccess(t)
+			latest := newestQueueCheck(f.api.checks)
+			if latest == nil || latest.Conclusion != "failure" || !strings.Contains(latest.Output.Summary, "Merge dev into this branch") {
+				t.Fatalf("refusal not published: %+v", latest)
+			}
 		})
 	}
 }
