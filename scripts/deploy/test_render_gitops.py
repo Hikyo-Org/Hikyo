@@ -4,6 +4,7 @@ import copy
 import io
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -288,6 +289,18 @@ class GitOpsTests(unittest.TestCase):
                 gitops.entry()
             self.assertEqual(stopped.exception.code, 1)
             self.assertIn("gitops: refused:", errors.getvalue())
+
+    def test_script_entry_point_refuses_without_a_traceback(self):
+        result = subprocess.run(
+            [sys.executable, "-B", str(gitops.ROOT / "scripts/deploy/render_gitops.py"),
+             "--provider", "flux", "--chart-version", STABLE, "--chart-digest", DIGEST,
+             "--source-commit", COMMIT, "--values", str(self.directory / "absent.yaml"),
+             "--output", str(self.directory / "unwritten.yaml")],
+            capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("gitops: refused:", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertFalse((self.directory / "unwritten.yaml").exists())
 
     def test_cli_verifies_chart_then_image_before_output_and_never_applies(self):
         values = self.directory / "input.yaml"

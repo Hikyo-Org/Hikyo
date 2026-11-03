@@ -54,9 +54,10 @@ Hikyo server. Namespace and controller administration are operator actions.
      publisher record.
    - Skip the source-revision annotation check, because stable charts carry none.
 2. Use Python 3.11 or newer with PyYAML 6.0.3, Helm with OCI digest support,
-   Cosign 3.1.3, kubectl and jq, plus an authenticated `gh` for a stable chart. The publisher and controller fixture use
-   Helm 4.2.3. The controller campaign pins Flux 2.10.0 and Argo CD 3.5.6;
-   other versions need their own recorded qualification.
+   Cosign 3.1.3, kubectl and jq, plus an authenticated `gh` for a stable chart.
+   The publisher and controller fixture use Helm 4.2.3. The controller campaign
+   pins Flux 2.10.0 and Argo CD 3.5.6; other versions need their own recorded
+   qualification.
 3. Select the exact publicly retrievable chart and record its version, OCI
    manifest digest and full source commit. For a stable chart, first run
    `gh release view vX.Y.Z -R Hikyo-Org/Hikyo --json isDraft,isPrerelease` and
