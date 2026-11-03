@@ -3,6 +3,7 @@ package releasetrust
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -11,13 +12,15 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
-// PQFloor is the persisted claim that a verification required every algorithm
-// of a pinned set. It is a SEPARATE record from SnapshotFloor, which is
+// PQFloor records the highest PQ verification each stage reached and the pin it
+// was reached under. It is a SEPARATE record from SnapshotFloor, which is
 // unchanged: SnapshotFloor lives in the upgrade control row and the shared
 // `release-trust.json`, and a new member there is a migration on both engines.
-// Like SnapshotFloor it is an untrusted local claim, not signature authority,
-// and only the verifiers in this package produce a value above the zero floor.
-// Persisting it on a real host is NOT BUILT (E-17): no install path stores it.
+// Like SnapshotFloor it is an untrusted local claim, not signature authority:
+// the verifiers in this package produce the values they record, but nothing
+// prevents a hand-written or restored file from stating more (E-17), and
+// AuthenticityClaim reports only what the record says. Persisting it on a real
+// host is NOT BUILT.
 type PQFloor struct {
 	Format           int                    `json:"format"`
 	Profile          string                 `json:"profile"`
@@ -25,11 +28,15 @@ type PQFloor struct {
 	PinSHA256        releaseidentity.Digest `json:"pin_sha256"`
 	KeysetSequence   int64                  `json:"keyset_sequence"`
 	KeysetSHA256     releaseidentity.Digest `json:"keyset_sha256"`
+	KeysetPinSHA256  releaseidentity.Digest `json:"keyset_pin_sha256"`
 	MetadataSequence int64                  `json:"metadata_sequence"`
 	MetadataSHA256   releaseidentity.Digest `json:"metadata_sha256"`
+	MetadataPin      releaseidentity.Digest `json:"metadata_pin_sha256"`
 	CatalogSequence  int64                  `json:"catalog_sequence"`
 	CatalogSHA256    releaseidentity.Digest `json:"catalog_sha256"`
+	CatalogPin       releaseidentity.Digest `json:"catalog_pin_sha256"`
 	ReleaseSequence  int64                  `json:"release_sequence"`
+	ReleasePin       releaseidentity.Digest `json:"release_pin_sha256"`
 }
 
 func (f PQFloor) zero() bool { return f == (PQFloor{}) }
@@ -47,12 +54,15 @@ func (f PQFloor) Validate() error {
 		f.KeysetSequence < 0 || f.MetadataSequence < 0 || f.CatalogSequence < 0 || f.ReleaseSequence < 0 {
 		return pqErr(ErrPQMalformed, "persisted PQ floor")
 	}
-	for _, pair := range []struct {
+	for _, stage := range []struct {
 		sequence int64
 		digest   releaseidentity.Digest
-	}{{f.KeysetSequence, f.KeysetSHA256}, {f.MetadataSequence, f.MetadataSHA256}, {f.CatalogSequence, f.CatalogSHA256}} {
-		if (pair.sequence == 0) != (pair.digest == "") || (pair.digest != "" && pair.digest.Validate() != nil) {
-			return pqErr(ErrPQMalformed, "persisted PQ floor pair")
+		pin      releaseidentity.Digest
+		hasBytes bool
+	}{{f.KeysetSequence, f.KeysetSHA256, f.KeysetPinSHA256, true}, {f.MetadataSequence, f.MetadataSHA256, f.MetadataPin, true}, {f.CatalogSequence, f.CatalogSHA256, f.CatalogPin, true}, {f.ReleaseSequence, "", f.ReleasePin, false}} {
+		if (stage.sequence == 0) != (stage.pin == "") || (stage.pin != "" && stage.pin.Validate() != nil) ||
+			(stage.hasBytes && ((stage.sequence == 0) != (stage.digest == "") || (stage.digest != "" && stage.digest.Validate() != nil))) {
+			return pqErr(ErrPQMalformed, "persisted PQ floor stage")
 		}
 	}
 	return nil
@@ -83,16 +93,23 @@ func (f PQFloor) withPin(pin PQPin) PQFloor {
 	return f
 }
 
-// AuthenticityClaim reports whether this floor records a complete PQ
-// verification (keyset, metadata, catalog and a release) under exactly this
-// pin. Anything less cannot support a pqc-auth claim. It does not lift E-11 or
-// E-15: how the pin first reached this host is outside the check.
+// AuthenticityClaim reports whether this record says that keyset, metadata,
+// catalog and a release each verified under exactly this pin. A stage verified
+// under another pin, including an earlier generation, does not count, so a
+// generation change needs every stage verified again. It does not authenticate
+// the record and does not lift E-11 or E-15: how the pin first reached this host
+// is outside the check.
 func (f PQFloor) AuthenticityClaim(pin PQPin) error {
 	if err := f.check(pin); err != nil {
 		return err
 	}
-	if f.zero() || f.Generation != pin.generation || f.KeysetSequence < 1 || f.MetadataSequence < 1 || f.CatalogSequence < 1 || f.ReleaseSequence < 1 {
+	if f.zero() || f.Generation != pin.generation {
 		return pqErr(ErrPQMissing, "no persisted verification that required every algorithm")
+	}
+	for _, stagePin := range []releaseidentity.Digest{f.KeysetPinSHA256, f.MetadataPin, f.CatalogPin, f.ReleasePin} {
+		if stagePin != pin.digest {
+			return pqErr(ErrPQMissing, "a stage was not verified under this pin")
+		}
 	}
 	return nil
 }
@@ -110,7 +127,13 @@ func DecodePQFloor(raw []byte) (PQFloor, error) {
 	if len(raw) == 0 || len(raw) > 4096 || definitions.DecodeStrict(raw, &f) != nil {
 		return PQFloor{}, pqErr(ErrPQMalformed, "persisted PQ floor")
 	}
-	return f, f.Validate()
+	if err := f.Validate(); err != nil {
+		return PQFloor{}, err
+	}
+	if f.zero() {
+		return PQFloor{}, pqErr(ErrPQMalformed, "persisted PQ floor is empty")
+	}
+	return f, nil
 }
 
 // PQFloorPath is the sibling of the shared SnapshotFloor state file, guarded by
@@ -176,6 +199,12 @@ func (p PQPin) linkedRecovery(snapshot Snapshot) error {
 // (policy, legacy-track metadata and catalog) need the full recovery set.
 // Keyless-signed stable metadata and catalog keep Sigstore (E-03) and gain one
 // maintainer-held ML-DSA release signature; CI never holds either key.
+//
+// Once the keyset has verified under the full recovery set it is authority in its
+// own right, so a refusal later in this function (for example because the keyset
+// revoked every key covering the release) returns the keyset-advanced floor
+// beside the error. A caller persists that floor, so an older keyset cannot be
+// replayed to revive a revoked key. On any earlier failure the floor is zero.
 func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, sets PQSnapshotSets, floor PQFloor) (VerifiedPQKeyset, PQFloor, error) {
 	if err := pin.linkedRecovery(snapshot); err != nil {
 		return VerifiedPQKeyset{}, PQFloor{}, err
@@ -184,17 +213,25 @@ func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, s
 	if err != nil {
 		return VerifiedPQKeyset{}, PQFloor{}, err
 	}
+	keysetFloor := next
+	refuse := func(err error) (VerifiedPQKeyset, PQFloor, error) {
+		return VerifiedPQKeyset{}, keysetFloor, err
+	}
 	state := snapshot.state
 	if releaseidentity.Hash(material.Metadata) != state.floor.MetadataSHA256 || releaseidentity.Hash(material.Catalog) != state.floor.CatalogSHA256 {
-		return VerifiedPQKeyset{}, PQFloor{}, pqErr(ErrPQScope, "PQ evidence differs from the authenticated snapshot")
+		return refuse(pqErr(ErrPQScope, "PQ evidence differs from the authenticated snapshot"))
 	}
 	version := ""
 	if state.metadata.HighestRelease != nil {
 		version = *state.metadata.HighestRelease
 	}
-	trust := func(kind, subject string, sequence int64, policy releaseidentity.Digest) PQBinding {
-		return PQBinding{Kind: kind, Channel: string(releaseidentity.StableV1), Version: version, Subject: subject, Source: state.metadata.SourceCommit, Sequence: uint64(sequence), Policy: policy}
+	trust := func(kind, subject string, sequence int64) PQBinding {
+		return PQBinding{Kind: kind, Channel: string(releaseidentity.StableV1), Version: version, Subject: subject, Source: state.metadata.SourceCommit, Sequence: uint64(sequence), Policy: state.stablePolicy}
 	}
+	// The role is chosen from the authenticated metadata's signer field. That is
+	// a document claim, but it can only move the requirement between two sets that
+	// both need an ML-DSA signature, and the delegated branch also needs a
+	// recovery-signed policy below.
 	signers := pin.recovery
 	if state.metadata.Event.SignedBy == StableWorkflowSigner {
 		highest := int64(1)
@@ -202,38 +239,44 @@ func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, s
 			highest = *state.metadata.HighestReleaseSequence
 		}
 		if signers, err = keyset.releaseSet(highest); err != nil {
-			return VerifiedPQKeyset{}, PQFloor{}, err
+			return refuse(err)
 		}
 	}
-	if err := verifyPQSet(pin, signers, trust(PQKindMetadata, "metadata.json", state.metadata.Sequence, state.stablePolicy), sha256Of(material.Metadata), sets.MetadataSet); err != nil {
-		return VerifiedPQKeyset{}, PQFloor{}, err
+	if err := verifyPQSet(pin, signers, trust(PQKindMetadata, "metadata.json", state.metadata.Sequence), sha256Of(material.Metadata), sets.MetadataSet); err != nil {
+		return refuse(err)
 	}
-	if err := verifyPQSet(pin, signers, trust(PQKindCatalog, "catalog.json", state.catalog.Sequence, state.stablePolicy), sha256Of(material.Catalog), sets.CatalogSet); err != nil {
-		return VerifiedPQKeyset{}, PQFloor{}, err
+	if err := verifyPQSet(pin, signers, trust(PQKindCatalog, "catalog.json", state.catalog.Sequence), sha256Of(material.Catalog), sets.CatalogSet); err != nil {
+		return refuse(err)
 	}
+	// Policies are signed once and stay valid across releases: their bindings use
+	// only the policy's own fields, never the current release's version, source
+	// commit or catalog sequence, so offline recovery keys do not sign routine
+	// releases.
 	if state.workflowPolicy != nil {
 		// A delegation grants CI no authority over itself: only the recovery set signs it.
-		binding := trust(PQKindStablePolicy, "stable-policy.json", state.workflowPolicy.MinimumReleaseSequence, state.legacyStablePolicy)
+		binding := PQBinding{Kind: PQKindStablePolicy, Channel: string(releaseidentity.StableV1), Subject: "stable-policy.json", Sequence: uint64(state.workflowPolicy.MinimumReleaseSequence), Policy: state.legacyStablePolicy}
 		if err := verifyPQSet(pin, pin.recovery, binding, sha256Of(material.StablePolicy), sets.StablePolicySet); err != nil {
-			return VerifiedPQKeyset{}, PQFloor{}, err
+			return refuse(err)
 		}
 	}
 	if material.NightlyPolicy != nil {
-		binding := trust(PQKindNightlyPolicy, "nightly-policy.json", state.catalog.Sequence, state.stablePolicy)
+		// A nightly policy has no sequence of its own; its currency is the
+		// catalog's digest inventory, so the binding carries the constant 1.
+		binding := PQBinding{Kind: PQKindNightlyPolicy, Channel: string(releaseidentity.NightlyV1), Subject: "nightly-policy.json", Sequence: 1, Policy: state.legacyStablePolicy}
 		if err := verifyPQSet(pin, pin.recovery, binding, sha256Of(material.NightlyPolicy), sets.NightlyPolicySet); err != nil {
-			return VerifiedPQKeyset{}, PQFloor{}, err
+			return refuse(err)
 		}
 	}
 	if err := checkFloor(state.metadata.Sequence, state.floor.MetadataSHA256, floor.MetadataSequence, floor.MetadataSHA256); err != nil {
-		return VerifiedPQKeyset{}, PQFloor{}, pqErr(ErrPQRollback, "metadata sequence")
+		return refuse(pqErr(ErrPQRollback, "metadata sequence"))
 	}
 	if err := checkFloor(state.catalog.Sequence, state.floor.CatalogSHA256, floor.CatalogSequence, floor.CatalogSHA256); err != nil {
-		return VerifiedPQKeyset{}, PQFloor{}, pqErr(ErrPQRollback, "catalog sequence")
+		return refuse(pqErr(ErrPQRollback, "catalog sequence"))
 	}
-	next.MetadataSequence, next.MetadataSHA256 = state.metadata.Sequence, state.floor.MetadataSHA256
-	next.CatalogSequence, next.CatalogSHA256 = state.catalog.Sequence, state.floor.CatalogSHA256
+	next.MetadataSequence, next.MetadataSHA256, next.MetadataPin = state.metadata.Sequence, state.floor.MetadataSHA256, pin.digest
+	next.CatalogSequence, next.CatalogSHA256, next.CatalogPin = state.catalog.Sequence, state.floor.CatalogSHA256, pin.digest
 	if err := floor.Advance(next); err != nil {
-		return VerifiedPQKeyset{}, PQFloor{}, err
+		return refuse(err)
 	}
 	return keyset, next, nil
 }
@@ -268,7 +311,7 @@ func VerifyPQRelease(pin PQPin, keyset VerifiedPQKeyset, snapshot Snapshot, rele
 		return PQFloor{}, pqErr(ErrPQRollback, "release sequence")
 	}
 	next := floor.withPin(pin)
-	next.ReleaseSequence = int64(identity.Sequence)
+	next.ReleaseSequence, next.ReleasePin = int64(identity.Sequence), pin.digest
 	if next.KeysetSequence != keyset.state.sequence || next.KeysetSHA256 != keyset.state.digest {
 		return PQFloor{}, pqErr(ErrPQScope, "keyset differs from the persisted verification")
 	}
@@ -318,7 +361,7 @@ func VerifyPQBridge(pin PQPin, snapshot Snapshot, material BridgeMaterial, setRa
 	}
 	bridge, err := VerifyBridge(snapshot, material)
 	if err != nil {
-		return VerifiedBridge{}, err
+		return VerifiedBridge{}, fmt.Errorf("%w: %v", ErrPQScope, err)
 	}
 	target := bridge.Statement().Target
 	binding := PQBinding{Kind: PQKindBridge, Channel: string(target.Profile), Version: target.Version, Subject: "bridge.json", Source: target.Commit, Sequence: target.Sequence, Policy: bridge.Statement().TargetPolicySHA256}

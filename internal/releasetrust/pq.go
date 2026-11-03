@@ -243,15 +243,6 @@ func PQKeyID(algorithm string, publicKeyPEM []byte) (string, error) {
 	return key.id, err
 }
 
-// RecoverySuite is the verifier-held recovery suite in signing order.
-func (p PQPin) RecoverySuite() []PQSuiteMember {
-	suite := make([]PQSuiteMember, len(p.recovery))
-	for i, member := range p.recovery {
-		suite[i] = PQSuiteMember{Algorithm: member.algorithm, KeyID: member.key.id}
-	}
-	return suite
-}
-
 func parsePQSet(raw []byte) (map[string]PQSignature, error) {
 	if len(raw) == 0 {
 		return nil, pqErr(ErrPQMissing, "no signature set")
@@ -344,12 +335,12 @@ func sha256Of(raw []byte) [sha256.Size]byte { return sha256.Sum256(raw) }
 func hashReader(reader io.Reader) ([sha256.Size]byte, error) {
 	var out [sha256.Size]byte
 	if reader == nil {
-		return out, errors.New("missing artifact reader")
+		return out, pqErr(ErrPQMalformed, "missing artifact reader")
 	}
 	hash := sha256.New()
 	count, err := io.Copy(hash, io.LimitReader(reader, MaxArtifactBytes+1))
 	if err != nil {
-		return out, err
+		return out, pqErr(ErrPQMalformed, "artifact read")
 	}
 	if count > MaxArtifactBytes {
 		return out, pqErr(ErrPQBound, "artifact bytes")

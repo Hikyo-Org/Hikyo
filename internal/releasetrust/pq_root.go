@@ -163,7 +163,7 @@ func VerifyPQKeyset(pin PQPin, floor PQFloor, keysetRaw, setRaw []byte, keyFiles
 		state.keys = append(state.keys, verifiedReleaseKey{meta: entry, key: key})
 	}
 	next := floor.withPin(pin)
-	next.KeysetSequence, next.KeysetSHA256 = keyset.Sequence, digest
+	next.KeysetSequence, next.KeysetSHA256, next.KeysetPinSHA256 = keyset.Sequence, digest, pin.digest
 	return VerifiedPQKeyset{state: state}, next, nil
 }
 

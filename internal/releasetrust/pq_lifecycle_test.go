@@ -91,6 +91,12 @@ func (h host) apply(t *testing.T, fx *testfixture.PQFixture, requirePQ bool) err
 		}
 		keyset, next, err := releasetrust.VerifyPQSnapshot(fx.Pin, snapshot, fx.Material, fx.Sets, pqFloor)
 		if err != nil {
+			// An authenticated keyset is remembered even when it refuses this update.
+			if remembered, encodeErr := releasetrust.EncodePQFloor(next); encodeErr == nil && next != (releasetrust.PQFloor{}) {
+				if writeErr := atomicWrite(h.pqPath(), remembered); writeErr != nil {
+					return writeErr
+				}
+			}
 			return err
 		}
 		if next, err = releasetrust.VerifyPQRelease(fx.Pin, keyset, snapshot, release, fx.Stable.Manifest, fx.ManifestSet, next); err != nil {
@@ -193,6 +199,9 @@ func TestLifecycleInterruptedUpdateConvergesAndNeverResets(t *testing.T) {
 			}
 		})
 	}
+	// This proves a half-written file is refused, not that every damaged or
+	// missing file is: a missing file is a zero floor by design and a restored
+	// or hand-edited file can state anything (E-17).
 	t.Run("a torn PQ floor refuses and is never silently reset", func(t *testing.T) {
 		h := host{dir: t.TempDir()}
 		fx := testfixture.NewPQStableWorkflow(t)
@@ -216,9 +225,10 @@ func TestLifecycleInterruptedUpdateConvergesAndNeverResets(t *testing.T) {
 func TestLifecycleFailuresChangeNoState(t *testing.T) {
 	for _, c := range []struct {
 		name string
+		want error
 		edit func(t *testing.T, fx *testfixture.PQFixture)
 	}{
-		{"bad ML-DSA signature on metadata", func(t *testing.T, fx *testfixture.PQFixture) {
+		{"bad ML-DSA signature on metadata", releasetrust.ErrPQSignature, func(t *testing.T, fx *testfixture.PQFixture) {
 			var set releasetrust.PQSignatureSet
 			if err := json.Unmarshal(fx.Sets.MetadataSet, &set); err != nil {
 				t.Fatal(err)
@@ -228,9 +238,9 @@ func TestLifecycleFailuresChangeNoState(t *testing.T) {
 			set.Signatures[0].Signature = base64.StdEncoding.EncodeToString(sig)
 			fx.Sets.MetadataSet = testfixture.JSON(t, set)
 		}},
-		{"stripped PQ sidecar", func(t *testing.T, fx *testfixture.PQFixture) { fx.Sets.CatalogSet = nil }},
-		{"stripped manifest sidecar", func(t *testing.T, fx *testfixture.PQFixture) { fx.ManifestSet = nil }},
-		{"random signature bytes", func(t *testing.T, fx *testfixture.PQFixture) {
+		{"stripped PQ sidecar", releasetrust.ErrPQMissing, func(t *testing.T, fx *testfixture.PQFixture) { fx.Sets.CatalogSet = nil }},
+		{"stripped manifest sidecar", releasetrust.ErrPQMissing, func(t *testing.T, fx *testfixture.PQFixture) { fx.ManifestSet = nil }},
+		{"random signature bytes", releasetrust.ErrPQSignature, func(t *testing.T, fx *testfixture.PQFixture) {
 			var set releasetrust.PQSignatureSet
 			if err := json.Unmarshal(fx.ManifestSet, &set); err != nil {
 				t.Fatal(err)
@@ -250,9 +260,11 @@ func TestLifecycleFailuresChangeNoState(t *testing.T) {
 			before := h.snapshotState(t)
 			fx.Reissue(t, 3)
 			c.edit(t, fx)
-			if err := h.apply(t, fx, true); err == nil {
+			err := h.apply(t, fx, true)
+			if err == nil {
 				t.Fatal("accepted a failing update")
 			}
+			class(t, err, c.want)
 			if after := h.snapshotState(t); !bytes.Equal(before[0], after[0]) || !bytes.Equal(before[1], after[1]) {
 				t.Fatal("a refused update changed persisted state")
 			}
@@ -300,12 +312,7 @@ func TestLifecycleSignerRotationRevocationAndOfflineRecovery(t *testing.T) {
 	}
 	firstKeyset, firstKeysetSet := fx.Sets.Keyset, fx.Sets.KeysetSet
 	t.Run("release signer rotation", func(t *testing.T) {
-		fresh := testfixture.NewPQStableWorkflow(t) // supplies a second generated release key
-		pemKey := spkiPEM(t, fresh.ReleaseKey.PublicKey())
-		fx.KeyFiles["release-mldsa-2.pub"] = pemKey
-		fx.ReleaseKey = fresh.ReleaseKey
-		fx.Keyset.Sequence = 2
-		fx.Keyset.Keys = []releasetrust.PQReleaseKey{{Algorithm: releasetrust.AlgorithmMLDSA65, ID: "release-mldsa-2", PublicKey: "release-mldsa-2.pub", SHA256: sha(pemKey), ValidFromReleaseSequence: 1}}
+		fx.ReplaceReleaseKey(t)
 		fx.Reissue(t, 3)
 		if err := h.apply(t, fx, true); err != nil {
 			t.Fatal(err)
@@ -328,7 +335,8 @@ func TestLifecycleSignerRotationRevocationAndOfflineRecovery(t *testing.T) {
 			t.Fatal("state changed")
 		}
 	})
-	t.Run("revocation stops all PQ verification until a new keyset", func(t *testing.T) {
+	t.Run("revocation stops all PQ verification, is remembered, and cannot be replayed away", func(t *testing.T) {
+		notRevoked, notRevokedSet := fx.Sets.Keyset, fx.Sets.KeysetSet // authentic keyset 2, key still valid
 		fx.Keyset.Sequence = 3
 		fx.Keyset.Keys[0].Revoked = true
 		fx.Reissue(t, 4)
@@ -338,8 +346,22 @@ func TestLifecycleSignerRotationRevocationAndOfflineRecovery(t *testing.T) {
 			t.Fatal("a revoked release key still verified")
 		}
 		class(t, err, releasetrust.ErrPQScope)
-		if after := h.snapshotState(t); !bytes.Equal(before[0], after[0]) || !bytes.Equal(before[1], after[1]) {
-			t.Fatal("revocation attempt changed state")
+		after := h.snapshotState(t)
+		if !bytes.Equal(before[0], after[0]) {
+			t.Fatal("a refused update changed the classical floor")
+		}
+		remembered, err := releasetrust.DecodePQFloor(after[1])
+		if err != nil || remembered.KeysetSequence != 3 {
+			t.Fatalf("the refusing keyset was not remembered: %+v %v", remembered, err)
+		}
+		// Replay: the older keyset (key valid) with fresh metadata that the revoked key signed.
+		replay := *fx
+		replay.Sets.Keyset, replay.Sets.KeysetSet = notRevoked, notRevokedSet
+		again := h.snapshotState(t)
+		err = h.apply(t, &replay, true)
+		class(t, err, releasetrust.ErrPQRollback)
+		if now := h.snapshotState(t); !bytes.Equal(again[0], now[0]) || !bytes.Equal(again[1], now[1]) {
+			t.Fatal("the replay changed state")
 		}
 		// The legacy installer keeps working: PQ is not required on any shipping path.
 		if err := h.apply(t, fx, false); err != nil {
@@ -349,10 +371,9 @@ func TestLifecycleSignerRotationRevocationAndOfflineRecovery(t *testing.T) {
 	t.Run("offline recovery of a lost ML-DSA recovery key", func(t *testing.T) {
 		// No in-band transition exists: the operator installs a new root from an
 		// independently verified source (generation 2). This is E-11, not proof.
-		fx.Keyset.Keys[0].Revoked = false
 		oldPin := fx.Pin
+		fx.ReplaceReleaseKey(t) // a revoked key is replaced, never un-revoked
 		fx.ReplaceRecovery(t)
-		fx.Keyset.Sequence = 5
 		fx.Reissue(t, 5)
 		if err := h.apply(t, fx, true); err != nil {
 			t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -174,6 +175,20 @@ func (fx *PQFixture) TrustBinding(kind, subject string, sequence int64, policy r
 	return releasetrust.PQBinding{Kind: kind, Channel: string(releaseidentity.StableV1), Version: version, Subject: subject, Source: metadata.SourceCommit, Sequence: uint64(sequence), Policy: policy}
 }
 
+// StablePolicyBinding and NightlyPolicyBinding mirror the verifier: policy
+// bindings use only the policy's own fields, so they survive new releases.
+func (fx *PQFixture) StablePolicyBinding(t testing.TB) releasetrust.PQBinding {
+	var policy releasetrust.StablePolicy
+	if err := json.Unmarshal(fx.Material.StablePolicy, &policy); err != nil {
+		t.Fatal(err)
+	}
+	return releasetrust.PQBinding{Kind: releasetrust.PQKindStablePolicy, Channel: string(releaseidentity.StableV1), Subject: "stable-policy.json", Sequence: uint64(policy.MinimumReleaseSequence), Policy: releaseidentity.Hash(fx.Pinned.Root)}
+}
+
+func (fx *PQFixture) NightlyPolicyBinding() releasetrust.PQBinding {
+	return releasetrust.PQBinding{Kind: releasetrust.PQKindNightlyPolicy, Channel: string(releaseidentity.NightlyV1), Subject: "nightly-policy.json", Sequence: 1, Policy: releaseidentity.Hash(fx.Pinned.Root)}
+}
+
 // Policy is the policy digest the verifier binds trust documents to.
 func (fx *PQFixture) Policy() releaseidentity.Digest {
 	if len(fx.Material.StablePolicy) > 0 {
@@ -215,7 +230,10 @@ func (fx *PQFixture) Resign(t testing.TB) {
 		CatalogSet:  fx.Set(t, fx.TrustSigners(t, releasetrust.PQKindCatalog), fx.TrustSigners(t, releasetrust.PQKindCatalog), fx.TrustBinding(releasetrust.PQKindCatalog, "catalog.json", catalog.Sequence, fx.Policy()), fx.Material.Catalog),
 	}
 	if len(fx.Material.StablePolicy) > 0 {
-		fx.Sets.StablePolicySet = fx.Set(t, rec(releasetrust.PQKindStablePolicy), rec(releasetrust.PQKindStablePolicy), fx.TrustBinding(releasetrust.PQKindStablePolicy, "stable-policy.json", 1, releaseidentity.Hash(fx.Pinned.Root)), fx.Material.StablePolicy)
+		fx.Sets.StablePolicySet = fx.Set(t, rec(releasetrust.PQKindStablePolicy), rec(releasetrust.PQKindStablePolicy), fx.StablePolicyBinding(t), fx.Material.StablePolicy)
+	}
+	if len(fx.Material.NightlyPolicy) > 0 {
+		fx.Sets.NightlyPolicySet = fx.Set(t, rec(releasetrust.PQKindNightlyPolicy), rec(releasetrust.PQKindNightlyPolicy), fx.NightlyPolicyBinding(), fx.Material.NightlyPolicy)
 	}
 	manifest := fx.ReleaseBinding(releasetrust.PQKindReleaseManifest, "release-manifest.json", 1)
 	fx.ManifestSet = fx.Set(t, fx.ReleaseMembers(t, releasetrust.PQKindReleaseManifest), fx.ReleaseMembers(t, releasetrust.PQKindReleaseManifest), manifest, fx.Stable.Manifest)
@@ -235,10 +253,10 @@ func (fx *PQFixture) Reissue(t testing.TB, sequence int64) {
 	fx.Metadata.Sequence, fx.Catalog.Sequence = sequence, sequence
 	m := fx.Material
 	m.Metadata = JSON(t, fx.Metadata)
-	m.MetadataSignature = fx.SignKeyless(m.Metadata, fx.Commit, "v"+fx.Version)
+	m.MetadataSignature = fx.SignKeyless(m.Metadata, fx.Metadata.SourceCommit, fx.Metadata.ReleaseTag)
 	fx.Catalog.StableMetadataSHA256 = releaseidentity.Hash(m.Metadata)
 	m.Catalog = JSON(t, fx.Catalog)
-	m.CatalogSignature = fx.SignKeyless(m.Catalog, fx.Commit, "v"+fx.Version)
+	m.CatalogSignature = fx.SignKeyless(m.Catalog, fx.Metadata.SourceCommit, fx.Metadata.ReleaseTag)
 	fx.Material = m
 	fx.Resign(t)
 }
@@ -266,4 +284,45 @@ func (fx *PQFixture) ReplaceRecovery(t testing.TB) {
 	fx.Pin = pin
 	fx.Keyset.Sequence++
 	fx.Resign(t)
+}
+
+// AddNightlyPolicy (recovery-signed track only) publishes a currently authorized
+// nightly policy beside the catalog and signs its PQ set.
+func (fx *PQFixture) AddNightlyPolicy(t testing.TB) {
+	t.Helper()
+	policy, _, _ := WorkflowSigner(t)
+	nightly := policy.NightlyPolicy
+	nightly.Schema, nightly.ProtectedRef = "hikyo.dev/nightly-policy/v1", "refs/heads/main"
+	if nightly.RevokedManifests == nil {
+		nightly.RevokedManifests = []releaseidentity.Digest{}
+	}
+	fx.NightlyPolicy = JSON(t, nightly)
+	fx.Catalog.NightlyPolicies = append(fx.Catalog.NightlyPolicies, releaseidentity.Hash(fx.NightlyPolicy))
+	fx.Material = fx.Fixture.Material(t)
+	fx.Resign(t)
+}
+
+// SecondRelease (delegated track only) publishes metadata and catalog for a
+// later release, 1.0.1 at sequence 2 from another commit, with the policy bytes
+// unchanged. The second manifest itself is not built: only trust documents move.
+func (fx *PQFixture) SecondRelease(t testing.TB) {
+	t.Helper()
+	version, sequence := "1.0.1", int64(2)
+	fx.Metadata.Releases = append(fx.Metadata.Releases, releasetrust.Release{Version: version, Sequence: sequence, ManifestSHA256: string(releaseidentity.Hash([]byte("second manifest")))})
+	fx.Metadata.HighestRelease, fx.Metadata.HighestReleaseSequence = &version, &sequence
+	fx.Metadata.SourceCommit, fx.Metadata.ReleaseTag = strings.Repeat("b", 40), "v"+version
+	fx.Reissue(t, fx.Metadata.Sequence+1)
+}
+
+// ReplaceReleaseKey generates a new release key, makes it the only keyset entry
+// from release sequence 1 and advances the keyset sequence. It never un-revokes
+// an old key. The caller re-signs with Reissue.
+func (fx *PQFixture) ReplaceReleaseKey(t testing.TB) {
+	t.Helper()
+	fx.ReleaseKey = newMLDSA(t)
+	pemKey := mldsaPEM(t, fx.ReleaseKey)
+	name := "release-mldsa-" + strconv.Itoa(len(fx.KeyFiles)+1) + ".pub"
+	fx.KeyFiles[name] = pemKey
+	fx.Keyset.Sequence++
+	fx.Keyset.Keys = []releasetrust.PQReleaseKey{{Algorithm: releasetrust.AlgorithmMLDSA65, ID: strings.TrimSuffix(name, ".pub"), PublicKey: name, SHA256: string(releaseidentity.Hash(pemKey)), ValidFromReleaseSequence: 1}}
 }

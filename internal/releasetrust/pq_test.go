@@ -109,7 +109,7 @@ func TestPQSnapshotRefusesEveryTamperedAuthorityBoundary(t *testing.T) {
 		}},
 		{"stable policy lacks recovery signatures", releasetrust.ErrPQMissing, func(t *testing.T, fx *testfixture.PQFixture, s *releasetrust.PQSnapshotSets) {
 			rel := fx.ReleaseMembers(t, releasetrust.PQKindStablePolicy)
-			s.StablePolicySet = fx.Set(t, rel, rel, fx.TrustBinding(releasetrust.PQKindStablePolicy, "stable-policy.json", 1, releaseidentity.Hash(fx.Pinned.Root)), fx.Material.StablePolicy)
+			s.StablePolicySet = fx.Set(t, rel, rel, fx.StablePolicyBinding(t), fx.Material.StablePolicy)
 		}},
 	}
 	for _, c := range cases {
@@ -225,7 +225,7 @@ func TestPQReleaseAndArtifactBindings(t *testing.T) {
 			return err
 		}},
 		{"release sequence rolled back", releasetrust.ErrPQRollback, func(t *testing.T, fx *testfixture.PQFixture, s releasetrust.Snapshot, k releasetrust.VerifiedPQKeyset, r releasetrust.VerifiedRelease, f releasetrust.PQFloor) error {
-			f.ReleaseSequence = 2
+			f.ReleaseSequence, f.ReleasePin = 2, fx.Pin.Digest()
 			_, err := releasetrust.VerifyPQRelease(fx.Pin, k, s, r, fx.Stable.Manifest, fx.ManifestSet, f)
 			return err
 		}},

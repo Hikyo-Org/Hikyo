@@ -203,7 +203,7 @@ func TestPQFloorIsSequenceOnlyAndRefusesRollbackAndNewerFormats(t *testing.T) {
 				f.MetadataSequence--
 				f.MetadataSHA256 = releaseidentity.Hash([]byte("x"))
 			},
-			func(f *releasetrust.PQFloor) { f.ReleaseSequence = 0 },
+			func(f *releasetrust.PQFloor) { f.ReleaseSequence, f.ReleasePin = 0, "" },
 			func(f *releasetrust.PQFloor) { f.Generation = 0 },
 		} {
 			next := floor
@@ -215,7 +215,7 @@ func TestPQFloorIsSequenceOnlyAndRefusesRollbackAndNewerFormats(t *testing.T) {
 	})
 	t.Run("claim needs this pin and every stage", func(t *testing.T) {
 		partial := floor
-		partial.ReleaseSequence = 0
+		partial.ReleaseSequence, partial.ReleasePin = 0, ""
 		if partial.AuthenticityClaim(fx.Pin) == nil {
 			t.Fatal("claim without a verified release")
 		}

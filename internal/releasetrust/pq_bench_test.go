@@ -90,14 +90,20 @@ func BenchmarkPQVerifyArtifactSignature(b *testing.B) {
 	}
 }
 
-// TestPQSizesAreRecorded pins the frozen size facts the baseline cites.
-func TestPQSizesAreRecorded(t *testing.T) {
+// TestPQSizesArePinned pins the frozen size facts the baseline cites. The
+// fixture's names and digests have fixed lengths, so these are exact.
+func TestPQSizesArePinned(t *testing.T) {
 	fx := testfixture.NewPQStableWorkflow(t)
-	t.Logf("root v2 %d B; keyset %d B; keyset set %d B; metadata set %d B; catalog set %d B; manifest set %d B; policy set %d B",
-		len(fx.RootV2), len(fx.Sets.Keyset), len(fx.Sets.KeysetSet), len(fx.Sets.MetadataSet), len(fx.Sets.CatalogSet), len(fx.ManifestSet), len(fx.Sets.StablePolicySet))
-	t.Logf("ML-DSA-65 public key PEM %d B; recovery P-256 PEM %d B; legacy metadata %d B; legacy catalog %d B; manifest %d B",
-		len(fx.KeyFiles["recovery-mldsa-1.pub"]), len(fx.Pinned.RecoveryPublicKey), len(fx.Material.Metadata), len(fx.Material.Catalog), len(fx.Stable.Manifest))
-	if len(fx.ManifestSet) < 3309*4/3 || len(fx.ManifestSet) > 8192 {
-		t.Fatalf("manifest set size %d outside the expected envelope", len(fx.ManifestSet))
+	for name, c := range map[string]struct{ got, want int }{
+		"release-role signature set":  {len(fx.ManifestSet), 4592},
+		"recovery-role signature set": {len(fx.Sets.KeysetSet), 4831},
+		"ML-DSA-65 public key PEM":    {len(fx.KeyFiles["recovery-mldsa-1.pub"]), 2726},
+		"P-256 public key PEM":        {len(fx.Pinned.RecoveryPublicKey), 178},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: %d bytes, want %d", name, c.got, c.want)
+		}
 	}
+	t.Logf("root v2 %d B; keyset %d B; metadata set %d B; policy set %d B; legacy metadata %d B; manifest %d B",
+		len(fx.RootV2), len(fx.Sets.Keyset), len(fx.Sets.MetadataSet), len(fx.Sets.StablePolicySet), len(fx.Material.Metadata), len(fx.Stable.Manifest))
 }

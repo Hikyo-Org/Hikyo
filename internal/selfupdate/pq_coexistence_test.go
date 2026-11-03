@@ -12,6 +12,13 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 )
 
+// This proves two narrow things about the shipped stable installer's
+// verifyStable: it ignores PQ sidecars published beside a release and leaves a
+// sibling PQ floor untouched, and a build stamped with a v2 root refuses before
+// writing state. The root is stamped at build time, so no shipped client is ever
+// handed a v2 root: the second case describes a build that does not exist, not
+// a refusal real old clients will perform. Real old clients keep accepting
+// classical-only releases (R-11).
 func TestLegacyStableInstallerIsUnchangedByPQSidecarsAndRefusesThePQRoot(t *testing.T) {
 	pq := testfixture.NewPQStableWorkflow(t)
 	f, m, stable := pq.Fixture, pq.Material, pq.Stable
@@ -57,7 +64,7 @@ func TestLegacyStableInstallerIsUnchangedByPQSidecarsAndRefusesThePQRoot(t *test
 			t.Fatalf("legacy installer touched the PQ floor: %v", err)
 		}
 	})
-	t.Run("an installer without the PQ reader refuses the PQ root and changes nothing", func(t *testing.T) {
+	t.Run("a hypothetical build stamped with the PQ root refuses and changes nothing", func(t *testing.T) {
 		installer, status, statePath := setup(t, pq.RootV2)
 		if err := installer.verifyStable(t.Context(), status, archiveName, archive); err == nil {
 			t.Fatal("a v1 installer accepted a PQ root it cannot enforce")
