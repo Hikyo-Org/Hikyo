@@ -23,6 +23,15 @@ const proofSchema = "hikyo.dev/source-validation/v1"
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 var repoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
+// The repository is pasted into API paths, where a dot segment would change the route.
+func validRepository(name string) bool {
+	if !repoPattern.MatchString(name) {
+		return false
+	}
+	owner, repo, _ := strings.Cut(name, "/")
+	return owner != "." && owner != ".." && repo != "." && repo != ".."
+}
+
 type proof struct {
 	Schema              string `json:"schema"`
 	Repository          string `json:"repository"`
@@ -65,7 +74,7 @@ func execute(ctx context.Context, args []string, stdout io.Writer) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if flags.NArg() != 0 || !repoPattern.MatchString(opt.Repository) || (opt.Mode != "main" && opt.Mode != "dev") ||
+	if flags.NArg() != 0 || !validRepository(opt.Repository) || (opt.Mode != "main" && opt.Mode != "dev") ||
 		(opt.Latest && (opt.Mode != "dev" || opt.Commit != "")) || (!opt.Latest && !shaPattern.MatchString(opt.Commit)) ||
 		(opt.Authority != "" && !shaPattern.MatchString(opt.Authority)) {
 		return errors.New("require --repository OWNER/REPO --mode main|dev and either --commit SHA or --mode dev --latest")

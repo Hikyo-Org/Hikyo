@@ -134,7 +134,7 @@ pull() {
 	created=$(date -u -r $((now - ${6:-60})) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$((now - ${6:-60}))" +%Y-%m-%dT%H:%M:%SZ)
 	printf '[{"number":%s,"head":{"sha":"%s","ref":"%s","repo":{"full_name":"%s"}},"auto_merge":%s,"created_at":"%s"}]' "$1" "$2" "$3" "${5:-O/R}" "$4" "$created"
 }
-check() { printf '{"check_runs":[{"id":1,"status":"%s","conclusion":%s,"output":{"title":"%s","summary":"%s"}}]}' "$1" "$2" "$3" "$4"; }
+check() { printf '{"check_runs":[{"id":1,"app":{"id":15368,"slug":"github-actions"},"status":"%s","conclusion":%s,"output":{"title":"%s","summary":"%s"}}]}' "$1" "$2" "$3" "$4"; }
 
 queue="app-token|pr merge 88 --repo o/r --auto --merge --match-head-commit $dev"
 create="app-token|POST repos/o/r/git/refs ref=refs/heads/$branch sha=$dev
@@ -277,6 +277,13 @@ PULLS=$(pull 41 "$dev" "$branch" "$armed" O/R "$hours4")
 export PULLS
 run
 [ "$status" -ne 0 ] || fail 'an old promotion with no check stayed green'
+
+# Only the gate's own check counts, however another app names its check.
+reset
+PULLS=$(pull 41 "$dev" "$branch" "$armed")
+CHECKS='{"check_runs":[{"id":9,"app":{"id":1,"slug":"other"},"status":"completed","conclusion":"failure","output":{"title":"Forged","summary":"Forged"}}]}'
+export PULLS CHECKS
+expect_ok 'a same-named check from another app'
 
 # A retry is armed, but a promotion failing night after night must still report.
 reset

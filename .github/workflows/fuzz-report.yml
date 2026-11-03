@@ -203,6 +203,10 @@ jobs:
       github.event.workflow_run.path == '.github/workflows/ci-dev.yml' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'dev' }}
+    # Two red runs must not each open the issue.
+    concurrency:
+      group: dev-status-issue
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

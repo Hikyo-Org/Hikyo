@@ -588,8 +588,24 @@ func TestStrictProviderJSON(t *testing.T) {
 }
 
 func TestCommandRejectsInvalidSelectorsBeforeProviderAccess(t *testing.T) {
+	// A provider call would fail too, so make any such call visible.
+	dir := t.TempDir()
+	called := filepath.Join(dir, "called")
+	stub := "#!/bin/sh\n: >\"" + called + "\"\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GH_BIN", filepath.Join(dir, "gh"))
+	t.Cleanup(func() {
+		if _, err := os.Stat(called); err == nil {
+			t.Fatal("invalid selectors reached the provider")
+		}
+	})
 	for _, args := range [][]string{
 		{}, {"--repository", "../bad", "--mode", "dev", "--latest"},
+		{"--repository", "./bad", "--mode", "dev", "--latest"},
+		{"--repository", "bad/..", "--mode", "dev", "--latest"},
+		{"--repository", "bad/.", "--mode", "dev", "--latest"},
 		{"--repository", "example/hikyo", "--mode", "main", "--latest"},
 		{"--repository", "example/hikyo", "--mode", "dev", "--latest", "--commit", testSource},
 		{"--repository", "example/hikyo", "--mode", "dev", "--commit", "dev"},

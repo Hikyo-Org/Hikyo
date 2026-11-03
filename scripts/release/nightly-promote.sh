@@ -88,7 +88,7 @@ open=$("$GH_BIN" api --paginate "repos/$GH_REPO/pulls?state=open&base=main&per_p
 stuck_reason() {
 	printf '%s\n' "$2" | grep -Eq '^[0-9]+$' || die 'invalid pull request age'
 	check=$("$GH_BIN" api "repos/$GH_REPO/commits/$1/check-runs?check_name=ci-queue-required&per_page=100" \
-		--jq '.check_runs | max_by(.id) // {}')
+		--jq '[.check_runs[] | select(.app.id == 15368 and .app.slug == "github-actions")] | max_by(.id) // {}')
 	state=$(printf '%s' "$check" | jq -r '"\(.status // "none")/\(.conclusion // "none")"')
 	reason=
 	case "$state" in

@@ -1,7 +1,7 @@
 # Dev integration CI handoff
 
 Implementation branch: `ci/dev-integration-flow`, targeting `main`.
-Source base: `de0d8866d050c6e729bde76e2960eb6a260f1e3a`.
+Source base at the last rebase: `b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`.
 Accepted behavior and operator commands: [branching guide](../development/branching.md).
 
 ## Result
@@ -49,6 +49,7 @@ Go build-cache bucket or paid cache capacity is added.
   the merge result of a recently merged dev PR. Otherwise one independent maintainer
   must approve its exact head. This relies on the app key staying in the
   `nightly-release` environment.
+- Dependabot targets `dev`, so its Go updates fail until step 4 creates that branch.
 - Known limit, shared with main's existing gate: the workflow-edit check reads a PR's
   file list, and a crafted criss-cross merge might hide a change from it. This is
   untested on GitHub and predates this flow.

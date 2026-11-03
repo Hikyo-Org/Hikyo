@@ -91,7 +91,7 @@ func (r *resolver) resolve(ctx context.Context, opt options) (proof, error) {
 	if err := r.api.read(ctx, "repos/"+r.requested, &r.repo); err != nil {
 		return empty, err
 	}
-	if r.repo.ID <= 0 || !repoPattern.MatchString(r.repo.FullName) || !strings.EqualFold(r.repo.FullName, r.requested) || r.repo.DefaultBranch != "main" || r.repo.Fork {
+	if r.repo.ID <= 0 || !validRepository(r.repo.FullName) || !strings.EqualFold(r.repo.FullName, r.requested) || r.repo.DefaultBranch != "main" || r.repo.Fork {
 		return empty, errors.New("source proof requires the canonical non-fork repository with main as default")
 	}
 	mainHead, err := r.branch(ctx, "main")

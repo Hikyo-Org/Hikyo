@@ -13,7 +13,7 @@ jq -cse --arg name "$GITHUB_EVENT_NAME" --arg repo "$GH_REPO" \
   def number: type == "number" and . > 0 and floor == .;
   if length != 1 or (.[0] | type) != "array" then error("invalid dev PR pages") else .[0] end |
   if length == 0 or any(.[]; type != "array" or length > 100) or
-     (length > 1 and any(.[0:-1][]; length != 100)) or (.[-1] | length) == 100
+     (length > 1 and any(.[0:-1][]; length != 100))
   then error("incomplete dev PR pagination") else . end |
   flatten as $pulls |
   if ($pulls | length) > 2000 or

@@ -108,7 +108,7 @@ func TestNightlyPromotionWorkflowBoundaries(t *testing.T) {
 	}
 
 	landed := workflow.Jobs["landed"]
-	const condition = "github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && startsWith(github.event.pull_request.head.ref, 'release/nightly-')"
+	const condition = "github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && startsWith(github.event.pull_request.head.ref, 'release/nightly-') && github.event.pull_request.user.id == 320493937"
 	if strings.Join(strings.Fields(landed.If), " ") != condition {
 		t.Fatalf("landing must require a merged same-repository promotion into main: %q", landed.If)
 	}

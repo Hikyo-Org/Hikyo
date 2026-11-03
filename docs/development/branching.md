@@ -93,7 +93,7 @@ go run ./scripts/ci/source-proof --repository Hikyo-Org/Hikyo \
 promotion_commit=$(jq -er '.commit' "$promotion_work/source.json")
 git fetch hikyo-upstream "$promotion_commit"
 git switch -c release/1.1.0 "$promotion_commit"
-git push --set-upstream origin HEAD
+git push --set-upstream hikyo-upstream HEAD
 gh pr create --repo Hikyo-Org/Hikyo --base main --head release/1.1.0
 rm -rf "$promotion_work"
 trap - EXIT HUP INT TERM
@@ -178,8 +178,8 @@ What this means for main:
 
 - Main moves whenever a newer green dev commit exists. A stable release is a tag on
   any main commit, and every main commit passed the full queue.
-- A failed promotion leaves main unchanged. There is then no new nightly: a failed
-  queue run shows as a red `trusted-merge-ci` run on the promotion PR, which stays
+- A failed promotion leaves main unchanged, so no new dev code reaches a nightly. The
+  scheduled nightly still publishes main's tip if that has none yet. A failed queue run shows as a red `trusted-merge-ci` run on the promotion PR, which stays
   open. The next promotion queues it again for the same commit, or replaces it.
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
