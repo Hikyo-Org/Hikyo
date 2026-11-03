@@ -1291,6 +1291,38 @@ test.describe('environment matrix declaration', () => {
     ).toBeVisible();
   });
 
+  test('infers a JSON Schema from the first value, tunes it with the builder, and the server accepts it', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: 'New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('SERVICE_CONFIG');
+    await modal.getByLabel('Type').selectOption('json');
+    await modal.getByLabel('First value (optional)').fill('{"host":"db.internal","port":5432,"tags":["a"]}');
+    await modal.getByRole('button', { name: 'Infer schema from this value' }).click();
+
+    // Names and shapes only: the sample's values stay out of the exported schema.
+    await expect(modal.getByLabel('Field name')).toHaveCount(3);
+    await expect(modal.getByRole('combobox', { name: 'Type of port' })).toHaveValue('integer');
+    await modal.getByRole('checkbox', { name: 'Required: tags' }).uncheck();
+    // The sample has no field the schema does not list, so closing the object still accepts it.
+    await modal.getByRole('checkbox', { name: 'Reject fields not listed' }).check();
+    await modal.getByRole('button', { name: 'Advanced: edit as JSON Schema (2020-12)' }).click();
+    const document = modal.getByLabel('Schema document');
+    await expect(document).toHaveValue(/"required": \[\s*"host",\s*"port"\s*\]/);
+    await expect(document).toHaveValue(/"additionalProperties": false/);
+    await expect(document).not.toHaveValue(/db\.internal|5432/);
+
+    await modal.getByRole('button', { name: 'Declare' }).click();
+    await expect(page.locator('.notice')).toContainText(
+      'Declared SERVICE_CONFIG with a draft value in 1 environment',
+    );
+  });
+
   test('rejects a first value that cannot be the declared type before any write', async ({
     passkeyPage: page,
   }) => {
