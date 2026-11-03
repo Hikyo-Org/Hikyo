@@ -169,3 +169,21 @@ export const PhoneNested: Story = {
     );
   },
 };
+
+export const RawEditorStaysPut: Story = {
+  args: { initial: '{"type":"object"}' },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: /^Advanced/ }));
+    const raw = canvas.getByLabelText('Schema document');
+    const top = raw.getBoundingClientRect().top;
+    // The builder sits below the text and follows it live, so typing moves neither.
+    await expect(canvas.queryAllByLabelText('Field name')).toHaveLength(0);
+    await userEvent.clear(raw);
+    await userEvent.click(raw);
+    await userEvent.paste('{"type":"object","properties":{"host":{"type":"string"}}}');
+    await expect(canvas.getAllByLabelText('Field name')).toHaveLength(1);
+    await expect(raw).toHaveFocus();
+    await expect(raw.getBoundingClientRect().top).toBe(top);
+    await expect(raw.compareDocumentPosition(canvas.getByLabelText('Value is')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  },
+};

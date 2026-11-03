@@ -37,7 +37,7 @@ export const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
 // The server's bounds (internal/schema MaxJSONSchemaDepth, MaxJSONSchemaSubschemas)
 // and the form's own text cap.
 const MAX_DEPTH = 32;
-const MAX_SAMPLE_DEPTH = 1000;
+const MAX_SAMPLE_DEPTH = 200;
 const MAX_SUBSCHEMAS = 256;
 export const MAX_SCHEMA_LENGTH = 16384;
 
@@ -162,7 +162,13 @@ function infer(value: unknown): BuilderNode {
   if (typeof value === 'boolean') return newNode('boolean');
   if (Array.isArray(value)) {
     const shapes = value.map(infer);
-    return { ...newNode('array'), items: shapes.length === 0 ? null : shapes.reduce(merge) };
+    let items: BuilderNode | null = null;
+    for (const shape of shapes) {
+      items = items === null ? shape : merge(items, shape);
+      // Already past what inferSchema accepts, so stop before the merge turns quadratic.
+      if (items.fields.length > MAX_SUBSCHEMAS) break;
+    }
+    return { ...newNode('array'), items };
   }
   if (isRecord(value)) {
     return {

@@ -57,7 +57,7 @@ export function JsonSchemaBuilder({
   const orphaned = error === null && model !== null && builderSchemaError(model.root) !== null;
   if (value !== seen || orphaned) {
     setSeen(value);
-    // Rows keep their ids, so a row's open rules survive typing in the raw editor.
+    // Rows keep their ids while the text stays readable, so open rules survive raw edits.
     const rebuilt = parseBuilderSchema(value);
     if (rebuilt === null) setAdvancedOpen(true); // The only place left to read this schema.
     setModel(rebuilt === null || model === null ? rebuilt : { ...rebuilt, root: carryIds(model.root, rebuilt.root) });

@@ -122,7 +122,12 @@ describe('inferSchema', () => {
     const nest = (levels: number): unknown => (levels === 0 ? 'x' : [nest(levels - 1)]);
     expect(inferSchema(['x', nest(40)])).toHaveProperty('root');
     expect(inferSchema(nest(40))).toEqual({ error: expect.stringContaining('32 levels') });
-    expect(inferSchema(nest(1000))).toEqual({ error: expect.stringContaining('1000 levels') });
+    expect(inferSchema(nest(200))).toEqual({ error: expect.stringContaining('200 levels') });
+  });
+
+  it('refuses an array whose elements union past the limit, without merging them all', () => {
+    const elements = Array.from({ length: 5000 }, (_, index) => ({ [`k${String(index)}`]: 1 }));
+    expect(inferSchema(elements)).toEqual({ error: expect.stringContaining('256') });
   });
 
   it('refuses a null sample rather than reading as "no schema"', () => {
