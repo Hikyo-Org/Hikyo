@@ -15,16 +15,32 @@ and [GitOps runbook](../operations/kubernetes-gitops.md) describe this candidate
 - Previously delivered signed head: `523b3b66387d6db0587bd607ebd9cab1a163ea76`.
 - Independently reviewed GitOps increment SHA-256, excluding this handoff:
   `b20a7e2626ecbb1aa3b47ddc4bf3fe3fe9a5d49c18b81596eac926a2b3abcfef`.
-- Endpoint: signed source delivery to existing draft
+- Endpoint: signed source delivery to
   [PR #1113](https://github.com/Hikyo-Org/Hikyo/pull/1113), with local checks,
-  independent source reviews and a self-contained delivery report.
+  independent source reviews and a self-contained delivery report. The owner
+  later retargeted it to `dev` and authorized its merge there.
 
 Stable 1.0.0 published from `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` while this
 draft was open, and its chart excludes this work. The owner chose to add stable
 support here: the generator now accepts stable charts and refuses 1.0.0 for the
-reasons recorded below. This work does not add an unconditional stable-release gate, merge the draft, publish a release, or
+reasons recorded below. This work does not add an unconditional stable-release gate, publish a release, or
 authorize a production installation/upgrade. Human
-maintainer/adversarial security review remains required under CONTRIBUTING.
+maintainer/adversarial security review remains required under CONTRIBUTING, and the
+PR records none: the owner authorized the dev merge without one.
+
+## Route to dev and the deferred CI wiring
+
+Dev admission refused this PR because it changed `.github/workflows/ci.yml`, and
+CI definitions land through main first. The owner chose to split the wiring out
+and stay on dev. The commit `ci: leave GitOps CI wiring for main` removes the
+generator test step from `ci.yml`, the `gitops` path class and registry entry,
+their classifier cases, the coverage hook and `gitops_coverage_test.go`.
+
+Until that wiring lands, hosted CI does not run `scripts/deploy` unit tests, and
+changes to GitOps paths get the full plan because they have no class. To restore
+it, once `scripts/deploy` has reached main through promotion: revert that commit
+on a `hotfix/` branch from main, land it through the full queue, then backmerge
+main to dev.
 
 ## Resulting behavior
 
@@ -94,7 +110,8 @@ This draft does not implement either by changing an installation flag.
 | Full CI-owner suite and Astro check/build after merge | NOTRUN locally: the shared job queue was paused and host memory was under pressure. Hosted repository invariants own the full suite; candidate CI owns the site build and OSS policy |
 | Post-merge Standards and Spec review of `88484ec94`, rechecked at `ac19a140a` | Isolated reviews found no hard violations and confirmed the artifact claims live; stable routing and citation gaps repaired. No complete stable Kubernetes first-install runbook exists, and first-administrator on the 1.0.0 chart is unexercised. Historical; see the homelab row below |
 | Stable and nightly tag coexistence | PASS with Helm 3.16.1 and a disposable registry: unpinned and `>=1.0.0` pulls resolved to `1.0.0`, not a nightly. Helm 4 was not exercised |
-| Hosted CI / protected merge / human security review | Pending on the new pushed head; local source review is not independent human acceptance |
+| Hosted CI / protected merge / human security review | Dev admission and merge are proved by the PR itself. Full dev CI runs on the merged commit, and the queue runs at promotion. Local source review is not independent human acceptance |
+| Adversarial security review before the dev merge | One automated isolated read of `origin/dev...1f5f649b5`, not independent human review. No signature, identity or digest bypass found. It reproduced YAML injection through the PVC claim values, now closed by quoting both claims, a schema pattern and a generator name check; a payload through each generator scalar added no `hostPath` volume with schema validation off. It also found unhashed PyYAML and an unchecked Helm download in the signing job, both now pinned. `release.yml` keeps the same unchecked Helm install; it was left unchanged |
 | Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher. On 2 November 2026 the anonymous registry listed only stable `1.0.0` |
 | Stable chart generator | PASS with Helm 4.2.3 and 3.16.1 fixtures, which fake the digest pull: stable `X.Y.Z` (major 1 or higher) binds `release.yml@refs/tags/vX.Y.Z` for Cosign and the Flux subject, plus the `stable` channel. A chart without `HIKYO_ROOT_KEY_FILE` is refused with no output for both providers. Mutating the root-key check, identity, subject or channel check fails tests |
 | Signed draft chart | ENFORCED, owner decision: the tag job signs before draft review, so the generator requires `gh` to report a published, non-prerelease release before any trust check on a stable chart. Tests cover draft, prerelease and wrong-tag refusals. The check needs an authenticated `gh` |
@@ -152,8 +169,7 @@ set -o pipefail
 git diff 523b3b66387d6db0587bd607ebd9cab1a163ea76 8b49fa4feef99689edc40d5ae03294f41ddc22d2 --binary -- .   ':!docs/handoff/1111-nightly-helm-distribution.md' | sha256sum
 ```
 
-Require exact-head human/workflow security review and the normal protected merge
-proof before merging. After a future main nightly publishes, require its actual
+Restore the deferred CI wiring as described above. After a future main nightly publishes, require its actual
 chart/image digest signatures and clean anonymous pull before advertising that
 artifact. Package access/visibility repair, if needed, belongs to the exact
 package owner rather than a blanket organization policy change. Follow the
