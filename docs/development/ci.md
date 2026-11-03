@@ -264,6 +264,18 @@ not the cron, settles it. The record stays pending (blocking) until the next eve
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
 never fails, or if setup fails on attempt 3, which publishes nothing.
 
+Discovery on a push to `dev` selects no PR, because a new dev commit changes
+neither a PR's head nor what the publisher verifies (`ci-dev-required` is not
+strict about the base). It reassesses every open PR only when the push changed
+`.github/workflows/ci-dev-gate.yml`, since the publisher contract compares the
+base's copy against main's and a backmerge that repairs it must release PRs
+refused earlier. The push's `before` and `after` are compared through the compare
+API. A zero or missing `before`, a force push, an invalid SHA, a failed compare,
+a diverged range or a file list at GitHub's 300-file limit all reassess every
+PR. A push to `main`, the hourly schedule, feedback callbacks, manual dispatch and
+PR events are unchanged. An empty selection leaves the run green and skips the
+publisher job.
+
 The final authority reads of an admission (policy verifier, fork vouching, DCO,
 feedback) run at once and are judged in their former order; the final role
 inventory is still read last. None of them is skipped or reused.
