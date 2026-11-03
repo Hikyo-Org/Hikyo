@@ -228,9 +228,11 @@ func TestCLIRefusesSecondNameForAnOriginWithADifferentProfile(t *testing.T) {
 func TestLookupByOriginRefusesAmbiguousPoliciesDeterministically(t *testing.T) {
 	state := &State{dir: t.TempDir()}
 	store := state.Trust()
+	// Profiles are refused at load; modes and pins can still differ for one origin.
+	pin := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 	entries := map[string]TrustEntry{
 		"a": {Name: "a", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"},
-		"b": {Name: "b", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA},
+		"b": {Name: "b", Origin: "https://hikyo.example.test", TLSMode: TLSModeSPKI, SPKIPin: pin, TLSProfile: "strict"},
 	}
 	if err := store.write(entries); err != nil {
 		t.Fatal(err)
@@ -247,5 +249,65 @@ func TestLookupByOriginRefusesAmbiguousPoliciesDeterministically(t *testing.T) {
 	got, err := lookupByOrigin(state, "https://hikyo.example.test", "hikyo.yaml")
 	if err != nil || got.TLSProfile != "strict" {
 		t.Fatalf("identical policies resolve: %v %+v", err, got)
+	}
+}
+
+// The default port and a trailing dot name the same server, so they cannot be
+// used to keep a compat entry beside a strict one.
+func TestEquivalentOriginSpellingsShareTheProfileRules(t *testing.T) {
+	variants := []string{"https://h.example.test:443", "https://h.example.test.", "https://H.EXAMPLE.TEST.:443"}
+	for _, variant := range variants {
+		store := &TrustStore{dir: t.TempDir()}
+		strict := TrustEntry{Name: "prod", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"}
+		if err := store.Put(strict); err != nil {
+			t.Fatal(err)
+		}
+		canonical, err := CanonicalOrigin(variant)
+		if err != nil {
+			t.Fatal(err)
+		}
+		alias := TrustEntry{Name: "alias", Origin: canonical, TLSMode: TLSModeSystemCA}
+		if err := store.Put(alias); err == nil || !strings.Contains(err.Error(), "different TLS profile") {
+			t.Fatalf("Put accepted a compat entry for %s beside a strict one: %v", variant, err)
+		}
+		// A pre-existing store holding both is refused at load, not resolved by name.
+		both := map[string]TrustEntry{"prod": strict, "alias": alias}
+		if err := store.write(both); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.Load(); err == nil || !strings.Contains(err.Error(), "different TLS profiles") || !strings.Contains(err.Error(), "hikyo context delete") {
+			t.Fatalf("Load must refuse equivalent origins with different profiles (%s): %v", variant, err)
+		}
+		if _, err := store.Lookup("alias"); err == nil {
+			t.Fatalf("Lookup by name must not return the compat alias (%s)", variant)
+		}
+	}
+}
+
+func TestLookupByOriginMatchesEquivalentSpellings(t *testing.T) {
+	state := &State{dir: t.TempDir()}
+	if err := state.Trust().write(map[string]TrustEntry{"prod": {Name: "prod", Origin: "https://h.example.test:443", TLSMode: TLSModeSystemCA, TLSProfile: "strict"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, asked := range []string{"https://h.example.test", "https://h.example.test.", "https://h.example.test:443"} {
+		got, err := lookupByOrigin(state, asked, "hikyo.yaml")
+		if err != nil || got.TLSProfile != "strict" {
+			t.Fatalf("lookup %s: %v %+v", asked, err, got)
+		}
+	}
+}
+
+// Stores without any strict entry keep loading as they did.
+func TestStoresWithoutAStrictEntryStillLoadWithEquivalentOrigins(t *testing.T) {
+	store := &TrustStore{dir: t.TempDir()}
+	entries := map[string]TrustEntry{
+		"a": {Name: "a", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA},
+		"b": {Name: "b", Origin: "https://h.example.test:443", TLSMode: TLSModeSystemCA, TLSProfile: "compat"},
+	}
+	if err := store.write(entries); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(); err != nil {
+		t.Fatalf("a compat-only store must load unchanged: %v", err)
 	}
 }

@@ -347,7 +347,7 @@ func lookupByOrigin(st *State, origin, cfgName string) (TrustEntry, error) {
 	// harmless.
 	var found []TrustEntry
 	for _, e := range entries {
-		if e.Origin == origin {
+		if sameOrigin(e.Origin, origin) {
 			found = append(found, e)
 		}
 	}

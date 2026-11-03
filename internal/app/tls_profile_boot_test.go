@@ -187,32 +187,31 @@ func TestBootNodeConfigurationCarriesAdoptedStrictIntoTheRecoveryBaseline(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, adopted := range []map[string]string{
-		{"HIKYO_TLS_PROFILE": "strict", "HIKYO_EXTERNAL_ORIGIN": "https://127.0.0.1:8443"},
-		{"HIKYO_TLS_PROFILE": "strict", "HIKYO_TRUSTED_PROXY_CIDRS": "10.0.0.0/8"},
-	} {
-		owner := maps.Clone(seed)
-		for k, v := range adopted {
-			if k != "HIKYO_TRUSTED_PROXY_CIDRS" { // a node-scoped key
-				owner[k] = v
-			}
-		}
-		raw, err := runtimeconfig.EncodeNodeOverrides(map[string]map[string]string{"another-node": node})
-		if err != nil {
-			t.Fatal(err)
-		}
-		owner[config.ManagedNodeOverridesKey] = raw
-		bundle, err := runtimeconfig.Prepare(owner)
-		if err != nil {
-			t.Fatal(err)
-		}
-		effective, _, _, missing, err := bootNodeConfiguration(cfg, coordinator, bundle)
-		if !missing {
-			t.Fatal("fixture must exercise the missing-node fallback")
-		}
-		if err == nil && effective.TLSProfile != config.TLSProfileStrict {
-			t.Fatalf("recovery baseline weakened the adopted profile to %q", effective.TLSProfile)
-		}
+	owner := maps.Clone(seed)
+	owner["HIKYO_TLS_PROFILE"] = "strict"
+	owner["HIKYO_EXTERNAL_ORIGIN"] = "https://127.0.0.1:8443"
+	raw, err := runtimeconfig.EncodeNodeOverrides(map[string]map[string]string{"another-node": node})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner[config.ManagedNodeOverridesKey] = raw
+	bundle, err := runtimeconfig.Prepare(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fallback only runs when the first apply is refused: prove it is.
+	if _, err := config.ApplyManagedOwnerAndNodeValues(cfg, bundle.OwnerValues(), node); err == nil {
+		t.Fatal("fixture must make the first apply fail, or the recovery baseline is never reached")
+	}
+	effective, _, _, missing, err := bootNodeConfiguration(cfg, coordinator, bundle)
+	if !missing {
+		t.Fatal("fixture must exercise the missing-node fallback")
+	}
+	if err != nil {
+		t.Fatalf("a certificate-bearing joining node must keep strict, not fail: %v", err)
+	}
+	if effective.TLSProfile != config.TLSProfileStrict {
+		t.Fatalf("recovery baseline weakened the adopted profile to %q", effective.TLSProfile)
 	}
 }
 

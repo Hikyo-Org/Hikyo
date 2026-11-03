@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -139,8 +141,50 @@ func (s *TrustStore) Load() (map[string]TrustEntry, error) {
 			return nil, fmt.Errorf("trust store at %s contains an invalid entry %q: %w", s.path(), name, err)
 		}
 	}
+	if err := refuseConflictingProfiles(entries); err != nil {
+		return nil, fmt.Errorf("trust store at %s: %w", s.path(), err)
+	}
 	return entries, nil
 }
+
+// refuseConflictingProfiles keeps a store written before Put enforced this from
+// resolving an origin to whichever of two entries a caller reaches first. A
+// store whose entries all share one effective profile (every store without a
+// strict entry) loads exactly as before.
+func refuseConflictingProfiles(entries map[string]TrustEntry) error {
+	for _, a := range slices.Sorted(maps.Keys(entries)) {
+		for _, b := range slices.Sorted(maps.Keys(entries)) {
+			if a < b && sameOrigin(entries[a].Origin, entries[b].Origin) && effectiveTLSProfile(entries[a]) != effectiveTLSProfile(entries[b]) {
+				return fmt.Errorf("entries %q and %q name the same origin with different TLS profiles; delete one with `hikyo context delete --instance <name>` and establish the intended profile again", a, b)
+			}
+		}
+	}
+	return nil
+}
+
+// originKey is the comparison form of a canonical origin: the scheme's default
+// port and a trailing host dot do not name a different server. CanonicalOrigin
+// itself is unchanged because stored entries keep their exact spelling.
+func originKey(origin string) string {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return origin
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return strings.ToLower(u.Scheme) + "://" + host
+}
+
+func sameOrigin(a, b string) bool { return originKey(a) == originKey(b) }
 
 func validateTrustEntry(name string, entry TrustEntry) error {
 	if name == "" || entry.Name != name || strings.IndexFunc(name, unicode.IsControl) >= 0 {
@@ -289,7 +333,7 @@ func (s *TrustStore) Put(e TrustEntry) error {
 	// The profile binds to a name, so a second name for the same origin with a
 	// different profile would leave the choice between them to chance.
 	for name, other := range entries {
-		if name != e.Name && other.Origin == e.Origin && effectiveTLSProfile(other) != effectiveTLSProfile(e) {
+		if name != e.Name && sameOrigin(other.Origin, e.Origin) && effectiveTLSProfile(other) != effectiveTLSProfile(e) {
 			return failf(ExitRefused,
 				"origin %s is already established as %q with a different TLS profile; remove that entry deliberately before establishing %q",
 				e.Origin, name, e.Name)

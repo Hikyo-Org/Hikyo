@@ -37,6 +37,23 @@ protects handshake confidentiality only, and an SPKI pin still gives no
 authenticity claim beyond the pin. See
 [transport policy](./transport-policy.md#clients-that-call-hikyo).
 
+Origins compare without the scheme's default port and without a trailing host
+dot, so `https://h`, `https://h:443` and `https://h.` name one server. Refusals:
+
+- Establishing a second name for an origin with a **different TLS profile** is
+  refused; remove the existing entry deliberately first. Identical-policy aliases
+  stay allowed.
+- A trust store that already holds two entries for one origin with different
+  profiles is refused when it loads, naming both entries and the
+  `hikyo context delete --instance <name>` step. A store with no strict entry
+  loads exactly as before, even with several names for one origin.
+- Resolving a machine config's `instance:` origin to a trust entry is refused
+  when several entries match and their verification policy (mode, pin, socket or
+  profile) differs, instead of picking one. This also applies to compat-only
+  stores whose entries for one origin differ in mode or pin: they still load, but
+  an origin-based lookup of them is refused until you name the entry with
+  `--instance`. Entries with the same policy resolve as before.
+
 Unknown modes and conflicting combinations are refused. An absent mode on
 HTTPS always means SPKI, so deleting a pin cannot enable CA verification. In
 SPKI mode the exact leaf pin remains the identity check, including for

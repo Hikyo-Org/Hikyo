@@ -172,6 +172,7 @@ source. A proxy or database terminator outside the process is outside any claim.
 
 ## Remaining work
 
+- Land the api-cli-surface declared amendment for `tls_profile` (draft PR #1155); it becomes operative only when this implementation merges.
 - **Stale-node fencing: not built.** A node below the desired generation keeps
   serving its old profile and is only reported as `pending`. Managed
   certificates behave the same way today. A node-side loop that makes the strict
@@ -211,12 +212,11 @@ source. A proxy or database terminator outside the process is outside any claim.
   matches whose verification policies differ instead of returning a random one.
   Interactive establishment cannot create a strict entry (no flag), so its prompt
   needs no profile line yet.
-- **ADR check (api-cli-surface, not edited).** Its owner-locked #966 amendment
-  closes the bundle field set (clause 5: unknown trust-store and bundle fields
-  are refused) and lists what a change to an established entry covers (clause 4:
-  origin, mode, pin, socket). `tls_profile` extends both. A declared amendment is
-  needed through DEC-18 (reopen that ADR's originating ticket); the migration ADR's
-  amendment table does not list api-cli-surface.
+- **api-cli-surface amendment (not edited here).** `tls_profile` extends the
+  owner-locked #966 amendment's closed bundle field set (clause 5) and its
+  sticky-entry rule (clause 4). The declared amendment is in draft PR #1155 (head
+  `e5539c280`, the base of this PR) and is operative only when this
+  implementation merges. It is listed under Remaining work.
 - **Migration 6 was not exercised end to end.** It ran only through
   `MigrateConfiguration` scenarios on SQLite and PostgreSQL (the `store/upgrade`
   tests). The upgrade gate never ran it with two real release identities: both dev
