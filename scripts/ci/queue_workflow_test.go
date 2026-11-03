@@ -69,7 +69,7 @@ func queuePublisherContract(raw []byte) error {
 	if err := yaml.Unmarshal(raw, &w); err != nil {
 		return err
 	}
-	if w.Name != "queue-gate" || len(w.On) != 5 || w.Env.Kind != 0 || w.Defaults.Kind != 0 {
+	if w.Name != "gate-queue" || len(w.On) != 5 || w.Env.Kind != 0 || w.Defaults.Kind != 0 {
 		return fmt.Errorf("queue publisher must have only its five trusted events and no execution overrides")
 	}
 	for _, name := range []string{"pull_request_target", "push", "workflow_run", "workflow_dispatch", "schedule"} {
@@ -256,7 +256,7 @@ func queueWorkerContract(raw []byte) error {
 	if err := yaml.Unmarshal(raw, &w); err != nil {
 		return err
 	}
-	if w.Name != "queue-check-worker" || len(w.On) != 1 || w.Env.Kind != 0 || w.Defaults.Kind != 0 || w.Concurrency.Group != "" || w.Concurrency.Cancel || w.Concurrency.Queue != "" || !reflect.DeepEqual(w.Permissions, map[string]string{"contents": "read"}) {
+	if w.Name != "gate-queue-worker" || len(w.On) != 1 || w.Env.Kind != 0 || w.Defaults.Kind != 0 || w.Concurrency.Group != "" || w.Concurrency.Cancel || w.Concurrency.Queue != "" || !reflect.DeepEqual(w.Permissions, map[string]string{"contents": "read"}) {
 		return fmt.Errorf("headworker must use only trusted manual batch trigger withoutglobal lease")
 	}
 	var trigger struct {
@@ -749,7 +749,7 @@ func TestQueueHeadWorkerRejectsUnsafeWorkflowMutations(t *testing.T) {
 		},
 		"bypasscutover": func(w map[string]any) { queuePublisherJob(w)["if"] = "true" },
 		"workerdispatchrecursion": func(w map[string]any) {
-			w["on"].(map[string]any)["workflow_run"] = map[string]any{"workflows": []any{"queue-check-worker"}}
+			w["on"].(map[string]any)["workflow_run"] = map[string]any{"workflows": []any{"gate-queue-worker"}}
 		},
 		"writerepository": func(w map[string]any) { queuePublisherJob(w)["permissions"].(map[string]any)["contents"] = "write" },
 		"writeworkflows":  func(w map[string]any) { queuePublisherJob(w)["permissions"].(map[string]any)["actions"] = "write" },

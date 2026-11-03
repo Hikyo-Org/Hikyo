@@ -24,15 +24,20 @@ signing configuration and does not push, merge, or deploy without authorization.
 
 Start with the [CI guide](./docs/development/ci.md). It explains the required PR
 checks, the maintenance and release-acceptance menus, and which workflows are
-internal helpers. Every push receives automatic `ci-feedback`. Before merge, a
-maintainer adds the approved PR to the mandatory merge queue. `ci-queue-required`
-admits the exact head, then requires full validation of its current-base merge
-group. `ci:full` and `ci-required-next` remain the full-only rollback route.
+internal helpers. Feature PRs target `dev` and require automatic `ci-feedback`
+plus trusted `ci-dev-required` admission. Merged dev commits request complete
+background integration validation. Frozen release candidates target `main` and
+use its mandatory queue; `ci-queue-required` requires full current-base proof
+and, once `dev` exists, refuses feature PRs opened against main. GitHub and
+`gh pr create` default to main, so pass `--base dev`.
+See the [branching guide](docs/development/branching.md) for commands, protected
+activation and the nightly promotion from dev to main.
 
 ## Developer Certificate of Origin
 
 Every commit in a pull request must carry a Developer Certificate of Origin
-(DCO) sign-off. It must also carry a cryptographic signature that GitHub reports
+(DCO) sign-off. Dependabot's commits are the only exemption, including when a
+canonical `release/*` promotion or `main` backmerge carries them. It must also carry a cryptographic signature that GitHub reports
 as **Verified**.
 After completing the [signing setup](#commit-signing-setup), commit with:
 
@@ -128,6 +133,12 @@ replace the comparison base:
 scripts/git/install-hooks.sh
 git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/hikyo-upstream/main
 ```
+
+Once `dev` exists, fetch it too with
+`refs/heads/dev:refs/remotes/hikyo-upstream/dev`. On a branch cut from `dev`, the hook
+then checks only your commits instead of everyone's since `main`. The manual checks
+below use `hikyo-upstream/main`; on a branch cut from `dev`, pass `hikyo-upstream/dev`
+to both instead.
 
 After creating your contribution with `git commit -S -s`, run:
 
@@ -229,13 +240,16 @@ Application Go, tooling Go and frontend checks have independent runners with
 the same deadline. All three lanes must succeed before queue admission.
 This feedback does not authorize merge or replace any full-suite coverage.
 
-When the change is ready, a maintainer adds the reviewed PR to the mandatory
-merge queue. The trusted `ci-queue-required` check admits the exact head only
+When a feature is ready, merge its reviewed PR into dev after
+`ci-dev-required` succeeds. Full dev CI finishes one active run and coalesces
+pending work. Repair red integration before release promotion.
+
+For a frozen release candidate targeting main, a maintainer adds its reviewed
+PR to the mandatory merge queue. The trusted `ci-queue-required` check admits the exact head only
 with successful useful feedback, valid signatures/DCO, and current review and
 workflow authority. Admission alone cannot merge a PR. The queue runs the
 complete suite on its immutable merge group against current main; every rebuilt
-or reordered group needs fresh full proof. You do not need `ci:full` in queue
-mode. The group remains blocked until it passes all mandatory domains, including:
+or reordered group needs fresh full proof. The group remains blocked until it passes all mandatory domains, including:
 
 - `lint`, `test`, and the sharded isolation suites;
 - `race`, the race detector over every package except `./internal/isolation/`
@@ -246,10 +260,8 @@ mode. The group remains blocked until it passes all mandatory domains, including
   and Kubernetes end-to-end checks.
 
 You do not need to run the complete suite locally. Follow automatic feedback,
-resolve review findings, and request maintainer queue admission. The permanent
-`ci:full` / `ci-required-next` route is used only when operators restore the
-strict legacy full-candidate policy. See the [CI guide](./docs/development/ci.md)
-for queue proof and protected rollback.
+resolve review findings, and request maintainer queue admission. See the
+[CI guide](./docs/development/ci.md) for queue proof.
 
 ### Fuzzing
 

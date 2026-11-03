@@ -1,0 +1,29 @@
+name: ci-dev
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  actions: read
+  contents: read
+
+# Finish one immutable integration proof even during a busy series of merges.
+# GitHub replaces the single pending run with the newest dev push. A PR event
+# does not enter this group, and release promotion has a separate lifecycle.
+concurrency:
+  group: ci-dev-${{ github.repository_id }}
+  cancel-in-progress: false
+  queue: single
+
+jobs:
+  validation:
+    if: github.ref == 'refs/heads/dev' && !github.event.deleted
+    uses: ./.github/workflows/ci.yml
+    with:
+      revision: ${{ github.sha }}
+      development: true
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read

@@ -4,7 +4,7 @@
 # merge queue still runs the complete suite.
 # These suites need neither PostgreSQL nor secrets: they run read-only against
 # the exact PR head commit, with restored caches and no cache writer.
-name: repository-invariants
+name: ci-advisory-invariants
 
 on:
   # No `edited`: a base-branch edit cannot change what head-only tests read, and

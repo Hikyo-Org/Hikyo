@@ -70,6 +70,7 @@ const pages = [
 ];
 
 const siteLinks = new Map([
+  ['1.0.0.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/release/1.0.0.md'],
   ['scripts/dev/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/scripts/dev/README.md'],
   ['online-signing.md', '/release/online-signing/'],
   ['online-signing.md#one-time-setup', '/release/online-signing/#one-time-setup'],
@@ -88,6 +89,7 @@ const siteLinks = new Map([
   ['./docs/status/README.md#obl-repository-transfer', '/implementation-status/#obl-repository-transfer'],
   ['./docs/adr/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/README.md'],
   ['./docs/development/ci.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/development/ci.md'],
+  ['docs/development/branching.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/development/branching.md'],
   ['./docs/spec/README.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/README.md'],
   ['./docs/adr/oss-mechanics.md', 'https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/oss-mechanics.md'],
   [

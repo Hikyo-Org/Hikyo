@@ -437,7 +437,7 @@ func TestReporterDiscoveryReusesSameHistoryAndCheckReads(t *testing.T) {
 	for _, n := range f.api.reads {
 		requests += n
 	}
-	if requests != 5 || len(f.api.writes) != 0 {
+	if requests != 4 || len(f.api.writes) != 0 {
 		t.Fatalf("reporter hints added reads or mutation: reads=%d writes=%d", requests, len(f.api.writes))
 	}
 }

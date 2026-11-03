@@ -71,9 +71,7 @@ configure_main() {
 		$GH_BIN api "repos/$repository/rulesets/$id" >"$main_tmp/before.json"
 		# Preserve all unrelated live parameters, rules, conditions and actor policy.
 		# Refuse a weakened/redacted source rather than overwriting it with defaults.
-		if ! "$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/before.json" 2>/dev/null; then
-			"$repo_root/scripts/release/check-main-policy.sh" --legacy "$main_tmp/before.json"
-		fi
+		"$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/before.json"
 		jq --slurpfile desired "$policy" '
 			(.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[0]) as $existing |
 			{name,target,enforcement,bypass_actors,conditions,rules} |
@@ -114,6 +112,7 @@ fi
 upsert_ruleset "$repo_root/release/repository/release-tag-immutability.json"
 upsert_ruleset "$repo_root/release/repository/release-tag-creation.json"
 upsert_ruleset "$repo_root/release/repository/nightly-tag-creation.json"
+upsert_ruleset "$repo_root/release/repository/nightly-promotion-branches.json"
 configure_main
 
 $GH_BIN api --method PUT "repos/$repository/immutable-releases" >/dev/null
@@ -136,6 +135,9 @@ printf '%s\n' "$rulesets" | jq -e '
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "nightly tags require Hikyo release app" and .enforcement == "active")] | length == 1
+' >/dev/null
+printf '%s\n' "$rulesets" | jq -e '
+	[.[] | select(.name == "nightly promotion branches require Hikyo release app" and .enforcement == "active")] | length == 1
 ' >/dev/null
 printf '%s\n' "$rulesets" | jq -e '
 	[.[] | select(.name == "main requires PR and release CI" and .enforcement == "active")] | length == 1
@@ -173,6 +175,18 @@ printf '%s\n' "$nightly" | jq -e '
 	}] and
 	([.rules[] | select(.type == "creation")] | length) == 1 and
 	.conditions.ref_name.include == ["refs/tags/v*-nightly.*"] and
+	.conditions.ref_name.exclude == []
+' >/dev/null
+promotion_id=$(printf '%s\n' "$rulesets" | jq -r '.[] | select(.name == "nightly promotion branches require Hikyo release app") | .id')
+promotion=$($GH_BIN api "repos/$repository/rulesets/$promotion_id")
+printf '%s\n' "$promotion" | jq -e '
+	.bypass_actors == [{
+		actor_id: 4700019,
+		actor_type: "Integration",
+		bypass_mode: "always"
+	}] and
+	([.rules[].type] | sort) == ["creation", "update"] and
+	.conditions.ref_name.include == ["refs/heads/release/nightly-*"] and
 	.conditions.ref_name.exclude == []
 ' >/dev/null
 $GH_BIN api "repos/$repository/immutable-releases" --jq '.enabled' | grep -x true >/dev/null

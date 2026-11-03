@@ -82,16 +82,17 @@ rarely:
 | Audit | Organisation → Audit, Project → Project audit | Query, inspect and export the organisation trail, or a project's trail narrowed to one environment |
 | Instance audit | Instance settings → Audit | Query authentication and instance security events, inspect actor/source metadata, and export after completion verification; human instance audit-read and a second factor required |
 | Remote crypto | Instance administration, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
+| Transit | Project → Transit keys | Key lifecycle, caller policy, encryption, signing and MAC operations under explicit crypto grants |
 
 ## What stays outside the browser
 
 The exemption list is closed and machine-checked: `api/parity.yaml` in the
 repository maps every public operation to a browser surface, one of the
 classes below, or an open issue, and CI fails when an operation is added
-without a disposition or an issue is closed without its surface. Transit key
-management and cryptographic operations are currently CLI/API-only
-([#820](https://github.com/Hikyo-Org/Hikyo/issues/820)). These are implementation
-gaps, not host-local or protocol exemptions.
+without a disposition or an issue is closed without its surface.
+[Transit key management and cryptographic operations](/docs/transit/#web-interface)
+are available in the browser under the same explicit `crypto-manage` and
+`crypto-use` grants as the CLI and API.
 
 | Class | Examples | Why |
 | --- | --- | --- |
