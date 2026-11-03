@@ -323,7 +323,9 @@ describe('mentionsFieldName', () => {
 
   it('fails closed on text it cannot read', () => {
     expect(mentionsFieldName('{"properties":{"AKIA:{}}}', ['AKIA'])).toBe(true);
-    const deep = `{"$comment":${'['.repeat(200_000)}${']'.repeat(200_000)}}`;
+    // Whether stringifying this overflows depends on the engine's stack, so the
+    // name in the raw text must be found before that can matter.
+    const deep = `{"AKIA":1,"$comment":${'['.repeat(200_000)}${']'.repeat(200_000)}}`;
     expect(mentionsFieldName(deep, ['AKIA'])).toBe(true);
   });
 });

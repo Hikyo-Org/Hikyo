@@ -129,18 +129,16 @@ export function fieldNames(node: BuilderNode): readonly string[] {
  */
 export function mentionsFieldName(text: string, names: readonly string[]): boolean {
   if (names.length === 0 || text.trim() === '') return false;
+  const quoted = names.map((name) => JSON.stringify(name));
+  if (quoted.some((name) => text.includes(name))) return true;
   const parsed = zJSONText.safeParse(text);
   if (!parsed.success) return true;
-  let canonical: string;
   try {
-    canonical = JSON.stringify(parsed.data);
+    const canonical = JSON.stringify(parsed.data);
+    return quoted.some((name) => canonical.includes(name));
   } catch {
-    return true; // Deeper than the engine can stringify.
+    return true; // Deeper than this engine can stringify.
   }
-  return names.some((name) => {
-    const quoted = JSON.stringify(name);
-    return text.includes(quoted) || canonical.includes(quoted);
-  });
 }
 
 /** A schema inferred from one sample value, or why it cannot be inferred. */
