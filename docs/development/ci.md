@@ -254,8 +254,9 @@ tree, because changing it makes the publisher contract refuse every open dev PR 
 `main` is merged back into `dev` and `dev` into each PR.
 
 `ci-feedback.yml` needs history for its merge base, so it keeps a full-depth fetch but
-leaves old blobs behind, under the same one-minute step limit. Later reads of a missing
-blob fetch it anonymously, which relies on this repository being public.
+leaves old blobs behind, under the same one-minute step limit. `fast-feedback.sh` fetches
+the blobs its whitespace check needs in one batch, anonymously. That relies on this
+repository being public, and a lane fails if GitHub refuses anonymous fetches at that moment.
 
 Setup, checkout and compilation can still take most of the 45 seconds on a slow
 runner, so a pass can run out of them on a healthy head. That
