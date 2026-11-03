@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -66,6 +67,56 @@ func CheckCAAlgorithm(algorithm KeyAlgorithm) error {
 	return nil
 }
 
+// signatureIsPQ reports whether a certificate signature is ML-DSA. Any
+// ML-DSA parameter set counts, so a non-selected set still fails the path
+// check below instead of passing as classical.
+func signatureIsPQ(algorithm x509.SignatureAlgorithm) bool {
+	switch algorithm {
+	case x509.MLDSA44, x509.MLDSA65, x509.MLDSA87:
+		return true
+	}
+	return false
+}
+
+// CheckPath refuses a certificate path that mixes classical and post-quantum
+// material (ADR D3, DEC-19). In a post-quantum path the subject key and the
+// signature of every certificate, the trust anchor's self-signature included,
+// must be ML-DSA-65; a classical path may contain no ML-DSA at all. A
+// classical root over an ML-DSA intermediate would verify as X.509 yet is not
+// a PQ-authenticated chain, so it is refused rather than labelled. certs is
+// the issuer certificate followed by its chain, in any order.
+func CheckPath(certs []*x509.Certificate) error {
+	if len(certs) == 0 {
+		return nil
+	}
+	pq := signatureIsPQ(certs[0].SignatureAlgorithm)
+	for i, cert := range certs {
+		_, keyIsPQ := cert.PublicKey.(*mldsa.PublicKey)
+		switch {
+		case keyIsPQ != pq || signatureIsPQ(cert.SignatureAlgorithm) != pq:
+			return fmt.Errorf("%w: the path mixes classical and post-quantum keys or signatures (certificate %d)", ErrInvalidCA, i)
+		case pq && cert.SignatureAlgorithm != x509.MLDSA65:
+			return fmt.Errorf("%w: certificate %d is not signed with ML-DSA-65", ErrInvalidCA, i)
+		case pq:
+			if algorithm, err := AlgorithmOf(cert.PublicKey); err != nil || algorithm != MLDSA65 {
+				return fmt.Errorf("%w: certificate %d does not carry an ML-DSA-65 key", ErrInvalidCA, i)
+			}
+		}
+	}
+	return nil
+}
+
+// CheckPQPath is CheckPath that also requires the path to be post-quantum:
+// every signature and key ML-DSA-65. A relying party that demands a
+// PQ-authenticated chain uses this; a classical path, or an ML-DSA leaf under
+// a classical issuer, fails it.
+func CheckPQPath(certs []*x509.Certificate) error {
+	if len(certs) == 0 || !signatureIsPQ(certs[0].SignatureAlgorithm) {
+		return fmt.Errorf("%w: the path is not post-quantum (ML-DSA-65)", ErrInvalidCA)
+	}
+	return CheckPath(certs)
+}
+
 func caTemplate(subject pkix.Name, serial *big.Int, now time.Time, ttl time.Duration, maxPathLen int) *x509.Certificate {
 	return &x509.Certificate{
 		SerialNumber:          serial,
@@ -123,6 +174,11 @@ func SignIntermediate(parent Parent, public crypto.PublicKey, subject Subject, n
 	if !parent.Certificate.IsCA || parent.Certificate.MaxPathLenZero {
 		return nil, fmt.Errorf("%w: the parent may not sign intermediates", ErrInvalidCA)
 	}
+	_, parentPQ := parent.Certificate.PublicKey.(*mldsa.PublicKey)
+	_, childPQ := public.(*mldsa.PublicKey)
+	if parentPQ != childPQ {
+		return nil, fmt.Errorf("%w: a classical parent and a post-quantum intermediate (or the reverse) do not make a PQ-authenticated chain", ErrInvalidCA)
+	}
 	name, err := subject.name()
 	if err != nil {
 		return nil, err
@@ -164,6 +220,9 @@ func VerifyCA(certDER []byte, public crypto.PublicKey, chain []*x509.Certificate
 	}
 	if _, err := AlgorithmOf(cert.PublicKey); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCA, err)
+	}
+	if err := CheckPath(append([]*x509.Certificate{cert}, chain...)); err != nil {
+		return nil, err
 	}
 	roots := x509.NewCertPool()
 	intermediates := x509.NewCertPool()

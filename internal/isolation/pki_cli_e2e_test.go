@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"crypto/mldsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -276,6 +277,89 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	if !listed {
 		t.Fatalf("the worker-published CRL does not list the revoked serial %s", issued.Serial)
 	}
+
+	// --- ML-DSA-65 is HOLD on the public surface (#1133) ---------------------------
+	// The mechanism exists below the API, but /api/v1 is frozen and its PKI
+	// algorithm enums are closed, so the real server must keep refusing
+	// mldsa65 and create nothing. The import path takes its algorithm from the
+	// key rather than from an enum, so it is exercised with a real ML-DSA key.
+	holdKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdPKCS8, err := pki.MarshalPrivateKey(holdKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdRoot, err := pki.CreateRoot(holdKey, pki.Subject{CommonName: "Held PQ Root"}, time.Now().UTC(), 24*time.Hour*30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdKeyFile, holdCertFile := filepath.Join(workDir, "hold.key"), filepath.Join(workDir, "hold.pem")
+	if err := os.WriteFile(holdKeyFile, pki.PrivateKeyPEM(holdPKCS8), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(holdCertFile, []byte(pki.CertificatePEM(holdRoot)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	holdPolicy := filepath.Join(workDir, "hold-policy.json")
+	if err := os.WriteFile(holdPolicy, []byte(strings.Replace(policy, `"ecdsa-p256","ed25519"`, `"mldsa65"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Positive control: the same import request shape with a classical CA key
+	// succeeds, so the ML-DSA refusals below are about the algorithm.
+	controlKey, err := pki.GenerateKey(pki.ECDSAP256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlPKCS8, err := pki.MarshalPrivateKey(controlKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlRoot, err := pki.CreateRoot(controlKey, pki.Subject{CommonName: "Control Root"}, time.Now().UTC(), 24*time.Hour*30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controlKeyFile, controlCertFile := filepath.Join(workDir, "control.key"), filepath.Join(workDir, "control.pem")
+	if err := os.WriteFile(controlKeyFile, pki.PrivateKeyPEM(controlPKCS8), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(controlCertFile, []byte(pki.CertificatePEM(controlRoot)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runCLI(cli.ExitOK, "pki", "issuer", "import", "classic-import", "--key-file", controlKeyFile, "--cert-file", controlCertFile)
+	refusedCLI := func(args ...string) string {
+		t.Helper()
+		stdout, stderr := &strings.Builder{}, &strings.Builder{}
+		invocation := ios()
+		invocation.Stdout, invocation.Stderr = stdout, stderr
+		if got := cli.Run(t.Context(), invocation, args); got == cli.ExitOK {
+			t.Fatalf("hikyo %s succeeded; the ML-DSA surface is on HOLD\nstdout: %s", strings.Join(args, " "), stdout)
+		}
+		return stderr.String()
+	}
+	for name, args := range map[string][]string{
+		"create-root":    {"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"},
+		"rotate":         {"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"},
+		"import":         {"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile},
+		"profile create": {"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy},
+		"cert issue":     append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key", "--key-algorithm", "mldsa65", "--dns", "hold.svc.e2e.test"}, env...),
+	} {
+		stderr := refusedCLI(args...)
+		t.Logf("%s refused: %.160s", name, strings.TrimSpace(stderr))
+		if strings.Contains(stderr, "PRIVATE KEY") {
+			t.Errorf("%s: the refusal leaked key text: %s", name, stderr)
+		}
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE key_algorithm <> 'ecdsa-p256' AND key_algorithm <> 'ecdsa-p384' AND key_algorithm <> 'rsa-3072' AND key_algorithm <> 'rsa-4096'`); n != 0 {
+		t.Fatalf("the public surface created %d issuers outside the classical set", n)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name IN ('hold-root','hold-import')`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_profiles WHERE name='hold-profile'`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_certificates WHERE key_algorithm='mldsa65'`); n != 0 {
+		t.Fatalf("a refused ML-DSA request left %d rows", n)
+	}
+	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name='e2e-issuing' AND version > 1`); n != 0 {
+		t.Fatal("a refused rotation created a version")
+	}
 	stopFirst()
 
 	// --- Restart: inventory and custody survive ------------------------------------
@@ -299,8 +383,8 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	if err := json.Unmarshal([]byte(runCLI(cli.ExitOK, "pki", "issuer", "list", "-o", "json")), &issuers); err != nil {
 		t.Fatal(err)
 	}
-	if len(issuers.Issuers) != 3 {
-		t.Fatalf("issuers after restart = %d, want 3", len(issuers.Issuers))
+	if len(issuers.Issuers) != 4 {
+		t.Fatalf("issuers after restart = %d, want 4", len(issuers.Issuers))
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='pki.certificate_key_disclosed' AND actor_class='machine'"); got != 1 {
 		t.Fatalf("machine key disclosure events = %d, want 1", got)
