@@ -17,7 +17,7 @@ merges, and even then the public API, CLI and WebUI do not offer the algorithm
 | Public key, published | ML-DSA-65: the standard SubjectPublicKeyInfo DER (1974 bytes, OID 2.16.840.1.101.3.4.3.18) in the same base64 field, as DEC-07 specifies. Ed25519 stays the raw 32 bytes. A consumer therefore reads the field by the key's `algorithm`. The conversion is in `crypto.ExposeTransitPublicKey` and the response builder; no public route returns an ML-DSA key yet |
 | Signature | `hikyo:v<N>:` followed by unpadded base64url of a 3311-byte payload: the two-byte big-endian algorithm identifier `0x0905` (the TLS code point for ML-DSA-65), then the 3309-byte signature. 4415 characters after the prefix, 4424 in all |
 | Context | The ML-DSA context string is the Transit label `hikyo/transit/sign/v1` (21 bytes, limit 255). Signing is hedged, so two signatures of one message differ |
-| Signed bytes | The caller's message, unchanged, exactly as for Ed25519 (see [Departures](#departures-from-the-pqc-profiles-for-the-owner-to-accept)) |
+| Signed bytes | The caller's message, unchanged, exactly as for Ed25519 (see [Departure](#departure-from-the-pqc-profiles-for-the-owner-to-accept)) |
 | Bounds | Unchanged: message 64 KiB, wire value 128 KiB |
 
 Ed25519 keys, signatures and wire values are byte for byte unchanged.
@@ -118,14 +118,14 @@ custody provider refuses it.
 - **Library availability.** `crypto/mldsa` is unavailable under the frozen FIPS
   module v1.0.0, so key opening fails there: creation and signing refuse, and
   verification answers false. There is no fallback algorithm.
-- The two departures below.
+- The departure below.
 
-## Departures from the PQC profiles, for the owner to accept
+## Departure from the PQC profiles, for the owner to accept
 
 The [profiles](../security/pqc/profiles.md#encodings-fingerprints-domain-separation-identifiers)
 (DEC-07 rows) say algorithm identifiers appear inside the signed bytes and that
 the label is also the first length-prefixed field of every signature input. Transit
-does not do this, and the register has no row accepting the difference:
+does not do this for the signed bytes, and the register has no row accepting the difference:
 
 1. **Signed bytes are the raw message, not a label-prefixed structure.** The label
    is bound only as the ML-DSA context, and the algorithm identifier `0x0905`
@@ -139,12 +139,10 @@ does not do this, and the register has no row accepting the difference:
    algorithm, and separation from other uses of the same key rests on the ML-DSA
    context string alone. The owner decides; the owning ticket for any change is
    #1129.
-2. **Algorithm identifier lives in the payload, not in a fingerprint or key
-   identity string.** Transit publishes no `mldsa65:` text form and no
-   fingerprint, so the DEC-07 fingerprint and text-form rules have nothing to
-   attach to here. The public key itself does follow DEC-07 (SPKI when published).
-   Residual risk: a surface that later wants a fingerprint of a Transit key must
-   define it then.
+
+Not a departure, but not provided: the `mldsa65:` text form and a key fingerprint.
+Transit publishes neither today, so a surface that later wants one must define it
+then. The public key itself follows DEC-07 (SPKI when published).
 
 ## Exposure (HOLD)
 

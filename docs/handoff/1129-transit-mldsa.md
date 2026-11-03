@@ -10,7 +10,17 @@ Operator-facing text is in [Transit ML-DSA-65 signing keys](../operations/transi
 Stacked on the ADR amendment branch (PR #1155). Refs
 [#1129](https://github.com/Hikyo-Org/Hikyo/issues/1129); the PR does not close it.
 
-## The finding that shapes this PR
+## Candidate and base
+
+| Item | Value |
+| --- | --- |
+| Pull request | #1172, base `dunky13/pqc-adr-amendments` at `e5539c280b37ea3f6e3a8371a949aad8190ff0ad` (unchanged when rechecked) |
+| First review round | `ae1855d2c962aca8ddb6f07166e237333c8b0edb` |
+| Validated code revision | `1f10525f7626503f8ce4a7f6d4e8a851986aa000` (the repair commit). The head after this handoff differs from it by the handoff and PR text only, no code |
+| Source re-pin | `origin/main` is `dd41e86b5` (2026-11-03). Between the issue's historical assessment `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` (which is also the `v1.0.0` commit) and `origin/main`, nothing changed in the Transit crypto, custody, service, server or CLI files, `api/openapi.yaml`, the web Transit routes or the migrations directory (`git diff --stat` empty). `main` ends at migration 82, so 83 is free there |
+| Inventory reconciliation (I22) | Re-ran the [census](../security/pqc/inventory.md#census-method-and-reconciliation) search 1 at `ae1855d2c`: 179 non-test Go files, the same count as the draft; the only Transit match is `internal/crypto/transit.go` (this change adds a `crypto/x509` import inside `internal/crypto`, inside the chokepoint). Search 4 over `api`, migrations, `clients` and `web/src` finds the I22 consumers (OpenAPI, generated Go and TypeScript clients, migrations 00065 and 00083, `web/src/api/transit.ts`, `web/src/routes/TransitKeyManagement.tsx`, `TransitOperations.tsx`); no new Transit consumer outside the I22 row. The row's bound note (message 64 KiB, context 1 KiB, wire 128 KiB; closed CHECK constraints and API enums) matches source |
+
+## Decision needed from the owner: the freeze
 
 `v1.0.0` exists and the freeze guard is armed. `TransitAlgorithm` is a closed
 enum on every transit key response. Adding `mldsa65` to it, and converting it to
@@ -27,24 +37,42 @@ fail:
 [response-property-became-not-enum] ... (the same 7 response paths)
 ```
 
-The api-cli-surface ADR says closed enums never grow. The decision register
-selected `mldsa65` (DEC-02) and the Transit proposal says D2 gains it, but nothing
+The api-cli-surface ADR (lines 146 to 148) says closed enums never grow and that
+an old client keeps working against a new server. The decision register selected
+`mldsa65` (DEC-02) and the Transit proposal says D2 gains it, but nothing
 reconciles that with the v1 freeze. I did not weaken the guard, add an
-allowlist entry or invent a second encoding. **Decision needed from the owner**
-(options, recommendation first):
+allowlist entry or invent a second encoding. The options, with what each costs,
+for the coordinating session to present (this handoff makes no recommendation):
 
-1. Amend [api-cli-surface](../adr/api-cli-surface.md) (#25) to let this one
-   closed enum grow once for the post-quantum program, with a new bound profile,
-   then add `mldsa65` to the OpenAPI enum, regenerate Go and TypeScript clients,
-   and extend the CLI help and WebUI list. Smallest change to the contract; every
-   existing generated client already ignores unknown fields but a Zod client with
-   the closed enum would reject a response carrying `mldsa65`, so old clients break
-   only when such a key exists. Recommended.
-2. Expose ML-DSA keys through a new endpoint family (`endpoint-added` is
-   permitted) whose responses use a new schema. Avoids the enum change but forks
-   the Transit API and the existing list/show responses would have to hide those
-   keys, which is a visible gap.
-3. Wait for `/api/v2`. The register says v1 plans none.
+1. **Let this closed enum grow, by amending api-cli-surface (#25).** Then add
+   `mldsa65` to the OpenAPI enum and regenerate. Consequences:
+   - It needs an exception to the freeze guard (the allowlist deliberately omits
+     `*-enum-value-added`), which is a change to the guard and its policy, not only
+     to the spec.
+   - It breaks the rule that an old client works against a new server. The closed
+     Zod enum sits inside the list schema: with the generated `v1.0.0`-shaped client
+     schema, `zTransitKeyList.safeParse` of an environment holding one Ed25519 key
+     and one `mldsa65` key fails the whole list (`items.1.algorithm: invalid_value`;
+     the Ed25519-only list parses). So one ML-DSA key in an environment makes that
+     environment's list unreadable to every old client, Ed25519 keys included. The
+     same closed enum is used by the WebUI and by `show`, `rotate`, `configure`,
+     lifecycle and `trim` responses.
+   - It needs client skew coverage: the frozen-client lane
+     (`scripts/ci/check-client-skew.sh`, `TestFrozenGeneratedClientAgainstCurrentServer`)
+     would have to be taught that this enum value is an accepted exception, or it
+     fails.
+   - `api/openapi.yaml` line 24890 describes `public_key` as "The Ed25519 public
+     key"; the description must change (description changes are permitted) and the
+     published encoding differs by algorithm (Ed25519 raw, ML-DSA-65 SPKI).
+   - Then the work in [Remaining work](#remaining-work-and-next-authorized-step).
+2. **Expose ML-DSA keys through a new endpoint family** (`endpoint-added` is
+   permitted) whose responses use a new schema. Avoids changing the existing enum
+   and keeps old clients working. The existing list and show routes must then not
+   return ML-DSA keys, so those routes become incomplete views of the environment's
+   keys; the CLI and WebUI need to read both families. A new surface to freeze.
+3. **Wait for `/api/v2`.** No ML-DSA Transit key until then. The register says v1
+   plans no v2.
+4. **Keep the mechanism unexposed** (the state of this PR) and decide later.
 
 Until then the mechanism is complete below the API and the real server refuses
 `mldsa65`: `TestTransitPublicSurfaceHoldsMLDSA65{SQLite,Postgres}` boot the
@@ -56,55 +84,77 @@ does not satisfy the API contract (algorithm)" and no row is created.
 
 | Area | Change |
 | --- | --- |
-| Crypto (`internal/crypto/transit.go`) | `TransitMLDSA65` in the closed set. `OpenTransitKey` feeds the HKDF-derived 32 bytes to `mldsa.NewPrivateKey(MLDSA65, seed)`; the algorithm is already in the HKDF info. `PublicKey` returns the 1952-byte encoding. `Sign` is hedged pure ML-DSA-65 with context `hikyo/transit/sign/v1`, behind a two-byte algorithm identifier `0x0905`. `VerifyTransitSignature` now takes the algorithm of the key row (signature changed; callers were the service and tests) and refuses wrong sizes, wrong identifier, bad public keys, unknown algorithms. Ed25519 behavior is byte identical |
+| Crypto (`internal/crypto/transit.go`) | `TransitMLDSA65` in the closed set. `OpenTransitKey` feeds the HKDF-derived 32 bytes to `mldsa.NewPrivateKey(MLDSA65, seed)`; the algorithm is already in the HKDF info. `PublicKey` returns the 1952-byte encoding. `Sign` is hedged pure ML-DSA-65 with context `hikyo/transit/sign/v1`, behind a two-byte algorithm identifier `0x0905`. `VerifyTransitSignature` takes the algorithm of the key row and refuses wrong sizes, wrong identifier, bad public keys and unknown algorithms. `ExposeTransitPublicKey` publishes ML-DSA-65 as SPKI and leaves Ed25519 raw. Ed25519 behavior is byte identical |
+| Server | The response builder publishes the key through `ExposeTransitPublicKey`; a stored key the library refuses fails the response instead of being published |
 | Custody (`internal/transit`) | `PublicKeyFor` covers both signing algorithms; software and mock providers need no other change. Material stays 32 bytes sealed as before |
 | Service | `transitAlgorithmOps` gains `mldsa65: sign, verify`; `Verify` takes the algorithm from the key row |
 | Audit | `TransitAlgorithmValues` gains `mldsa65` (create event enum). Operation events are unchanged: sizes only |
 | Migration 00083 (both engines) | Widens the `transit_keys.algorithm` CHECK. SQLite rebuilds the table (00067 pattern, `legacy_alter_table`); PostgreSQL drops and re-adds the constraint. No row changes. sqlc was regenerated: no generated query changed |
 | Legacy drill fixture | `internal/app/backup_upgrade_drill_test.go` enumerated migrations 45 to 82 and the ledger rows to delete; it now covers 83. No schema reversal is needed because the fixture drops the transit tables whole |
 | Build identity | `internal/buildcompat/development.json` regenerated against the CI-pinned `postgres:18@sha256:06cad38a...`; the diff is exactly the version-83 entry and the schema digest per engine. Without it every isolation test fails with "embedded migration bytes differ from verified build" |
-| ADR | Banner on `docs/adr/transit.md` (the proposal text plus one sentence that the public surface waits on the freeze, which is wider than the proposal); the proposal block in the migration ADR is now a pointer |
+| ADR | Banner on `docs/adr/transit.md`: the proposal text, marked owner-locked, plus a separate paragraph marked not owner-locked and neutral on the freeze outcome. "Operative" means the merge of #1172; the API, CLI and WebUI stay as they are. The proposal block in the migration ADR is a pointer |
 | Docs | `docs/operations/transit-mldsa.md` |
 
-## Choices inside the register, to confirm
+## Departures from the PQC profiles, for the owner to accept
 
-- **Signature algorithm identifier.** The proposal says the signature carries
-  algorithm and parameter set. Raw 3309 bytes do not. I used the two-byte
-  big-endian TLS SignatureScheme code point `0x0905`, which the profiles already
-  list for ML-DSA-65, as the first bytes of the payload. Ed25519 payloads stay the
-  bare 64 bytes. This is a wire detail the register did not spell out.
+The register has no row accepting these; I did not edit any DEC row. Details and
+residual risk are in the [operations note](../operations/transit-mldsa.md#departure-from-the-pqc-profiles-for-the-owner-to-accept).
+
+1. **Signed bytes (DEC-07, profiles.md "Domain separation").** The profile says
+   algorithm identifiers appear inside the signed bytes and the label is the first
+   length-prefixed field of every signature input. Transit signs the caller's raw
+   message, with the label only as the ML-DSA context and `0x0905` outside the
+   signature. I checked whether conforming is possible without changing what
+   callers verify: it is not. Signing `LP(label) || LP(algorithm) || message` means
+   every verifier must rebuild that input, whereas ADR D4 and the Ed25519 contract
+   are "any verifier holding the public key checks the caller's own bytes".
+   Registered as a departure. Owning ticket for any change: #1129.
+2. **Public key encoding (DEC-07, profiles.md "ML-DSA public key").** My first
+   round limited the SPKI rule to fingerprint surfaces; that limit is not in
+   profiles.md, and conforming was cheap and correct (it changes no verification
+   input), so **this is now conformed, not a departure**: the stored form stays raw
+   (as Ed25519's does), and the published form (`ExposeTransitPublicKey`, used by
+   the response builder) is SPKI for ML-DSA-65. Ed25519 stays raw 32 bytes for
+   compatibility, so the `public_key` field is read by the key's `algorithm`. The
+   `mldsa65:` text form and a key fingerprint are not provided: Transit publishes
+   none today.
+3. **The algorithm identifier is in the payload.** The profile requires wire formats
+   to carry an algorithm id (done: `0x0905`, the profiles' TLS code point for
+   ML-DSA-65). The proposal did not say where or which; this is my choice within
+   the rule, not a departure, listed so the owner can veto the code point.
+
+## Other choices to confirm
+
 - **Context label** `hikyo/transit/sign/v1`, per the `hikyo/<surface>/<purpose>/v<N>`
   rule. Independent verifiers need this exact string.
-- **Public key representation** is the raw FIPS 204 encoding in the same field the
-  Ed25519 key uses (standard base64 at the API when exposed), not SPKI or the
-  `mldsa65:` hex text. DEC-07's SPKI and fingerprint rules are candidates for
-  surfaces that publish fingerprints; Transit publishes none, so no fingerprint
-  was added.
-- **Verification outcome classes.** As for Ed25519, an inauthentic or malformed
-  signature of the right wire shape answers `valid=false`; only a malformed
-  transit wire value, an oversized input, a missing version, a compromised
-  version, a version below the floor or unavailable custody are errors.
+- **Verification outcome classes.** A well-formed transit value whose signature is
+  wrong for this key, algorithm, context or message answers `valid=false` (wrong
+  key, other algorithm, wrong identifier or length, flipped byte). A malformed
+  transit wire value or oversized input, a version the key does not have, a version
+  below the floor, a compromised version, a key in the wrong state and unavailable
+  custody are errors, not `valid=false`.
 - **No hybrid or dual signature in Transit.** DEC-03 composition belongs to the
-  consumer's protocol; Transit signs one message with one key. Documented in the
-  operations doc.
+  consumer's protocol; Transit signs one message with one key.
 
 ## Acceptance
 
 Legend: DONE, PARTIAL, HOLD (blocked by a decision not in the register), NOTRUN.
+"Restart" below means a new service struct and keyring over the same datastore, not
+a process restart.
 
 | Criterion | Status | Notes |
 | --- | --- | --- |
-| Land the scoped ADR amendment; only approved parameter sets; distinct key identities; rotation never converts | DONE | Banner on transit ADR; `mldsa65` only; parse refuses `mldsa44/87`, case and padding variants; duplicate-name conflict across algorithms tested; the key id and algorithm are unchanged by rotation (tested) |
-| Software custody, sealed material encoding, public key representation, signature wire, algorithm/version binding; preserve AAD and HKDF | DONE | Seed derived under the existing info; vectors prove the derivation independently; version relabel and cross-key/version/env/project/algorithm transplant tests |
+| Land the scoped ADR amendment; only approved parameter sets; distinct key identities; rotation never converts | PARTIAL | The text lands as a banner in the implementation commit, not before it, and originating ticket #1124 is still open; the banner is operative only when #1172 merges. `mldsa65` only; parse refuses `mldsa44/87`, case and padding variants; duplicate-name conflict across algorithms is tested; rotation keeps algorithm and key id (tested) |
+| Software custody, sealed material encoding, public key representation, signature wire, algorithm/version binding; preserve AAD and HKDF | PARTIAL | Seed derivation, sealing, wire and binding are DONE and proven by independent vectors and transplant tests. Public key representation now follows DEC-07 (SPKI published). Signed bytes depart from profiles.md (above) and await owner acceptance |
 | Propagate the closed enum and bounds: both schemas, generated queries, request/response validation, OpenAPI, clients, CLI, WebUI, audit, observability | PARTIAL | DONE: both schemas via migration 00083, sqlc (no change needed), service validation, audit enum, custody, metrics (label-free gauges, nothing to change). **HOLD: OpenAPI, generated Go/TS clients, CLI help, WebUI list** (freeze, above). The real server refusal is tested |
-| Create, sign, independent verify, rotate, minimum version, disable/retire/destroy, historical policy, export restriction | PARTIAL | DONE through the real service, store and audit on SQLite and PostgreSQL, both custody providers (`TestTransitMLDSA65EndToEnd`). Export: no path exists and `exportable` is refused (tested). **HOLD: the same through the public API, CLI and generated clients** |
-| Grants, environment binding, admission, bounds, authorization before crypto, redacted audit | DONE (service level) | Reader, other org, sibling environment and per-key caller entries refused before any custody call (mock call counter unchanged); audit holds no signature, message or `hikyo:v` text. Admission budget path is shared with the other operations and unchanged |
-| Custody contract: software and mock conformance, fail closed, no fallback, local public verification | DONE | Conformance extended to `mldsa65` (public key size, transplant, unavailable sign); unavailable and unregistered custody refuse sign and verify and do no work. A mock is not evidence of an HSM or KMS |
+| Create, sign, independent verify, rotate, minimum version, disable/retire/destroy, historical policy, export restriction | PARTIAL | DONE through the real service, store and audit on SQLite and PostgreSQL, both custody providers (`TestTransitMLDSA65EndToEnd`), including that version floors do not end signing while retire and disable do (`runTransitFloorsDoNotEndSigning`). Export: no path exists, `exportable` is refused, and the key view is checked not to carry sealed material. **HOLD: the same through the public API, CLI and generated clients** |
+| Grants, environment binding, admission, bounds, authorization before crypto, redacted audit | DONE (service level) | Reader, other org, sibling environment and per-key caller entries refused before any custody call (mock call counter unchanged). The audit search covers the message bodies, the `hikyo:v` text, the context label and, per run, every public key (standard and URL base64, hex) and a 60-character slice of every signature collected during the run. Admission budget path is shared with the other operations and unchanged |
+| Custody contract: software and mock conformance, fail closed, no fallback, local public verification | DONE | Conformance extended to `mldsa65` (public key size, transplant with a positive control, unavailable sign); unavailable and unregistered custody refuse sign and verify and do no work. A mock is not evidence of an HSM or KMS |
 | Malformed and wrong-sized keys and signatures, wrong algorithm, key/version/scope, substitution, duplicates, disabled/compromised, minimum-version boundaries | DONE | Table test (22 malformed cases), service-level cases, boundary at the floor |
-| Restart, restore holds, project/instance re-encryption, rotation races, multi-node takeover on both engines | PARTIAL | DONE: restart (fresh service over the same store), rotate-dek plus project reencrypt (material re-sealed, public key and earlier signatures unchanged), concurrent rotation. NOTRUN: restore-hold behavior with an ML-DSA key (the material shape is identical to existing transit material; no drill was run), multi-node takeover (single-process harness only), instance-wide reencrypt |
+| Restart, restore holds, project/instance re-encryption, rotation races, multi-node takeover on both engines | PARTIAL | DONE: restart, rotate-dek plus project reencrypt (material re-sealed, public key and earlier signatures unchanged), concurrent rotation (at least one winner, contiguous versions, distinct signing public keys). NOTRUN: restore-hold behavior with an ML-DSA key (no drill was run), multi-node takeover (single-process harness only), instance-wide reencrypt |
 | Bounds fit actual encodings without weakening admission | DONE | Wire value 4424 characters inside the 128 KiB cap; message cap unchanged; no global bound raised |
-| Document consumer migration, verifier compatibility, cutoffs, rollback floor, measured size and performance | DONE | Operations doc and numbers below. Rollback behavior of an older binary against a database holding an `mldsa65` key is NOTRUN |
-| Frozen maintained-reference vectors, fuzz/parser regressions, API/CLI/client/WebUI evidence, screenshots | PARTIAL | Vectors frozen from the Go standard library and verified with it independently of the Transit path; two fuzz targets (public key and payload decoding, wire parser plus verifier). NOTRUN: pinned Wycheproof vectors (DEC-09 wants source, version and digest pinned; not fetched), a non-Go implementation. **HOLD: API/CLI/client/WebUI evidence.** Screenshots: not applicable, no rendered UI changed |
+| Document consumer migration, verifier compatibility, cutoffs, rollback floor, measured size and performance | PARTIAL | Operations note corrected for the floors (retire and disable end signing and verification, floors do not) and for the rollback floor (migration 83 moves it for every instance). NOTRUN: whether a release binary older than this change refuses a migration-83 database (`migrate.Check` has no production caller); amd64 not measured |
+| Frozen maintained-reference vectors, fuzz/parser regressions, API/CLI/client/WebUI evidence, screenshots | PARTIAL | Vectors frozen from the Go standard library and verified with it independently of the Transit path, and locally with OpenSSL 4.0.3 (non-Go; not in CI). Two fuzz targets, whose oracle is now the frozen authentic triple. NOTRUN: pinned Wycheproof vectors (DEC-09 wants source, version and digest pinned). **HOLD: API/CLI/client/WebUI evidence.** Screenshots: not applicable, no rendered UI changed |
 
 ## Measured baseline (DEC-17)
 
@@ -126,7 +176,8 @@ measured).
 
 | Size | ed25519 | mldsa65 |
 | --- | --- | --- |
-| Public key | 32 bytes | 1952 bytes |
+| Public key, stored | 32 bytes | 1952 bytes |
+| Public key, published | 32 bytes | 1974 bytes (SPKI) |
 | Signature payload | 64 bytes | 3311 bytes |
 | Wire value (`hikyo:v1:...`) | 95 characters | 4424 characters |
 
@@ -136,52 +187,80 @@ measurement.
 
 ## Tests and results
 
-| Command | Result |
-| --- | --- |
-| `go test -p 2 -count=1 ./internal/crypto/... ./internal/transit/... ./internal/audit/ ./api/ ./internal/server/` | PASS |
-| `go test -fuzz FuzzVerifyTransitMLDSA65 -fuzztime 20s`, `-fuzz FuzzParseTransitSignatureValue -fuzztime 15s` | PASS, no finding (short runs) |
-| `go test -p 2 -count=1 ./internal/store/migrate/ -run TransitMLDSA65` with `HIKYO_TEST_POSTGRES_DSN` (throwaway PostgreSQL 18 container) | PASS on SQLite and PostgreSQL: rows, versions and callers survive, the CHECK admits only `mldsa65` beyond the old set, child foreign keys, cascades and the live-name index survive |
-| `go test -p 2 -count=1 ./internal/isolation/ -run TestTransitMLDSA65EndToEnd` | PASS on both engines and both custody providers |
-| `go test -p 2 -count=1 ./internal/isolation/ -run TestTransitPublicSurfaceHolds` | PASS: real `app.Boot`, real CLI, both engines |
-| `go test -p 2 -count=1 ./internal/lint/...` | PASS once (499 s under host load) with no `reviewed_pins.json` change: no raw SQL or reviewed function changed. That run preceded one comment-only edit in `internal/lint/reencrypt_coverage.go` and the drill-fixture test edit. Two reruns of the final tree did not complete: the first hit the default 10 minute test timeout under host load (`panic: test timed out`), the second (30 minute timeout, queued) was stopped by the background limit. Final-tree lint is therefore NOTRUN; hosted CI will run it |
-| `go run ./scripts/release/compatibility --development --check internal/buildcompat/development.json` against the pinned PostgreSQL 18 image | PASS after regeneration |
-| Queued (`agent-heavy`) `go test -p 2 -parallel 2 -run Transit ./internal/isolation/`, then `./internal/store/migrate/ ./internal/store/`, then `./internal/service/ ./internal/conformance/ ./internal/app/` (the last three matched no Transit-named test) with PostgreSQL | PASS |
-| Queued `go test -p 2 -parallel 2 -run 'Drill\|LegacyDrill' ./internal/app/ ./internal/store/upgrade/ ./internal/upgradegate/...` with PostgreSQL | PASS (app 485 s) |
-| `scripts/ci/fast-feedback.sh`, signature and DCO scripts, doc status | see the end of this file |
+All commands run from the repository root with `go test -p 2`; PostgreSQL legs use
+a throwaway `postgres:18-alpine` container (`HIKYO_TEST_POSTGRES_DSN`) that was
+removed afterwards. "Round 1" is `ae1855d2c`; "round 2" is the validated code
+revision `1f10525f7626503f8ce4a7f6d4e8a851986aa000`.
+
+| Command | Round | Result |
+| --- | --- | --- |
+| `go test -p 2 -count=1 ./internal/crypto/... ./internal/transit/... ./internal/audit/ ./api/ ./internal/server/` | 1 and 2 | PASS (server 70 s). Round 2 adds the SPKI publication tests (`TestExposeTransitPublicKey`, `TestTransitKeyResponsePublishesTheAlgorithmEncoding`), the frozen-triple fuzz oracles and the conformance control |
+| `go test -fuzz FuzzVerifyTransitMLDSA65 -fuzztime 10s`, `-fuzz FuzzParseTransitSignatureValue -fuzztime 10s` | 2 | PASS, no finding (short runs; new oracle: only the frozen authentic triple or wire value may verify, and the standard library must agree) |
+| `go test -p 2 -parallel 2 -count=1 ./internal/store/migrate/` with PostgreSQL | 2 | PASS (56 s). The migration test now seeds exact material and public-key bytes and compares them byte for byte after the rebuild, and asserts that the exportable, custody, state, version-window, compromise, latest, deletion-deadline and rotation-period CHECKs still refuse, on SQLite and PostgreSQL |
+| `go test -p 2 -parallel 2 -count=1 -run Transit ./internal/isolation/` with PostgreSQL | 2 | PASS (103 s): `TestTransitMLDSA65EndToEnd` (both engines, both custody providers, now including `floors_do_not_end_classical_signing`, the audit search for collected keys and signatures, the export-view check and the at-least-one-winner rotation assertion), the existing Transit end-to-end suite, and `TestTransitPublicSurfaceHoldsMLDSA65{SQLite,Postgres}` (real `app.Boot`, real CLI) |
+| Mutation check of the audit search: add `mldsa65` to the searched needles | 2 | The audit subtest fails with "audit trail carries "mldsa65" in 9 events", so the search bites; reverted |
+| Round 1 queued suites: `./internal/store/`, `-run Drill\|LegacyDrill ./internal/app/ ./internal/store/upgrade/ ./internal/upgradegate/...` with PostgreSQL, `go run ./scripts/release/compatibility --development --check internal/buildcompat/development.json` against the pinned PostgreSQL 18 image | 1 | PASS (store 306 s, app drill 485 s). Not rerun in round 2: nothing they cover changed |
+| `openssl pkeyutl -verify` (OpenSSL 4.0.3) on the frozen SPKI, signature and message, `-pkeyopt context-string:hikyo/transit/sign/v1` | 2 | Local, outside CI, run by me: "Signature Verified Successfully". Without the context option, with another context string, and with a tampered message: "Signature Verification Failure" (exit 1) |
+| Generated Zod schema proof for the freeze decision: `zTransitKeyList.safeParse` with one `ed25519` and one `mldsa65` item | 2 | Fails on `items.1.algorithm` (`invalid_value`); the Ed25519-only list parses |
+| `node scripts/ci/check-doc-status.mjs --check` | 2 | PASS (35 ledger entries) |
+| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh` against the PR base | 2 | FASTFEEDBACK_SIGDCO |
+| `scripts/ci/fast-feedback.sh` (base `origin/dunky13/pqc-adr-amendments`) | 2 | FASTFEEDBACK |
+| `go test -p 2 -timeout 40m -count=1 ./internal/lint/...` | 2 | LINT |
+| Hosted CI on `ae1855d2c` (round 1 head) | 1 | `repository invariants (boundary, lint, CI policy)` PASS, `ci-feedback` go, frontend and tooling PASS, `ops-floor` amd64 and arm64 PASS, DCO report PASS. `ci-queue-required` FAILS, as expected: the base is a stacked branch, not `main`. The earlier round-1 statement "hosted CI NOT RUN" was stale. Hosted CI for the round 2 head is pending |
+
+Round 1 local lint: it passed once (499 s) before a comment-only edit, then two
+reruns did not complete (the default 10 minute test timeout under host load; then
+the 30 minute background limit). A reviewer's local run also timed out at 40
+minutes under load with no `--- FAIL`, which is inconclusive, not a pass. Hosted
+`repository invariants (boundary, lint, CI policy)` passing at `ae1855d2c` is the
+only completed lint evidence for that round.
+
 
 ## Migration number
 
-This PR takes **00083** on both engines (sqlite and postgres). A sibling that also
-adds a migration will collide: renumber, and regenerate
+This PR takes **00083** on both engines (sqlite and postgres). `main` ends at 82.
+A sibling that also adds a migration will collide: renumber, and regenerate
 `internal/buildcompat/development.json` again (it holds a digest per version and a
 schema digest per engine), then rerun the lint pins.
 
 ## Key retention and rollback
 
 - No production key material, key creation, provider write or deployment was made.
-  Throwaway databases and two PostgreSQL containers were created and removed.
-- Migration 00083 is roll-forward only. Once an `mldsa65` key exists, rollback of
-  the binary means restoring a backup taken before the key. Old-binary behavior on
-  such a database was not run.
+  Throwaway databases and PostgreSQL containers were created and removed.
+- Migration 00083 is roll-forward only and applies to every instance that upgrades,
+  whether or not an `mldsa65` key is ever created: it rebuilds `transit_keys`.
+  **Merging moves the rollback floor for everyone.** The downgrade path is
+  restoring an archive from before migration 83 (see the upgrades guide), not a
+  down migration. Whether a release binary older than this change refuses a
+  migration-83 database is NOTRUN: `migrate.Check` would refuse it but has no
+  production caller, and the base `app.Boot` refusal observed in development was for
+  custody reasons, not schema.
 - Backups carry sealed `mldsa65` material like all transit material; trim and
   destroy erase live material only.
-- The ML-DSA private key object inside `crypto/mldsa` cannot be zeroed; `Destroy`
-  drops the reference (comment `shortcut:` in the code). Seeds and derived bytes
-  are zeroed.
-- The standard library's `crypto/mldsa` is unavailable under the frozen FIPS
-  module v1.0.0: key opening and public-key parsing then fail, so creation and
-  signing refuse and verification answers false. No fallback exists.
+- **Zeroization.** `Destroy` zeroes the AEAD, HMAC and Ed25519 key bytes. It cannot
+  zero an ML-DSA key: `crypto/mldsa` keeps the seed and the expanded key inside the
+  library and has no erase method, so they stay in the Go heap until reused. Our own
+  copy of the derived seed and the opened material are zeroed. Residual risk,
+  owner #1129, recheck at every Go minor release and when `crypto/mldsa` gains an
+  erase method; recorded in the operations note.
+- `crypto/mldsa` is unavailable under the frozen FIPS module v1.0.0: key opening and
+  public-key parsing then fail, so creation and signing refuse and verification
+  answers false. No fallback exists.
 
 ## Remaining work and next authorized step
 
-1. Owner decision on the freeze (options above). Then OpenAPI enum, regenerate Go
-   server types and the TypeScript client (`pnpm --dir clients/ts generate`), CLI
-   help text and its golden `internal/cli/testdata/help.txt`, the WebUI algorithm
-   list in `web/src/routes/TransitKeyManagement.tsx`, and real API/CLI/client
-   lifecycle tests on both engines; screenshots then apply (matching route, state
-   and viewport, kept out of Git).
-2. Pin Wycheproof ML-DSA vectors (source, version, digest) and run a second
-   implementation against the frozen vectors.
-3. Restore-hold, instance reencrypt and multi-node takeover runs with an ML-DSA key.
-4. Owner thresholds from a target-machine baseline (amd64 included).
-5. Maintainer security approval and independent adversarial review.
+1. Owner decision on the freeze (options above). If option 1: the freeze-guard
+   exception and policy text, the OpenAPI enum and the `public_key` description,
+   regenerate Go server types and the TypeScript client
+   (`pnpm --dir clients/ts generate`), client skew lane handling, CLI help text and
+   its golden `internal/cli/testdata/help.txt`, the WebUI algorithm list in
+   `web/src/routes/TransitKeyManagement.tsx` (and its list parse), and real
+   API/CLI/client lifecycle tests on both engines; screenshots then apply (matching
+   route, state and viewport, kept out of Git).
+2. Owner acceptance or change of the signed-bytes departure.
+3. Pin Wycheproof ML-DSA vectors (source, version, digest); run the OpenSSL check in
+   CI if wanted.
+4. Restore-hold, instance reencrypt and multi-node takeover runs with an ML-DSA key;
+   a release-binary refusal check against a migration-83 database.
+5. Owner thresholds from a target-machine baseline (amd64 included).
+6. Maintainer security approval and independent adversarial review.
