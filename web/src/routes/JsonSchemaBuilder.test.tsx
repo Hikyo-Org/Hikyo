@@ -143,6 +143,27 @@ describe('JsonSchemaBuilder', () => {
     await view.unmount();
   });
 
+  it('opens the raw editor when a live update brings a schema the builder cannot show', async () => {
+    function LiveUpdate() {
+      const [value, setValue] = useState('{"type":"object"}');
+      return (
+        <>
+          <JsonSchemaBuilder value={value} error={null} onChange={() => undefined} />
+          <button type="button" onClick={() => setValue('{"type":"integer","minimum":1}')}>
+            refetch
+          </button>
+        </>
+      );
+    }
+    const view = await renderForm(<LiveUpdate />);
+    const button = (name: string) =>
+      [...view.container.querySelectorAll('button')].find((candidate) => candidate.textContent?.startsWith(name));
+    expect(button('Advanced')?.getAttribute('aria-expanded')).toBe('false');
+    await act(async () => button('refetch')?.click());
+    expect(button('Advanced')?.getAttribute('aria-expanded')).toBe('true');
+    await view.unmount();
+  });
+
   it('changes nothing when the raw editor is left, so a click that caused the blur still lands', async () => {
     // A control replaced or moved between mousedown and mouseup loses the click,
     // and the blur that leaves the raw editor is exactly what the mousedown causes.

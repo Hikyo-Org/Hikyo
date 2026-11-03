@@ -53,11 +53,13 @@ export function JsonSchemaBuilder({
   // A tree the parent no longer holds a refusal for would show rows the text
   // does not have, and saving would silently drop them. parseBuilderSchema only
   // returns clean trees, so this rebuild cannot repeat.
+  const [advancedOpen, setAdvancedOpen] = useState(model === null);
   const orphaned = error === null && model !== null && builderSchemaError(model.root) !== null;
   if (value !== seen || orphaned) {
     setSeen(value);
     // Rows keep their ids, so a row's open rules survive typing in the raw editor.
     const rebuilt = parseBuilderSchema(value);
+    if (rebuilt === null) setAdvancedOpen(true); // The only place left to read this schema.
     setModel(rebuilt === null || model === null ? rebuilt : { ...rebuilt, root: carryIds(model.root, rebuilt.root) });
   }
 
@@ -79,7 +81,7 @@ export function JsonSchemaBuilder({
   return (
     <div className="schema-builder">
       {/* First, so the builder updating live as this text changes cannot move it. */}
-      <Disclosure label="Advanced: edit as JSON Schema (2020-12)" defaultOpen={model === null}>
+      <Disclosure label="Advanced: edit as JSON Schema (2020-12)" open={advancedOpen} onOpenChange={setAdvancedOpen}>
         <Textarea
           label="Schema document"
           mono

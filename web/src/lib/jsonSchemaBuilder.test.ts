@@ -106,6 +106,25 @@ describe('inferSchema', () => {
     }
   });
 
+  it('keeps a shape an empty array sample says nothing about', () => {
+    expect(inferred([[], ['x']])).toEqual({ type: 'array', items: { type: 'array', items: { type: 'string' } } });
+    expect(inferred([['x'], []])).toEqual({ type: 'array', items: { type: 'array', items: { type: 'string' } } });
+    expect(inferred([[], []])).toEqual({ type: 'array', items: { type: 'array' } });
+  });
+
+  it('gives an inferred empty array the item node the view edits', () => {
+    const result = inferSchema({ list: [] });
+    if ('error' in result) throw new Error(result.error);
+    expect(result.root.fields[0]?.items?.type).toBe('any');
+  });
+
+  it('holds the merged schema, not the raw sample, to the depth limit', () => {
+    const nest = (levels: number): unknown => (levels === 0 ? 'x' : [nest(levels - 1)]);
+    expect(inferSchema(['x', nest(40)])).toHaveProperty('root');
+    expect(inferSchema(nest(40))).toEqual({ error: expect.stringContaining('32 levels') });
+    expect(inferSchema(nest(1000))).toEqual({ error: expect.stringContaining('1000 levels') });
+  });
+
   it('refuses a null sample rather than reading as "no schema"', () => {
     expect(inferSchema(null)).toEqual({ error: expect.stringContaining('null') });
   });
@@ -134,14 +153,6 @@ describe('inferSchema', () => {
       expect(text).not.toContain(`"${keyword}"`);
     }
     expect(text).not.toContain('$schema');
-  });
-
-  it('refuses a value whose schema would pass the server depth of 32 and accepts the last that fits', () => {
-    const nest = (levels: number): unknown => (levels === 0 ? 'x' : { a: nest(levels - 1) });
-    // A scalar under N levels is N+1 schema nodes deep. Pretty-printing may then trip the size cap, a different message.
-    expect(inferSchema(nest(31))).not.toEqual({ error: expect.stringContaining('nested') });
-    expect(inferSchema(nest(32))).toEqual({ error: expect.stringContaining('nested') });
-    expect(inferSchema(nest(20))).toHaveProperty('root');
   });
 
   it('refuses a schema over 16384 characters and over 256 nodes', () => {

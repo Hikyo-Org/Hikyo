@@ -37,6 +37,7 @@ export const DIALECT_2020_12 = 'https://json-schema.org/draft/2020-12/schema';
 // The server's bounds (internal/schema MaxJSONSchemaDepth, MaxJSONSchemaSubschemas)
 // and the form's own text cap.
 const MAX_DEPTH = 32;
+const MAX_SAMPLE_DEPTH = 1000;
 const MAX_SUBSCHEMAS = 256;
 export const MAX_SCHEMA_LENGTH = 16384;
 
@@ -118,9 +119,10 @@ function depthOf(node: BuilderNode): number {
   return 1 + children(node).reduce((deepest, child) => Math.max(deepest, depthOf(child)), closes(node) ? 1 : 0);
 }
 
-// `depth` starts at 0 where the server's count starts at 1.
+// Only guards the recursion below: a deep sample can merge into a shallow schema,
+// so the server's limit is checked on the inferred tree instead.
 function tooDeep(value: unknown, depth: number): boolean {
-  if (depth >= MAX_DEPTH) return true;
+  if (depth >= MAX_SAMPLE_DEPTH) return true;
   if (Array.isArray(value)) return value.some((element) => tooDeep(element, depth + 1));
   return isRecord(value) && Object.values(value).some((member) => tooDeep(member, depth + 1));
 }
@@ -146,7 +148,10 @@ function merge(a: BuilderNode, b: BuilderNode): BuilderNode {
     ];
     return { ...a, fields };
   }
-  if (a.type === 'array') return { ...a, items: merge(a.items ?? newNode(), b.items ?? newNode()) };
+  if (a.type === 'array') {
+    // A null item shape is an empty sample: it says nothing, so it must not widen the other side.
+    return { ...a, items: a.items === null ? b.items : b.items === null ? a.items : merge(a.items, b.items) };
+  }
   return a;
 }
 
@@ -157,7 +162,7 @@ function infer(value: unknown): BuilderNode {
   if (typeof value === 'boolean') return newNode('boolean');
   if (Array.isArray(value)) {
     const shapes = value.map(infer);
-    return { ...newNode('array'), items: shapes.length === 0 ? newNode() : shapes.reduce(merge) };
+    return { ...newNode('array'), items: shapes.length === 0 ? null : shapes.reduce(merge) };
   }
   if (isRecord(value)) {
     return {
@@ -166,6 +171,15 @@ function infer(value: unknown): BuilderNode {
     };
   }
   return newNode();
+}
+
+/** Gives every array the item node the view edits, once merging no longer needs null to mean empty. */
+function settled(node: BuilderNode): BuilderNode {
+  return {
+    ...node,
+    fields: node.fields.map(settled),
+    items: node.type === 'array' ? settled(node.items ?? newNode()) : node.items,
+  };
 }
 
 /** Every field name in the part of the tree that serializes. */
@@ -197,9 +211,9 @@ export function mentionsFieldName(text: string, names: readonly string[]): boole
 /** A schema inferred from one sample value, or why it cannot be inferred. */
 export function inferSchema(value: unknown): { readonly root: BuilderNode } | { readonly error: string } {
   if (tooDeep(value, 0)) {
-    return { error: `This value is nested more than ${String(MAX_DEPTH)} levels deep, which a schema cannot describe.` };
+    return { error: `This value is nested more than ${String(MAX_SAMPLE_DEPTH)} levels deep.` };
   }
-  const root = infer(value);
+  const root = settled(infer(value));
   // `any` serializes to no schema at all, which would read as clearing one.
   if (root.type === 'any') return { error: 'A null value has no shape to infer a schema from.' };
   const problem = builderSchemaError(root);
