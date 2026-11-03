@@ -125,7 +125,7 @@ below or local-only:
 the CLI and operator clients to Hikyo (I11, owned, #1127), `internal/updater`
 (unix socket), `internal/hostupgrade` and `internal/app/unattended_process.go`
 (local health probes configured by the operator), `internal/netpolicy` (library),
-`internal/mailtest`, `internal/tlstest` (fixtures). `internal/repscan` runs a
+`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper whose callers pass the `updatecheck` transport). `internal/repscan` runs a
 local `git` with remote access disabled. Inbound listeners are I09 (#1127). The
 re-sweep with the `DefaultTransport` and `LoadDefaultConfig` terms found the SAML
 metadata proxy leg (X11), the AWS STS and ambient credential chain (X23), and
@@ -166,8 +166,8 @@ so a classical chain is never assumed.
 | X20 | Update check, release download, self-update (I11, I26) | HTTPS to GitHub release hosts (`updatecheck/source.go:88`, `releaseDownloadHost`; `selfupdate/selfupdate.go:61`), public dialer, TLS 1.2 minimum | GitHub endpoint unknown | Public data; authenticity is I26 | Peer-controlled; unknown | Authenticity is signed metadata (P-256, E-11, E-15), not the TLS chain | WebPKI plus pinned release trust | Reinstall |
 | X21 | Pairing: remote fetch, directory, identity probe, proxy leg (I11, I20) | HTTPS to another Hikyo instance with a leaf SPKI pin (`remotefetch/remotefetch.go:248`, `pairing.go`, `directory.go`, `pairing_identity.go:58`) | Peer is a Hikyo instance; its listener may be strict (#1127) | Pairing credentials | Client at compat (Go default offered); peer may be strict | Pin replaces chain verification (E-20); SRP and DPoP classical (E-01) | Pin read over a classical chain | Revoke, re-pair |
 | X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.1; API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
-| X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | Peer-controlled; unknown | Chain not observed | WebPKI; link-local or private ambient endpoints | Re-assume the role |
-| X24 | Installer downloads (I26; Hikyo's Go TLS does not apply) | `curl --tlsv1.2 --proto =https` to the release source and `api.github.com` (`install/install.sh.in:78`, `install/upgrade-nightly.sh:365`) | Host `curl` and its TLS library; versions unknown | Public artifacts | Host-library-defined; unknown | Authenticity is pinned root hash and signed metadata (E-11, E-15), not this transport | Pinned root hash | Reinstall |
+| X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | STS: peer-controlled, unknown. Default IMDS (`http://169.254.169.254`) and ECS (`http://169.254.170.2`) endpoints: plain HTTP, no TLS | Chain not observed | WebPKI; link-local or private ambient endpoints | Re-assume the role |
+| X24 | Installer downloads (I26; Hikyo's Go TLS does not apply) | `curl --proto =https` to the release source (`install/install.sh.in:78`, which also sets `--tlsv1.2`), and to `api.github.com`, `github.com` releases including cosign, and `raw.githubusercontent.com` (`install/upgrade-nightly.sh:365-380`, no `--tlsv1.2`) | Host `curl` and its TLS library; versions unknown | Public artifacts | Host-library-defined; unknown | Authenticity is pinned root hash and signed metadata (E-11, E-15), not this transport | Pinned root hash | Reinstall |
 ## Table B: disposition
 
 Classification, evidence, recheck trigger, consumer impact if a strict-style
@@ -200,7 +200,7 @@ this work created no issue.
 | X21 | compatibility-only | source: hop table and #1127 handoff (first-party peer, pin-based) | #1130 decides; peer listener strict observed | Strict gives confidentiality only (E-20) | #1130 | E-01, E-08, E-20 (owned by #1130, #1127) |
 | X22 | unknown | source only | Cluster build named | Unknown | F-02 | E-08 |
 | X23 | unknown | source: `awssm/auth.go`, `client.go` (code read, not run); the AWS blog does not name STS | An authorized run of each ambient source; AWS names STS | Strict not selectable; SDK-owned sources bypass the vetted transport | F-02, F-11 | E-07, E-08 |
-| X24 | unknown | source: installer scripts; host `curl` library unknown | A named host library; E-11 and E-15 close | Strict not selectable; transport is not the authenticity control | F-02 | E-08; authenticity E-11, E-15 (#1132) |
+| X24 | unknown | source: installer scripts; host `curl` library unknown | A named host library; E-11 and E-15 close | Strict not selectable; transport is not the authenticity control | F-02 | None for transport (not a hop-table row); authenticity E-11, E-15 (#1132) |
 
 ### Proposed follow-ups (unfiled)
 
@@ -218,7 +218,7 @@ are owned by Marc Went; the parent files them. Rows served are in Table B.
 | F-07 | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
 | F-08 | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
 | F-09 | Decide per-route strict selection for external hops | The owner narrows it under DEC-06 (strict stays on the listener and owned clients) or moves it to a named ticket; see [strict-route refusal](#strict-route-refusal). HOLD | all |
-| F-10 | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
+| F-10 | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
 | F-11 | Run the AWS ambient credential sources in an authorized environment | In a named AWS environment, run IMDS, ECS and IRSA credential discovery and record the transport each uses and whether it can negotiate a hybrid group. | X23 |
 
 ### Residual risk by route class
@@ -251,7 +251,9 @@ route in this register:
 - Hikyo claims **no post-quantum confidentiality and no post-quantum
   authenticity**. No route is verified supported. "PQ-ready" is not allowed.
 - Hikyo's own Go clients offer the library-default hybrid group
-  (`X25519MLKEM768`) on external hops, which is Go's default, not Hikyo policy.
+  (`X25519MLKEM768`) on external TLS hops, which is Go's default, not Hikyo policy.
+  The AWS SDK's default IMDS and ECS credential endpoints (X23) are plain HTTP,
+  with no TLS at all.
   Whether it is negotiated is the peer's choice and was **not observed in
   production** on any route (NOTRUN).
 - X01: the value is sealed to the provider's X25519 key with a libsodium
