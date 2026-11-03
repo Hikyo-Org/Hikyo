@@ -153,14 +153,17 @@ non-production receiver using the migration guide.
 
 ## Final checks
 
-Candidate: the head of the PR branch when this file was written; the PR body names the exact
-head and the result of every check below. Base `f5d549182` (PR #1156).
+Repair candidate: PR head `bde65e00c` (base `f5d549182`, PR #1156). Read at 2026-11-03T23:30Z.
 
 | Check | Result |
 | --- | --- |
-| `scripts/ci/fast-feedback.sh` against base `f5d549182`, through the queue, under the pinned Node 26.12.1 | pass (Go format, package tests of the changed set, docs) |
-| `scripts/ci/check-commit-signatures.sh`, `scripts/ci/check-dco.sh` against the PR base | pass, 4 commits at the time |
-| `go test ./internal/boundary/...` | pass |
-| `go test -p 2 -timeout 40m ./internal/lint/...` | **did not finish locally**: the 40 minute timeout fired during package loading under host load (load 10 to 12); a 100 minute rerun was cancelled unstarted by instruction. Hosted `repository invariants (boundary, lint, CI policy)` for head `9de6a536b`: not yet available when read at 2026-11-03T22:21Z (pending). `ci-queue-required` showed fail (1 s) at the same read; not investigated. No pin was refreshed: this branch changes no migration and no raw SQL |
-| `scripts/ci/check-doc-status.mjs` | NOTRUN: the docs site dependencies are not installed on this host |
-| Hosted CI, amd64, real receiver, live push | NOTRUN |
+| Isolation `TestAdapterSealedWebhookProtocolTwoEndToEnd`, SQLite and PostgreSQL 18, through `agent-heavy`, on the final code | pass (31.7 s) |
+| `go test` of `internal/boundary`, `internal/crypto/sealedhook`, `internal/adapter/sealedwebhook`, `internal/sealedreceiver`, `internal/config`, `cmd/hikyo-receiver-example` | pass |
+| `go test -run SealedWebhook ./internal/app ./internal/config` | pass. The whole `internal/app` package hit the default 10 minute test timeout locally on an unrelated heavy test (`TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential`, 3m42s under host load); it was not rerun locally. Hosted `feedback (go)` passed on the head |
+| `scripts/ci/fast-feedback.sh` against base `f5d549182`, queue, pinned Node 26.12.1 | pass (Go format, package tests, docs) |
+| `scripts/ci/check-commit-signatures.sh`, `scripts/ci/check-dco.sh` against the PR base | pass |
+| `internal/lint` locally | not run (by instruction). Hosted `repository invariants (boundary, lint, CI policy)` on `bde65e00c`: **pass** (7m3s, run 41736052591) |
+| Hosted `feedback (go/tooling/frontend)`, `ops-floor (amd64, arm64)` on `bde65e00c` | pass |
+| Hosted `ci-queue-required` | fail: "Only the protected default branch can enter this merge queue." (stacked PR on a non-default base; not a code finding) |
+| `scripts/ci/check-doc-status.mjs` | NOTRUN: the docs site dependencies are not installed on this host (fast-feedback's docs check passed) |
+| amd64 benchmark, real receiver, live push, deployment | NOTRUN |
