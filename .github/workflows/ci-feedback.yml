@@ -62,6 +62,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: source
           fetch-depth: 0
+          # The planner needs history for its merge base, not every old blob. A full fetch takes up to this step's limit.
+          filter: blob:none
           persist-credentials: false
       - name: Select fast feedback domains
         id: plan

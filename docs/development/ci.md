@@ -253,6 +253,10 @@ see a direct file read outside the tree. `ci-dev-gate.yml` still checks out the 
 tree, because changing it makes the publisher contract refuse every open dev PR until
 `main` is merged back into `dev` and `dev` into each PR.
 
+`ci-feedback.yml` needs history for its merge base, so it keeps a full-depth fetch but
+leaves old blobs behind, under the same one-minute step limit. Later reads of a missing
+blob fetch it anonymously, which relies on this repository being public.
+
 Setup, checkout and compilation can still take most of the 45 seconds on a slow
 runner, so a pass can run out of them on a healthy head. That
 is a flake, not a verdict. While the run attempt (`GITHUB_RUN_ATTEMPT`) is below
