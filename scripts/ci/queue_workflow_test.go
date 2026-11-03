@@ -248,9 +248,9 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int, budget
 	return nil
 }
 func queueBootstrapContract(run string, targeted bool) error {
-	want := "b8501f3fb4dda4a4a189963f5a79a366f1bc5cd04b1e768999f882339f08157e"
+	want := "b65da5c7971f66b56f2419ec20bc1df63649a44e1abe1bebd6ac1140e2c8f48a"
 	if targeted {
-		want = "2fe7756df4f67cf8cb9c38a94a7f2bc7521c10e30f29b58414bbde800ce74f63"
+		want = "d4175b7fbdbea0ce5b38ba354819907e207ae408b63f18120a5a185d4a2541e5"
 	}
 	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != want {
 		return fmt.Errorf("current-attempt exacthead clock bootstrap changed")
@@ -809,6 +809,55 @@ func TestQueuePublisherSparseTreeHoldsItsInputs(t *testing.T) {
 	for _, dep := range strings.Fields(string(out)) {
 		if dep == "net/http" {
 			t.Error("the publisher must stay free of net/http: it adds 87 packages to compile inside the budget")
+		}
+	}
+}
+
+// gh writes an HTTP error's body to stdout, so a retry must replace it, not follow it.
+func TestQueuePublisherClockReadRetriesOnce(t *testing.T) {
+	root := filepath.Join(repositoryRoot(t), ".github", "workflows")
+	head, source := "8d0fe8559114c4a0d8eb95c17443ef2be1c78071", "f1022b9c6a6b95c98a59ac98cb2865b36d4438bb"
+	good, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{map[string]any{"id": 123, "run_id": 456, "run_attempt": 2, "head_sha": source, "name": "publish-" + head, "status": "in_progress", "started_at": time.Now().Add(-5 * time.Second).UTC().Format(time.RFC3339)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"ci-queue-gate.yml", "ci-queue-worker.yml"} {
+		raw, err := os.ReadFile(filepath.Join(root, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var workflow queueWorkflowContract
+		if err := yaml.Unmarshal(raw, &workflow); err != nil {
+			t.Fatal(err)
+		}
+		for name, failures := range map[string]int{"one failure": 1, "two failures": 2} {
+			t.Run(file+"/"+name, func(t *testing.T) {
+				dir := t.TempDir()
+				clock, calls := filepath.Join(dir, "environment"), filepath.Join(dir, "calls")
+				if err := os.WriteFile(filepath.Join(dir, "good.json"), good, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(clock, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				shim := fmt.Sprintf("#!/bin/sh\necho x >>%q\nif [ \"$(wc -l <%q)\" -le %d ]; then echo '{\"message\":\"Server Error\"}'; exit 1; fi\ncat %q\n", calls, calls, failures, filepath.Join(dir, "good.json"))
+				if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(shim), 0700); err != nil {
+					t.Fatal(err)
+				}
+				cmd := exec.Command("bash", "-c", workflow.Jobs["publish"].Steps[0].Run)
+				cmd.Env = append(os.Environ(), "PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GH_REPO=Hikyo-Org/Hikyo", "GITHUB_RUN_ID=456", "GITHUB_RUN_ATTEMPT=2", "GITHUB_EVENT_NAME=workflow_run", "GITHUB_SHA="+source, "HEAD="+head, "GITHUB_ENV="+clock)
+				output, runErr := cmd.CombinedOutput()
+				written, err := os.ReadFile(clock)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if failures == 1 && (runErr != nil || !strings.Contains(string(written), "PR_GATE_DEADLINE=")) {
+					t.Fatalf("a retry did not recover the clock: %v %s", runErr, output)
+				}
+				if failures == 2 && (runErr == nil || len(written) != 0) {
+					t.Fatalf("a second failure reached setup: %s", written)
+				}
+			})
 		}
 	}
 }

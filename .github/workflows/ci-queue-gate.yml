@@ -57,7 +57,7 @@ jobs:
           # change its authenticated run/attempt/head/start identity.
           # One retry: without this clock the job fails before it can publish anything.
           read_jobs() { timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100"; }
-          body=$(read_jobs || read_jobs)
+          body=$(read_jobs) || body=$(read_jobs)
           started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "publish-$HEAD" '
             if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
             if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
