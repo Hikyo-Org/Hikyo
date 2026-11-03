@@ -137,7 +137,10 @@ PR.
 
    Expect the ruleset's name, then `creation update`. Do not use the full
    `configure-repository.sh` for this: it also resets CodeQL's languages.
-6. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
+6. Activation makes `ci-queue-required` refuse open feature PRs to main the next time
+   they are reassessed. Retarget them with `gh pr edit N --base dev`. The old red check
+   stays on that commit but does not block dev. A head that predates `ci-dev-gate.yml`
+   needs dev merged into it first. Open feature PRs against dev. Confirm the `ci-dev-required` result is bound to
    the current PR/head and all three feedback lanes. Merge one accepted change
    and verify complete `ci-dev` execution for the resulting SHA. Confirm one
    active run completes and only the newest pending push remains during a burst.

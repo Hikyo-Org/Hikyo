@@ -189,6 +189,10 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 	if f.readHook != nil {
 		f.readHook(path, f.reads[path])
 	}
+	// Dev is absent unless a fixture installs it, so main admission stays unrouted.
+	if _, ok := f.responses[path]; !ok && strings.HasSuffix(path, "/git/ref/heads/dev") {
+		return &githubReadError{path: path, status: 404}
+	}
 	var response any
 	if strings.Contains(path, "/check-runs?") {
 		checks := f.checks

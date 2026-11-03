@@ -27,8 +27,8 @@ only commits that passed the full merge queue may reach `main`.
 6. The implementation operates within the existing GitHub storage limit. It does
    not add persistent Go compiler-cache buckets or paid cache capacity. Evidence
    receipts remain small; existing compiler-cache ownership is preserved.
-7. Main hotfixes follow the full promotion gate and are merged back into `dev`
-   before the next release is prepared.
+7. Main hotfixes use a `hotfix/` branch, follow the full promotion gate and are
+   merged back into `dev` before the next release is prepared.
 8. PRs merge into `dev` with merge commits only. Squash and rebase rewrite
    signed-off commits, which promotion's DCO range check would refuse with no way
    to repair protected history.
@@ -37,6 +37,12 @@ only commits that passed the full merge queue may reach `main`.
    those caps gives about 30 minutes instead of 27-29, with about 5-6 minutes
    instead of 15 of completely full runners. Merge-queue and main runs stay
    uncapped. These figures are a replay model until measured on hosted dev runs.
+
+10. Once `dev` exists, `ci-queue-required` refuses a PR to main and asks to retarget
+    it to dev, unless it is a same-repository `release/` or `hotfix/` branch, a
+    Dependabot PR (security updates ignore `target-branch`) or a change dev admission
+    would refuse, such as a CI definition. This only routes work: anything let through
+    still runs the full queue, so a branch name grants no authority.
 
 ## Rollout
 

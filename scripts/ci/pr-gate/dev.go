@@ -277,19 +277,28 @@ type pullFile struct {
 	Status   string `json:"status"`
 }
 
+func (q *queueController) pullFiles(ctx context.Context, p pull) ([]pullFile, bool, error) {
+	var files []pullFile
+	for page := 1; page <= pullFilePages; page++ {
+		var list []pullFile
+		if err := q.api.read(ctx, q.endpoint(fmt.Sprintf("pulls/%d/files?per_page=100&page=%d", p.Number, page)), &list); err != nil {
+			return nil, false, err
+		}
+		files = append(files, list...)
+		if len(list) < 100 {
+			return files, true, nil
+		}
+	}
+	return files, false, nil
+}
+
 // A PR may carry a policy path only when it already matches main, as a backmerge
 // does. The PR's file list starts at the merge base, so feature branches can lag a
 // CI change on main.
 func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string, error) {
-	var files []pullFile
-	complete := false
-	for page := 1; page <= pullFilePages && !complete; page++ {
-		var list []pullFile
-		if err := q.api.read(ctx, q.endpoint(fmt.Sprintf("pulls/%d/files?per_page=100&page=%d", p.Number, page)), &list); err != nil {
-			return "", err
-		}
-		files = append(files, list...)
-		complete = len(list) < 100
+	files, complete, err := q.pullFiles(ctx, p)
+	if err != nil {
+		return "", err
 	}
 	if !complete {
 		return "This PR changes too many files for GitHub to list, so CI definition changes cannot be ruled out.", nil
@@ -331,6 +340,41 @@ func (q *queueController) devPolicyRefusal(ctx context.Context, p pull) (string,
 		}
 	}
 	return "", nil
+}
+
+// Routing, not a trust boundary: anything let through still runs the full queue.
+// Main takes promotions, hotfixes, Dependabot security updates (which ignore
+// target-branch) and the CI definitions dev admission refuses. Refusing those here
+// too would leave them no route at all.
+func (q *queueController) mainRouteRefusal(ctx context.Context, p pull) (string, error) {
+	if q.checkName != queueCheckName || p.User.Login == "dependabot[bot]" {
+		return "", nil
+	}
+	if p.Head.Repo.ID == q.repo.ID && (strings.HasPrefix(p.Head.Ref, "release/") || strings.HasPrefix(p.Head.Ref, "hotfix/")) {
+		return "", nil
+	}
+	var dev struct {
+		Ref string `json:"ref"`
+	}
+	if err := q.api.read(ctx, q.endpoint("git/ref/heads/dev"), &dev); err != nil {
+		var failure *githubReadError
+		if errors.As(err, &failure) && failure.status == 404 {
+			return "", nil
+		}
+		return "", err
+	}
+	files, complete, err := q.pullFiles(ctx, p)
+	if err != nil || !complete {
+		return "", err
+	}
+	for _, file := range files {
+		for _, path := range []string{file.Name, file.Previous} {
+			if devPolicyPaths[path] || path == devGateWorkflowPath {
+				return "", nil
+			}
+		}
+	}
+	return fmt.Sprintf("Feature PRs target dev. Retarget this one with: gh pr edit %d --base dev. This check stays red on this commit afterwards, which does not block dev; merge dev into the branch if its admission then fails. Main takes only same-repository release/ and hotfix/ branches and the CI definitions dev admission refuses.", p.Number), nil
 }
 
 func (q *queueController) devPublisherContract(ctx context.Context, p pull) error {

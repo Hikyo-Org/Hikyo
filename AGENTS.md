@@ -10,6 +10,14 @@ Commit documentation in Markdown only. Do not commit new HTML documentation.
 HTML companions are local, offline-only artifacts for the user to read and
 validate; keep them outside Git and share local links when needed.
 
+## Pull requests target dev
+
+Once the `dev` branch exists, branch from it and open feature PRs with
+`gh pr create --base dev`. GitHub and `gh` default to `main`, whose
+`ci-queue-required` check then refuses feature PRs. Only same-repository `release/`
+and `hotfix/` branches and the CI definitions dev admission refuses go to `main`. See
+the [branching guide](./docs/development/branching.md).
+
 ## Commits must be DCO signed-off
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
@@ -53,14 +61,15 @@ but it is not a substitute for this signature.
   scripts/git/install-hooks.sh
   ```
 
-  The hook checks every commit between `hikyo-upstream/main` and each branch being
-  pushed. Keep the hook installed; do not bypass it with `--no-verify`.
+  The hook checks every commit between `hikyo-upstream/main`, or `hikyo-upstream/dev`
+  when that leaves fewer, and each branch being pushed. Keep the hook installed; do not bypass it with `--no-verify`.
 - Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
-- Before every push, verify the complete pull-request range:
+- Before every push, verify the complete pull-request range, using the base branch
+  of your PR:
 
   ```sh
-  scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
+  scripts/ci/check-commit-signatures.sh hikyo-upstream/dev HEAD
   ```
 
   After pushing, confirm GitHub reports `verified: true` for the pushed commits.

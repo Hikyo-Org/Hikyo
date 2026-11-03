@@ -81,6 +81,23 @@ git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
 expect_refusal 'not locally verified (status N)' "$(dirname "$0")/check-commit-signatures.sh" "$signed" "$base" "$repo"
 git -C "$repo" update-ref refs/remotes/hikyo-upstream/main "$base"
 
+# A branch cut from dev need not verify another contributor's dev commits, but its
+# own commits still must. Without a dev reference the whole range from main counts.
+other=$(printf 'other\n' | git -C "$repo" commit-tree -p "$base" "$base^{tree}")
+feature=$(printf 'feature\n' | git -C "$repo" commit-tree -S -p "$other" "$other^{tree}")
+unsigned=$(printf 'unsigned\n' | git -C "$repo" commit-tree -p "$feature" "$feature^{tree}")
+printf 'refs/heads/feature %s refs/heads/feature %s\n' "$feature" "$zero" >"$repo/push-input"
+expect_refusal 'not locally verified (status N)' git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
+git -C "$repo" update-ref refs/remotes/hikyo-upstream/dev "$other"
+git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
+printf 'refs/heads/feature %s refs/heads/feature %s\n' "$unsigned" "$zero" >"$repo/push-input"
+expect_refusal 'not locally verified (status N)' git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
+# A dev that does not shorten the range is ignored, so main's stays in force.
+git -C "$repo" update-ref refs/remotes/hikyo-upstream/dev "$base"
+printf 'refs/heads/feature %s refs/heads/feature %s\n' "$feature" "$zero" >"$repo/push-input"
+expect_refusal 'not locally verified (status N)' git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
+git -C "$repo" update-ref -d refs/remotes/hikyo-upstream/dev
+
 expect_refusal 'invalid base' "$(dirname "$0")/check-commit-signatures.sh" missing-base "$signed" "$repo"
 expect_refusal 'invalid head' "$(dirname "$0")/check-commit-signatures.sh" "$base" missing-head "$repo"
 blob=$(git -C "$repo" rev-parse "$signed:file")
