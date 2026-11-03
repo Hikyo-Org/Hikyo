@@ -54,12 +54,9 @@ export function JsonSchemaBuilder({
   // does not have, and saving would silently drop them. parseBuilderSchema only
   // returns clean trees, so this rebuild cannot repeat.
   const orphaned = error === null && model !== null && builderSchemaError(model.root) !== null;
-  // Held while typing in the raw editor, so the builder appearing and vanishing
-  // on each keystroke does not move the text under the cursor (DESIGN.md).
-  const [rawFocused, setRawFocused] = useState(false);
-  if ((value !== seen || orphaned) && !rawFocused) {
+  if (value !== seen || orphaned) {
     setSeen(value);
-    // Rows keep their ids, or leaving the raw editor would replace the control under a click.
+    // Rows keep their ids, so a row's open rules survive typing in the raw editor.
     const rebuilt = parseBuilderSchema(value);
     setModel(rebuilt === null || model === null ? rebuilt : { ...rebuilt, root: carryIds(model.root, rebuilt.root) });
   }
@@ -81,10 +78,23 @@ export function JsonSchemaBuilder({
 
   return (
     <div className="schema-builder">
+      {/* First, so the builder updating live as this text changes cannot move it. */}
+      <Disclosure label="Advanced: edit as JSON Schema (2020-12)" defaultOpen={model === null}>
+        <Textarea
+          label="Schema document"
+          mono
+          rows={6}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder='{ "type": "object" }'
+          value={value}
+          onChange={(event) => onChange(event.currentTarget.value, null)}
+        />
+      </Disclosure>
       {model === null ? (
         <p className="field__hint">
-          {zJSONText.safeParse(seen).success
-            ? 'This schema uses rules the builder cannot show. It stays unchanged unless you edit it under Advanced below.'
+          {zJSONText.safeParse(value).success
+            ? 'This schema uses rules the builder cannot show. It stays unchanged unless you edit it under Advanced above.'
             : 'This is not valid JSON yet. The builder returns once it is.'}
         </p>
       ) : (
@@ -97,20 +107,6 @@ export function JsonSchemaBuilder({
           <Nested node={model.root} owner="" onChange={edit} />
         </>
       )}
-      <Disclosure label="Advanced: edit as JSON Schema (2020-12)" defaultOpen={model === null}>
-        <Textarea
-          label="Schema document"
-          mono
-          rows={6}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder='{ "type": "object" }'
-          value={value}
-          onFocus={() => setRawFocused(true)}
-          onBlur={() => setRawFocused(false)}
-          onChange={(event) => onChange(event.currentTarget.value, null)}
-        />
-      </Disclosure>
     </div>
   );
 }

@@ -489,3 +489,26 @@ describe('mentionsFieldName', () => {
     expect(mentionsFieldName(deep, ['AKIA'])).toBe(true);
   });
 });
+
+describe('builder bounds and additionalProperties', () => {
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ ...newField(), name: `f${String(index)}` }));
+
+  it('counts the false subschema the server counts', () => {
+    expect(builderSchemaError({ ...newNode('object'), closed: true, fields: many(254) })).toBeNull();
+    expect(builderSchemaError({ ...newNode('object'), closed: true, fields: many(255) })).toContain('256');
+    expect(builderSchemaError({ ...newNode('object'), closed: false, fields: many(255) })).toBeNull();
+  });
+
+  it('counts its depth too', () => {
+    const chain = (levels: number): BuilderNode =>
+      levels === 1 ? { ...newNode('object'), closed: true } : { ...newNode('array'), items: chain(levels - 1) };
+    expect(builderSchemaError(chain(31))).toBeNull();
+    expect(builderSchemaError(chain(32))).toContain('32 levels');
+  });
+
+  it('names the field a refusal is about', () => {
+    const host = { ...newField(), name: 'host', minLength: 'x' };
+    expect(builderSchemaError({ ...newNode('object'), fields: [host] })).toBe('host: Min length: Use a whole number of 0 or more.');
+  });
+});

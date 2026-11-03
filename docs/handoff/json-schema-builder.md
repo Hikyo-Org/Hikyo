@@ -8,8 +8,10 @@ A `json` key's optional schema no longer needs JSON Schema knowledge. The create
 form and the declaration detail editor both show a field-by-field builder: a value
 shape, then object fields (name, type, required) or an array's item shape, nested as
 deep as needed, with length and pattern rules on text and a tick to reject unlisted
-fields on an object. The raw document stays under "Advanced: edit as JSON Schema
-(2020-12)" and shows what the builder writes. The create form can also infer a
+fields on an object. The raw document sits above the builder under "Advanced: edit as
+JSON Schema (2020-12)" and shows what the builder writes. It is first so the builder
+can update live as the text changes without moving it, and nothing changes when the
+editor loses focus, so a click that causes that blur always lands. The create form can also infer a
 schema from the first value on an explicit click.
 
 There is no API, server or stored-format change. The form still holds and submits
@@ -25,7 +27,7 @@ one schema string, and the server's profile stays the only authority on it.
   rewritten; a root `$schema` naming the pinned dialect is the one exception, and it
   is kept. Strictness is what prevents a silent loss, so widening the builder means
   adding the control and the keyword together.
-- A rule is accepted only where the builder can write it back exactly: lengths as
+- A rule is accepted only where the builder can write back the same meaning: lengths as
   non-negative safe integers on `string`, a non-empty `pattern` on `string`, and
   only the literal `false` for `additionalProperties` on `object`. Anything else,
   such as `additionalProperties: true`, `minLength: 1.5` or `pattern: ""`, or a
@@ -58,6 +60,9 @@ one schema string, and the server's profile stays the only authority on it.
 - The detail editor has no inference, because no value is at hand there.
 - A sampled field named like a keyword, such as `type`, makes the secret tick remove
   a hand-written schema. That errs towards removal and the note says why.
+- The first builder edit to a stored schema normalizes its text: `5.0` becomes `5`,
+  and `required` follows row order. The meaning is unchanged, but on a secret key it
+  is still a rule change, so it needs `reveal`.
 - "Replace schema from this value" overwrites the current schema with no undo; its
   label says so.
 

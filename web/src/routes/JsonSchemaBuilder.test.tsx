@@ -130,38 +130,34 @@ describe('JsonSchemaBuilder', () => {
     await view.unmount();
   });
 
-  it('holds the view while typing in the raw editor and rebuilds on leaving it', async () => {
+  it('updates the builder live below the raw editor, so the text under the cursor never moves', async () => {
     const view = await renderForm(<Harness initial='{"type":"object"}' onChange={vi.fn()} />);
     const raw = view.container.querySelector('textarea');
     if (raw === null) throw new Error('no raw editor');
     await act(async () => raw.focus());
     await act(async () => write(raw, '{"type":"obj'));
-    expect(view.container.textContent).not.toContain('not valid JSON yet');
-    await act(async () => raw.blur());
-    expect(view.container.textContent).toContain('not valid JSON yet');
+    const hint = [...view.container.querySelectorAll('p')].find((p) => p.textContent?.includes('not valid JSON yet'));
+    if (hint === undefined) throw new Error('no hint');
+    expect(raw.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(view.container.querySelector('textarea')).toBe(raw);
     await view.unmount();
   });
 
-  it('keeps a row control mounted when the raw editor is left after a representable edit', async () => {
-    // A control replaced between mousedown and mouseup loses the click, and the
-    // blur that leaves the raw editor is exactly what the mousedown causes.
-    const schema = { type: 'object', properties: { a: { type: 'string' }, b: { type: 'array', items: { type: 'string' } } } };
-    const initial = JSON.stringify(schema);
-    const view = await renderForm(<Harness initial={initial} onChange={vi.fn()} />);
-    const button = (name: string) =>
-      [...view.container.querySelectorAll('button')].find((candidate) => candidate.textContent === name);
-    const remove = button('Remove');
-    const required = control(view.container, 'Required', 0);
+  it('changes nothing when the raw editor is left, so a click that caused the blur still lands', async () => {
+    // A control replaced or moved between mousedown and mouseup loses the click,
+    // and the blur that leaves the raw editor is exactly what the mousedown causes.
+    const view = await renderForm(<Harness initial='{"type":"object","properties":{"a":{"type":"string"}}}' onChange={vi.fn()} />);
     const raw = view.container.querySelector('textarea');
-    if (remove === undefined || raw === null) throw new Error('missing controls');
+    if (raw === null) throw new Error('no raw editor');
     await act(async () => raw.focus());
-    await act(async () => write(raw, JSON.stringify({ ...schema, required: ['a'] })));
+    // Renames a row and adds one above it: the edit that used to shift the layout on blur.
+    await act(async () => write(raw, '{"type":"object","properties":{"new":{"type":"integer"},"renamed":{"type":"string"}}}'));
     expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(2);
+    const remove = [...view.container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Remove');
+    const before = view.container.innerHTML;
     await act(async () => raw.blur());
-    expect(remove.isConnected).toBe(true);
-    expect(required.isConnected).toBe(true);
-    // The rebuild did read the edit: the field is now ticked required.
-    expect(required instanceof HTMLInputElement && required.checked).toBe(true);
+    expect(view.container.innerHTML).toBe(before);
+    expect(remove?.isConnected).toBe(true);
     await view.unmount();
   });
 
@@ -177,11 +173,11 @@ describe('JsonSchemaBuilder', () => {
     await act(async () => write(control(view.container, 'Pattern'), '^h'));
     expect(text()).toContain('Rules for host (2)');
     await act(async () => write(control(view.container, 'Max length'), '2'));
-    expect(onChange.mock.lastCall?.[1]).toBe('Min length cannot be more than max length.');
+    expect(onChange.mock.lastCall?.[1]).toBe('host: Min length cannot be more than max length.');
     expect(view.container.querySelector('.field__error')?.textContent).toBe('Min length cannot be more than max length.');
     await act(async () => write(control(view.container, 'Max length'), '2.'));
     expect(control(view.container, 'Max length').value).toBe('2.');
-    expect(onChange.mock.lastCall?.[1]).toBe('Use a whole number of 0 or more.');
+    expect(onChange.mock.lastCall?.[1]).toBe('host: Max length: Use a whole number of 0 or more.');
     await act(async () => write(control(view.container, 'Max length'), '9'));
     expect(onChange.mock.lastCall?.[1]).toBeNull();
     const tick = control(view.container, 'Reject fields not listed');

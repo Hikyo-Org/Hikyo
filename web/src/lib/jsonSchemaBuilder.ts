@@ -82,7 +82,7 @@ export function changeType(node: BuilderNode, type: BuilderType): BuilderNode {
  * A rebuilt tree wearing the ids of the one it replaces: root to root, object
  * fields by name, an array's items to its items. A node with no counterpart keeps
  * its fresh id. The view keys its rows by id, so rebuilding without this would
- * replace every row control, even under the pointer.
+ * remount every row, closing any rules a person had open.
  */
 export function carryIds(previous: BuilderNode, next: BuilderNode): BuilderNode {
   const before = new Map(previous.fields.map((field) => [field.name, field]));
@@ -105,12 +105,17 @@ function children(node: BuilderNode): readonly BuilderNode[] {
   return node.type === 'array' && node.items !== null && node.items.type !== 'any' ? [node.items] : [];
 }
 
+// `additionalProperties: false` is a subschema to the server, so it counts here too.
+function closes(node: BuilderNode): boolean {
+  return node.type === 'object' && node.closed;
+}
+
 function countNodes(node: BuilderNode): number {
-  return children(node).reduce((total, child) => total + countNodes(child), 1);
+  return children(node).reduce((total, child) => total + countNodes(child), closes(node) ? 2 : 1);
 }
 
 function depthOf(node: BuilderNode): number {
-  return 1 + children(node).reduce((deepest, child) => Math.max(deepest, depthOf(child)), 0);
+  return 1 + children(node).reduce((deepest, child) => Math.max(deepest, depthOf(child)), closes(node) ? 1 : 0);
 }
 
 // `depth` starts at 0 where the server's count starts at 1.
@@ -338,8 +343,10 @@ export function lengthProblem(raw: string): string | null {
 /** Why a string node's own rules cannot be written (both lengths read, then their order), or null. */
 export function stringRulesProblem(node: BuilderNode): string | null {
   if (node.type !== 'string') return null;
-  const own = lengthProblem(node.minLength) ?? lengthProblem(node.maxLength);
-  if (own !== null) return own;
+  const min = lengthProblem(node.minLength);
+  if (min !== null) return `Min length: ${min}`;
+  const max = lengthProblem(node.maxLength);
+  if (max !== null) return `Max length: ${max}`;
   if (node.minLength !== '' && node.maxLength !== '' && Number(node.minLength) > Number(node.maxLength)) {
     return 'Min length cannot be more than max length.';
   }
@@ -359,7 +366,8 @@ function firstProblem(root: BuilderNode): string | null {
   if (found !== null) return found;
   for (const child of children(root)) {
     const problem = firstProblem(child);
-    if (problem !== null) return problem;
+    // Named, because the save refusal reads apart from the row, which may be collapsed.
+    if (problem !== null) return child.name === '' ? problem : `${child.name}: ${problem}`;
   }
   return null;
 }

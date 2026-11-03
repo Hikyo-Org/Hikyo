@@ -121,7 +121,7 @@ export const StringRulesAndClosedObject: Story = {
     await expect(document).toHaveValue(ruled.replace('63', '20'));
 
     await userEvent.click(canvas.getByRole('checkbox', { name: 'Reject fields not listed' }));
-    await expect(document).not.toHaveValue(expect.stringContaining('additionalProperties'));
+    await expect(document).not.toHaveDisplayValue(/additionalProperties/);
   },
 };
 

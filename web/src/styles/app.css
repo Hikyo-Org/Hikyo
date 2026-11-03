@@ -7302,6 +7302,7 @@ label.chk:has(input:disabled) {
 .disclosure__toggle {
   display: inline-flex;
   align-self: flex-start;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: var(--space-1);
   min-height: var(--control);
