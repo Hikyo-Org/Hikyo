@@ -615,7 +615,15 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	return q.reconciliation.completeAdmission(ctx, p, b, result)
 }
 func (q *queueController) queueMovement(ctx context.Context, number int) error {
-	return q.blockMovement(ctx, number, "queue admission final comparison")
+	if err := q.blockMovement(ctx, number, "queue admission final comparison"); err != nil {
+		return err
+	}
+	// A dev push does not reassess open PRs, so only a rerun reliably clears this
+	// barrier, and it reaches a real verdict. A main push reassesses every PR.
+	if q.checkName == devCheckName {
+		return errors.New("admission state moved; the pending barrier stays until the rerun reassesses this head")
+	}
+	return nil
 }
 func (q *queueController) sharedHead(ctx context.Context, p pull) (bool, error) {
 	all, err := q.openPRs(ctx)

@@ -164,10 +164,10 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 			selected = &own[i]
 		}
 	}
-	result := refused("The targeted publisher failed within its setup-inclusive sixty-second budget. All selected feedback and full queue validation remain required; reassess after correcting the error.")
+	result := refused("The targeted publisher failed or ran out of its setup-inclusive sixty-second budget. All selected feedback and full queue validation remain required; reassess after correcting the error.")
 	if admissionRetryRemains() {
 		// Still blocking, but not a verdict: the failed run is rerun with a new budget.
-		result = pending("The targeted publisher did not finish within its setup-inclusive sixty-second budget. Admission and merging stay blocked; the failed run is rerun automatically with a new budget.")
+		result = pending("The targeted publisher failed or ran out of its setup-inclusive sixty-second budget. Admission and merging stay blocked; the failed run is rerun automatically with a new budget.")
 	}
 	return q.publish(ctx, final, newBinding(q.repo.ID, final, r), selected, result)
 }
