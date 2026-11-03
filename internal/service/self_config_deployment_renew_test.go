@@ -172,7 +172,7 @@ func TestCommittedDeploymentCarriesStrictEnvelopeAcrossRenewalBothEngines(t *tes
 				signers, keys := strictSigners(t)
 				enrollment := configrollout.Enrollment{ID: "enrolled", Target: configrollout.Target{Namespace: "hikyo", Deployment: "hikyo"}}
 				ids := keys.KeyIDs()
-				enrollment.Authority = &configrollout.Authority{Version: 1, Generation: 2, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
+				enrollment.Authority = &configrollout.Authority{Profile: "pqc-auth/1", Generation: 2, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
 				sign := func(command configrollout.Command) (configrollout.SignedCommand, error) {
 					return configrollout.SignCommandFor(t.Context(), enrollment, signers, command)
 				}
@@ -253,4 +253,68 @@ func strictSigners(t *testing.T) (configrollout.Signers, configrollout.PublicKey
 	}
 	signers := configrollout.Signers{Ed25519: private, MLDSA65: pq}
 	return signers, signers.Public()
+}
+
+// rolloverRefusingProbe is the provider after a re-enrollment: it cannot verify
+// the persisted pre-rollover command, so it refuses every operation on it, as
+// the real provider does (see the app test for a pre-rollover row).
+type rolloverRefusingProbe struct{ *deploymentProbe }
+
+func (rolloverRefusingProbe) RenewCommand(context.Context, configrollout.SignedCommand, uint64) (configrollout.SignedCommand, error) {
+	return configrollout.SignedCommand{}, configrollout.ErrInvalid
+}
+func (rolloverRefusingProbe) DecisionCommand(context.Context, configrollout.SignedCommand, configrollout.Action, uint64, string, *configrollout.ApplicationAcknowledgement) (configrollout.SignedCommand, error) {
+	return configrollout.SignedCommand{}, configrollout.ErrInvalid
+}
+func (rolloverRefusingProbe) Send(context.Context, configrollout.SignedCommand) error {
+	return configrollout.ErrInvalid
+}
+func (rolloverRefusingProbe) Response(context.Context, configrollout.SignedCommand) (configrollout.Response, error) {
+	return configrollout.Response{}, configrollout.ErrInvalid
+}
+
+// An open job whose persisted command predates a re-enrollment cannot be
+// delivered, answered, renewed or restored. Reconciliation clears the active
+// runtime and returns the error, the job stays open, and app.Boot treats that
+// error as fatal unless sources are pending (internal/app/app.go, LoadRuntime).
+// This is registered gap G-2; the test pins the service half of it.
+func TestOpenJobAcrossAReEnrollmentStaysOpenAndClearsTheRuntime(t *testing.T) {
+	t.Parallel()
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		t.Run(string(engine), func(t *testing.T) {
+			signers, keys := strictSigners(t)
+			ids := keys.KeyIDs()
+			enrollment := configrollout.Enrollment{ID: "enrolled", Target: configrollout.Target{Namespace: "hikyo", Deployment: "hikyo"}, Authority: &configrollout.Authority{Profile: "pqc-auth/1", Generation: 1, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}}
+			sign := func(command configrollout.Command) (configrollout.SignedCommand, error) {
+				return configrollout.SignCommandFor(t.Context(), enrollment, signers, command)
+			}
+			s, local, actor, session, base, restore := committedDeploymentFixtureSigned(t, engine, false, sign)
+			before, err := s.Status(t.Context(), local)
+			if err != nil || before.Job == nil || before.Job.CompletedAt != nil {
+				t.Fatalf("fixture job is not open: %v %+v", err, before.Job)
+			}
+			s.Deployment = rolloverRefusingProbe{base}
+			err = s.ReconcileRuntime(t.Context())
+			if !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("reconciliation across a re-enrollment: %v", err)
+			}
+			if s.active.Load() != nil {
+				t.Fatal("the active runtime survived the refusal")
+			}
+			after, err := s.Status(t.Context(), local)
+			if err != nil || after.Job == nil || after.Job.ID != before.Job.ID || after.Job.State != "partial" || after.Job.Error != "transport_failed" || after.Job.CompletedAt != nil {
+				t.Fatalf("the job did not become an open partial job: %v %+v", err, after.Job)
+			}
+			// Restore, the only way out of a partial job, needs a fresh decision
+			// command signed on the old row. The provider refuses it.
+			owner, _, err := s.DB.RecoveryIdentity()
+			if err != nil {
+				t.Fatal(err)
+			}
+			selfConfigReauthenticate(t, s, session, SelfConfigReauthTarget{Action: "rollout-restore", OwnerInstanceID: owner, Revision: restore.Revision, ExpectedGeneration: restore.ExpectedGeneration, SchemaVersion: restore.SchemaVersion, PlanDigest: restore.PlanDigest})
+			if _, err := s.RestoreDeployment(t.Context(), actor, restore); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("restore across a re-enrollment: %v", err)
+			}
+		})
+	}
 }

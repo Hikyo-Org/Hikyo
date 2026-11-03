@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -144,6 +145,10 @@ func stageRolloutAuthority(source, destination string) error {
 	signers, err := configrollout.ParseSigners(raw)
 	if err != nil || signers.Ed25519 == nil && signers.MLDSA65 == nil {
 		return errors.New("invalid authority encoding")
+	}
+	// Validation only: this process keeps nothing, so clear the parsed key.
+	if key, ok := signers.Ed25519.(ed25519.PrivateKey); ok {
+		defer clear(key)
 	}
 	return securefile.WriteAtomic(destination, raw, 0400)
 }

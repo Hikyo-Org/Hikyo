@@ -111,7 +111,7 @@ func newKeyMaterial(t testing.TB) (Signers, PublicKeys) {
 
 func authorityFor(generation uint64, required []string, keys PublicKeys) *Authority {
 	ids := keys.KeyIDs()
-	a := &Authority{Version: 1, Generation: generation, Required: slices.Clone(required)}
+	a := &Authority{Profile: authorityProfile, Generation: generation, Required: slices.Clone(required)}
 	for _, algorithm := range required {
 		a.KeyIDs = append(a.KeyIDs, ids[algorithm])
 	}
@@ -285,7 +285,7 @@ func TestStrictProfileRefusesWithZeroMutation(t *testing.T) {
 			"v1 signature only", "stripped ML-DSA", "stripped Ed25519", "wrong algorithm set", "duplicate signature", "reordered signatures",
 			"short ML-DSA signature", "tampered ML-DSA", "tampered Ed25519", "tampered payload", "wrong key id", "other key pair",
 			"wrong generation", "wrong target digest", "no binding", "wrong enrollment", "wrong action sequence zero",
-			"expired", "future", "legacy field beside strict", "unknown algorithm", "wrong instance", "wrong action",
+			"expired", "future", "legacy field beside strict", "unknown algorithm", "wrong instance", "wrong action", "wrong profile",
 		} {
 			t.Run(name+"/"+mode, func(t *testing.T) {
 				a := newAuthorityFixture(t, 4, required)
@@ -380,6 +380,8 @@ func TestStrictProfileRefusesWithZeroMutation(t *testing.T) {
 					signed.Signatures[0].Algorithm = "mldsa44"
 				case "wrong instance":
 					signed.Command.Intent.OwnerInstanceID = "other-instance"
+				case "wrong profile":
+					signed.Command.Authority.Profile = "pqc-auth/2"
 				case "wrong action":
 					// A shape-valid action swap: only the signatures notice.
 					signed = a.sign(t, Command{Sequence: 1, Action: ActionSubmit, Intent: a.intent, PlanDigest: strings.Repeat("a", 64)})
@@ -408,7 +410,7 @@ var structural = map[string]bool{
 	"v1 signature only": true, "stripped ML-DSA": true, "stripped Ed25519": true, "wrong algorithm set": true, "duplicate signature": true,
 	"reordered signatures": true, "short ML-DSA signature": true, "wrong key id": true, "other key pair": true, "wrong generation": true,
 	"wrong target digest": true, "no binding": true, "wrong enrollment": true, "wrong action sequence zero": true,
-	"legacy field beside strict": true, "unknown algorithm": true, "wrong instance": true,
+	"legacy field beside strict": true, "unknown algorithm": true, "wrong instance": true, "wrong profile": true,
 }
 
 // enrollmentV0 is Enrollment as it was before the Authority field.
@@ -493,7 +495,7 @@ func TestEnrollmentAuthorityIsClosedAndParsedStrictly(t *testing.T) {
 		return out
 	}
 	for name, enrollment := range map[string]Enrollment{
-		"version":         mutate(func(a *Authority) { a.Version = 2 }),
+		"profile":         mutate(func(a *Authority) { a.Profile = "pqc-auth/2" }),
 		"generation zero": mutate(func(a *Authority) { a.Generation = 0 }),
 		"ed25519 only":    mutate(func(a *Authority) { a.Required, a.KeyIDs = a.Required[:1], a.KeyIDs[:1] }),
 		"unknown":         mutate(func(a *Authority) { a.Required = []string{AlgMLDSA65, "slhdsa"} }),
@@ -513,7 +515,7 @@ func TestEnrollmentAuthorityIsClosedAndParsedStrictly(t *testing.T) {
 			t.Errorf("%s: parser accepted invalid authority", name)
 		}
 	}
-	withUnknown := strings.Replace(string(mustJSON(mutate(func(*Authority) {}))), `"version":1`, `"version":1,"optional":true`, 1)
+	withUnknown := strings.Replace(string(mustJSON(mutate(func(*Authority) {}))), `"profile":"pqc-auth/1"`, `"profile":"pqc-auth/1","optional":true`, 1)
 	if _, err := ParseEnrollment([]byte(withUnknown)); err == nil {
 		t.Error("unknown authority field accepted")
 	}
@@ -881,7 +883,7 @@ func TestCompatibilityStartupWritesNothingAndRefusesRollbackBelowFloor(t *testin
 	}
 	// Malformed floor records are refused, not treated as absent.
 	s = f.secret(t, "journal")
-	s.Data[trustKey] = []byte(`{"version":1}`)
+	s.Data[trustKey] = []byte(`{"profile":"pqc-auth/1"}`)
 	if _, err := f.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -897,7 +899,11 @@ func transition(t *testing.T, a authorityFixture, e Enrollment, signers Signers,
 	return rebuild(t, a.fixture, e, signers, keys)
 }
 
-func TestTrustRolloverFromCompatibilityRetainsPlanForRestore(t *testing.T) {
+// This is the controller half only: the Restore command is signed by hand. It
+// proves the retained v1 entry stays anchored and the stored plan is still
+// there. It does not prove Restore through Hikyo, which the provider refuses on
+// a pre-rollover row (TestBootstrapDeploymentRefusesEveryOperationOnAPreRolloverRow).
+func TestTrustRolloverFromCompatibilityKeepsTheJournalAnchoredAtTheController(t *testing.T) {
 	f, e, c, m, private := controllerFixture(t)
 	prepare := signedFixture(t, private, e, Command{Sequence: 1, Action: ActionPrepare, Intent: f.intent, Changes: f.changes()})
 	if err := m.Send(t.Context(), prepare); err != nil {
@@ -941,7 +947,7 @@ func TestTrustRolloverFromCompatibilityRetainsPlanForRestore(t *testing.T) {
 	// A new legacy command is refused after the rollover.
 	legacy := signedFixture(t, private, e, Command{Sequence: 3, Action: ActionRestore, Intent: f.intent, PlanDigest: response.PlanDigest})
 	a.refused(t, legacy, ErrInvalid)
-	// Restore under the new regime still finds the plan: nothing was lost.
+	// A hand-signed Restore under the new regime still finds the stored plan.
 	restore := a.sign(t, Command{Sequence: 3, Action: ActionRestore, Intent: f.intent, PlanDigest: response.PlanDigest})
 	if got := a.accepted(t, restore); got.Receipt == nil {
 		t.Fatal("restore after rollover produced no receipt")
@@ -1081,9 +1087,9 @@ func TestInterruptedRolloverRefusesPreRolloverCommandsWithoutMutation(t *testing
 	if got := mutations(f); len(got) != 0 {
 		t.Fatal(got)
 	}
-	// Interrupted: the controller restarts back on the old enrollment. The floor
-	// is only raised when the new regime reaches a journal write, so the old
-	// regime is still consistent and the queued command runs.
+	// Interrupted: the new regime never reached its start-up (Run always writes
+	// the floor before it reads a command), so the old enrollment is still
+	// consistent and the queued command runs under it.
 	old, err := NewController(f.client, e, private.Public().(ed25519.PublicKey))
 	if err != nil {
 		t.Fatal(err)
@@ -1091,7 +1097,8 @@ func TestInterruptedRolloverRefusesPreRolloverCommandsWithoutMutation(t *testing
 	if err := old.reconcile(t.Context()); err != nil {
 		t.Fatalf("an interrupted rollover (never reached a write) broke the old regime: %v", err)
 	}
-	// After the new regime has written its floor, going back is refused.
+	// Once the new regime has started and recorded its floor (start-up is the
+	// only place that happens), going back is refused.
 	if err := a.c.reconcileTrust(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -1322,5 +1329,217 @@ func TestRunRefusesStaleEnrollmentBeforeAnyCommandAndServesCurrentOne(t *testing
 	var recorded trustRecord
 	if err := decode(a.secret(t, "journal").Data[trustKey], &recorded); err != nil || recorded.Generation != 3 {
 		t.Fatal("Run did not record the generation floor", err)
+	}
+}
+
+func TestProfileIDIsInsideTheSignedBytes(t *testing.T) {
+	a := newAuthorityFixture(t, 1, requiredDual)
+	signed := a.prepare(t, 1)
+	input, ok := commandInputV2(signed.Command)
+	if !ok || !bytes.Contains(input, []byte(`"profile":"pqc-auth/1"`)) {
+		t.Fatalf("profile id missing from the signed bytes: %s", input)
+	}
+	other := signed.Command
+	binding := *other.Authority
+	binding.Profile = "pqc-auth/2"
+	other.Authority = &binding
+	changed, _ := commandInputV2(other)
+	if bytes.Equal(input, changed) || verifyCommand(SignedCommand{Command: other, Signatures: signed.Signatures}, a.e, a.keys) {
+		t.Fatal("a changed profile id still verified")
+	}
+}
+
+// A retained entry that is still a v1 (compatibility) command anchors only
+// through the kept Ed25519 key, which must stay required.
+func TestRetainedV1EntryAnchorsOnlyThroughTheKeptClassicalKey(t *testing.T) {
+	build := func(t *testing.T) (fixture, Enrollment, ed25519.PrivateKey) {
+		f, e, c, m, private := controllerFixture(t)
+		prepare := signedFixture(t, private, e, Command{Sequence: 1, Action: ActionPrepare, Intent: f.intent, Changes: f.changes()})
+		if err := m.Send(t.Context(), prepare); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.reconcile(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		return f, e, private
+	}
+	pq, _ := mldsa.GenerateKey(mldsa.MLDSA65())
+	fresh, _ := newKeyMaterial(t)
+	for name, tc := range map[string]struct {
+		required []string
+		classic  func(ed25519.PrivateKey) crypto.Signer
+		ok       bool
+	}{
+		"dual with the Ed25519 key kept":      {requiredDual, func(k ed25519.PrivateKey) crypto.Signer { return k }, true},
+		"dual with Ed25519 rotated at once":   {requiredDual, func(ed25519.PrivateKey) crypto.Signer { return fresh.Ed25519 }, false},
+		"PQ-only straight from compatibility": {requiredPQOnly, func(k ed25519.PrivateKey) crypto.Signer { return k }, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, e, private := build(t)
+			signers := Signers{Ed25519: tc.classic(private), MLDSA65: pq}
+			keys := signers.Public()
+			strict := e
+			strict.Authority = authorityFor(1, tc.required, keys)
+			b := rebuild(t, f, strict, narrowSigners(signers, tc.required), narrowKeys(keys, tc.required))
+			f.client.ClearActions()
+			err := b.c.reconcileTrust(t.Context())
+			if tc.ok != (err == nil) || !tc.ok && !errors.Is(err, ErrTrust) {
+				t.Fatalf("ok=%v err=%v", tc.ok, err)
+			}
+			if !tc.ok {
+				if got := mutations(f); len(got) != 0 {
+					t.Fatal(got)
+				}
+			}
+		})
+	}
+}
+
+// Anything validCommandShape binds to the enrollment makes a retained entry
+// unanchorable when it changes: the incarnation, the owner, the enrollment id
+// and a removed source alias.
+func TestRetainedEntryIsUnanchorableAfterIdentityOrAliasChanges(t *testing.T) {
+	a := newAuthorityFixture(t, 1, requiredDual)
+	response := a.accepted(t, a.prepare(t, 1))
+	a.accepted(t, a.sign(t, Command{Sequence: 2, Action: ActionSubmit, Intent: a.intent, PlanDigest: response.PlanDigest}))
+	journal := journalData(t, a)
+	for name, edit := range map[string]func(*Enrollment){
+		"incarnation":   func(e *Enrollment) { e.Incarnation = "restored-incarnation" },
+		"owner":         func(e *Enrollment) { e.OwnerInstanceID = "other-owner" },
+		"enrollment id": func(e *Enrollment) { e.ID = "enrollment-2" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			restoreJournal(t, a, journal)
+			e := a.e
+			edit(&e)
+			b := transition(t, a, e, a.signers, a.keys)
+			a.client.ClearActions()
+			if err := b.c.reconcileTrust(t.Context()); !errors.Is(err, ErrTrust) {
+				t.Fatalf("%s change anchored the retained entry: %v", name, err)
+			}
+			if got := mutations(a.fixture); len(got) != 0 {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+
+func TestEnrollmentIDChangeStaysRefusedAfterClearingTheJournal(t *testing.T) {
+	a := newAuthorityFixture(t, 1, requiredDual)
+	a.accepted(t, a.prepare(t, 1))
+	s := a.secret(t, "journal")
+	delete(s.Data, journalKey)
+	if _, err := a.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	e := a.e
+	e.ID = "enrollment-2"
+	b := transition(t, a, e, a.signers, a.keys)
+	if err := b.c.reconcileTrust(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// The command Secret still holds the previous enrollment's command, so the
+	// producer's mailbox refuses to replace it at any sequence.
+	for _, sequence := range []uint64{1, 99} {
+		if err := b.m.Send(t.Context(), b.sign(t, Command{Sequence: sequence, Action: ActionPrepare, Intent: a.intent, Changes: a.changes()})); !errors.Is(err, ErrConflict) {
+			t.Fatalf("sequence %d: %v", sequence, err)
+		}
+	}
+}
+
+func TestStrictRestoreCancelsAnUnseenSubmit(t *testing.T) {
+	a := newAuthorityFixture(t, 1, requiredDual)
+	prepared := a.accepted(t, a.prepare(t, 1))
+	submit := a.sign(t, Command{Sequence: 2, Action: ActionSubmit, Intent: a.intent, PlanDigest: prepared.PlanDigest})
+	a.plant(t, submit)
+	// The executor was absent until the committed command expired.
+	a.c.now = func() time.Time { return time.Now().Add(time.Hour) }
+	if err := a.c.reconcile(t.Context()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("expired first submit: %v", err)
+	}
+	a.c.now = time.Now
+	configBefore := digest(a.secret(t, a.target.ConfigSecret))
+	response := a.accepted(t, a.sign(t, Command{Sequence: 3, Action: ActionRestore, Intent: a.intent, PlanDigest: prepared.PlanDigest}))
+	if response.Receipt == nil || response.Receipt.Phase != Restored || response.Receipt.ApplicationAcknowledged {
+		t.Fatalf("cancel response %+v", response)
+	}
+	if digest(a.deployment(t).Spec) != digest(a.before.Spec) || digest(a.secret(t, a.target.ConfigSecret)) != configBefore {
+		t.Fatal("the cancel path applied or changed the target")
+	}
+}
+
+// Run is the production entry point: a tampered strict command is refused and
+// the process writes only what start-up writes (custody lease, admission probes
+// and the floor), never a Secret the command could have steered.
+func TestRunRefusesATamperedSignatureWritingOnlyStartUpState(t *testing.T) {
+	a := newAuthorityFixture(t, 2, requiredDual)
+	activeAdmission(a.fixture)
+	tampered := a.prepare(t, 1)
+	tampered.Signatures[len(tampered.Signatures)-1].Signature[10] ^= 1
+	a.plant(t, tampered)
+	a.client.ClearActions()
+	ctx, cancel := context.WithTimeout(t.Context(), 2500*time.Millisecond)
+	defer cancel()
+	if err := a.c.Run(ctx, "pod-1"); err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	for _, action := range a.client.Actions() {
+		switch action.GetVerb() {
+		case "get", "list", "watch":
+		case "update":
+			update := action.(ktesting.UpdateActionImpl)
+			if len(update.GetUpdateOptions().DryRun) > 0 || action.GetResource().Resource == "leases" {
+				continue
+			}
+			secret, ok := update.GetObject().(*corev1.Secret)
+			if !ok || secret.Name != "journal" {
+				t.Fatalf("a tampered command steered a write to %s", action.GetResource().Resource)
+			}
+			var accepted controllerJournal
+			if raw := secret.Data[journalKey]; len(raw) > 0 && decode(raw, &accepted) == nil && accepted.Accepted.Command.Sequence != 0 {
+				t.Fatal("the tampered command was accepted into the journal")
+			}
+			if len(secret.Data[trustKey]) == 0 {
+				t.Fatal("the only journal write allowed is the floor")
+			}
+		default:
+			t.Fatalf("unexpected %s", action.GetVerb())
+		}
+	}
+	response, err := a.m.Response(t.Context(), tampered)
+	if err == nil && response.Outcome != "" {
+		t.Fatalf("a response was written for the tampered command: %+v", response)
+	}
+	if digest(a.deployment(t).Spec) != digest(a.before.Spec) {
+		t.Fatal("the target changed")
+	}
+}
+
+// The compatibility profile keeps its historical start: a journal that does not
+// verify, or cannot be read, never stops Run. Only a persisted strict floor does.
+func TestCompatibilityRunKeepsRunningWithAJournalThatDoesNotVerify(t *testing.T) {
+	f, e, c, _, _ := controllerFixture(t)
+	activeAdmission(f)
+	s := f.secret(t, "journal")
+	s.Data = map[string][]byte{journalKey: []byte(`{"accepted":{"command":{"enrollment_id":"someone-else"},"signature":"AAAA"}}`)}
+	if _, err := f.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2500*time.Millisecond)
+	defer cancel()
+	if err := c.Run(ctx, "pod-1"); !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("default profile stopped on an unverifiable journal as it never did: %v", err)
+	}
+	// Floor present: the rollback is refused even under the compatibility profile.
+	_, keys := newKeyMaterial(t)
+	strict := e
+	strict.Authority = authorityFor(1, requiredDual, keys)
+	s = f.secret(t, "journal")
+	putRecord(s, trustKey, trustFor(strict))
+	if _, err := f.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Run(t.Context(), "pod-1"); !errors.Is(err, ErrTrust) {
+		t.Fatalf("rollback below a strict floor served: %v", err)
 	}
 }

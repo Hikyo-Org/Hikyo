@@ -159,7 +159,7 @@ func TestConfigRolloutRefusesKeyFilesThatAreNotTheEnrolledKeys(t *testing.T) {
 		ID: "enrollment-1", OwnerInstanceID: "owner", Incarnation: "incarnation",
 		Target:        configrollout.Target{Namespace: "hikyo", Deployment: "hikyo", DeploymentUID: "d-1", StableNodeID: "node", Container: "hikyo", ConfigSecret: "config", RollbackSecret: "rollback", RequestSecret: "plan", ReceiptSecret: "receipt"},
 		CommandSecret: "command", CommandSecretUID: "c-1", ResponseSecret: "response", ResponseSecretUID: "r-1", JournalSecret: "journal", JournalSecretUID: "j-1", LeaseName: "lease", LeaseUID: "l-1", ExecutorPod: "executor-0",
-		Authority: &configrollout.Authority{Version: 1, Generation: 1, Required: []string{"ed25519", "mldsa65"}, KeyIDs: []string{ids["ed25519"], ids["mldsa65"]}},
+		Authority: &configrollout.Authority{Profile: "pqc-auth/1", Generation: 1, Required: []string{"ed25519", "mldsa65"}, KeyIDs: []string{ids["ed25519"], ids["mldsa65"]}},
 	}
 	raw, err := json.Marshal(enrollment)
 	if err != nil {

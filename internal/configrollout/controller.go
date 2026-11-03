@@ -62,12 +62,19 @@ func (c *Controller) trustError() error {
 // stale or substituted enrollment against the persisted generation floor, refuses
 // a retained journal entry the installed keys cannot anchor (so the failure is
 // visible at start, not a silent per-command refusal), and raises the floor.
-// Compatibility enrollments with no floor write nothing, so existing journals
-// stay byte-identical.
+//
+// The compatibility profile keeps its historical start: a journal that cannot
+// be read or does not verify never stops the process (reconcile retries and
+// refuses per tick, as before). Only a persisted strict floor refuses it, which
+// is the rollback case. Compatibility writes nothing, so existing journals stay
+// byte-identical.
 func (c *Controller) reconcileTrust(ctx context.Context) error {
 	e := c.enrollment
 	journalSecret, err := fixedSecret(ctx, c.client, e.Target.Namespace, e.JournalSecret, e.JournalSecretUID)
 	if err != nil {
+		if e.Authority == nil {
+			return nil
+		}
 		return err
 	}
 	recorded, err := parseTrustRecord(journalSecret.Data[trustKey])
@@ -78,10 +85,10 @@ func (c *Controller) reconcileTrust(ctx context.Context) error {
 	if err := checkFloor(recorded, current); err != nil {
 		return err
 	}
-	if len(journalSecret.Data[journalKey]) > 0 {
+	if e.Authority != nil && len(journalSecret.Data[journalKey]) > 0 {
 		var journal controllerJournal
 		if decode(journalSecret.Data[journalKey], &journal) != nil || !anchored(journal.Accepted, e, c.keys) {
-			return c.trustError()
+			return ErrTrust
 		}
 	}
 	if current == nil || recorded != nil && recorded.Generation == current.Generation {

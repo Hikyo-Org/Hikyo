@@ -31,7 +31,8 @@ const (
 	AlgEd25519 = "ed25519"
 	AlgMLDSA65 = "mldsa65"
 
-	authorityVersion = 1
+	// authorityProfile is the profile id DEC-03 puts inside the signed bytes.
+	authorityProfile = "pqc-auth/1"
 	// commandLabelV2 is the first length-prefixed field of every v2 signature
 	// input and the ML-DSA Options.Context (at most 255 bytes).
 	commandLabelV2 = "hikyo/config-rollout/command/v2"
@@ -52,10 +53,11 @@ var (
 	requiredPQOnly = []string{AlgMLDSA65}
 )
 
-// Authority is the verifier's pinned trust state. Generation only moves forward;
+// Authority is the verifier's pinned trust state. Profile is the profile id
+// (pqc-auth/1) and is signed with every command. Generation only moves forward;
 // KeyIDs are in Required order and pin the exact public keys.
 type Authority struct {
-	Version    int      `json:"version"`
+	Profile    string   `json:"profile"`
 	Generation uint64   `json:"generation"`
 	Required   []string `json:"required"`
 	KeyIDs     []string `json:"key_ids"`
@@ -136,7 +138,7 @@ func (k PublicKeys) KeyIDs() map[string]string {
 }
 
 func validAuthority(a Authority) bool {
-	if a.Version != authorityVersion || a.Generation == 0 || len(a.KeyIDs) != len(a.Required) {
+	if a.Profile != authorityProfile || a.Generation == 0 || len(a.KeyIDs) != len(a.Required) {
 		return false
 	}
 	if !slices.Equal(a.Required, requiredDual) && !slices.Equal(a.Required, requiredPQOnly) {
@@ -157,7 +159,7 @@ func cloneAuthority(a Authority) Authority {
 }
 
 func sameAuthority(a, b Authority) bool {
-	return a.Version == b.Version && a.Generation == b.Generation && slices.Equal(a.Required, b.Required) && slices.Equal(a.KeyIDs, b.KeyIDs)
+	return a.Profile == b.Profile && a.Generation == b.Generation && slices.Equal(a.Required, b.Required) && slices.Equal(a.KeyIDs, b.KeyIDs)
 }
 
 // CheckKeys proves the held keys are exactly the enrolled ones: the compatibility
@@ -374,17 +376,21 @@ func (s Signers) Public() PublicKeys {
 }
 
 // pemBlocks decodes consecutive blocks of one type and refuses anything else:
-// preamble, headers, a different type or trailing bytes.
+// preamble, headers, a different type or trailing bytes. On refusal it still
+// returns the blocks decoded so far, so a caller can clear their bytes.
 func pemBlocks(raw []byte, blockType string) ([]*pem.Block, bool) {
 	var blocks []*pem.Block
 	rest := bytes.TrimSpace(raw)
 	for len(rest) > 0 {
 		if !bytes.HasPrefix(rest, []byte("-----BEGIN "+blockType+"-----")) {
-			return nil, false
+			return blocks, false
 		}
 		block, next := pem.Decode(rest)
 		if block == nil || block.Type != blockType || len(block.Headers) != 0 {
-			return nil, false
+			if block != nil {
+				blocks = append(blocks, block)
+			}
+			return blocks, false
 		}
 		blocks = append(blocks, block)
 		rest = bytes.TrimSpace(next)
@@ -426,16 +432,22 @@ func ParsePublicKeys(raw []byte) (PublicKeys, error) {
 
 // ParseSigners reads the protected signer file: one or two PRIVATE KEY blocks,
 // at most one Ed25519 and one seed-only ML-DSA-65 key (Go refuses the expanded
-// PKCS#8 forms). Intermediate key bytes are zeroed.
+// PKCS#8 forms). The decoded DER of every block it decoded is zeroed on every
+// path. The caller owns raw. The returned signers hold key material, and an
+// ML-DSA key object keeps its seed, which cannot be cleared.
 func ParseSigners(raw []byte) (Signers, error) {
 	blocks, ok := pemBlocks(raw, "PRIVATE KEY")
+	defer func() {
+		for _, block := range blocks {
+			clear(block.Bytes)
+		}
+	}()
 	if !ok {
 		return Signers{}, ErrInvalid
 	}
 	var signers Signers
 	for _, block := range blocks {
 		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-		clear(block.Bytes)
 		if err != nil {
 			return Signers{}, ErrInvalid
 		}

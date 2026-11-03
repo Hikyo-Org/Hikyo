@@ -403,7 +403,7 @@ func strictDeploymentKeys(t *testing.T) (configrollout.Signers, configrollout.Pu
 	signers := configrollout.Signers{Ed25519: private, MLDSA65: pq}
 	keys := signers.Public()
 	ids := keys.KeyIDs()
-	return signers, keys, &configrollout.Authority{Version: 1, Generation: 3, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
+	return signers, keys, &configrollout.Authority{Profile: "pqc-auth/1", Generation: 3, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
 }
 
 func TestBootstrapDeploymentStrictProfileSignsEveryDecisionAndRefusesOldRegime(t *testing.T) {
@@ -528,5 +528,69 @@ func TestBootstrapDeploymentSignerFileIsClosedSet(t *testing.T) {
 		if err == nil && got.MLDSA65 == nil {
 			t.Errorf("%s: ML-DSA key not loaded", name)
 		}
+	}
+}
+
+// A command persisted before a re-enrollment is a row the new provider cannot
+// verify. Every operation the service performs on that row is refused with the
+// same closed error, which is what makes an open job unrecoverable across the
+// switch (registered gap G-2).
+func TestBootstrapDeploymentRefusesEveryOperationOnAPreRolloverRow(t *testing.T) {
+	for _, from := range []string{"compatibility", "earlier strict generation"} {
+		t.Run(from, func(t *testing.T) {
+			d, _, client := deploymentAdapterFixture(t, false)
+			sources := d.installed
+			sources.RootSource = "root-next"
+			var prepared, submit configrollout.SignedCommand
+			var err error
+			signers, _, authority := strictDeploymentKeys(t)
+			if from == "earlier strict generation" {
+				d.enrollment.Authority = authority
+				d.signers = signers
+			}
+			prepared, err = d.PrepareCommand(t.Context(), deploymentIntent(d), deploymentBundle(t, sources), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			submit, err = d.DecisionCommand(t.Context(), prepared, configrollout.ActionSubmit, 2, strings.Repeat("a", 64), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Re-enroll: the provider now holds the next strict generation.
+			next := *authority
+			next.Generation = 9
+			if from == "compatibility" {
+				d.enrollment.Authority = &next
+				d.signers = signers
+				ids := signers.Public().KeyIDs()
+				next.KeyIDs = []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}
+			} else {
+				d.enrollment.Authority = &next
+			}
+			mailbox, err := configrollout.NewMailbox(client, d.enrollment)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.mailbox = mailbox
+			client.ClearActions()
+			if d.validSigned(submit) {
+				t.Fatal("pre-rollover row verified under the new regime")
+			}
+			if _, err := d.DecisionCommand(t.Context(), submit, configrollout.ActionRestore, 3, submit.Command.PlanDigest, nil); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("restore decision on a pre-rollover row: %v", err)
+			}
+			if _, err := d.RenewCommand(t.Context(), submit, 3); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("renewal of a pre-rollover row: %v", err)
+			}
+			if err := d.Send(t.Context(), submit); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("send of a pre-rollover row: %v", err)
+			}
+			if _, err := d.Response(t.Context(), submit); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("response for a pre-rollover row: %v", err)
+			}
+			if got := client.Actions(); len(got) != 0 {
+				t.Fatalf("a refused operation reached the cluster: %d calls", len(got))
+			}
+		})
 	}
 }

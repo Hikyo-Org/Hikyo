@@ -143,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
     strict = copy.deepcopy(values)
     strict["rollout"]["authority"] = {"generation": 2, "required": ["ed25519", "mldsa65"], "keyIDs": [ed_id, pq_id]}
     strict_enrollment = json.loads(next(d for d in render(strict) if d["kind"] == "ConfigMap" and d["metadata"]["name"] == executor + "-enrollment")["data"]["enrollment.json"])
-    assert strict_enrollment["authority"] == {"version": 1, "generation": 2, "required": ["ed25519", "mldsa65"], "key_ids": [ed_id, pq_id]}
+    assert strict_enrollment["authority"] == {"profile": "pqc-auth/1", "generation": 2, "required": ["ed25519", "mldsa65"], "key_ids": [ed_id, pq_id]}
     without_authority = {k: v for k, v in strict_enrollment.items() if k != "authority"}
     assert without_authority == enrollment, "strict profile must change only the authority object"
     pq_only = copy.deepcopy(values)
