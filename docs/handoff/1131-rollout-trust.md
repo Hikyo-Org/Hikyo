@@ -123,7 +123,7 @@ Run from the repository root with a throwaway PostgreSQL 18 container
 | `go test -p 2 -count=1 -run 'Deployment\|Rollout\|SelfConfig' ./internal/service/` with PostgreSQL | PASS (218 s), both engines |
 | `FAST_FEEDBACK_BASE=origin/dunky13/pqc-adr-amendments scripts/ci/fast-feedback.sh --working-tree`, pinned Node 26.12.1, through the shared queue | PASS (exit 0): diff check, Go format, test compile, docs content check. Hosted CI NOT RUN |
 | `scripts/ci/check-commit-signatures.sh` and `check-dco.sh` against the PR base | PASS at the first code commit; re-run on the final head before push (see PR) |
-| `go test -p 2 ./internal/lint/...` | NOT COMPLETE: two runs hit the Go test timeout (10 min direct, 40 min queued) on unrelated slow tests while the host load average was about 14 to 19; the queued `-v` rerun is in progress. No assertion failure was observed. See the PR for the final state |
+| `go test -p 2 ./internal/lint/...` | NOT COMPLETE: two runs hit the Go test timeout (10 min direct, 40 min queued) on unrelated slow tests while the host load average was about 14 to 19; a third queued `-v` run sat on the unrelated `TestAlertCollectorSnapshotProtocolRejectsDrift` for over 30 minutes and was cancelled. No assertion failure was observed. Treat as NOTRUN to completion |
 | `scripts/ci/check-doc-status.mjs` | NOTRUN: needs `docs/site` dependencies (`zod`), not installed in this worktree |
 
 Matrix (`internal/configrollout/authority_test.go`), run for dual and PQ-only
