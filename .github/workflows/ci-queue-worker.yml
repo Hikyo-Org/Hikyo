@@ -43,7 +43,9 @@ jobs:
           [[ "$JOB_HEAD" =~ ^[0-9a-f]{40}$ ]]
           # This step is already executing. A lagging Jobs API status cannot
           # change its authenticated run/attempt/head/start identity.
-          body=$(timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100")
+          # One retry: without this clock the job fails before it can publish anything.
+          read_jobs() { timeout --kill-after=1s 5s gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100"; }
+          body=$(read_jobs) || body=$(read_jobs)
           started=$(printf '%s' "$body" | jq -er -s --argjson run "$GITHUB_RUN_ID" --argjson attempt "$GITHUB_RUN_ATTEMPT" --arg head "$JOB_HEAD" --arg name "publish-$HEAD" '
             if length != 1 or (.[0] | type) != "object" then error("invalid publisher jobs response") else .[0] end |
             if (.jobs | type) != "array" or .total_count != (.jobs | length) then error("incomplete publisher jobs") else .jobs end |
@@ -61,6 +63,8 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+          # The publisher builds and runs from go.mod and scripts/ci alone. A full tree costs 8 to 30 s of its budget.
+          sparse-checkout: scripts/ci
       - if: matrix.work.kind == 'group'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
