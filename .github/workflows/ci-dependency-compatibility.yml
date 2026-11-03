@@ -2,7 +2,7 @@
 # lane and the enforced full merge-candidate validation.
 # Default-tag Linux host compilation only; the protected full suite owns the
 # macOS/Windows test legs and release-tag cross-builds.
-name: dependency-compatibility
+name: ci-advisory-dependencies
 
 on:
   pull_request:

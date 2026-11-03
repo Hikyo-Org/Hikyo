@@ -32,7 +32,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 	if err := trigger.Decode(&completed); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "ci-main", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
+	if !reflect.DeepEqual(completed.Workflows, []string{"trusted-ci", "ci", "ci-main", "ci-dev", "nightly-release"}) || !reflect.DeepEqual(completed.Types, []string{"completed"}) {
 		t.Fatal("reporter must receive completed manual, nightly, and existing PR validation")
 	}
 	job := reporter.Jobs["report-main"]
@@ -65,6 +65,7 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 		name, path, event string
 	}{
 		{"ci-main", ".github/workflows/ci-main.yml", "workflow_dispatch"},
+		{"ci-main", ".github/workflows/ci-main.yml", "schedule"},
 		{"ci", ".github/workflows/ci.yml", "workflow_dispatch"},
 		{"ci", ".github/workflows/ci.yml", "push"},
 		{"nightly-release", ".github/workflows/nightly.yml", "schedule"},
@@ -85,8 +86,10 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 				case "pull-request":
 					metadata["event"] = "pull_request"
 				case "wrong-event":
-					if source.name == "ci" || source.name == "ci-main" {
+					if source.name == "ci" {
 						metadata["event"] = "schedule"
+					} else if source.name == "ci-main" {
+						metadata["event"] = "repository_dispatch"
 					} else {
 						metadata["event"] = "workflow_dispatch"
 					}
@@ -102,5 +105,45 @@ func TestMainFuzzReportingWorkflowPolicy(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// report-dev holds issue write, so only a real dev push may reach it and it may
+// only run tooling from the default branch.
+func TestDevStatusReportIsBoundToDevPushes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), ".github", "workflows", "fuzz-report.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If          string            `yaml:"if"`
+			Permissions map[string]string `yaml:"permissions"`
+			Concurrency struct {
+				Group string `yaml:"group"`
+			} `yaml:"concurrency"`
+			Steps []struct {
+				With map[string]string `yaml:"with"`
+				Run  string            `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job := workflow.Jobs["report-dev"]
+	if job.Concurrency.Group != "dev-status-issue" {
+		t.Fatal("two red runs must not each open the dev status issue")
+	}
+	for _, condition := range []string{"workflow_run.name == 'ci-dev'", "workflow_run.path == '.github/workflows/ci-dev.yml'", "workflow_run.event == 'push'", "workflow_run.head_branch == 'dev'"} {
+		if !strings.Contains(job.If, condition) {
+			t.Fatalf("dev status report lost %q", condition)
+		}
+	}
+	if !reflect.DeepEqual(job.Permissions, map[string]string{"actions": "read", "contents": "read", "issues": "write"}) {
+		t.Fatalf("dev status report permissions changed: %v", job.Permissions)
+	}
+	if len(job.Steps) != 2 || job.Steps[0].With["ref"] != "${{ github.event.repository.default_branch }}" || job.Steps[0].With["persist-credentials"] != "false" || job.Steps[1].Run != "./scripts/ci/report-dev-status.sh" {
+		t.Fatal("dev status report must run only default-branch tooling")
 	}
 }

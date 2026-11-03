@@ -19,15 +19,14 @@ frozen full-suite coverage remain unchanged.
   branch-up-to-date checking is false only with that mandatory queue/context.
 - Signatures, DCO, stale-review dismissal, resolved threads and zero owning
   bypass actors remain required. Fork vouch/run approval remain independent.
-- `ci-required-next` and `ci:full` remain the permanent full-only rollback route.
-  Queue admission never writes that context, so old admission greens cannot
-  satisfy restored strict legacy protection.
+- The `ci-required-next` and `ci:full` rollback route has since been retired, and
+  lives in Git history. Queue admission never wrote that context.
 
 ## Local configuration
 
 Run `scripts/release/configure-repository.sh --main-only Hikyo-Org/Hikyo` only
 with operator authorization and administrator access. It reads the unique
-existing main ruleset, validates its queue or legacy contract, preserves every
+existing main ruleset, validates its queue contract, preserves every
 unrelated live rule/PR parameter, atomically replaces only the queue/status-check
 rules, and verifies writable readback, treating absent/null unspecified integration
 bindings equivalently while retaining every explicit integer binding. Discovery
@@ -38,9 +37,8 @@ API errors and readback drift. It never changes tag/release settings, CodeQL,
 Actions permissions or git refs. Broad initial configuration retains those
 existing responsibilities and can still create the initial main ruleset.
 
-The canonical legacy JSON is a reference. Actual recovery uses the exact saved
-pre-transition legacy writable policy, not a newly synthesized approximation.
-The CI guide contains the validated capture, restore and equality commands.
+The canonical legacy JSON and its restore path have been removed. Recover them
+from Git history if strict legacy protection is ever needed again.
 
 ## Local validation
 
@@ -100,7 +98,7 @@ rebuilds can still cost time.
 - [CI operator guide](../development/ci.md)
 - [Contributor guide](../../CONTRIBUTING.md)
 - [Canonical queue policy](../../release/repository/main-ci-gate.json)
-- [Legacy reference policy](../../release/repository/main-ci-gate-legacy.json)
+- Legacy reference policy: `release/repository/main-ci-gate-legacy.json`, since removed
 - [Historical bootstrap handoff](trusted-merge-queue.md)
 - [GitHub merge queue semantics](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
 
@@ -267,7 +265,7 @@ mutation after cancellation, owned-only failure fallback and foreign refusal.
 Previous source/member/authority/collision and full-suite coverage is retained.
 Local checks are separate from fresh exact-head hosted full-suite proof.
 
-The fixed [trusted-main lifecycle workflow](../../.github/workflows/ci-check-lifecycle-probe.yml)
+The fixed trusted-main lifecycle workflow, since removed from the repository,
 has no inputs and uses only its non-required canary name. Its CLI authenticates
 current main, source workflow/run/attempt, native job clock and effective
 non-required status before mutation. Normal work ends at job-start plus 120

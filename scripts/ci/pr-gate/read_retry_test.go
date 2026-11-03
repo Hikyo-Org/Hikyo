@@ -187,7 +187,7 @@ func TestControllerAPIRetriesOnlyQueuePublisher(t *testing.T) {
 	}{
 		{"queue publisher", true, false, true},
 		{"queue worker discovery", true, true, false},
-		{"retirement, lifecycle and legacy gate", false, false, false},
+		{"retirement and legacy gate", false, false, false},
 	} {
 		_, retries := controllerAPI(tc.queue, tc.dispatch).(retryingAPI)
 		if retries != tc.retries {
