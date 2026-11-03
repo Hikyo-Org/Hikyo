@@ -72,7 +72,8 @@ func (f *queueFixture) barrier(t *testing.T, want map[string]int) *barrierReadAP
 
 func TestDevPolicyReadsMainAuthorityBesideRulesets(t *testing.T) {
 	f := newDevFixture(t)
-	b := f.barrier(t, map[string]int{"rulesets?per_page=100&page=1": 1, "git/ref/heads/main": 1})
+	// The publisher bytes follow main's tip, so this holds both beside the discovery.
+	b := f.barrier(t, map[string]int{"rulesets?per_page=100&page=1": 1, "contents/" + devGateWorkflowPath + "?ref=" + strings.Repeat("e", 40): 1})
 	if _, err := f.q.policy(context.Background()); err != nil || !b.overlapped() {
 		t.Fatalf("main authority waited for ruleset discovery: %v", err)
 	}
@@ -160,10 +161,10 @@ func (a *startedReadAPI) read(ctx context.Context, path string, out any) error {
 func TestQueueRouteCheckRunsBesideFeedback(t *testing.T) {
 	f := newQueueFixture(t)
 	f.q.targeted = true
-	f.barrier(t, map[string]int{"git/ref/heads/dev": 1, "actions/workflows/ci-feedback.yml": 1})
+	b := f.barrier(t, map[string]int{"git/ref/heads/dev": 1, "actions/workflows/ci-feedback.yml": 1})
 	// A serial read gives up on the barrier, even though it closes when the other arrives.
-	if err := f.q.admit(context.Background(), f.pr.Number); errors.Is(err, errReadsNotOverlapped) {
-		t.Fatal(err)
+	if err := f.q.admit(context.Background(), f.pr.Number); errors.Is(err, errReadsNotOverlapped) || !b.overlapped() {
+		t.Fatalf("the route check and feedback did not overlap: %v", err)
 	}
 }
 

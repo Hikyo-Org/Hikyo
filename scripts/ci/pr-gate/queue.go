@@ -357,7 +357,8 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	// once and are judged below in the order the serial code reached them; a
 	// result the serial code would not have reached is dropped. The final phase
 	// repeats the feedback, policy, verifier, DCO and role reads before a success is
-	// published; the route and the contract's copies stay bound by SHA and digest.
+	// published. The contract's copies stay bound by SHA and digest; the route is
+	// routing, not a trust boundary, and is read once.
 	var initial *initialReads
 	if policy.Enabled {
 		initial = q.runInitialReads(ctx, p, captured == nil, trace != nil)
