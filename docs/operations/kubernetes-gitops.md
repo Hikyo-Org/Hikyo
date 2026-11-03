@@ -105,8 +105,9 @@ selected release's issuer/subject constraint in-cluster. Source-SHA verification
 the generator; the controller's identity matcher alone does not check that
 certificate extension. Review and retain the generator's exact source record.
 
-Signature verification runs inside source-controller, so its pods need HTTPS egress
-to `tuf-repo-cdn.sigstore.dev` and `ghcr.io`. A node search domain with a wildcard
+Signature verification and the chart pull run inside source-controller, so its pods
+need HTTPS egress to at least `tuf-repo-cdn.sigstore.dev`, `ghcr.io` and
+`pkg-containers.githubusercontent.com`. A node search domain with a wildcard
 DNS record can send those names elsewhere, and the OCIRepository then reports a TLS
 handshake failure. If that happens, test the same URL from a pod with and without a
 trailing dot on the hostname.

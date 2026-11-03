@@ -268,7 +268,7 @@ class GitOpsTests(unittest.TestCase):
             with self.subTest(release=release):
                 output, calls, refusal = self.cli("flux", STABLE, package, release)
                 self.assertIn("not a published stable release", refusal)
-                self.assertEqual(calls, [("gh", "release", "view", tag, "-R", "Hikyo-Org/Hikyo",
+                self.assertEqual(calls, [("gh", "release", "view", tag, "-R", "github.com/Hikyo-Org/Hikyo",
                                           "--json", "tagName,isDraft,isPrerelease")])
                 self.assertFalse(output.exists())
         nightly = [args for args in self.cli("flux", VERSION, self.package)[1] if args[0] == "gh"]
@@ -307,6 +307,11 @@ class GitOpsTests(unittest.TestCase):
                 gitops.entry()
             self.assertEqual(stopped.exception.code, 1)
             self.assertIn("gitops: refused:", errors.getvalue())
+        failed = subprocess.CalledProcessError(4, "gh", stderr="gh auth login required")
+        with patch.object(gitops, "main", side_effect=failed), patch("sys.stderr", io.StringIO()) as errors, \
+                self.assertRaises(SystemExit):
+            gitops.entry()
+        self.assertIn("gh auth login required", errors.getvalue())
 
     def test_script_entry_point_refuses_without_a_traceback(self):
         result = subprocess.run(

@@ -99,6 +99,7 @@ of them are release assets.
 
 Copy the catalog producer's `upgrade-catalog.json` to `catalog.json` and its
 matching detached signature to `catalog.sigstore.json`, preserving their bytes.
+Release assets already use the final names.
 From each release download, copy only the named public proof documents to
 a separate proof directory. Retain the downloaded binary/chart/image payloads
 and their verification results separately. Extra files, including per-artifact

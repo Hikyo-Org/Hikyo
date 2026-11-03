@@ -54,7 +54,7 @@ def verify(reference: str, commit: str, version: str) -> None:
 def check_published(version: str) -> None:
     # The tag job signs before draft review, so a signature alone does not prove release.
     tag = "v" + version
-    release = json.loads(run("gh", "release", "view", tag, "-R", "Hikyo-Org/Hikyo",
+    release = json.loads(run("gh", "release", "view", tag, "-R", "github.com/Hikyo-Org/Hikyo",
                              "--json", "tagName,isDraft,isPrerelease"))
     if release != {"tagName": tag, "isDraft": False, "isPrerelease": False}:
         raise ValueError(f"{tag} is not a published stable release")
@@ -257,7 +257,8 @@ def entry() -> None:
         main()
     except (ValueError, KeyError, TypeError, AttributeError, EOFError, tarfile.TarError,
             yaml.YAMLError, OSError, subprocess.SubprocessError) as error:
-        print(f"gitops: refused: {error}", file=sys.stderr)
+        detail = getattr(error, "stderr", None) or ""
+        print(f"gitops: refused: {error} {detail}".rstrip(), file=sys.stderr)
         sys.exit(1)
 
 
