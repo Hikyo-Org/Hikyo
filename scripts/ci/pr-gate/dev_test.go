@@ -292,6 +292,85 @@ func TestDevPolicyPathsLandThroughMainFirst(t *testing.T) {
 	}
 }
 
+func TestMainRouteSendsFeaturePRsToDev(t *testing.T) {
+	const policy = ".github/workflows/ci.yml"
+	for name, tc := range map[string]struct {
+		head, login string
+		fork, noDev bool
+		files       []map[string]string
+		refuse      bool
+	}{
+		"feature":                 {head: "feat/x", refuse: true},
+		"feature before dev":      {head: "feat/x", noDev: true},
+		"release":                 {head: "release/1.1.0"},
+		"nightly promotion":       {head: "release/nightly-20261103-abcdef0"},
+		"hotfix":                  {head: "hotfix/x"},
+		"fork named like release": {head: "release/1.1.0", fork: true, refuse: true},
+		"fork named like hotfix":  {head: "hotfix/x", fork: true, refuse: true},
+		"dev itself":              {head: "dev", refuse: true},
+		"dependabot":              {head: "dependabot/go_modules/x", login: "dependabot[bot]"},
+		"impostor dependabot":     {head: "dependabot/go_modules/x", login: "dependabot", refuse: true},
+		"CI definition":           {head: "feat/ci", files: []map[string]string{{"filename": policy}}},
+		"renamed CI definition":   {head: "feat/ci", files: []map[string]string{{"filename": "other.yml", "previous_filename": policy}}},
+		"dev gate workflow":       {head: "feat/ci", files: []map[string]string{{"filename": devGateWorkflowPath}}},
+		"other workflow":          {head: "feat/ci", files: []map[string]string{{"filename": ".github/workflows/fuzz-report.yml"}}, refuse: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newQueueFixture(t)
+			f.pr.Head.Ref, f.pr.User.Login = tc.head, tc.login
+			if tc.fork {
+				f.pr.Head.Repo.ID = f.c.repo.ID + 1
+			}
+			if !tc.noDev {
+				f.api.responses[f.c.endpoint("git/ref/heads/dev")] = map[string]any{"ref": "refs/heads/dev"}
+				files := tc.files
+				if files == nil {
+					files = []map[string]string{{"filename": "internal/app/app.go"}}
+				}
+				f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = files
+			}
+			refusal, err := f.q.mainRouteRefusal(context.Background(), f.pr)
+			if err != nil || (refusal != "") != tc.refuse {
+				t.Fatalf("refusal %q/%v, want refuse=%t", refusal, err, tc.refuse)
+			}
+		})
+	}
+	// Dev refuses a PR it cannot list, so routing leaves it to main's own checks.
+	full := make([]map[string]string, 100)
+	for i := range full {
+		full[i] = map[string]string{"filename": fmt.Sprintf("file-%d", i)}
+	}
+	wide := newQueueFixture(t)
+	wide.pr.Head.Ref = "feat/wide"
+	wide.api.responses[wide.c.endpoint("git/ref/heads/dev")] = map[string]any{"ref": "refs/heads/dev"}
+	for page := 1; page <= pullFilePages; page++ {
+		wide.api.responses[wide.c.endpoint(devFilesPage(wide, page))] = full
+	}
+	if refusal, err := wide.q.mainRouteRefusal(context.Background(), wide.pr); err != nil || refusal != "" {
+		t.Fatalf("routing refused an unlistable PR: %q/%v", refusal, err)
+	}
+	// Only a missing dev turns routing off; other read failures must not admit.
+	f := newQueueFixture(t)
+	f.pr.Head.Ref = "feat/x"
+	f.q.api = failedQueueRead{api: f.q.api, contains: "git/ref/heads/dev"}
+	if _, err := f.q.mainRouteRefusal(context.Background(), f.pr); err == nil {
+		t.Fatal("dev read failure was treated as dev being absent")
+	}
+	// Admission must publish the refusal instead of only failing the job.
+	f = newQueueFixture(t)
+	f.pr.Head.Ref = "feat/x"
+	f.refresh()
+	f.api.responses[f.c.endpoint("git/ref/heads/dev")] = map[string]any{"ref": "refs/heads/dev"}
+	f.api.responses[f.c.endpoint(devFilesPage(f, 1))] = []map[string]string{{"filename": "internal/app/app.go"}}
+	if err := f.admit(); err != nil {
+		t.Fatal(err)
+	}
+	latest := newestQueueCheck(f.api.checks)
+	if latest == nil || latest.Conclusion != "failure" {
+		t.Fatalf("route refusal was not published: %+v", latest)
+	}
+}
+
 // Source proof is package main too, so compare the two lists through its source.
 func TestDevPolicyPathsCoverSourceProof(t *testing.T) {
 	raw, err := os.ReadFile("../source-proof/resolve.go")

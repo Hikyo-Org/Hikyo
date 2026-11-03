@@ -27,7 +27,9 @@ checks, the maintenance and release-acceptance menus, and which workflows are
 internal helpers. Feature PRs target `dev` and require automatic `ci-feedback`
 plus trusted `ci-dev-required` admission. Merged dev commits request complete
 background integration validation. Frozen release candidates target `main` and
-use its mandatory queue; `ci-queue-required` requires full current-base proof.
+use its mandatory queue; `ci-queue-required` requires full current-base proof
+and, once `dev` exists, refuses feature PRs opened against main. GitHub and
+`gh pr create` default to main, so pass `--base dev`.
 See the [branching guide](docs/development/branching.md) for commands, protected
 activation and the nightly promotion from dev to main.
 
@@ -131,6 +133,12 @@ replace the comparison base:
 scripts/git/install-hooks.sh
 git fetch https://github.com/Hikyo-Org/Hikyo.git refs/heads/main:refs/remotes/hikyo-upstream/main
 ```
+
+Once `dev` exists, fetch it too with
+`refs/heads/dev:refs/remotes/hikyo-upstream/dev`. On a branch cut from `dev`, the hook
+then checks only your commits instead of everyone's since `main`. The manual checks
+below use `hikyo-upstream/main`; on a branch cut from `dev`, pass `hikyo-upstream/dev`
+to both instead.
 
 After creating your contribution with `git commit -S -s`, run:
 

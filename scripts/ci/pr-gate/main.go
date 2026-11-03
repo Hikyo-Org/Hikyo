@@ -463,7 +463,7 @@ func stderrHTTPStatus(stderr []byte) int {
 // retryingAPI retries transient reads. Only the queue publisher opts in, since
 // its group proof has nothing that retriggers it after a blip. Retirement
 // discovery documents "no retries or backoff" and counts one request per read,
-// and the legacy gate keeps its single attempt.
+// and the check retirement commands keep their single attempt.
 type retryingAPI struct{ api api }
 
 func (a retryingAPI) read(ctx context.Context, path string, result any) error {

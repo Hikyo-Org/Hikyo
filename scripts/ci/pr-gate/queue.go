@@ -382,6 +382,10 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 				return q.reconciliation.retireHead(ctx, false)
 			}
 			result = refused("Only the protected default branch can enter this merge queue.")
+		} else if refusal, err := q.mainRouteRefusal(ctx, p); err != nil {
+			return err
+		} else if refusal != "" {
+			result = refused(refusal)
 		} else {
 			if err := q.devPublisherContract(ctx, p); err != nil {
 				return err
