@@ -1,5 +1,8 @@
 # #1040: pre-authentication source admission
 
+The charge for live human sessions described here was narrowed later: see
+[live-session source admission](./live-session-source-admission.md).
+
 Issue: <https://github.com/Hikyo-Org/Hikyo/issues/1040>.
 Inspected and reproduced against main `24e198b32a3ffd8d4013207b2f974d76ec49be6f`.
 The authorized endpoint is a reviewable PR. Maintainer security review and the

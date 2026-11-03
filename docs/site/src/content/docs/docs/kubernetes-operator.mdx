@@ -26,15 +26,35 @@ operator access to the protected instance project.
 
 ## Install the operator
 
-Generate the root key and create both required server Secrets first:
+For a **fresh server installation from a signed nightly chart**, start with the
+[singleton PostgreSQL runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md)
+and [artifact/topology matrix](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/deployment-support.md).
+That complete example keeps the delivery controller disabled until the server
+works. The setup below instead shows the manual server-plus-delivery-operator
+shape; the delivery operator does not manage server releases.
+Use [Kubernetes GitOps](/docs/kubernetes-gitops/) to install a signed chart through
+Flux or Argo CD with the delivery operator disabled. It refuses stable 1.0.0. To install stable 1.0.0, first
+[verify the stable bundle](/docs/installation/#verify-a-stable-bundle), then use the
+setup below with version `1.0.0` and confirm its digest against the release notes.
+That setup is not a complete first-install runbook: the 1.0.0 chart does not expose
+its staged root-key path to in-pod `admin` commands, so `hikyo admin create` refuses
+with `no root key configured` and the unmodified chart offers no first-administrator
+route.
+
+Generate the root key once and create both required server Secrets first.
+Prepare a private `database-dsn` file containing the PostgreSQL DSN, with
+`sslmode=verify-full` and no trailing newline; its value must not appear in argv
+or chart values:
 
 ```bash
+umask 077
+test ! -e root-key
 openssl rand -hex 32 > root-key
 kubectl create namespace hikyo
 kubectl --namespace hikyo create secret generic hikyo-root-key \
   --from-file=root-key=./root-key
 kubectl --namespace hikyo create secret generic hikyo-database \
-  --from-literal=HIKYO_DB='postgres://hikyo:password@postgres.example.com/hikyo?sslmode=verify-full'
+  --from-file=HIKYO_DB=./database-dsn
 kubectl --namespace hikyo create secret tls hikyo-server-tls \
   --cert=./tls.crt \
   --key=./tls.key

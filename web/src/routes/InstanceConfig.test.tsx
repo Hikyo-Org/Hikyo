@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from 'react';
+import { act, useEffect, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -53,6 +53,45 @@ describe('managed instance configuration', () => {
    expect(view.container.querySelector('a[href="/orgs/org_system/projects/prj_system/matrix"]')).not.toBeNull();
    expect(view.container.textContent).toContain('Saving drafts and publishing keep the running settings unchanged');
    expect(writes).toEqual([]);
+  } finally { await view.unmount(); }
+ });
+ it('keeps the panel on a throttled read and holds new actions until a read confirms it', async () => {
+  let throttled = false;
+  const view = await mount((request) => {
+   if (throttled && new URL(request.url).pathname === '/api/v1/instance/config') return new Response(JSON.stringify({ error: { code: 'too_many_requests', message: 'too many requests' } }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '1' } });
+   return null;
+  }, <RefreshConfiguration />);
+  try {
+   await settleTask();
+   expect(view.container.textContent).toContain('Generation 7');
+   expect(button(view.container, 'Apply selected revision').disabled).toBe(false);
+   throttled = true;
+   await act(async () => { button(view.container, 'Refresh test configuration').click(); });
+   await settleTask();
+   expect(view.container.textContent).toContain('Generation 7');
+   expect(view.container.textContent).toContain('The owner is limiting requests');
+   expect(view.container.textContent).toContain('Showing the last confirmed state');
+   expect(view.container.textContent).not.toContain('Last confirmed state is unavailable');
+   expect(button(view.container, 'Apply selected revision').disabled).toBe(true);
+  } finally { await view.unmount(); }
+ });
+ it('reads at the live cadence on this page', async () => {
+  let cadence: () => unknown = () => null;
+  function Cadence() {
+   const client = useQueryClient();
+   useEffect(() => {
+    cadence = () => {
+     const query = client.getQueryCache().find({ queryKey: ['self-config'] });
+     const interval = query?.observers[0]?.options.refetchInterval;
+     return typeof interval === 'function' && query !== undefined ? interval(query) : interval;
+    };
+   }, [client]);
+   return null;
+  }
+  const view = await mount((request) => new URL(request.url).pathname === '/api/v1/instance/config' ? json(prepared) : null, <Cadence />);
+  try {
+   await settleTask();
+   expect(cadence()).toBe(5_000);
   } finally { await view.unmount(); }
  });
  it.each([false, true])('reauthenticates exact revision and restore confirmation %s', async (recovering) => {

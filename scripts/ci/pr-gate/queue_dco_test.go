@@ -125,24 +125,37 @@ func TestQueueUsesCanonicalDCOSignoffAndAuthenticatedException(t *testing.T) {
 	if err := os.Remove(filepath.Join(repo, "objects", deleted[:2], deleted[2:])); err != nil {
 		t.Fatal(err)
 	}
+	const botIdentity = "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>"
+	canonicalRepo := repository{ID: 1, FullName: "example/hikyo"}
+	forkRepo := repository{ID: 2, FullName: "contributor/hikyo"}
 	for _, tc := range []struct {
 		name, identity, actor, message string
 		want                           int
+		ref                            string
+		repo                           repository
 	}{
-		{"signed", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Fixture Contributor <fixture@example.test>\n", 0},
-		{"missing", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n", 1},
-		{"mismatched", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Someone Else <else@example.test>\n", 1},
-		{"bot header spoof", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "contributor", "Dependency edit\n", 1},
-		{"authenticated dependabot", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "dependabot[bot]", "Dependency edit\n", 0},
+		{"signed", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Fixture Contributor <fixture@example.test>\n", 0, "", repository{}},
+		{"missing", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n", 1, "", repository{}},
+		{"mismatched", "Fixture Contributor <fixture@example.test>", "contributor", "Scoped edit\n\nSigned-off-by: Someone Else <else@example.test>\n", 1, "", repository{}},
+		{"bot header spoof", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "contributor", "Dependency edit\n", 1, "", repository{}},
+		{"authenticated dependabot", "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>", "dependabot[bot]", "Dependency edit\n", 0, "", repository{}},
+		// A promotion carries dependency commits a human did not author. Only
+		// write access reaches a canonical release/ or main head.
+		{"promotion carries dependabot", botIdentity, "maintainer", "Dependency edit\n", 0, "release/1.1.0", canonicalRepo},
+		{"backmerge carries dependabot", botIdentity, "maintainer", "Dependency edit\n", 0, "main", canonicalRepo},
+		{"promotion still checks humans", "Fixture Contributor <fixture@example.test>", "maintainer", "Scoped edit\n", 1, "release/1.1.0", canonicalRepo},
+		{"feature branch spoof", botIdentity, "maintainer", "Dependency edit\n", 1, "feat/x", canonicalRepo},
+		{"fork release branch spoof", botIdentity, "contributor", "Dependency edit\n", 1, "release/1.1.0", forkRepo},
+		{"fork main branch spoof", botIdentity, "contributor", "Dependency edit\n", 1, "main", forkRepo},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			head := object("commit", "tree "+headTree+"\nparent "+base+"\nauthor "+tc.identity+" 1700000001 +0000\ncommitter "+tc.identity+" 1700000001 +0000\n\n"+tc.message)
-			p := pull{Base: reference{SHA: base}, Head: reference{SHA: head}}
+			p := pull{Base: reference{SHA: base}, Head: reference{SHA: head, Ref: tc.ref, Repo: tc.repo}}
 			p.User.ID = 12
 			p.User.Login = tc.actor
 			// An inherited exemption may never exempt a human/spoofed author.
 			t.Setenv("DCO_EXEMPT_AUTHOR", tc.identity)
-			code, err := checkQueueDCO(context.Background(), p, repo)
+			code, err := checkQueueDCO(context.Background(), "example/hikyo", p, repo)
 			if err != nil || code != tc.want {
 				t.Fatalf("canonical DCO outcome %d/%v, want%d", code, err, tc.want)
 			}

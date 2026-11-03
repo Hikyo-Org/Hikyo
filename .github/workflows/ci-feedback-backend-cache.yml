@@ -1,5 +1,5 @@
 # Backend-inclusive compact seed for short PR feedback. No PR can publish here.
-name: ci-feedback-backend-cache
+name: cache-seed-feedback-backend
 
 on:
   workflow_dispatch:

@@ -56,7 +56,7 @@ func normalizeCompleteShardPlanning(job map[string]any) error {
 		expected := map[string]any{
 			"name": "Plan complete test, race, and fuzz shards", "id": "plan", "run": completeShardPlanningRun,
 			"env": map[string]any{
-				"BASE_SHA":   "${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
+				"BASE_SHA":   "${{ github.event.merge_group.base_sha }}",
 				"EVENT_NAME": "${{ github.event_name }}",
 			},
 		}

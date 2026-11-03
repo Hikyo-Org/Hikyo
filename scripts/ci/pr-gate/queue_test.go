@@ -87,7 +87,7 @@ func (f *queueFixture) groupRefresh() {
 	}
 }
 func (f *queueFixture) admit() error {
-	if err := f.q.init(context.Background()); err != nil {
+	if err := f.q.initRepository(context.Background()); err != nil {
 		return err
 	}
 	return f.q.admit(context.Background(), 7)
@@ -754,7 +754,7 @@ func TestQueueCompletePaginationPublishesAndRepairsLargeQueue(t *testing.T) {
 			var err error
 			if mode == "group" {
 				err = f.group()
-			} else if err = f.q.init(context.Background()); err == nil {
+			} else if err = f.q.initRepository(context.Background()); err == nil {
 				f.c.expectedHead = f.groupRun.HeadSHA
 				err = f.q.repairGroups(context.Background())
 			}
@@ -981,7 +981,7 @@ func TestQueueRepairReportsUnmaterializedEntryWithoutPublishingProof(t *testing.
 	f.entry.Head.OID = ""
 	f.entry.State = "QUEUED"
 	f.groupRefresh()
-	if err := f.q.init(context.Background()); err != nil {
+	if err := f.q.initRepository(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
@@ -1019,7 +1019,7 @@ func TestQueueRepairRetainsMalformedGroupAndDiagnosticErrors(t *testing.T) {
 			f.entry.Head.OID = ""
 			f.entry.State = state
 			f.groupRefresh()
-			if err := f.q.init(context.Background()); err != nil {
+			if err := f.q.initRepository(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			if state == "QUEUED" {

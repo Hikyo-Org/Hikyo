@@ -674,6 +674,7 @@ func (a *API) withRequestAdmission(ctx context.Context, sourceIP string) context
 	ctx = operation.WithRequestAdmission(ctx, a.RequestBudget.AdmitAuthenticatedAPI)
 	if a.Admission != nil {
 		ctx = operation.WithPreauthenticationAdmission(ctx, func() error { return a.Admission.AdmitDiscovery(sourceIP) })
+		ctx = operation.WithLiveSessions(ctx, a.Admission)
 	}
 	return ctx
 }

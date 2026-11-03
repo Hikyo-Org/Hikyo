@@ -18,13 +18,25 @@ env:
 
 jobs:
   validation:
-    uses: ./.github/workflows/ci.yml
-    with:
-      revision: ${{ github.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: read
-      pull-requests: read
+    steps:
+      - name: Check out the exact release source without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Require complete source validation for the identical landed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/release/require-green-main.sh "$GITHUB_REPOSITORY" "$GITHUB_SHA"
 
   floor-bench:
     uses: ./.github/workflows/floor-bench.yml
@@ -137,24 +149,23 @@ jobs:
           printf 'path=%s\nsha256=%s\nversion=%s\ncommit=%s\n' \
             "$candidate" "$candidate_sha256" "$resolved_version" "$resolved_commit" >>"$GITHUB_OUTPUT"
 
-      - name: Test release source
+      - name: Revalidate release source proof
         id: release-source
         env:
-          RELEASE_SCHEMA_CONTAINER: hikyo-ci-postgres
-          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_tests?sslmode=disable
-          RELEASE_SOURCE_TEST_OUTPUT: ${{ runner.temp }}/release-source-tests
-        run: |
-          # Preserve the separate empty database used by artifact generation.
-          docker exec "$RELEASE_SCHEMA_CONTAINER" createdb -U hikyo hikyo_release_tests
-          ./scripts/release/test-source.sh
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          go run ./scripts/ci/source-proof --repository "$GITHUB_REPOSITORY"
+          --mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA"
+          --output "$RUNNER_TEMP/release-source-proof.json"
 
-      - name: Retain release source inventories and results
-        if: ${{ always() && steps.release-source.outcome != 'skipped' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - name: Retain release source proof
+        if: steps.release-source.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-source-tests-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/release-source-tests/
+          name: release-source-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-source-proof.json
           if-no-files-found: error
+          retention-days: 14
 
       - name: Assert fallback channel and live docs release gates
         run: |
