@@ -158,7 +158,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Private PKI
 
-Landed as the 2026-11-02 banner on [pki](./pki.md), which is the only copy.
+Carried as a banner on [pki](./pki.md), which is the only copy. It is operative only when the #1133 implementation merges, and four implementation choices listed in a second banner there still await the owner's confirmation.
 
 ### Signed upgrade compatibility and stable workflow signing
 

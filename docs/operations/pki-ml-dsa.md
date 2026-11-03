@@ -31,12 +31,19 @@ grow. The OpenSSL side is real and was run (`TestMLDSAOpenSSLInterop`).
 
 ## Chain rules (DEC-19)
 
-An ML-DSA chain needs an **ML-DSA root**. Hikyo enforces this instead of
-labelling mixed chains:
+An ML-DSA chain needs an **ML-DSA root**. Hikyo enforces the path rule below
+instead of labelling mixed chains. That the root is *offline* is operator policy,
+as it is for classical roots (PKI ADR D3): an online ML-DSA evaluation root passes
+every check and is for evaluation only.
 
-- Every certificate in an ML-DSA issuer's path, the trust anchor's
-  self-signature included, must carry an ML-DSA-65 key and signature. Create
-  (`create-intermediate --parent`), install and import all refuse a mix.
+- Every certificate in an ML-DSA issuer's path must carry an ML-DSA-65 key and
+  signature, and the supplied chain must **end at a self-issued certificate whose
+  self-signature verifies**. A list that stops below the real root (for a real path
+  classical root, ML-DSA Y, X, I, the list `[X]`) or a root whose self-signature was
+  damaged is refused. Create (`create-intermediate --parent`), install and import
+  all refuse a mix. This checks the path *as supplied* against what the operator
+  says is the root; it cannot know that an operator-supplied root is the one the
+  relying parties trust.
 - The reverse is refused too: an ECDSA or RSA intermediate cannot sit under an
   ML-DSA root. An existing classical chain, including one behind a root outside
   Hikyo's own key set, is unaffected.
@@ -138,20 +145,41 @@ matrix). The OpenSSL steps are exactly what `TestMLDSAOpenSSLInterop` executes.
 
 ### Importing an existing ML-DSA intermediate (HOLD)
 
-Hikyo accepts only the **seed-only** PKCS#8 form. Produce it explicitly; the
-OpenSSL default is refused:
+Hikyo accepts only the **seed-only** PKCS#8 form (a 34 byte private-key field,
+128 bytes of PEM). OpenSSL's default output is seed plus expanded and is refused.
+Either generate the key in the right form:
 
 ```sh
 openssl genpkey -algorithm ML-DSA-65 -provparam ml-dsa.output_formats=seed-only -out issuing.key
 ```
 
-An existing key in another form needs re-encoding by its owner from the seed. If
-only the expanded form exists, it cannot be imported. Hikyo does not convert it.
+or convert an existing OpenSSL key that still carries its seed (run and checked:
+same seed, same public key, importable):
+
+```sh
+openssl pkey -in issuing-default.key -provparam ml-dsa.output_formats=seed-only -out issuing.key
+```
+
+Then import it with its certificate and chain, from a file or `--key-stdin`, never
+argv (HOLD today; the identical flags are exercised with a classical key by the
+CLI test):
+
+```sh
+hikyo pki issuer import issuing --key-file issuing.key \
+    --cert-file issuing.pem --chain-file root.pem
+```
+
+A key that exists only in the expanded form (no seed) cannot be imported, and
+Hikyo does not convert it.
 
 ## Relying-party matrix
 
 Exact versions; results observed by the tests named in the handoff. Nothing is
-inferred for a stack not listed.
+inferred for a stack not listed. The `VerifyConnection` rows are a **test harness**,
+not a production hop: no Hikyo relying party performs the walk yet, and `tlspolicy`
+only observes the negotiated group (profiles.md: strict authenticity is a
+verified-chain walk). The rows prove what such a walk would refuse, not that any
+Hikyo hop enforces it.
 
 | Relying party | Version | Result |
 | --- | --- | --- |
@@ -159,9 +187,11 @@ inferred for a stack not listed.
 | Same, negotiated key exchange (separate evidence) | Go 1.27.3, `tlspolicy` strict | `X25519MLKEM768` on TLS 1.3 on both sides. The same ML-DSA chain also works over `X25519`, so chain and group are independent |
 | OpenSSL | 4.0.3 (Library 4.0.3, 29 Sep 2026) | Signs the Hikyo CSR, validates leaf chain, hostname and purpose, rejects a tampered leaf, verifies the ML-DSA CRL and honours a revocation; a Hikyo parse of an OpenSSL-made ML-DSA CSR succeeds |
 | Go built with the FIPS 140-3 module v1.0.0 (no ML-DSA) | Go 1.27.3, `GOFIPS140=v1.0.0` | Refuses: `remote error: tls: handshake failure`, no application byte. The same program built normally accepts |
-| Client trusting only a classical root | Go 1.27.3 | `x509: certificate signed by unknown authority`, no application byte |
-| Peer that requires a PQ-authenticated chain (`VerifyConnection`) | Go 1.27.3 | Refuses an ECDSA chain even over the hybrid group, before any application byte |
-| Browsers, OpenSSH, Java, NSS, BoringSSL, Windows and macOS platform verifiers | none tested | **Unqualified.** Do not assume support. Owned by #1134; aggregated by #1135 |
+| Client trusting a root that did not sign the path | Go 1.27.3 | `x509: certificate signed by unknown authority`, no application byte. This is only an unknown anchor, not a post-quantum policy |
+| Client trusting a **classical root that really signed** an ML-DSA intermediate and leaf | Go 1.27.3 `crypto/tls` | **Accepts** and exchanges data: `crypto/x509` checks each link, not that the anchor is post-quantum |
+| Same path, `VerifyConnection` walking the verified chain with `pki.CheckPQPath` | Go 1.27.3, test harness | Refuses, no application byte. Only such a walk refuses a real classical anchor |
+| Peer that requires a PQ-authenticated chain, facing an ECDSA chain | Go 1.27.3, test harness | Refuses even over the hybrid group, before any application byte |
+| Browsers, OpenSSH, Java, NSS, BoringSSL, Windows and macOS platform verifiers | none tested | **Unqualified.** Do not assume support. Owner unresolved: [qualification.md](../security/pqc/qualification.md) assigns the PKI matrix "incl. platform verifiers" to #1133, while #1134's text does not mention PKI, browsers or platform verifiers (see the handoff) |
 
 E-18 stays registered: one listener certificate pair serves every client, so a
 strict ML-DSA leaf there may be rejected by browsers and compatibility clients.
@@ -184,11 +214,18 @@ Measured with `TestMLDSASizeBaseline` (bytes; the leaf and CSR have one DNS name
 | CRL DER, 0 / 100 / 1000 entries | 210 / 5117 / 49219 | 3454 / 8360 / 52454 | none |
 | TLS handshake, server to client, chain of two certificates | 2273 | 15760 | |
 
-The D9 estimate (the existing request caps suffice) holds with room: the
-certificate and CSR fields use 12% of their cap, the chain 9%, and a 262144
-character chain field would admit about 34 ML-DSA-65 certificates. No cap was
-raised and no admission was weakened. A CRL has no size bound in the API; ML-DSA
-adds a constant of about 3.2 KB and nothing per entry.
+The D9 estimate holds **for request caps only**: the certificate and CSR fields use
+12% of their cap, the chain 9%, and a 262144 character chain field would admit about
+34 ML-DSA-65 certificates. No cap was raised and no admission was weakened. A CRL has
+no size bound in the API; ML-DSA adds a constant of about 3.2 KB and nothing per entry.
+
+**Response and list sizes are not covered by that claim and are a registered gap.**
+`cert list` returns up to 500 rows and each row carries its PEMs: 22,665 bytes of PEM
+for an ML-DSA leaf under an ML-DSA issuer (measured), about 23.6 KB as JSON, and 20,094
+bytes for an ECDSA leaf under an ML-DSA issuer. The CLI reads at most 8 MiB of a
+response (`internal/cli/client.go`), so past about 355 ML-DSA rows (about 398 classical
+leaves under an ML-DSA issuer) `hikyo cert list` fails with "did not match the
+contract". Nothing bounds or pages this yet.
 
 ## Cost baseline (DEC-17, no threshold proposed)
 
@@ -214,9 +251,17 @@ owner and need amd64 numbers that were not measured.
    ML-DSA certificate under a new profile; renewal never changes an algorithm.
 4. **Overlap.** `rotate` appends version N+1 of the same family, activates it and
    moves N to `retiring`; N keeps signing its CRL until `retire` is allowed.
-5. **Switching the algorithm off.** With the instance gate off, existing ML-DSA
-   issuers keep signing and publishing their CRLs (tested), but new and renewed
-   ML-DSA leaves, rotation and new profiles are refused.
+5. **Switching the algorithm off is not a rollback.** With the instance gate off,
+   new ML-DSA keys are refused: ML-DSA issuer generation and import, ML-DSA
+   profiles, ML-DSA leaves, and rotation of an ML-DSA issuer. Existing ML-DSA issuers
+   keep signing and publishing their CRLs. **Everything else that touches existing
+   ML-DSA rows still works** (all confirmed on both engines): `install` activates a
+   pending ML-DSA version; a classical leaf is still newly issued and renewed, with
+   an ML-DSA signature, by an existing ML-DSA issuer that a classical profile names;
+   a classical profile may be created naming an existing ML-DSA issuer; and a stored
+   `mldsa65` profile is returned as is, a value outside the frozen response enum.
+   These need rows that already exist (a restore is one way). They are registered as
+   known limits in the handoff.
 6. **Roll back by stopping, not by deleting.** Revoke or let expire the ML-DSA
    leaves, keep the issuer versions and published CRLs until every leaf has
    expired, and never destroy a key to make a downgrade work. Once an ML-DSA
