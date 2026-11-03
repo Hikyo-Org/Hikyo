@@ -1288,9 +1288,12 @@ test.describe('environment matrix declaration', () => {
     await expect(modal.getByLabel('Field name')).toHaveCount(3);
     await expect(modal.getByRole('combobox', { name: 'Type of port' })).toHaveValue('integer');
     await modal.getByRole('checkbox', { name: 'Required: tags' }).uncheck();
+    // The sample has no field the schema does not list, so closing the object still accepts it.
+    await modal.getByRole('checkbox', { name: 'Reject fields not listed' }).check();
     await modal.getByRole('button', { name: 'Advanced: edit as JSON Schema (2020-12)' }).click();
     const document = modal.getByLabel('Schema document');
     await expect(document).toHaveValue(/"required": \[\s*"host",\s*"port"\s*\]/);
+    await expect(document).toHaveValue(/"additionalProperties": false/);
     await expect(document).not.toHaveValue(/db\.internal|5432/);
 
     await modal.getByRole('button', { name: 'Declare' }).click();

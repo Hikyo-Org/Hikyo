@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   builderSchemaError,
+  carryIds,
   changeType,
   DIALECT_2020_12,
   inferSchema,
@@ -92,6 +93,19 @@ describe('inferSchema', () => {
     });
   });
 
+  it('never sets a string rule or closes an object, which one sample cannot establish', () => {
+    const sample = { name: 'x', tags: ['a', 'bb'], nested: { id: 'abc', list: [{ k: 'v' }] } };
+    const root = inferSchemaRoot(sample);
+    const nodes = (node: BuilderNode): BuilderNode[] => [node, ...node.fields.flatMap(nodes), ...(node.items === null ? [] : nodes(node.items))];
+    for (const node of nodes(root)) {
+      expect(node).toMatchObject({ minLength: '', maxLength: '', pattern: '', closed: false });
+    }
+    const text = serializeBuilderSchema(root);
+    for (const keyword of ['minLength', 'maxLength', 'pattern', 'additionalProperties']) {
+      expect(text).not.toContain(`"${keyword}"`);
+    }
+  });
+
   it('refuses a null sample rather than reading as "no schema"', () => {
     expect(inferSchema(null)).toEqual({ error: expect.stringContaining('null') });
   });
@@ -150,15 +164,46 @@ function inferSchemaRoot(value: unknown): BuilderNode {
 }
 
 describe('serializeBuilderSchema', () => {
-  it('writes keys in the order $schema, type, properties, required, items', () => {
-    const root = { ...newNode('object'), fields: [{ ...newField(), name: 'a' }] };
+  it('writes keys in the order $schema, type, minLength, maxLength, pattern, properties, required, additionalProperties, items', () => {
+    const root = { ...newNode('object'), closed: true, fields: [{ ...newField(), name: 'a' }] };
     expect(serializeBuilderSchema(root, true)).toBe(
       JSON.stringify(
-        { $schema: DIALECT_2020_12, type: 'object', properties: { a: { type: 'string' } }, required: ['a'] },
+        {
+          $schema: DIALECT_2020_12,
+          type: 'object',
+          properties: { a: { type: 'string' } },
+          required: ['a'],
+          additionalProperties: false,
+        },
         null,
         2,
       ),
     );
+    const text = { ...newNode('string'), minLength: '1', maxLength: '8', pattern: '^a' };
+    expect(Object.keys(JSON.parse(serializeBuilderSchema(text)))).toEqual(['type', 'minLength', 'maxLength', 'pattern']);
+    const list = { ...newNode('array'), items: text };
+    expect(Object.keys(JSON.parse(serializeBuilderSchema(list)))).toEqual(['type', 'items']);
+  });
+
+  it('writes lengths as JSON numbers and omits empty rules and an open object', () => {
+    const text = { ...newNode('string'), minLength: '03', maxLength: '', pattern: '' };
+    expect(JSON.parse(serializeBuilderSchema(text))).toEqual({ type: 'string', minLength: 3 });
+    expect(serializeBuilderSchema(text)).toContain('"minLength": 3');
+    expect(JSON.parse(serializeBuilderSchema(newNode('string')))).toEqual({ type: 'string' });
+    expect(JSON.parse(serializeBuilderSchema(newNode('object')))).toEqual({ type: 'object' });
+  });
+
+  it('keeps string rules and a closed object across a type flip without writing them', () => {
+    const text = { ...newNode('string'), minLength: '1', maxLength: '8', pattern: '^a' };
+    const asNumber = changeType(text, 'integer');
+    expect(JSON.parse(serializeBuilderSchema(asNumber))).toEqual({ type: 'integer' });
+    expect(serializeBuilderSchema(changeType(asNumber, 'string'))).toBe(serializeBuilderSchema(text));
+    const closed = { ...newNode('object'), closed: true };
+    expect(JSON.parse(serializeBuilderSchema(changeType(closed, 'string')))).toEqual({ type: 'string' });
+    expect(JSON.parse(serializeBuilderSchema(changeType(changeType(closed, 'string'), 'object')))).toEqual({
+      type: 'object',
+      additionalProperties: false,
+    });
   });
 
   it('gives no schema for a bare any root, and a dialect-only schema when the dialect was declared', () => {
@@ -206,6 +251,33 @@ describe('parseBuilderSchema', () => {
     expect(serializeBuilderSchema(again.root, again.dialect)).toBe(canonical);
   });
 
+  it.each([
+    ['minLength', '{"type":"string","minLength":2}', { minLength: '2', maxLength: '', pattern: '' }],
+    ['maxLength', '{"type":"string","maxLength":0}', { minLength: '', maxLength: '0', pattern: '' }],
+    ['pattern', '{"type":"string","pattern":"^[a-z]+$"}', { minLength: '', maxLength: '', pattern: '^[a-z]+$' }],
+    ['equal lengths', '{"type":"string","minLength":3,"maxLength":3}', { minLength: '3', maxLength: '3', pattern: '' }],
+  ])('reads and writes back %s', (_label, text, rules) => {
+    const { root } = parsed(text);
+    expect(root).toMatchObject({ type: 'string', ...rules });
+    expect(serializeBuilderSchema(root)).toBe(JSON.stringify(JSON.parse(text), null, 2));
+  });
+
+  it('reads and writes back additionalProperties false, at the root and nested', () => {
+    const text = JSON.stringify(
+      {
+        type: 'object',
+        properties: { a: { type: 'array', items: { type: 'object', additionalProperties: false } } },
+        additionalProperties: false,
+      },
+      null,
+      2,
+    );
+    const { root } = parsed(text);
+    expect(root.closed).toBe(true);
+    expect(root.fields[0]?.items?.closed).toBe(true);
+    expect(serializeBuilderSchema(root)).toBe(text);
+  });
+
   it('keeps the 2020-12 dialect and refuses any other', () => {
     const text = serializeBuilderSchema(newNode('object'), true);
     const result = parsed(text);
@@ -216,10 +288,26 @@ describe('parseBuilderSchema', () => {
   });
 
   it.each([
-    ['pattern', '{"type":"string","pattern":"^a"}'],
     ['$ref', '{"$ref":"#/$defs/a"}'],
-    ['additionalProperties', '{"type":"object","additionalProperties":false}'],
-    ['minLength', '{"type":"string","minLength":1}'],
+    ['minimum', '{"type":"integer","minimum":1}'],
+    ['format', '{"type":"string","format":"uri"}'],
+    ['additionalProperties: true', '{"type":"object","additionalProperties":true}'],
+    ['additionalProperties as a schema', '{"type":"object","additionalProperties":{"type":"string"}}'],
+    ['additionalProperties on a string', '{"type":"string","additionalProperties":false}'],
+    ['additionalProperties without a type', '{"additionalProperties":false}'],
+    ['minLength on an object', '{"type":"object","minLength":1}'],
+    ['maxLength on an array', '{"type":"array","maxLength":1}'],
+    ['pattern on an integer', '{"type":"integer","pattern":"^a"}'],
+    ['minLength without a type', '{"minLength":1}'],
+    ['a fractional minLength', '{"type":"string","minLength":1.5}'],
+    ['a negative minLength', '{"type":"string","minLength":-1}'],
+    ['a string minLength', '{"type":"string","minLength":"1"}'],
+    ['a maxLength past the safe integers', '{"type":"string","maxLength":9007199254740992}'],
+    ['a null maxLength', '{"type":"string","maxLength":null}'],
+    ['an empty pattern', '{"type":"string","pattern":""}'],
+    ['a non-string pattern', '{"type":"string","pattern":1}'],
+    ['a minLength above the maxLength', '{"type":"string","minLength":5,"maxLength":2}'],
+    ['a nested rule that is not a length', '{"type":"object","properties":{"a":{"type":"string","maxLength":0.5}}}'],
     ['description', '{"type":"object","description":"x"}'],
     ['enum', '{"enum":["a"]}'],
     ['a nested keyword', '{"type":"object","properties":{"a":{"type":"string","format":"uri"}}}'],
@@ -279,6 +367,78 @@ describe('builderSchemaError', () => {
 
   it('ignores fields a different current type does not serialize', () => {
     expect(builderSchemaError({ ...newNode('string'), fields: [field('')] })).toBeNull();
+  });
+
+  it('flags a length that is not a whole number of 0 or more, and a min above the max', () => {
+    const text = (minLength: string, maxLength: string): BuilderNode => ({ ...newNode('string'), minLength, maxLength });
+    expect(builderSchemaError(text('0', '9'))).toBeNull();
+    expect(builderSchemaError(text('4', '4'))).toBeNull();
+    for (const bad of ['1.5', '-1', 'abc', ' 2', '1e3', '9007199254740992']) {
+      expect(builderSchemaError(text(bad, ''))).toMatch(/whole number/);
+      expect(builderSchemaError(text('', bad))).toMatch(/whole number/);
+    }
+    expect(builderSchemaError(text('5', '2'))).toMatch(/Min length cannot be more than max length/);
+    expect(builderSchemaError(text('9007199254740991', '9007199254740990'))).toMatch(/cannot be more/);
+  });
+
+  it('reads rules nested in fields and items, but not those of a type that does not write them', () => {
+    const bad = { ...newNode('string'), minLength: 'x' };
+    expect(builderSchemaError({ ...newNode('object'), fields: [{ ...newField(), name: 'a', minLength: 'x' }] })).toMatch(/whole number/);
+    expect(builderSchemaError({ ...newNode('array'), items: bad })).toMatch(/whole number/);
+    expect(builderSchemaError({ ...bad, type: 'integer' })).toBeNull();
+  });
+
+  it('reports bounds before a name or a rule', () => {
+    const chain = (levels: number): BuilderNode =>
+      levels === 1 ? { ...newNode('string'), minLength: 'x' } : { ...newNode('array'), items: chain(levels - 1) };
+    expect(builderSchemaError(chain(33))).toContain('32 levels');
+    expect(builderSchemaError(chain(32))).toMatch(/whole number/);
+  });
+});
+
+describe('carryIds', () => {
+  const named = (name: string, extra: Partial<BuilderNode> = {}): BuilderNode => ({ ...newField(), name, ...extra });
+
+  it('moves ids root to root, fields by name and array items to items, and leaves new nodes fresh', () => {
+    const before: BuilderNode = {
+      ...newNode('object'),
+      fields: [named('a'), named('list', { type: 'array', items: named('', { type: 'object', fields: [named('deep')] }) })],
+    };
+    const after: BuilderNode = {
+      ...newNode('object'),
+      // Reordered, with one field gone and one new.
+      fields: [
+        named('fresh'),
+        named('list', { type: 'array', items: named('', { type: 'object', fields: [named('deep'), named('other')] }) }),
+        named('a'),
+      ],
+    };
+    const carried = carryIds(before, after);
+    expect(carried.id).toBe(before.id);
+    const [fresh, list, a] = carried.fields;
+    expect(a?.id).toBe(before.fields[0]?.id);
+    expect(list?.id).toBe(before.fields[1]?.id);
+    expect(fresh?.id).toBe(after.fields[0]?.id);
+    const beforeItem = before.fields[1]?.items;
+    expect(list?.items?.id).toBe(beforeItem?.id);
+    expect(list?.items?.fields[0]?.id).toBe(beforeItem?.fields[0]?.id);
+    expect(list?.items?.fields[1]?.id).toBe(after.fields[1]?.items?.fields[1]?.id);
+  });
+
+  it('changes nothing but ids, and never gives two nodes one id', () => {
+    const before: BuilderNode = { ...newNode('object'), fields: [named('a', { minLength: '1' })] };
+    const after: BuilderNode = { ...newNode('object'), closed: true, fields: [named('a', { minLength: '2' }), named('a')] };
+    const carried = carryIds(before, after);
+    expect(carried).toMatchObject({ closed: true, fields: [{ minLength: '2' }, { minLength: '' }] });
+    const ids = [carried.id, ...carried.fields.map((field) => field.id)];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('copes with an items node on only one side', () => {
+    const withItems = { ...newNode('array'), items: newNode('string') };
+    const without = newNode('array');
+    expect(carryIds(withItems, without).items).toBeNull();
+    expect(carryIds(without, withItems).items?.id).toBe(withItems.items.id);
   });
 });
 

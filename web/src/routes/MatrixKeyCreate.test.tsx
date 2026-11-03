@@ -482,8 +482,23 @@ describe('MatrixKeyCreate JSON Schema', () => {
     await view.unmount();
   });
 
+  it('submits the string rules set through the builder', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'string'));
+    await act(async () => set(byLabelText(view.container, 'Min length'), '3'));
+    await act(async () => set(byLabelText(view.container, 'Pattern'), '^[a-z]+$'));
+
+    await fillNameAndSubmit(view.container, 'TOKEN');
+    expect(view.onCreate.mock.calls[0]![0].rule).toEqual({
+      type: 'json',
+      jsonSchema: JSON.stringify({ type: 'string', minLength: 3, pattern: '^[a-z]+$' }, null, 2),
+    });
+    await view.unmount();
+  });
+
   it('submits a hand-written schema the builder cannot show byte-identical', async () => {
-    const handWritten = '{"type":"string","pattern":"^a+$"}';
+    const handWritten = '{"type":"integer","minimum":1}';
     const view = await render();
     await chooseJson(view.container);
     await act(async () => set(byLabelText(view.container, 'Schema document'), handWritten));

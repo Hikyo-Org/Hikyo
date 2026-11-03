@@ -878,7 +878,7 @@ describe('KeyDeclarationDetail JSON Schema builder', () => {
 
   it.each([
     ['a representable schema', '{"type":"object"}'],
-    ['a schema with a rule the builder cannot show', '{"type":"string","pattern":"^a+$"}'],
+    ['a schema with a rule the builder cannot show', '{"type":"integer","minimum":1}'],
   ])('writes %s back unchanged after a presence-only edit', async (_label, jsonSchema) => {
     const view = await renderJson(jsonSchema);
     await editPresenceOnly(view.container);
@@ -892,7 +892,7 @@ describe('KeyDeclarationDetail JSON Schema builder', () => {
   });
 
   it('keeps an unrepresentable schema as raw JSON with a note, and shows the builder for a representable one', async () => {
-    const raw = await renderJson('{"type":"string","pattern":"^a+$"}');
+    const raw = await renderJson('{"type":"integer","minimum":1}');
     expect(textOf(raw.container)).toContain('the builder cannot show');
     expect(buttonBy(raw.container, 'Advanced: edit as JSON Schema (2020-12)').getAttribute('aria-expanded')).toBe('true');
     await raw.unmount();

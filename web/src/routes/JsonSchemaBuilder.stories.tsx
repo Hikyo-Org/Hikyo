@@ -33,6 +33,17 @@ const nested = JSON.stringify(
   2,
 );
 
+const ruled = JSON.stringify(
+  {
+    type: 'object',
+    properties: { host: { type: 'string', minLength: 1, maxLength: 63, pattern: '^[a-z]' }, port: { type: 'integer' } },
+    required: ['host'],
+    additionalProperties: false,
+  },
+  null,
+  2,
+);
+
 const meta = {
   title: 'Features/Values/JsonSchemaBuilder',
   id: 'routes-jsonschemabuilder',
@@ -44,7 +55,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'A no-code editor for the optional JSON Schema of a json key. It shows object fields and array items, writes the schema text, and never changes a schema it cannot show: those stay raw JSON under the advanced disclosure.',
+          'A no-code editor for the optional JSON Schema of a json key. It shows object fields and array items, string length and pattern rules, and closing an object to its listed fields. It writes the schema text, and never changes a schema it cannot show: those stay raw JSON under the advanced disclosure.',
       },
     },
   },
@@ -82,14 +93,68 @@ export const NestedFields: Story = {
   },
 };
 
+export const StringRulesAndClosedObject: Story = {
+  args: { initial: ruled },
+  play: async ({ canvas, userEvent }) => {
+    // A rule that is set opens its disclosure and shows in its label.
+    await expect(canvas.getByRole('button', { name: 'Rules for host (3)' })).toHaveAttribute('aria-expanded', 'true');
+    // Only string nodes have these rules.
+    await expect(canvas.queryByRole('button', { name: /Rules for port/ })).toBeNull();
+    await expect(canvas.getByLabelText('Min length of host')).toHaveValue('1');
+    await expect(canvas.getByLabelText('Pattern of host')).toHaveValue('^[a-z]');
+    await expect(canvas.getByText('RE2. Matches anywhere in the value unless you anchor it with ^ and $.')).toBeVisible();
+    await expect(canvas.getByRole('checkbox', { name: 'Reject fields not listed' })).toBeChecked();
+
+    // A length that is not a whole number is refused on its own input, and the text keeps the last valid schema.
+    const document = canvas.getByLabelText('Schema document');
+    const maxLength = canvas.getByLabelText('Max length of host');
+    await userEvent.type(maxLength, 'x');
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Use a whole number of 0 or more.');
+    await expect(maxLength).toBeInvalid();
+    await expect(document).toHaveValue(ruled);
+    await userEvent.clear(maxLength);
+    await userEvent.type(maxLength, '0');
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Min length cannot be more than max length.');
+    await userEvent.clear(maxLength);
+    await userEvent.type(maxLength, '20');
+    await expect(canvas.queryByRole('alert')).toBeNull();
+    await expect(document).toHaveValue(ruled.replace('63', '20'));
+
+    await userEvent.click(canvas.getByRole('checkbox', { name: 'Reject fields not listed' }));
+    await expect(document).not.toHaveValue(expect.stringContaining('additionalProperties'));
+  },
+};
+
+export const HandWrittenOpenObject: Story = {
+  args: { initial: '{"type":"object","additionalProperties":true}' },
+  play: async ({ canvas }) => {
+    // Only `false` is shown: anything else is the person's own rule and stays raw, unchanged.
+    await expect(canvas.getByText(/the builder cannot show/)).toBeVisible();
+    await expect(canvas.queryByRole('checkbox', { name: 'Reject fields not listed' })).toBeNull();
+    await expect(canvas.getByLabelText('Schema document')).toHaveValue('{"type":"object","additionalProperties":true}');
+  },
+};
+
 export const NotRepresentable: Story = {
-  args: { initial: '{"type":"string","pattern":"^[a-z]+$"}' },
+  args: { initial: '{"type":"integer","minimum":1}' },
   play: async ({ canvas }) => {
     await expect(canvas.getByText(/the builder cannot show/)).toBeVisible();
     await expect(canvas.queryByRole('button', { name: 'Add field' })).toBeNull();
     // The raw editor opens by itself and holds the schema untouched.
     await expect(canvas.getByLabelText('Schema document')).toBeVisible();
-    await expect(canvas.getByLabelText('Schema document')).toHaveValue('{"type":"string","pattern":"^[a-z]+$"}');
+    await expect(canvas.getByLabelText('Schema document')).toHaveValue('{"type":"integer","minimum":1}');
+  },
+};
+
+export const PhoneRules: Story = {
+  args: { initial: ruled },
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ canvasElement, canvas }) => {
+    await expect(canvas.getByLabelText('Pattern of host')).toBeVisible();
+    await expect(canvas.getByRole('checkbox', { name: 'Reject fields not listed' })).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(
+      canvasElement.ownerDocument.documentElement.clientWidth,
+    );
   },
 };
 

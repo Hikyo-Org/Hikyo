@@ -49,7 +49,7 @@ function addField(container: HTMLElement): void {
 
 describe('JsonSchemaBuilder', () => {
   it('never reports a change on mount, for a schema it can show or not', async () => {
-    for (const initial of ['', '{"type":"object"}', '{"type":"string","pattern":"^a"}']) {
+    for (const initial of ['', '{"type":"object"}', '{"type":"string","pattern":"^a"}', '{"type":"integer","minimum":1}']) {
       const onChange = vi.fn();
       const view = await renderForm(<Harness initial={initial} onChange={onChange} />);
       expect(onChange).not.toHaveBeenCalled();
@@ -139,6 +139,74 @@ describe('JsonSchemaBuilder', () => {
     expect(view.container.textContent).not.toContain('not valid JSON yet');
     await act(async () => raw.blur());
     expect(view.container.textContent).toContain('not valid JSON yet');
+    await view.unmount();
+  });
+
+  it('keeps a row control mounted when the raw editor is left after a representable edit', async () => {
+    // A control replaced between mousedown and mouseup loses the click, and the
+    // blur that leaves the raw editor is exactly what the mousedown causes.
+    const schema = { type: 'object', properties: { a: { type: 'string' }, b: { type: 'array', items: { type: 'string' } } } };
+    const initial = JSON.stringify(schema);
+    const view = await renderForm(<Harness initial={initial} onChange={vi.fn()} />);
+    const button = (name: string) =>
+      [...view.container.querySelectorAll('button')].find((candidate) => candidate.textContent === name);
+    const remove = button('Remove');
+    const required = control(view.container, 'Required', 0);
+    const raw = view.container.querySelector('textarea');
+    if (remove === undefined || raw === null) throw new Error('missing controls');
+    await act(async () => raw.focus());
+    await act(async () => write(raw, JSON.stringify({ ...schema, required: ['a'] })));
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(2);
+    await act(async () => raw.blur());
+    expect(remove.isConnected).toBe(true);
+    expect(required.isConnected).toBe(true);
+    // The rebuild did read the edit: the field is now ticked required.
+    expect(required instanceof HTMLInputElement && required.checked).toBe(true);
+    await view.unmount();
+  });
+
+  it('writes string rules and a closed object as typed, and holds an in-progress length without coercing it', async () => {
+    const onChange = vi.fn<(text: string, error: string | null) => void>();
+    const view = await renderForm(
+      <Harness initial='{"type":"object","properties":{"host":{"type":"string"}}}' onChange={onChange} />,
+    );
+    const text = () => view.container.textContent;
+    expect(text()).toContain('Rules for host');
+    expect(text()).not.toContain('Rules for host (');
+    await act(async () => write(control(view.container, 'Min length'), '3'));
+    await act(async () => write(control(view.container, 'Pattern'), '^h'));
+    expect(text()).toContain('Rules for host (2)');
+    await act(async () => write(control(view.container, 'Max length'), '2'));
+    expect(onChange.mock.lastCall?.[1]).toBe('Min length cannot be more than max length.');
+    expect(view.container.querySelector('.field__error')?.textContent).toBe('Min length cannot be more than max length.');
+    await act(async () => write(control(view.container, 'Max length'), '2.'));
+    expect(control(view.container, 'Max length').value).toBe('2.');
+    expect(onChange.mock.lastCall?.[1]).toBe('Use a whole number of 0 or more.');
+    await act(async () => write(control(view.container, 'Max length'), '9'));
+    expect(onChange.mock.lastCall?.[1]).toBeNull();
+    const tick = control(view.container, 'Reject fields not listed');
+    await act(async () => tick.click());
+    expect(JSON.parse(onChange.mock.lastCall?.[0] ?? '')).toEqual({
+      type: 'object',
+      properties: { host: { type: 'string', minLength: 3, maxLength: 9, pattern: '^h' } },
+      additionalProperties: false,
+    });
+    await view.unmount();
+  });
+
+  it('opens the rules disclosure when a rule is set, and names the owner in nested controls', async () => {
+    const view = await renderForm(
+      <Harness
+        initial='{"type":"object","properties":{"host":{"type":"string","pattern":"^h"},"zone":{"type":"string"}}}'
+        onChange={vi.fn()}
+      />,
+    );
+    const toggles = [...view.container.querySelectorAll('.disclosure__toggle')];
+    const open = (label: string) => toggles.find((toggle) => toggle.textContent === label)?.getAttribute('aria-expanded');
+    expect(open('Rules for host (1)')).toBe('true');
+    expect(open('Rules for zone')).toBe('false');
+    expect(view.container.querySelector('[aria-label="Pattern of host"]')).not.toBeNull();
+    expect(view.container.querySelector('[aria-label="Min length of zone"]')).not.toBeNull();
     await view.unmount();
   });
 
