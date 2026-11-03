@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 
 import { zJSONText } from '../lib/jsonText.ts';
+import { fieldNames, inferSchema, MAX_SCHEMA_LENGTH, mentionsFieldName, serializeBuilderSchema } from '../lib/jsonSchemaBuilder.ts';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
@@ -10,7 +11,9 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Combobox } from '../ui/Combobox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
+import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
+import { selectOption } from './selectOption.ts';
 
 type Environment = EnvironmentList['items'][number];
 type PresenceMode = CreateKeyPresence['mode'];
@@ -48,7 +51,6 @@ const MAX_ENUM_MEMBERS = 64;
 const MAX_MEMBER_LENGTH = 512;
 const MAX_PATTERN_LENGTH = 512;
 const MAX_SCHEMES = 32;
-const MAX_JSON_SCHEMA_LENGTH = 16384;
 const INT64_MIN = -9223372036854775808n;
 const INT64_MAX = 9223372036854775807n;
 const SAFE_MIN = BigInt(Number.MIN_SAFE_INTEGER);
@@ -142,6 +144,12 @@ export function MatrixKeyCreate({
   const [members, setMembers] = useState('');
   const [schemes, setSchemes] = useState('https');
   const [jsonSchema, setJsonSchema] = useState('');
+  // A refusal the schema builder holds (a blank or duplicate field name).
+  const [jsonSchemaError, setJsonSchemaError] = useState<string | null>(null);
+  const [inferNote, setInferNote] = useState<string | null>(null);
+  // Every name read from a first value so far; see the secret tick.
+  const [sampledNames, setSampledNames] = useState<readonly string[]>([]);
+  const [builderEpoch, setBuilderEpoch] = useState(0);
   const [value, setValue] = useState('');
   const [valueEnvironmentIds, setValueEnvironmentIds] = useState<readonly string[]>(() =>
     environments
@@ -168,6 +176,25 @@ export function MatrixKeyCreate({
     [existingKeyNames, normalizedName],
   );
   const whitespaceRemoved = normalizeMatrixDraftValue(value) !== value;
+  const valueIsJson = useMemo(() => {
+    const trimmed = normalizeMatrixDraftValue(value);
+    return trimmed !== '' && zJSONText.safeParse(trimmed).success;
+  }, [value]);
+
+  const inferFromValue = () => {
+    if (secret) return;
+    const sample = zJSONText.safeParse(normalizeMatrixDraftValue(value));
+    if (!sample.success) return;
+    const inferred = inferSchema(sample.data);
+    if ('error' in inferred) {
+      setInferNote(inferred.error);
+      return;
+    }
+    setJsonSchema(serializeBuilderSchema(inferred.root));
+    setJsonSchemaError(null);
+    setSampledNames((names) => [...names, ...fieldNames(inferred.root)]);
+    setInferNote('Schema filled in from this value. Field names are exported to Git; review it below.');
+  };
 
   const submit = () => {
     if (gitManaged) return;
@@ -200,6 +227,7 @@ export function MatrixKeyCreate({
       members,
       schemes,
       jsonSchema,
+      jsonSchemaError,
     });
     if ('error' in built) {
       setError(built.error);
@@ -338,7 +366,11 @@ export function MatrixKeyCreate({
           <select
             id="matrix-create-type"
             value={type}
-            onChange={(event) => setType(event.target.value as CreateKeyType)}
+            onChange={(event) => {
+              setType(selectOption(TYPE_OPTIONS.map((option) => option.type), event.target.value));
+              setJsonSchemaError(null);
+              setInferNote(null);
+            }}
           >
             {TYPE_OPTIONS.map((option) => (
               <option key={option.type} value={option.type}>
@@ -349,7 +381,23 @@ export function MatrixKeyCreate({
           <Checkbox
             label="secret"
             checked={secret}
-            onChange={(event) => setSecret(event.target.checked)}
+            onChange={(event) => {
+              setSecret(event.target.checked);
+              // A secret value's field names must not reach the exported schema
+              // (docs/adr/schema-model.md "Error disclosure"), whichever order
+              // the form was filled in.
+              if (!event.target.checked) return;
+              setInferNote(null);
+              // A remount leaves only the text: the tree retains fields for
+              // flipping types back, and those may hold sampled names.
+              setBuilderEpoch((epoch) => epoch + 1);
+              setJsonSchemaError(null);
+              setSampledNames([]);
+              if (mentionsFieldName(jsonSchema, sampledNames)) {
+                setJsonSchema('');
+                setInferNote('The schema was removed: its field names came from this value.');
+              }
+            }}
           />
         </div>
 
@@ -455,22 +503,6 @@ export function MatrixKeyCreate({
           </fieldset>
         ) : null}
 
-        {type === 'json' ? (
-          <fieldset className="matrix-key-create__constraints">
-            <legend>JSON Schema (optional, 2020-12)</legend>
-            <label className="matrix-key-create__field">
-              <span>Schema document</span>
-              <textarea
-                className="mono"
-                rows={2}
-                autoComplete="off"
-                placeholder='{ "type": "object" }'
-                value={jsonSchema}
-                onChange={(event) => setJsonSchema(event.target.value)}
-              />
-            </label>
-          </fieldset>
-        ) : null}
 
         <p className="matrix-editor__hint">
           Descriptions and other free-text fields are exported to Git and treated as public. Never
@@ -497,8 +529,31 @@ export function MatrixKeyCreate({
             autoComplete="off"
             placeholder={secret ? 'first value (hidden)' : type === 'json' ? 'first value (json)' : 'first value'}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setInferNote(null);
+            }}
           />
+          {type === 'json' ? (
+            <>
+              <Button
+                type="button"
+                className="matrix-key-create__infer"
+                disabled={secret || !valueIsJson}
+                onClick={inferFromValue}
+              >
+                {jsonSchema === '' ? 'Infer schema from this value' : 'Replace schema from this value'}
+              </Button>
+              <p className="matrix-editor__hint matrix-key-create__infer-note" role="status">
+                {inferNote ??
+                  (secret
+                    ? 'Schema inference is off for secret keys: field names would be exported to Git.'
+                    : valueIsJson
+                      ? ''
+                      : 'Enter a valid JSON value to infer a schema from it.')}
+              </p>
+            </>
+          ) : null}
           {secret ? (
             <Checkbox
               className="matrix-editor__show-typing"
@@ -525,6 +580,22 @@ export function MatrixKeyCreate({
             />
           ))}
         </fieldset>
+
+        {type === 'json' ? (
+          <fieldset className="matrix-key-create__constraints">
+            <legend>JSON Schema (optional)</legend>
+            <JsonSchemaBuilder
+              key={builderEpoch}
+              value={jsonSchema}
+              error={jsonSchemaError}
+              onChange={(text, error) => {
+                setJsonSchema(text);
+                setJsonSchemaError(error);
+                setInferNote(null);
+              }}
+            />
+          </fieldset>
+        ) : null}
 
         <PresenceField
           legend="Required in"
@@ -649,6 +720,7 @@ type ConstraintInputs = {
   readonly members: string;
   readonly schemes: string;
   readonly jsonSchema: string;
+  readonly jsonSchemaError: string | null;
 };
 
 /**
@@ -751,9 +823,10 @@ function buildRule(
       };
     }
     case 'json': {
+      if (inputs.jsonSchemaError !== null) return { error: inputs.jsonSchemaError };
       const trimmed = inputs.jsonSchema.trim();
-      if (trimmed.length > MAX_JSON_SCHEMA_LENGTH) {
-        return { error: `A JSON Schema is at most ${String(MAX_JSON_SCHEMA_LENGTH)} characters.` };
+      if (trimmed.length > MAX_SCHEMA_LENGTH) {
+        return { error: `A JSON Schema is at most ${String(MAX_SCHEMA_LENGTH)} characters.` };
       }
       if (trimmed !== '' && !zJSONText.safeParse(trimmed).success) {
         return { error: 'The JSON Schema must be valid JSON.' };

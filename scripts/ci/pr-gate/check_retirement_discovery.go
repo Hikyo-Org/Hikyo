@@ -76,7 +76,7 @@ func (c *controller) discoverRetirements(ctx context.Context, name string, e eve
 		}
 	}()
 	targets = retirementTargets{Queue: []string{}, Observation: []string{}, ObservationBatches: [][]string{}, ReporterTargets: []reporterRetirementTarget{}}
-	if err := c.init(ctx); err != nil {
+	if err := c.initRepository(ctx); err != nil {
 		return targets, err
 	}
 	reader := *c

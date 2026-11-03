@@ -32,6 +32,10 @@
   width: auto;
 }
 
+.demo-toolbar .demo-toolbar__replay {
+  color: var(--tx);
+}
+
 .demo-readonly__notice {
   color: var(--tx-dim);
   margin: 0 0 var(--space-4);

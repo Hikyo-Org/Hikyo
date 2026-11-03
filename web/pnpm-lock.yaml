@@ -108,6 +108,9 @@ importers:
       playwright:
         specifier: 1.62.1
         version: 1.62.1
+      posthog-js:
+        specifier: 1.438.12
+        version: 1.438.12(@types/react@19.2.18)(react@19.2.8)
       storybook:
         specifier: 10.6.3
         version: 10.6.3(@types/react@19.2.18)(react@19.2.8)
@@ -877,6 +880,15 @@ packages:
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
+
+  '@posthog/browser-common@0.9.12':
+    resolution: {integrity: sha512-pKYLYgV0o4UK5PAQ3OTlZpQnKvcBpG+UOqWYa+W41Omec8TlI6FXzGMHdYMTmaymxii0vi9R4jLVi7JQSr4vnQ==}
+
+  '@posthog/core@1.62.0':
+    resolution: {integrity: sha512-KjNwGC7s0141wnWWHubNMdg1lOhZjqKRw2OTNstuzdVvNDfvv2RbFJQSSvvABmbCmTXwlMpdnbb/M/aAigDnNQ==}
+
+  '@posthog/types@1.419.0':
+    resolution: {integrity: sha512-XX7zRYt/vK8AzaD6V+oDquAzacZf5exJv971dja9En8Qf6g84Qvc3rpT0w6hDYYLWrjaSSkdjFfvvoXI0ouJDg==}
 
   '@rolldown/binding-android-arm-eabi@1.2.5':
     resolution: {integrity: sha512-DLe/i+l8ynIBY7XEQ191TeZvCoowIGa18R+dIV30GW7DiOtp74i/xX8hs8GUjW5ARV7VZuie3d6AumSmCwbeRA==}
@@ -1704,6 +1716,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.4.9:
+    resolution: {integrity: sha512-zdxgIEddhfsyCaWpJ2SdXEP8ZMrKJ6+5jl4OupODcywU0IhRk6gdXuVGcPICyfx2H97hVK7xmJtRLPjkxAX8Vw==}
+
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
@@ -2105,8 +2120,27 @@ packages:
     resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
+  posthog-js@1.438.12:
+    resolution: {integrity: sha512-hjhvrtqbk6pFlbtNEGk0FrWKKFdeXe/WWA/LppN0f+uDoHKR9/SZJOxUHSVCGYbGTJvNRoDjjQvZuTcq4oKSlg==}
+    peerDependencies:
+      '@types/react': '>=16.8.0'
+      react: '>=16.8.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      react:
+        optional: true
+
   pptxgenjs@4.0.1:
     resolution: {integrity: sha512-TeJISr8wouAuXw4C1F/mC33xbZs/FuEG6nH9FG1Zj+nuPcGMP5YRHl6X+j3HSUnS1f3at6k75ZZXPMZlA5Lj9A==}
+
+  preact@10.29.8:
+    resolution: {integrity: sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==}
+    peerDependencies:
+      preact-render-to-string: '>=5'
+    peerDependenciesMeta:
+      preact-render-to-string:
+        optional: true
 
   pretty-format@27.5.1:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
@@ -2120,6 +2154,9 @@ packages:
 
   qrcode-generator@2.0.4:
     resolution: {integrity: sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==}
+
+  query-selector-shadow-dom@1.0.1:
+    resolution: {integrity: sha512-lT5yCqEBgfoMYpf3F2xQRK7zEr1rhIIZuceDK6+xRkJQ4NMbHTwXqk4NkwDwQMNqXgG9r9fyHnzwNVs6zV5KRw==}
 
   quickselect@3.0.0:
     resolution: {integrity: sha512-XdjUArbK4Bm5fLLvlm5KpTFOiOThgfWWI4axAZDWg4E/0mKdZyI9tNEfds27qCi1ze/vwTR16kvmmGhRra3c2g==}
@@ -2501,6 +2538,12 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  web-vitals@6.2.1:
+    resolution: {integrity: sha512-rLcLXA2sx6+9dE88NHFubwTtGxpK4yYBLj6qHPdFoCaLr0cXGb4efOqtKLlm4loGA4OEKHIQKMKzZkKyOh5ctw==}
+
+  web-vitals@6.2.3:
+    resolution: {integrity: sha512-Dmy+vdO1UPMqXiAtZSNayhl4f794Bxfd94W4HIj2HlYtczEQfEOon969memlcpcHrTuOKLa5baFjX7WbgmOq+A==}
 
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
@@ -3173,6 +3216,20 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
+  '@posthog/browser-common@0.9.12':
+    dependencies:
+      '@posthog/core': 1.62.0
+      '@posthog/types': 1.419.0
+      preact: 10.29.8
+    transitivePeerDependencies:
+      - preact-render-to-string
+
+  '@posthog/core@1.62.0':
+    dependencies:
+      '@posthog/types': 1.419.0
+
+  '@posthog/types@1.419.0': {}
+
   '@rolldown/binding-android-arm-eabi@1.2.5':
     optional: true
 
@@ -3763,8 +3820,7 @@ snapshots:
 
   cookie-es@3.1.1: {}
 
-  core-js@3.50.0:
-    optional: true
+  core-js@3.50.0: {}
 
   core-util-is@1.0.3: {}
 
@@ -3824,7 +3880,6 @@ snapshots:
   dompurify@3.4.17:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
-    optional: true
 
   electron-to-chromium@1.5.427: {}
 
@@ -3896,6 +3951,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fflate@0.4.9: {}
 
   fflate@0.8.3: {}
 
@@ -4281,12 +4338,32 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
+  posthog-js@1.438.12(@types/react@19.2.18)(react@19.2.8):
+    dependencies:
+      '@posthog/browser-common': 0.9.12
+      '@posthog/core': 1.62.0
+      '@posthog/types': 1.419.0
+      core-js: 3.50.0
+      dompurify: 3.4.17
+      fflate: 0.4.9
+      preact: 10.29.8
+      query-selector-shadow-dom: 1.0.1
+      web-vitals: 6.2.3
+      web-vitals-soft-navs: web-vitals@6.2.1
+    optionalDependencies:
+      '@types/react': 19.2.18
+      react: 19.2.8
+    transitivePeerDependencies:
+      - preact-render-to-string
+
   pptxgenjs@4.0.1:
     dependencies:
       '@types/node': 22.20.2
       https: 1.0.0
       image-size: 2.0.4
       jszip: 3.10.2
+
+  preact@10.29.8: {}
 
   pretty-format@27.5.1:
     dependencies:
@@ -4299,6 +4376,8 @@ snapshots:
   prsc@4.0.0: {}
 
   qrcode-generator@2.0.4: {}
+
+  query-selector-shadow-dom@1.0.1: {}
 
   quickselect@3.0.0: {}
 
@@ -4674,6 +4753,10 @@ snapshots:
       happy-dom: 21.0.4
     transitivePeerDependencies:
       - msw
+
+  web-vitals@6.2.1: {}
+
+  web-vitals@6.2.3: {}
 
   webpack-virtual-modules@0.6.2: {}
 

@@ -1,22 +1,15 @@
 #!/bin/sh
 set -eu
 
-mode=queue
-if [ "${1:-}" = --legacy ]; then
-	mode=legacy
-	shift
-fi
 if [ "$#" -ne 1 ]; then
-	printf 'usage: %s [--legacy] POLICY_JSON\n' "$0" >&2
+	printf 'usage: %s POLICY_JSON\n' "$0" >&2
 	exit 2
 fi
 command -v jq >/dev/null 2>&1 || {
 	printf 'main policy: jq is required; install jq before local policy/docs validation (docs CI uses verify-docs.sh setup)\n' >&2
 	exit 1
 }
-# Queue and rollback share every protection. Only their coupled completion
-# context, strictness and queue rule differ; admission never becomes rollback.
-jq -se --arg mode "$mode" '
+jq -se '
 	def check($context):
 		type == "object" and .context == $context and
 		(keys - ["context", "integration_id"] == []) and
@@ -24,7 +17,7 @@ jq -se --arg mode "$mode" '
 	def one($type): [.rules[] | select(.type == $type)] | if length == 1 then .[0] else error("missing or duplicate " + $type) end;
 	if length != 1 then error("expected exactly one policy document") else .[0] end |
 	if type != "object" or (.rules | type) != "array" then error("expected policy object and rules array") else . end |
-	if $mode == "queue" and any(.rules[]; .type == "required_linear_history")
+	if any(.rules[]; .type == "required_linear_history")
 	then error("MERGE queue is incompatible with required_linear_history") else . end |
 	all(.rules[]; type == "object" and (.type | type) == "string") and
 	.name == "main requires PR and release CI" and
@@ -38,16 +31,14 @@ jq -se --arg mode "$mode" '
 		.required_review_thread_resolution == true and .dismiss_stale_reviews_on_push == true) and
 	(one("required_status_checks").parameters |
 		.do_not_enforce_on_create == false and
-		.strict_required_status_checks_policy == ($mode == "legacy") and
+		.strict_required_status_checks_policy == false and
 		(.required_status_checks | type == "array" and length == 1 and
-			(.[0] | check(if $mode == "legacy" then "ci-required-next" else "ci-queue-required" end)))) and
-	(if $mode == "legacy" then [.rules[] | select(.type == "merge_queue")] == []
-	 else one("merge_queue").parameters == {
+			(.[0] | check("ci-queue-required")))) and
+	one("merge_queue").parameters == {
 		check_response_timeout_minutes:60, grouping_strategy:"ALLGREEN",
 		max_entries_to_build:1, max_entries_to_merge:1, merge_method:"MERGE",
 		min_entries_to_merge:1, min_entries_to_merge_wait_minutes:0}
-	 end)
 ' "$1" >/dev/null || {
-	printf 'main policy: invalid %s protection contract\n' "$mode" >&2
+	printf 'main policy: invalid queue protection contract\n' >&2
 	exit 1
 }

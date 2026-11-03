@@ -149,6 +149,8 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            - name: HIKYO_ROOT_KEY_FILE
+              value: /run/hikyo-root-key/root-key
             {{- if .Values.database.storageMonitoring.enabled }}
             - name: HIKYO_PG_STORAGE_KUBELET_URL
               value: {{ .Values.database.storageMonitoring.kubeletURL | quote }}
@@ -376,12 +378,12 @@ spec:
         {{- if not .Values.upgrade.unattended.enabled }}
         - name: upgrade-public
           persistentVolumeClaim:
-            claimName: {{ .Values.upgrade.existingClaim }}
+            claimName: {{ .Values.upgrade.existingClaim | quote }}
             readOnly: true
         {{- end }}
         - name: upgrade-state
           persistentVolumeClaim:
-            claimName: {{ .Values.upgrade.stateExistingClaim }}
+            claimName: {{ .Values.upgrade.stateExistingClaim | quote }}
         - name: root-key-source
           secret:
             secretName: {{ .Values.rootKey.existingSecret | quote }}
