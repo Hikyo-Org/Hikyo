@@ -131,6 +131,6 @@ head and the result of every check below. Base `f5d549182` (PR #1156).
 | `scripts/ci/fast-feedback.sh` against base `f5d549182`, through the queue, under the pinned Node 26.12.1 | pass (Go format, package tests of the changed set, docs) |
 | `scripts/ci/check-commit-signatures.sh`, `scripts/ci/check-dco.sh` against the PR base | pass, 4 commits at the time |
 | `go test ./internal/boundary/...` | pass |
-| `go test -p 2 -timeout 40m ./internal/lint/...` | **did not finish**: the 40 minute timeout fired during package loading under host load (load 10 to 12). A second run with `-timeout 100m` is recorded in the PR body. No pin was refreshed: this branch changes no migration and no raw SQL |
+| `go test -p 2 -timeout 40m ./internal/lint/...` | **did not finish locally**: the 40 minute timeout fired during package loading under host load (load 10 to 12); a 100 minute rerun was cancelled unstarted by instruction. Hosted `repository invariants (boundary, lint, CI policy)` for head `9de6a536b`: not yet available when read at 2026-11-03T22:21Z (pending). `ci-queue-required` showed fail (1 s) at the same read; not investigated. No pin was refreshed: this branch changes no migration and no raw SQL |
 | `scripts/ci/check-doc-status.mjs` | NOTRUN: the docs site dependencies are not installed on this host |
 | Hosted CI, amd64, real receiver, live push | NOTRUN |
