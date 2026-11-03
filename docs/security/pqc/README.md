@@ -18,6 +18,7 @@ amendments it depends on and its own security approval before it can merge.
 | [Profiles](profiles.md) | Confidentiality and authenticity defined separately; strength, parameters, encodings, bounds, strict and compatibility profiles, composition |
 | [Migration](migration.md) | Reader-first ladder, keys and escrow, mixed paths, retirement, floor, recovery, dispositions, exception register |
 | [Qualification](qualification.md) | Requirement-to-test matrix, scope, estimates, critical path |
+| [Pairing feasibility](pairing-feasibility.md) | #1130: threat analysis, feasibility survey, separable blockers and owner options for pairing (HOLD) |
 | [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the owner's decisions), waiver and governance route, proposed amendment text |
 | [Handoff](../../handoff/1124-pqc-contract.md) | Acceptance-criterion map, dated PR state, evidence, HOLD and NOTRUN, next steps |
 
