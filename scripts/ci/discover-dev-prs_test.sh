@@ -70,7 +70,7 @@ jq '.files = [range(0; 300) | {filename: "f\(.)"}]' "$work/compare.json" >"$work
 selects 'dev push at the compare file limit' all
 jq '.files |= .[1:]' "$work/compare.json" >"$work/new.json"; mv "$work/new.json" "$work/compare.json"
 selects 'dev push just under the compare file limit' none
-compare '{"status":"diverged","files":[]}'
+compare '{"status":"diverged","files":[{"filename":"a"}]}'
 selects 'dev push whose compare diverged' all
 compare '{"status":"behind","files":[{"filename":"a"}]}'
 selects 'dev push whose compare is behind' all

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func devFilesPage(f *queueFixture, page int) string {
@@ -192,31 +193,61 @@ func TestDevAdmissionRechecksLiveBaseAndApprovals(t *testing.T) {
 	}
 }
 
-func TestDevBaseMovementFailsSoTheRetryReassesses(t *testing.T) {
-	for name, moved := range map[string]bool{"dev advanced": true, "dev still": false} {
-		t.Run(name, func(t *testing.T) {
-			f := newDevFixture(t)
-			if moved {
-				f.api.readHook = func(path string, count int) {
-					if path == f.c.endpoint("git/ref/heads/dev") && count == 2 {
-						f.api.responses[path] = map[string]any{"ref": "refs/heads/dev", "object": map[string]string{"type": "commit", "sha": strings.Repeat("f", 40)}}
-					}
+// The hosted path: a moved admission fails the job, so ci-queue-retry reruns it.
+func TestDevMovementFailsSoTheRetryReassesses(t *testing.T) {
+	t.Setenv("GITHUB_REF", "refs/heads/main")
+	moves := map[string]func(*queueFixture){
+		"none": func(*queueFixture) {},
+		"dev advanced": func(f *queueFixture) {
+			verify := f.c.verify
+			f.c.verify = func(ctx context.Context, n int, head string) (policyDecision, error) {
+				f.api.mu.Lock()
+				defer f.api.mu.Unlock()
+				f.api.responses[f.c.endpoint("git/ref/heads/dev")] = map[string]any{"ref": "refs/heads/dev", "object": map[string]string{"type": "commit", "sha": strings.Repeat("f", 40)}}
+				return verify(ctx, n, head)
+			}
+		},
+		"final verifier refused": func(f *queueFixture) {
+			calls := 0
+			f.c.verify = func(context.Context, int, string) (policyDecision, error) {
+				calls++
+				if calls == 2 {
+					return policyDecision{Code: 1}, nil
+				}
+				return policyDecision{}, nil
+			}
+		},
+		"policy moved": func(f *queueFixture) {
+			f.api.readHook = func(path string, count int) {
+				if path == f.c.endpoint("rulesets/31") && count == 2 {
+					f.owner["updated_at"] = "2026-11-01T00:01:00Z"
 				}
 			}
-			err := f.q.admit(context.Background(), f.pr.Number)
-			latest := f.api.writes[len(f.api.writes)-1]
-			if !moved {
-				if err != nil || latest["conclusion"] != "success" {
+		},
+	}
+	for name, move := range moves {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			f.c.repo = f.pr.Base.Repo
+			f.c.repo.DefaultBranch = "main"
+			move(f)
+			budget := admissionBudget{Started: time.Now(), Deadline: time.Now().Add(time.Minute)}
+			err := f.q.withAdmissionBudget(context.Background(), budget, func(work context.Context) error {
+				return f.q.executeDev(work, "workflow_dispatch", event{Repository: f.c.repo}, f.pr.Number)
+			})
+			latest := newestQueueCheck(f.api.checks)
+			if name == "none" {
+				if err != nil || latest == nil || latest.Conclusion != "success" {
 					t.Fatalf("unmoved dev: err=%v, latest=%+v", err, latest)
 				}
 				return
 			}
-			if err == nil || !strings.Contains(err.Error(), "dev advanced") {
-				t.Fatalf("a moved dev must fail the job so the retry runs: %v", err)
+			if err == nil || onlyStaleHeadWork(err) || !strings.Contains(err.Error(), "admission state moved") {
+				t.Fatalf("a movement must fail the job so the retry runs: %v", err)
 			}
 			f.assertNoSuccess(t)
-			if latest["status"] != "queued" {
-				t.Fatalf("moved dev left no pending barrier: %+v", latest)
+			if latest == nil || latest.Status == "completed" {
+				t.Fatalf("movement left no pending barrier: %+v", latest)
 			}
 		})
 	}
