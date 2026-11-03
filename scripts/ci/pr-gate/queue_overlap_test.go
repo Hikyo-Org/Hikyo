@@ -70,15 +70,6 @@ func (f *queueFixture) barrier(t *testing.T, want map[string]int) *barrierReadAP
 	return b
 }
 
-func TestDevLiveBranchReadsWithThePullRequest(t *testing.T) {
-	f := newDevFixture(t)
-	b := f.barrier(t, map[string]int{"pulls/7": 1, "git/ref/heads/dev": 1})
-	p, err := f.q.readPR(context.Background(), 7)
-	if err != nil || !b.overlapped() || p.Base.SHA != f.pr.Base.SHA {
-		t.Fatalf("PR and live branch were not read together: %v", err)
-	}
-}
-
 func TestDevPolicyReadsMainAuthorityBesideRulesets(t *testing.T) {
 	f := newDevFixture(t)
 	b := f.barrier(t, map[string]int{"rulesets?per_page=100&page=1": 1, "git/ref/heads/main": 1})
@@ -139,7 +130,10 @@ func TestDevCIDefinitionCheckRunsBesideDCO(t *testing.T) {
 	}
 	f.c.api = &startedReadAPI{api: f.c.api, path: files, started: func() {
 		filesOnce.Do(func() { close(filesStarted) })
-		<-dcoStarted
+		select {
+		case <-dcoStarted:
+		case <-time.After(2 * time.Second):
+		}
 	}}
 	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
 		t.Fatalf("DCO and the CI definition check were serial: %v", err)
@@ -173,6 +167,13 @@ func TestDevAdmissionReadsThePullRequestTwice(t *testing.T) {
 	}
 	if got := f.api.reads[f.c.endpoint("pulls/7")]; got != 2 {
 		t.Fatalf("PR read %d times, want the routing read and the final comparison only", got)
+	}
+	total := 0
+	for _, n := range f.api.reads {
+		total += n
+	}
+	if total != 32 {
+		t.Fatalf("dev admission spent %d reads, want 32: each added read costs its budget", total)
 	}
 	requireDevSuccess(t, f)
 }

@@ -302,13 +302,8 @@ func (q *queueController) admitCaptured(ctx context.Context, number int, capture
 	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number, captured, nil) })
 }
 
-// admitRead starts from a PR the caller has just read for its own routing, so
-// admission does not spend a second serial read on the same object. The final
-// phase still re-reads the PR and compares it with this initial observation.
-func (q *queueController) admitRead(ctx context.Context, p pull) error {
-	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, p.Number, nil, &p) })
-}
-
+// admitProof starts from read when the caller already read the PR for its own
+// routing. The final phase still re-reads the PR and compares it with that.
 func (q *queueController) admitProof(ctx context.Context, number int, captured *admissionSnapshot, read *pull) error {
 	dcoVerifier := q.dco
 	if dcoVerifier == nil {
@@ -364,7 +359,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	// still repeats every authority read afresh before a success is published.
 	var initial *initialReads
 	if policy.Enabled {
-		initial = q.startInitialReads(ctx, p, captured == nil, trace != nil)
+		initial = q.runInitialReads(ctx, p, captured == nil, trace != nil)
 	}
 	var earlyFeedback *run
 	if trace != nil && policy.Enabled {

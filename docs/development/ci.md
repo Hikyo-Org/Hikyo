@@ -271,16 +271,19 @@ inventory is still read last. None of them is skipped or reused.
 The first pass overlaps its independent reads the same way. Once the policy is
 live, feedback, the role inventory, the main route check and the dev publisher
 contract run together and are judged in their former order; the policy verifier
-still starts only after the feedback and role inventory are judged, so a failed,
-stale or colliding head spends no verifier run. Dev reads a PR and its live
-branch tip together, reads main's tip and publisher bytes beside the ruleset
-discovery, reads the three publisher copies together, runs its CI-definition
+still starts only after the feedback and role inventory are judged, so a failed
+read, a stale head or a group collision spends no verifier run. A read the serial
+order would have skipped can still hang until the work deadline and replace a
+refusal with the budget message, which blocks just the same. Dev reads main's tip
+and publisher bytes beside the ruleset discovery, reads the three publisher copies together, runs its CI-definition
 check beside DCO (DCO is judged first), and reads the final PR beside the final
 policy (a failed or closed PR is judged first). Dev admission starts from the PR
 its routing already read; the final phase re-reads the PR and compares it with
 that observation, so the proof is unchanged. Measured locally in dry-run, a dev
-admission took 25.6 s before and 16.5 s after on an 83-file PR with workflow
-edits, and 21.5 s before and 12.5 s after on small PRs. The policy verifier
+admission took about 25 s before and 17 s after on an 83-file PR with workflow
+edits, and about 22 s before and 13 s after on small PRs. Runners read faster, so
+the hosted saving is smaller, and a slow setup can still overrun and rely on the
+rerun. The policy verifier
 (2.0 s, or 3.6 s when the PR edits workflows) runs twice and is now the largest
 remaining cost. Its repeated PR reads are deliberate re-proofs and stay.
 

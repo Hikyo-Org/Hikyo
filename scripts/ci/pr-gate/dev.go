@@ -84,7 +84,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 		if p.State != "open" || p.Head.SHA != q.expectedHead || p.Base.Ref != "dev" {
 			return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.reconciliation.retireHead(ctx, false))
 		}
-		return q.admitRead(ctx, p)
+		return q.admitProof(ctx, number, nil, &p)
 	})
 }
 

@@ -15,13 +15,13 @@ type initialReads struct {
 	contractErr error
 }
 
-// startInitialReads runs the independent first-pass reads of a live policy at
-// once and returns when all are done. A read is started only when the serial
-// code would also have reached it: the route and contract checks belong to the
-// gated base branch. The policy verifier is deliberately not among them: it is
-// the longest read, and the serial code never spent it on a head whose feedback
-// or role inventory had already failed or collided.
-func (q *queueController) startInitialReads(ctx context.Context, p pull, readRoles, readFeedback bool) *initialReads {
+// runInitialReads runs the independent first-pass reads of a live policy at once
+// and returns when all are done. Some are issued where the serial code would have
+// stopped first, such as the route check beside a role collision; admitProof drops
+// those results, though such a read that hangs can still spend the budget. The
+// policy verifier is deliberately not among them: it is the longest read, and the
+// serial code never spent it on a failed read, a stale head or a group collision.
+func (q *queueController) runInitialReads(ctx context.Context, p pull, readRoles, readFeedback bool) *initialReads {
 	r := &initialReads{}
 	var reads []func(context.Context)
 	if readFeedback {
