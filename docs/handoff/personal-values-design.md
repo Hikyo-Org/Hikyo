@@ -41,11 +41,11 @@ Everything else in the ADR is a proposal derived from those decisions. Merging t
 - **Tickets:** the tickets of the amended ADRs have not been reopened, and no issue exists for this feature.
 - **Spec synthesis:** `docs/spec/` was not updated. Its README says ADRs win over spec wording.
 
-## Separate possible bug
+## Separate bug, fixed elsewhere
 
-`hikyo run --use-human-session` calls `fetchDelivery` (`internal/cli/compose_run.go`), while the contract refuses human sessions on that
-route (`api/openapi.yaml`, `x-hikyo-artifacts`, and `internal/isolation/artifact_admission_wire_test.go`). This may already fail in
-production. It was read, not executed, and is not addressed here.
+`hikyo run --use-human-session` called `fetchDelivery`, which refuses human sessions. It was reproduced against a real server and is fixed in
+[#1173](https://github.com/Hikyo-Org/Hikyo/pull/1173), which discloses through `exportValues`. Personal values stay out of that path, as the
+ADR states.
 
 ## Next steps
 
