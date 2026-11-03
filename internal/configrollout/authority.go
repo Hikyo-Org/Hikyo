@@ -433,37 +433,57 @@ func ParsePublicKeys(raw []byte) (PublicKeys, error) {
 // ParseSigners reads the protected signer file: one or two PRIVATE KEY blocks,
 // at most one Ed25519 and one seed-only ML-DSA-65 key (Go refuses the expanded
 // PKCS#8 forms). The decoded DER of every block it decoded is zeroed on every
-// path. The caller owns raw. The returned signers hold key material, and an
-// ML-DSA key object keeps its seed, which cannot be cleared.
+// path, and on refusal so is every Ed25519 key already parsed. The caller owns
+// raw. Returned signers hold key material, and an ML-DSA key object keeps its
+// seed, which cannot be cleared.
 func ParseSigners(raw []byte) (Signers, error) {
+	signers, err := parseSigners(raw)
+	if err != nil {
+		clearSigners(signers)
+		return Signers{}, err
+	}
+	return signers, nil
+}
+
+// clearSigners zeroes the Ed25519 key bytes (the ML-DSA seed is not reachable).
+func clearSigners(signers Signers) {
+	if key, ok := signers.Ed25519.(ed25519.PrivateKey); ok {
+		clear(key)
+	}
+}
+
+// parseSigners returns what it parsed before a refusal so ParseSigners can
+// clear it; a key it refuses is cleared here.
+func parseSigners(raw []byte) (Signers, error) {
 	blocks, ok := pemBlocks(raw, "PRIVATE KEY")
 	defer func() {
 		for _, block := range blocks {
 			clear(block.Bytes)
 		}
 	}()
-	if !ok {
-		return Signers{}, ErrInvalid
-	}
 	var signers Signers
+	if !ok {
+		return signers, ErrInvalid
+	}
 	for _, block := range blocks {
 		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 		if err != nil {
-			return Signers{}, ErrInvalid
+			return signers, ErrInvalid
 		}
 		switch key := parsed.(type) {
 		case ed25519.PrivateKey:
 			if signers.Ed25519 != nil || len(key) != ed25519.PrivateKeySize {
-				return Signers{}, ErrInvalid
+				clear(key)
+				return signers, ErrInvalid
 			}
 			signers.Ed25519 = key
 		case *mldsa.PrivateKey:
 			if signers.MLDSA65 != nil || key.PublicKey().Parameters() != mldsa.MLDSA65() {
-				return Signers{}, ErrInvalid
+				return signers, ErrInvalid
 			}
 			signers.MLDSA65 = key
 		default:
-			return Signers{}, ErrInvalid
+			return signers, ErrInvalid
 		}
 	}
 	return signers, nil

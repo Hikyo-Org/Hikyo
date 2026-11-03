@@ -1395,10 +1395,10 @@ func TestRetainedV1EntryAnchorsOnlyThroughTheKeptClassicalKey(t *testing.T) {
 	}
 }
 
-// Anything validCommandShape binds to the enrollment makes a retained entry
-// unanchorable when it changes: the incarnation, the owner, the enrollment id
-// and a removed source alias.
-func TestRetainedEntryIsUnanchorableAfterIdentityOrAliasChanges(t *testing.T) {
+// Identity fields that validCommandShape binds to the enrollment make a retained
+// entry unanchorable when they change: the incarnation, the owner and the
+// enrollment id. A source alias is covered by its own test below.
+func TestRetainedEntryIsUnanchorableAfterIdentityChanges(t *testing.T) {
 	a := newAuthorityFixture(t, 1, requiredDual)
 	response := a.accepted(t, a.prepare(t, 1))
 	a.accepted(t, a.sign(t, Command{Sequence: 2, Action: ActionSubmit, Intent: a.intent, PlanDigest: response.PlanDigest}))
@@ -1541,5 +1541,223 @@ func TestCompatibilityRunKeepsRunningWithAJournalThatDoesNotVerify(t *testing.T)
 	}
 	if err := c.Run(t.Context(), "pod-1"); !errors.Is(err, ErrTrust) {
 		t.Fatalf("rollback below a strict floor served: %v", err)
+	}
+}
+
+// databaseRestored models the runbook's database-restore case: the recovery
+// incarnation changed, so the enrollment is re-installed with the new one, and
+// the server's sequence counter (a database table) went back with the restore
+// while the control Secrets in the cluster did not.
+func databaseRestored(t *testing.T, openTarget bool) (authorityFixture, Intent, Response, map[string]string) {
+	t.Helper()
+	a := newAuthorityFixture(t, 1, requiredDual)
+	response := a.accepted(t, a.prepare(t, 1))
+	a.accepted(t, a.sign(t, Command{Sequence: 2, Action: ActionSubmit, Intent: a.intent, PlanDigest: response.PlanDigest}))
+	if !openTarget {
+		a.accepted(t, a.sign(t, Command{Sequence: 3, Action: ActionRestore, Intent: a.intent, PlanDigest: response.PlanDigest}))
+	}
+	e := a.e
+	e.Incarnation = "restored-incarnation"
+	b := transition(t, a, e, a.signers, a.keys)
+	intent := a.intent
+	intent.Incarnation = e.Incarnation
+	intent.JobID = "after-restore"
+	target := map[string]string{"deployment": digest(a.deployment(t).Spec)}
+	for _, name := range []string{a.target.ConfigSecret, a.target.RequestSecret, a.target.RollbackSecret, a.target.ReceiptSecret} {
+		target[name] = digest(a.secret(t, name))
+	}
+	if err := b.c.reconcileTrust(t.Context()); !errors.Is(err, ErrTrust) {
+		t.Fatalf("a changed incarnation anchored the retained entry: %v", err)
+	}
+	return b, intent, response, target
+}
+
+func removeKey(t *testing.T, a authorityFixture, secret, key string) {
+	t.Helper()
+	s := a.secret(t, secret)
+	delete(s.Data, key)
+	if _, err := a.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The runbook must clear command.json as well as journal.json after a database
+// restore: the restored sequence counter is behind the command Secret.
+func TestDatabaseRestoreNeedsTheCommandSecretClearedToo(t *testing.T) {
+	b, intent, _, _ := databaseRestored(t, false)
+	removeKey(t, b, "journal", journalKey)
+	if err := b.c.reconcileTrust(t.Context()); err != nil {
+		t.Fatalf("journal.json cleared, the controller should start: %v", err)
+	}
+	// The rolled-back counter issues sequence 2 while the Secret holds 3.
+	rolledBack := b.sign(t, Command{Sequence: 2, Action: ActionPrepare, Intent: intent, Changes: b.changes()})
+	b.client.ClearActions()
+	if err := b.m.Send(t.Context(), rolledBack); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a rolled-back sequence replaced the command Secret: %v", err)
+	}
+	if got := mutations(b.fixture); len(got) != 0 {
+		t.Fatal(got)
+	}
+	removeKey(t, b, "command", commandKey)
+	if err := b.m.Send(t.Context(), rolledBack); err != nil {
+		t.Fatalf("after clearing command.json: %v", err)
+	}
+	if err := b.c.reconcile(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if response, err := b.m.Response(t.Context(), rolledBack); err != nil || response.Outcome != "complete" {
+		t.Fatalf("the new prepare did not complete: %+v %v", response, err)
+	}
+}
+
+// If the target's receipt is still non-terminal when the database is restored,
+// clearing both keys is not enough: prepare and restore both conflict, and Run
+// discards the error (custody.go: `_ = c.reconcile(ctx)`), so the controller
+// gives no sign of it. Registered under G-1; recovery is the manual restore.
+func TestDatabaseRestoreWithAnOpenTargetStaysBlockedAndTouchesNothing(t *testing.T) {
+	b, intent, response, target := databaseRestored(t, true)
+	removeKey(t, b, "journal", journalKey)
+	removeKey(t, b, "command", commandKey)
+	if err := b.c.reconcileTrust(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	unchanged := func(when string) {
+		t.Helper()
+		if digest(b.deployment(t).Spec) != target["deployment"] {
+			t.Fatalf("%s changed the Deployment", when)
+		}
+		for _, name := range []string{b.target.ConfigSecret, b.target.RequestSecret, b.target.RollbackSecret, b.target.ReceiptSecret} {
+			if digest(b.secret(t, name)) != target[name] {
+				t.Fatalf("%s changed %s", when, name)
+			}
+		}
+	}
+	prepare := b.sign(t, Command{Sequence: 2, Action: ActionPrepare, Intent: intent, Changes: b.changes()})
+	b.plant(t, prepare)
+	if err := b.c.reconcile(t.Context()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("prepare against an open target: %v", err)
+	}
+	unchanged("prepare")
+	if _, err := b.m.Response(t.Context(), prepare); !errors.Is(err, ErrNotSubmitted) {
+		t.Fatalf("a response was written for a refused prepare: %v", err)
+	}
+	// Restore of the pre-restore plan has nothing to restore: the journal plan
+	// went with journal.json.
+	pre := b.intent
+	pre.Incarnation = intent.Incarnation
+	restore := b.sign(t, Command{Sequence: 3, Action: ActionRestore, Intent: pre, PlanDigest: response.PlanDigest})
+	b.plant(t, restore)
+	if err := b.c.reconcile(t.Context()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("restore without the journal plan: %v", err)
+	}
+	unchanged("restore")
+}
+
+// A journal Secret that is missing or has another UID (a recreated object) never
+// stopped a compatibility Run at base: reconcile retries every tick. Only the
+// strict profile reports it at start.
+func TestCompatibilityRunKeepsRunningWhenTheJournalSecretCannotBeRead(t *testing.T) {
+	for name, edit := range map[string]func(*Enrollment){
+		"wrong UID":      func(e *Enrollment) { e.JournalSecretUID = "recreated-journal" },
+		"missing Secret": func(e *Enrollment) { e.JournalSecret = "journal-that-does-not-exist" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, e, c, _, _ := controllerFixture(t)
+			activeAdmission(f)
+			edit(&e)
+			broken, err := NewControllerKeys(f.client, e, c.keys)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 2500*time.Millisecond)
+			defer cancel()
+			if err := broken.Run(ctx, "pod-1"); !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+				t.Fatalf("the default profile stopped on an unreadable journal: %v", err)
+			}
+		})
+	}
+	// The strict profile reports it at start instead.
+	a := newAuthorityFixture(t, 1, requiredDual)
+	activeAdmission(a.fixture)
+	e := a.e
+	e.JournalSecretUID = "recreated-journal"
+	strict, err := NewControllerKeys(a.client, e, a.keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := strict.Run(t.Context(), "pod-1"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("strict start with an unreadable journal: %v", err)
+	}
+}
+
+// A retained prepare that names a source alias stops anchoring when the alias
+// is removed from the enrollment: validCommandShape checks the bootstrap against
+// the enrolled target.
+func TestRetainedPrepareNamingAnAliasIsUnanchorableAfterTheAliasIsRemoved(t *testing.T) {
+	a := newAuthorityFixture(t, 1, requiredDual)
+	withAlias := a.e
+	withAlias.Target.DatabaseSources = map[string]SecretSource{"next": {Name: "database-next", Key: "HIKYO_DB"}}
+	source := withAlias.Target.DatabaseSources["next"]
+	proof := &BootstrapChanges{Database: &SourceProof{Alias: "next", SourceDigest: SourceDigest(source), ProofDigest: strings.Repeat("a", 64)}}
+	a.e = withAlias
+	signed := a.sign(t, Command{Sequence: 1, Action: ActionPrepare, Intent: a.intent, Bootstrap: proof})
+	retain := func(b authorityFixture) {
+		t.Helper()
+		s := b.secret(t, "journal")
+		putRecord(s, journalKey, controllerJournal{Accepted: signed})
+		putRecord(s, trustKey, trustFor(withAlias))
+		if _, err := b.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kept := transition(t, a, withAlias, a.signers, a.keys)
+	retain(kept)
+	if err := kept.c.reconcileTrust(t.Context()); err != nil {
+		t.Fatalf("the retained prepare did not anchor with its alias present: %v", err)
+	}
+	removed := withAlias
+	removed.Target.DatabaseSources = nil
+	b := transition(t, a, removed, a.signers, a.keys)
+	if err := b.c.reconcileTrust(t.Context()); !errors.Is(err, ErrTrust) {
+		t.Fatalf("a removed alias still anchored the retained prepare: %v", err)
+	}
+}
+
+// A valid Ed25519 block followed by a refused block must not leave the parsed
+// key readable: the partial result is cleared, and a refused second Ed25519 key
+// is cleared where it is rejected.
+func TestParseSignersClearsWhatItParsedBeforeARefusal(t *testing.T) {
+	signers, _ := newKeyMaterial(t)
+	edDER, _ := x509.MarshalPKCS8PrivateKey(signers.Ed25519)
+	good := pemOf(t, "PRIVATE KEY", edDER)
+	bad := pemOf(t, "PRIVATE KEY", []byte("not a key"))
+	pq44, _ := mldsa.GenerateKey(mldsa.MLDSA44())
+	pq44DER, _ := x509.MarshalPKCS8PrivateKey(pq44)
+	refusedPQ := pemOf(t, "PRIVATE KEY", pq44DER)
+	for name, raw := range map[string][]byte{
+		"valid Ed25519 then a bad block": append(append([]byte{}, good...), bad...),
+		"valid Ed25519, then ML-DSA-44":  append(append([]byte{}, good...), refusedPQ...),
+	} {
+		partial, err := parseSigners(raw)
+		if err == nil || partial.Ed25519 == nil {
+			t.Fatalf("%s: expected a refusal that still reports the parsed key: %v", name, err)
+		}
+		key := partial.Ed25519.(ed25519.PrivateKey)
+		if bytes.Equal(key, make([]byte, len(key))) {
+			t.Fatalf("%s: fixture key was already zero", name)
+		}
+		if got, err := ParseSigners(raw); err == nil || got != (Signers{}) {
+			t.Fatalf("%s: ParseSigners returned %+v %v", name, got, err)
+		}
+		clearSigners(partial)
+		if !bytes.Equal(key, make([]byte, len(key))) {
+			t.Fatalf("%s: clearSigners left key bytes", name)
+		}
+	}
+	// A second Ed25519 key is cleared where it is rejected.
+	_, second, _ := ed25519.GenerateKey(rand.Reader)
+	secondDER, _ := x509.MarshalPKCS8PrivateKey(second)
+	if _, err := parseSigners(append(append([]byte{}, good...), pemOf(t, "PRIVATE KEY", secondDER)...)); err == nil {
+		t.Fatal("two Ed25519 keys accepted")
 	}
 }
