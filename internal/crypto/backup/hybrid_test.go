@@ -409,3 +409,29 @@ func TestFrozenLegacyArchivesStayReadable(t *testing.T) {
 		}
 	}
 }
+
+// One predicate decides which refusals may be shown by name; a malformed key
+// is deliberately not among them.
+func TestPolicyErrorPredicateAndHybridSelection(t *testing.T) {
+	_, hybrid := hybridIdentity(t)
+	_, classical := mustIdentity(t)
+	for name, tc := range map[string]struct {
+		options backup.Options
+		policy  bool
+	}{
+		"mixed":     {backup.Options{Recipients: []string{hybrid, classical}}, true},
+		"duplicate": {backup.Options{Recipients: []string{hybrid, hybrid}}, true},
+		"malformed": {backup.Options{Recipients: []string{hybrid[:50]}}, false},
+	} {
+		err := tc.options.Validate()
+		if err == nil || backup.IsPolicyError(err) != tc.policy {
+			t.Fatalf("%s: Validate = %v, IsPolicyError = %t, want %t", name, err, backup.IsPolicyError(err), tc.policy)
+		}
+	}
+	if backup.IsPolicyError(nil) || backup.IsPolicyError(errors.New("other")) {
+		t.Fatal("unrelated errors classified as policy refusals")
+	}
+	if !backup.AnyHybridRecipient([]string{classical, " " + hybrid}) || backup.AnyHybridRecipient([]string{classical}) || backup.AnyHybridRecipient(nil) {
+		t.Fatal("hybrid selection misclassified a recipient list")
+	}
+}

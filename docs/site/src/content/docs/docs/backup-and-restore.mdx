@@ -78,7 +78,9 @@ X25519 identity: archives already written for it stay readable only with it.
 
 ### Migrating retained archives without deleting anything
 
-1. Upgrade the binary on every host that may need to restore.
+1. Upgrade the binary on every host that may need to restore. If you rely on
+   `sudo hikyo upgrade` or container upgrades, note that a hybrid policy makes
+   them refuse (see below); plan to upgrade by the manual route.
 2. `hikyo backup keygen --hybrid --output-file ...` on the custody host. Store it
    apart from the root key and apart from the old X25519 identity.
 3. Keep the old identity. Existing archives are not rewritten and need it.
@@ -109,9 +111,16 @@ change validate unchanged.
   an archive for it, and a receipt is an unsigned public marker. Receipt-bound
   restore provenance for a strict backup profile is not implemented.
 * Automatic upgrade custody (`operator.age`) still generates an X25519 identity
-  at enrollment. A manual upgrade with a separately held hybrid identity works.
-* The built-in secret scanner does not recognize `AGE-SECRET-KEY-PQ-1...`. Keep
-  identities out of managed values.
+  at enrollment, and `sudo hikyo upgrade` and the opted-in container upgrade
+  export to that identity and retain the full-data archive. With a hybrid
+  `HIKYO_BACKUP_RECIPIENTS` they therefore **refuse before any backup** (and
+  before the service is stopped), rather than leave a classical archive of data
+  you asked to protect. Use the manual upgrade route with a hybrid recipient and
+  a separately held hybrid identity (see the manual upgrade runbook). An install
+  with X25519 recipients upgrades exactly as before.
+* The built-in secret scanner recognizes neither X25519 (`AGE-SECRET-KEY-1...`)
+  nor hybrid (`AGE-SECRET-KEY-PQ-1...`) age identities: its age rule is not in
+  the compiled ruleset. Keep identities out of managed values either way.
 
 ## 2b. Schedule automatic exports
 

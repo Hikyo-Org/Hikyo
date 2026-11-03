@@ -16,6 +16,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -231,11 +232,42 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("preflight refusal created upgrade journal: %v", err)
 			}
+			// A hybrid backup policy with the X25519 custody identity must refuse
+			// before the journal, the scratch, the maintenance fence and any export.
+			// The same child, started with no upgrade pending, must still boot.
+			recipients, dir := fixture.Config.BackupRecipients, fixture.Config.BackupDir
+			_, hybridRecipient, genErr := backup.GenerateHybridIdentity()
+			if genErr != nil {
+				t.Fatal(genErr)
+			}
+			fixture.Config.BackupRecipients, fixture.Config.BackupDir = []string{hybridRecipient}, t.TempDir()
+			policyRefusal := runChild(1)
+			fixture.Config.BackupRecipients, fixture.Config.BackupDir = recipients, dir
+			if policyRefusal == nil || !strings.Contains(policyRefusal.Error(), "refusing before any backup") {
+				t.Fatalf("hybrid policy with X25519 custody did not refuse the upgrade: %v", policyRefusal)
+			}
+			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("policy refusal created an upgrade journal: %v", err)
+			}
+			if exports, _ := filepath.Glob(filepath.Join(directory, "backup-*")); len(exports) != 0 {
+				t.Fatalf("policy refusal exported a backup: %v", exports)
+			}
+			if after, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN}); err != nil || after.Applied.Release != identities[0] || after.Pending.Phase != upgrade.Healthy || after.Maintenance {
+				t.Fatalf("policy refusal changed the healthy source: %v", err)
+			}
 			if err := runChild(1); err != nil {
 				t.Fatalf("image replacement: %v", err)
 			}
 			if err := runChild(1); err != nil {
 				t.Fatalf("upgraded restart: %v", err)
+			}
+			// With nothing pending, a hybrid policy must not stop the container
+			// from starting: the refusal applies only where an export would run.
+			fixture.Config.BackupRecipients, fixture.Config.BackupDir = []string{hybridRecipient}, t.TempDir()
+			hybridRestart := runChild(1)
+			fixture.Config.BackupRecipients, fixture.Config.BackupDir = recipients, dir
+			if hybridRestart != nil {
+				t.Fatalf("hybrid policy blocked a start with no upgrade pending: %v", hybridRestart)
 			}
 			state, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN})
 			if err != nil || state.Applied.Release != identities[1] || state.Maintenance {

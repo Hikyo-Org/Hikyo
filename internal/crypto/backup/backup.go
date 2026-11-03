@@ -190,6 +190,34 @@ func (o Options) recipients() ([]age.Recipient, error) {
 	return out, nil
 }
 
+// IsPolicyError reports whether err is one of the recipient-set policy
+// refusals (mixed classes, count, joined size, duplicate). It is the single
+// list callers use to decide an error may be shown by name; a malformed key
+// error is not on it, because that message must stay generic.
+func IsPolicyError(err error) bool {
+	for _, policy := range []error{ErrMixedRecipients, ErrTooManyHybridRecipients, ErrRecipientsTooLarge, ErrDuplicateRecipient, ErrTooManyRecipients} {
+		if errors.Is(err, policy) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsHybridRecipient reports whether s selects age's hybrid recipient type. It
+// looks at the prefix only; parsing is Options.Validate's job.
+func IsHybridRecipient(s string) bool { return isHybridRecipient(s) }
+
+// AnyHybridRecipient reports whether a configured recipient list selects hybrid
+// backups, which is what makes the list a hybrid policy.
+func AnyHybridRecipient(recipients []string) bool {
+	for _, r := range recipients {
+		if isHybridRecipient(r) {
+			return true
+		}
+	}
+	return false
+}
+
 func isHybridRecipient(s string) bool {
 	s = strings.TrimSpace(s)
 	return len(s) >= len(hybridRecipientPrefix) && strings.EqualFold(s[:len(hybridRecipientPrefix)], hybridRecipientPrefix)

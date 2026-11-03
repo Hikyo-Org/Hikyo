@@ -56,7 +56,7 @@ func (o Options) UpgradeRecipientFingerprints() ([]string, error) {
 		return nil, errors.New("backup: upgrade export requires 1 to 64 public age recipients (at most 32 hybrid); create a fresh public-recipient backup")
 	}
 	parsed, err := o.recipients()
-	if errors.Is(err, ErrMixedRecipients) || errors.Is(err, ErrTooManyHybridRecipients) || errors.Is(err, ErrRecipientsTooLarge) || errors.Is(err, ErrDuplicateRecipient) {
+	if IsPolicyError(err) {
 		return nil, err
 	}
 	if err != nil {

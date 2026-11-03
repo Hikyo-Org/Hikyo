@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
@@ -93,8 +94,18 @@ func TestUpgradeDrillDiagnosticsLevels(t *testing.T) {
 }
 
 func TestUpgradeExportDiagnosticsPreserveJSON(t *testing.T) {
+	t.Run("x25519", func(t *testing.T) {
+		upgradeExportDiagnosticsPreserveJSON(t, backup.GenerateIdentity, backupreceipt.ReceiptFormat)
+	})
+	t.Run("hybrid", func(t *testing.T) {
+		upgradeExportDiagnosticsPreserveJSON(t, backup.GenerateHybridIdentity, backupreceipt.HybridReceiptFormat)
+	})
+}
+
+// The CLI export writes the receipt schema that matches the recipient class.
+func upgradeExportDiagnosticsPreserveJSON(t *testing.T, generate func() (string, string, error), wantFormat string) {
 	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +131,13 @@ func TestUpgradeExportDiagnosticsPreserveJSON(t *testing.T) {
 				if err != nil || info.Size() == 0 {
 					t.Fatalf("export result artifact missing: %v", err)
 				}
+			}
+			rawReceipt, err := os.ReadFile(result.Receipt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if receipt, err := backupreceipt.ParseReceipt(rawReceipt); err != nil || receipt.Format != wantFormat {
+				t.Fatalf("CLI upgrade-export wrote receipt %q (%v), want %q", receipt.Format, err, wantFormat)
 			}
 			assertBackupDiagnostics(t, diagnostic.String(), level,
 				"upgrade backup: exporting encrypted snapshot and receipt", "upgrade backup: encrypted_bytes=", "upgrade backup snapshot export and encryption elapsed=",

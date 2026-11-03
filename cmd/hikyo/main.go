@@ -305,6 +305,9 @@ func shouldCheckForUpdate(command string) bool {
 func runServer(ctx context.Context, args []string) int {
 	loaded := diagnostics.Time(ctx, "load bootstrap configuration")
 	cfg, warnings, err := config.LoadBootstrap("server", args, os.Getenv, os.Environ())
+	if err == nil {
+		err = app.ValidateBackupPolicy(cfg)
+	}
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
@@ -462,6 +465,12 @@ func runOperator(ctx context.Context, name string, args []string,
 		}
 	}
 	cfg, warnings, err := config.LoadBootstrap(name, configurationArgs, os.Getenv, os.Environ())
+	// Only the verbs that export use the recipient policy. Restore, status,
+	// reconcile, drill and keygen must keep working on a host whose recipient
+	// variable is wrong, which is exactly when recovery happens.
+	if err == nil && name == "backup" && len(args) > 0 && (args[0] == "export" || args[0] == "upgrade-export") {
+		err = app.ValidateBackupPolicy(cfg)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
 		return 2
@@ -533,6 +542,9 @@ func workdir() string {
 func runMigrate(ctx context.Context, args []string) int {
 	loaded := diagnostics.Time(ctx, "load bootstrap configuration")
 	cfg, warnings, err := config.Load("migrate", args, os.Getenv, os.Environ())
+	if err == nil {
+		err = app.ValidateBackupPolicy(cfg)
+	}
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
@@ -595,6 +607,9 @@ func runUpgradeOperator(ctx context.Context, args []string, channel updatecheck.
 		return 0
 	}
 	cfg, warnings, err := config.Load("upgrade", nil, os.Getenv, os.Environ())
+	if err == nil {
+		err = app.ValidateBackupPolicy(cfg)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
 		return 2

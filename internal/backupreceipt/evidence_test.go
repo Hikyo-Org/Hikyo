@@ -27,6 +27,12 @@ type signedEvidenceFixture struct {
 }
 
 func newSignedEvidenceFixture(t *testing.T, legacy bool) signedEvidenceFixture {
+	return newSignedEvidenceFixtureFor(t, legacy, false)
+}
+
+// newSignedEvidenceFixtureFor builds the same signed evidence for a hybrid
+// inventory: a backup-receipt/v2 receipt listing a hybrid fingerprint.
+func newSignedEvidenceFixtureFor(t *testing.T, legacy, hybrid bool) signedEvidenceFixture {
 	t.Helper()
 	f := testfixture.New(t)
 	schema := releaseidentity.Hash([]byte("actual domain catalog"))
@@ -58,6 +64,10 @@ func newSignedEvidenceFixture(t *testing.T, legacy bool) signedEvidenceFixture {
 		t.Fatal(err)
 	}
 	receipt := fixtureReceipt()
+	if hybrid {
+		receipt.Format = HybridReceiptFormat
+		receipt.Snapshot.RecipientFingerprints = hybridFingerprints(1)
+	}
 	receipt.Snapshot.SourceIdentity = source
 	receipt.Snapshot.SourceSchemaSHA256 = schema
 	receipt.Snapshot.MigrationSHA256, err = migrations.Digest()
@@ -102,7 +112,12 @@ func newSignedEvidenceFixture(t *testing.T, legacy bool) signedEvidenceFixture {
 }
 
 func TestEvidenceAuthenticatesExactBytesAndCurrentAuthority(t *testing.T) {
-	f := newSignedEvidenceFixture(t, false)
+	t.Run("x25519", func(t *testing.T) { evidenceAuthenticatesExactBytes(t, false) })
+	t.Run("hybrid", func(t *testing.T) { evidenceAuthenticatesExactBytes(t, true) })
+}
+
+func evidenceAuthenticatesExactBytes(t *testing.T, hybrid bool) {
+	f := newSignedEvidenceFixtureFor(t, false, hybrid)
 	verify := func(material EvidenceMaterial, live LiveSource, pin PinnedOperator, plan upgradecompat.Plan, now time.Time) (VerifiedEvidence, error) {
 		return VerifyEvidence(context.Background(), pin, plan, f.ciphertext, material, live, now)
 	}
@@ -181,7 +196,12 @@ func TestEvidenceAuthenticatesExactBytesAndCurrentAuthority(t *testing.T) {
 }
 
 func TestLegacyProposalNeverMasqueradesAsLiveLedger(t *testing.T) {
-	f := newSignedEvidenceFixture(t, true)
+	t.Run("x25519", func(t *testing.T) { legacyProposalNeverMasquerades(t, false) })
+	t.Run("hybrid", func(t *testing.T) { legacyProposalNeverMasquerades(t, true) })
+}
+
+func legacyProposalNeverMasquerades(t *testing.T, hybrid bool) {
+	f := newSignedEvidenceFixtureFor(t, true, hybrid)
 	evidence, err := VerifyLegacyEvidence(context.Background(), f.pin, f.plan, f.ciphertext, f.material, f.legacy, f.proposal, f.now)
 	if err != nil || !evidence.Valid() || evidence.Statement().Authority != LegacyProposalAuthority {
 		t.Fatal("explicit legacy proposal refused", err)
@@ -227,5 +247,37 @@ func TestRotationRequiresPriorSignerAndExplicitBreakGlassMode(t *testing.T) {
 	stale.RestoreEpoch++
 	if _, err := VerifyKeyTransition(f.pin, next.PrimaryPublic, raw, testfixture.Sign(t, next.PrimarySigner, raw), RotationSource{Live: stale, MaxKnownCredentialEpoch: stale.RestoreEpoch}, f.now); err == nil {
 		t.Fatal("stale epoch transition accepted")
+	}
+}
+
+// A validly signed attestation cannot promote a receipt whose schema label and
+// recipient class disagree: the signature binds bytes, the receipt parser binds
+// meaning.
+func TestSignedEvidenceRefusesSchemaAlgorithmMismatch(t *testing.T) {
+	for name, mutate := range map[string]func(*Receipt){
+		"v1 label on hybrid fingerprints": func(r *Receipt) { r.Format = ReceiptFormat },
+		"v2 label on x25519 fingerprints": func(r *Receipt) {
+			r.Snapshot.RecipientFingerprints = fixtureReceipt().Snapshot.RecipientFingerprints
+		},
+		"mixed inventory": func(r *Receipt) {
+			r.Snapshot.RecipientFingerprints = append(r.Snapshot.RecipientFingerprints, fixtureReceipt().Snapshot.RecipientFingerprints...)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newSignedEvidenceFixtureFor(t, false, true)
+			r, err := ParseReceipt(f.material.Receipt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutate(&r)
+			raw := testfixture.JSON(t, r)
+			a, _ := ParseAttestation(f.material.Attestation)
+			a.ReceiptSHA256 = releaseidentity.Hash(raw)
+			attestation := testfixture.JSON(t, a)
+			material := EvidenceMaterial{Receipt: raw, Attestation: attestation, Signature: testfixture.Sign(t, f.signer.PrimarySigner, attestation)}
+			if _, err := VerifyEvidence(context.Background(), f.pin, f.plan, f.ciphertext, material, f.live, f.now); err == nil {
+				t.Fatal("signed evidence with a mismatched receipt schema was accepted")
+			}
+		})
 	}
 }

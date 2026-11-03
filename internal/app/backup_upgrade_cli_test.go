@@ -13,11 +13,17 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 func TestUpgradeCLISignsActualDrill(t *testing.T) {
+	t.Run("x25519", func(t *testing.T) { upgradeCLISignsActualDrill(t, backup.GenerateIdentity) })
+	t.Run("hybrid", func(t *testing.T) { upgradeCLISignsActualDrill(t, backup.GenerateHybridIdentity) })
+}
+
+func upgradeCLISignsActualDrill(t *testing.T, generate func() (string, string, error)) {
 	executable := os.Getenv("HIKYO_TEST_COSIGN")
 	if executable == "" {
 		if os.Getenv("HIKYO_REQUIRE_COSIGN_TEST") == "1" {
@@ -38,7 +44,7 @@ func TestUpgradeCLISignsActualDrill(t *testing.T) {
 	if err := keygen.Run(); err != nil {
 		t.Fatal("real cosign fixture key generation failed")
 	}
-	f := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
+	f := newUpgradeDrillFixtureWith(t, store.EngineSQLite, true, true, generate)
 	public, err := os.ReadFile(prefix + ".pub")
 	if err != nil {
 		t.Fatal(err)

@@ -84,187 +84,194 @@ func populateProcessSource(t *testing.T, db *store.DB, kr *crypto.Keyring) {
 }
 
 func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
-	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
-		for _, scenario := range []string{"direct-sql-complete", "multihop-first-healthy", "multihop-final-schema-applied", "multihop-backup-preparing"} {
-			t.Run(string(engine)+"/"+scenario, func(t *testing.T) {
-				cfg := upgradegate.GateStoreForProcessTest(t, engine)
-				manifest, err := releaseidentity.BuildMigrationManifest(store.MigrationsFS, "migrations/"+string(engine), engine)
-				if err != nil {
-					t.Fatal(err)
-				}
-				empty := releaseidentity.MigrationManifest{Engine: engine, Entries: []releaseidentity.Migration{}}
-				inspected, err := upgrade.Inspect(t.Context(), cfg, empty)
-				if err != nil {
-					t.Fatal(err)
-				}
-				schema := upgradegate.GateCurrentSchemaForTest(t, engine)
-				source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Genesis: releaseidentity.FreshGenesisV1}, Migrations: empty, SchemaSHA256: inspected.CatalogDigest}
-				fixture := bundlefixture.Write(t, source, []bundlefixture.Target{
-					{Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("a", 40), Migrations: manifest, SchemaSHA256: schema},
-					{Version: "1.0.2", Sequence: 2, Commit: strings.Repeat("b", 40), Migrations: manifest, SchemaSHA256: schema},
-					{Version: "1.0.3", Sequence: 3, Commit: strings.Repeat("c", 40), Migrations: manifest, SchemaSHA256: schema},
-				})
-				claim := func(index int) []byte {
-					raw, err := os.ReadFile(filepath.Join(fixture.Directory, "releases", string(fixture.Identities[index].ManifestSHA256), "upgrade-compatibility.json"))
+	// The same gate, restore drill and evidence run for X25519 and for hybrid
+	// custody: a v2 receipt goes through the gate's legacy and ledger verifiers.
+	for algorithm, generate := range map[string]func() (string, string, error){"x25519": backup.GenerateIdentity, "hybrid": backup.GenerateHybridIdentity} {
+		for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
+			for _, scenario := range []string{"direct-sql-complete", "multihop-first-healthy", "multihop-final-schema-applied", "multihop-backup-preparing"} {
+				t.Run(algorithm+"/"+string(engine)+"/"+scenario, func(t *testing.T) {
+					cfg := upgradegate.GateStoreForProcessTest(t, engine)
+					manifest, err := releaseidentity.BuildMigrationManifest(store.MigrationsFS, "migrations/"+string(engine), engine)
 					if err != nil {
 						t.Fatal(err)
 					}
-					return raw
-				}
-				root := bytes.Repeat([]byte{37}, crypto.KeySize)
-				request := upgradegate.Request{Store: cfg, BundleDirectory: fixture.Directory, Pinned: fixture.Pinned, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(engine), Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root, Target: fixture.Identities[0], InitialOperatorPublicKey: fixture.Signer.PrimaryPublic}
-				booted, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(0))
-				if err != nil {
-					t.Fatal(err)
-				}
-				db, err := store.Open(t.Context(), processStoreConfig(cfg), booted.Admission)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer db.Close()
-				kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, bytes.Clone(root))
-				if err != nil {
-					t.Fatal(err)
-				}
-				populateProcessSource(t, db, kr)
-				target := 1
-				if scenario != "direct-sql-complete" {
-					target = 2
-				}
-				applied := upgradecompat.InstalledSource{Identity: booted.State.Applied, Migrations: manifest, SchemaSHA256: schema}
-				plan, err := fixture.Bundle.Plan(applied, fixture.Identities[target])
-				if err != nil {
-					t.Fatal(err)
-				}
-				identity, recipient, err := backup.GenerateIdentity()
-				if err != nil {
-					t.Fatal(err)
-				}
-				operator, err := backupreceipt.PinOperator(booted.State.InstanceID, fixture.Signer.PrimaryPublic)
-				if err != nil {
-					t.Fatal(err)
-				}
-				var exported service.ExportResult
-				if scenario == "multihop-backup-preparing" {
-					request.Target, request.Operator, request.Mode = fixture.Identities[target], operator, upgradegate.PrepareBackup
-					frozen, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+					empty := releaseidentity.MigrationManifest{Engine: engine, Entries: []releaseidentity.Migration{}}
+					inspected, err := upgrade.Inspect(t.Context(), cfg, empty)
 					if err != nil {
 						t.Fatal(err)
 					}
-					if frozen.State.Pending.Phase != upgrade.BackupPreparing || frozen.State.Applied != booted.State.Applied {
-						t.Fatal("pre-backup fence changed installed source")
-					}
-					err = upgrade.WithLock(t.Context(), cfg, func(session *upgrade.Session) error {
-						authority, err := session.PrepareExport(t.Context(), plan)
-						if err != nil {
-							return err
-						}
-						prepared, err := store.OpenPreparation(t.Context(), processStoreConfig(cfg), authority)
-						if err != nil {
-							return err
-						}
-						defer prepared.Close()
-						exported, err = service.ExportPreparedUpgrade(t.Context(), prepared, backup.Options{Recipients: []string{recipient}}, t.TempDir(), plan, nil)
-						return err
+					schema := upgradegate.GateCurrentSchemaForTest(t, engine)
+					source := upgradecompat.InstalledSource{Identity: releaseidentity.Source{Genesis: releaseidentity.FreshGenesisV1}, Migrations: empty, SchemaSHA256: inspected.CatalogDigest}
+					fixture := bundlefixture.Write(t, source, []bundlefixture.Target{
+						{Version: "1.0.1", Sequence: 1, Commit: strings.Repeat("a", 40), Migrations: manifest, SchemaSHA256: schema},
+						{Version: "1.0.2", Sequence: 2, Commit: strings.Repeat("b", 40), Migrations: manifest, SchemaSHA256: schema},
+						{Version: "1.0.3", Sequence: 3, Commit: strings.Repeat("c", 40), Migrations: manifest, SchemaSHA256: schema},
 					})
+					claim := func(index int) []byte {
+						raw, err := os.ReadFile(filepath.Join(fixture.Directory, "releases", string(fixture.Identities[index].ManifestSHA256), "upgrade-compatibility.json"))
+						if err != nil {
+							t.Fatal(err)
+						}
+						return raw
+					}
+					root := bytes.Repeat([]byte{37}, crypto.KeySize)
+					request := upgradegate.Request{Store: cfg, BundleDirectory: fixture.Directory, Pinned: fixture.Pinned, Migrations: store.MigrationsFS, MigrationDirectory: "migrations/" + string(engine), Mode: upgradegate.Boot, AllowMigrations: true, RootKey: root, Target: fixture.Identities[0], InitialOperatorPublicKey: fixture.Signer.PrimaryPublic}
+					booted, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(0))
 					if err != nil {
 						t.Fatal(err)
 					}
-				} else {
-					exported, err = (&service.Backup{DB: db, Options: backup.Options{Recipients: []string{recipient}}}).ExportUpgrade(t.Context(), t.TempDir(), plan, nil)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				receipt, err := os.ReadFile(exported.ReceiptPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				pinned, err := backupreceipt.PinCiphertext(t.Context(), exported.Path, t.TempDir())
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer pinned.Close()
-				drill, err := app.DrillUpgrade(t.Context(), app.UpgradeDrillRequest{Scratch: processStoreConfig(upgradegate.GateStoreForProcessTest(t, engine)), Ciphertext: pinned, Receipt: receipt, Plan: plan, Operator: operator, Unlock: backup.Unlock{Identity: identity}, RootKey: bytes.Clone(root), Principal: domain.PrincipalID("usr_process"), Scope: domain.Scope{Org: "org_process", Project: "prj_process"}, Now: time.Now().UTC(), Lifetime: time.Hour})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !drill.HierarchyReadable || drill.SecretProof != "existing-secret-readable" || drill.CredentialProof != "reconciled-minted-revoked" {
-					t.Fatal("populated route lacks actual recovery proof")
-				}
-				request.Target, request.Operator, request.Ciphertext = fixture.Identities[target], operator, pinned
-				request.Evidence = backupreceipt.EvidenceMaterial{Receipt: receipt, Attestation: drill.Attestation, Signature: trustfixture.Sign(t, fixture.Signer.PrimarySigner, drill.Attestation)}
-				if scenario == "multihop-backup-preparing" {
-					request.Mode = upgradegate.PrepareRoute
-					prepared, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+					db, err := store.Open(t.Context(), processStoreConfig(cfg), booted.Admission)
 					if err != nil {
 						t.Fatal(err)
 					}
-					if prepared.State.Pending.Phase != upgrade.Prepared || prepared.State.Pending.Preparation != nil || prepared.State.Pending.Target != fixture.Identities[1] || prepared.Admission.Valid() {
-						t.Fatal("latest coordinator did not prepare historical first hop without admission")
+					defer db.Close()
+					kr, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: db}, bytes.Clone(root))
+					if err != nil {
+						t.Fatal(err)
 					}
-					request.Mode = upgradegate.Boot
-				}
-				if err := db.Close(); err != nil {
-					t.Fatal(err)
-				}
-				current, boundary := 1, "sql-complete"
-				if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
-					boundary = "healthy"
-				}
-				if scenario == "multihop-final-schema-applied" {
-					if _, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(1)); !errors.Is(err, upgradegate.ErrNextBinary) {
-						t.Fatalf("first route hop did not retain maintenance: %v", err)
+					populateProcessSource(t, db, kr)
+					target := 1
+					if scenario != "direct-sql-complete" {
+						target = 2
 					}
-					current, boundary = 2, "schema-applied"
-				}
-				upgradegate.KillSignedGateProcessFixture(t, request, claim(current), boundary)
-				crashed, err := upgrade.InspectControl(t.Context(), cfg)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !crashed.Maintenance || crashed.Generation != booted.State.Generation+1 || crashed.Pending.RouteDigest != plan.Digest() {
-					t.Fatal("crash lost route/maintenance/generation")
-				}
-				if stale, err := store.Open(t.Context(), processStoreConfig(cfg), booted.Admission); err == nil {
-					stale.Close()
-					t.Fatal("source runtime admission survived crash maintenance")
-				}
-				if _, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(0)); err == nil {
-					t.Fatal("old exact build resumed newer route")
-				}
-				unchanged, err := upgrade.InspectControl(t.Context(), cfg)
-				if err != nil || !reflect.DeepEqual(crashed, unchanged) {
-					t.Fatal("refused old binary changed durable route", err)
-				}
-				resumed, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(current))
-				if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
-					if !errors.Is(err, upgradegate.ErrNextBinary) {
-						t.Fatalf("completed intermediate binary became serving: %v", err)
+					applied := upgradecompat.InstalledSource{Identity: booted.State.Applied, Migrations: manifest, SchemaSHA256: schema}
+					plan, err := fixture.Bundle.Plan(applied, fixture.Identities[target])
+					if err != nil {
+						t.Fatal(err)
 					}
-					resumed, err = upgradegate.RunSignedGateProcessFixture(t, request, claim(2))
-				}
-				if err != nil || !resumed.Admission.Valid() || resumed.State.Maintenance || resumed.State.Applied.Release != fixture.Identities[target] || resumed.State.Generation != crashed.Generation {
-					t.Fatalf("route crash resume: %v", err)
-				}
-				final, err := store.Open(t.Context(), processStoreConfig(cfg), resumed.Admission)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer final.Close()
-				keys, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: final}, bytes.Clone(root))
-				if err != nil {
-					t.Fatal(err)
-				}
-				readable, err := (&service.Backup{DB: final}).ProveValuesReadable(t.Context(), keys)
-				if err != nil || !readable {
-					t.Fatal("upgrade lost original protected value", err)
-				}
-				restart, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
-				if err != nil || restart.State.Generation != resumed.State.Generation {
-					t.Fatal("completed route restart consumed evidence twice", err)
-				}
-			})
+					identity, recipient, err := generate()
+					if err != nil {
+						t.Fatal(err)
+					}
+					operator, err := backupreceipt.PinOperator(booted.State.InstanceID, fixture.Signer.PrimaryPublic)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var exported service.ExportResult
+					if scenario == "multihop-backup-preparing" {
+						request.Target, request.Operator, request.Mode = fixture.Identities[target], operator, upgradegate.PrepareBackup
+						frozen, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+						if err != nil {
+							t.Fatal(err)
+						}
+						if frozen.State.Pending.Phase != upgrade.BackupPreparing || frozen.State.Applied != booted.State.Applied {
+							t.Fatal("pre-backup fence changed installed source")
+						}
+						err = upgrade.WithLock(t.Context(), cfg, func(session *upgrade.Session) error {
+							authority, err := session.PrepareExport(t.Context(), plan)
+							if err != nil {
+								return err
+							}
+							prepared, err := store.OpenPreparation(t.Context(), processStoreConfig(cfg), authority)
+							if err != nil {
+								return err
+							}
+							defer prepared.Close()
+							exported, err = service.ExportPreparedUpgrade(t.Context(), prepared, backup.Options{Recipients: []string{recipient}}, t.TempDir(), plan, nil)
+							return err
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						exported, err = (&service.Backup{DB: db, Options: backup.Options{Recipients: []string{recipient}}}).ExportUpgrade(t.Context(), t.TempDir(), plan, nil)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					receipt, err := os.ReadFile(exported.ReceiptPath)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if parsed, err := backupreceipt.ParseReceipt(receipt); err != nil || (algorithm == "hybrid") != (parsed.Format == backupreceipt.HybridReceiptFormat) {
+						t.Fatalf("%s export wrote receipt format %q: %v", algorithm, parsed.Format, err)
+					}
+					pinned, err := backupreceipt.PinCiphertext(t.Context(), exported.Path, t.TempDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer pinned.Close()
+					drill, err := app.DrillUpgrade(t.Context(), app.UpgradeDrillRequest{Scratch: processStoreConfig(upgradegate.GateStoreForProcessTest(t, engine)), Ciphertext: pinned, Receipt: receipt, Plan: plan, Operator: operator, Unlock: backup.Unlock{Identity: identity}, RootKey: bytes.Clone(root), Principal: domain.PrincipalID("usr_process"), Scope: domain.Scope{Org: "org_process", Project: "prj_process"}, Now: time.Now().UTC(), Lifetime: time.Hour})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !drill.HierarchyReadable || drill.SecretProof != "existing-secret-readable" || drill.CredentialProof != "reconciled-minted-revoked" {
+						t.Fatal("populated route lacks actual recovery proof")
+					}
+					request.Target, request.Operator, request.Ciphertext = fixture.Identities[target], operator, pinned
+					request.Evidence = backupreceipt.EvidenceMaterial{Receipt: receipt, Attestation: drill.Attestation, Signature: trustfixture.Sign(t, fixture.Signer.PrimarySigner, drill.Attestation)}
+					if scenario == "multihop-backup-preparing" {
+						request.Mode = upgradegate.PrepareRoute
+						prepared, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+						if err != nil {
+							t.Fatal(err)
+						}
+						if prepared.State.Pending.Phase != upgrade.Prepared || prepared.State.Pending.Preparation != nil || prepared.State.Pending.Target != fixture.Identities[1] || prepared.Admission.Valid() {
+							t.Fatal("latest coordinator did not prepare historical first hop without admission")
+						}
+						request.Mode = upgradegate.Boot
+					}
+					if err := db.Close(); err != nil {
+						t.Fatal(err)
+					}
+					current, boundary := 1, "sql-complete"
+					if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
+						boundary = "healthy"
+					}
+					if scenario == "multihop-final-schema-applied" {
+						if _, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(1)); !errors.Is(err, upgradegate.ErrNextBinary) {
+							t.Fatalf("first route hop did not retain maintenance: %v", err)
+						}
+						current, boundary = 2, "schema-applied"
+					}
+					upgradegate.KillSignedGateProcessFixture(t, request, claim(current), boundary)
+					crashed, err := upgrade.InspectControl(t.Context(), cfg)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !crashed.Maintenance || crashed.Generation != booted.State.Generation+1 || crashed.Pending.RouteDigest != plan.Digest() {
+						t.Fatal("crash lost route/maintenance/generation")
+					}
+					if stale, err := store.Open(t.Context(), processStoreConfig(cfg), booted.Admission); err == nil {
+						stale.Close()
+						t.Fatal("source runtime admission survived crash maintenance")
+					}
+					if _, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(0)); err == nil {
+						t.Fatal("old exact build resumed newer route")
+					}
+					unchanged, err := upgrade.InspectControl(t.Context(), cfg)
+					if err != nil || !reflect.DeepEqual(crashed, unchanged) {
+						t.Fatal("refused old binary changed durable route", err)
+					}
+					resumed, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(current))
+					if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
+						if !errors.Is(err, upgradegate.ErrNextBinary) {
+							t.Fatalf("completed intermediate binary became serving: %v", err)
+						}
+						resumed, err = upgradegate.RunSignedGateProcessFixture(t, request, claim(2))
+					}
+					if err != nil || !resumed.Admission.Valid() || resumed.State.Maintenance || resumed.State.Applied.Release != fixture.Identities[target] || resumed.State.Generation != crashed.Generation {
+						t.Fatalf("route crash resume: %v", err)
+					}
+					final, err := store.Open(t.Context(), processStoreConfig(cfg), resumed.Admission)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer final.Close()
+					keys, err := crypto.LoadKeyring(t.Context(), &keyring.Store{DB: final}, bytes.Clone(root))
+					if err != nil {
+						t.Fatal(err)
+					}
+					readable, err := (&service.Backup{DB: final}).ProveValuesReadable(t.Context(), keys)
+					if err != nil || !readable {
+						t.Fatal("upgrade lost original protected value", err)
+					}
+					restart, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+					if err != nil || restart.State.Generation != resumed.State.Generation {
+						t.Fatal("completed route restart consumed evidence twice", err)
+					}
+				})
+			}
 		}
 	}
 }
