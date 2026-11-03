@@ -58,7 +58,50 @@ docs/                     operator guide section, manual-upgrade note, this hand
 
 Candidate: see the PR head. Base: `26f112bde` (stacked ADR amendment branch).
 
-EVIDENCE_TBD
+Validated code revision: `1cbb662c2` (later commits on the branch are
+documentation only). Every Go run used `go test -p 2 -parallel 2` through the
+shared job queue. PostgreSQL was a task-owned PostgreSQL 18.6 cluster on a
+private port with `fsync=on` (Hikyo refuses to boot on `fsync=off`; an earlier
+run used `fsync=off` and failed every PostgreSQL leg at boot, which was a fixture
+error, not a result, and was rerun). Three queue submissions lost their client
+output (orphaned job, daemon timeout, client killed at its wall-clock limit);
+those are infrastructure events, not test outcomes, and the results below come
+from complete runs.
+
+| Check | Result |
+| --- | --- |
+| `go build ./...`, `go vet` on the touched packages, `gofmt -l` | clean |
+| `internal/crypto/backup` (hybrid round trip, wrong key, cross-algorithm, tamper, truncation at chunk boundaries, mixed set, 32/33 bound, byte bound, malformed keys, duplicates, reader rule, malformed stanza, fingerprints, frozen legacy fixtures) | ok |
+| Fuzz, 15 s each: `FuzzHybridExtractTo` (about 87k execs), `FuzzRecipientPolicy` (about 38k execs) | no finding; corpus not committed |
+| `internal/backupreceipt` (v1 historical bytes, v2 binding, mixed/unknown/relabeled/oversized inventories, archive authentication for both key classes incl. other-algorithm identity) | ok |
+| `internal/upgradecustody` (hybrid identity through rewrap, export and recovery) | ok |
+| `internal/runtimeconfig`, `internal/config`, `internal/boundary` | ok |
+| `internal/service` (receipt format by algorithm, interrupted export and retry, both engines) | ok, PostgreSQL executed |
+| `internal/upgradegate` (full package, both engines, populated and nightly process tests) | ok, PostgreSQL executed |
+| `internal/isolation`: `TestBackupRestoreDrill{SQLite,Postgres,HybridSQLite,HybridPostgres}`, `TestRestoreDrillVerb{...}` same four | all PASS, none skipped |
+| `internal/app` targeted (`Backup|Restore|UpgradeDrill|Keygen|Disclosure|Export|Drill`): CLI export and restore at every diagnostics level for both key classes, keygen, refusals before any output, restore of a mixed header, `TestUpgradeDrillHybridBothEngineRecovery` (sqlite and postgres, with and without a secret), `TestUpgradeDrillHybridRefusesCustodyMismatch` | ok |
+| `internal/store` (`Backup|Restore|Export|Manifest|Upgrade`), `internal/store/migrate` | ok |
+| `internal/lint` (full package, reviewed raw-SQL pins after the update) | ok (2893 s under queue load) |
+
+Not run: the full `internal/app` and `internal/isolation` packages (only the
+backup, restore and drill tests above), host environment-string limits, a second
+independent age implementation.
+
+Acceptance criteria, in the issue's order:
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| 1 | Hybrid generation, validation, canonicalization, lookup, export, restore, protected input | PASS for CLI, service, receipt and drill paths; PARTIAL for the vault (reads, does not generate) |
+| 2 | Algorithm-aware versioned fingerprints and receipt schemas; consumers updated | PASS for fingerprints, receipt v2, preflight validation, custody checks and restore/drill; PARTIAL for documented offline tooling (none exists in the tree) |
+| 3 | PQ-profile backups contain only hybrid recipients; reject classical, mixed, duplicate, malformed | PARTIAL: mixed, duplicate, malformed and unsupported are refused and labels are preserved; there is no selectable profile, so a classical-only set is still accepted by design (DEC-05) |
+| 4 | Zero-recipient, exclusivity, scrypt bound, header and stanza counts, final-chunk authentication, safe file creation | PASS (existing tests unchanged and passing, plus new ones) |
+| 5 | About 2000-character recipients, real header size at the supported count, deterministic refusal | PASS: 1959 characters, 49,846-byte header at 32, 33 refused before output |
+| 6 | Readers open frozen legacy and hybrid archives; old readers fail clearly; migration docs and preflight set the minimum reader | PARTIAL: frozen fixtures, clear old-reader errors (run against the pre-change code) and docs are done; no preflight enforcement of a reader floor |
+| 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS except restart: interrupted publication and retry are tested, a process restart is not |
+| 8 | Complete backup/restore and upgrade-custody drills on SQLite and PostgreSQL | PASS for the ordinary drill and the upgrade-custody drill with a hybrid identity on both engines; the full upgrade gate suite ran on both engines |
+| 9 | Document wrapper scope, passphrase entropy, rewrap limits | PASS |
+| 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: procedure and fresh receipts are covered; the rollback is documented, not demonstrated end to end |
+| | Strict backup restore provenance | HOLD (E-19) |
 
 ## Compatibility
 
@@ -109,6 +152,7 @@ EVIDENCE_TBD
 | Offline tooling for receipt fingerprints | NOT FOUND | No separate offline fingerprint tool exists in the tree; the library is the only parser |
 | Host environment-string limits for a 62,719-byte value | NOTRUN | Also `hostupgrade` passes one 1959-character recipient per argv entry |
 | Independent second age implementation | NOTRUN | Only the upstream CLI was run |
+| Locked ADR text naming `backup-receipt/v1` | NOT EDITED | `signed-upgrade-compatibility.md` names v1 in its body; its 2026-11-02 banner promises an algorithm-bearing namespace, not a schema bump. Hybrid receipts use `backup-receipt/v2` (the issue asks for versioned schemas). Confirm through the amendment route |
 
 ## Next authorized step
 
