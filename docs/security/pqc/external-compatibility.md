@@ -172,8 +172,7 @@ so a classical chain is never assumed.
 
 Classification, evidence, recheck trigger, consumer impact if a strict-style
 policy is demanded, concrete follow-up, and the exception. Owner for every row is
-**Marc Went** (default under DEC-10). Follow-ups `F-nn` are filed as #1175 to #1185;
-this work created no issue.
+**Marc Went** (default under DEC-10). Follow-ups `F-nn` are filed as #1175 to #1185.
 
 | ID | Class | Evidence (read 2026-11-03) | Recheck trigger | Consumer impact | Follow-up | Exception |
 | --- | --- | --- | --- | --- | --- | --- |
