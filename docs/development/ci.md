@@ -256,8 +256,9 @@ the publisher's name and get the same reruns, and so does a failed setup, becaus
 reconcile always runs. The run attempt is the only loop bound: attempt 3 publishes
 the terminal refusal and is never rerun, the retry workflow does not follow
 itself, and it holds only `actions: write`, checks nothing out and runs no
-repository code. It follows only the three publisher workflows by path, never a
-`pull_request` run. A pass that already published its verdict keeps it when the
+repository code. It follows only the three publisher workflows by path, and only
+their real triggers on `main` or `dev`, or `pull_request_target`, which runs the
+base branch's file. A pass that already published its verdict keeps it when the
 work clock ends a moment later. A pending record blocks like any other; the rerun,
 not the cron, settles it. The record stays pending (blocking) until the next event
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile

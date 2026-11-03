@@ -22,14 +22,19 @@ jobs:
   rerun:
     # Keep the attempt bound in step with admissionMaxAttempts in scripts/ci/pr-gate/queue_deadline.go.
     # A job that hits its one-minute timeout after reconcile failed concludes cancelled.
-    # The path and event stop a PR-added workflow reusing a name from getting reruns.
+    # A branch can edit these workflows or add one reusing a name, so allow only their
+    # real triggers on protected branches. pull_request_target runs the base's file.
     if: >-
       (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled') &&
       github.event.workflow_run.run_attempt < 3 &&
-      github.event.workflow_run.event != 'pull_request' &&
       (github.event.workflow_run.path == '.github/workflows/ci-queue-gate.yml' ||
       github.event.workflow_run.path == '.github/workflows/ci-queue-worker.yml' ||
-      github.event.workflow_run.path == '.github/workflows/ci-dev-gate.yml')
+      github.event.workflow_run.path == '.github/workflows/ci-dev-gate.yml') &&
+      (github.event.workflow_run.event == 'pull_request_target' ||
+      ((github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_run' ||
+      github.event.workflow_run.event == 'workflow_dispatch' || github.event.workflow_run.event == 'schedule') &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'dev')))
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:

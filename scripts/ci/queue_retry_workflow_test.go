@@ -87,14 +87,21 @@ func TestQueueRetryWorkflowIsBoundedAndMinimal(t *testing.T) {
 	if len(job.Steps) != 1 || job.Steps[0].Uses != "" {
 		t.Fatal("the rerun job must be one shell step that runs no repository code and checks nothing out")
 	}
-	// A workflow name alone can be reused by a workflow a PR adds.
-	for _, file := range []string{"ci-queue-gate.yml", "ci-queue-worker.yml", "ci-dev-gate.yml"} {
-		if !strings.Contains(job.If, "github.event.workflow_run.path == '.github/workflows/"+file+"'") {
-			t.Fatalf("retry does not bind %s by path:\n%s", file, job.If)
-		}
-	}
-	if !strings.Contains(job.If, "github.event.workflow_run.event != 'pull_request'") {
-		t.Fatalf("retry must not follow a pull_request run:\n%s", job.If)
+	// Pinned whole: substrings would pass with a group's parentheses gone. A branch can edit
+	// these workflows, so the trigger is an allowlist on protected branches.
+	const run = "github.event.workflow_run."
+	wantIf := "(" + run + "conclusion == 'failure' || " + run + "conclusion == 'cancelled') && " +
+		run + "run_attempt < 3 && " +
+		"(" + run + "path == '.github/workflows/ci-queue-gate.yml' || " +
+		run + "path == '.github/workflows/ci-queue-worker.yml' || " +
+		run + "path == '.github/workflows/ci-dev-gate.yml') && " +
+		"(" + run + "event == 'pull_request_target' || " +
+		"((" + run + "event == 'push' || " + run + "event == 'workflow_run' || " +
+		run + "event == 'workflow_dispatch' || " + run + "event == 'schedule') && " +
+		run + "head_repository.full_name == github.repository && " +
+		"(" + run + "head_branch == 'main' || " + run + "head_branch == 'dev')))"
+	if got := strings.Join(strings.Fields(job.If), " "); got != wantIf {
+		t.Fatalf("retry trigger changed:\n got %s\nwant %s", got, wantIf)
 	}
 	// Both loop bounds must equal the publisher's attempt cap.
 	source, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "queue_deadline.go"))
@@ -139,6 +146,7 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"no failed reconcile step", []string{job("publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
 		{"publisher cancelled by its timeout", []string{job("publish-"+head, "cancelled", "Reconcile one authenticated head")}, "1", true, false},
 		{"cancelled without a failed reconcile", []string{job("publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
+		{"cancelled after reconcile passed", []string{`{"name":"publish-` + head + `","conclusion":"cancelled","steps":[{"name":"Reconcile one authenticated head","conclusion":"success"}]}`}, "1", false, false},
 		{"worker group job shares the publisher name", []string{job("publish-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", true, false},
 		{"group job is not a head publisher", []string{job("group-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", false, false},
 		{"job name that is not a head is ignored", []string{job("publish-not-a-sha", "failure", "Reconcile")}, "1", false, false},
