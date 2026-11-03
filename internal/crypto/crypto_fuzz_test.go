@@ -253,13 +253,16 @@ func FuzzVerifyTransitMLDSA65(f *testing.F) {
 }
 
 // FuzzParseTransitSignatureValue runs the wire parser and the ML-DSA verifier
-// together on arbitrary strings: nothing may panic, and the only string that
-// parses and verifies against the frozen key and message is the frozen wire
-// value itself (the encoding is canonical).
+// together on arbitrary strings: nothing may panic, and the only decoded payload
+// that verifies against the frozen key and message is the frozen one. Strings
+// that differ only in the key version (hikyo:v4: plus the same payload) verify
+// too: the version is enforced by the service, not by the signature, so the
+// oracle is the payload bytes, not the string.
 func FuzzParseTransitSignatureValue(f *testing.F) {
-	public, message, _, wire := frozenMLDSA(f)
+	public, message, payload, wire := frozenMLDSA(f)
 	f.Add(wire)
 	f.Add("hikyo:v3:CQU")
+	f.Add("hikyo:v4:" + strings.TrimPrefix(wire, "hikyo:v3:"))
 	f.Add("hikyo:v1:" + strings.Repeat("A", 4415))
 	f.Add(wire + "=")
 	f.Fuzz(func(t *testing.T, s string) {
@@ -267,8 +270,8 @@ func FuzzParseTransitSignatureValue(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if VerifyTransitSignature(TransitMLDSA65, public, message, p) && s != wire {
-			t.Fatalf("a string other than the frozen wire value verified: %.40q", s)
+		if VerifyTransitSignature(TransitMLDSA65, public, message, p) && !bytes.Equal(p, payload) {
+			t.Fatalf("a payload other than the frozen one verified: %.40q", s)
 		}
 	})
 }

@@ -35,6 +35,7 @@ type mldsaVectors struct {
 	Signature        string `json:"signature_hex"`
 	PayloadWire      string `json:"payload_wire"`
 	EmptyContextSign string `json:"empty_context_signature_hex"`
+	PublicKeySPKI    string `json:"public_key_spki_hex"`
 }
 
 func loadMLDSAVectors(t *testing.T) mldsaVectors {
@@ -86,6 +87,10 @@ func TestTransitMLDSA65VectorsVerifyWithTheStdlibAlone(t *testing.T) {
 	pk, err := mldsa.NewPublicKey(mldsa.MLDSA65(), unhex(t, v.PublicKey))
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The frozen SPKI is the same key: the standard library parses it back.
+	if parsed, err := x509.ParsePKIXPublicKey(unhex(t, v.PublicKeySPKI)); err != nil || !pk.Equal(parsed) {
+		t.Fatalf("frozen SPKI is not the frozen key: %v", err)
 	}
 	sig := unhex(t, v.Signature)
 	msg := []byte(v.Message)
@@ -189,6 +194,9 @@ func TestExposeTransitPublicKey(t *testing.T) {
 	der, err := crypto.ExposeTransitPublicKey(crypto.TransitMLDSA65, raw)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if hex.EncodeToString(der) != v.PublicKeySPKI {
+		t.Fatal("published SPKI differs from the frozen vector")
 	}
 	if len(der) != 1974 || !bytes.Contains(der, []byte{0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12}) {
 		t.Fatalf("SPKI is %d bytes or lacks the ML-DSA-65 OID 2.16.840.1.101.3.4.3.18", len(der))

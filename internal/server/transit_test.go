@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 func TestTransitStateRejectsInvalidDelayBeforeService(t *testing.T) {
@@ -125,14 +125,16 @@ func TestTransitHandlersWithoutServiceReturnNotFound(t *testing.T) {
 // ML-DSA-65 as SPKI (DEC-07). The public surface does not offer ML-DSA keys yet
 // (HOLD), so this exercises the response builder directly.
 func TestTransitKeyResponsePublishesTheAlgorithmEncoding(t *testing.T) {
+	// The view is built by field assignment: the handler layer must not import the
+	// datastore package, and that rule applies to its tests too.
 	view := func(alg string, public []byte) service.TransitKeyView {
-		return service.TransitKeyView{
-			TransitKeyRecord: store.TransitKeyRecord{
-				ID: "tk", Algorithm: alg, Custody: "software", State: "active", LatestVersion: 1,
-				CreatedAt: "2026-11-03T00:00:00Z", UpdatedAt: "2026-11-03T00:00:00Z",
-			},
-			Versions: []store.TransitVersionRecord{{Version: 1, PublicKey: public, HasMaterial: true, CreatedAt: "2026-11-03T00:00:00Z"}},
-		}
+		var v service.TransitKeyView
+		v.ID, v.Algorithm, v.Custody, v.State, v.LatestVersion = "tk", alg, "software", "active", 1
+		v.CreatedAt, v.UpdatedAt = "2026-11-03T00:00:00Z", "2026-11-03T00:00:00Z"
+		v.Versions = slices.Grow(v.Versions, 1)[:1]
+		v.Versions[0].Version, v.Versions[0].PublicKey, v.Versions[0].HasMaterial = 1, public, true
+		v.Versions[0].CreatedAt = "2026-11-03T00:00:00Z"
+		return v
 	}
 	k, err := crypto.OpenTransitKey(make([]byte, crypto.TransitMaterialSize),
 		crypto.TransitBinding{Algorithm: crypto.TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})

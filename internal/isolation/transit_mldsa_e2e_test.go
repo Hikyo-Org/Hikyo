@@ -343,24 +343,26 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen := string(rendered) + fmt.Sprintf("%+v", view) + hex.EncodeToString(rendered)
-	var materials []string
+	seen := string(rendered) + fmt.Sprintf("%+v", view)
+	// One query per version: queryStrings joins rows with no separator, which
+	// would turn several blobs into one needle that never matches anything.
+	checked := 0
 	if custody == "software" {
-		materials = append(materials, queryStrings(t, db, `SELECT `+hexExpr(db, "material_ciphertext")+` FROM transit_key_versions WHERE key_id='`+key.ID+`' AND material_ciphertext IS NOT NULL`))
-	}
-	for _, m := range materials {
-		for _, line := range strings.Fields(strings.ToLower(m)) {
+		for _, v := range view.Versions {
+			line := strings.ToLower(queryString(t, db, fmt.Sprintf(`SELECT %s FROM transit_key_versions WHERE key_id='%s' AND version=%d`, hexExpr(db, "material_ciphertext"), key.ID, v.Version)))
 			raw, err := hex.DecodeString(line)
 			if err != nil || len(raw) == 0 {
-				continue
+				t.Fatalf("v%d: sealed material not readable for the check: %v", v.Version, err)
 			}
-			if strings.Contains(seen, line) || strings.Contains(string(rendered), base64.StdEncoding.EncodeToString(raw)) {
-				t.Fatal("the key view carries sealed material")
+			if strings.Contains(seen, line) || strings.Contains(seen, base64.StdEncoding.EncodeToString(raw)) ||
+				strings.Contains(seen, base64.RawURLEncoding.EncodeToString(raw)) {
+				t.Fatalf("v%d: the key view carries sealed material", v.Version)
 			}
+			checked++
 		}
-	}
-	if custody == "software" && len(materials) == 0 {
-		t.Fatal("no sealed material was found to check the view against")
+		if checked != len(view.Versions) || checked < 2 {
+			t.Fatalf("checked %d of %d versions against the view; the check must cover every version of a rotated key", checked, len(view.Versions))
+		}
 	}
 	for _, v := range view.Versions {
 		if len(v.PublicKey) != 1952 {

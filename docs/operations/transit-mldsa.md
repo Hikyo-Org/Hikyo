@@ -78,8 +78,10 @@ custody provider refuses it.
    version both already sit at latest, the key still signs under `v1` and its old
    signatures still verify (pinned by `runTransitFloorsDoNotEndSigning`). To stop
    new Ed25519 signatures, **`retire` the old key**: `sign` then refuses and
-   `verify` continues. To stop accepting its old signatures, **`disable` it** (or
-   `schedule-deletion`, after which it is destroyed). Disabling is reversible with
+   `verify` continues. To stop Hikyo accepting its old signatures, **`disable` it** (or
+   `schedule-deletion`, after which it is destroyed); a consumer that verifies
+   locally with the pinned public key, as in "Verifying without Hikyo", keeps
+   accepting them until it drops that key. Disabling is reversible with
    `enable`; destruction is not. Raising the floors plus `trim` is for dropping
    older versions of a key that has been rotated.
 5. **Compromise.** `compromise` on the `mldsa65` key refuses both signing and
@@ -117,7 +119,10 @@ custody provider refuses it.
   `shortcut:` comment in `TransitKey.Destroy` marks the place.
 - **Library availability.** `crypto/mldsa` is unavailable under the frozen FIPS
   module v1.0.0, so key opening fails there: creation and signing refuse, and
-  verification answers false. There is no fallback algorithm.
+  verification answers false. There is no fallback algorithm. The same failure
+  applies when a response is built: publishing a stored ML-DSA public key parses it,
+  so a list or show that touches an `mldsa65` key fails as a whole there (the server
+  refuses rather than publish an unparsed key). Unreachable while creation is on HOLD.
 - The departure below.
 
 ## Departure from the PQC profiles, for the owner to accept
@@ -129,16 +134,21 @@ does not do this for the signed bytes, and the register has no row accepting the
 
 1. **Signed bytes are the raw message, not a label-prefixed structure.** The label
    is bound only as the ML-DSA context, and the algorithm identifier `0x0905`
-   travels outside the signed bytes. Conforming would mean signing
-   `LP(label) || LP(algorithm) || message`, so every verifier would have to rebuild
-   that input; Transit's contract (ADR D4, "over the message bytes") is that any
-   verifier holding the public key checks the caller's own bytes. That is a change
-   to what callers verify, so I did not make it. Residual risk: cross-algorithm
-   confusion is closed by the key row (the verifier supplies the algorithm and
-   the public key fixes the parameter set), but what is signed does not name the
-   algorithm, and separation from other uses of the same key rests on the ML-DSA
-   context string alone. The owner decides; the owning ticket for any change is
-   #1129.
+   travels outside the signed bytes. Conforming for `mldsa65` would mean signing
+   `LP(label) || LP(algorithm) || message`. That is possible: no caller is affected
+   today (the real server refuses `mldsa65`), the Ed25519 contract is untouched,
+   and the transit ADR's "pure Ed25519 over the message bytes" says nothing about
+   the ML-DSA input. What is at stake is verifier convenience: every ML-DSA
+   verifier, stock tools such as OpenSSL included, would have to rebuild the
+   prefix before checking a signature. The security gain looks small, because the
+   context already fixes the label and ML-DSA binds the public key into the hash it
+   signs; I did not analyze it further. So this is an owner trade-off, not an
+   impossibility. **The choice is cheap only until the first `mldsa65` key signs**:
+   after that, changing the signed input means a second signature format and a
+   version the verifiers must learn. The signature format was not changed. Residual
+   risk if accepted as is: what is signed does not name the algorithm, and
+   separation from other uses of the same key rests on the context string and the
+   key row. The owner decides; the owning ticket for any change is #1129.
 
 Not a departure, but not provided: the `mldsa65:` text form and a key fingerprint.
 Transit publishes neither today, so a surface that later wants one must define it
