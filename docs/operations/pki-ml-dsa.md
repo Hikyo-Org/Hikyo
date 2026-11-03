@@ -214,7 +214,10 @@ owner and need amd64 numbers that were not measured.
    ML-DSA certificate under a new profile; renewal never changes an algorithm.
 4. **Overlap.** `rotate` appends version N+1 of the same family, activates it and
    moves N to `retiring`; N keeps signing its CRL until `retire` is allowed.
-5. **Roll back by stopping, not by deleting.** Revoke or let expire the ML-DSA
+5. **Switching the algorithm off.** With the instance gate off, existing ML-DSA
+   issuers keep signing and publishing their CRLs (tested), but new and renewed
+   ML-DSA leaves, rotation and new profiles are refused.
+6. **Roll back by stopping, not by deleting.** Revoke or let expire the ML-DSA
    leaves, keep the issuer versions and published CRLs until every leaf has
    expired, and never destroy a key to make a downgrade work. Once an ML-DSA
    issuer exists, running an older Hikyo build is not supported.

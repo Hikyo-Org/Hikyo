@@ -591,6 +591,17 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 			t.Fatalf("%d active versions of pq-issuing after the race, want exactly 1", n)
 		}
 
+		// --- Switching the algorithm off stops new writes, never revocation coverage ------------------
+		if _, err := held.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "pq-web", CSRPEM: csrPEM, DNSNames: []string{"off.svc.example.com"}}); !errors.Is(err, service.ErrPKIAlgorithmHeld) {
+			t.Fatalf("issuance with the algorithm switched off: %v", err)
+		}
+		if _, err := held.RotateIssuer(ctx, op, "pq-issuing", service.PKIIssuerRequest{}); !errors.Is(err, service.ErrPKIAlgorithmHeld) {
+			t.Fatalf("rotation with the algorithm switched off: %v", err)
+		}
+		if _, err := held.PublishIssuerCRL(ctx, op, "pq-issuing", 1); err != nil {
+			t.Fatalf("an existing ML-DSA issuer must keep publishing its CRL when the algorithm is switched off: %v", err)
+		}
+
 		// --- Restore hold ------------------------------------------------------------------------
 		execRaw(t, db, `UPDATE pki_issuers SET restore_hold=1`)
 		if _, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "pq-web", CSRPEM: csrPEM, DNSNames: []string{"held.svc.example.com"}}); !errors.Is(err, service.ErrPKIIssuerHeld) {
