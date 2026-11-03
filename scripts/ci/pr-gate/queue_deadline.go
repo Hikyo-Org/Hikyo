@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"time"
@@ -11,6 +12,19 @@ import (
 
 const admissionSeconds = 60
 const admissionReserve = 15 * time.Second
+
+// A failed targeted run is rerun by ci-queue-retry.yml while its run attempt is
+// below this. Each attempt is a new job with its own sixty-second budget; the
+// workflow's `run_attempt < 3` is the only loop bound, so keep both in step.
+const admissionMaxAttempts = 3
+
+// admissionRetryRemains reports whether a rerun will follow this attempt. An
+// unreadable attempt counts as the last one: the terminal refusal is the safe
+// default when nothing is promised to reassess the head.
+func admissionRetryRemains() bool {
+	attempt, err := strconv.Atoi(os.Getenv("GITHUB_RUN_ATTEMPT"))
+	return err == nil && attempt >= 1 && attempt < admissionMaxAttempts
+}
 
 type admissionBudget struct {
 	Started, Deadline time.Time
@@ -54,7 +68,9 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	if onlyStaleHeadWork(err) && workErr == nil {
 		return nil
 	}
-	if err == nil && workErr == nil {
+	// A pass that finished and published its verdict is final even when the work
+	// clock ran out a moment later; refusing now would overwrite that fresh verdict.
+	if err == nil {
 		return nil
 	}
 	// This is a new bounded context, never the cancelled validation context. It
@@ -148,6 +164,10 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 			selected = &own[i]
 		}
 	}
-	return q.publish(ctx, final, newBinding(q.repo.ID, final, r), selected,
-		refused("The targeted publisher failed within its setup-inclusive sixty-second budget. All selected feedback and full queue validation remain required; reassess after correcting the error."))
+	result := refused("The targeted publisher failed within its setup-inclusive sixty-second budget. All selected feedback and full queue validation remain required; reassess after correcting the error.")
+	if admissionRetryRemains() {
+		// Still blocking, but not a verdict: the failed run is rerun with a new budget.
+		result = pending("The targeted publisher did not finish within its setup-inclusive sixty-second budget. Admission and merging stay blocked; the failed run is rerun automatically with a new budget.")
+	}
+	return q.publish(ctx, final, newBinding(q.repo.ID, final, r), selected, result)
 }

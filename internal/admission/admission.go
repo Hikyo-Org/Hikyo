@@ -211,6 +211,9 @@ type Limiter struct {
 	// about which accounts exist, and every read, write and eviction here
 	// depends on them agreeing. A single entry makes the invariant structural.
 	accounts map[subjectKey]accountBackoff
+	// liveSessions holds the sessions this node has proven live. It is admission
+	// accounting only: every admitted request still resolves the session.
+	liveSessions map[subjectKey]liveSession
 }
 
 // subjectKey is the irreversible bucket key for a presented account identifier.
@@ -271,6 +274,7 @@ func New(cfg Config) (*Limiter, error) {
 		metaHits:        map[string][]time.Time{},
 		issuerRefreshes: map[string][]time.Time{},
 		accounts:        map[subjectKey]accountBackoff{},
+		liveSessions:    map[subjectKey]liveSession{},
 	}
 	for range concurrency {
 		l.slots <- struct{}{}

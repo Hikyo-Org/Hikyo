@@ -12,7 +12,7 @@ production releases.
 
 ## Request a nightly manually
 
-In GitHub Actions, open **nightly-release-manual**, choose **Run workflow**, and
+In GitHub Actions, open **nightly-release-request**, choose **Run workflow**, and
 select **main**. From the GitHub CLI, use:
 
 ```sh

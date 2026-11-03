@@ -1,6 +1,6 @@
 # Only trusted default-branch discovery dispatches work. Inputs remain routing
 # hints: the controller rereads current metadata, authority and full group proof.
-name: queue-check-worker
+name: gate-queue-worker
 on:
   workflow_dispatch:
     inputs:

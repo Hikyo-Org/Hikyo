@@ -1,6 +1,6 @@
 # Asynchronous housekeeping only. This workflow never supplies validation or
 # merge authority, and never executes PR or merge-group source.
-name: ci-run-retirement
+name: tidy-runs
 
 on:
   push:

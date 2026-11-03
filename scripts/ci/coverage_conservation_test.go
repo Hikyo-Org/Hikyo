@@ -23,7 +23,7 @@ type coverageBaseline struct {
 
 // Fingerprint complete execution configuration, including job conditions,
 // dependencies, matrices, fail-open settings, and every step input/environment.
-// Only the changed source guard/aggregate are excluded. Exact candidate base
+// Only the changed source guard/aggregate are excluded. Exact base
 // plumbing is normalized below; its runtime trust is covered independently.
 func coverageDigests(raw []byte, candidate bool) (map[string]string, error) {
 	var workflow struct {
@@ -48,37 +48,21 @@ func coverageDigests(raw []byte, candidate bool) (map[string]string, error) {
 					continue
 				}
 				if candidate {
-					// Preserve the original tool inputs while allowing only the
-					// reviewed immutable live-base selector introduced by this split.
+					// Merge groups are now the only event with a trusted base; the
+					// frozen digests still hold the earlier selector.
 					allowed := map[string]string{
-						"preflight":       "Require DCO sign-off on every PR commit",
 						"analysis_shards": "Plan complete test, race, and fuzz shards",
 						"race_shard":      "Race detector (all packages except the isolation suite)",
 					}
 					if step["name"] == allowed[name] {
-						if env, ok := step["env"].(map[string]any); ok {
-							old := "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
-							current := "${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
-							if name == "preflight" {
-								old = "${{ github.event.pull_request.base.sha }}"
-								current = "${{ inputs.candidate && needs.changes.outputs.base_sha || github.event.pull_request.base.sha }}"
-							}
-							if env["BASE_SHA"] == current {
-								env["BASE_SHA"] = old
-							}
+						if env, ok := step["env"].(map[string]any); ok && env["BASE_SHA"] == "${{ github.event.merge_group.base_sha }}" {
+							env["BASE_SHA"] = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
 						}
 					}
 				}
 				kept = append(kept, step)
 			}
 			job["steps"] = kept
-		}
-		if candidate && name == "floor-bench" {
-			with, ok := job["with"].(map[string]any)
-			if !ok || with["candidate"] != "${{ inputs.candidate }}" {
-				return nil, fmt.Errorf("floor benchmark lost exact candidate propagation")
-			}
-			delete(with, "candidate")
 		}
 		encoded, err := json.Marshal(job)
 		if err != nil {
@@ -99,6 +83,28 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 		Jobs map[string]map[string]any `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
+		return err
+	}
+	// The explicit dev caller propagates a source-authority boolean only. Keep
+	// the frozen full-suite inventory and all measurement steps unchanged.
+	floorWith, ok := workflow.Jobs["floor-bench"]["with"].(map[string]any)
+	if !ok || floorWith["development"] != "${{ inputs.development }}" {
+		return fmt.Errorf("floor benchmark lost exact development source binding")
+	}
+	delete(floorWith, "development")
+	// Dev runner headroom only delays jobs. Every shard still runs, and other
+	// callers stay uncapped, so the frozen execution inventory is unchanged.
+	for name, limit := range map[string]string{"web": "4", "isolation_shard": "2", "race_shard": "7"} {
+		strategy, ok := workflow.Jobs[name]["strategy"].(map[string]any)
+		if !ok || strategy["max-parallel"] != "${{ inputs.development && "+limit+" || 256 }}" {
+			return fmt.Errorf("%s lost its dev-only runner headroom", name)
+		}
+		delete(strategy, "max-parallel")
+	}
+	if err := normalizeRetiredDCOStep(workflow.Jobs["preflight"]); err != nil {
+		return err
+	}
+	if err := normalizeRetiredGateFixtureNames(workflow.Jobs["supply-chain-checks"]); err != nil {
 		return err
 	}
 	if err := normalizeCompleteShardPlanning(workflow.Jobs["analysis_shards"]); err != nil {
@@ -271,6 +277,64 @@ func requireBaselineCoverage(raw []byte, baseline coverageBaseline) error {
 	return nil
 }
 
+// ci.yml no longer runs on pull_request, where this step's condition was the only
+// way it ran, so no ci-merge-group/ci-dev/ci-main job lost it. Queue and dev
+// admission still enforce DCO. Restore exactly that step for the frozen digest.
+func normalizeRetiredDCOStep(job map[string]any) error {
+	steps, ok := job["steps"].([]any)
+	if !ok {
+		return fmt.Errorf("preflight has malformed steps")
+	}
+	for _, value := range steps {
+		if step, ok := value.(map[string]any); ok && step["name"] == frozenDCOStep["name"] {
+			return fmt.Errorf("preflight must not regain the pull_request-only DCO step")
+		}
+	}
+	job["steps"] = append(steps, frozenDCOStep)
+	return nil
+}
+
+// Three named tests pinned the deleted ci-candidate and ci-pr-gate workflows.
+// Only those names leave the -run list; the frozen digest keeps the earlier text.
+func normalizeRetiredGateFixtureNames(job map[string]any) error {
+	const (
+		prefix  = "go test -count=1 ./scripts/ci/pr-gate\ngo test -count=1 ./scripts/ci -run "
+		current = prefix + `'^(TestRequiredJobCannotSkipOnPullRequests|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'` + "\n"
+		frozen  = prefix + `'^(TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests|TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestMergeGroupWorkflowRetainsRequiredValidation|TestPullRequestTargetCannotReachValidationGraph)$'` + "\n"
+	)
+	steps, ok := job["steps"].([]any)
+	if !ok {
+		return fmt.Errorf("supply-chain-checks has malformed steps")
+	}
+	for _, value := range steps {
+		if step, ok := value.(map[string]any); ok && step["name"] == "Completion-driven PR gate and workflow trust fixtures" {
+			if step["run"] != current {
+				return fmt.Errorf("supply-chain-checks changed its gate and workflow trust fixtures")
+			}
+			step["run"] = frozen
+			return nil
+		}
+	}
+	return fmt.Errorf("supply-chain-checks lost its gate and workflow trust fixtures")
+}
+
+var frozenDCOStep = map[string]any{
+	"name": "Require DCO sign-off on every PR commit",
+	"if":   "${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}",
+	"env": map[string]any{
+		"BASE_SHA":  "${{ github.event.pull_request.base.sha }}",
+		"HEAD_SHA":  "${{ github.event.pull_request.head.sha }}",
+		"PR_AUTHOR": "${{ github.event.pull_request.user.login }}",
+	},
+	"run": "trusted_dco=\"$RUNNER_TEMP/check-dco.sh\"\n" +
+		"git show \"$BASE_SHA:scripts/ci/check-dco.sh\" >\"$trusted_dco\"\n" +
+		"chmod +x \"$trusted_dco\"\n" +
+		"if [ \"$PR_AUTHOR\" = \"dependabot[bot]\" ]; then\n" +
+		"  export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'\n" +
+		"fi\n" +
+		"\"$trusted_dco\" \"$BASE_SHA\" \"$HEAD_SHA\"\n",
+}
+
 // The race build cache moved from one restore/save pair per shard to a single
 // shared cache that only ci-race-cache.yml writes. Require exactly the shared
 // restore step and no cache writer in race_shard, then rewrite the job to the
@@ -360,7 +424,7 @@ func readCoverageBaseline(t *testing.T) (coverageBaseline, []byte) {
 	return baseline, raw
 }
 
-func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
+func TestFullValidationConservesBaselineCoverage(t *testing.T) {
 	baseline, raw := readCoverageBaseline(t)
 	var registry struct {
 		Classes map[string][]string `json:"path_classes"`
@@ -373,7 +437,7 @@ func TestFullCandidateConservesBaselineCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(registry.Classes["full"], baseline.Domains) {
-		t.Fatal("full candidate must preserve all baseline validation domains")
+		t.Fatal("full validation must preserve all baseline validation domains")
 	}
 	if err = requireBaselineCoverage(raw, baseline); err != nil {
 		t.Fatal(err)
@@ -586,6 +650,7 @@ func TestCoverageInventoryRejectsExecutionReductions(t *testing.T) {
 				}
 			}
 		},
+		"cap race beyond dev runs":    func(j map[string]map[string]any) { j["race_shard"]["strategy"].(map[string]any)["max-parallel"] = 7 },
 		"skip feedback fixtures":      func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "if", "false") },
 		"fail open feedback fixtures": func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "continue-on-error", true) },
 		"drop supervisor fixtures":    func(j map[string]map[string]any) { mutateFeedbackFixtureStep(j, "run", "true") },

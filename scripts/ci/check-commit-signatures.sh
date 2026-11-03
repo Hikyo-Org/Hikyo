@@ -14,10 +14,11 @@ base_commit=$(git -C "$repo" rev-parse --verify "$base^{commit}" 2>/dev/null) \
 	|| { printf 'Signature check: invalid base %s\n' "$base" >&2; exit 2; }
 head_commit=$(git -C "$repo" rev-parse --verify "$head^{commit}" 2>/dev/null) \
 	|| { printf 'Signature check: invalid head %s\n' "$head" >&2; exit 2; }
-base=$(git -C "$repo" merge-base "$base_commit" "$head_commit") \
+git -C "$repo" merge-base "$base_commit" "$head_commit" >/dev/null \
 	|| { printf 'Signature check: base and head have no merge base\n' >&2; exit 2; }
 
-commits=$(git -C "$repo" rev-list --reverse "$base..$head_commit")
+# Not from a merge base: with criss-cross history one base leaves commits the other covers.
+commits=$(git -C "$repo" rev-list --reverse "$base_commit..$head_commit")
 if [ -z "$commits" ]; then
 	# A branch may only advance to already-integrated canonical history. There
 	# are no new commits to inspect, but the requested tip must still be trusted.

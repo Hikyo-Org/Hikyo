@@ -249,10 +249,137 @@ func TestPreauthenticationCheapRejectsAndBrowserMutation(t *testing.T) {
 			if err := budget.AdmitAuthenticatedAPI(sessionID); !errors.Is(err, admission.ErrOverloaded) {
 				t.Fatalf("authenticated quota was not charged exactly once: %v", err)
 			}
+			// The session budget is spent too, so the logged-out artifact is refused
+			// by it with no read, and stays refused while that budget is empty.
 			sessionReads.Store(0)
 			rec = request()
 			if rec.Code != http.StatusTooManyRequests || sessionReads.Load() != 0 || rec.Header().Get("Retry-After") == "" {
 				t.Fatalf("CSRF overflow = %d %s, %d reads", rec.Code, rec.Body.String(), sessionReads.Load())
+			}
+		})
+		t.Run("csrf_refusal_spends_a_known_sessions_budget", func(t *testing.T) {
+			csrf, _, err := crypto.NewArtifact(crypto.ArtifactCSRF)
+			if err != nil {
+				t.Fatal(err)
+			}
+			token := preauthSession(t, db, crypto.ArtifactBrowserSession, "csrf-budget", csrf)
+			limiter := preauthLimiter(t)
+			budget := service.NewBudgetWithClock(func() time.Time { return time.Date(2026, 10, 28, 12, 0, 30, 0, time.UTC) })
+			handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Admission: limiter, RequestBudget: budget}, nil)
+			if rec := preauthRequest(handler, token, crypto.ArtifactBrowserSession, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusOK {
+				t.Fatalf("proving presentation = %d %s", rec.Code, rec.Body.String())
+			}
+			for range service.BudgetAuthenticatedAPIBurst - 2 {
+				if err := budget.AdmitAuthenticatedAPI("ses_preauth_br_csrf-budget"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var sessionReads atomic.Int64
+			restore := authn.SetQueryObserver(func(q string) {
+				if strings.Contains(q, "-- name: GetSessionByVerifier ") {
+					sessionReads.Add(1)
+				}
+			})
+			defer restore()
+			wrongCSRF := func() *httptest.ResponseRecorder {
+				req := httptest.NewRequest(http.MethodPost, api.PathPrefix+"/auth/logout", nil)
+				req.RemoteAddr = "192.0.2.83:1234"
+				req.AddCookie(&http.Cookie{Name: "__Host-hikyo", Value: token})
+				req.AddCookie(&http.Cookie{Name: "__Host-hikyo-csrf", Value: csrf})
+				req.Header.Set("X-Hikyo-CSRF", "wrong")
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, req)
+				return rec
+			}
+			if rec := wrongCSRF(); rec.Code == http.StatusTooManyRequests || sessionReads.Load() == 0 {
+				t.Fatalf("last budgeted refusal = %d %s, %d reads", rec.Code, rec.Body.String(), sessionReads.Load())
+			}
+			sessionReads.Store(0)
+			if rec := wrongCSRF(); rec.Code != http.StatusTooManyRequests || sessionReads.Load() != 0 {
+				t.Fatalf("over budget = %d %s, %d reads", rec.Code, rec.Body.String(), sessionReads.Load())
+			}
+		})
+		t.Run("session_that_dies_while_known", func(t *testing.T) {
+			for _, death := range []struct {
+				name string
+				kill func(ctx context.Context, az *authz.TxAuthorizer, id string) error
+			}{
+				{"revoked", func(ctx context.Context, az *authz.TxAuthorizer, id string) error { return az.RevokeSession(ctx, id) }},
+				{"generation", func(ctx context.Context, az *authz.TxAuthorizer, _ string) error {
+					return az.AdvanceGeneration(ctx, alice)
+				}},
+			} {
+				t.Run(death.name, func(t *testing.T) {
+					const kind = crypto.ArtifactCLISession
+					state := "dies-" + death.name
+					token := preauthSession(t, db, kind, state)
+					limiter := preauthLimiter(t)
+					handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Admission: limiter}, nil)
+					if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusOK {
+						t.Fatalf("proving presentation = %d %s", rec.Code, rec.Body.String())
+					}
+					for range admission.MetaPerIPPerMinute - 1 {
+						if err := limiter.AdmitDiscovery("192.0.2.83"); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+						return death.kill(ctx, az, "ses_preauth_"+string(kind)+"_"+state)
+					}); err != nil {
+						t.Fatal(err)
+					}
+					var queries atomic.Int64
+					restore := authn.SetQueryObserver(func(string) { queries.Add(1) })
+					defer restore()
+					if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusUnauthorized || queries.Load() == 0 {
+						t.Fatalf("death is enforced at once = %d %s, %d queries", rec.Code, rec.Body.String(), queries.Load())
+					}
+					queries.Store(0)
+					if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusTooManyRequests || queries.Load() != 0 {
+						t.Fatalf("forgotten artifact = %d %s, %d queries", rec.Code, rec.Body.String(), queries.Load())
+					}
+				})
+			}
+		})
+		t.Run("live_session_outlasts_exhausted_source", func(t *testing.T) {
+			for _, kind := range []crypto.ArtifactType{crypto.ArtifactCLISession, crypto.ArtifactBrowserSession} {
+				t.Run(string(kind), func(t *testing.T) {
+					token := preauthSession(t, db, kind, "outlasts")
+					limiter := preauthLimiter(t)
+					at := time.Date(2026, 10, 28, 12, 0, 30, 0, time.UTC)
+					budget := service.NewBudgetWithClock(func() time.Time { return at })
+					handler := server.New(&server.API{Auth: &service.Auth{DB: db}, Admission: limiter, RequestBudget: budget}, nil)
+					// The first presentation proves the session, spending one slot.
+					if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusOK {
+						t.Fatalf("first presentation = %d %s", rec.Code, rec.Body.String())
+					}
+					for range admission.MetaPerIPPerMinute - 1 {
+						if err := limiter.AdmitDiscovery("192.0.2.83"); err != nil {
+							t.Fatal(err)
+						}
+					}
+					// Past the source allowance, up to the session's own budget.
+					for i := range service.BudgetAuthenticatedAPIBurst - 1 {
+						if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusOK {
+							t.Fatalf("known session request %d = %d %s", i, rec.Code, rec.Body.String())
+						}
+					}
+					var queries atomic.Int64
+					restore := authn.SetQueryObserver(func(string) { queries.Add(1) })
+					defer restore()
+					if rec := preauthRequest(handler, token, kind, "192.0.2.83", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusTooManyRequests || queries.Load() != 0 {
+						t.Fatalf("session budget = %d %s, %d queries, want a refusal before any read", rec.Code, rec.Body.String(), queries.Load())
+					}
+					// The same exhausted source still refuses a stranger, before any read.
+					stranger, _, err := crypto.NewArtifact(kind)
+					if err != nil {
+						t.Fatal(err)
+					}
+					rec := preauthRequest(handler, stranger, kind, "192.0.2.83", http.MethodGet, "/auth/whoami")
+					if rec.Code != http.StatusTooManyRequests || queries.Load() != 0 {
+						t.Fatalf("unknown artifact = %d %s, %d queries", rec.Code, rec.Body.String(), queries.Load())
+					}
+				})
 			}
 		})
 	})

@@ -220,7 +220,7 @@ floor_plan=$(git -C "$floor_repo" diff --no-renames --name-only "$floor_before" 
 printf '%s' "$floor_plan" | jq -e '.["floor-bench"] == true' >/dev/null
 # Pin the workflow's extraction boundary as well as the classifier itself.
 # shellcheck disable=SC2016
-grep -F 'git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA"' "$script_dir/../../.github/workflows/ci.yml" >/dev/null
+grep -F 'plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)' "$script_dir/../../.github/workflows/ci.yml" >/dev/null
 
 # Benchmark smoke is a blocking step of test_core. Select its existing test
 # plan for every measured package, Go dependency, generated API and embedded
