@@ -26,6 +26,21 @@ if (!existsSync(here('../clients/ts/node_modules/zod'))) {
   throw new Error('clients/ts is not installed (zod unresolved): run `pnpm --dir clients/ts install --frozen-lockfile` first');
 }
 
+// Session replay config for the hosted demo. Other demo builds get no analytics.
+function demoAnalytics() {
+  const host = process.env['PUBLIC_POSTHOG_HOST'] ?? '';
+  const token = process.env['PUBLIC_POSTHOG_PROJECT_TOKEN'] ?? '';
+  if (process.env['POSTHOG_REQUIRED'] === 'true' && !(host && token)) {
+    throw new Error('PUBLIC_POSTHOG_HOST and PUBLIC_POSTHOG_PROJECT_TOKEN are required to build the hosted demo');
+  }
+  if (!host && !token) return null;
+  if (!host || !token) throw new Error('Set both PUBLIC_POSTHOG_HOST and PUBLIC_POSTHOG_PROJECT_TOKEN, or neither');
+  // This value opens connect-src, so accept only PostHog's own ingestion hosts.
+  if (!/^https:\/\/(eu|us)\.i\.posthog\.com$/.test(host)) throw new Error('PUBLIC_POSTHOG_HOST must be https://eu.i.posthog.com or https://us.i.posthog.com');
+  // The SDK reads the project's replay settings from the matching assets host.
+  return { host, token, connectSrc: `${host} ${host.replace('.i.posthog.com', '-assets.i.posthog.com')}` };
+}
+
 // The build is constrained by the server's CSP baseline, not by taste
 // (internal/server/spa.go asserts the header; internal/server/spa_test.go
 // asserts it has no `unsafe-inline`). Two settings below exist only to keep
@@ -37,17 +52,25 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), ...(mode === 'prototype' ? [prototypeMockApi()] : []), ...(mode === 'demo' ? [{
     name: 'demo-content-security-policy',
     apply: 'build',
-    transformIndexHtml: () => [{
-      tag: 'meta',
-      attrs: {
-        'http-equiv': 'Content-Security-Policy',
-        // Pages cannot supply Hikyo's response headers. Keep its strict asset
-        // policy, with no network connections or form submissions in the demo.
-        // frame-ancestors is header-only and cannot be enforced by a meta tag.
-        content: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'",
-      },
-      injectTo: 'head-prepend',
-    }],
+    transformIndexHtml: () => {
+      const analytics = demoAnalytics();
+      return [{
+        tag: 'meta',
+        attrs: {
+          'http-equiv': 'Content-Security-Policy',
+          // Pages cannot supply Hikyo's response headers. Keep its strict asset
+          // policy, with no form submissions and no network connections except
+          // PostHog when this build has analytics. Scripts stay same-origin.
+          // frame-ancestors is header-only and cannot be enforced by a meta tag.
+          content: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src ${analytics?.connectSrc ?? "'none'"}; base-uri 'none'; object-src 'none'; form-action 'none'`,
+        },
+        injectTo: 'head-prepend' as const,
+      }, ...(analytics === null ? [] : [{
+        tag: 'meta',
+        attrs: { 'data-posthog-host': analytics.host, 'data-posthog-key': analytics.token, 'data-posthog-connect': analytics.connectSrc },
+        injectTo: 'head' as const,
+      }])];
+    },
   } satisfies import('vite').Plugin] : [])],
   resolve: {
     alias: {

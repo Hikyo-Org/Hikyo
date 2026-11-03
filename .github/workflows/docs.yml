@@ -63,6 +63,10 @@ jobs:
       - name: Build and verify the browser-only demo
         # Copy after the docs service worker is built so demo assets are not
         # precached as documentation. The playground owns no service worker.
+        env:
+          POSTHOG_REQUIRED: true
+          PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
+          PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
         run: |
           pnpm --dir web run build:demo
           pnpm --dir web run test:demo
