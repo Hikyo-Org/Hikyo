@@ -10,12 +10,21 @@ Commit documentation in Markdown only. Do not commit new HTML documentation.
 HTML companions are local, offline-only artifacts for the user to read and
 validate; keep them outside Git and share local links when needed.
 
+## Pull requests target dev
+
+Once the `dev` branch exists, branch from it and open feature PRs with
+`gh pr create --base dev`. GitHub and `gh` default to `main`, whose
+`ci-queue-required` check then refuses feature PRs. Only same-repository `release/`
+and `hotfix/` branches, Dependabot security updates and the CI definitions dev
+admission refuses go to `main`. See the [branching guide](./docs/development/branching.md).
+
 ## Commits must be DCO signed-off
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
-`validation / preflight` CI job's DCO step (`scripts/ci/check-dco.sh`) fails the build when any
-commit in the range is missing one.
+trusted admission gates (`scripts/ci/pr-gate/queue_dco.go`, running `scripts/ci/check-dco.sh`) refuse
+a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits, on PRs
+it opened and on canonical `release/*` or `main` promotion heads that carry them.
 
 - Add both the signature and sign-off when you commit: `git commit -S -s`.
 - The trailer must match the commit's author identity exactly:
@@ -24,7 +33,7 @@ commit in the range is missing one.
   Signed-off-by: Your Name <your.email@example.com>
   ```
 
-- Every commit in the PR is checked, not just the tip. If you amend, rebase, or
+- Every non-merge commit in the PR is checked, not just the tip. If you amend, rebase, or
   add commits, each one still needs its own sign-off (`git rebase --signoff
   <base>` re-applies it across a range).
 - Sign off as you go. A missing sign-off on an already-pushed commit can only be
@@ -52,14 +61,15 @@ but it is not a substitute for this signature.
   scripts/git/install-hooks.sh
   ```
 
-  The hook checks every commit between `hikyo-upstream/main` and each branch being
-  pushed. Keep the hook installed; do not bypass it with `--no-verify`.
+  The hook checks every commit between `hikyo-upstream/main`, or `hikyo-upstream/dev`
+  when that leaves fewer, and each branch being pushed. Keep the hook installed; do not bypass it with `--no-verify`.
 - Commit normally with signing enabled. If `git commit -S -s` itself fails to
   sign, stop and report the exact error. Never disable or bypass signing.
-- Before every push, verify the complete pull-request range:
+- Before every push, verify the complete pull-request range, using the base branch
+  of your PR:
 
   ```sh
-  scripts/ci/check-commit-signatures.sh hikyo-upstream/main HEAD
+  scripts/ci/check-commit-signatures.sh hikyo-upstream/dev HEAD
   ```
 
   After pushing, confirm GitHub reports `verified: true` for the pushed commits.

@@ -44,6 +44,7 @@ import { Glyph } from '../ui/Glyph.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { KeyMoveConfirmDialog, type WideningRefusal } from './accessRules/KeyMoveConfirmDialog.tsx';
+import { JsonSchemaBuilder } from './JsonSchemaBuilder.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 import { selectOption } from './selectOption.ts';
@@ -1258,7 +1259,11 @@ function declarationToWrite(declaration: MatrixKey['declaration']): KeyDeclarati
   return {};
 }
 
+let lastDraftId = 0;
+
 type RuleDraft = {
+  /** Identity for rendering: a removed alternative's builder must not pass its rows to a neighbour. */
+  readonly draftId: number;
   readonly type: RuleType;
   readonly minLength: string;
   readonly maxLength: string;
@@ -1269,11 +1274,15 @@ type RuleDraft = {
   readonly members: string;
   readonly schemes: string;
   readonly jsonSchema: string;
+  /** A refusal the schema builder holds (a blank or duplicate field name), blocking save. */
+  readonly jsonSchemaError: string | null;
 };
 
 function ruleDraftFrom(rule: ReadRule | { type: RuleType }): RuleDraft {
   const full = rule as Partial<ReadRule> & { type: RuleType };
+  lastDraftId += 1;
   return {
+    draftId: lastDraftId,
     type: full.type,
     minLength: full.min_length === undefined ? '' : String(full.min_length),
     maxLength: full.max_length === undefined ? '' : String(full.max_length),
@@ -1284,6 +1293,7 @@ function ruleDraftFrom(rule: ReadRule | { type: RuleType }): RuleDraft {
     members: (full.members ?? []).join('\n'),
     schemes: (full.schemes ?? []).join(', '),
     jsonSchema: full.json_schema ?? '',
+    jsonSchemaError: null,
   };
 }
 
@@ -1341,6 +1351,7 @@ function buildRule(draft: RuleDraft): { rule?: KeyRule; error?: string } {
       break;
     }
     case 'json': {
+      if (draft.jsonSchemaError !== null) return { error: draft.jsonSchemaError };
       if (draft.jsonSchema.trim() !== '') rule.json_schema = draft.jsonSchema;
       break;
     }
@@ -1585,7 +1596,7 @@ function DeclarationEditor({
           </p>
           {alternatives.map((alternative, index) => (
             <RuleFields
-              key={index}
+              key={alternative.draftId}
               legend={`Alternative ${String(index + 1)}`}
               draft={alternative}
               disabled={update.isPending}
@@ -1768,7 +1779,9 @@ function RuleFields({
         <select
           className="mono"
           value={draft.type}
-          onChange={(event) => set('type', selectOption(RULE_TYPES, event.currentTarget.value))}
+          onChange={(event) =>
+            onChange({ ...draft, type: selectOption(RULE_TYPES, event.currentTarget.value), jsonSchemaError: null })
+          }
         >
           {RULE_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -1854,15 +1867,11 @@ function RuleFields({
         </label>
       ) : null}
       {draft.type === 'json' ? (
-        <label className="field">
-          <span>JSON Schema (2020-12)</span>
-          <textarea
-            className="mono"
-            rows={6}
-            value={draft.jsonSchema}
-            onChange={(event) => set('jsonSchema', event.currentTarget.value)}
-          />
-        </label>
+        <JsonSchemaBuilder
+          value={draft.jsonSchema}
+          error={draft.jsonSchemaError}
+          onChange={(text, error) => onChange({ ...draft, jsonSchema: text, jsonSchemaError: error })}
+        />
       ) : null}
     </fieldset>
   );

@@ -2,7 +2,6 @@
 set -eu
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 "$script_dir/../ci/test-core-packages_test.sh"
-"$script_dir/test-source_test.sh"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-stable-workflow.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 mkdir "$scratch/bin" "$scratch/dist"
@@ -96,6 +95,11 @@ cat >"$scratch/bin/go" <<'SH'
 #!/bin/sh
 set -eu
 case "$*" in
+  *' run -p 2 ./scripts/ci/source-proof --repository owner/repo --mode main --commit '*)
+    args=$*
+    [ "${args##* --commit }" = "$FIXTURE_COMMIT --authority-commit $FIXTURE_COMMIT" ]
+    [ "$FIXTURE_MODE" != red-ci ]
+    exit 0 ;;
   'run ./scripts/release/stable verify '*) ;;
   'run ./scripts/release/stable prepare '*)
     for last; do :; done
@@ -117,7 +121,7 @@ if [ "$1" = sign-blob ]; then
 fi
 SH
 chmod +x "$scratch/bin/gh" "$scratch/bin/go" "$scratch/bin/cosign"
-export GH_BIN="$scratch/bin/gh" COSIGN_BIN="$scratch/bin/cosign"
+export GH_BIN="$scratch/bin/gh" GO_BIN="$scratch/bin/go" COSIGN_BIN="$scratch/bin/cosign"
 "$script_dir/require-signed-tag.sh" owner/repo v1.0.0 "$commit" >/dev/null
 for FIXTURE_MODE in lightweight unsigned wrong-commit red-ci; do
   export FIXTURE_MODE

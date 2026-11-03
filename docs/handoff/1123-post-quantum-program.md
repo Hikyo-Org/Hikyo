@@ -41,7 +41,7 @@ are not rewritten or promoted into PQ proof.
 
 ## Continuation procedure
 
-1. Read the program and full owning issue; recheck canonical main, open PRs,
+1. Read the program and full owning issue; recheck `dev`, open PRs,
    comment decisions and ownership before taking work. Record exact base/head,
    complete changed paths and actual consuming code. Do not overwrite another
    active owner's implementation or downgrade a ready PR.
