@@ -27,3 +27,18 @@ func parallelReads(ctx context.Context, first, second func(context.Context) erro
 	wait.Wait()
 	return errors.Join(failures[:]...)
 }
+
+// settle runs independent reads at once and returns when all have finished.
+// Unlike parallelReads it never cancels the others after one fails: the caller
+// keeps each result and decides in the order the serial code would have.
+func settle(ctx context.Context, reads ...func(context.Context)) {
+	var wait sync.WaitGroup
+	for _, read := range reads {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			read(ctx)
+		}()
+	}
+	wait.Wait()
+}
