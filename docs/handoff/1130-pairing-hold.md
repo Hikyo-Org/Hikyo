@@ -147,8 +147,7 @@ Actions only the owner can take, none done here:
   DEC-10 fields, with a link to the note. Proposal sections "Cryptographic
   profile" and "Limits of the guarantee" were not edited in body.
 - **Dependency pin.** Hikyo pins `go-jose` v4.1.6 while v4.1.7 and v4.1.8 exist.
-  Updating it is a dependency change outside this task; a separate issue is being
-  filed by the coordinator, number to be added here when it exists.
+  Updating it is a dependency change outside this task; it is tracked in #1191.
 - **DEC-13 text.** The register's "`go-jose` lacks ML-DSA" is now stale. Not
   edited: the register is the owner's; replacement wording is proposed above.
 
