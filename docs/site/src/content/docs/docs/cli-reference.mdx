@@ -310,9 +310,13 @@ The shared dimensions are `--instance`, `--org`, `--project`, `--env`, and
 controlling terminal with stderr on it, an enumerated confirmation of the
 environment and key set, and a live disclosure window hold. Without a live
 window the CLI opens one: an authenticator code at the terminal where the
-environment's window allows it, otherwise a browser handoff to the passkey
-ceremony over the keys it will inject. The four conditions hold under
-`--config-only` too.
+environment's window allows it, otherwise a browser handoff to the
+reauthentication ceremony over the keys it will inject. The four conditions hold under
+`--config-only` too, and an environment whose window is 0 refuses that projection.
+
+Each launch is a `values export`, so it counts toward the export rate limit. The
+run injects the revision you confirmed. If a publish lands before the values are
+fetched, a full run is refused unless you hold `reveal-history`.
 
 ```text
 hikyo run [--config-only] [--allow-override KEY,KEY] [--project-directory DIR] [--token-file PATH] -- <command> [args...]

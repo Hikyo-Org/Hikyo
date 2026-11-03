@@ -114,7 +114,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	} else if err := client.Do(ctx, http.MethodGet, revealWindowPath(projectBase, env), nil, &window); err != nil {
 		return err
 	}
-	if window.Live {
+	// A successful disclosure spends a single-decision window, so one still live
+	// here is stale and possibly bound to other keys. A new ceremony replaces it.
+	if window.Live && !window.SingleDecision {
 		return nil
 	}
 	// Approval votes and bypasses require publish authority, not reveal. Their
