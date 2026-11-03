@@ -2,6 +2,7 @@
 
 import copy
 import io
+import json
 import shutil
 import subprocess
 import sys
@@ -196,7 +197,7 @@ class GitOpsTests(unittest.TestCase):
                         "--destination", str(chart.parent)], check=True, capture_output=True)
         return next(chart.parent.glob("*.tgz"))
 
-    def cli(self, provider, version, package):
+    def cli(self, provider, version, package, release=None):
         """Run the CLI with external calls faked; a refusal is returned, not raised."""
         values = self.directory / "input.yaml"
         values.write_text(yaml.safe_dump(self.values))
@@ -206,6 +207,8 @@ class GitOpsTests(unittest.TestCase):
 
         def boundary(*args):
             calls.append(args)
+            if args[:2] == ("gh", "release"):
+                return json.dumps(release or {"tagName": "v" + version, "isDraft": False, "isPrerelease": False})
             if args[:2] == ("cosign", "verify"):
                 return "[]"
             if args[:2] == ("helm", "pull"):
@@ -255,6 +258,21 @@ class GitOpsTests(unittest.TestCase):
                     }])
                 else:
                     self.assertFalse(documents["Application"]["spec"]["syncPolicy"]["automated"]["enabled"])
+
+    def test_stable_chart_requires_a_published_release_before_any_trust_check(self):
+        package = self.stable_package()
+        tag = "v" + STABLE
+        for release in ({"tagName": tag, "isDraft": True, "isPrerelease": False},
+                        {"tagName": tag, "isDraft": False, "isPrerelease": True},
+                        {"tagName": "v9.9.9", "isDraft": False, "isPrerelease": False}):
+            with self.subTest(release=release):
+                output, calls, refusal = self.cli("flux", STABLE, package, release)
+                self.assertIn("not a published stable release", refusal)
+                self.assertEqual(calls, [("gh", "release", "view", tag, "-R", "Hikyo-Org/Hikyo",
+                                          "--json", "tagName,isDraft,isPrerelease")])
+                self.assertFalse(output.exists())
+        nightly = [args for args in self.cli("flux", VERSION, self.package)[1] if args[0] == "gh"]
+        self.assertEqual(nightly, [])
 
     def test_chart_without_operator_root_key_is_refused_without_output(self):
         package = self.stable_package("1.0.0", root_key_env=False)

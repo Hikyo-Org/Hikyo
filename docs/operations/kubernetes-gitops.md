@@ -59,12 +59,8 @@ Hikyo server. Namespace and controller administration are operator actions.
    pins Flux 2.10.0 and Argo CD 3.5.6; other versions need their own recorded
    qualification.
 3. Select the exact publicly retrievable chart and record its version, OCI
-   manifest digest and full source commit. For a stable chart, first run
-   `gh release view vX.Y.Z -R Hikyo-Org/Hikyo --json isDraft,isPrerelease` and
-   confirm both are false. The tag job signs its chart before the draft is reviewed,
-   so a valid signature alone does not mean the chart was released, and the generator
-   does not make this check. Take the digest from that release's notes
-   or `chart-index.digest`, and the commit from
+   manifest digest and full source commit. For a stable chart, take the digest from
+   that release's notes or `chart-index.digest`, and the commit from
    `git rev-parse 'vX.Y.Z^{commit}'`. For a nightly, take all three from its
    successful [publisher receipt](signed-nightlies.md#nightly-helm-charts). A
    version label, moving `nightly` tag, or archive release alone is insufficient.
@@ -83,8 +79,10 @@ that reviewed record. Set `HIKYO_KUBE_CONTEXT` to the intended cluster
 context. These are public identifiers, not credentials. Stop if the selected
 package or its signatures are unavailable; do not substitute a source checkout.
 
-The generator verifies the chart digest with the workflow identity for that
-version, the GitHub issuer and the source SHA. It pulls that digest, checks the
+For a stable chart, the generator first requires `gh` to report a published,
+non-prerelease release for that tag. The tag job signs its chart before the draft
+is reviewed, so a valid signature alone does not mean the chart was released. It
+then verifies the chart digest with the workflow identity for that version, the GitHub issuer and the source SHA. It pulls that digest, checks the
 chart's version and channel or profile and its image binding, independently
 verifies the pinned image against the same source, and renders the real chart. A
 stable chart carries no source annotations, so its source binding is the signed

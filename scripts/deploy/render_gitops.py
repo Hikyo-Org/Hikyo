@@ -4,6 +4,7 @@
 import argparse
 import copy
 import ipaddress
+import json
 import re
 import subprocess
 import sys
@@ -48,6 +49,15 @@ def verify(reference: str, commit: str, version: str) -> None:
         "--certificate-identity", signing_identity(version),
         "--certificate-oidc-issuer", ISSUER,
         "--certificate-github-workflow-sha", commit)
+
+
+def check_published(version: str) -> None:
+    # The tag job signs before draft review, so a signature alone does not prove release.
+    tag = "v" + version
+    release = json.loads(run("gh", "release", "view", tag, "-R", "Hikyo-Org/Hikyo",
+                             "--json", "tagName,isDraft,isPrerelease"))
+    if release != {"tagName": tag, "isDraft": False, "isPrerelease": False}:
+        raise ValueError(f"{tag} is not a published stable release")
 
 
 def inspect_chart(package: Path, commit: str, version: str) -> dict:
@@ -217,6 +227,8 @@ def main() -> None:
         parser.error("output already exists; preserve the prior reviewed installation record")
     values = yaml.safe_load(args.values.read_text())
     validate_values(values)
+    if is_stable(args.chart_version):
+        check_published(args.chart_version)
     with tempfile.TemporaryDirectory(prefix="hikyo-gitops-") as temporary:
         work = Path(temporary)
         reference = CHART.removeprefix("oci://") + "@" + args.chart_digest
