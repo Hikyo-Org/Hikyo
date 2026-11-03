@@ -24,7 +24,7 @@ chart does not set `HIKYO_ROOT_KEY_FILE`, and it has no value that could add it.
 Under Flux 2.10.0 the same chart also fails to install: Flux versions it
 `1.0.0+<digest>`, and the chart copies that into an invalid `helm.sh/chart` label.
 Both are fixed in this source, so the first stable release cut from it can pass
-the generator. No stable chart has completed a controller install yet.
+the generator. No published stable chart has completed a controller install yet.
 See the [deployment matrix](deployment-support.md#runtime-matrix).
 
 These recipes do not authorize installation into an existing cluster. Source
@@ -104,6 +104,12 @@ supports a digest reference and keyless signer matching. The recipe repeats the
 selected release's issuer/subject constraint in-cluster. Source-SHA verification occurs in
 the generator; the controller's identity matcher alone does not check that
 certificate extension. Review and retain the generator's exact source record.
+
+Signature verification runs inside source-controller, so its pods need HTTPS egress
+to `tuf-repo-cdn.sigstore.dev` and `ghcr.io`. A node search domain with a wildcard
+DNS record can send those names elsewhere, and the OCIRepository then reports a TLS
+handshake failure. If that happens, test the same URL from a pod with and without a
+trailing dot on the hostname.
 
 ```sh
 python3 -B scripts/deploy/render_gitops.py \

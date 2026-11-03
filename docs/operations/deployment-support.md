@@ -60,15 +60,17 @@ The GitOps generator accepts stable and nightly charts, and the singleton guide'
 commands name the nightly publisher. The generator refuses stable 1.0.0, the only
 published stable chart, because that chart predates two changes in this source:
 
-- It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Without
-  that setting the 1.0.0 image refuses `admin create` with `no root key configured`.
-  The chart has no value that could add it, so the unmodified chart offers no
+- It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Inside a
+  running 1.0.0 pod, `admin create` refuses with `no root key configured`. The chart
+  has no value that could add the setting, so the unmodified chart offers no
   first-administrator route.
 - It does not normalize the `helm.sh/chart` label. Flux 2.10.0 verified its signature,
   then failed the install on the invalid label `hikyo-1.0.0+<digest>`.
 
-The first stable release cut from this source can pass the generator, but no stable
-chart has completed a controller install. No complete stable Kubernetes first-install
+The first stable release cut from this source can pass the generator, but no published
+stable chart has completed a controller install. An unsigned test chart built from this
+source, running the released 1.0.0 image, did install under Flux and created its first
+administrator inside the pod. No complete stable Kubernetes first-install
 runbook exists. The [GitOps prerequisites](kubernetes-gitops.md#prerequisites-and-artifact-selection)
 list what changes for a stable chart. To use the 1.0.0 chart without controllers,
 complete [stable bundle verification](https://hikyo.app/docs/installation/#verify-a-stable-bundle),
