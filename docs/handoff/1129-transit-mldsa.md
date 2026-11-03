@@ -61,6 +61,7 @@ does not satisfy the API contract (algorithm)" and no row is created.
 | Service | `transitAlgorithmOps` gains `mldsa65: sign, verify`; `Verify` takes the algorithm from the key row |
 | Audit | `TransitAlgorithmValues` gains `mldsa65` (create event enum). Operation events are unchanged: sizes only |
 | Migration 00083 (both engines) | Widens the `transit_keys.algorithm` CHECK. SQLite rebuilds the table (00067 pattern, `legacy_alter_table`); PostgreSQL drops and re-adds the constraint. No row changes. sqlc was regenerated: no generated query changed |
+| Legacy drill fixture | `internal/app/backup_upgrade_drill_test.go` enumerated migrations 45 to 82 and the ledger rows to delete; it now covers 83. No schema reversal is needed because the fixture drops the transit tables whole |
 | Build identity | `internal/buildcompat/development.json` regenerated against the CI-pinned `postgres:18@sha256:06cad38a...`; the diff is exactly the version-83 entry and the schema digest per engine. Without it every isolation test fails with "embedded migration bytes differ from verified build" |
 | ADR | Banner on `docs/adr/transit.md` (the proposal text plus one sentence that the public surface waits on the freeze, which is wider than the proposal); the proposal block in the migration ADR is now a pointer |
 | Docs | `docs/operations/transit-mldsa.md` |
@@ -144,7 +145,9 @@ measurement.
 | `go test -p 2 -count=1 ./internal/isolation/ -run TestTransitPublicSurfaceHolds` | PASS: real `app.Boot`, real CLI, both engines |
 | `go test -p 2 -count=1 ./internal/lint/...` | PASS (499 s under host load) with no `reviewed_pins.json` change: no raw SQL or reviewed function changed |
 | `go run ./scripts/release/compatibility --development --check internal/buildcompat/development.json` against the pinned PostgreSQL 18 image | PASS after regeneration |
-| Queued suites and `scripts/ci/fast-feedback.sh` | see the end of this file |
+| Queued (`agent-heavy`) `go test -p 2 -parallel 2 -run Transit ./internal/isolation/`, then `./internal/store/migrate/ ./internal/store/`, then `./internal/service/ ./internal/conformance/ ./internal/app/` (the last three matched no Transit-named test) with PostgreSQL | PASS |
+| Queued `go test -p 2 -parallel 2 -run 'Drill\|LegacyDrill' ./internal/app/ ./internal/store/upgrade/ ./internal/upgradegate/...` with PostgreSQL | PASS (app 485 s) |
+| `scripts/ci/fast-feedback.sh`, signature and DCO scripts, doc status | see the end of this file |
 
 ## Migration number
 
