@@ -636,6 +636,7 @@ server:
 kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
   hikyo operator
   hikyo config-rollout [--enrollment-file PATH] [--authority-public-key PATH]
+  hikyo config-rollout --authority-public-key PATH --print-authority-ids
 
 privileged local update helper (separate service; JSON config only):
   hikyo updater --config /etc/hikyo/updater.json

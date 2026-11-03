@@ -70,6 +70,16 @@ The browser first sends `prepare_only: true` with a stable idempotency key and e
 
 The reviewed plan digest binds owner, recovery incarnation, revision/snapshot, schema, fixed participants, current generation, external source versions and deployment effect. The UI labels the action **Reload live** or **Controlled rollout**. Final Apply reuses the request identity and includes the exact digest in fresh passkey/TOTP evidence. The final transaction rechecks authority, epoch, factor freshness, plan/job version and database clock before spending the proof once and recording the durable intent. Replayed or changed decisions cannot authorize another effect.
 
+> **Proposed revision (not operative; #1131, 2026-11-03).** Signed rollout commands
+> may carry, under an operator-installed enrollment `authority` record, one
+> Ed25519 and one ML-DSA-65 signature (or ML-DSA-65 alone), all required, over
+> bytes that bind the trust generation, key ids and target. The controller keeps a
+> generation floor in its journal Secret and refuses lower or substituted trust.
+> There is no in-band key transition (DEC-20 c). Without the record, behavior is
+> unchanged. The revision route for this spec is not stated by DEC-18; this is
+> the owning child's proposal, to be accepted by the owner. Operator procedure:
+> [config-rollout-authority](../operations/config-rollout-authority.md).
+
 External calls happen outside the final authorization transaction. Signed commands and sequence numbers are durably journaled so lost replies and worker restarts retry the authorized command. Journals and status contain identifiers/digests/receipts, not root keys or credential contents. Uncommitted private preparation lost on restart must be prepared again. Replacement nodes must verify installed aliases and template stamp before a runtime acknowledgement can establish convergence.
 
 ## Failure and deployment restoration

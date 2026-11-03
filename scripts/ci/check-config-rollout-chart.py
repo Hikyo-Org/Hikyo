@@ -137,6 +137,31 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
     assert enrollment["target"]["upgrade_sources"] == values["rollout"]["upgradeSources"]
     assert enrollment["target"]["initial_upgrade_source"] == "current"
     assert enrollment["target"]["stable_node_id"] == name + "-server"
+    assert "authority" not in enrollment, "default enrollment must stay the Ed25519 compatibility profile"
+    ed_id = "ed25519-sha256:" + "a" * 64
+    pq_id = "mldsa65-sha256:" + "b" * 64
+    strict = copy.deepcopy(values)
+    strict["rollout"]["authority"] = {"generation": 2, "required": ["ed25519", "mldsa65"], "keyIDs": [ed_id, pq_id]}
+    strict_enrollment = json.loads(next(d for d in render(strict) if d["kind"] == "ConfigMap" and d["metadata"]["name"] == executor + "-enrollment")["data"]["enrollment.json"])
+    assert strict_enrollment["authority"] == {"version": 1, "generation": 2, "required": ["ed25519", "mldsa65"], "key_ids": [ed_id, pq_id]}
+    without_authority = {k: v for k, v in strict_enrollment.items() if k != "authority"}
+    assert without_authority == enrollment, "strict profile must change only the authority object"
+    pq_only = copy.deepcopy(values)
+    pq_only["rollout"]["authority"] = {"generation": 3, "required": ["mldsa65"], "keyIDs": [pq_id]}
+    assert json.loads(next(d for d in render(pq_only) if d["kind"] == "ConfigMap" and d["metadata"]["name"] == executor + "-enrollment")["data"]["enrollment.json"])["authority"]["required"] == ["mldsa65"]
+    for broken in [
+        {"generation": 1, "required": ["ed25519"], "keyIDs": [ed_id]},
+        {"generation": 1, "required": ["mldsa65", "ed25519"], "keyIDs": [pq_id, ed_id]},
+        {"generation": 1, "required": ["ed25519", "mldsa65"], "keyIDs": [ed_id]},
+        {"generation": 1, "required": ["ed25519", "mldsa65"], "keyIDs": [pq_id, ed_id]},
+        {"generation": 1, "required": ["mldsa65"], "keyIDs": ["mldsa65-sha256:" + "B" * 64]},
+        {"generation": 0, "required": ["mldsa65"], "keyIDs": [pq_id]},
+        {"generation": 1, "required": ["mldsa65"], "keyIDs": [pq_id], "unknown": True},
+    ]:
+        bad = copy.deepcopy(values)
+        bad["rollout"]["authority"] = broken
+        settings.write_text(yaml.safe_dump(bad))
+        run("helm", "template", release, str(chart), "--namespace", namespace, "--kube-version", "1.36.1", "-f", str(settings), allowed=False)
     stateful = one("StatefulSet")["spec"]
     assert stateful["replicas"] == 1 and stateful["podManagementPolicy"] == "OrderedReady"
     assert stateful["updateStrategy"]["type"] == "OnDelete"

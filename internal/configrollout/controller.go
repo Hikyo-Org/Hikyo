@@ -22,20 +22,76 @@ type controllerJournal struct {
 type Controller struct {
 	client     kubernetes.Interface
 	enrollment Enrollment
-	public     ed25519.PublicKey
+	keys       PublicKeys
 	executor   *Kubernetes
 	now        func() time.Time
 }
 
+// NewController builds a compatibility-profile controller from one Ed25519 key.
+// An enrollment carrying an Authority needs NewControllerKeys.
 func NewController(client kubernetes.Interface, e Enrollment, public ed25519.PublicKey) (*Controller, error) {
-	if !validEnrollment(e) || len(public) != ed25519.PublicKeySize {
+	return NewControllerKeys(client, e, PublicKeys{Ed25519: public})
+}
+
+// NewControllerKeys refuses keys that are not exactly the enrolled ones, so a
+// swapped or extra key never becomes acceptable.
+func NewControllerKeys(client kubernetes.Interface, e Enrollment, keys PublicKeys) (*Controller, error) {
+	if !validEnrollment(e) {
 		return nil, ErrInvalid
+	}
+	if err := CheckKeys(e, keys); err != nil {
+		return nil, err
 	}
 	executor, err := NewKubernetes(client, e.Target)
 	if err != nil {
 		return nil, err
 	}
-	return &Controller{client: client, enrollment: cloneEnrollment(e), public: append(ed25519.PublicKey(nil), public...), executor: executor, now: time.Now}, nil
+	return &Controller{client: client, enrollment: cloneEnrollment(e), keys: PublicKeys{Ed25519: append(ed25519.PublicKey(nil), keys.Ed25519...), MLDSA65: keys.MLDSA65}, executor: executor, now: time.Now}, nil
+}
+
+// trustError is the closed refusal for an unanchorable journal: strict
+// enrollments report trust, compatibility keeps the historical class.
+func (c *Controller) trustError() error {
+	if c.enrollment.Authority != nil {
+		return ErrTrust
+	}
+	return ErrConflict
+}
+
+// reconcileTrust runs at takeover and restart, before any command. It refuses a
+// stale or substituted enrollment against the persisted generation floor, refuses
+// a retained journal entry the installed keys cannot anchor (so the failure is
+// visible at start, not a silent per-command refusal), and raises the floor.
+// Compatibility enrollments with no floor write nothing, so existing journals
+// stay byte-identical.
+func (c *Controller) reconcileTrust(ctx context.Context) error {
+	e := c.enrollment
+	journalSecret, err := fixedSecret(ctx, c.client, e.Target.Namespace, e.JournalSecret, e.JournalSecretUID)
+	if err != nil {
+		return err
+	}
+	recorded, err := parseTrustRecord(journalSecret.Data[trustKey])
+	if err != nil {
+		return err
+	}
+	current := trustFor(e)
+	if err := checkFloor(recorded, current); err != nil {
+		return err
+	}
+	if len(journalSecret.Data[journalKey]) > 0 {
+		var journal controllerJournal
+		if decode(journalSecret.Data[journalKey], &journal) != nil || !anchored(journal.Accepted, e, c.keys) {
+			return c.trustError()
+		}
+	}
+	if current == nil || recorded != nil && recorded.Generation == current.Generation {
+		return nil
+	}
+	putRecord(journalSecret, trustKey, current)
+	if _, err = c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, journalSecret, metav1.UpdateOptions{}); err != nil {
+		return apiError(err)
+	}
+	return nil
 }
 
 func (c *Controller) reconcile(ctx context.Context) error {
@@ -48,21 +104,34 @@ func (c *Controller) reconcile(ctx context.Context) error {
 		return nil
 	}
 	var signed SignedCommand
-	if decode(commandSecret.Data[commandKey], &signed) != nil || !verifyCommand(signed, e, c.public) {
+	if decode(commandSecret.Data[commandKey], &signed) != nil {
 		return ErrInvalid
 	}
+	// Only the verifier's own trust state authorizes a new command. A command
+	// from an older trust state is honored only as the already accepted one.
+	fresh := verifyCommand(signed, e, c.keys)
 	journalSecret, err := fixedSecret(ctx, c.client, e.Target.Namespace, e.JournalSecret, e.JournalSecretUID)
 	if err != nil {
 		return err
 	}
+	recorded, err := parseTrustRecord(journalSecret.Data[trustKey])
+	if err != nil {
+		return err
+	}
+	if err := checkFloor(recorded, trustFor(e)); err != nil {
+		return err
+	}
 	var journal controllerJournal
 	if len(journalSecret.Data[journalKey]) > 0 {
-		if decode(journalSecret.Data[journalKey], &journal) != nil || !verifyCommand(journal.Accepted, e, c.public) {
-			return ErrConflict
+		if decode(journalSecret.Data[journalKey], &journal) != nil || !anchored(journal.Accepted, e, c.keys) {
+			return c.trustError()
 		}
 	}
 	command := signed.Command
 	accepted := journal.Accepted.Command.Sequence
+	if !fresh && (accepted == 0 || digest(signed) != digest(journal.Accepted)) {
+		return ErrInvalid
+	}
 	if command.Sequence > accepted && accepted != 0 && journal.Response == nil && command.Action != ActionRestore {
 		// A later mailbox entry must not strand an already accepted operation.
 		// Finish its durable journal first, then accept the queued command.
@@ -93,6 +162,9 @@ func (c *Controller) reconcile(ctx context.Context) error {
 		journal.Accepted = signed
 		journal.Response = nil
 		putRecord(journalSecret, journalKey, journal)
+		if current := trustFor(e); current != nil && (recorded == nil || recorded.Generation < current.Generation) {
+			putRecord(journalSecret, trustKey, current)
+		}
 		journalSecret, err = c.client.CoreV1().Secrets(e.Target.Namespace).Update(ctx, journalSecret, metav1.UpdateOptions{})
 		if err != nil {
 			return apiError(err)

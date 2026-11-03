@@ -309,6 +309,30 @@
         "authorityKey": {
           "type": "string"
         },
+        "authority": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "generation": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "required": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["ed25519", "mldsa65"]
+              }
+            },
+            "keyIDs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^(ed25519|mldsa65)-sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
         "databaseSources": {
           "type": "object",
           "additionalProperties": {

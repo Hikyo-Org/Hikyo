@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/mldsa"
+	"crypto/rand"
 	"errors"
 	"testing"
 	"time"
@@ -157,6 +160,60 @@ func TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA(t *testing
 	}
 }
 
+// The persisted command is the strict envelope: two signatures, the trust
+// binding and about 5.7 KB of JSON in a TEXT column. Both engines must store
+// it, return it byte-identically (decodeRolloutCommand demands a canonical
+// round trip), and renew it without changing the binding or the decision.
+func TestCommittedDeploymentCarriesStrictEnvelopeAcrossRenewalBothEngines(t *testing.T) {
+	t.Parallel()
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		for _, action := range []configrollout.Action{configrollout.ActionSubmit, configrollout.ActionRestore} {
+			t.Run(string(engine)+"/"+string(action), func(t *testing.T) {
+				signers, keys := strictSigners(t)
+				enrollment := configrollout.Enrollment{ID: "enrolled", Target: configrollout.Target{Namespace: "hikyo", Deployment: "hikyo"}}
+				ids := keys.KeyIDs()
+				enrollment.Authority = &configrollout.Authority{Version: 1, Generation: 2, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
+				sign := func(command configrollout.Command) (configrollout.SignedCommand, error) {
+					return configrollout.SignCommandFor(t.Context(), enrollment, signers, command)
+				}
+				s, local, actor, session, base, restore := committedDeploymentFixtureSigned(t, engine, action == configrollout.ActionRestore, sign)
+				if action == configrollout.ActionRestore {
+					selfConfigReauthenticate(t, s, session, SelfConfigReauthTarget{Action: "rollout-restore", OwnerInstanceID: base.identity.OwnerInstanceID, Revision: restore.Revision, ExpectedGeneration: restore.ExpectedGeneration, SchemaVersion: restore.SchemaVersion, PlanDigest: restore.PlanDigest})
+					if _, err := s.RestoreDeployment(t.Context(), actor, restore); err != nil {
+						t.Fatal(err)
+					}
+				}
+				status, err := s.Status(t.Context(), local)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _, row, expired := expireCommittedDelivery(t, s, status.Job.ID)
+				if expired.Command.Authority == nil || len(expired.Signatures) != 2 || len(expired.Signature) != 0 {
+					t.Fatalf("persisted command is not the strict envelope: %+v", expired)
+				}
+				probe := &renewalDeploymentProbe{deploymentProbe: base, service: s}
+				s.Deployment = probe
+				if err := s.ReconcileRuntime(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				if len(probe.delivered) != 1 {
+					t.Fatal("expired strict command was not renewed and delivered")
+				}
+				got := probe.delivered[0]
+				if got.Command.Sequence <= uint64(row.Sequence) || got.Command.Action != action || got.Command.Intent != expired.Command.Intent || got.Command.PlanDigest != row.PlanDigest {
+					t.Fatal("renewal changed authority")
+				}
+				if got.Command.Authority == nil || got.Command.Authority.Generation != 2 || len(got.Signatures) != 2 {
+					t.Fatalf("renewal dropped the trust binding or a signature: %+v", got)
+				}
+				if len(got.Signatures[1].Signature) != 3309 {
+					t.Fatalf("ML-DSA-65 signature is %d bytes", len(got.Signatures[1].Signature))
+				}
+			})
+		}
+	}
+}
+
 func TestDeploymentRenewalRejectsChangedDecisionAndStaleRow(t *testing.T) {
 	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
@@ -182,4 +239,18 @@ func TestDeploymentRenewalRejectsChangedDecisionAndStaleRow(t *testing.T) {
 			}
 		})
 	}
+}
+
+func strictSigners(t *testing.T) (configrollout.Signers, configrollout.PublicKeys) {
+	t.Helper()
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pq, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signers := configrollout.Signers{Ed25519: private, MLDSA65: pq}
+	return signers, signers.Public()
 }
