@@ -199,4 +199,14 @@ environment, custody and a separate authorization; this ticket authorizes none.
 
 ## Final checks
 
-(Filled in after the last edit; see the PR body for the candidate SHA.)
+Run on the candidate before the final handoff-only commit (the head moves by that
+commit only; the PR body names the pushed head).
+
+| Check | Result |
+| --- | --- |
+| `go test -p 2 -parallel 2 -run 'PKI\|Pki\|Certificate\|Audit'` over `internal/isolation`, `service`, `server`, `cli`, `store/...`, `audit`, `api/...`, queued, throwaway PostgreSQL 18 | PASS (isolation 572 s) |
+| `go test -p 2 -timeout 40m ./internal/lint/...`, queued | NOT CLEAN: the 40 minute limit expired under host load (`panic: test timed out`). Rerun with `-timeout 100m`: every test passed except `TestGrantLockCatchesLocklessWriter/ui`, which failed with `couldn't run 'go': exec: WaitDelay expired` (infrastructure under load, unrelated to this change). That test alone, rerun: PASS. No `reviewed_pins.json` change is needed: no migration, no raw SQL and no reviewed function changed. Hosted CI runs the full package |
+| `scripts/ci/fast-feedback.sh` with base `f5d5491829d6` (the transport-policy tip), Node 26.12.1, queued | PASS: whitespace, Go formatting, test compile of the touched packages, shellcheck, actionlint, docs content check |
+| `scripts/ci/check-commit-signatures.sh` and `check-dco.sh` against `origin/dunky13/pqc-1127-transport-policy` | PASS (51 signed, 45 DCO) |
+| `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout) | PASS, 35 ledger entries |
+| Hosted CI, real-provider, deployment, runtime | NOTRUN |
