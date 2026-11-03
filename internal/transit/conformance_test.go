@@ -209,7 +209,10 @@ func TestCustodyConformanceSigningAndMAC(t *testing.T) {
 
 // A signing version's material signs only for its own binding: presented under
 // another key, version or scope, the custody either refuses or produces a
-// signature that does not verify under the stored public key.
+// signature that does not verify under the stored public key. The algorithm
+// binding of the derivation (an ed25519 and an mldsa65 key never share a seed)
+// is proven in internal/crypto, where the derived keys are visible; custody
+// cannot show it from outside.
 func TestCustodyConformanceMLDSATransplant(t *testing.T) {
 	for name, p := range providers(t) {
 		t.Run(name, func(t *testing.T) {
@@ -218,6 +221,9 @@ func TestCustodyConformanceMLDSATransplant(t *testing.T) {
 			v, err := p.Create(ctx, tg)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if genuine, err := p.Sign(ctx, tg, v, []byte("msg")); err != nil || !crypto.VerifyTransitSignature(crypto.TransitMLDSA65, v.PublicKey, []byte("msg"), genuine) {
+				t.Fatalf("the genuine binding must sign verifiably (control): %v", err)
 			}
 			for what, moved := range map[string]transit.Target{
 				"key":     func() transit.Target { m := tg; m.Binding.KeyID = "tk_2"; return m }(),
@@ -229,14 +235,6 @@ func TestCustodyConformanceMLDSATransplant(t *testing.T) {
 				if err == nil && crypto.VerifyTransitSignature(crypto.TransitMLDSA65, v.PublicKey, []byte("msg"), sig) {
 					t.Errorf("material signed for another %s", what)
 				}
-			}
-			// The algorithm is bound too: the same material opened as an ed25519 key
-			// is a different key, never the ML-DSA one.
-			other := tg
-			other.Binding.Algorithm = crypto.TransitEd25519
-			sig, err := p.Sign(ctx, other, v, []byte("msg"))
-			if err == nil && crypto.VerifyTransitSignature(crypto.TransitMLDSA65, v.PublicKey, []byte("msg"), sig) {
-				t.Error("material signed as another algorithm verified under the ml-dsa key")
 			}
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -180,7 +181,11 @@ func NewTransitDataKey(bits int) ([]byte, error) {
 
 // TransitKey is one version's derived operation key, held only for the span of
 // one operation. It carries no exported field and redacts itself in every
-// formatting surface. Destroy zeroes it.
+// formatting surface. Destroy zeroes the AEAD, HMAC and Ed25519 key bytes it
+// holds. It cannot zero an ML-DSA key: crypto/mldsa keeps the seed and the
+// expanded key inside the library and offers no way to erase them, so they
+// remain in the Go heap until garbage collection overwrites that memory (the
+// residual risk is recorded in docs/operations/transit-mldsa.md, owned by #1129).
 type TransitKey struct {
 	redactor
 	b    TransitBinding
@@ -233,7 +238,8 @@ func OpenTransitKey(material []byte, b TransitBinding) (*TransitKey, error) {
 	return k, nil
 }
 
-// Destroy zeroes the derived key. Best effort, like every Zero.
+// Destroy zeroes the derived key bytes this type holds. Best effort, like every
+// Zero, and not applicable to ML-DSA keys (see TransitKey).
 func (k *TransitKey) Destroy() {
 	if k == nil {
 		return
@@ -241,8 +247,8 @@ func (k *TransitKey) Destroy() {
 	Zero(k.key)
 	Zero(k.priv)
 	// shortcut: crypto/mldsa exposes no way to zero a private key, so the seed
-	// copy inside the library lives until the garbage collector reclaims it;
-	// revisit if the standard library adds a destroy method.
+	// and expanded key inside the library stay in the heap until reclaimed;
+	// recheck at every Go minor release (#1129 owns the residual risk).
 	k.pq = nil
 }
 
@@ -375,6 +381,33 @@ func VerifyTransitSignature(alg TransitAlgorithm, publicKey, message, payload []
 		return mldsa.Verify(pk, message, payload[2:], &mldsa.Options{Context: TransitMLDSASignContext}) == nil
 	}
 	return false
+}
+
+// ExposeTransitPublicKey returns the encoding a surface publishes for a stored
+// signing public key. Ed25519 keeps its raw 32 bytes. ML-DSA-65 is published as
+// the standard SubjectPublicKeyInfo DER (OIDs 2.16.840.1.101.3.4.3.17 to .19,
+// DEC-07), which stock tooling reads directly; the stored form stays the raw
+// FIPS 204 encoding. Any other algorithm, or a stored key the library refuses,
+// is an error.
+func ExposeTransitPublicKey(alg TransitAlgorithm, stored []byte) ([]byte, error) {
+	switch alg {
+	case TransitEd25519:
+		if len(stored) != ed25519.PublicKeySize {
+			return nil, ErrTransitFormat
+		}
+		return append([]byte(nil), stored...), nil
+	case TransitMLDSA65:
+		pk, err := mldsa.NewPublicKey(mldsa.MLDSA65(), stored)
+		if err != nil {
+			return nil, ErrTransitFormat
+		}
+		der, err := x509.MarshalPKIXPublicKey(pk)
+		if err != nil {
+			return nil, ErrTransitFormat
+		}
+		return der, nil
+	}
+	return nil, ErrTransitFormat
 }
 
 // EqualTransitMAC compares two MACs in constant time.

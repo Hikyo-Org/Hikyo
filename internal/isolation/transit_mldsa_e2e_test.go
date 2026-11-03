@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"crypto/mldsa"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -21,11 +24,12 @@ import (
 // The transit ML-DSA-65 signing key end to end (#1129, post-quantum migration
 // DEC-02, transit ADR amendment): create, sign, verify with the standard library
 // alone, rotate, apply version policy, compromise, retire, destroy, plus the
-// custody, authorization, restart, re-encryption and rotation-race rules, on both
-// engines and under both custody providers. The public HTTP surface is HOLD (the
-// API freeze refuses the enum growth), so this drives the real service,
-// chokepoint, store and audit trail; the handler-level refusal is tested in
-// internal/server.
+// custody, authorization, service re-creation, re-encryption and rotation-race
+// rules, on both engines and under both custody providers. The public HTTP
+// surface is HOLD (the API freeze refuses the enum growth), so this drives the
+// real service, chokepoint, store and audit trail. The refusal of mldsa65 by a
+// real server is tested in transit_cli_mldsa_hold_test.go. "Restart" below means
+// a new service struct and keyring over the same datastore, not a process restart.
 
 // independentVerify checks a transit signature value with nothing but the
 // standard library and the published layout: "hikyo:v<N>:" then base64url of
@@ -37,6 +41,7 @@ func independentVerify(t *testing.T, publicKey []byte, message []byte, value str
 	if !ok {
 		t.Fatalf("not a transit value: %.20q", value)
 	}
+	noteTransitProbes(nil, value)
 	payload, err := base64.RawURLEncoding.Strict().DecodeString(enc)
 	if err != nil || len(payload) != 3311 || payload[0] != 0x09 || payload[1] != 0x05 {
 		t.Fatalf("payload shape: len %d err %v", len(payload), err)
@@ -48,6 +53,24 @@ func independentVerify(t *testing.T, publicKey []byte, message []byte, value str
 	return mldsa.Verify(pk, message, payload[2:], &mldsa.Options{Context: "hikyo/transit/sign/v1"}) == nil
 }
 
+// transitAuditProbes collects every public key and signature the run produced,
+// in each textual form a payload could carry, so the audit check can search for
+// them rather than assume their absence. Subtests run sequentially.
+var transitAuditProbes []string
+
+func noteTransitProbes(public []byte, signatures ...string) {
+	if len(public) > 0 {
+		transitAuditProbes = append(transitAuditProbes,
+			base64.StdEncoding.EncodeToString(public[:48]), base64.RawURLEncoding.EncodeToString(public[:48]),
+			hex.EncodeToString(public[:48]))
+	}
+	for _, sig := range signatures {
+		if len(sig) >= 120 {
+			transitAuditProbes = append(transitAuditProbes, sig[40:100])
+		}
+	}
+}
+
 func publicKeyOf(t *testing.T, view service.TransitKeyView, version uint32) []byte {
 	t.Helper()
 	for _, v := range view.Versions {
@@ -55,6 +78,7 @@ func publicKeyOf(t *testing.T, view service.TransitKeyView, version uint32) []by
 			if len(v.PublicKey) != 1952 {
 				t.Fatalf("v%d public key is %d bytes", version, len(v.PublicKey))
 			}
+			noteTransitProbes(v.PublicKey)
 			return v.PublicKey
 		}
 	}
@@ -64,6 +88,7 @@ func publicKeyOf(t *testing.T, view service.TransitKeyView, version uint32) []by
 
 func TestTransitMLDSA65EndToEnd(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
+		transitAuditProbes = nil
 		svc, ext := transitEnv(t, db, "_pq")
 		for _, custody := range []string{"software", "external"} {
 			t.Run(custody, func(t *testing.T) { runTransitMLDSALifecycle(t, db, svc, ext, custody) })
@@ -73,6 +98,7 @@ func TestTransitMLDSA65EndToEnd(t *testing.T) {
 		t.Run("concurrent_rotation", func(t *testing.T) { runTransitMLDSARotationRace(t, svc) })
 		t.Run("restart_dek_rotation_and_reencrypt", func(t *testing.T) { runTransitMLDSAReencrypt(t, db, svc, ext) })
 		t.Run("creation_refusals", func(t *testing.T) { runTransitMLDSACreationRefusals(t, svc) })
+		t.Run("floors_do_not_end_classical_signing", func(t *testing.T) { runTransitFloorsDoNotEndSigning(t, svc) })
 		t.Run("audit_never_carries_signatures_or_keys", func(t *testing.T) { assertTransitMLDSAAuditClean(t, db) })
 	})
 }
@@ -120,6 +146,7 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 	// The 64 KiB bound is exact, for sign and verify.
 	big := bytes.Repeat([]byte{0x5a}, crypto.MaxTransitPlaintextBytes)
 	bs, err := svc.Sign(ctx, me, transitScope, key.Name, big, 0)
+	noteTransitProbes(nil, bs.Value)
 	if err != nil {
 		t.Fatalf("message at the bound: %v", err)
 	}
@@ -146,6 +173,7 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 	// --- substitution and malformed values --------------------------------
 	other := mustTransitKey(t, svc, service.CreateTransitKeyRequest{Name: name("other"), Algorithm: "mldsa65", Custody: custody})
 	otherSig, err := svc.Sign(ctx, me, transitScope, other.Name, msg, 0)
+	noteTransitProbes(nil, otherSig.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +296,7 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 		t.Fatal(err)
 	}
 	s3, err := svc.Sign(ctx, me, transitScope, key.Name, msg, 0)
+	noteTransitProbes(nil, s3.Value)
 	if err != nil || s3.KeyVersion != 3 {
 		t.Fatalf("sign after recovery = v%d, %v", s3.KeyVersion, err)
 	}
@@ -309,6 +338,34 @@ func runTransitMLDSALifecycle(t *testing.T, db *store.DB, svc *service.Transit, 
 	}
 	if view.Algorithm != "mldsa65" {
 		t.Fatalf("view = %+v", view.TransitKeyRecord)
+	}
+	rendered, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := string(rendered) + fmt.Sprintf("%+v", view) + hex.EncodeToString(rendered)
+	var materials []string
+	if custody == "software" {
+		materials = append(materials, queryStrings(t, db, `SELECT `+hexExpr(db, "material_ciphertext")+` FROM transit_key_versions WHERE key_id='`+key.ID+`' AND material_ciphertext IS NOT NULL`))
+	}
+	for _, m := range materials {
+		for _, line := range strings.Fields(strings.ToLower(m)) {
+			raw, err := hex.DecodeString(line)
+			if err != nil || len(raw) == 0 {
+				continue
+			}
+			if strings.Contains(seen, line) || strings.Contains(string(rendered), base64.StdEncoding.EncodeToString(raw)) {
+				t.Fatal("the key view carries sealed material")
+			}
+		}
+	}
+	if custody == "software" && len(materials) == 0 {
+		t.Fatal("no sealed material was found to check the view against")
+	}
+	for _, v := range view.Versions {
+		if len(v.PublicKey) != 1952 {
+			t.Fatalf("v%d: view public key is %d bytes", v.Version, len(v.PublicKey))
+		}
 	}
 
 	// --- destroy ------------------------------------------------------------------
@@ -488,6 +545,9 @@ func runTransitMLDSARotationRace(t *testing.T, svc *service.Transit) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if wins < 1 {
+		t.Fatalf("no rotation won among %d concurrent attempts", n)
+	}
 	if int(view.LatestVersion) != 1+wins || len(view.Versions) != 1+wins {
 		t.Fatalf("latest=%d versions=%d wins=%d: rotation lost or duplicated a version", view.LatestVersion, len(view.Versions), wins)
 	}
@@ -604,13 +664,17 @@ func runTransitMLDSACreationRefusals(t *testing.T, svc *service.Transit) {
 // no signature, public key or message body, and the decision-only records of the
 // operations exist.
 func assertTransitMLDSAAuditClean(t *testing.T, db *store.DB) {
-	for _, needle := range []string{
+	if len(transitAuditProbes) < 20 {
+		t.Fatalf("only %d public key and signature probes were collected; the audit search would prove nothing", len(transitAuditProbes))
+	}
+	for _, needle := range append([]string{
 		"hikyo:v", "payload to sign", "authz message body", "sealed before rotate-dek",
 		base64.StdEncoding.EncodeToString([]byte("payload to sign")),
 		"hikyo/transit/sign/v1",
-	} {
-		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE payload LIKE '%`+needle+`%'`); n != 0 {
-			t.Errorf("audit trail carries %q in %d events", needle, n)
+	}, transitAuditProbes...) {
+		escaped := strings.NewReplacer(`\`, `\\`, `_`, `\_`, `%`, `\%`).Replace(needle)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE payload LIKE '%`+escaped+`%' ESCAPE '\'`); n != 0 {
+			t.Errorf("audit trail carries %.24q in %d events", needle, n)
 		}
 	}
 	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='transit.operation' AND payload LIKE '%"operation":"sign"%'`); n == 0 {
@@ -621,5 +685,70 @@ func assertTransitMLDSAAuditClean(t *testing.T, db *store.DB) {
 	}
 	if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type='transit.key_created' AND payload LIKE '%mldsa65%'`); n == 0 {
 		t.Error("no ML-DSA key creation was audited with its algorithm")
+	}
+}
+
+// hexExpr renders a BLOB column as hex on either engine.
+func hexExpr(db *store.DB, column string) string {
+	if db.Engine() == store.EnginePostgres {
+		return "encode(" + column + ",'hex')"
+	}
+	return "hex(" + column + ")"
+}
+
+// runTransitFloorsDoNotEndSigning pins what the version floors do and do not do,
+// because operators migrating off Ed25519 will reach for them first: they only
+// cut off versions older than latest. With one version, both floors already sit
+// at latest and cannot go above it, so signing continues and the old signature
+// still verifies. Retiring the key is what stops new signatures (verification
+// continues), and disabling it is what stops verification.
+func runTransitFloorsDoNotEndSigning(t *testing.T, svc *service.Transit) {
+	ctx := tctx(t)
+	me := service.LocalPrincipal(alice)
+	msg := []byte("migrate off ed25519")
+	key := mustTransitKey(t, svc, service.CreateTransitKeyRequest{Name: "pq-floor-classic", Algorithm: "ed25519"})
+	old, err := svc.Sign(ctx, me, transitScope, key.Name, msg, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, two := uint32(1), uint32(2)
+	if _, err := svc.ConfigureKey(ctx, me, transitScope, key.Name, service.ConfigureTransitKeyRequest{MinEncryptVersion: &one, MinDecryptVersion: &one}); err != nil {
+		t.Fatalf("setting both floors to latest: %v", err)
+	}
+	if _, err := svc.ConfigureKey(ctx, me, transitScope, key.Name, service.ConfigureTransitKeyRequest{MinEncryptVersion: &two}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("a floor above latest = %v, want invalid", err)
+	}
+	if _, err := svc.ConfigureKey(ctx, me, transitScope, key.Name, service.ConfigureTransitKeyRequest{MinDecryptVersion: &two}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("a decrypt floor above latest = %v, want invalid", err)
+	}
+	again, err := svc.Sign(ctx, me, transitScope, key.Name, msg, 0)
+	if err != nil || !strings.HasPrefix(again.Value, "hikyo:v1:") {
+		t.Fatalf("with both floors at latest the key still signs under v1: %+v, %v", again, err)
+	}
+	if v, err := svc.Verify(ctx, me, transitScope, key.Name, msg, old.Value); err != nil || !v.Valid {
+		t.Fatalf("with both floors at latest the old signature still verifies: %+v, %v", v, err)
+	}
+	change := func(action string) error {
+		_, err := svc.ChangeKeyState(ctx, me, transitScope, key.Name, action, 0)
+		return err
+	}
+	if err := change("retire"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Sign(ctx, me, transitScope, key.Name, msg, 0); err == nil {
+		t.Fatal("a retired key signed")
+	} else {
+		wantConflictCause(t, err, "state")
+	}
+	if v, err := svc.Verify(ctx, me, transitScope, key.Name, msg, old.Value); err != nil || !v.Valid {
+		t.Fatalf("a retired key must keep verifying: %+v, %v", v, err)
+	}
+	if err := change("disable"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Verify(ctx, me, transitScope, key.Name, msg, old.Value); err == nil {
+		t.Fatal("a disabled key still verified")
+	} else {
+		wantConflictCause(t, err, "state")
 	}
 }

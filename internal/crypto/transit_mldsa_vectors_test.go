@@ -5,6 +5,7 @@ import (
 	"crypto/hkdf"
 	"crypto/mldsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -176,5 +177,46 @@ func TestTransitMLDSA65VectorsAgreeWithTheTransitCodePath(t *testing.T) {
 	}
 	if bytes.Equal(fresh, again) {
 		t.Error("two signatures are identical: signing is not hedged")
+	}
+}
+
+// The published form of an ML-DSA-65 public key is the standard SPKI (DEC-07),
+// readable by stock tooling; Ed25519 stays raw. The frozen key is parsed back
+// with the standard library alone and compared with the stored raw encoding.
+func TestExposeTransitPublicKey(t *testing.T) {
+	v := loadMLDSAVectors(t)
+	raw := unhex(t, v.PublicKey)
+	der, err := crypto.ExposeTransitPublicKey(crypto.TransitMLDSA65, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(der) != 1974 || !bytes.Contains(der, []byte{0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12}) {
+		t.Fatalf("SPKI is %d bytes or lacks the ML-DSA-65 OID 2.16.840.1.101.3.4.3.18", len(der))
+	}
+	parsed, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, ok := parsed.(*mldsa.PublicKey)
+	if !ok || !bytes.Equal(pk.Bytes(), raw) || pk.Parameters() != mldsa.MLDSA65() {
+		t.Fatal("published SPKI does not parse back to the stored ML-DSA-65 key")
+	}
+	edRaw := make([]byte, 32)
+	if got, err := crypto.ExposeTransitPublicKey(crypto.TransitEd25519, edRaw); err != nil || !bytes.Equal(got, edRaw) {
+		t.Fatalf("ed25519 public key changed: %v", err)
+	}
+	for name, c := range map[string]struct {
+		alg    crypto.TransitAlgorithm
+		stored []byte
+	}{
+		"short ml-dsa":    {crypto.TransitMLDSA65, raw[:1951]},
+		"ed25519 as pq":   {crypto.TransitMLDSA65, edRaw},
+		"long ed25519":    {crypto.TransitEd25519, raw},
+		"hmac":            {crypto.TransitHMACSHA256, edRaw},
+		"empty algorithm": {"", edRaw},
+	} {
+		if _, err := crypto.ExposeTransitPublicKey(c.alg, c.stored); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }

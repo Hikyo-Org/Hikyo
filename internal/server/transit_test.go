@@ -1,14 +1,20 @@
 package server
 
 import (
+	"bytes"
+	"crypto/mldsa"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 func TestTransitStateRejectsInvalidDelayBeforeService(t *testing.T) {
@@ -113,4 +119,55 @@ func TestTransitHandlersWithoutServiceReturnNotFound(t *testing.T) {
 			t.Fatalf("got %v, want not-found", err)
 		}
 	})
+}
+
+// The public key a response carries is the published encoding: Ed25519 raw,
+// ML-DSA-65 as SPKI (DEC-07). The public surface does not offer ML-DSA keys yet
+// (HOLD), so this exercises the response builder directly.
+func TestTransitKeyResponsePublishesTheAlgorithmEncoding(t *testing.T) {
+	view := func(alg string, public []byte) service.TransitKeyView {
+		return service.TransitKeyView{
+			TransitKeyRecord: store.TransitKeyRecord{
+				ID: "tk", Algorithm: alg, Custody: "software", State: "active", LatestVersion: 1,
+				CreatedAt: "2026-11-03T00:00:00Z", UpdatedAt: "2026-11-03T00:00:00Z",
+			},
+			Versions: []store.TransitVersionRecord{{Version: 1, PublicKey: public, HasMaterial: true, CreatedAt: "2026-11-03T00:00:00Z"}},
+		}
+	}
+	k, err := crypto.OpenTransitKey(make([]byte, crypto.TransitMaterialSize),
+		crypto.TransitBinding{Algorithm: crypto.TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := k.PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := transitKeyResponse(view("mldsa65", raw))
+	if err != nil || out.Versions[0].PublicKey == nil {
+		t.Fatalf("response: %v", err)
+	}
+	der, err := base64.StdEncoding.DecodeString(*out.Versions[0].PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		t.Fatalf("published ML-DSA public key is not SPKI: %v", err)
+	}
+	if pk, ok := parsed.(*mldsa.PublicKey); !ok || !bytes.Equal(pk.Bytes(), raw) {
+		t.Fatal("published SPKI is not the stored key")
+	}
+	edRaw := bytes.Repeat([]byte{7}, 32)
+	out, err = transitKeyResponse(view("ed25519", edRaw))
+	if err != nil || *out.Versions[0].PublicKey != base64.StdEncoding.EncodeToString(edRaw) {
+		t.Fatalf("ed25519 public key changed on the wire: %v", err)
+	}
+	// A stored key of the wrong shape fails visibly rather than being published.
+	if _, err := transitKeyResponse(view("mldsa65", edRaw)); err == nil {
+		t.Fatal("a malformed stored ML-DSA key was published")
+	}
+	if _, err := transitKeyResponse(view("mldsa87", raw)); err == nil {
+		t.Fatal("an unknown algorithm published a key")
+	}
 }

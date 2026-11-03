@@ -2,8 +2,12 @@ package crypto
 
 import (
 	"bytes"
+	"crypto/mldsa"
 	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -194,68 +198,77 @@ func FuzzTransitDecrypt(f *testing.F) {
 	})
 }
 
+// frozenMLDSA reads the frozen interoperability vector (a deterministic
+// signature, so every fuzz worker process agrees on the one authentic triple).
+func frozenMLDSA(f *testing.F) (public, message, payload []byte, wire string) {
+	f.Helper()
+	raw, err := os.ReadFile("testdata/transit_mldsa65_vectors.json")
+	if err != nil {
+		f.Fatal(err)
+	}
+	var v struct {
+		PublicKey   string `json:"public_key_hex"`
+		Message     string `json:"message"`
+		PayloadWire string `json:"payload_wire"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		f.Fatal(err)
+	}
+	public, err = hex.DecodeString(v.PublicKey)
+	if err != nil {
+		f.Fatal(err)
+	}
+	_, payload, err = ParseTransitValue(v.PayloadWire)
+	if err != nil {
+		f.Fatal(err)
+	}
+	return public, []byte(v.Message), payload, v.PayloadWire
+}
+
 // FuzzVerifyTransitMLDSA65 feeds arbitrary public keys, messages and signature
-// payloads to the verifier a verify request reaches. It must never panic, and
-// the only input it accepts is the genuine key, message and payload. This
-// covers the ML-DSA public-key and signature decoding.
+// payloads to the verifier a verify request reaches, covering the ML-DSA
+// public-key and signature decoding. It must never panic, and the only triple
+// it may accept is the frozen authentic one (a forgery would be a finding), which
+// the standard library must also accept.
 func FuzzVerifyTransitMLDSA65(f *testing.F) {
-	k, err := OpenTransitKey(make([]byte, TransitMaterialSize),
-		TransitBinding{Algorithm: TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})
-	if err != nil {
-		f.Fatal(err)
-	}
-	pub, err := k.PublicKey()
-	if err != nil {
-		f.Fatal(err)
-	}
-	msg := []byte("fuzz")
-	// Hedged signing differs per process; every worker therefore treats any
-	// accepted triple as genuine only if it verifies, and checks the invariant
-	// that matters: acceptance implies the exact sizes and identifier.
-	good, err := k.Sign(msg)
-	if err != nil {
-		f.Fatal(err)
-	}
-	f.Add(pub, msg, good)
-	f.Add(pub, msg, good[:len(good)-1])
-	f.Add(pub[:1951], msg, good)
+	public, message, payload, _ := frozenMLDSA(f)
+	f.Add(public, message, payload)
+	f.Add(public, message, payload[:len(payload)-1])
+	f.Add(public[:1951], message, payload)
+	f.Add(public, []byte("other"), payload)
 	f.Add([]byte{}, []byte{}, []byte{})
-	f.Add(make([]byte, 1952), msg, append([]byte{0x09, 0x05}, make([]byte, 3309)...))
-	f.Fuzz(func(t *testing.T, publicKey, message, payload []byte) {
-		if !VerifyTransitSignature(TransitMLDSA65, publicKey, message, payload) {
+	f.Add(make([]byte, 1952), message, append([]byte{0x09, 0x05}, make([]byte, 3309)...))
+	f.Fuzz(func(t *testing.T, publicKey, msg, p []byte) {
+		if !VerifyTransitSignature(TransitMLDSA65, publicKey, msg, p) {
 			return
 		}
-		if len(publicKey) != 1952 || len(payload) != 3311 || payload[0] != 0x09 || payload[1] != 0x05 ||
-			len(message) > MaxTransitPlaintextBytes {
-			t.Fatalf("accepted a malformed input: pub %d payload %d", len(publicKey), len(payload))
+		if !bytes.Equal(publicKey, public) || !bytes.Equal(msg, message) || !bytes.Equal(p, payload) {
+			t.Fatalf("accepted a triple other than the frozen authentic one: pub %d msg %d payload %d bytes", len(publicKey), len(msg), len(p))
+		}
+		pk, err := mldsa.NewPublicKey(mldsa.MLDSA65(), publicKey)
+		if err != nil || mldsa.Verify(pk, msg, p[2:], &mldsa.Options{Context: TransitMLDSASignContext}) != nil {
+			t.Fatal("the verifier accepted what the standard library refuses")
 		}
 	})
 }
 
 // FuzzParseTransitSignatureValue runs the wire parser and the ML-DSA verifier
-// together on arbitrary strings: nothing may panic and nothing but a
-// well-formed, authentic value verifies.
+// together on arbitrary strings: nothing may panic, and the only string that
+// parses and verifies against the frozen key and message is the frozen wire
+// value itself (the encoding is canonical).
 func FuzzParseTransitSignatureValue(f *testing.F) {
-	k, err := OpenTransitKey(make([]byte, TransitMaterialSize),
-		TransitBinding{Algorithm: TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})
-	if err != nil {
-		f.Fatal(err)
-	}
-	pub, _ := k.PublicKey()
-	sig, err := k.Sign([]byte("fuzz"))
-	if err != nil {
-		f.Fatal(err)
-	}
-	f.Add(FormatTransitValue(1, sig))
-	f.Add("hikyo:v1:CQU")
+	public, message, _, wire := frozenMLDSA(f)
+	f.Add(wire)
+	f.Add("hikyo:v3:CQU")
 	f.Add("hikyo:v1:" + strings.Repeat("A", 4415))
+	f.Add(wire + "=")
 	f.Fuzz(func(t *testing.T, s string) {
-		_, payload, err := ParseTransitValue(s)
+		_, p, err := ParseTransitValue(s)
 		if err != nil {
 			return
 		}
-		if VerifyTransitSignature(TransitMLDSA65, pub, []byte("fuzz"), payload) && len(payload) != 3311 {
-			t.Fatalf("verified a payload of %d bytes", len(payload))
+		if VerifyTransitSignature(TransitMLDSA65, public, message, p) && s != wire {
+			t.Fatalf("a string other than the frozen wire value verified: %.40q", s)
 		}
 	})
 }
