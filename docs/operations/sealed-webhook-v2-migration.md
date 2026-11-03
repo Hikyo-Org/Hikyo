@@ -1,7 +1,8 @@
 # Sealed webhook protocol 2: receiver and sender migration
 
 Status: **draft implementation of [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128),
-not operative, security approval: not given.** The protocol is the proposed
+not operative until the spec revision route is accepted and the implementation
+merges, security approval: not given.** The protocol is the proposed
 [section 11 of the sealed webhook spec](../spec/sealed-webhook.md#11-protocol-version-2-proposed-not-operative).
 Nothing here authorizes a production key change, a push to a live receiver, or
 retiring protocol 1. Follow the order: receiver first.
@@ -18,8 +19,24 @@ retiring protocol 1. Follow the order: receiver first.
 | Fingerprint | `sha256:...` | `swh2-mlkem768x25519-ed25519-mldsa65-sha256:...` |
 
 A protocol 1 target is byte-compatible and keeps working until you move it. A
-protocol 2 target never sends a protocol 1 request, not even after an error: a
+protocol 2 target never sends a protocol 1 request **after an error**: a
 receiver that cannot read protocol 2 leaves the effect unknown and retried.
+That is the only downgrade ruled out. An administrator can still restore the
+protocol 1 registry entry, after which retained targets deliver classically
+again (see the limits below).
+
+## Read this first: the reference tool is not production software
+
+`hikyo-receiver-example` is a documentation and test harness. It is **not
+shipped** in the Hikyo release and the release has no key generator for the
+instance's signing keys; build it from this repository's source
+(`go build ./cmd/hikyo-receiver-example`) on a host you trust. As a receiver it
+keeps all state in one plaintext JSON file (mode `0600`) that holds every
+delivered value, rewrites it whole on every apply (it now `fsync`s before it
+acknowledges, but there is no journal or backup), and keeps every idempotency
+key forever (the map is unbounded). Spec section 7 requires a durable apply
+before the acknowledgement; a real receiver must provide that itself. Do not
+point production traffic at the example.
 
 ## Limits you must know
 
@@ -27,26 +44,55 @@ receiver that cannot read protocol 2 leaves the effect unknown and retried.
   and a classical certificate. Strict TLS policy does not reach this hop
   (register row X19 on PR #1171), so there is no post-quantum transport or
   authenticity claim for it; the payload is protected by the hybrid recipient.
+- While a receiver serves **both** versions, a stolen or forged Ed25519 sender
+  key can still write or prune the values a route owns through the protocol 1
+  path, including values first delivered under protocol 2. The protocol 2
+  authenticity claim holds only after protocol 1 is retired on the receiver
+  (R-1128-A in the spec).
+- There is no rollback floor for this surface: restoring the protocol 1
+  registry entry returns retained targets to classical delivery (R-1128-B).
 - The age file key is 16 bytes (category 1 floor).
 - Values delivered under protocol 1 before the move are exposed to a recording
   adversary; rotate long-lived ones after the target is on protocol 2.
 - Only the dual suite exists. A signature set of ML-DSA-65 alone is a later
   suite and trust generation, not built.
 
+## Rules that decide the plan
+
+- **One generation per receiver.** The reference receiver, like the protocol,
+  checks one `generation` for both versions. **Keep the generation unchanged
+  when you move an origin to protocol 2.** Raising it on a receiver that serves
+  both versions breaks protocol 1 senders (and the reverse), so a generation
+  bump is for rotating the recipient or an acknowledgement key, and it moves
+  every target on that receiver.
+- **Keep the existing Ed25519 signing key.** One signer serves every target in
+  the registry. Replacing `signing_key_file` would make your remaining protocol
+  1 targets sign with a key their receivers do not pin. Generate only the
+  ML-DSA key; the Ed25519 half of the pair is the key you already use.
+- **Ownership is per route in one shared store, and a namespace has one
+  sentinel.** A second route in a namespace another route holds conflicts. Bind
+  the protocol 2 route in a new namespace, or prune the old route first.
+- **A conflict is recorded per revision.** After the receiver operator releases
+  names, publish a new revision; the same revision replays the recorded
+  conflict.
+
 ## Steps
 
 ### 1. Upgrade the receiver to read protocol 2 (receiver first)
 
-Run a receiver build that serves both paths. Protocol 1 senders see no change.
-With the reference receiver:
+Run a receiver build that serves both paths, with its generation unchanged.
+Protocol 1 senders see no change. With the reference receiver:
 
 ```sh
 hikyo-receiver-example keygen -protocol 2 -dir ./v2-keys
 ```
 
 This writes `identity-hybrid.age`, `ack.pem` and `ack-mldsa65.pem` with mode
-`0600` and prints only `recipient_key`, `ack_key` and `ack_key_mldsa65`. Add to
-the receiver configuration (keep the protocol 1 members for the transition):
+`0600` and prints only `recipient_key`, `ack_key` and `ack_key_mldsa65`. The
+Ed25519 acknowledgement key (`ack_key_file`) is shared by both versions: if you
+already run a protocol 1 receiver, keep your existing `ack.pem` and do not
+pass the new one. Add to the receiver configuration (keep the protocol 1
+members for the transition):
 
 ```json
 {
@@ -56,46 +102,44 @@ the receiver configuration (keep the protocol 1 members for the transition):
 }
 ```
 
-The Ed25519 acknowledgement key (`ack_key_file`) is shared by both versions.
 Back up the new files in a failure domain separate from the receiver host.
 
-### 2. Generate the Hikyo instance's signing keys
+### 2. Generate the instance's ML-DSA signing key
 
-On the Hikyo host, through protected input:
+On the Hikyo host, through protected input, with a binary built from source:
 
 ```sh
 umask 077
 hikyo-receiver-example sender-keygen -dir /etc/hikyo/sealed
 ```
 
-It writes `signing-ed25519.pem` and `signing-mldsa65.pem` (mode `0600`) and
-prints each public key and key id. Pin both on the receiver as one **pair**:
+It writes `signing-mldsa65.pem` (mode `0600`) and prints its public key and key
+id. It does **not** touch your Ed25519 key (`-with-ed25519` exists only for a
+new installation). Read your existing Ed25519 public key with
+`hikyo-receiver-example pubkey -pem /path/to/signing_key_file`. Pin both on the
+receiver as one **pair**:
 
 ```json
 "senders_v2": [{ "key": "ed25519:<hex>", "key_mldsa65": "mldsa65:<hex>" }]
 ```
-
-Read the public keys again later with
-`hikyo-receiver-example pubkey -pem FILE`.
 
 ### 3. Compute the fingerprint and read it over an independent channel
 
 ```sh
 hikyo-receiver-example fingerprint -protocol 2 \
   -origin https://recv.example -recipient age1pq1... \
-  -ack-key ed25519:<hex> -ack-key-mldsa65 mldsa65:<hex> -generation 2
+  -ack-key ed25519:<hex> -ack-key-mldsa65 mldsa65:<hex> -generation <the current generation>
 ```
 
 Read the result to the instance admin by voice or another channel you control.
-Use a **higher generation** than the protocol 1 entry of the same origin.
 
-### 4. Add the protocol 2 target
+### 4. Change the registry entry to protocol 2
 
 The registry (`HIKYO_SEALED_WEBHOOK_FILE`) gains a top-level
 `signing_key_file_mldsa65` and, per target, `"protocol": 2` and
-`ack_key_mldsa65`. One origin is configured once: change the entry in place
-(the `recipient_key`, both ack keys, `generation`, `protocol` and
-`confirmed_fingerprint` move together).
+`ack_key_mldsa65`. An origin is configured once, so you change the entry **in
+place**: `recipient_key`, both ack keys, `protocol` and `confirmed_fingerprint`
+move together; `generation` and `signing_key_file` stay as they are.
 
 ```json
 {
@@ -105,39 +149,50 @@ The registry (`HIKYO_SEALED_WEBHOOK_FILE`) gains a top-level
   "targets": [{
     "id": "payments", "origin": "https://recv.example", "protocol": 2,
     "recipient_key": "age1pq1...", "ack_key": "ed25519:...", "ack_key_mldsa65": "mldsa65:...",
-    "generation": 2, "timeout_seconds": 5, "max_response_bytes": 4096,
+    "generation": 1, "timeout_seconds": 5, "max_response_bytes": 8192,
     "confirmed_fingerprint": "swh2-mlkem768x25519-ed25519-mldsa65-sha256:..."
   }]
 }
 ```
 
-The server refuses to start on a mismatched fingerprint, a protocol 2 target
-without the ML-DSA material, ML-DSA material on a protocol 1 target, an unused
-`signing_key_file_mldsa65`, or a key file readable by group or other. The
-fingerprint changes, so Hikyo targets bound under the protocol 1 entry fail
+`max_response_bytes` must be at least **5120** for a protocol 2 target (a real
+acknowledgement is about 4,961 bytes); activation refuses less. The server also
+refuses to start on a mismatched fingerprint, a protocol 2 target without the
+ML-DSA material, ML-DSA material on a protocol 1 target, an unused
+`signing_key_file_mldsa65`, or a key file readable by group or other.
+
+The fingerprint changes, so Hikyo targets bound under the protocol 1 entry fail
 closed with a destination mismatch before any request. Re-bind them: prune
-through the old boundary first (or retain and have the receiver release the
-names), then add a new target. Run `hikyo adapter test` on the new target: a
-verified acknowledgement signed by both receiver keys also proves the receiver
-holds the private keys.
+through the old boundary first (or retain them and have the receiver operator
+release their names), then add a new target, in a new namespace if the old
+route is retained. `hikyo adapter test` on the new target checks that the
+responder holds **both acknowledgement keys** (a verified acknowledgement signed
+by both) and that the receiver processed a probe. It does not prove the
+responder holds the hybrid identity; confirm that with the receiver operator.
 
 ### 5. Verify with a real push to a non-production namespace
 
 Use a test namespace you own. Confirm the receiver log shows only
-`/hikyo/v2/sync`, a stripped or altered message is refused with no
-acknowledgement, and a replay is answered `already_applied`.
+`/hikyo/v2/sync` for the new target, a stripped or altered message is refused
+with no acknowledgement, and a replay is answered `already_applied`. Expect a
+manual resync to re-deliver the same values (new generation, new keys).
 
 ### 6. Rollback
 
-- **Sender:** restore the protocol 1 entry (its generation and fingerprint) in
-  the registry and remove `signing_key_file_mldsa65`. Targets bound under
-  protocol 1 work again; targets bound under protocol 2 fail closed until the
-  registry returns to them.
+- **Sender:** restore the protocol 1 entry (its fingerprint and unchanged
+  generation) and remove `signing_key_file_mldsa65`. Targets still bound under
+  protocol 1 and not pruned resume. Protocol 2 routes fail closed. A route you
+  pruned does not come back: a re-bound protocol 1 route conflicts with names
+  the protocol 2 route now owns until the receiver operator releases them, and
+  you then publish a new revision.
 - **Receiver:** only to a build that still reads protocol 2. Rolling it back to
-  protocol 1 only leaves protocol 2 targets unconverged; they never downgrade.
-- Never re-enable a retired key pair by restoring its files: the receiver
-  refuses a pair after its `not_after`, and a changed generation or fingerprint
-  fails closed on the sender.
+  protocol 1 leaves protocol 2 targets unconverged; they do not downgrade.
+- Do not re-enable a retired key pair by restoring its files: the receiver
+  refuses a pair after its `not_after`, and a changed fingerprint fails closed
+  on the sender.
+- Rolling the registry back is an administrator action that removes PQ
+  verification for those targets. This surface has no floor that prevents it
+  (R-1128-B); record the decision.
 
 ### 7. Key overlap and retirement
 
@@ -146,11 +201,13 @@ acknowledgement, and a replay is answered `already_applied`.
   hours), install the new key files and restart Hikyo, then drop the old pair
   after the window. A pair rotates as a unit: a half-rotated pair matches
   nothing. Rotation does not change the fingerprint.
-- **Receiver recipient or acknowledgement key rotation:** a new generation, a
-  new fingerprint and a re-bind.
+- **Receiver recipient or acknowledgement key rotation:** a new generation and
+  fingerprint and a re-bind; the generation moves for both versions on a
+  receiver that serves both.
 - **Retire protocol 1 on the receiver** (remove `identity_file`, the protocol 1
   `senders` and answer 404 on `/hikyo/v1/sync`) only after no sender uses it.
-  That is a separate decision with its own record; nothing here makes it.
+  That is a separate decision with its own record, and it is what ends the
+  classical write path (R-1128-A). Nothing here makes it.
 - Do not destroy the old identity while retained ciphertext still needs it.
 
 ## Troubleshooting
@@ -158,6 +215,11 @@ acknowledgement, and a replay is answered `already_applied`.
 | Symptom | Cause |
 |---|---|
 | Hikyo does not start: `endpoint fingerprint was not confirmed` | The fingerprint was computed for other inputs; recompute with `-protocol 2` and the exact origin, keys and generation |
+| Hikyo does not start: `max response bytes must be at least 5120` | A protocol 2 acknowledgement is about 5 KB; set `max_response_bytes` to 5120 or more (8192 is a good value) |
+| Probes and pushes report `acknowledgement exceeded the configured size bound` | The same bound on a build that predates the check; raise it. The receiver may already have applied the value; the retry is answered `already_applied` |
 | Every push is unknown and retried | The receiver does not serve protocol 2 yet (step 1), or the sender pair is not pinned as a pair |
+| `rejected: generation_mismatch` | The sender's generation differs from the receiver's one generation. Keep them equal for both versions |
+| Every protocol 1 target stopped signing correctly | `signing_key_file` was replaced; restore the Ed25519 key the receivers pin and use `signing_key_file_mldsa65` for the new key |
+| `conflict: exists_unowned` on `MANAGED_BY_HIKYO` | Another route holds the namespace sentinel; use a new namespace or prune the old route, then publish a new revision |
 | `provider rejected: unauthorized` | The tenant binding does not authorize the namespace on the receiver |
 | Targets fail with a destination mismatch | The fingerprint or generation changed; re-bind (step 4) |
