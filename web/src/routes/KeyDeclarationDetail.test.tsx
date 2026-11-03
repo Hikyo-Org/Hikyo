@@ -852,11 +852,113 @@ function setTextarea(textarea: HTMLTextAreaElement, value: string): void {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+describe('KeyDeclarationDetail JSON Schema builder', () => {
+  function jsonKey(jsonSchema: string): MatrixKey {
+    return { ...record, declaration: { rule: { type: 'json', json_schema: jsonSchema } } };
+  }
+
+  async function renderJson(jsonSchema: string) {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: jsonKey(jsonSchema) });
+    dbMode();
+    return render();
+  }
+
+  /** A presence-only edit: the rule fields are never touched. */
+  async function editPresenceOnly(container: HTMLElement): Promise<void> {
+    const required = [...container.querySelectorAll('select')].find((select) =>
+      select.closest('label')?.textContent?.startsWith('Required in'),
+    );
+    if (required === undefined) throw new Error('Required in select missing');
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(required, 'all');
+      required.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  it.each([
+    ['a representable schema', '{"type":"object"}'],
+    ['a schema with a rule the builder cannot show', '{"type":"string","pattern":"^a+$"}'],
+  ])('writes %s back unchanged after a presence-only edit', async (_label, jsonSchema) => {
+    const view = await renderJson(jsonSchema);
+    await editPresenceOnly(view.container);
+    await act(async () => buttonBy(view.container, 'Save value rules').click());
+
+    expect(mocks.updateDeclaration).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDeclaration.mock.calls[0]?.[0]).toMatchObject({
+      declaration: { rule: { type: 'json', json_schema: jsonSchema } },
+    });
+    await view.unmount();
+  });
+
+  it('keeps an unrepresentable schema as raw JSON with a note, and shows the builder for a representable one', async () => {
+    const raw = await renderJson('{"type":"string","pattern":"^a+$"}');
+    expect(textOf(raw.container)).toContain('the builder cannot show');
+    expect(buttonBy(raw.container, 'Advanced: edit as JSON Schema (2020-12)').getAttribute('aria-expanded')).toBe('true');
+    await raw.unmount();
+
+    const shown = await renderJson('{"type":"object"}');
+    expect(textOf(shown.container)).not.toContain('the builder cannot show');
+    expect(buttonBy(shown.container, 'Add field')).toBeDefined();
+    await shown.unmount();
+  });
+
+  it('refuses to save while a field has no name, then saves the built schema', async () => {
+    const view = await renderJson('{"type":"object"}');
+    await act(async () => buttonBy(view.container, 'Add field').click());
+    await act(async () => buttonBy(view.container, 'Save value rules').click());
+
+    expect(mocks.updateDeclaration).not.toHaveBeenCalled();
+    expect(textOf(view.container)).toContain('Every field needs a name.');
+
+    const name = [...view.container.querySelectorAll('input')].find((input) =>
+      input.closest('.field')?.textContent?.startsWith('Field name'),
+    );
+    if (name === undefined) throw new Error('field name input missing');
+    await act(async () => typeInto(name, 'host'));
+    await act(async () => buttonBy(view.container, 'Save value rules').click());
+
+    expect(mocks.updateDeclaration).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(mocks.updateDeclaration.mock.calls[0]?.[0].declaration.rule.json_schema)).toEqual({
+      type: 'object',
+      properties: { host: { type: 'string' } },
+      required: ['host'],
+    });
+    await view.unmount();
+  });
+});
+
 describe('KeyDeclarationDetail alternatives and advisories', () => {
   const anyOf: MatrixKey = {
     ...record,
     declaration: { any_of: [{ type: 'url', schemes: ['postgres'] }, { type: 'string', min_length: 1 }] },
   };
+
+  it('takes a removed alternative\'s builder rows and refusal with it, not onto a neighbour', async () => {
+    const schema = '{"type":"object"}';
+    mocks.key.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        ...record,
+        declaration: {
+          any_of: [{ type: 'string' }, { type: 'json', json_schema: schema }, { type: 'integer' }],
+        },
+      },
+    });
+    mocks.definitions.mockReturnValue({ data: { definitions_source: 'db', can_declare_keys: true, can_edit_definitions: true }, isSuccess: true, isError: false, isRefetchError: false });
+    const view = await render();
+    await act(async () => buttonBy(view.container, 'Add field').click());
+    await act(async () => {
+      [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Remove alternative')?.click();
+    });
+    // The blank row belongs to the json alternative and is still there, refusing the save.
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(1);
+    await act(async () => buttonBy(view.container, 'Save value rules').click());
+    expect(mocks.updateDeclaration).not.toHaveBeenCalled();
+    expect(textOf(view.container)).toContain('Alternative 1: Every field needs a name.');
+    await view.unmount();
+  });
 
   it('edits any_of alternatives in place: add by kind, remove down to the minimum, save the list', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: anyOf });
