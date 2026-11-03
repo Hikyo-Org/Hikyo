@@ -9,6 +9,7 @@
     "browser-operations",
     "---Installation---",
     "installation",
+    "kubernetes-gitops",
     "build-from-source",
     "---Concepts---",
     "core-concepts",
