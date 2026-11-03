@@ -196,6 +196,7 @@ func TestDevAdmissionRechecksLiveBaseAndApprovals(t *testing.T) {
 // The hosted path: a moved admission fails the job, so ci-queue-retry reruns it.
 func TestDevMovementFailsSoTheRetryReassesses(t *testing.T) {
 	t.Setenv("GITHUB_REF", "refs/heads/main")
+	t.Setenv("GITHUB_RUN_ATTEMPT", "1") // The barrier would give way to attempt 3's terminal refusal.
 	moves := map[string]func(*queueFixture){
 		"none": func(*queueFixture) {},
 		"dev advanced": func(f *queueFixture) {

@@ -254,8 +254,8 @@ so a new sixty-second budget) when a publisher job's reconcile step failed,
 including a job its one-minute timeout then cancelled. Worker group jobs share
 the publisher's name and get the same reruns, and so does a failed setup, because
 reconcile always runs. The run attempt is the only loop bound: attempt 3 publishes
-the terminal refusal, unless the PR or its base moved during it, and is never rerun,
-the retry workflow does not follow
+the terminal refusal, unless the PR, its base, the rules or the feedback attempt
+moved during it, and is never rerun, the retry workflow does not follow
 itself, and it holds only `actions: write`, checks nothing out and runs no
 repository code. It follows only the three publisher workflows by path, and only
 their real triggers on `main` or `dev`, or `pull_request_target`, which runs the
@@ -263,8 +263,8 @@ base branch's file. A pass that already published its verdict keeps it when the
 work clock ends a moment later. A pending record blocks like any other; the rerun,
 not the cron, settles it. The record stays pending (blocking) until the next event
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
-never fails, if the PR or its base moves during attempt 3, or if setup fails on
-attempt 3, which publishes nothing.
+never fails, if the PR, its base, the rules or the feedback attempt moves during
+attempt 3, or if setup fails on attempt 3, which publishes nothing.
 
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses
@@ -278,12 +278,14 @@ file list at GitHub's 300-file limit all reassess every PR. A push to `main`, th
 dispatch and PR events are unchanged. An empty selection leaves the run green and
 skips the publisher job.
 
-A dev publisher whose final checks see anything move, such as `dev`, the rules or
-a verifier result that refuses only now, publishes its pending barrier and fails, so
-the retry reassesses that head within minutes. Any other pending record, or a refusal
-that a later dev commit would clear, including one from a transient verifier failure
-on the first pass, waits for the next PR event, feedback callback, `main` push,
-scheduled run or dispatch. GitHub throttles
+A dev publisher whose final checks see `dev`, the rules, the feedback attempt, the
+fork vouch or the verifier result change publishes its pending barrier and fails, so
+the retry reassesses that head within minutes. A moved head instead leaves the job
+green, since the new head's own event reassesses it. When only the verifier or vouch
+changed, the reserve replaces the barrier with its pending record, and on attempt 3
+with the terminal refusal. Any other pending record, or a refusal that a later dev
+commit would clear, including one from a transient verifier failure on the first pass,
+waits for the next PR event, feedback callback, `main` push, scheduled run or dispatch. GitHub throttles
 the schedule to hours, so dispatch when it matters:
 `gh workflow run ci-dev-gate.yml --ref main -f pr_number=N`.
 
