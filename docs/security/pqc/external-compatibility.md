@@ -172,7 +172,7 @@ so a classical chain is never assumed.
 
 Classification, evidence, recheck trigger, consumer impact if a strict-style
 policy is demanded, concrete follow-up, and the exception. Owner for every row is
-**Marc Went** (default under DEC-10). Follow-ups `F-nn` are **proposed, unfiled**;
+**Marc Went** (default under DEC-10). Follow-ups `F-nn` are filed as #1175 to #1185;
 this work created no issue.
 
 | ID | Class | Evidence (read 2026-11-03) | Recheck trigger | Consumer impact | Follow-up | Exception |
@@ -202,24 +202,24 @@ this work created no issue.
 | X23 | unknown | source: `awssm/auth.go`, `client.go` (code read, not run); the AWS blog does not name STS | An authorized run of each ambient source; AWS names STS | Strict not selectable; SDK-owned sources bypass the vetted transport | F-02, F-11 | E-07, E-08 |
 | X24 | unknown | source: installer scripts; host `curl` library unknown | A named host library; E-11 and E-15 close | Strict not selectable; transport is not the authenticity control | F-02 | None for transport (not a hop-table row); authenticity E-11, E-15 (#1132) |
 
-### Proposed follow-ups (unfiled)
+### Follow-ups
 
 Each line is a title and a one-sentence body that can be filed as written. All
 are owned by Marc Went; the parent files them. Rows served are in Table B.
 
 | ID | Title | Body | Rows |
 | --- | --- | --- | --- |
-| F-01 | Decide what strict means for the GitHub sealed-box submission | Decide whether strict policy disables the GitHub Actions secret route (the provider requires a libsodium sealed box, so there is no PQ alternative and no second wrapper) or leaves it an exception, and record E-06 with that outcome. HOLD | X01 |
-| F-02 | Authorized read-only capture of the negotiated TLS group on external hops | In a named environment, capture the negotiated TLS group and certificate key type for each external hop, record peer and version, and update the matching exception row; no provider write. | X02 to X06, X11, X17, X19, X20, X22, X23, X24 |
-| F-03 | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. | X07 |
-| F-04 | Decide whether to track OpenSSH's composite SSH signature | Decide whether Hikyo adopts `ssh-mldsa44-ed25519` for SSH CA keys given DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites, before any code. | X08 |
-| F-05 | Decide WebAuthn credential parameters and recovery for ML-DSA | Decide whether the relying party offers ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes) and how enrollment and recovery work. | X09 |
-| F-06 | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. | X10, X12 |
-| F-07 | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
-| F-08 | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
-| F-09 | Decide per-route strict selection for external hops | The owner narrows it under DEC-06 (strict stays on the listener and owned clients) or moves it to a named ticket; see [strict-route refusal](#strict-route-refusal). HOLD | all |
-| F-10 | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
-| F-11 | Run the AWS ambient credential sources in an authorized environment | In a named AWS environment, run IMDS, ECS and IRSA credential discovery and record the transport each uses and whether it can negotiate a hybrid group. | X23 |
+| [F-01](https://github.com/Hikyo-Org/Hikyo/issues/1175) | Decide what strict means for the GitHub sealed-box submission | Decide whether strict policy disables the GitHub Actions secret route (the provider requires a libsodium sealed box, so there is no PQ alternative and no second wrapper) or leaves it an exception, and record E-06 with that outcome. HOLD | X01 |
+| [F-02](https://github.com/Hikyo-Org/Hikyo/issues/1176) | Authorized read-only capture of the negotiated TLS group on external hops | In a named environment, capture the negotiated TLS group and certificate key type for each external hop, record peer and version, and update the matching exception row; no provider write. | X02 to X06, X11, X17, X19, X20, X22, X23, X24 |
+| [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. | X07 |
+| [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decide whether Hikyo adopts `ssh-mldsa44-ed25519` for SSH CA keys given DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites, before any code. | X08 |
+| [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decide whether the relying party offers ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes) and how enrollment and recovery work. | X09 |
+| [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. | X10, X12 |
+| [F-07](https://github.com/Hikyo-Org/Hikyo/issues/1181) | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
+| [F-08](https://github.com/Hikyo-Org/Hikyo/issues/1182) | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
+| [F-09](https://github.com/Hikyo-Org/Hikyo/issues/1183) | Decide per-route strict selection for external hops | The owner narrows it under DEC-06 (strict stays on the listener and owned clients) or moves it to a named ticket; see [strict-route refusal](#strict-route-refusal). HOLD | all |
+| [F-10](https://github.com/Hikyo-Org/Hikyo/issues/1184) | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
+| [F-11](https://github.com/Hikyo-Org/Hikyo/issues/1185) | Run the AWS ambient credential sources in an authorized environment | In a named AWS environment, run IMDS, ECS and IRSA credential discovery and record the transport each uses and whether it can negotiate a hybrid group. | X23 |
 
 ### Residual risk by route class
 
