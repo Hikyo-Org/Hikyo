@@ -20,9 +20,9 @@ and [GitOps runbook](../operations/kubernetes-gitops.md) describe this candidate
   independent source reviews and a self-contained delivery report.
 
 Stable 1.0.0 published from `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` while this
-draft was open, and its chart excludes this work. The guides and generator here
-cover nightly charts only and refuse the stable chart. This work does not add an
-unconditional stable-release gate, merge the draft, publish a release, or
+draft was open, and its chart excludes this work. The owner chose to add stable
+support here: the generator now accepts stable charts and refuses 1.0.0 for the
+reasons recorded below. This work does not add an unconditional stable-release gate, merge the draft, publish a release, or
 authorize a production installation/upgrade. Human
 maintainer/adversarial security review remains required under CONTRIBUTING.
 
@@ -38,8 +38,9 @@ commands, and the Kind missing-root fixture removes both flag and environment
 sources. Original trust, signing and runtime admission boundaries are retained.
 
 The GitOps generator verifies the selected chart and its matching image against
-the exact nightly workflow, issuer and source SHA. It checks source/version/profile
-metadata and the real Helm render before writing any output. Values accept the
+the workflow identity for that version, issuer and source SHA. It checks
+version and channel or profile metadata, source annotations on a nightly, and the
+real Helm render before writing any output. Values accept the
 manual singleton surface with existing Secret references, independent claims and
 native TLS. Image overrides, secret-value fields, HA, delivery/configuration
 operators, unattended enrollment and cluster-wide admission installation refuse.
@@ -95,7 +96,11 @@ This draft does not implement either by changing an installation flag.
 | Stable and nightly tag coexistence | PASS with Helm 3.16.1 and a disposable registry: unpinned and `>=1.0.0` pulls resolved to `1.0.0`, not a nightly. Helm 4 was not exercised |
 | Hosted CI / protected merge / human security review | Pending on the new pushed head; local source review is not independent human acceptance |
 | Published nightly chart / clean-client production signatures | HOLD: this lane has not run the real publisher. On 2 November 2026 the anonymous registry listed only stable `1.0.0` |
-| Stable chart GitOps | NOT IN SCOPE: 1.0.0 lacks the Flux label normalization and staged root-key path. Generator refusal is tested; stable support is an owner decision |
+| Stable chart generator | PASS with Helm 4.2.3 and 3.16.1 fixtures, which fake the digest pull: stable `X.Y.Z` (major 1 or higher) binds `release.yml@refs/tags/vX.Y.Z` for Cosign and the Flux subject, plus the `stable` channel. A chart without `HIKYO_ROOT_KEY_FILE` is refused with no output for both providers. Mutating the root-key check, identity, subject or channel check fails tests |
+| Signed draft chart | DOCUMENTED, NOT ENFORCED: the tag job signs before draft review, so a signature alone does not prove release. The runbook requires a published, non-prerelease release; the generator does not call GitHub |
+| Real published 1.0.0 through the generator | REFUSED as designed with Helm 4.2.3 and Cosign: chart and image signatures verified against `2ac7bb36`, then the render was refused on the missing root-key setting, for Flux and Argo, with no output |
+| Real 1.0.0 image `admin create` (`sha256:ef518761...`), no root-key setting | OBSERVED FAILURE from `docker run`, not a pod: `crypto: no root key configured: set --root-key-file or HIKYO_ROOT_KEY`. The chart has no value that adds the setting |
+| Real Flux 2.10.0 on real 1.0.0, Kind, zero replicas | Resources came from `manifests()` directly, bypassing the generator's refusal, because this probe only observes the controller. Signature verified with that release subject and the exact digest stored. Install then failed on `metadata.labels` value `hikyo-1.0.0+514d368ba7c9`; no Deployment was created. Argo was not exercised on stable, and no stable chart has completed a controller install |
 | Actual Hikyo boot/admin, CSI/CNI/remount, populated migration and restore | NOTRUN by the GitOps campaign; retain separate runtime acceptance |
 
 Review rechecks used OpenAI `gpt-6.1-sol` at high reasoning and inspected the

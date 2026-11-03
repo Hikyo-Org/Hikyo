@@ -34,10 +34,9 @@ nightly chart, follow the
 [complete first-install runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-singleton.md).
 It distinguishes chart publication from source availability and keeps existing
 manual installations on their separate upgrade path.
-For controller ownership of a nightly chart, use
+For controller ownership of a signed chart, use
 [Kubernetes GitOps](/docs/kubernetes-gitops/) for Flux and Argo CD configurations
-with exact chart pins and explicit activation. These nightly recipes do not accept
-stable charts.
+with exact chart pins and explicit activation. These recipes refuse stable 1.0.0.
 
 ## Stable downloads
 

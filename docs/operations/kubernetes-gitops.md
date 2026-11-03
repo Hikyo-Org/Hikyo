@@ -1,21 +1,36 @@
 # Install Hikyo with Flux or Argo CD
 
-These recipes install the exact nightly Helm chart into a **fresh singleton
+These recipes install an exact signed Helm chart into a **fresh singleton
 PostgreSQL installation with manual custody**. Flux starts suspended; Argo CD
 requires manual synchronization. Both use an immutable chart digest and the
 chart's matching image digest. They do not enroll unattended updates or supply
 an automatic migration coordinator. Every populated release change still uses
 the full-stop, backup, readable-restore and migration procedure below.
 
-The generator accepts nightly charts only, and nightlies remain unsupported
-prereleases. It requires a nightly version, the `nightly.yml` signing identity and
-the `nightly/v1` chart profile, so it refuses stable charts, including 1.0.0.
-See the [deployment matrix](deployment-support.md#runtime-matrix) for that chart.
+The version you select decides what the generator requires:
+
+| Version | Signing identity | Chart identity |
+| --- | --- | --- |
+| Stable `X.Y.Z` | `release.yml` at tag `vX.Y.Z` | `stable` update channel |
+| Nightly | `nightly.yml` on `main` | `nightly/v1` profile and source annotations |
+
+Nightlies remain unsupported prereleases. Passing the generator does not qualify a
+stable chart; record its controller and application results as described below.
+
+**Stable 1.0.0 is refused, and no published stable chart passes yet.** The 1.0.0
+chart does not set `HIKYO_ROOT_KEY_FILE`, and it has no value that could add it.
+`admin` has no root-key flag, so the first-administrator step fails with
+`no root key configured`. The 1.0.0 image and chart signatures themselves verify.
+Under Flux 2.10.0 the same chart also fails to install: Flux versions it
+`1.0.0+<digest>`, and the chart copies that into an invalid `helm.sh/chart` label.
+Both are fixed in this source, so the first stable release cut from it can pass
+the generator. No stable chart has completed a controller install yet.
+See the [deployment matrix](deployment-support.md#runtime-matrix).
 
 These recipes do not authorize installation into an existing cluster. Source
 tests, controller reconciliation, application readiness and publication are
-separate evidence. Nightly chart publication remains a prerequisite, not an
-assumption.
+separate evidence. Publication of the chart you select remains a prerequisite, not
+an assumption.
 
 ## Prerequisites and artifact selection
 
@@ -30,15 +45,29 @@ Hikyo server. Namespace and controller administration are operator actions.
    Secrets, authenticated public bundle and operator pin, and separately
    qualified public/private installation claims. Keep private recovery custody
    outside Git. Existing claims alone do not prove that their contents are ready.
+   That runbook is written for a nightly. For a stable chart, change these steps:
+   - Build the bundle with the
+     [stable assembler](manual-upgrades.md#assemble-a-public-stable-bundle-offline),
+     not `--nightly`.
+   - Authenticate the chart and image with `release.yml@refs/tags/vX.Y.Z`.
+   - Take the version and digests from the published release, not a nightly
+     publisher record.
+   - Skip the source-revision annotation check, because stable charts carry none.
 2. Use Python 3.11 or newer with PyYAML 6.0.3, Helm with OCI digest support,
-   Cosign 3.1.3, kubectl and jq. The publisher and controller fixture use
+   Cosign 3.1.3, kubectl and jq, plus an authenticated `gh` for a stable chart. The publisher and controller fixture use
    Helm 4.2.3. The controller campaign pins Flux 2.10.0 and Argo CD 3.5.6;
    other versions need their own recorded qualification.
-3. Select the exact publicly retrievable nightly chart from its successful
-   [publisher receipt](signed-nightlies.md#nightly-helm-charts). Record its
-   chart version, OCI manifest digest and full source commit. A version label,
-   moving `nightly` tag, or archive release alone is insufficient. Older
-   nightlies do not acquire charts retroactively.
+3. Select the exact publicly retrievable chart and record its version, OCI
+   manifest digest and full source commit. For a stable chart, first run
+   `gh release view vX.Y.Z -R Hikyo-Org/Hikyo --json isDraft,isPrerelease` and
+   confirm both are false. The tag job signs its chart before the draft is reviewed,
+   so a valid signature alone does not mean the chart was released, and the generator
+   does not make this check. Take the digest from that release's notes
+   or `chart-index.digest`, and the commit from
+   `git rev-parse 'vX.Y.Z^{commit}'`. For a nightly, take all three from its
+   successful [publisher receipt](signed-nightlies.md#nightly-helm-charts). A
+   version label, moving `nightly` tag, or archive release alone is insufficient.
+   Older nightlies do not acquire charts retroactively.
 
 From the repository root, prepare nonsecret values:
 
@@ -49,16 +78,18 @@ cp chart/hikyo/examples/singleton-manual.yaml operator-values.yaml
 ```
 
 Set `HIKYO_CHART_VERSION`, `HIKYO_CHART_DIGEST` and `HIKYO_SOURCE_COMMIT` from
-that reviewed publisher record. Set `HIKYO_KUBE_CONTEXT` to the intended cluster
+that reviewed record. Set `HIKYO_KUBE_CONTEXT` to the intended cluster
 context. These are public identifiers, not credentials. Stop if the selected
 package or its signatures are unavailable; do not substitute a source checkout.
 
-The generator verifies the chart digest with the exact nightly main workflow
-identity, GitHub issuer and source SHA. It pulls that digest, checks the chart's
-version/profile/source/image binding, independently verifies the pinned image
-against the same source, and renders the real chart. It accepts only the manual
-singleton values surface, existing Secret references, separate custody claims
-and native TLS. Image overrides, secret-value fields, cluster-wide policy
+The generator verifies the chart digest with the workflow identity for that
+version, the GitHub issuer and the source SHA. It pulls that digest, checks the
+chart's version and channel or profile and its image binding, independently
+verifies the pinned image against the same source, and renders the real chart. A
+stable chart carries no source annotations, so its source binding is the signed
+tag identity and workflow SHA. The render must set `HIKYO_ROOT_KEY_FILE`. The
+generator accepts only the manual singleton values surface, existing Secret
+references, separate custody claims and native TLS. Image overrides, secret-value fields, cluster-wide policy
 installation, HA, delivery/configuration operators and unattended enrollment
 refuse. It writes a new output file only after these checks pass and never
 contacts Kubernetes. Existing output files are not overwritten.
@@ -71,7 +102,7 @@ that [signed-upgrade contract](../adr/signed-upgrade-compatibility.md).
 
 Flux's [OCIRepository](https://fluxcd.io/flux/components/source/ocirepositories/)
 supports a digest reference and keyless signer matching. The recipe repeats the
-nightly issuer/subject constraint in-cluster. Source-SHA verification occurs in
+selected release's issuer/subject constraint in-cluster. Source-SHA verification occurs in
 the generator; the controller's identity matcher alone does not check that
 certificate extension. Review and retain the generator's exact source record.
 

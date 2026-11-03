@@ -3,7 +3,7 @@
 This is the deployment entry-point inventory. Read [installation](https://hikyo.app/docs/installation/)
 for verification and platform commands, [the singleton Kubernetes runbook](kubernetes-singleton.md)
 for a fresh PostgreSQL installation from a nightly chart, [Flux/Argo CD recipes](kubernetes-gitops.md)
-for controller-owned nightly installation, and [manual upgrades](manual-upgrades.md)
+for controller-owned installation, and [manual upgrades](manual-upgrades.md)
 for existing installations. Artifact availability, a valid configuration, and a
 healthy installation are separate facts.
 
@@ -53,16 +53,24 @@ a chart signature for runtime recovery custody or a signed migration route.
 | Multi-node application HA | Shared root authority and externally HA PostgreSQL | Full stop of all writers, one verified migrator, exact-target boot | App-node availability does not provide database HA, zero-downtime schema upgrades or multi-region DR |
 | Kubernetes configuration executor | Narrowly enrolled singleton bootstrap-source changes | Existing administrator-approved configuration protocol | Not a general server release updater; separate from secrets delivery |
 | Secrets delivery operator | `HikyoInstance` / `HikyoSecret` to native Secrets | Reconciles delivery and permitted consumer rollouts | Does not install or upgrade the Hikyo server |
-| Flux server installation | Exact-digest OCIRepository and namespaced HelmRelease/RBAC; generated after nightly chart/image verification | Suspended by default; explicit activation, no rollback/uninstall remediation; manual full-stop migration | Controller mechanics and actual application/migration acceptance are separate |
-| Argo CD server installation | Exact-digest generic OCI Application and restricted AppProject; generated after nightly chart/image verification | Manual sync, no automatic self-heal/pruning; manual full-stop migration | Chart rendering is Argo-owned, not a Helm release; no built-in Cosign plugin is added |
+| Flux server installation | Exact-digest OCIRepository and namespaced HelmRelease/RBAC; generated after chart/image verification; stable 1.0.0 is refused | Suspended by default; explicit activation, no rollback/uninstall remediation; manual full-stop migration | Controller mechanics and actual application/migration acceptance are separate |
+| Argo CD server installation | Exact-digest generic OCI Application and restricted AppProject; generated after chart/image verification; stable 1.0.0 is refused | Manual sync, no automatic self-heal/pruning; manual full-stop migration | Chart rendering is Argo-owned, not a Helm release; no built-in Cosign plugin is added |
 
-The singleton and GitOps guides cover nightly charts only, and the generator refuses
-stable charts, including 1.0.0. That chart also predates two changes in this source:
-the `helm.sh/chart` label normalization Flux's OCI digest version needs, and exposing
-the staged root-key path to in-pod operator commands. `admin` has no root-key flag of
-its own, and the first-administrator flow on that chart has not been exercised.
+The GitOps generator accepts stable and nightly charts, and the singleton guide's
+commands name the nightly publisher. The generator refuses stable 1.0.0, the only
+published stable chart, because that chart predates two changes in this source:
 
-No complete stable Kubernetes first-install runbook exists yet. For a stable chart,
+- It does not set `HIKYO_ROOT_KEY_FILE`, and `admin` has no root-key flag. Without
+  that setting the 1.0.0 image refuses `admin create` with `no root key configured`.
+  The chart has no value that could add it, so the unmodified chart offers no
+  first-administrator route.
+- It does not normalize the `helm.sh/chart` label. Flux 2.10.0 verified its signature,
+  then failed the install on the invalid label `hikyo-1.0.0+<digest>`.
+
+The first stable release cut from this source can pass the generator, but no stable
+chart has completed a controller install. No complete stable Kubernetes first-install
+runbook exists. The [GitOps prerequisites](kubernetes-gitops.md#prerequisites-and-artifact-selection)
+list what changes for a stable chart. To use the 1.0.0 chart without controllers,
 complete [stable bundle verification](https://hikyo.app/docs/installation/#verify-a-stable-bundle),
 confirm the chart digest against the release notes, then use the
 [packaged chart setup](https://hikyo.app/docs/kubernetes-operator/#install-the-operator)

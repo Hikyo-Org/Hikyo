@@ -4,8 +4,8 @@ This installs a **new, empty** PostgreSQL-backed Hikyo server using explicit
 manual release/custody inputs. It is not HA, an upgrade command, or an
 unattended-enrollment procedure. This example uses a signed nightly chart.
 Nightlies remain unsupported prereleases, and this example does not turn one into
-a supported release. Its commands authenticate the nightly publisher, so they do
-not apply to the stable 1.0.0 chart; see the
+a supported release. Its commands authenticate the nightly publisher. The stable
+1.0.0 chart cannot complete this runbook's first-administrator step; see the
 [deployment matrix](deployment-support.md#runtime-matrix). See the
 [unattended operator-command gap](deployment-support.md#unattended-operator-command-gap)
 before choosing a different initial custody model.

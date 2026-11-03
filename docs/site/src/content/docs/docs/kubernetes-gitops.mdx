@@ -1,6 +1,6 @@
 ---
 title: Kubernetes GitOps
-description: Install an exact nightly Hikyo chart with Flux or Argo CD and retain explicit migration approval.
+description: Install an exact signed Hikyo chart with Flux or Argo CD and retain explicit migration approval.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/kubernetes-gitops.mdx
 ---
 
@@ -8,8 +8,11 @@ Hikyo provides Flux and Argo CD installation recipes for a fresh singleton
 PostgreSQL server with manual custody. Both select the exact OCI chart digest
 and matching image. Flux starts suspended; Argo CD requires manual sync.
 
-These recipes accept signed nightly charts only, and nightlies remain unsupported
-prereleases. The generator refuses stable charts, including 1.0.0; for stable, use
+The generator accepts signed stable and nightly charts, and nightlies remain
+unsupported prereleases. It refuses stable 1.0.0, the only published stable chart:
+that chart gives `hikyo admin create` no root key, and it fails to install under
+Flux. The first stable release cut after those fixes can pass the generator, though
+no stable chart has completed a controller install. For 1.0.0 artifacts, use
 [stable downloads](/docs/installation/#stable-downloads).
 
 Use the [complete GitOps runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/kubernetes-gitops.md)
@@ -31,7 +34,8 @@ From a repository checkout, copy
 `chart/hikyo/examples/singleton-manual.yaml` to `operator-values.yaml` and set your
 HTTPS origin and existing Secret/PVC references. Use Python with PyYAML, Helm
 with OCI digest support and Cosign. Select the exact chart version, chart digest
-and full source commit from its verified publisher record.
+and full source commit from the published stable release or the nightly's verified
+publisher record. The runbook lists both sources.
 
 ```sh
 python3 -B scripts/deploy/render_gitops.py \
@@ -43,8 +47,8 @@ python3 -B scripts/deploy/render_gitops.py \
 ```
 
 Choose `--provider argo-cd` and a new output filename for Argo instead. The
-generator verifies chart and image signatures against the exact nightly workflow
-and source, checks their metadata, renders the chart, and writes the selected
+generator verifies chart and image signatures against the workflow identity for that
+version and the source commit, checks their metadata, renders the chart, and writes the selected
 controller configuration. It performs no cluster actions. Review the output and
 use the runbook's server dry-run and explicit activation steps.
 

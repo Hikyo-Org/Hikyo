@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authenticate a nightly chart/image pair and generate an approval-gated GitOps install."""
+"""Authenticate a stable or nightly chart/image pair and generate an approval-gated GitOps install."""
 
 import argparse
 import copy
@@ -7,6 +7,7 @@ import ipaddress
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -21,8 +22,12 @@ from nightly_chart import package_files
 
 CHART = "oci://ghcr.io/hikyo-org/charts/hikyo"
 IMAGE = "ghcr.io/hikyo-org/hikyo"
-IDENTITY = "https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main"
+WORKFLOWS = "https://github.com/Hikyo-Org/Hikyo/.github/workflows/"
+IDENTITY = WORKFLOWS + "nightly.yml@refs/heads/main"
 ISSUER = "https://token.actions.githubusercontent.com"
+# release-channel.sh classifies 0.x tags as prereleases.
+STABLE_VERSION = r"[1-9][0-9]*\.[0-9]+\.[0-9]+"
+NIGHTLY_VERSION = r"[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[1-9][0-9]*\.g[0-9a-f]{8}"
 
 
 def run(*args: str) -> str:
@@ -30,9 +35,17 @@ def run(*args: str) -> str:
     return result.stdout
 
 
-def verify(reference: str, commit: str) -> None:
+def is_stable(version: str) -> bool:
+    return re.fullmatch(STABLE_VERSION, version) is not None
+
+
+def signing_identity(version: str) -> str:
+    return f"{WORKFLOWS}release.yml@refs/tags/v{version}" if is_stable(version) else IDENTITY
+
+
+def verify(reference: str, commit: str, version: str) -> None:
     run("cosign", "verify", reference,
-        "--certificate-identity", IDENTITY,
+        "--certificate-identity", signing_identity(version),
         "--certificate-oidc-issuer", ISSUER,
         "--certificate-github-workflow-sha", commit)
 
@@ -46,10 +59,14 @@ def inspect_chart(package: Path, commit: str, version: str) -> dict:
         "org.opencontainers.image.revision": commit,
         "hikyo.dev/release-profile": "nightly/v1",
     }
+    # Stable packaging stamps no annotations: the tag identity and workflow SHA
+    # checked by Cosign bind its source, and the channel excludes a nightly.
+    profile = (defaults.get("updates", {}).get("channel") == "stable" if is_stable(version)
+               else all(metadata.get("annotations", {}).get(k) == v for k, v in expected.items()))
     if (metadata.get("name") != "hikyo" or metadata.get("type") != "application"
             or metadata.get("version") != version or metadata.get("appVersion") != version
-            or any(metadata.get("annotations", {}).get(k) != v for k, v in expected.items())):
-        raise ValueError("chart version, profile or source differs from the selected nightly")
+            or not profile):
+        raise ValueError("chart version, profile or source differs from the selected release")
     image = defaults["image"]
     if image.get("repository") != IMAGE or not re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("digest", "")):
         raise ValueError("chart does not pin the canonical image digest")
@@ -133,6 +150,11 @@ def check_rendered(raw: str, namespace: str, image: dict, replicas: int) -> None
         raise ValueError("the server must not receive controller credentials")
     if any(container["image"] != expected for container in pod.get("initContainers", []) + pod["containers"]):
         raise ValueError("rendered chart changes the verified image")
+    # `admin` has no root-key flag, so without this the chart offers no first-administrator route.
+    server = next((c for c in pod["containers"] if c["name"] == "server"), {})
+    if not any(item.get("name") == "HIKYO_ROOT_KEY_FILE" for item in server.get("env", [])):
+        raise ValueError("chart gives in-pod operator commands no root key, so `hikyo admin create` "
+                         "cannot run; select a release that sets HIKYO_ROOT_KEY_FILE")
     if any(item["metadata"].get("namespace", namespace) != namespace for item in documents):
         raise ValueError("rendered chart escapes the target namespace")
 
@@ -154,6 +176,8 @@ def manifests(provider: str, digest: str, commit: str, version: str,
             item["subjects"][0]["namespace"] = namespace
         elif item["kind"] == "OCIRepository":
             item["spec"]["ref"] = {"digest": digest}
+            item["spec"]["verify"]["matchOIDCIdentity"][0]["subject"] = (
+                "^" + signing_identity(version).replace(".", r"\.") + "$")
         elif item["kind"] == "HelmRelease":
             item["spec"]["targetNamespace"] = namespace
             item["spec"]["values"] = copy.deepcopy(values)
@@ -181,9 +205,10 @@ def main() -> None:
         parser.error("chart-digest must be an exact SHA-256 OCI manifest digest")
     if not re.fullmatch(r"[0-9a-f]{40}", args.source_commit):
         parser.error("source-commit must be the full reviewed source commit")
-    if (not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[1-9][0-9]*\.g[0-9a-f]{8}", args.chart_version)
+    if not is_stable(args.chart_version) and (
+            not re.fullmatch(NIGHTLY_VERSION, args.chart_version)
             or not args.chart_version.endswith(".g" + args.source_commit[:8])):
-        parser.error("chart-version must identify the selected nightly source")
+        parser.error("chart-version must be a stable X.Y.Z or identify the selected nightly source")
     controller_namespace = args.controller_namespace or ("flux-system" if args.provider == "flux" else "argocd")
     for name in (args.namespace, controller_namespace):
         if len(name) > 63 or not re.fullmatch(r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", name):
@@ -195,13 +220,13 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="hikyo-gitops-") as temporary:
         work = Path(temporary)
         reference = CHART.removeprefix("oci://") + "@" + args.chart_digest
-        verify(reference, args.source_commit)
+        verify(reference, args.source_commit, args.chart_version)
         run("helm", "pull", "oci://" + reference, "--destination", str(work))
         packages = list(work.glob("*.tgz"))
         if len(packages) != 1:
             raise ValueError("expected one downloaded chart")
         image = inspect_chart(packages[0], args.source_commit, args.chart_version)
-        verify(image["repository"] + "@" + image["digest"], args.source_commit)
+        verify(image["repository"] + "@" + image["digest"], args.source_commit, args.chart_version)
         normalized_values = work / "operator-values.yaml"
         normalized_values.write_text(yaml.safe_dump(values, sort_keys=False))
         rendered = run("helm", "template", "hikyo", str(packages[0]),
@@ -210,15 +235,19 @@ def main() -> None:
         documents = manifests(args.provider, args.chart_digest, args.source_commit,
                               args.chart_version, image, values, args.namespace, controller_namespace)
         with args.output.open("x") as output:
-            output.write("# Verified exact nightly; controller activation requires operator approval.\n")
+            output.write("# Verified exact chart; controller activation requires operator approval.\n")
             yaml.safe_dump_all(documents, output, sort_keys=False)
     print(f"Wrote {args.output}; review before applying. No cluster was changed.")
 
 
-if __name__ == "__main__":
+def entry() -> None:
     try:
         main()
-    except (ValueError, KeyError, TypeError, yaml.YAMLError, OSError,
-            subprocess.SubprocessError) as error:
+    except (ValueError, KeyError, TypeError, AttributeError, EOFError, tarfile.TarError,
+            yaml.YAMLError, OSError, subprocess.SubprocessError) as error:
         print(f"gitops: refused: {error}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    entry()

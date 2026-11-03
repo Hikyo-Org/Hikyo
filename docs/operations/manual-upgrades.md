@@ -238,7 +238,7 @@ the evidence/backup/legacy-stop environment settings for ordinary restarts.
 
 This section retains manual defaults. New installations choosing unattended
 upgrades use the separate [container deployment runbook](unattended-container-upgrades.md).
-Controller-owned nightly-chart installations use the [Flux/Argo runbook](kubernetes-gitops.md),
+Controller-owned installations use the [Flux/Argo runbook](kubernetes-gitops.md),
 which preserves the same full-stop and verified manual migration requirements.
 
 `install/compose/server.yaml` provides a rootless manual server deployment.

@@ -2,6 +2,7 @@
 
 import copy
 import io
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -17,6 +18,7 @@ from nightly_chart import prepare
 
 COMMIT = "a" * 40
 VERSION = "0.0.1-nightly.20261101.1.gaaaaaaaa"
+STABLE = "1.2.3"
 DIGEST = "sha256:" + "b" * 64
 IMAGE = {"repository": gitops.IMAGE, "digest": "sha256:" + "c" * 64}
 
@@ -179,19 +181,113 @@ class GitOpsTests(unittest.TestCase):
         self.assertIn("Prune=false", spec["syncPolicy"]["syncOptions"])
         self.assertIn("FailOnSharedResource=true", spec["syncPolicy"]["syncOptions"])
 
-    def test_cli_refuses_stable_chart_version_before_any_external_call(self):
-        output = self.directory / "stable.yaml"
+    def stable_package(self, version=STABLE, root_key_env=True):
+        chart = self.directory / f"stable-{version}-{root_key_env}" / "hikyo"
+        shutil.copytree(gitops.ROOT / "chart/hikyo", chart)
+        path = chart / "values.yaml"
+        path.write_text(path.read_text().replace("sha256:RELEASE_IMAGE_DIGEST", IMAGE["digest"]))
+        if not root_key_env:  # The shape published as 1.0.0.
+            path = chart / "templates/deployment.yaml"
+            line = "            - name: HIKYO_ROOT_KEY_FILE\n              value: /run/hikyo-root-key/root-key\n"
+            self.assertIn(line, path.read_text())
+            path.write_text(path.read_text().replace(line, ""))
+        subprocess.run(["helm", "package", str(chart), "--version", version, "--app-version", version,
+                        "--destination", str(chart.parent)], check=True, capture_output=True)
+        return next(chart.parent.glob("*.tgz"))
+
+    def cli(self, provider, version, package):
+        """Run the CLI with external calls faked; a refusal is returned, not raised."""
+        values = self.directory / "input.yaml"
+        values.write_text(yaml.safe_dump(self.values))
+        output = self.directory / f"{provider}-{version}-{package.parent.name}.yaml"
+        calls = []
+        real_run = gitops.run
+
+        def boundary(*args):
+            calls.append(args)
+            if args[:2] == ("cosign", "verify"):
+                return "[]"
+            if args[:2] == ("helm", "pull"):
+                (Path(args[-1]) / package.name).write_bytes(package.read_bytes())
+                return ""
+            return real_run(*args)
+
+        argv = ["render_gitops.py", "--provider", provider, "--chart-digest", DIGEST,
+                "--source-commit", COMMIT, "--chart-version", version,
+                "--values", str(values), "--output", str(output)]
+        refusal = None
+        with patch("sys.argv", argv), patch.object(gitops, "run", side_effect=boundary):
+            try:
+                gitops.main()
+            except ValueError as error:
+                refusal = str(error)
+        return output, calls, refusal
+
+    def test_stable_chart_binds_tag_identity_and_channel(self):
+        package = self.stable_package()
+        self.assertEqual(gitops.inspect_chart(package, COMMIT, STABLE), IMAGE)
+        self.assertEqual(gitops.inspect_chart(self.package, COMMIT, VERSION), IMAGE)
+        relabelled = self.directory / "relabelled"  # A nightly-channel chart cannot pass by version alone.
+        subprocess.run(["helm", "package", str(self.chart), "--version", STABLE, "--app-version", STABLE,
+                        "--destination", str(relabelled)], check=True, capture_output=True)
+        with self.assertRaisesRegex(ValueError, "profile"):
+            gitops.inspect_chart(next(relabelled.glob("*.tgz")), COMMIT, STABLE)
+        with self.assertRaises(ValueError):
+            gitops.inspect_chart(package, COMMIT, "1.2.4")
+        identity = "https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/v1.2.3"
+        for provider in ("flux", "argo-cd"):
+            with self.subTest(provider=provider):
+                output, calls, refusal = self.cli(provider, STABLE, package)
+                self.assertIsNone(refusal)
+                verified = [args for args in calls if args[:2] == ("cosign", "verify")]
+                self.assertEqual([args[2] for args in verified], [
+                    gitops.CHART.removeprefix("oci://") + "@" + DIGEST, gitops.IMAGE + "@" + IMAGE["digest"]])
+                for args in verified:
+                    self.assertEqual(args[args.index("--certificate-identity") + 1], identity)
+                    self.assertEqual(args[-2:], ("--certificate-github-workflow-sha", COMMIT))
+                documents = {item["kind"]: item for item in yaml.safe_load_all(output.read_text())}
+                if provider == "flux":
+                    self.assertTrue(documents["HelmRelease"]["spec"]["suspend"])
+                    self.assertEqual(documents["OCIRepository"]["spec"]["verify"]["matchOIDCIdentity"], [{
+                        "issuer": r"^https://token\.actions\.githubusercontent\.com$",
+                        "subject": r"^https://github\.com/Hikyo-Org/Hikyo/\.github/workflows/release\.yml@refs/tags/v1\.2\.3$",
+                    }])
+                else:
+                    self.assertFalse(documents["Application"]["spec"]["syncPolicy"]["automated"]["enabled"])
+
+    def test_chart_without_operator_root_key_is_refused_without_output(self):
+        package = self.stable_package("1.0.0", root_key_env=False)
+        for provider in ("flux", "argo-cd"):
+            with self.subTest(provider=provider):
+                output, calls, refusal = self.cli(provider, "1.0.0", package)
+                self.assertIn("`hikyo admin create` cannot run", refusal)
+                self.assertEqual(calls[-1][:2], ("helm", "template"))
+                self.assertFalse(output.exists())
+
+    def test_cli_refuses_unidentified_version_before_any_external_call(self):
         values = self.directory / "values.yaml"
         values.write_text(yaml.safe_dump(self.values))
-        argv = ["render_gitops.py", "--provider", "flux", "--chart-version", "1.0.0",
-                "--chart-digest", DIGEST, "--source-commit", COMMIT,
-                "--values", str(values), "--output", str(output)]
-        with patch("sys.argv", argv), patch.object(gitops, "run") as run, \
-                patch("sys.stderr", io.StringIO()) as errors, self.assertRaises(SystemExit):
-            gitops.main()
-        run.assert_not_called()
-        self.assertIn("chart-version must identify the selected nightly source", errors.getvalue())
-        self.assertFalse(output.exists())
+        for version in ("v1.0.0", "1.0", "0.9.0", "1.0.0-rc.1", "1.0.0.g" + COMMIT[:8], "1.0.0\n",
+                        "0.0.1-nightly.20261101.1.gbbbbbbbb"):
+            with self.subTest(version=version):
+                output = self.directory / "refused.yaml"
+                argv = ["render_gitops.py", "--provider", "flux", "--chart-version", version,
+                        "--chart-digest", DIGEST, "--source-commit", COMMIT,
+                        "--values", str(values), "--output", str(output)]
+                with patch("sys.argv", argv), patch.object(gitops, "run") as run, \
+                        patch("sys.stderr", io.StringIO()) as errors, self.assertRaises(SystemExit):
+                    gitops.main()
+                run.assert_not_called()
+                self.assertIn("chart-version must be a stable X.Y.Z", errors.getvalue())
+                self.assertFalse(output.exists())
+
+    def test_malformed_signed_chart_is_a_refusal_not_a_traceback(self):
+        for error in (AttributeError("null updates"), EOFError("truncated"), tarfile.ReadError("not gzip")):
+            with self.subTest(error=error), patch.object(gitops, "main", side_effect=error), \
+                    patch("sys.stderr", io.StringIO()) as errors, self.assertRaises(SystemExit) as stopped:
+                gitops.entry()
+            self.assertEqual(stopped.exception.code, 1)
+            self.assertIn("gitops: refused:", errors.getvalue())
 
     def test_cli_verifies_chart_then_image_before_output_and_never_applies(self):
         values = self.directory / "input.yaml"
