@@ -12,10 +12,12 @@ import (
 	"io"
 	"maps"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -121,7 +123,12 @@ type TrustStore struct {
 func (s *TrustStore) path() string { return filepath.Join(s.dir, "trust.json") }
 
 // Load reads the store, returning an empty one when it does not exist yet.
-func (s *TrustStore) Load() (map[string]TrustEntry, error) {
+func (s *TrustStore) Load() (map[string]TrustEntry, error) { return s.load(true) }
+
+// load validates every entry. checkConflicts additionally refuses equivalent
+// origins with different profiles; only Delete skips it, so the step that
+// refusal tells the user to run can repair the store it refuses to load.
+func (s *TrustStore) load(checkConflicts bool) (map[string]TrustEntry, error) {
 	raw, err := readTrustFile(s.dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]TrustEntry{}, nil
@@ -141,8 +148,10 @@ func (s *TrustStore) Load() (map[string]TrustEntry, error) {
 			return nil, fmt.Errorf("trust store at %s contains an invalid entry %q: %w", s.path(), name, err)
 		}
 	}
-	if err := refuseConflictingProfiles(entries); err != nil {
-		return nil, fmt.Errorf("trust store at %s: %w", s.path(), err)
+	if checkConflicts {
+		if err := refuseConflictingProfiles(entries); err != nil {
+			return nil, fmt.Errorf("trust store at %s: %w", s.path(), err)
+		}
 	}
 	return entries, nil
 }
@@ -162,26 +171,35 @@ func refuseConflictingProfiles(entries map[string]TrustEntry) error {
 	return nil
 }
 
-// originKey is the comparison form of a canonical origin: the scheme's default
-// port and a trailing host dot do not name a different server. CanonicalOrigin
-// itself is unchanged because stored entries keep their exact spelling.
+// originKey is the comparison form of a canonical origin: names the same
+// server when only spelling differs. The scheme's default port, a trailing host
+// dot, leading zeros in the port and the textual form of an IP literal do not
+// name a different server. CanonicalOrigin itself is unchanged because stored
+// entries keep their exact spelling.
 func originKey(origin string) string {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return origin
 	}
+	scheme := strings.ToLower(u.Scheme)
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if addr, err := netip.ParseAddr(host); err == nil {
+		host = addr.Unmap().String()
+	}
 	if strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
 	port := u.Port()
-	if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+	if n, err := strconv.ParseUint(port, 10, 16); err == nil {
+		port = strconv.FormatUint(n, 10)
+	}
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
 		port = ""
 	}
 	if port != "" {
 		host += ":" + port
 	}
-	return strings.ToLower(u.Scheme) + "://" + host
+	return scheme + "://" + host
 }
 
 func sameOrigin(a, b string) bool { return originKey(a) == originKey(b) }
@@ -362,7 +380,7 @@ func (s *TrustStore) Delete(name string) error {
 		return err
 	}
 	defer unlock()
-	entries, err := s.Load()
+	entries, err := s.load(false)
 	if err != nil {
 		return err
 	}

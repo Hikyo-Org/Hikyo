@@ -351,6 +351,17 @@ func lookupByOrigin(st *State, origin, cfgName string) (TrustEntry, error) {
 			found = append(found, e)
 		}
 	}
+	// Same-policy spellings of one origin must still resolve the same way every
+	// time: prefer the exact spelling asked for, then the lowest name.
+	slices.SortFunc(found, func(a, b TrustEntry) int {
+		if exactA, exactB := a.Origin == origin, b.Origin == origin; exactA != exactB {
+			if exactA {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 	for _, e := range found[min(1, len(found)):] {
 		if !samePolicy(found[0], e) {
 			names := make([]string, 0, len(found))

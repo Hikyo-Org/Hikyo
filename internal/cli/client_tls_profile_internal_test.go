@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/tlstest"
@@ -309,5 +311,128 @@ func TestStoresWithoutAStrictEntryStillLoadWithEquivalentOrigins(t *testing.T) {
 	}
 	if _, err := store.Load(); err != nil {
 		t.Fatalf("a compat-only store must load unchanged: %v", err)
+	}
+}
+
+func TestOriginSpellingsCompareByNumericPortAndParsedIPLiteral(t *testing.T) {
+	same := [][2]string{
+		{"https://h.example.test", "https://h.example.test:0443"},
+		{"https://h.example.test:443", "https://H.EXAMPLE.TEST.:00443"},
+		{"http://h.example.test", "http://h.example.test:0080"},
+		{"https://h.example.test:8443", "https://h.example.test:08443"},
+		{"https://[::1]:8443", "https://[0:0:0:0:0:0:0:1]:8443"},
+		{"https://[2001:db8::1]", "https://[2001:0DB8:0:0:0:0:0:1]:443"},
+		{"https://[::ffff:192.0.2.1]", "https://192.0.2.1"},
+	}
+	for _, p := range same {
+		if !sameOrigin(p[0], p[1]) {
+			t.Errorf("%s and %s name one server", p[0], p[1])
+		}
+	}
+	different := [][2]string{
+		{"https://h.example.test", "https://h.example.test:8443"},
+		{"https://h.example.test", "http://h.example.test"},
+		{"https://h.example.test:443", "https://h.example.test:4430"},
+		{"https://[::1]:8443", "https://[::2]:8443"},
+		{"https://h.example.test", "https://h2.example.test"},
+	}
+	for _, p := range different {
+		if sameOrigin(p[0], p[1]) {
+			t.Errorf("%s and %s are different servers", p[0], p[1])
+		}
+	}
+}
+
+func TestPutRefusesLeadingZeroPortAndExpandedIPv6AliasesWithADifferentProfile(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"https://h.example.test", "https://h.example.test:0443"},
+		{"https://[::1]:8443", "https://[0:0:0:0:0:0:0:1]:8443"},
+	} {
+		store := &TrustStore{dir: t.TempDir()}
+		if err := store.Put(TrustEntry{Name: "prod", Origin: pair[0], TLSMode: TLSModeSystemCA, TLSProfile: "strict"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Put(TrustEntry{Name: "alias", Origin: pair[1], TLSMode: TLSModeSystemCA}); err == nil || !strings.Contains(err.Error(), "different TLS profile") {
+			t.Fatalf("compat alias %s accepted beside strict %s: %v", pair[1], pair[0], err)
+		}
+	}
+}
+
+// The refusal tells the user to run `hikyo context delete --instance <name>`.
+// That exact command must work on the store the refusal describes.
+func TestContextDeleteRepairsAStoreRefusedForConflictingProfiles(t *testing.T) {
+	dir := t.TempDir()
+	store := &TrustStore{dir: dir}
+	strict := TrustEntry{Name: "prod", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA, TLSProfile: "strict"}
+	alias := TrustEntry{Name: "alias", Origin: "https://h.example.test:443", TLSMode: TLSModeSystemCA}
+	if err := store.write(map[string]TrustEntry{"prod": strict, "alias": alias}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(); err == nil {
+		t.Fatal("fixture must be refused at load")
+	}
+	var stdout, stderr strings.Builder
+	ios := IO{Stdout: &stdout, Stderr: &stderr, Env: Env{Getenv: func(k string) string {
+		if k == "HIKYO_STATE_DIR" {
+			return dir
+		}
+		return ""
+	}}, Workdir: t.TempDir()}
+	if code := Run(t.Context(), ios, []string{"context", "delete", "--instance", "alias"}); code != 0 {
+		t.Fatalf("the named repair step failed with %d: %s", code, stderr.String())
+	}
+	entries, err := store.Load()
+	if err != nil || len(entries) != 1 || entries["prod"].TLSProfile != "strict" {
+		t.Fatalf("repaired store = %v, %+v", err, entries)
+	}
+}
+
+// Skipping the conflict check must not skip any other validation.
+func TestDeleteStillRefusesAnInvalidStore(t *testing.T) {
+	store := &TrustStore{dir: t.TempDir()}
+	bad := map[string]TrustEntry{"prod": {Name: "wrong-name", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA}}
+	if err := store.write(bad); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Delete("prod"); err == nil || !strings.Contains(err.Error(), "invalid entry") {
+		t.Fatalf("Delete must keep validating entries: %v", err)
+	}
+}
+
+func TestLookupByOriginIsDeterministicAcrossSamePolicySpellings(t *testing.T) {
+	state := &State{dir: t.TempDir()}
+	entries := map[string]TrustEntry{
+		"z": {Name: "z", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA},
+		"a": {Name: "a", Origin: "https://h.example.test:443", TLSMode: TLSModeSystemCA},
+		"b": {Name: "b", Origin: "https://h.example.test:0443", TLSMode: TLSModeSystemCA},
+	}
+	if err := state.Trust().write(entries); err != nil {
+		t.Fatal(err)
+	}
+	for range 200 {
+		if got, err := lookupByOrigin(state, "https://h.example.test", "c"); err != nil || got.Name != "z" {
+			t.Fatalf("an exact spelling must win: %v %+v", err, got)
+		}
+		if got, err := lookupByOrigin(state, "https://h.example.test.", "c"); err != nil || got.Name != "a" {
+			t.Fatalf("with no exact spelling the lowest name must win: %v %+v", err, got)
+		}
+	}
+}
+
+func TestDeveloperCredentialDeleteByOriginMatchesEquivalentSpellings(t *testing.T) {
+	st := &State{dir: t.TempDir()}
+	token, _, err := crypto.NewArtifact(crypto.ArtifactDeveloperCredential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := DeveloperCredentialArtifact{ID: "dev_01989abc-def0-7123-8123-000000000004", Origin: "https://h.example.test:443", Org: "o", Project: "p", Environment: "e", Token: token, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.PutDeveloperCredential(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.deleteDeveloperCredentials("https://h.example.test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if all, err := st.DeveloperCredentials(); err != nil || len(all) != 0 {
+		t.Fatalf("an equivalent origin spelling must delete the credential: %v %v", err, all)
 	}
 }
