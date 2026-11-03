@@ -403,6 +403,8 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			return initial.routeErr
 		} else if initial.route != "" {
 			result = refused(initial.route)
+		} else if errors.Is(initial.contractErr, errDevPublisherDiffers) {
+			result = refused("This PR's or dev's copy of the dev publisher differs from main's. Merge dev into this branch. If dev is behind main, the main-to-dev backmerge lands first. Publisher changes land through main.")
 		} else {
 			if initial.contractErr != nil {
 				return initial.contractErr

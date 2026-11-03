@@ -241,17 +241,20 @@ guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
 The initial job lookup tolerates GitHub briefly reporting that same executing
 job as pending, queued or in progress. One complete bounded Jobs API read must
-match its run, attempt, source head, unique job ID and original start timestamp.
-The queue publishers retry that read once; `ci-dev-gate.yml` does not. The absolute deadline is retained without polling or
+match its run, attempt, source head, unique job ID and original start timestamp,
+and that read gets one retry. The absolute deadline is retained without polling or
 another execution budget.
 
-The budget pays for setup first, so setup stays small. The queue publishers check
+The budget pays for setup first, so setup stays small. The publishers check
 out only `scripts/ci` and root files: a full tree costs 8 to 30 seconds or more. `pr-gate`
 must not import `net/http`, which adds 86 packages to its cold compile on Linux. A test
 pins that, the sparse checkout, its packages and the scripts it runs by name; it cannot
-see a direct file read outside the tree. `ci-dev-gate.yml` still checks out the full
-tree, because changing it makes the publisher contract refuse every open dev PR until
-`main` is merged back into `dev` and `dev` into each PR.
+see a direct file read outside the tree.
+
+A changed `ci-dev-gate.yml` lands on `main` first, and the publisher contract then refuses
+every open dev PR until `main` is merged back into `dev` and `dev` into each PR. That is a
+verdict, not a failed run: the record says what to merge, and another attempt would find
+the same bytes.
 
 `ci-feedback.yml` needs history for its merge base, so it keeps a full-depth fetch but
 leaves old blobs behind, under the same one-minute step limit. `fast-feedback.sh` fetches

@@ -826,11 +826,16 @@ func TestQueuePublisherSparseTreeHoldsItsInputs(t *testing.T) {
 func TestQueuePublisherClockReadRetriesOnce(t *testing.T) {
 	root := filepath.Join(repositoryRoot(t), ".github", "workflows")
 	head, source := "8d0fe8559114c4a0d8eb95c17443ef2be1c78071", "f1022b9c6a6b95c98a59ac98cb2865b36d4438bb"
-	good, err := json.Marshal(map[string]any{"total_count": 1, "jobs": []any{map[string]any{"id": 123, "run_id": 456, "run_attempt": 2, "head_sha": source, "name": "publish-" + head, "status": "in_progress", "started_at": time.Now().Add(-5 * time.Second).UTC().Format(time.RFC3339)}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, file := range []string{"ci-queue-gate.yml", "ci-queue-worker.yml"} {
+	for file, prefix := range map[string]string{"ci-queue-gate.yml": "publish-", "ci-queue-worker.yml": "publish-", "ci-dev-gate.yml": "dev-publish-"} {
+		page := map[string]any{"total_count": 1, "jobs": []any{map[string]any{"id": 123, "run_id": 456, "run_attempt": 2, "head_sha": source, "name": prefix + head, "status": "in_progress", "started_at": time.Now().Add(-5 * time.Second).UTC().Format(time.RFC3339)}}}
+		var response any = page
+		if file == "ci-dev-gate.yml" {
+			response = []any{page} // Its read is --paginate --slurp.
+		}
+		good, err := json.Marshal(response)
+		if err != nil {
+			t.Fatal(err)
+		}
 		raw, err := os.ReadFile(filepath.Join(root, file))
 		if err != nil {
 			t.Fatal(err)
