@@ -1,4 +1,4 @@
-# Per-commit feedback is separate from the mandatory full-candidate merge gate.
+# Per-commit feedback is separate from the mandatory full merge-queue gate.
 # The four-minute runner deadline includes setup; queue time is measured
 # separately and is not guaranteed by GitHub's shared hosted runner pool.
 name: ci-feedback

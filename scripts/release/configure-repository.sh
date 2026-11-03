@@ -71,9 +71,7 @@ configure_main() {
 		$GH_BIN api "repos/$repository/rulesets/$id" >"$main_tmp/before.json"
 		# Preserve all unrelated live parameters, rules, conditions and actor policy.
 		# Refuse a weakened/redacted source rather than overwriting it with defaults.
-		if ! "$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/before.json" 2>/dev/null; then
-			"$repo_root/scripts/release/check-main-policy.sh" --legacy "$main_tmp/before.json"
-		fi
+		"$repo_root/scripts/release/check-main-policy.sh" "$main_tmp/before.json"
 		jq --slurpfile desired "$policy" '
 			(.rules[] | select(.type == "required_status_checks").parameters.required_status_checks[0]) as $existing |
 			{name,target,enforcement,bypass_actors,conditions,rules} |

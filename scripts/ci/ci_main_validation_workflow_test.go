@@ -65,8 +65,8 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 	if err := call.Decode(&contract); err != nil {
 		t.Fatal(err)
 	}
-	if len(contract.Inputs) != 3 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" {
-		t.Fatal("CI must require an immutable revision with optional candidate and development modes")
+	if len(contract.Inputs) != 2 || !contract.Inputs["revision"].Required || contract.Inputs["revision"].Type != "string" || contract.Inputs["development"].Required || contract.Inputs["development"].Type != "boolean" {
+		t.Fatal("CI must require an immutable revision with an optional development mode")
 	}
 	// The weekly schedule is the automatic writer of main-scoped compile caches.
 	if _, scheduled := manual.On["schedule"]; len(manual.On) != 2 || !scheduled {
@@ -84,12 +84,11 @@ func TestMainValidationWorkflowPolicy(t *testing.T) {
 		name   string
 		inputs map[string]string
 	}{
-		{"ci-candidate.yml", map[string]string{"revision": "${{ github.sha }}", "candidate": "true"}},
 		{"ci-merge-group.yml", map[string]string{"revision": "${{ github.sha }}"}},
 	} {
 		job := read(caller.name).Jobs["validation"]
 		if !reflect.DeepEqual(job.With, caller.inputs) {
-			t.Fatalf("%s must explicitly bind source authority and full-candidate mode", caller.name)
+			t.Fatalf("%s must explicitly bind source authority", caller.name)
 		}
 	}
 	validation := nightly.Jobs["validation"]

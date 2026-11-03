@@ -1,6 +1,6 @@
 # Only trusted main tooling publishes fast admission for dev. Main's full queue
 # has a separate context and writer lease. Neither can substitute for the other.
-name: dev-gate
+name: gate-dev
 
 on:
   pull_request_target:

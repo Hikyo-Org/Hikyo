@@ -3,7 +3,7 @@ set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 workflow="$script_dir/../../.github/workflows/ci.yml"
-controller=${CI_CONTROL_WORKFLOW:-"$script_dir/../../.github/workflows/ci-pr-gate.yml"}
+controller=${CI_CONTROL_WORKFLOW:-"$script_dir/../../.github/workflows/ci-queue-gate.yml"}
 merge_controller="$script_dir/../../.github/workflows/ci-merge-group.yml"
 # Out-of-band fuzz reporting moved to its own trusted base-context workflow
 # (#189): ci.yml executes untrusted PR code without issue/PR writes. The PR
@@ -25,7 +25,6 @@ require_line() {
 # artifact the trusted reporter re-validates.
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/classify-changed-paths.sh\" >\"\$trusted_classifier\""
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/ci-job-registry.json\" >\"\$trusted_registry\""
-require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_classifier\" --files"
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/check-required-jobs.sh\" >\"\$trusted_checker\""
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" --supports-plan-v2"
 require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_checker\" \"\$checker_event\" \"\$NEEDS_JSON\" \"\$PLAN_JSON\""
@@ -80,21 +79,15 @@ if ! grep -F 'pull_request_target:' "$controller" >/dev/null ||
 	exit 1
 fi
 
-# Full candidates run untrusted under pull_request in ci-candidate.yml, never
-# pull_request_target. The separate trusted publisher decides completion.
-fork_workflow="$script_dir/../../.github/workflows/ci-candidate.yml"
-if ! grep -Eq '^  pull_request:' "$fork_workflow" ||
-	grep -Eq '^[[:space:]]+pull_request_target:' "$fork_workflow" ||
-	grep -F 'allow-unsafe-pr-checkout' "$workflow" "$controller" "$fork_workflow" >/dev/null; then
-	printf 'trusted CI scripts fixture failed: fork validation left pull_request or checks out fork code in a trusted context\n' >&2
+if grep -F 'allow-unsafe-pr-checkout' "$workflow" "$controller" >/dev/null; then
+	printf 'trusted CI scripts fixture failed: fork code is checked out in a trusted context\n' >&2
 	exit 1
 fi
-# Native PR jobs may not publish the required API context, and fork author
-# admission must remain a mandatory dependency. Parse the real workflow and
-# its callback permissions at their canonical owners after retiring polling.
+# Native PR jobs may not publish the required API context. Parse the real
+# workflow and its callback permissions at their canonical owners.
 (
 	cd "$script_dir/../.."
-	go test ./scripts/ci -count=1 -run '^(TestPRValidationWorkflowAdmission|TestGateReconciliationWorkflowTrust|TestPRGateWorkflowTrust|TestRequiredJobCannotSkipOnPullRequests)$'
+	go test ./scripts/ci -count=1 -run '^TestRequiredJobCannotSkipOnPullRequests$'
 )
 # The merge queue (#813) validates the exact merge result with the full suite.
 # The fork path must never run for a merge group (it has no pull_request), and
@@ -115,7 +108,6 @@ require_line "$merge_controller" 'VALIDATION_RESULT: ${{ needs.validation.result
 require_line "$merge_controller" 'run: test "$VALIDATION_RESULT" = success'
 # shellcheck disable=SC2016
 require_line "$merge_controller" 'group: trusted-merge-ci-${{ github.run_id }}'
-require_line "$workflow" "if: \${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}"
 # Reusable jobs called from ci.yml keep the caller's event. floor-bench must
 # accept a merge group, or every queue run fails and nothing can merge.
 floor_bench="$script_dir/../../.github/workflows/floor-bench.yml"
@@ -126,49 +118,33 @@ require_line "$floor_bench" "        if: github.event_name != 'push'"
 # shellcheck disable=SC2016
 require_line "$floor_bench" '          ref: ${{ inputs.revision }}'
 # Parse each downstream base selector and execute the actual YAML classifier
-# against poisoned source tools. Merge groups and full PR candidates must use
-# the full plan from immutable base tools; legacy PRs use that same trust source.
+# against poisoned source tools. Merge groups must plan from immutable base tools.
 # Missing trusted tooling must refuse planning rather than fall back locally.
 (
 	cd "$script_dir/../.."
-	go test ./scripts/ci -count=1 -run '^(TestCandidateWorkflowAdmissionAndCoverage|TestTrustedClassifierUsesBaseToolsForEveryCandidateMode)$'
+	go test ./scripts/ci -count=1 -run '^(TestTrustedToolsUseTheMergeGroupBase|TestTrustedClassifierUsesBaseTools)$'
 )
 # shellcheck disable=SC2016
 require_line "$workflow" 'plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)'
-# The completion publisher executes only trusted default-branch code. The
-# queued API check owns PR merge authority after the atomic policy switch.
-publisher="$script_dir/../../.github/workflows/ci-pr-gate.yml"
-require_line "$publisher" 'run: go run ./scripts/ci/pr-gate'
+# The queue publisher executes only trusted default-branch code. The queued API
+# check owns PR merge authority.
+publisher="$controller"
+require_line "$publisher" 'go run ./scripts/ci/pr-gate --queue'
 # shellcheck disable=SC2016
 require_line "$publisher" 'ref: ${{ github.event.repository.default_branch }}'
 require_line "$publisher" 'persist-credentials: false'
 require_line "$publisher" 'checks: write'
-require_line "$publisher" 'PR_GATE_CHECK_NAME: ci-required-next'
+require_line "$publisher" 'PR_GATE_CHECK_NAME: ci-queue-required'
 if grep -Eq '^  ci-required:|secrets[.:[]|download-artifact|pull_request:' "$publisher"; then
 	printf 'trusted CI scripts fixture failed: PR observer executes untrusted code or collides with required check\n' >&2
 	exit 1
 fi
-# Only vouched fork authors enter the full workload. The trusted policy-only
-# verifier independently checks admission and workflow-change authority.
-vouch_action='uses: mitchellh/vouch/action/check-user@'
-require_line "$fork_workflow" "$vouch_action"
-require_line "$fork_workflow" 'needs: vouch'
-if grep -F 'allow-fail' "$controller" "$fork_workflow" >/dev/null; then
-	printf 'trusted CI scripts fixture failed: vouch check may pass an unvouched author\n' >&2
-	exit 1
-fi
 "$script_dir/check-fork-validation_test.sh"
 
-# Fork runs get no secrets and no OIDC identity (#813): nothing in the fork path
-# may reference a secret, inherit secrets, or request an ID token. GitHub already
-# withholds secrets from fork pull_request runs; this keeps the YAML from asking.
-if grep -Eq 'secrets[.:[]|id-token' "$fork_workflow" ||
-	grep -Eq 'secrets[.:[]|id-token: write' "$workflow"; then
-	printf 'trusted CI scripts fixture failed: the fork validation path references secrets or an ID token\n' >&2
-	exit 1
-fi
-if grep -Eq '(issues|pull-requests): write' "$fork_workflow"; then
-	printf 'trusted CI scripts fixture failed: fork validation received issue/PR writes\n' >&2
+# The validation graph runs selected code, so it must never ask for a secret or
+# an ID token.
+if grep -Eq 'secrets[.:[]|id-token: write' "$workflow"; then
+	printf 'trusted CI scripts fixture failed: the validation graph references secrets or an ID token\n' >&2
 	exit 1
 fi
 

@@ -10,7 +10,7 @@
 # and report scripts. PR identity (number, base SHA, head SHA) is taken ONLY from
 # GitHub-owned workflow_run metadata, never from an artifact a PR job could forge.
 # Classification runs in a read-only job; only the posting job holds write.
-name: fuzz-report
+name: report-ci-failures
 
 on:
   workflow_run:

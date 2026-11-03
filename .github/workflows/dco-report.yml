@@ -4,7 +4,7 @@
 # code: it checks out the base branch, fetches the PR's commits as git data,
 # and runs the base branch's scripts over them. Works for fork pull requests
 # too, which is where a missing sign-off is most likely.
-name: dco-report
+name: report-dco
 
 on:
   pull_request_target:

@@ -59,7 +59,7 @@ func retirementHead(name string, e event) (string, error) {
 }
 
 func (c *controller) retireEvent(ctx context.Context, name string, e event) error {
-	if err := c.init(ctx); err != nil {
+	if err := c.initRepository(ctx); err != nil {
 		return err
 	}
 	if e.Repository.ID != c.repo.ID || !strings.EqualFold(e.Repository.FullName, c.repoName) || e.Repository.DefaultBranch != c.repo.DefaultBranch {

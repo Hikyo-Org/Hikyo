@@ -1,4 +1,4 @@
-name: nightly-release-manual
+name: nightly-release-request
 
 on:
   workflow_dispatch:

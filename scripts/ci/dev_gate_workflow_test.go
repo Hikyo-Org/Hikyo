@@ -39,7 +39,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 	if err := yaml.Unmarshal(raw, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	if workflow.Name != "dev-gate" || !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) || len(workflow.Jobs) != 2 {
+	if workflow.Name != "gate-dev" || !reflect.DeepEqual(workflow.Permissions, map[string]string{"contents": "read"}) || len(workflow.Jobs) != 2 {
 		t.Fatal("dev publisher lost its read-only discovery/write-worker separation")
 	}
 	var target struct {
