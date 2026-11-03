@@ -172,9 +172,14 @@ class TransportError extends Error {
   }
 }
 
+/** A 429: the server is pacing this source, which says nothing about the request. */
+export function isThrottled(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 429;
+}
+
 const MAX_RETRY_AFTER_MS = 30_000;
 
-function retryAfterMilliseconds(response: Response): number | undefined {
+export function retryAfterMilliseconds(response: Response): number | undefined {
   const value = response.headers.get('Retry-After');
   if (value === null || !/^\d+$/.test(value)) {
     return undefined;
