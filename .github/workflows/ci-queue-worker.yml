@@ -64,7 +64,6 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           # The publisher builds and runs from go.mod and scripts/ci alone. A full tree costs 8 to 30 s of its budget.
-          filter: blob:none
           sparse-checkout: scripts/ci
       - if: matrix.work.kind == 'group'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0

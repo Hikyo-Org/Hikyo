@@ -76,7 +76,6 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           # The publisher builds and runs from go.mod and scripts/ci alone. A full tree costs 8 to 30 s of its budget.
-          filter: blob:none
           sparse-checkout: scripts/ci
       - name: Compile trusted publisher inside the remaining work budget
         run: |

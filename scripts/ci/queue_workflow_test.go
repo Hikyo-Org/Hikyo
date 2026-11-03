@@ -233,7 +233,7 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int, budget
 	want := map[string]string{"ref": "${{ github.event.repository.default_branch }}", "persist-credentials": "false"}
 	if budgeted {
 		// A budgeted publisher fetches only what it builds and runs: see TestQueuePublisherSparseTreeHoldsItsInputs.
-		want["filter"], want["sparse-checkout"] = "blob:none", "scripts/ci"
+		want["sparse-checkout"] = "scripts/ci"
 	}
 	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.Run != "" || len(checkout.Env) != 0 || !reflect.DeepEqual(checkout.With, want) {
 		return fmt.Errorf("publisher must checkout pinned trusted main withoutcredentials")
@@ -794,22 +794,31 @@ func TestQueuePublisherSparseTreeHoldsItsInputs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, script := range regexp.MustCompile(`gateCommand\(ctx, "sh", "([^"]+)"`).FindAllSubmatch(raw, -1) {
+		for _, script := range regexp.MustCompile(`gateCommand\([^,]+, "(?:sh|bash)", "([^"]+)"`).FindAllSubmatch(raw, -1) {
 			if name := string(script[1]); !strings.HasPrefix(name, "scripts/ci/") {
 				t.Errorf("%s runs %s, outside the sparse checkout", filepath.Base(source), name)
 			}
 		}
 	}
-	deps := exec.Command("go", "list", "-deps", "./scripts/ci/pr-gate")
+	deps := exec.Command("go", "list", "-deps", "-f", "{{if not .Standard}}{{.ImportPath}}{{end}}", "./scripts/ci/pr-gate")
 	deps.Dir = root
 	out, err := deps.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, dep := range strings.Fields(string(out)) {
-		if dep == "net/http" {
-			t.Error("the publisher must stay free of net/http: it adds 87 packages to compile inside the budget")
+		if !strings.HasPrefix(dep, "github.com/Hikyo-Org/hikyo/scripts/ci/") {
+			t.Errorf("the publisher imports %s, outside the sparse checkout", dep)
 		}
+	}
+	std := exec.Command("go", "list", "-deps", "./scripts/ci/pr-gate")
+	std.Dir = root
+	all, err := std.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(strings.Fields(string(all)), "net/http") {
+		t.Error("the publisher must stay free of net/http: it adds dozens of packages to compile inside the budget")
 	}
 }
 
