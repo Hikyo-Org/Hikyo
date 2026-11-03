@@ -279,6 +279,18 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 	if err := preflightUnattendedRoute(ctx, route); err != nil {
 		return err
 	}
+	// Refuse before ANY state is written, and only where this run would export:
+	// the journal pins the target image, so a refusal after it would leave the
+	// previous image unable to start ("requires its original exact image"). A
+	// source already frozen for backup (backup-preparing) cannot be undone here
+	// and is the one case that keeps refusing; see the operator guide.
+	exports := (state.Pending.Phase == upgrade.Healthy && !state.Maintenance || state.Pending.Phase == upgrade.BackupPreparing) &&
+		(previous == nil || previous.Phase == "complete" || previous.Phase == "preparing" || state.Pending.Phase == upgrade.BackupPreparing)
+	if exports {
+		if err := requireUnattendedCustodyMatchesPolicy(ctx, cfg, database, root, vault.Recipient()); err != nil {
+			return err
+		}
+	}
 	journal := previous
 	if journal == nil || journal.Phase == "complete" {
 		manifest, err := route.Plan.SourceManifest(database.Engine)

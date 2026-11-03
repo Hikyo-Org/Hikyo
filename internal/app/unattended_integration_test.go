@@ -259,11 +259,10 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if policyRefusal == nil || !strings.Contains(policyRefusal.Error(), "refusing before any backup") {
 				t.Fatalf("hybrid policy with X25519 custody did not refuse the upgrade: %v", policyRefusal)
 			}
-			// The refusal comes from the gate's configuration check, which runs
-			// before the source is fenced. The journal may exist, still "preparing",
-			// and the next run, once the policy is reverted, resumes from it.
-			if journal, err := readAutomaticJournal(filepath.Join(directory, "operation.json")); err != nil || (journal != nil && journal.Phase != "preparing") {
-				t.Fatalf("policy refusal left an unexpected journal %+v: %v", journal, err)
+			// The refusal precedes every write: no journal pins the target image,
+			// so nothing is left behind.
+			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("policy refusal left an upgrade journal: %v", err)
 			}
 			if exports, _ := filepath.Glob(filepath.Join(directory, "backup-*")); len(exports) != 0 {
 				t.Fatalf("policy refusal exported a backup: %v", exports)
@@ -271,8 +270,21 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if after, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN}); err != nil || after.Applied.Release != identities[0] || after.Pending.Phase != upgrade.Healthy || after.Maintenance {
 				t.Fatalf("policy refusal changed the healthy source: %v", err)
 			}
-			// Reverting the policy (the plain config) lets the same journal and the
-			// same healthy source proceed: the refusal did not strand anything.
+			// A refused host still starts on its CURRENT image, under the hybrid
+			// policy and under the plain one, because nothing was written.
+			fixture.Config = *hybridConfig
+			currentHybrid := runChild(0)
+			fixture.Config = plain
+			if currentHybrid != nil {
+				t.Fatalf("refused host did not start on its current image under the hybrid policy: %v", currentHybrid)
+			}
+			if err := runChild(0); err != nil {
+				t.Fatalf("refused host did not start on its current image: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("starting the current image created an upgrade journal: %v", err)
+			}
+			// Reverting the policy (the plain config) lets the upgrade proceed.
 			if err := runChild(1); err != nil {
 				t.Fatalf("image replacement: %v", err)
 			}

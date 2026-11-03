@@ -116,14 +116,22 @@ change validate unchanged.
   `HIKYO_BACKUP_RECIPIENTS` (the effective managed value, not a stale
   environment line) they therefore **refuse before any backup** and before the
   service is stopped, rather than leave a classical archive of data you asked to
-  protect. Use the manual upgrade route with a hybrid recipient and a separately
-  held hybrid identity (see the manual upgrade runbook). An install with X25519
-  recipients upgrades exactly as before. The refusal changes nothing, but if an
-  earlier run already froze the source for backup, every start refuses until the
-  managed policy is X25519 again or you take the manual route. If the service
-  cannot run to change the policy, stop every replica and use
-  `hikyo admin config recover --revision N` with a retained revision whose
-  policy is X25519 (see [Managed configuration](/docs/managed-configuration/)).
+  protect. The refusal happens before anything is written: the host keeps its
+  current image and source and starts normally. To proceed, set the managed
+  policy back to X25519 recipients through the normal owner configuration, or
+  take the manual upgrade route with a hybrid recipient and a separately held
+  hybrid identity (see the manual upgrade runbook). An install with X25519
+  recipients upgrades exactly as before.
+
+  **One case has no documented recovery.** If an earlier run already froze the
+  source for backup (state `backup-preparing`) under an X25519 policy and the
+  managed policy then became hybrid before the upgrade finished, every start
+  keeps refusing. The boot gate returns "requires its next exact binary" for any
+  other command on a frozen source, including `hikyo admin config recover` and
+  the manual route, so neither is a working exit; this was confirmed in the code,
+  not by running it. This release offers no verified way out of that state.
+  Do not change the managed backup policy to hybrid while an upgrade is in
+  progress.
 * The built-in secret scanner recognizes neither X25519 (`AGE-SECRET-KEY-1...`)
   nor hybrid (`AGE-SECRET-KEY-PQ-1...`) age identities: its age rule is not in
   the compiled ruleset. Keep identities out of managed values either way.

@@ -74,3 +74,27 @@ func requireAutomaticCustodyMatchesPolicy(ctx context.Context, cfg *config.Confi
 	}
 	return nil
 }
+
+// requireUnattendedCustodyMatchesPolicy is the check the container coordinator
+// runs before it writes anything for an export run: no journal, scratch or
+// fence. A refusal therefore changes no state, and the previous image still
+// starts on the same source. It reads the source's stored managed configuration
+// read-only and resolves it the way the server does; the gate repeats the
+// comparison under its own check before it fences.
+func requireUnattendedCustodyMatchesPolicy(ctx context.Context, cfg *config.Config, database upgrade.Config, root []byte, custodyRecipient string) error {
+	check := func(ctx context.Context, projection *upgrade.CandidateConfiguration, values map[string]string) error {
+		effective, err := resolveCandidateConfiguration(ctx, cfg, projection, values)
+		if err != nil {
+			return fmt.Errorf("cannot determine the effective backup policy before the backup: %w", err)
+		}
+		return requireCustodyMatchesBackupPolicy(effective.BackupRecipients, custodyRecipient)
+	}
+	checked, err := upgradegate.CheckSourceConfiguration(ctx, database, root, check)
+	if err != nil {
+		return err
+	}
+	if !checked {
+		return check(ctx, nil, nil)
+	}
+	return nil
+}
