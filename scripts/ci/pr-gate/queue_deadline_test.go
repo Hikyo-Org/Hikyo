@@ -153,7 +153,7 @@ func (a deadlineAPI) read(ctx context.Context, path string, out any) error {
 
 func TestAdmissionReserveNeverExtendsItsContextOrPublishesAfterIt(t *testing.T) {
 	f := newQueueFixture(t)
-	if err := f.q.init(context.Background()); err != nil {
+	if err := f.q.initRepository(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	policy, err := f.q.policy(context.Background())

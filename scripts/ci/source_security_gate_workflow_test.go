@@ -15,7 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// The relative ci-candidate/ci-merge-group calls select the candidate's ci.yml,
+// The relative ci-merge-group call selects the candidate's ci.yml,
 // but its aggregate must execute protected-base policy. These legacy fixtures
 // are exact git-show bytes from 4f1d1ec63, not a modeled permissive checker.
 func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
@@ -68,7 +68,7 @@ func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
 			base.Jobs["web-go"] = jobRule{RequiredGate: "planned", PlanJobs: []string{"web"}}
 			baseRegistry = encode(base)
 		}
-		for _, event := range []string{"pull_request", "merge_group"} {
+		for _, event := range []string{"merge_group"} {
 			for _, scenario := range []string{"full-success", "failure", "cancelled", "skipped", "missing", "unknown-extra", "legacy-job-failed", "malformed-plan", "missing-plan", "docs-success", "docs-unplanned-ran", "docs-missing"} {
 				t.Run(baseKind+"/"+event+"/"+scenario, func(t *testing.T) {
 					docs := strings.HasPrefix(scenario, "docs-")
@@ -134,22 +134,18 @@ func TestSourceSecurityGateTrustedBaseMigration(t *testing.T) {
 					git("init", "--quiet")
 					git("add", "scripts/ci")
 					baseTree := git("write-tree")
-					// Prove the PR checkout cannot replace base policy.
+					// Prove the selected checkout cannot replace base policy.
 					write("check-required-jobs.sh", []byte("#!/bin/sh\nexit 0\n"))
 					write("ci-job-registry.json", []byte("{}"))
 					runnerTemp := t.TempDir()
-					candidate := "true"
-					if docs {
-						candidate = "false"
-					}
 					cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", gate)
 					cmd.Dir = work
 					cmd.Env = append(os.Environ(), "RUNNER_TEMP="+runnerTemp,
-						"GITHUB_EVENT_NAME="+event, "FULL_CANDIDATE="+candidate,
+						"GITHUB_EVENT_NAME="+event,
 						"BASE_SHA="+baseTree, "NEEDS_JSON="+string(encode(results)),
 						"PLAN_JSON="+string(encode(plan)))
 					out, err := cmd.CombinedOutput()
-					accept := baseKind != "unknown-web-go" && (scenario == "full-success" || (scenario == "docs-success" && event == "pull_request"))
+					accept := baseKind != "unknown-web-go" && scenario == "full-success"
 					if (err == nil) != accept {
 						t.Fatalf("accepted %v want %v: %s", err == nil, accept, out)
 					}

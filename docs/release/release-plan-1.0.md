@@ -225,7 +225,7 @@ attempt, all required job outcomes, artifacts, failed attempts and skips.
 
 | Proof | Current entry point | Required boundary |
 | --- | --- | --- |
-| Full main | `ci-main.yml`, manual on `main`, selecting its exact SHA | `require-green-main.sh` accepts the latest qualifying exact-SHA `ci-main.yml` or legacy `ci.yml` run. PR feedback, queue admission and merge-group success do not substitute. |
+| Full main | `ci-main.yml`, manual on `main`, selecting its exact SHA | `require-green-main.sh` authenticates complete exact-SHA full merge-group, manual-main or compatible legacy-main execution, including approved definitions, native jobs and attempts. PR feedback, queue admission and docs-only group success do not substitute. |
 | Complete graph | `ci.yml` and `scripts/ci/ci-job-registry.json` | All 16 full domains: client, compose-demo, docs, floor-bench, freeze-guard, fuzz, generated, headline-guarantee, k8s-e2e, lint, race, release-snapshot, supply-chain-checks, test, web, web-go; inspect supporting jobs and all shards. |
 | Full isolation race | `reliability.yml`, `suite=race` | All planned isolation-race shards and both engines. Ordinary race coverage excludes `internal/isolation`. |
 | Backup/restore and operator | `release-acceptance.yml`, `suite=all` | Exact-candidate native ARM64 recovery and operator artifacts. Use the consolidated workflow, not retired standalone workflow names. |

@@ -12,7 +12,7 @@ func TestQueueEveryPublicationRequiresItsHeldHead(t *testing.T) {
 	for _, name := range []string{"missing lease", "wrong PR head", "wrong binding head", "wrong selected head", "malformed lease"} {
 		t.Run(name, func(t *testing.T) {
 			f := newQueueFixture(t)
-			if err := f.q.init(context.Background()); err != nil {
+			if err := f.q.initRepository(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			p := f.pr
