@@ -3,8 +3,8 @@ package main
 import "context"
 
 // initialReads holds the first-pass authority reads of one admission. They are
-// observations only: admitProof judges them in its original order, and the
-// final phase repeats every authority read before any success is published.
+// observations only: admitProof judges them in its original order, and the final
+// phase repeats the feedback and role reads before any success is published.
 type initialReads struct {
 	feedback    *run
 	feedbackErr error

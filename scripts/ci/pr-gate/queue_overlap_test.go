@@ -133,6 +133,7 @@ func TestDevCIDefinitionCheckRunsBesideDCO(t *testing.T) {
 		select {
 		case <-dcoStarted:
 		case <-time.After(2 * time.Second):
+			t.Error(errReadsNotOverlapped)
 		}
 	}}
 	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
@@ -156,6 +157,39 @@ func (a *startedReadAPI) read(ctx context.Context, path string, out any) error {
 
 // A dev admission starts from the PR its caller already read, so only the final
 // comparison reads it again. The final read still happens.
+func TestQueueRouteCheckRunsBesideFeedback(t *testing.T) {
+	f := newQueueFixture(t)
+	f.q.targeted = true
+	b := f.barrier(t, map[string]int{"git/ref/heads/dev": 1, "actions/workflows/ci-feedback.yml": 1})
+	_ = f.q.admit(context.Background(), f.pr.Number)
+	if !b.overlapped() {
+		t.Fatal("the route check and feedback did not overlap")
+	}
+}
+
+// Route and contract reads belong to the gated branch, and need a live policy.
+func TestFirstPassSkipsRouteReadsThatCannotApply(t *testing.T) {
+	devRef := func(f *queueFixture) int { return f.api.reads[f.c.endpoint("git/ref/heads/dev")] }
+	t.Run("another base", func(t *testing.T) {
+		f := newQueueFixture(t)
+		f.pr.Base.Ref = "dev"
+		f.refresh()
+		_ = f.q.admit(context.Background(), f.pr.Number)
+		if got := devRef(f); got != 0 {
+			t.Fatalf("route check read dev %d times for a PR it does not gate", got)
+		}
+	})
+	t.Run("policy off", func(t *testing.T) {
+		f := newQueueFixture(t)
+		f.rules = f.rules[:len(f.rules)-1]
+		f.policyRefresh()
+		_ = f.q.admit(context.Background(), f.pr.Number)
+		if got := devRef(f); got != 0 {
+			t.Fatalf("route check read dev %d times with the queue policy off", got)
+		}
+	})
+}
+
 func TestDevAdmissionReadsThePullRequestTwice(t *testing.T) {
 	f := newDevFixture(t)
 	t.Setenv("GITHUB_REF", "refs/heads/main")
@@ -173,7 +207,7 @@ func TestDevAdmissionReadsThePullRequestTwice(t *testing.T) {
 		total += n
 	}
 	if total != 32 {
-		t.Fatalf("dev admission spent %d reads, want 32: each added read costs its budget", total)
+		t.Fatalf("dev admission spent %d reads, want 32", total)
 	}
 	requireDevSuccess(t, f)
 }
