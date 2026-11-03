@@ -69,7 +69,7 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func startSSHD(t *testing.T) *opensshHarness {
+func startSSHD(t *testing.T, extraConfig ...string) *opensshHarness {
 	t.Helper()
 	sshd, sshBin, keygen := requireOpenSSH(t)
 	u, err := user.Current()
@@ -108,7 +108,7 @@ PermitRootLogin yes
 UsePAM no
 StrictModes no
 LogLevel VERBOSE
-`, h.port, filepath.Join(dir, "host_key"), filepath.Join(dir, "sshd.pid"), h.trusted, h.krl)
+`, h.port, filepath.Join(dir, "host_key"), filepath.Join(dir, "sshd.pid"), h.trusted, h.krl) + strings.Join(append(extraConfig, ""), "\n")
 	// OpenSSH 9.8+ penalises a source after a failed authentication and drops
 	// its next connections; the refusal checks here fail on purpose, so exempt
 	// loopback where the option exists (older sshd rejects it as unknown).
@@ -205,22 +205,30 @@ func (h *opensshHarness) issue(name string, ca ssh.Signer, serial uint64, validA
 }
 
 func (h *opensshHarness) login(c issuedCert) error {
+	_, err := h.loginWith(c)
+	return err
+}
+
+// loginWith runs the real ssh client with extra client arguments and returns
+// its combined output so callers can read what was negotiated.
+func (h *opensshHarness) loginWith(c issuedCert, extra ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, h.ssh, "-F", "/dev/null",
+	args := append([]string{"-F", "/dev/null",
 		"-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
 		"-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "PreferredAuthentications=publickey",
 		"-o", "ConnectTimeout=10",
-		"-i", c.keyPath, "-o", "CertificateFile="+c.certPath,
-		"-p", fmt.Sprint(h.port), h.user+"@127.0.0.1", "echo", "hikyo-ok")
+		"-i", c.keyPath, "-o", "CertificateFile=" + c.certPath,
+		"-p", fmt.Sprint(h.port)}, extra...)
+	cmd := exec.CommandContext(ctx, h.ssh, append(args, h.user+"@127.0.0.1", "echo", "hikyo-ok")...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("ssh: %v: %s", err, out)
+		return string(out), fmt.Errorf("ssh: %v: %s", err, out)
 	}
 	if !strings.Contains(string(out), "hikyo-ok") {
-		return fmt.Errorf("ssh ran but printed %q", out)
+		return string(out), fmt.Errorf("ssh ran but printed %q", out)
 	}
-	return nil
+	return string(out), nil
 }
 
 func TestOpenSSHAuthenticationKRLExpiryAndRotation(t *testing.T) {
