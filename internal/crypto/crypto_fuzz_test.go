@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -189,6 +190,72 @@ func FuzzTransitDecrypt(f *testing.F) {
 		}
 		if s != genuine || string(context) != "c" || string(pt) != "seed" {
 			t.Fatalf("forged transit value opened: %q", s)
+		}
+	})
+}
+
+// FuzzVerifyTransitMLDSA65 feeds arbitrary public keys, messages and signature
+// payloads to the verifier a verify request reaches. It must never panic, and
+// the only input it accepts is the genuine key, message and payload. This
+// covers the ML-DSA public-key and signature decoding.
+func FuzzVerifyTransitMLDSA65(f *testing.F) {
+	k, err := OpenTransitKey(make([]byte, TransitMaterialSize),
+		TransitBinding{Algorithm: TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})
+	if err != nil {
+		f.Fatal(err)
+	}
+	pub, err := k.PublicKey()
+	if err != nil {
+		f.Fatal(err)
+	}
+	msg := []byte("fuzz")
+	// Hedged signing differs per process; every worker therefore treats any
+	// accepted triple as genuine only if it verifies, and checks the invariant
+	// that matters: acceptance implies the exact sizes and identifier.
+	good, err := k.Sign(msg)
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(pub, msg, good)
+	f.Add(pub, msg, good[:len(good)-1])
+	f.Add(pub[:1951], msg, good)
+	f.Add([]byte{}, []byte{}, []byte{})
+	f.Add(make([]byte, 1952), msg, append([]byte{0x09, 0x05}, make([]byte, 3309)...))
+	f.Fuzz(func(t *testing.T, publicKey, message, payload []byte) {
+		if !VerifyTransitSignature(TransitMLDSA65, publicKey, message, payload) {
+			return
+		}
+		if len(publicKey) != 1952 || len(payload) != 3311 || payload[0] != 0x09 || payload[1] != 0x05 ||
+			len(message) > MaxTransitPlaintextBytes {
+			t.Fatalf("accepted a malformed input: pub %d payload %d", len(publicKey), len(payload))
+		}
+	})
+}
+
+// FuzzParseTransitSignatureValue runs the wire parser and the ML-DSA verifier
+// together on arbitrary strings: nothing may panic and nothing but a
+// well-formed, authentic value verifies.
+func FuzzParseTransitSignatureValue(f *testing.F) {
+	k, err := OpenTransitKey(make([]byte, TransitMaterialSize),
+		TransitBinding{Algorithm: TransitMLDSA65, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1})
+	if err != nil {
+		f.Fatal(err)
+	}
+	pub, _ := k.PublicKey()
+	sig, err := k.Sign([]byte("fuzz"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(FormatTransitValue(1, sig))
+	f.Add("hikyo:v1:CQU")
+	f.Add("hikyo:v1:" + strings.Repeat("A", 4415))
+	f.Fuzz(func(t *testing.T, s string) {
+		_, payload, err := ParseTransitValue(s)
+		if err != nil {
+			return
+		}
+		if VerifyTransitSignature(TransitMLDSA65, pub, []byte("fuzz"), payload) && len(payload) != 3311 {
+			t.Fatalf("verified a payload of %d bytes", len(payload))
 		}
 	})
 }

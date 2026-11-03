@@ -4,9 +4,11 @@ import (
 	"crypto/ed25519"
 	"crypto/hkdf"
 	"crypto/hmac"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -34,12 +36,36 @@ const (
 	TransitXChaCha20Poly1305 TransitAlgorithm = "xchacha20-poly1305"
 	TransitEd25519           TransitAlgorithm = "ed25519"
 	TransitHMACSHA256        TransitAlgorithm = "hmac-sha256"
+	// TransitMLDSA65 is pure ML-DSA-65 (FIPS 204) with the context
+	// TransitMLDSASignContext: a key identity distinct from ed25519
+	// (post-quantum migration DEC-02, transit ADR amendment). No other
+	// parameter set is in the closed set.
+	TransitMLDSA65 TransitAlgorithm = "mldsa65"
 )
 
 // TransitAlgorithms returns the closed algorithm set in a stable order.
 func TransitAlgorithms() []TransitAlgorithm {
-	return []TransitAlgorithm{TransitXChaCha20Poly1305, TransitEd25519, TransitHMACSHA256}
+	return []TransitAlgorithm{TransitXChaCha20Poly1305, TransitEd25519, TransitHMACSHA256, TransitMLDSA65}
 }
+
+// TransitMLDSASignContext is the ML-DSA Options.Context of every transit
+// signature: the Transit label (DEC-07, `hikyo/<surface>/<purpose>/v<N>`), at
+// most 255 bytes. An independent verifier needs exactly this string.
+const TransitMLDSASignContext = "hikyo/transit/sign/v1"
+
+// transitSigSchemeMLDSA65 is the two-byte big-endian algorithm identifier that
+// opens every ML-DSA-65 signature payload, so a signature carries its algorithm
+// and parameter set (DEC-07). It is the TLS SignatureScheme code point for
+// ML-DSA-65 listed in the profiles. Ed25519 payloads stay the bare 64 bytes.
+const transitSigSchemeMLDSA65 uint16 = 0x0905
+
+// Fixed encoded sizes of the FIPS 204 ML-DSA-65 public key and signature, and
+// the signature payload (identifier plus signature).
+const (
+	transitMLDSA65PublicKeySize = 1952
+	transitMLDSA65SignatureSize = 3309
+	transitMLDSA65PayloadSize   = 2 + transitMLDSA65SignatureSize
+)
 
 // ParseTransitAlgorithm refuses anything outside the closed set.
 func ParseTransitAlgorithm(s string) (TransitAlgorithm, error) {
@@ -160,6 +186,7 @@ type TransitKey struct {
 	b    TransitBinding
 	key  []byte             // AEAD or HMAC key
 	priv ed25519.PrivateKey // ed25519 only
+	pq   *mldsa.PrivateKey  // mldsa65 only
 	rnd  io.Reader
 }
 
@@ -185,9 +212,21 @@ func OpenTransitKey(material []byte, b TransitBinding) (*TransitKey, error) {
 		return nil, fmt.Errorf("crypto: derive transit key: %w", err)
 	}
 	k := &TransitKey{b: b, rnd: rand.Reader}
-	if b.Algorithm == TransitEd25519 {
+	switch b.Algorithm {
+	case TransitEd25519:
 		k.priv = ed25519.NewKeyFromSeed(derived)
 		Zero(derived)
+		return k, nil
+	case TransitMLDSA65:
+		// The derived 32 bytes are the FIPS 204 seed, as they are the RFC 8032
+		// seed above. A library that cannot serve ML-DSA (the frozen FIPS
+		// module) refuses; no other algorithm is substituted.
+		pq, err := mldsa.NewPrivateKey(mldsa.MLDSA65(), derived)
+		Zero(derived)
+		if err != nil {
+			return nil, fmt.Errorf("crypto: open ml-dsa transit key: %w", err)
+		}
+		k.pq = pq
 		return k, nil
 	}
 	k.key = derived
@@ -201,6 +240,10 @@ func (k *TransitKey) Destroy() {
 	}
 	Zero(k.key)
 	Zero(k.priv)
+	// shortcut: crypto/mldsa exposes no way to zero a private key, so the seed
+	// copy inside the library lives until the garbage collector reclaims it;
+	// revisit if the standard library adds a destroy method.
+	k.pq = nil
 }
 
 // require rejects a nil key or a key with a different algorithm.
@@ -211,10 +254,14 @@ func (k *TransitKey) require(a TransitAlgorithm) error {
 	return nil
 }
 
-// PublicKey returns a copy of the Ed25519 public key. It is public metadata:
-// storing and returning it discloses nothing about the private half. A nil key
-// or a non-Ed25519 key returns an error.
+// PublicKey returns a copy of the signing public key: 32 bytes for Ed25519, the
+// 1952-byte FIPS 204 encoding for ML-DSA-65. It is public metadata: storing and
+// returning it discloses nothing about the private half. A nil key or a key
+// that is not a signing key returns an error.
 func (k *TransitKey) PublicKey() ([]byte, error) {
+	if k != nil && k.pq != nil {
+		return k.pq.PublicKey().Bytes(), nil
+	}
 	if err := k.require(TransitEd25519); err != nil {
 		return nil, err
 	}
@@ -257,10 +304,24 @@ func (k *TransitKey) Decrypt(record, context []byte) ([]byte, error) {
 	return pt, nil
 }
 
-// Sign is pure Ed25519 over the message bytes, so any RFC 8032 verifier holding
-// the public key can check it without Hikyo. A nil or non-Ed25519 key returns
-// an error; messages over MaxTransitPlaintextBytes return ErrTransitFormat.
+// Sign returns the signature payload for message. Ed25519 is pure RFC 8032 over
+// the message bytes. ML-DSA-65 is pure FIPS 204 (hedged, no pre-hash) with the
+// context TransitMLDSASignContext, behind its two-byte algorithm identifier;
+// either can be checked by an independent verifier holding the public key. A
+// nil or non-signing key returns an error; messages over
+// MaxTransitPlaintextBytes return ErrTransitFormat.
 func (k *TransitKey) Sign(message []byte) ([]byte, error) {
+	if k != nil && k.pq != nil {
+		if len(message) > MaxTransitPlaintextBytes {
+			return nil, ErrTransitFormat
+		}
+		sig, err := k.pq.Sign(nil, message, &mldsa.Options{Context: TransitMLDSASignContext})
+		if err != nil || len(sig) != transitMLDSA65SignatureSize {
+			return nil, errors.New("crypto: ml-dsa signing failed")
+		}
+		out := binary.BigEndian.AppendUint16(make([]byte, 0, transitMLDSA65PayloadSize), transitSigSchemeMLDSA65)
+		return append(out, sig...), nil
+	}
 	if err := k.require(TransitEd25519); err != nil {
 		return nil, err
 	}
@@ -285,14 +346,35 @@ func (k *TransitKey) MAC(message []byte) ([]byte, error) {
 	return m.Sum(nil), nil
 }
 
-// VerifyTransitSignature checks a pure Ed25519 signature. Wrong-sized inputs
-// are a plain false, never a panic.
-func VerifyTransitSignature(publicKey, message, signature []byte) bool {
-	if len(publicKey) != ed25519.PublicKeySize || len(signature) != ed25519.SignatureSize ||
-		len(message) > MaxTransitPlaintextBytes {
+// VerifyTransitSignature checks a signature payload under the algorithm of the
+// key that is being verified against. The caller passes the algorithm recorded
+// on the key row, never one read from the presented signature, so a payload
+// cannot select its own verifier (DEC-03). The identifier on an ML-DSA payload
+// must equal the key's own. Wrong algorithms, wrong-sized keys or payloads, a
+// public key the library refuses, and oversized messages are a plain false,
+// never a panic.
+func VerifyTransitSignature(alg TransitAlgorithm, publicKey, message, payload []byte) bool {
+	if len(message) > MaxTransitPlaintextBytes {
 		return false
 	}
-	return ed25519.Verify(ed25519.PublicKey(publicKey), message, signature)
+	switch alg {
+	case TransitEd25519:
+		if len(publicKey) != ed25519.PublicKeySize || len(payload) != ed25519.SignatureSize {
+			return false
+		}
+		return ed25519.Verify(ed25519.PublicKey(publicKey), message, payload)
+	case TransitMLDSA65:
+		if len(publicKey) != transitMLDSA65PublicKeySize || len(payload) != transitMLDSA65PayloadSize ||
+			binary.BigEndian.Uint16(payload) != transitSigSchemeMLDSA65 {
+			return false
+		}
+		pk, err := mldsa.NewPublicKey(mldsa.MLDSA65(), publicKey)
+		if err != nil {
+			return false
+		}
+		return mldsa.Verify(pk, message, payload[2:], &mldsa.Options{Context: TransitMLDSASignContext}) == nil
+	}
+	return false
 }
 
 // EqualTransitMAC compares two MACs in constant time.
