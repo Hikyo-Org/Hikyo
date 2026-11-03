@@ -31,15 +31,17 @@ already binds this exception to `values export`.
 - Three independent review rounds on `claude-opus-5-5`. Their findings were fixed except the items below.
 - A real terminal and a real browser or passkey ceremony were not exercised.
 
+## Owner decision, 2026-11-03
+
+A human `--config-only` run writes no server audit event, like `values export` without `--reveal`. It discloses no secrets.
+[compose-integration.md](../adr/compose-integration.md) still requires a recorded config-only fetch for machine delivery.
+
 ## Open items
 
-1. **Owner decision:** a human `--config-only` run writes no server audit event, like `values export` without `--reveal`.
-   [compose-integration.md](../adr/compose-integration.md) requires a recorded config-only fetch for machine delivery. Accept it as the
-   human path's behaviour, or add a server event.
-2. **Empty ceremony unit:** a full run with no secrets at a 0-second window is refused, although the server needs no ceremony for it.
-3. **Bound sliding windows:** a live adapter-bound window counts as satisfied, because the CLI cannot see its binding. The disclosure then
+1. **Empty ceremony unit:** a full run with no secrets at a 0-second window is refused, although the server needs no ceremony for it.
+2. **Bound sliding windows:** a live adapter-bound window counts as satisfied, because the CLI cannot see its binding. The disclosure then
    gets `not permitted` until the window lapses. This is pre-existing, and the fix needs the server to report the binding.
-4. **Browser consent copy:** `web/src/routes/CLIReauth.tsx` says a passkey authorizes one decision over the listed keys. Above a 0-second
+3. **Browser consent copy:** `web/src/routes/CLIReauth.tsx` says a passkey authorizes one decision over the listed keys. Above a 0-second
    window it opens an environment-wide sliding window. This is pre-existing, but a config-only unit makes it more misleading.
-5. **Historical consent unit:** `values export --reveal --revision N` at a 0-second window is refused for a key tightened to secret after
+4. **Historical consent unit:** `values export --reveal --revision N` at a 0-second window is refused for a key tightened to secret after
    revision N, because `Sensitive` does not count the current classification. Pre-existing, and it fails closed.
