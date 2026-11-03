@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, userEvent } from 'storybook/test';
 
+import { Button } from './Button.tsx';
 import { Disclosure } from './Disclosure.tsx';
 
 const meta = {
@@ -44,9 +45,9 @@ export const Controlled: Story = {
     const [open, setOpen] = useState(false);
     return (
       <>
-        <button type="button" onClick={() => setOpen(true)}>
+        <Button type="button" onClick={() => setOpen(true)}>
           Open from outside
-        </button>
+        </Button>
         <Disclosure {...args} open={open} onOpenChange={setOpen} />
       </>
     );
