@@ -31,6 +31,11 @@ stacked on the program draft (PR #1148). Source references are repo-relative at
 the pin, not promises about future main; re-pin before reuse. The issue's
 `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` assessment is historical navigation.
 
+Feature PRs target `dev` since #1159, so the stack is rooted there. Rechecked on
+2026-11-03 against `dev` `3e687143e004c1376738145a5de6325e3544fa62`: of the paths
+the inventory cites, only `.github/workflows/nightly.yml` and `CONTRIBUTING.md`
+changed. Those two rows need a child's recheck before reuse; no row was rewritten.
+
 ## Approval and claim rules
 
 Marc Went owns scope, strength and exception decisions and assigns the
