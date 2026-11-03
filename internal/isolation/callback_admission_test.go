@@ -17,6 +17,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/oidctest"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
@@ -82,19 +83,51 @@ func (r *callbackRig) login(t *testing.T) service.LoginResult {
 
 func (r *callbackRig) exhaustSource(t *testing.T) {
 	t.Helper()
-	for range admission.MetaPerIPPerMinute {
-		if err := r.limiter.AdmitDiscovery(callbackSource); err != nil {
-			t.Fatal(err)
+	for range 2 * admission.MetaPerIPPerMinute {
+		if r.limiter.AdmitDiscovery(callbackSource) != nil {
+			return
 		}
 	}
+	t.Fatal("source allowance never refused")
 }
 
 func (r *callbackRig) exhaustBudget(t *testing.T, session service.LoginResult) {
 	t.Helper()
-	for range service.BudgetAuthenticatedAPIBurst {
-		if err := r.budget.AdmitAuthenticatedAPI(session.SessionID); err != nil {
-			t.Fatal(err)
+	for range service.BudgetAuthenticatedAPIBurst + 1 {
+		if r.budget.AdmitAuthenticatedAPI(session.SessionID) != nil {
+			return
 		}
+	}
+	t.Fatal("session budget never refused")
+}
+
+// proveLive makes this node remember the session as live, so its later
+// presentations spend its request budget instead of the source allowance.
+func (r *callbackRig) proveLive(t *testing.T, session service.LoginResult) {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+	req.RemoteAddr = callbackSource + ":1234"
+	req.Header.Set("Authorization", "Bearer "+session.SessionToken)
+	rec := httptest.NewRecorder()
+	r.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proving presentation = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// refusalStages records the stage of each signal the server settles, without the
+// store's deadline, so a loaded machine cannot lose one.
+type refusalStages struct{ stages []audit.RefusalStage }
+
+func (s *refusalStages) Record(_ context.Context, sample audit.RefusalSample) error {
+	s.stages = append(s.stages, sample.Stage)
+	return nil
+}
+
+func (s *refusalStages) assertOneAdmission(t *testing.T) {
+	t.Helper()
+	if len(s.stages) != 1 || s.stages[0] != audit.RefusalAdmission {
+		t.Errorf("refusal signals = %v, want one admission", s.stages)
 	}
 }
 
@@ -171,6 +204,9 @@ func TestCallbackAdmission(t *testing.T) {
 				t.Run("exhausted_session_budget_is_a_retryable_429", func(t *testing.T) {
 					r.throttledIsRetryable(t, flow, func(session service.LoginResult) { r.exhaustBudget(t, session) }, 5*time.Second)
 				})
+				t.Run("known_live_budget_refusal_is_retryable_and_signals_before_any_read", func(t *testing.T) { r.knownLiveBudgetRefusal(t, flow) })
+				t.Run("known_live_session_lost_during_the_exchange_is_not_throttled", func(t *testing.T) { r.knownLiveLostDuringExchange(t, flow) })
+				t.Run("known_live_session_outlasts_an_exhausted_source", func(t *testing.T) { r.knownLiveOutlastsSource(t, flow) })
 				t.Run("overload_is_independent_of_state", func(t *testing.T) { r.overloadIndependentOfState(t, flow) })
 				t.Run("mismatch_stays_uniform", func(t *testing.T) { r.mismatchStaysUniform(t, flow) })
 				t.Run("fault_resolving_the_credential", func(t *testing.T) { r.faultIsNotBinding(t, flow) })
@@ -179,6 +215,7 @@ func TestCallbackAdmission(t *testing.T) {
 				t.Run("login_without_a_credential_is_not_charged", func(t *testing.T) { r.loginUncharged(t, flow) })
 			})
 		}
+		t.Run("known_live_reauth_lost_during_the_exchange_keeps_its_binding_refusal", r.knownLiveReauthLostDuringExchange)
 		t.Run("fault_at_oidc_reauth_is_not_binding", r.reauthFault)
 		t.Run("fault_at_federated_establish_is_not_binding", r.establishFault)
 		t.Run("fault_at_saml_initiator_is_not_a_mismatch", r.samlFault)
@@ -209,6 +246,144 @@ func (r *callbackRig) throttledIsRetryable(t *testing.T, flow string, exhaust fu
 	r.seconds.Add(int64(reopen / time.Second))
 	if retry := r.callback(t.Context(), c, session.SessionToken); retry.Code != http.StatusOK {
 		t.Errorf("retry inside the ceremony lifetime = %d %q, want 200", retry.Code, retry.Body.String())
+	}
+}
+
+// A known session is refused by its budget before any read, and that refusal is
+// the admission signal, not a binding failure. The ceremony survives it.
+func (r *callbackRig) knownLiveBudgetRefusal(t *testing.T, flow string) {
+	r.fresh(t)
+	session := r.login(t)
+	c := r.sessionBound(t, flow, session.SessionToken)
+	signals := &refusalStages{}
+	r.handler = server.New(&server.API{Auth: r.auth, Admission: r.limiter, RequestBudget: r.budget, Refusals: signals}, nil)
+	r.proveLive(t, session)
+	r.exhaustBudget(t, session)
+	spent, refusals := r.spent(t, flow), r.bindingRefusals(t, flow)
+	var reads atomic.Int64
+	restore := authn.SetQueryObserver(func(q string) {
+		if strings.Contains(q, "-- name: GetSessionByVerifier ") || strings.Contains(q, "_transactions") {
+			reads.Add(1)
+		}
+	})
+	defer restore()
+	rec := r.callback(t.Context(), c, session.SessionToken)
+	restore()
+	if rec.Code != http.StatusTooManyRequests || reads.Load() != 0 {
+		t.Errorf("over budget = %d %q with %d reads, want 429 before any read", rec.Code, rec.Body.String(), reads.Load())
+	}
+	signals.assertOneAdmission(t)
+	if got := r.spent(t, flow); got != spent {
+		t.Errorf("over budget spent the ceremony: %d -> %d", spent, got)
+	}
+	if got := r.bindingRefusals(t, flow); got != refusals {
+		t.Errorf("over budget was audited as binding: %d -> %d", refusals, got)
+	}
+	r.seconds.Add(5)
+	if retry := r.callback(t.Context(), c, session.SessionToken); retry.Code != http.StatusOK {
+		t.Errorf("retry = %d %q, want 200", retry.Code, retry.Body.String())
+	}
+}
+
+// duringExchange runs fn while the callback waits on the identity provider, after
+// Phase A has committed.
+func (r *callbackRig) duringExchange(flow string, fn func()) (restore func()) {
+	if flow == "oidc" {
+		r.idp.OnToken = fn
+		return func() { r.idp.OnToken = nil }
+	}
+	r.github.onUser = fn
+	return func() { r.github.onUser = nil }
+}
+
+// A session that spent its budget in Phase A has paid for this request. If the
+// node's memory loses it during the exchange, the ceremony is already spent, so a
+// source refusal there would advertise a retry that cannot succeed.
+func (r *callbackRig) knownLiveLostDuringExchange(t *testing.T, flow string) {
+	lost := func(t *testing.T) (service.LoginResult, callbackCeremony) {
+		t.Helper()
+		r.fresh(t)
+		session := r.login(t)
+		c := r.sessionBound(t, flow, session.SessionToken)
+		r.proveLive(t, session)
+		r.exhaustSource(t)
+		return session, c
+	}
+	t.Run("still_live", func(t *testing.T) {
+		session, c := lost(t)
+		defer r.duringExchange(flow, func() { r.limiter.ForgetSession(crypto.ArtifactVerifier(session.SessionToken)) })()
+		if rec := r.callback(t.Context(), c, session.SessionToken); rec.Code != http.StatusOK {
+			t.Errorf("callback = %d %q, want 200", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("dead_is_refused_not_throttled", func(t *testing.T) {
+		session, c := lost(t)
+		var logout error
+		defer r.duringExchange(flow, func() {
+			logout = r.auth.Logout(context.Background(), session.SessionToken)
+			r.limiter.ForgetSession(crypto.ArtifactVerifier(session.SessionToken))
+		})()
+		rec := r.callback(t.Context(), c, session.SessionToken)
+		if logout != nil {
+			t.Fatal(logout)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("callback = %d %q, want 401", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+// Reauth audits a session dying during the exchange, so losing it from the node's
+// memory must not turn that refusal into a rate limit.
+func (r *callbackRig) knownLiveReauthLostDuringExchange(t *testing.T) {
+	r.fresh(t)
+	ctx := t.Context()
+	linkOn(t, r.auth, ctx, "idp", "callback-reauth-lost", r.boot.password)
+	r.idp.AuthTime = time.Now()
+	r.idp.AMR = []string{"mfa", "otp"}
+	session := oidcLogin(t, r.auth, ctx, "idp", "callback-reauth-lost")
+	start, err := r.auth.OIDCStart(ctx, "idp", "reauth", "", "", "env_prod", session.SessionToken, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, state := driveIdP(t, start.AuthURL+"&sub=callback-reauth-lost")
+	r.proveLive(t, session)
+	r.exhaustSource(t)
+	refusals := r.bindingRefusals(t, "oidc")
+	var logout error
+	defer r.duringExchange("oidc", func() {
+		logout = r.auth.Logout(context.Background(), session.SessionToken)
+		r.limiter.ForgetSession(crypto.ArtifactVerifier(session.SessionToken))
+	})()
+	rec := r.callback(ctx, callbackCeremony{flow: "oidc", slug: "idp", code: code, state: state}, session.SessionToken)
+	if logout != nil {
+		t.Fatal(logout)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("callback = %d %q, want 401", rec.Code, rec.Body.String())
+	}
+	if got := r.bindingRefusals(t, "oidc"); got != refusals+1 {
+		t.Errorf("binding refusals %d -> %d, want one more", refusals, got)
+	}
+}
+
+// A known session does not spend the source, so an exhausted source refuses a
+// stranger's presentation of the same state and still lets the session finish.
+func (r *callbackRig) knownLiveOutlastsSource(t *testing.T, flow string) {
+	r.fresh(t)
+	session := r.login(t)
+	c := r.sessionBound(t, flow, session.SessionToken)
+	r.proveLive(t, session)
+	r.exhaustSource(t)
+	stranger, _, err := crypto.NewArtifact(crypto.ArtifactCLISession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := r.callback(t.Context(), c, stranger); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("stranger on the exhausted source = %d %q, want 429", rec.Code, rec.Body.String())
+	}
+	if rec := r.callback(t.Context(), c, session.SessionToken); rec.Code != http.StatusOK {
+		t.Errorf("known session on the exhausted source = %d %q, want 200", rec.Code, rec.Body.String())
 	}
 }
 
@@ -252,13 +427,16 @@ func (r *callbackRig) overloadIndependentOfState(t *testing.T, flow string) {
 			{flow: flow, slug: slug, code: code, state: unknown},
 		}
 	}
-	assertUniform := func(t *testing.T, ceremonies []callbackCeremony, bearers ...string) {
+	assertUniform := func(t *testing.T, ceremonies []callbackCeremony, bearers ...string) (sessionReads int64) {
 		t.Helper()
 		spent := r.spent(t, flow)
-		var transactionReads atomic.Int64
+		var transactionReads, sessions atomic.Int64
 		restore := authn.SetQueryObserver(func(q string) {
 			if strings.Contains(q, "_transactions") {
 				transactionReads.Add(1)
+			}
+			if strings.Contains(q, "-- name: GetSessionByVerifier ") {
+				sessions.Add(1)
 			}
 		})
 		defer restore()
@@ -284,6 +462,7 @@ func (r *callbackRig) overloadIndependentOfState(t *testing.T, flow string) {
 		if got := r.spent(t, flow); got != spent {
 			t.Errorf("over-limit callbacks spent ceremonies: %d -> %d", spent, got)
 		}
+		return sessions.Load()
 	}
 
 	t.Run("source", func(t *testing.T) {
@@ -303,6 +482,16 @@ func (r *callbackRig) overloadIndependentOfState(t *testing.T, flow string) {
 		ceremonies := states(t, owner)
 		r.exhaustBudget(t, owner)
 		assertUniform(t, ceremonies, owner.SessionToken)
+	})
+	t.Run("known_live_session_budget", func(t *testing.T) {
+		r.fresh(t)
+		owner := r.login(t)
+		ceremonies := states(t, owner)
+		r.proveLive(t, owner)
+		r.exhaustBudget(t, owner)
+		if reads := assertUniform(t, ceremonies, owner.SessionToken); reads != 0 {
+			t.Errorf("known session over budget read its row %d times, want none", reads)
+		}
 	})
 }
 
@@ -406,9 +595,12 @@ func (r *callbackRig) browserOverload(t *testing.T, flow string) {
 	r.fresh(t)
 	session := r.login(t)
 	c := r.sessionBound(t, flow, session.SessionToken)
+	signals := &refusalStages{}
+	r.handler = server.New(&server.API{Auth: r.auth, Admission: r.limiter, RequestBudget: r.budget, Refusals: signals}, nil)
 	r.exhaustSource(t)
 	spent := r.spent(t, flow)
 	rec := r.callback(t.Context(), c, session.SessionToken, callbackCookie("__Host-hikyo-oidc-browser-", c.state, "link"))
+	signals.assertOneAdmission(t)
 	location, err := url.Parse(rec.Header().Get("Location"))
 	if err != nil {
 		t.Fatal(err)

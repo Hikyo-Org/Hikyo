@@ -181,6 +181,9 @@ func (a *API) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestOb
 			if policy.code == apigen.ErrorCodeInternal {
 				a.fault(ctx, "oidc callback", err)
 			}
+			if errors.Is(err, admission.ErrOverloaded) {
+				a.recordPendingRefusal(ctx)
+			}
 		}
 		return oidcBrowserCallbackResponse(result, errorCode), nil
 	}
