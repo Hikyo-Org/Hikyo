@@ -58,7 +58,7 @@ requires the existing custody secret configuration.
 
 ## The complete workflow map
 
-The source contains 34 YAML workflow files. GitHub's sidebar also contains
+The source contains 35 YAML workflow files. GitHub's sidebar also contains
 provider-generated and historical entries; deleting YAML does not erase history.
 
 | Responsibility | Files | Why they remain separate |
@@ -250,14 +250,18 @@ is a flake, not a verdict. While the run attempt (`GITHUB_RUN_ATTEMPT`) is below
 three, the reserve publishes a blocking, non-terminal "PR validation pending"
 record in place of the terminal refusal, and the run still fails.
 `ci-queue-retry.yml` then reruns only the failed jobs of that run (a new job,
-so a new sixty-second budget) when a head publisher's reconcile step failed.
-The run attempt is the only loop bound: attempt 3 publishes the terminal
-refusal and is never rerun, the retry workflow does not follow itself, and it
-holds only `actions: write`, checks nothing out and runs no repository code. A
-pass that already published its verdict keeps it when the work clock ends a
-moment later. A pending record blocks like any other; the rerun, not the cron,
-settles it. If the retry workflow is disabled the record stays pending (blocking)
-until the next event or discovery run.
+so a new sixty-second budget) when a publisher job's reconcile step failed,
+including a job its one-minute timeout then cancelled. Worker group jobs share
+the publisher's name and get the same reruns, and so does a failed setup, because
+reconcile always runs. The run attempt is the only loop bound: attempt 3 publishes
+the terminal refusal and is never rerun, the retry workflow does not follow
+itself, and it holds only `actions: write`, checks nothing out and runs no
+repository code. It follows only the three publisher workflows by path, never a
+`pull_request` run. A pass that already published its verdict keeps it when the
+work clock ends a moment later. A pending record blocks like any other; the rerun,
+not the cron, settles it. The record stays pending (blocking) until the next event
+or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
+never fails, or if setup fails on attempt 3, which publishes nothing.
 
 The final authority reads of an admission (policy verifier, fork vouching, DCO,
 feedback) run at once and are judged in their former order; the final role

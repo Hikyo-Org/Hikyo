@@ -21,7 +21,15 @@ concurrency:
 jobs:
   rerun:
     # Keep the attempt bound in step with admissionMaxAttempts in scripts/ci/pr-gate/queue_deadline.go.
-    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
+    # A job that hits its one-minute timeout after reconcile failed concludes cancelled.
+    # The path and event stop a PR-added workflow reusing a name from getting reruns.
+    if: >-
+      (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled') &&
+      github.event.workflow_run.run_attempt < 3 &&
+      github.event.workflow_run.event != 'pull_request' &&
+      (github.event.workflow_run.path == '.github/workflows/ci-queue-gate.yml' ||
+      github.event.workflow_run.path == '.github/workflows/ci-queue-worker.yml' ||
+      github.event.workflow_run.path == '.github/workflows/ci-dev-gate.yml')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -38,10 +46,11 @@ jobs:
           [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           test "$RUN_ATTEMPT" -lt 3
-          # Only a head publisher whose reconcile step failed is worth another
-          # budget. Group, discovery and setup failures are left alone.
+          # Only a publisher job whose reconcile step failed is worth another budget.
+          # Worker group jobs share the publish- name, and reconcile always runs, so a
+          # failed setup counts too. Discovery and the gate's group- job are left alone.
           failed=$(gh api --paginate "repos/$GH_REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '[.jobs[] | select(.conclusion == "failure" and (.name | test("^(dev-)?publish-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure"))] | length' |
+            --jq '[.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.name | test("^(dev-)?publish-[0-9a-f]{40}$")) and any(.steps[]?; (.name | startswith("Reconcile")) and .conclusion == "failure"))] | length' |
             awk '{ n += $1 } END { print n + 0 }')
           if [ "$failed" -eq 0 ]; then
             echo "No head publisher failed while reconciling; nothing to rerun."

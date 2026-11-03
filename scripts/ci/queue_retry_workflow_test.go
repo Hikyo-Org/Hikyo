@@ -87,6 +87,15 @@ func TestQueueRetryWorkflowIsBoundedAndMinimal(t *testing.T) {
 	if len(job.Steps) != 1 || job.Steps[0].Uses != "" {
 		t.Fatal("the rerun job must be one shell step that runs no repository code and checks nothing out")
 	}
+	// A workflow name alone can be reused by a workflow a PR adds.
+	for _, file := range []string{"ci-queue-gate.yml", "ci-queue-worker.yml", "ci-dev-gate.yml"} {
+		if !strings.Contains(job.If, "github.event.workflow_run.path == '.github/workflows/"+file+"'") {
+			t.Fatalf("retry does not bind %s by path:\n%s", file, job.If)
+		}
+	}
+	if !strings.Contains(job.If, "github.event.workflow_run.event != 'pull_request'") {
+		t.Fatalf("retry must not follow a pull_request run:\n%s", job.If)
+	}
 	// Both loop bounds must equal the publisher's attempt cap.
 	source, err := os.ReadFile(filepath.Join(repositoryRoot(t), "scripts", "ci", "pr-gate", "queue_deadline.go"))
 	if err != nil {
@@ -97,7 +106,7 @@ func TestQueueRetryWorkflowIsBoundedAndMinimal(t *testing.T) {
 		t.Fatal("admissionMaxAttempts not found")
 	}
 	n := string(cap[1])
-	if !strings.Contains(job.If, "github.event.workflow_run.conclusion == 'failure'") || !strings.Contains(job.If, "github.event.workflow_run.run_attempt < "+n) || !strings.Contains(job.Steps[0].Run, `test "$RUN_ATTEMPT" -lt `+n) {
+	if !strings.Contains(job.If, "github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled'") || !strings.Contains(job.If, "github.event.workflow_run.run_attempt < "+n) || !strings.Contains(job.Steps[0].Run, `test "$RUN_ATTEMPT" -lt `+n) {
 		t.Fatalf("attempt bound differs from admissionMaxAttempts=%s:\n%s\n%s", n, job.If, job.Steps[0].Run)
 	}
 }
@@ -108,7 +117,11 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 	}
 	script := readQueueRetryWorkflow(t).Jobs["rerun"].Steps[0].Run
 	job := func(name, conclusion, failedStep string) string {
-		return `{"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + conclusion + `"}]}`
+		step := conclusion
+		if conclusion == "cancelled" { // On a timeout the step failed and the job was then cancelled.
+			step = "failure"
+		}
+		return `{"name":"` + name + `","conclusion":"` + conclusion + `","steps":[{"name":"Compile trusted publisher","conclusion":"success"},{"name":"` + failedStep + `","conclusion":"` + step + `"}]}`
 	}
 	head := strings.Repeat("a", 40)
 	for _, tc := range []struct {
@@ -123,7 +136,10 @@ func TestQueueRetryOnlyRerunsFailedHeadPublishers(t *testing.T) {
 		{"one failure among passes", []string{job("publish-"+head, "success", "Reconcile one authenticated head"), job("publish-"+strings.Repeat("b", 40), "failure", "Reconcile one authenticated head")}, "1", true, false},
 		{"last attempt is never rerun", []string{job("publish-"+head, "failure", "Reconcile one authenticated head")}, "3", false, true},
 		{"publisher passed", []string{job("publish-"+head, "success", "Reconcile one authenticated head")}, "1", false, false},
-		{"setup failed before reconcile", []string{job("publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
+		{"no failed reconcile step", []string{job("publish-"+head, "failure", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
+		{"publisher cancelled by its timeout", []string{job("publish-"+head, "cancelled", "Reconcile one authenticated head")}, "1", true, false},
+		{"cancelled without a failed reconcile", []string{job("publish-"+head, "cancelled", "Capture the authenticated setup-inclusive admission budget")}, "1", false, false},
+		{"worker group job shares the publisher name", []string{job("publish-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", true, false},
 		{"group job is not a head publisher", []string{job("group-"+head, "failure", "Reconcile complete group proof under its head lease")}, "1", false, false},
 		{"job name that is not a head is ignored", []string{job("publish-not-a-sha", "failure", "Reconcile")}, "1", false, false},
 	} {
