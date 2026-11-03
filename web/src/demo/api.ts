@@ -7,7 +7,7 @@ import { DEMO_ACCOUNTS, DEMO_IDS, demoCanEdit, type DemoRole } from './config.ts
 import { environments, fixtureTime, folders, grants, initialValue, keys, org, principalIds, project, retention } from './fixtures.ts';
 
 type Draft = { version_id: string; environment_id: string; key: Key; operation: 'set' | 'unset'; value?: string; staged_from_revision: number; created_at: string };
-type Options = { origin?: string; assetFetch?: typeof fetch };
+type Options = { origin?: string; assetFetch?: typeof fetch; analyticsOrigins?: readonly string[] };
 const orgRoot = `/api/v1/orgs/${DEMO_IDS.org}`;
 const projectRoot = `${orgRoot}/projects/${DEMO_IDS.project}`;
 const sessionExpiry = '9999-12-31T23:59:59Z';
@@ -65,6 +65,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
     const api = path === '/api' || path.startsWith('/api/');
     if (!api) {
       if (url.origin === origin && method === 'GET' && options.assetFetch !== undefined) return options.assetFetch(input, init);
+      if (options.analyticsOrigins?.includes(url.origin) && options.assetFetch !== undefined) return options.assetFetch(input, init);
       return refusal(403, 'External requests are disabled in the browser demo.');
     }
     // No fallback to native fetch for an API, even when the endpoint is unsupported.
@@ -174,8 +175,8 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
 }
 
 /** Run before React: catches both generated SDK and direct runtime-status reads. */
-export function installDemo(role: DemoRole): void {
-  const demoFetch = createDemoFetch(role, { assetFetch: globalThis.fetch.bind(globalThis) });
+export function installDemo(role: DemoRole, analyticsOrigins: readonly string[] = []): void {
+  const demoFetch = createDemoFetch(role, { assetFetch: globalThis.fetch.bind(globalThis), analyticsOrigins });
   globalThis.fetch = demoFetch;
   client.setConfig({ fetch: demoFetch });
 }

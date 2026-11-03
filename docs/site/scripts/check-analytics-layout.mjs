@@ -32,12 +32,16 @@ export async function checkAnalyticsLayout(browser, origin) {
           assert.ok(settingsBox.y >= contentBox.y + contentBox.height,
             `${route} ${width}px ${theme}: analytics settings must follow page content`);
           assert.ok(settingsBox.height >= 44, 'analytics settings must have a 44px touch target');
+          if (route === '/') {
+            assert.ok(await settings.evaluate((element) => element.closest('.footer-bar') !== null),
+              'landing analytics settings must sit in the footer bar');
+          }
           assert.ok(await settings.evaluate((element) => {
             const box = element.getBoundingClientRect();
             return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
           }), 'analytics settings must be reachable at the end of the page');
           await settings.click();
-          const consent = page.getByRole('complementary', { name: 'Optional site analytics' });
+          const consent = page.getByRole('region', { name: 'Optional site analytics' });
           await consent.waitFor({ state: 'visible' });
           await page.evaluate(() => localStorage.removeItem('hikyo.analytics.consent'));
           await consent.getByRole('button', { name: 'No thanks', exact: true }).click();

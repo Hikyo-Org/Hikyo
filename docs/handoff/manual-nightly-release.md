@@ -6,7 +6,7 @@ The publishing workflow lost its branch-selected manual trigger in security
 remediation commit `c3dbfacd0`. It retained the 02:00 UTC schedule and the
 default-branch-only `nightly-chain-restart` repository event.
 
-`nightly-release-manual` now provides an input-free Actions button. Its main-only
+`nightly-release-request` now provides an input-free Actions button. Its main-only
 job uses the built-in workflow token to send a normal `nightly-release`
 repository dispatch. It checks out no code and references no release secret.
 The existing publishing workflow consumes that event from the default branch.
@@ -19,7 +19,7 @@ without a predecessor.
 
 ## Use after merge
 
-Open Actions, select **nightly-release-manual**, choose **Run workflow**, and
+Open Actions, select **nightly-release-request**, choose **Run workflow**, and
 select **main**, or run:
 
 ```sh

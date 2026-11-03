@@ -460,10 +460,19 @@ test.describe('environment matrix', () => {
   /**
    * The advisory stream (#510). These sit after the edit/publish legs so the
    * fixture tenant is in its settled shape: one healthy stream replaces the
-   * 2s-per-environment signals poll, the poll returns only while the stream
+   * per-environment signals poll, the poll returns only while the stream
    * is not healthy, and a publish on a SECOND tab reaches the first without a
-   * reload, which is the whole point of demoting the poll.
+   * reload, which is the whole point of demoting the poll. The fallback's
+   * cadence is long, so these drive the page clock across it: ADVISORY_POLL_WINDOW_MS
+   * jumps past one fallback interval at any seeded project size.
    */
+  const ADVISORY_POLL_WINDOW_MS = 120_000;
+  // A jump also fires the status read's abort timer, and an aborted read would
+  // raise the reconnecting fence, whose recovery refetch these counts must not see.
+  async function installAdvisoryClock(page: Page): Promise<void> {
+    await page.route('**/api/v1/runtime/status', (route) => route.fulfill({ json: { state: 'ready', phase: null } }));
+    await page.clock.install();
+  }
 
   test('holds one advisory stream, drops the fallback poll while healthy, and closes it on route leave', async ({ page }) => {
     const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
@@ -488,6 +497,7 @@ test.describe('environment matrix', () => {
 
     // A fresh navigation under THESE listeners: the stream this test reasons
     // about is the one it can see open.
+    await installAdvisoryClock(page);
     await page.goto(MATRIX_PATH);
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
     // Exactly one stream, and it actually opened: the 200 carries the retry
@@ -496,10 +506,12 @@ test.describe('environment matrix', () => {
       .poll(() => eventsResponses, { timeout: 15_000 })
       .toBe(1);
 
-    // Idle window longer than three fallback cadences: a healthy stream holds
-    // ZERO periodic signals requests, the failure mode #510 exists to fix.
+    // Past a whole fallback cadence: a healthy stream holds ZERO periodic
+    // signals requests, the failure mode #510 exists to fix.
+    await page.waitForTimeout(1_000); // the healthy transition and mount fetches land
     const before = signals.length;
-    await page.waitForTimeout(7_000);
+    await page.clock.fastForward(ADVISORY_POLL_WINDOW_MS);
+    await page.waitForTimeout(1_000);
     expect(signals.slice(before).length).toBe(0);
 
     // Leaving the matrix is the subscription's whole teardown: the stream's
@@ -521,8 +533,9 @@ test.describe('environment matrix', () => {
       .toBeGreaterThan(0);
   });
 
-  test('activates the 2s fallback poll when the stream cannot connect and stops it on recovery', async ({ page }) => {
+  test('activates the fallback poll when the stream cannot connect and stops it on recovery', async ({ page }) => {
     const eventsPath = `/api/v1/orgs/${seed.org}/projects/${seed.project}/events`;
+    await installAdvisoryClock(page);
     await page.route('**/api/v1/orgs/*/projects/*/events', (route) => route.abort());
     // The reload is what puts the block in front of THIS page's stream: the
     // beforeEach navigation already opened one before the route existed.
@@ -530,30 +543,38 @@ test.describe('environment matrix', () => {
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
     await page.waitForTimeout(1_500); // the mount-time signals fetches land
 
-    // With the stream refused, the fallback owns freshness: signals requests
-    // keep arriving at the fallback cadence.
+    // With the stream refused, the fallback owns freshness: crossing its
+    // cadence produces signals requests.
     let signalsCount = 0;
+    let streamOpen = false;
     page.on('request', (request) => {
       if (new URL(request.url()).pathname.endsWith('/signals')) {
         signalsCount += 1;
       }
     });
-    await page.waitForTimeout(6_000);
-    expect(signalsCount).toBeGreaterThanOrEqual(2);
+    page.on('response', (response) => {
+      if (new URL(response.url()).pathname === eventsPath && response.status() === 200) {
+        streamOpen = true;
+      }
+    });
+    await page.clock.fastForward(ADVISORY_POLL_WINDOW_MS);
+    await expect.poll(() => signalsCount, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
 
     // Recovery: unblock the stream; the client's retry loop reconnects, the
     // stream goes healthy, and the fallback falls silent again.
     await page.unroute('**/api/v1/orgs/*/projects/*/events');
-    await page.waitForResponse(
-      (response) => new URL(response.url()).pathname === eventsPath && response.status() === 200,
-      { timeout: 20_000 },
-    );
+    // Short jumps, so none can cross the 8 second abort of a status read in flight.
+    await expect(async () => {
+      await page.clock.fastForward(7_000);
+      expect(streamOpen).toBe(true);
+    }).toPass({ timeout: 20_000 });
     // Let the healthy transition land, and with it the one-time recovery
     // catch-up (one signals request per environment): the silence asserted
     // below starts AFTER that refetch, not before it.
     await page.waitForTimeout(1_000);
     const atRecovery = signalsCount;
-    await page.waitForTimeout(6_000);
+    await page.clock.fastForward(ADVISORY_POLL_WINDOW_MS);
+    await page.waitForTimeout(1_000);
     expect(signalsCount).toBe(atRecovery);
   });
 
@@ -1268,6 +1289,38 @@ test.describe('environment matrix declaration', () => {
     await expect(
       page.getByRole('button', { name: /FEATURE_ENABLED in development:.*draft set/ }),
     ).toBeVisible();
+  });
+
+  test('infers a JSON Schema from the first value, tunes it with the builder, and the server accepts it', async ({
+    passkeyPage: page,
+  }) => {
+    await page.goto(MATRIX_PATH);
+    await page.getByRole('button', { name: 'New key' }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    await modal.getByLabel('Group').fill('features');
+    await modal.getByLabel('Key name').fill('SERVICE_CONFIG');
+    await modal.getByLabel('Type').selectOption('json');
+    await modal.getByLabel('First value (optional)').fill('{"host":"db.internal","port":5432,"tags":["a"]}');
+    await modal.getByRole('button', { name: 'Infer schema from this value' }).click();
+
+    // Names and shapes only: the sample's values stay out of the exported schema.
+    await expect(modal.getByLabel('Field name')).toHaveCount(3);
+    await expect(modal.getByRole('combobox', { name: 'Type of port' })).toHaveValue('integer');
+    await modal.getByRole('checkbox', { name: 'Required: tags' }).uncheck();
+    // The sample has no field the schema does not list, so closing the object still accepts it.
+    await modal.getByRole('checkbox', { name: 'Reject fields not listed' }).check();
+    await modal.getByRole('button', { name: 'Advanced: edit as JSON Schema (2020-12)' }).click();
+    const document = modal.getByLabel('Schema document');
+    await expect(document).toHaveValue(/"required": \[\s*"host",\s*"port"\s*\]/);
+    await expect(document).toHaveValue(/"additionalProperties": false/);
+    await expect(document).not.toHaveValue(/db\.internal|5432/);
+
+    await modal.getByRole('button', { name: 'Declare' }).click();
+    await expect(page.locator('.notice')).toContainText(
+      'Declared SERVICE_CONFIG with a draft value in 1 environment',
+    );
   });
 
   test('rejects a first value that cannot be the declared type before any write', async ({

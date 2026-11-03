@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { useState } from 'react';
 import { expect, userEvent } from 'storybook/test';
 
+import { Button } from './Button.tsx';
 import { Disclosure } from './Disclosure.tsx';
 
 const meta = {
@@ -34,5 +36,28 @@ export const Toggles: Story = {
     // A control like any other: the one control height.
     const control = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control'));
     await expect(Math.round(toggle.getBoundingClientRect().height)).toBe(Math.round(control));
+  },
+};
+
+export const Controlled: Story = {
+  args: { label: 'Advanced', children: 'Content' },
+  render: function Render(args) {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <Button type="button" onClick={() => setOpen(true)}>
+          Open from outside
+        </Button>
+        <Disclosure {...args} open={open} onOpenChange={setOpen} />
+      </>
+    );
+  },
+  play: async ({ canvas, userEvent }) => {
+    const toggle = canvas.getByRole('button', { name: 'Advanced' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(canvas.getByRole('button', { name: 'Open from outside' }));
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   },
 };
