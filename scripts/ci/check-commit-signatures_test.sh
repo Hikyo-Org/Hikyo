@@ -98,6 +98,14 @@ printf 'refs/heads/feature %s refs/heads/feature %s\n' "$feature" "$zero" >"$rep
 expect_refusal 'not locally verified (status N)' git -C "$repo" hook run --to-stdin="$repo/push-input" pre-push -- origin unused
 git -C "$repo" update-ref -d refs/remotes/hikyo-upstream/dev
 
+# Criss-cross history: both unsigned sides are already in the base, so only the
+# signed head is new, whichever merge base git would have picked.
+left=$(printf 'left\n' | git -C "$repo" commit-tree -p "$base" "$base^{tree}")
+right=$(printf 'right\n' | git -C "$repo" commit-tree -p "$base" "$base^{tree}")
+cross_base=$(printf 'cross base\n' | git -C "$repo" commit-tree -S -p "$left" -p "$right" "$base^{tree}")
+cross_head=$(printf 'cross head\n' | git -C "$repo" commit-tree -S -p "$right" -p "$left" "$base^{tree}")
+"$(dirname "$0")/check-commit-signatures.sh" "$cross_base" "$cross_head" "$repo"
+
 expect_refusal 'invalid base' "$(dirname "$0")/check-commit-signatures.sh" missing-base "$signed" "$repo"
 expect_refusal 'invalid head' "$(dirname "$0")/check-commit-signatures.sh" "$base" missing-head "$repo"
 blob=$(git -C "$repo" rev-parse "$signed:file")

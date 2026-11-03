@@ -15,8 +15,8 @@ validate; keep them outside Git and share local links when needed.
 Once the `dev` branch exists, branch from it and open feature PRs with
 `gh pr create --base dev`. GitHub and `gh` default to `main`, whose
 `ci-queue-required` check then refuses feature PRs. Only same-repository `release/`
-and `hotfix/` branches and the CI definitions dev admission refuses go to `main`. See
-the [branching guide](./docs/development/branching.md).
+and `hotfix/` branches, Dependabot security updates and the CI definitions dev
+admission refuses go to `main`. See the [branching guide](./docs/development/branching.md).
 
 ## Commits must be DCO signed-off
 
