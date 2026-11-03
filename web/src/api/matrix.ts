@@ -31,8 +31,8 @@ import {
   zValueList,
   zValueOccurrenceList,
 } from '@hikyo/zod';
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { hashKey, useMutation, useQueries, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { z } from 'zod';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
@@ -447,21 +447,20 @@ export function advisoryInvalidations(
 /**
  * advisoryRecoveryInvalidations is the catch-up a RECOVERED stream owes the
  * matrix (system-architecture ADR § Real-time): the channel replays nothing,
- * so whatever happened while it was lost is refetched, not reconstructed. The
- * whole working set, by project-wide prefix so no environment list is needed:
- * environments, keys, groups, and every environment's values, signals, pending
- * drafts and settings. Catch-up does not wait for the fallback polls, which
- * can miss updates immediately before reconnection.
+ * so whatever happened while it was lost is refetched, not reconstructed.
+ * Only what a missed event would have refreshed and has no cheaper proof: topology,
+ * and every environment's signals and pending drafts, by project-wide prefix so no
+ * environment list is needed. Values follow from signals when the revision advanced,
+ * and no event refreshes settings. A proxy that drops streams would otherwise reload
+ * the whole page on each reconnect, spending the source allowance on nothing.
  */
 export function advisoryRecoveryInvalidations(ref: MatrixRef): readonly (readonly string[])[] {
   return [
     environmentsKey(ref),
     matrixKeysKey(ref),
     matrixGroupsKey(ref),
-    valuesMatrixKey(ref),
     signalsMatrixKey(ref),
     pendingMatrixKey(ref),
-    environmentSettingsPrefix(ref.org, ref.project),
   ];
 }
 
@@ -552,6 +551,11 @@ export function matrixPublishValidation(
 // The catalogue follows: deletion cascades explicit presence rules, and a
 // definitions apply can change groups/keys together with environment topology.
 export const ENVIRONMENT_TOPOLOGY_POLL_MS = 30_000;
+export const ADVISORY_BURST_MS = 250;
+
+function isDenial(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 404);
+}
 
 export function useMatrixProject(ref: MatrixRef) {
   const queries = useQueryClient();
@@ -559,10 +563,30 @@ export function useMatrixProject(ref: MatrixRef) {
   const environments = useEnvironments(
     ref.org, ref.project, isDemo ? false : ENVIRONMENT_TOPOLOGY_POLL_MS,
   );
+  // One publish emits an event per changed cell, and each invalidation of a key
+  // with a request in flight starts another, every one charged. The first event
+  // still applies at once; the rest of a burst share one refetch per key.
+  const burst = useRef<{ keys: Map<string, QueryKey>; timer?: ReturnType<typeof setTimeout> }>({ keys: new Map() });
+  const flushBurst = useCallback((refetchType?: 'none') => {
+    const keys = [...burst.current.keys.values()];
+    burst.current.keys.clear();
+    for (const queryKey of keys) {
+      void queries.invalidateQueries({ queryKey, refetchType });
+    }
+  }, [queries]);
+  useEffect(() => {
+    const pending = burst.current;
+    return () => {
+      clearTimeout(pending.timer);
+      pending.timer = undefined;
+      // Leaving the route or project: stale the entries, but do not fetch for a page that is gone.
+      flushBurst('none');
+    };
+  }, [flushBurst, ref.org, ref.project]);
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
   // state gates the signals and pending drafts fallback polls below; and
-  // every recovery refetches the whole working set once. Subscribing here,
+  // every recovery catches up what the stream would have refreshed. Subscribing here,
   // inside the same hook that owns the matrix's queries, is what makes the
   // subscription die with the route and never outlive its ref.
   const stream = useAdvisoryStream(
@@ -570,8 +594,16 @@ export function useMatrixProject(ref: MatrixRef) {
     transport,
     (event) => {
       for (const queryKey of advisoryInvalidations(ref, event)) {
-        void queries.invalidateQueries({ queryKey });
+        burst.current.keys.set(hashKey(queryKey), queryKey);
       }
+      if (burst.current.timer !== undefined) {
+        return;
+      }
+      flushBurst();
+      burst.current.timer = setTimeout(() => {
+        burst.current.timer = undefined;
+        flushBurst();
+      }, ADVISORY_BURST_MS);
     },
     !isDemo && ref.org !== '' && ref.project !== '',
   );
@@ -583,6 +615,14 @@ export function useMatrixProject(ref: MatrixRef) {
     }
     for (const queryKey of advisoryRecoveryInvalidations({ org, project })) {
       void queries.invalidateQueries({ queryKey });
+    }
+    // Values and settings have no poll, so a read that failed while the stream was
+    // down has only this chance to heal. A denial is an answer, and stays one.
+    for (const queryKey of [valuesMatrixKey({ org, project }), environmentSettingsPrefix(org, project)]) {
+      void queries.refetchQueries({
+        queryKey,
+        predicate: (query) => query.state.status === 'error' && !isDenial(query.state.error),
+      });
     }
     // The counter, not the ref: a ref change re-subscribes and resets the
     // counter to zero, so it cannot smuggle a stale project into this effect.
@@ -612,18 +652,6 @@ export function useMatrixProject(ref: MatrixRef) {
     pendingDrafts: (queries: readonly MatrixQueryResult<EnvironmentQueryData<MatrixPendingDraftList>>[]) =>
       bindMatrixEnvironmentQueries('pending drafts', environmentItems, queries),
   }), [environmentItems]);
-  const values = useQueries({
-    queries: environmentItems.map((environment) => ({
-      queryKey: valuesKey({ ...ref, environment: environment.id }),
-      queryFn: () =>
-        parsed(listValuesOp, {
-          path: { ...ref, environment: environment.id },
-          ...transport,
-        }),
-      select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
-    })),
-    combine: combineQueries.values,
-  });
   const settings = useQueries({
     queries: environmentItems.map((environment) => {
       const options = environmentSettingsQueryOptions(
@@ -672,9 +700,24 @@ export function useMatrixProject(ref: MatrixRef) {
       // stream that has not connected or has failed. A healthy stream shows
       // `false` and the tab holds exactly one events connection, zero
       // periodic signals requests.
-      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream, environmentItems.length),
     })),
     combine: combineQueries.signals,
+  });
+  const values = useQueries({
+    queries: environmentItems.map((environment, index) => ({
+      queryKey: valuesKey({ ...ref, environment: environment.id }),
+      // Values carry no revision, so reading them after the first signals
+      // snapshot orders them without the refresh a parallel read would need.
+      enabled: signals[index]?.query.status !== 'pending',
+      queryFn: () =>
+        parsed(listValuesOp, {
+          path: { ...ref, environment: environment.id },
+          ...transport,
+        }),
+      select: (value: MatrixValueList) => ({ environmentId: environment.id, value }),
+    })),
+    combine: combineQueries.values,
   });
   const pendingDrafts = useQueries({
     queries: environmentItems.map((environment) => ({
@@ -690,7 +733,7 @@ export function useMatrixProject(ref: MatrixRef) {
       // Same fallback as signals: a pending marker refreshed by the poll
       // needs its draft preview refreshed by the same cadence, or the sheet
       // shows a marker without the draft behind it until the stream is back.
-      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream),
+      refetchInterval: isDemo ? false : signalsPollInterval(signalsStream, environmentItems.length),
     })),
     combine: combineQueries.pendingDrafts,
   });

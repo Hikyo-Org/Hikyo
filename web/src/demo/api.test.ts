@@ -57,6 +57,21 @@ describe('browser demo API', () => {
     expect(first.session).toEqual(second.session);
   });
 
+  it('forwards only the listed analytics origins and refuses every other external request', async () => {
+    const forwarded: string[] = [];
+    const assetFetch: typeof globalThis.fetch = async (input) => {
+      forwarded.push(input.toString());
+      return new Response('{}');
+    };
+    const analytics = 'https://eu.i.posthog.com';
+    const fetch = createDemoFetch('developer', { origin, assetFetch, analyticsOrigins: [analytics] });
+    expect((await fetch(`${analytics}/s/`, { method: 'POST' })).status).toBe(200);
+    expect((await fetch('https://elsewhere.example.test/s/', { method: 'POST' })).status).toBe(403);
+    expect(forwarded).toEqual([`${analytics}/s/`]);
+    const withoutAnalytics = createDemoFetch('developer', { origin, assetFetch });
+    expect((await withoutAnalytics(`${analytics}/s/`, { method: 'POST' })).status).toBe(403);
+  });
+
   it.each(DEMO_ACCOUNTS)('keeps $label project policy read-only and exposes its panel only for admin', async ({ id }) => {
     const fetch = createDemoFetch(id, { origin });
     const detail = zProject.parse(await (await fetch(project)).json());

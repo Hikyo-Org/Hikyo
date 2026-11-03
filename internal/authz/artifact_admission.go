@@ -19,8 +19,8 @@ import (
 // a compiled contract before dispatch, so there is no request-derived fallback
 // table and a new declaration takes effect without a second edit.
 func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) error {
-	// Charge after live transaction-local authentication, but before artifact
-	// and authorization refusals can create unbounded durable denial work.
+	// Charge after live transaction-local authentication at the latest, but before
+	// artifact and authorization refusals can create unbounded durable denial work.
 	if err := operation.AdmitRequest(ctx, caller.SessionID); err != nil {
 		return err
 	}
