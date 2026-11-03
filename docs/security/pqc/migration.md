@@ -303,7 +303,7 @@ recheck trigger) are in
 [external compatibility](external-compatibility.md#exception-terms-proposed-none-effective).
 **None is effective**: DEC-10 needs an exact peer and version, and the peers are
 unnamed, so these rows stay accepted in principle only until the owner names
-them. The same document adds E-03 (X16) and records that no external hop is
+them. The same document adds E-03 (X16, which includes I31, Kyverno and chart policy) and records that no external hop is
 refused or protected by `HIKYO_TLS_PROFILE=strict` today. Per-route strict
 selection (F-09) is HOLD, owner Marc Went; #1134 closes only after the owner
 records a disposition for it.
