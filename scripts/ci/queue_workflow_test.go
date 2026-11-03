@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -196,7 +197,7 @@ func queuePublisherContract(raw []byte) error {
 				return fmt.Errorf("publication/setup step was skipped or rerouted")
 			}
 		}
-		if err := queueTrustedSetup(j, checkoutIndex, setupIndex); err != nil {
+		if err := queueTrustedSetup(j, checkoutIndex, setupIndex, id == "publish"); err != nil {
 			return err
 		}
 		env := map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "PR_GATE_CHECK_NAME": "ci-queue-required"}
@@ -227,9 +228,14 @@ func queueTrustedJob(j queueWorkflowJob) error {
 	}
 	return nil
 }
-func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error {
+func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int, budgeted bool) error {
 	checkout := j.Steps[checkoutIndex]
-	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.Run != "" || len(checkout.Env) != 0 || !reflect.DeepEqual(checkout.With, map[string]string{"ref": "${{ github.event.repository.default_branch }}", "persist-credentials": "false"}) {
+	want := map[string]string{"ref": "${{ github.event.repository.default_branch }}", "persist-credentials": "false"}
+	if budgeted {
+		// A budgeted publisher fetches only what it builds and runs: see TestQueuePublisherSparseTreeHoldsItsInputs.
+		want["filter"], want["sparse-checkout"] = "blob:none", "scripts/ci"
+	}
+	if checkout.Uses != "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" || checkout.Run != "" || len(checkout.Env) != 0 || !reflect.DeepEqual(checkout.With, want) {
 		return fmt.Errorf("publisher must checkout pinned trusted main withoutcredentials")
 	}
 	if setupIndex < 0 {
@@ -242,9 +248,9 @@ func queueTrustedSetup(j queueWorkflowJob, checkoutIndex, setupIndex int) error 
 	return nil
 }
 func queueBootstrapContract(run string, targeted bool) error {
-	want := "e59ab2f4f2cb2499dc97168c75ed5b1fd4ee6e7585208ced4f5529293d1ee4db"
+	want := "b8501f3fb4dda4a4a189963f5a79a366f1bc5cd04b1e768999f882339f08157e"
 	if targeted {
-		want = "38b4726421b78e9fcf2d5a48863d15ff9fee8695ee30a3df2e0ed4f7d237b02e"
+		want = "2fe7756df4f67cf8cb9c38a94a7f2bc7521c10e30f29b58414bbde800ce74f63"
 	}
 	if fmt.Sprintf("%x", sha256.Sum256([]byte(run))) != want {
 		return fmt.Errorf("current-attempt exacthead clock bootstrap changed")
@@ -299,7 +305,7 @@ func queueWorkerContract(raw []byte) error {
 	if j.Steps[0].If != "matrix.work.kind != 'group'" || !reflect.DeepEqual(j.Steps[0].Env, map[string]string{"GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}", "HEAD": head}) {
 		return fmt.Errorf("worker admission clock cannot cutgroup budget")
 	}
-	if err := queueTrustedSetup(j, 1, 2); err != nil {
+	if err := queueTrustedSetup(j, 1, 2, true); err != nil {
 		return err
 	}
 	for i, step := range j.Steps {
@@ -769,5 +775,40 @@ func TestQueueHeadWorkerRejectsUnsafeWorkflowMutations(t *testing.T) {
 				t.Fatal("unsafe actual headworker YAML accepted")
 			}
 		})
+	}
+}
+
+// The sparse checkout keeps root files and scripts/ci, so everything the budgeted
+// publisher builds and runs must live there.
+func TestQueuePublisherSparseTreeHoldsItsInputs(t *testing.T) {
+	root := repositoryRoot(t)
+	sources, err := filepath.Glob(filepath.Join(root, "scripts", "ci", "pr-gate", "*.go"))
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no publisher sources: %v", err)
+	}
+	for _, source := range sources {
+		if strings.HasSuffix(source, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, script := range regexp.MustCompile(`gateCommand\(ctx, "sh", "([^"]+)"`).FindAllSubmatch(raw, -1) {
+			if name := string(script[1]); !strings.HasPrefix(name, "scripts/ci/") {
+				t.Errorf("%s runs %s, outside the sparse checkout", filepath.Base(source), name)
+			}
+		}
+	}
+	deps := exec.Command("go", "list", "-deps", "./scripts/ci/pr-gate")
+	deps.Dir = root
+	out, err := deps.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dep := range strings.Fields(string(out)) {
+		if dep == "net/http" {
+			t.Error("the publisher must stay free of net/http: it adds 87 packages to compile inside the budget")
+		}
 	}
 }

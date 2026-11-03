@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 )
@@ -371,7 +370,7 @@ func classifyGroupRead(err error, fenced bool) (curable, other, limited bool) {
 		return true, false, false
 	case *githubReadError:
 		if transientGitHubRead(e) {
-			return true, false, e.status == http.StatusTooManyRequests
+			return true, false, e.status == 429
 		}
 		return false, e.rejected || e.status != 0 || !neutral(e.cause), false
 	}
