@@ -25,8 +25,7 @@ already binds this exception to `values export`.
 ## Evidence
 
 - `internal/isolation/run_human_session_e2e_test.go` runs against a booted server. It reproduced the bug before the fix and now covers
-  decline, the full projection, `--config-only`, and both publish cases. SQLite only locally. The Postgres leg skips without
-  `HIKYO_TEST_POSTGRES_DSN`.
+  decline, the full projection, `--config-only`, and both publish cases. It passes on SQLite and on Postgres 18.6, using CI's pinned image.
 - `internal/cli/run_human_session_test.go` covers ordering, the rotated session, ceremony units and error reporting.
 - Three independent review rounds on `claude-opus-5-5`. Their findings were fixed except the items below.
 - A real terminal and a real browser or passkey ceremony were not exercised.
