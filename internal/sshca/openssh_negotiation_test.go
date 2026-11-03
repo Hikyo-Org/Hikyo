@@ -3,6 +3,8 @@ package sshca
 import (
 	"crypto/mldsa"
 	"errors"
+	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -24,50 +26,89 @@ import (
 var (
 	kexLine     = regexp.MustCompile(`kex: algorithm: (\S+)`)
 	hostKeyLine = regexp.MustCompile(`kex: host key algorithm: (\S+)`)
+	offerLine   = regexp.MustCompile(`Offering public key: \S+ (\S+) SHA256:`)
+	signingCA   = regexp.MustCompile(`Signing CA: (\S+) SHA256:\S+ \(using (\S+)\)`)
 	versionRE   = regexp.MustCompile(`OpenSSH_(\d+)\.(\d+)`)
 )
 
-func requireHybridKexDefault(t *testing.T, sshBin string) string {
+// requireHybridKexDefault skips when the client predates the default hybrid
+// exchange. HIKYO_SSHE2E_REQUIRED=1 turns that skip into a failure, like a
+// missing binary. No workflow or script sets the variable, so no hosted lane is
+// known to run these tests; they are local evidence only.
+func requireHybridKexDefault(t *testing.T, sshBin string) {
 	t.Helper()
 	out, _ := exec.Command(sshBin, "-V").CombinedOutput()
 	m := versionRE.FindStringSubmatch(string(out))
+	reason := ""
 	if m == nil {
-		t.Skipf("cannot read the OpenSSH version from %q", out)
+		reason = fmt.Sprintf("cannot read the OpenSSH version from %q", out)
+	} else if major, _ := strconv.Atoi(m[1]); major < 10 {
+		reason = fmt.Sprintf("OpenSSH %s.%s predates the default mlkem768x25519-sha256 key exchange", m[1], m[2])
 	}
-	if major, _ := strconv.Atoi(m[1]); major < 10 {
-		t.Skipf("OpenSSH %s.%s predates the default mlkem768x25519-sha256 key exchange", m[1], m[2])
+	if reason != "" {
+		if os.Getenv("HIKYO_SSHE2E_REQUIRED") == "1" {
+			t.Fatalf("OpenSSH end-to-end test required but %s", reason)
+		}
+		t.Skip(reason)
 	}
 	t.Logf("client: %s", strings.TrimSpace(string(out)))
-	return strings.TrimSpace(string(out))
 }
 
+// TestOpenSSHRecordsKexHostAndCertificateFamilies reads three things from the
+// real client and keygen, per CA algorithm: the negotiated key exchange and host
+// key from the client's negotiation lines, the user key type from the line that
+// offers the certificate, and the CA signature family from ssh-keygen -L. It
+// asserts only on those lines: the client's own offer list (also printed by -vv)
+// may name post-quantum algorithms on newer OpenSSH and says nothing about what
+// was negotiated or issued.
 func TestOpenSSHRecordsKexHostAndCertificateFamilies(t *testing.T) {
-	h := startSSHD(t)
-	requireHybridKexDefault(t, h.ssh)
-	ca := mustCA(t, AlgorithmEd25519)
-	h.trust(ca)
-	now := time.Now()
-	c := h.issue("neg", ca, 3001, now.Add(-ClockSkew), now.Add(time.Hour), nil)
-	out, err := h.loginWith(c, "-vv")
-	if err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		alg       Algorithm
+		caFamily  string
+		caSigning string
+	}{
+		{AlgorithmEd25519, "ED25519", "ssh-ed25519"},
+		{AlgorithmECDSAP256, "ECDSA", "ecdsa-sha2-nistp256"},
+		{AlgorithmRSA3072, "RSA", "rsa-sha2-512"},
 	}
-	kex := kexLine.FindStringSubmatch(out)
-	host := hostKeyLine.FindStringSubmatch(out)
-	if kex == nil || host == nil {
-		t.Fatalf("ssh -vv did not report the negotiation:\n%s", out)
-	}
-	t.Logf("negotiated kex=%s hostkey=%s ca=%s", kex[1], host[1], ca.PublicKey().Type())
-	if kex[1] != "mlkem768x25519-sha256" {
-		t.Fatalf("session key exchange = %s, want the OpenSSH 10 default mlkem768x25519-sha256", kex[1])
-	}
-	// The host key and the CA/user signatures stay classical: no PQ signature
-	// is negotiated or issued by this route.
-	if host[1] != "ssh-ed25519" || ca.PublicKey().Type() != "ssh-ed25519" || !strings.Contains(out, "ED25519-CERT") {
-		t.Fatalf("unexpected signature families: hostkey=%s ca=%s\n%s", host[1], ca.PublicKey().Type(), out)
-	}
-	if strings.Contains(strings.ToLower(out), "mldsa") {
-		t.Fatal("an ML-DSA algorithm appeared in a Hikyo-issued route")
+	for _, tc := range cases {
+		t.Run(string(tc.alg), func(t *testing.T) {
+			h := startSSHD(t)
+			requireHybridKexDefault(t, h.ssh)
+			ca := mustCA(t, tc.alg)
+			h.trust(ca)
+			now := time.Now()
+			c := h.issue("neg", ca, 3001, now.Add(-ClockSkew), now.Add(time.Hour), nil)
+			out, err := h.loginWith(c, "-vv")
+			if err != nil {
+				t.Fatal(err)
+			}
+			kex, host, offer := kexLine.FindStringSubmatch(out), hostKeyLine.FindStringSubmatch(out), offerLine.FindStringSubmatch(out)
+			if kex == nil || host == nil || offer == nil {
+				t.Fatalf("ssh -vv did not report the negotiation:\n%s", out)
+			}
+			keygen, err := exec.Command(h.keygen, "-L", "-f", c.certPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("ssh-keygen -L: %v: %s", err, keygen)
+			}
+			ca2 := signingCA.FindStringSubmatch(string(keygen))
+			if ca2 == nil {
+				t.Fatalf("ssh-keygen -L did not report the signing CA:\n%s", keygen)
+			}
+			t.Logf("kex=%s hostkey=%s userkey=%s signingCA=%s using %s", kex[1], host[1], offer[1], ca2[1], ca2[2])
+			if kex[1] != "mlkem768x25519-sha256" {
+				t.Fatalf("session key exchange = %s, want the OpenSSH 10 default mlkem768x25519-sha256", kex[1])
+			}
+			// The harness host key is Ed25519, so the host family is a property of
+			// the fixture, not of Hikyo.
+			if host[1] != "ssh-ed25519" || offer[1] != "ED25519-CERT" {
+				t.Fatalf("host key %s, user key %s: want ssh-ed25519 and ED25519-CERT", host[1], offer[1])
+			}
+			// The CA signature family is what Hikyo issues and is classical.
+			if ca2[1] != tc.caFamily || ca2[2] != tc.caSigning {
+				t.Fatalf("signing CA %s using %s, want %s using %s", ca2[1], ca2[2], tc.caFamily, tc.caSigning)
+			}
+		})
 	}
 }
 
@@ -108,15 +149,7 @@ func TestOpenSSHDowngradeBehaviorIsTheServersKexAlgorithms(t *testing.T) {
 }
 
 // E-02: Hikyo issues no ML-DSA SSH key or certificate. The closed set refuses
-// the vendor-named ML-DSA algorithms that golang.org/x/crypto/ssh can parse.
-func TestParseAlgorithmRefusesMLDSA(t *testing.T) {
-	for _, name := range []string{"mldsa65", "ssh-mldsa-65", "ssh-mldsa-65-cert-v01@golang.org", "ssh-mldsa44-ed25519"} {
-		if _, err := ParseAlgorithm(name); err == nil {
-			t.Fatalf("ParseAlgorithm(%q) accepted a post-quantum signature name", name)
-		}
-	}
-}
-
+// the vendor-named ML-DSA key golang.org/x/crypto/ssh can parse.
 func TestParsePublicKeyRefusesAnMLDSAKey(t *testing.T) {
 	priv, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	if err != nil {

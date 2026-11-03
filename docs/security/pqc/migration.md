@@ -298,10 +298,12 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 
 ### Exception terms (#1134)
 
-Proposed terms for E-02, E-04 to E-07 and E-13 (peer, version, expiry
-2027-05-02, recheck trigger) are in
-[external compatibility](external-compatibility.md#exception-terms-proposed).
-Until the owner records them these rows are accepted in principle only (DEC-10).
-E-07 and E-08 also apply to the routes in that register: no external hop is
+The terms for E-02 to E-07 and E-13 (known peer and version, expiry,
+recheck trigger) are in
+[external compatibility](external-compatibility.md#exception-terms-proposed-none-effective).
+**None is effective**: DEC-10 needs an exact peer and version, and the peers are
+unnamed, so these rows stay accepted in principle only until the owner names
+them. The same document adds E-03 (X16) and records that no external hop is
 refused or protected by `HIKYO_TLS_PROFILE=strict` today. Per-route strict
-selection is HOLD, owner Marc Went.
+selection (F-09) is HOLD, owner Marc Went; #1134 closes only after the owner
+records a disposition for it.
