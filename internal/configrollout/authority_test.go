@@ -2,6 +2,7 @@ package configrollout
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ed25519"
 	"crypto/mldsa"
@@ -18,7 +19,12 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	ktesting "k8s.io/client-go/testing"
 )
 
 // v1Golden is the SHA-256 of the signed command serialized by the code at
@@ -1245,5 +1251,87 @@ func TestEnrollmentTargetEditKeepsAnchorButRefusesOldTargetCommands(t *testing.T
 	fresh := b.sign(t, Command{Sequence: 2, Action: ActionSubmit, Intent: a.intent, PlanDigest: response.PlanDigest})
 	if !verifyCommand(fresh, e, b.keys) || verifyCommand(queued, e, b.keys) {
 		t.Fatal("target digest binding not enforced on fresh commands")
+	}
+}
+
+// activeAdmission makes the fake API behave like a cluster whose admission
+// policies are active, so Controller.Run proceeds past its readiness wait.
+func activeAdmission(f fixture) {
+	f.client.PrependReactor("update", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		update := action.(ktesting.UpdateActionImpl)
+		if len(update.GetUpdateOptions().DryRun) != 1 || update.GetUpdateOptions().DryRun[0] != metav1.DryRunAll {
+			return false, nil, nil
+		}
+		message, kind := "Container authority outside configuration fields is immutable.", "Deployment"
+		if action.GetResource().Resource == "secrets" {
+			message, kind = "Executor write must carry the current custody epoch.", "Secret"
+		}
+		return true, nil, apierrors.NewInvalid(schema.GroupKind{Kind: kind}, "fixture", field.ErrorList{field.Forbidden(field.NewPath("spec"), message)})
+	})
+}
+
+func TestRunRefusesStaleEnrollmentBeforeAnyCommandAndServesCurrentOne(t *testing.T) {
+	a := newAuthorityFixture(t, 3, requiredDual)
+	activeAdmission(a.fixture)
+
+	// A floor from an earlier run of generation 5, and a queued strict command.
+	s := a.secret(t, "journal")
+	floor := trustFor(a.e)
+	floor.Generation = 5
+	putRecord(s, trustKey, floor)
+	if _, err := a.client.CoreV1().Secrets("hikyo").Update(t.Context(), s, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	queued := a.prepare(t, 1)
+	a.plant(t, queued)
+	a.client.ClearActions()
+	err := a.c.Run(t.Context(), "pod-1")
+	if !errors.Is(err, ErrTrust) {
+		t.Fatalf("a stale enrollment was served: %v", err)
+	}
+	// Custody acquisition (lease) and the admission dry runs are the only calls
+	// a refused controller makes: nothing real is written to a Secret or the target.
+	for _, action := range a.client.Actions() {
+		switch action.GetVerb() {
+		case "get", "list", "watch":
+		case "update":
+			dry := len(action.(ktesting.UpdateActionImpl).GetUpdateOptions().DryRun) > 0
+			if !dry && action.GetResource().Resource != "leases" {
+				t.Fatalf("stale enrollment wrote %s", action.GetResource().Resource)
+			}
+		default:
+			t.Fatalf("stale enrollment called %s", action.GetVerb())
+		}
+	}
+	var journal controllerJournal
+	if decode(a.secret(t, "journal").Data[journalKey], &journal) == nil && journal.Accepted.Command.Sequence != 0 {
+		t.Fatal("the queued command was accepted under a stale enrollment")
+	}
+
+	// A current enrollment records its floor, then serves the queued command.
+	fixed := a.secret(t, "journal")
+	delete(fixed.Data, trustKey)
+	if _, err := a.client.CoreV1().Secrets("hikyo").Update(t.Context(), fixed, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.c.Run(ctx, "pod-1") }()
+	served := false
+	for deadline := time.Now().Add(4 * time.Second); time.Now().Before(deadline) && !served; time.Sleep(50 * time.Millisecond) {
+		response, err := a.m.Response(t.Context(), queued)
+		served = err == nil && response.Outcome == "complete"
+	}
+	cancel()
+	if !served {
+		t.Fatal("a current enrollment did not serve the queued strict command through Run")
+	}
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	var recorded trustRecord
+	if err := decode(a.secret(t, "journal").Data[trustKey], &recorded); err != nil || recorded.Generation != 3 {
+		t.Fatal("Run did not record the generation floor", err)
 	}
 }
