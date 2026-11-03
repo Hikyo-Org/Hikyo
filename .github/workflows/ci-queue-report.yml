@@ -1,6 +1,6 @@
 # Informational diagnostics on the originating PR head. This is never a required
 # context or evidence for another base. Execute only default-branch tooling.
-name: merge-queue-report
+name: report-merge-queue
 run-name: Queue diagnostics for ${{ github.event.workflow_run.head_branch }} (run ${{ github.event.workflow_run.id }}, attempt ${{ github.event.workflow_run.run_attempt }})
 
 on:

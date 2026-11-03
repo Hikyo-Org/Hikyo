@@ -22,6 +22,10 @@ signed=$(git -C "$repo" rev-parse HEAD)
 printf 'unsigned\n' >>"$repo/file"
 git -C "$repo" commit -q -am '@everyone <img src=x> unsigned'
 unsigned=$(git -C "$repo" rev-parse HEAD)
+git -C "$repo" switch -q --detach "$signed"
+git -C "$repo" -c user.name='dependabot[bot]' -c user.email='49699333+dependabot[bot]@users.noreply.github.com' \
+	commit -q --allow-empty -m 'bump'
+dependabot=$(git -C "$repo" rev-parse HEAD)
 
 mkdir "$work/bin"
 # Serves a comments list mixing the marker comment with look-alikes, and
@@ -51,13 +55,20 @@ chmod +x "$work/bin/gh"
 run() {
 	: >"$work/calls"
 	PATH="$work/bin:$PATH" CALLS=$work/calls EXISTING=${2:-} LOOKUP_FAIL=${3:-} GH_REPO=o/r PR_NUMBER=7 \
-		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=someone DCO_REPOSITORY=$repo "$script" >/dev/null 2>&1
+		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=someone DCO_REPOSITORY=$repo \
+		PR_HEAD_REF=${HEAD_REF:-} PR_HEAD_REPOSITORY=${HEAD_REPOSITORY:-} "$script" >/dev/null 2>&1
 }
 
 fail() {
 	printf 'DCO report fixture failed: %s\n' "$1" >&2
 	exit 1
 }
+
+HEAD_REF=release/1.1.0 HEAD_REPOSITORY=o/r run "$dependabot" || fail 'promotion Dependabot commit reported missing'
+HEAD_REF=main HEAD_REPOSITORY=o/r run "$dependabot" || fail 'backmerge Dependabot commit reported missing'
+HEAD_REF=release/1.1.0 HEAD_REPOSITORY=fork/r run "$dependabot" && fail 'fork release branch claimed the exemption'
+HEAD_REF=feat/x HEAD_REPOSITORY=o/r run "$dependabot" && fail 'feature branch claimed the exemption'
+HEAD_REF=release/1.1.0 HEAD_REPOSITORY=o/r run "$unsigned" && fail 'promotion exempted a human commit'
 
 run "$unsigned" && fail 'unsigned commit reported success'
 grep -F -- '-X POST repos/o/r/issues/7/comments' "$work/calls" >/dev/null || fail 'no comment posted'
