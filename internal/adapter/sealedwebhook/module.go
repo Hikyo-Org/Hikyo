@@ -10,7 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
 )
 
-// ConnectionVersion is reported by TestConnection.
+// ConnectionVersion is reported by TestConnection for a protocol 1 endpoint.
 const ConnectionVersion = "sealed-webhook/v1"
 
 // envelopeLifetime is how long a sealed envelope stays acceptable. It is well
@@ -87,7 +87,7 @@ func (m *Module) destinationID(d adapter.Destination) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return namespace, sealedhook.DestinationID(m.Endpoint.fingerprint, namespace), nil
+	return namespace, m.Endpoint.destinationID(namespace), nil
 }
 
 // verifyDestination fails closed when the endpoint's trust boundary moved
@@ -142,7 +142,7 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	if err := req.Gate(ctx); err != nil {
 		return adapter.Connection{}, err
 	}
-	return adapter.Connection{Version: ConnectionVersion, DestinationID: id}, nil
+	return adapter.Connection{Version: m.Endpoint.ConnectionVersion(), DestinationID: id}, nil
 }
 
 // ackError maps a verified non-success ack to the seam's error vocabulary.
@@ -214,7 +214,7 @@ type syncContext struct {
 }
 
 func (m *Module) delivery(sc syncContext, op sealedhook.Op, surface adapter.Surface, name, value string) (Delivery, error) {
-	key := sealedhook.IdempotencyKey(sealedhook.IdempotencyParts{
+	key := m.Endpoint.idempotencyKey(sealedhook.IdempotencyParts{
 		TargetID: m.Endpoint.id, Fingerprint: m.Endpoint.fingerprint, Route: sc.route, Generation: sc.target.Generation,
 		Revision: sc.revision, Op: op, Surface: string(surface), Name: name,
 	})
