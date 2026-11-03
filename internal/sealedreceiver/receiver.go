@@ -143,6 +143,18 @@ func (r *Receiver) Restore(s State) {
 	r.state = s
 }
 
+// State returns a copy of the durable state, for tests and for moving state to
+// a replacement receiver (a restart or a rotated configuration).
+func (r *Receiver) State() State {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := State{Values: make(map[string]map[string]Entry, len(r.state.Values)), Seen: maps.Clone(r.state.Seen)}
+	for ns, b := range r.state.Values {
+		out.Values[ns] = maps.Clone(b)
+	}
+	return out
+}
+
 // Seed installs a pre-existing, unowned value.
 func (r *Receiver) Seed(namespace, surface, name, value string) {
 	r.mu.Lock()

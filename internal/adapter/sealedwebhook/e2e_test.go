@@ -237,7 +237,7 @@ func (h *harness) newModule(e *Endpoint, allowed []netip.Prefix, resolver static
 
 func (h *harness) target() adapter.Target {
 	return adapter.Target{ID: "tgt_1", Generation: 1, Destination: adapter.Destination{
-		Kind: adapter.Organization, Owner: namespace, NumericID: h.endpoint.destinationID(namespace),
+		Kind: adapter.Organization, Owner: namespace, NumericID: h.endpoint.DestinationID(namespace),
 	}}
 }
 

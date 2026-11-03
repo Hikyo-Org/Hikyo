@@ -625,3 +625,54 @@ func TestV2PublishedVectors(t *testing.T) {
 		})
 	}
 }
+
+// TestV2LargestEnvelopeFitsTheRecomputedBound seals the largest payload the
+// protocol allows (256 maximum-length names, about 1 MiB of ciphertext) and
+// checks the body fits MaxEnvelopeV2, then that one more byte of plaintext is
+// refused before any signing work.
+func TestV2LargestEnvelopeFitsTheRecomputedBound(t *testing.T) {
+	f := newFixtureV2(t)
+	d := draftV2(f.now)
+	d.Names, d.Values = nil, nil
+	for i := range MaxNames {
+		name := "N" + strings.Repeat("X", 240) + strings.Repeat("0", 4) + strconv.Itoa(1000+i)
+		d.Names = append(d.Names, Name{Surface: "secret", Name: name})
+		d.Values = append(d.Values, Value{Surface: "secret", Name: name, Value: strings.Repeat("v", 3600)})
+	}
+	sealed, err := f.sealer.Seal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sealed.Body) > MaxEnvelopeV2 {
+		t.Fatalf("largest envelope %d exceeds MaxEnvelopeV2 %d", len(sealed.Body), MaxEnvelopeV2)
+	}
+	if _, err := f.opener.Open(sealed.Body, f.now); err != nil {
+		t.Fatalf("largest envelope does not open: %v", err)
+	}
+	t.Logf("largest envelope: %d bytes of %d allowed", len(sealed.Body), MaxEnvelopeV2)
+	d.Values[0].Value = strings.Repeat("v", MaxCiphertext)
+	if _, err := f.sealer.Seal(d); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("oversize payload = %v, want ErrTooLarge", err)
+	}
+}
+
+func BenchmarkV2SealOpen(b *testing.B) {
+	f := newFixtureV2(b)
+	d := draftV2(f.now)
+	sealed, _ := f.sealer.Seal(d)
+	b.Run("seal", func(b *testing.B) {
+		for range b.N {
+			if _, err := f.sealer.Seal(d); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("open", func(b *testing.B) {
+		for range b.N {
+			if _, err := f.opener.Open(sealed.Body, f.now); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Logf("one-value envelope: %d bytes", len(sealed.Body))
+}

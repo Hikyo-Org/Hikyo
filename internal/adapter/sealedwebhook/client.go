@@ -87,6 +87,10 @@ type ClientConfig struct {
 	AllowedCIDRs     []netip.Prefix
 	Timeout          time.Duration
 	MaxResponseBytes int64
+	// RootCAs replaces the system roots for test and emulator wiring (as in
+	// the awssm client). Endpoint.ClientConfig never sets it, so the operator
+	// registry cannot widen trust: production always uses the system roots.
+	RootCAs *x509.CertPool
 }
 
 // Client is the hand-rolled receiver transport.
@@ -103,7 +107,7 @@ var _ API = (*Client)(nil)
 
 // NewClient builds the transport with the shared public-egress dialer.
 func NewClient(cfg ClientConfig) (*Client, error) {
-	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Timeout}, nil)
+	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Timeout}, cfg.RootCAs)
 }
 
 func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.Dialer, roots *x509.CertPool) (*Client, error) {

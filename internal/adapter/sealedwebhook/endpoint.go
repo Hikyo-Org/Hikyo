@@ -138,7 +138,9 @@ func (e *Endpoint) ConnectionVersion() string {
 	return ConnectionVersion
 }
 
-func (e *Endpoint) destinationID(namespace string) int64 {
+// DestinationID is the ledger destination identity of a namespace under this
+// endpoint's fingerprint and protocol.
+func (e *Endpoint) DestinationID(namespace string) int64 {
 	if e.protocol == 2 {
 		return sealedhook.DestinationIDV2(e.fingerprint, namespace)
 	}

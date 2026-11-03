@@ -557,7 +557,7 @@ func TestV2SenderPairRotationOverlapAndRetirement(t *testing.T) {
 func TestV2TrustBoundaryChangesFailClosedBeforeAnyRequest(t *testing.T) {
 	h := newHarnessV2(t, servesBoth)
 	boundTo := func(endpoint *Endpoint) adapter.Target {
-		return adapter.Target{ID: "tgt_1", Generation: 1, Destination: adapter.Destination{Kind: adapter.Organization, Owner: namespace, NumericID: endpoint.destinationID(namespace)}}
+		return adapter.Target{ID: "tgt_1", Generation: 1, Destination: adapter.Destination{Kind: adapter.Organization, Owner: namespace, NumericID: endpoint.DestinationID(namespace)}}
 	}
 	v1Endpoint := h.newEndpoint(1, h.signer)
 	v2Endpoint := h.endpoint
@@ -580,7 +580,7 @@ func TestV2TrustBoundaryChangesFailClosedBeforeAnyRequest(t *testing.T) {
 			}
 		})
 	}
-	if v1Endpoint.Fingerprint() == v2Endpoint.Fingerprint() || v1Endpoint.destinationID(namespace) == v2Endpoint.destinationID(namespace) {
+	if v1Endpoint.Fingerprint() == v2Endpoint.Fingerprint() || v1Endpoint.DestinationID(namespace) == v2Endpoint.DestinationID(namespace) {
 		t.Fatal("one origin must derive different fingerprints and destinations per protocol")
 	}
 }

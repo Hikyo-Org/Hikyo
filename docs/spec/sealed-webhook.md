@@ -402,3 +402,26 @@ store and the classical certificate; strict `tlspolicy` does not reach it
 authenticity claim and the payload's protection rests on the hybrid recipient.
 The age file key is 16 bytes (category 1 floor, DEC-04). Version 1 messages
 already recorded are exposed to a recording adversary.
+
+### 11.9 Published vectors
+
+[`internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json`](../../internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json)
+is the protocol vector: one envelope and its acknowledgement, the pinned public
+keys, the key ids, recipient id, fingerprint and destination id they derive, the
+exact signed bytes of both messages in hex, and negative bodies with the error
+class each must produce (stripped Ed25519 or ML-DSA signature, tampered scope,
+downgraded suite, version 1 member set, a classical-only recipient with valid
+signatures, an extra recipient stanza, another receiver's recipient id, an
+acknowledgement with a stripped or forged signature, an acknowledgement for
+another envelope). It contains one test-only age identity so a second
+implementation can decrypt. A conforming implementation recomputes the signed
+bytes from the parsed members, verifies both signatures under the context
+string equal to the label, and refuses every negative body.
+
+The ML-DSA signatures were also verified with a non-Go implementation
+(OpenSSL 3.5.9): wrap the raw 1952-byte key in the ML-DSA-65 SubjectPublicKeyInfo
+header `308207b2300b0609608648016503040312038207a100` and run
+`openssl pkeyutl -verify -pubin -keyform DER -inkey KEY.der -in SIGNED_BYTES -sigfile SIG -pkeyopt context-string:hikyo/sealed-webhook/envelope/v2`
+(the acknowledgement uses `.../ack/v2`). The ciphertext decrypts with the
+`age` command line tool (v1.3.2) and the vector identity, which is the same
+upstream project as the library, not an independent implementation of age.

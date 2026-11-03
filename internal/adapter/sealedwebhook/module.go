@@ -87,7 +87,7 @@ func (m *Module) destinationID(d adapter.Destination) (string, int64, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	return namespace, m.Endpoint.destinationID(namespace), nil
+	return namespace, m.Endpoint.DestinationID(namespace), nil
 }
 
 // verifyDestination fails closed when the endpoint's trust boundary moved

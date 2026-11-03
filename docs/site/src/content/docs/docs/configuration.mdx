@@ -256,6 +256,16 @@ fingerprint, a timeout above 10 seconds, or a response bound above 64 KiB
 refuse startup. A private receiver address still needs an entry in
 `HIKYO_ADAPTER_EGRESS_POLICY_FILE`.
 
+A target may opt in to protocol 2 (hybrid post-quantum encryption and
+Ed25519 plus ML-DSA-65 signatures) with `"protocol": 2`, an `age1pq1...`
+`recipient_key`, `ack_key_mldsa65`, and a top-level `signing_key_file_mldsa65`
+(a seed-only PKCS#8 PEM, mode `0600`). Protocol 1 is the default and is
+unchanged. A protocol 2 target never falls back to protocol 1, mixed or
+unused ML-DSA material refuses startup, and the fingerprint is
+algorithm-aware. The protocol 2 text is a draft that is not operative until its
+implementation merges; the steps, rollback and key overlap are in the
+[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/sealed-webhook-v2-migration.md).
+
 Adapter egress is public-address-only by default. To approve a private adapter
 origin (Forgejo or GitHub Enterprise Server), point `HIKYO_ADAPTER_EGRESS_POLICY_FILE` at a JSON object whose keys are
 exact canonical bare HTTPS origins and whose values are CIDR lists:
