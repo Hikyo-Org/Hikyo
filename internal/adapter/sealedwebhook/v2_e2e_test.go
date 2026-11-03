@@ -90,7 +90,7 @@ func newHarnessV2(t *testing.T, which serves) *harness {
 
 // newReceiver builds a reference receiver from the harness keys.
 func (h *harness) newReceiver(which serves, edit func(*sealedreceiver.Config)) *sealedreceiver.Receiver {
-	cfg := sealedreceiver.Config{TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding}}
+	cfg := sealedreceiver.Config{TargetID: "payments", InstanceID: "hikyo-test", Generation: 1, Bindings: map[string]string{namespace: binding, "stage": binding}}
 	if which&servesV1 != 0 {
 		cfg.Identity, cfg.AckSigner, cfg.Senders = h.identity, h.ackKey, []sealedhook.PinnedKey{{Key: h.signer.Public()}}
 	}
@@ -589,7 +589,7 @@ func TestV2EndpointActivationRequiresConfirmedFingerprintAndConsistentMaterial(t
 	h := newHarnessV2(t, servesV2)
 	base := EndpointConfig{
 		ID: "payments", InstanceID: "hikyo-test", Origin: h.origin, RecipientKey: h.k.recip, AckKey: h.ackPub.String(), AckKeyMLDSA65: h.k.ackPQPub.String(),
-		Generation: 1, Timeout: time.Second, MaxResponseBytes: 1024, ConfirmedFingerprint: h.endpoint.Fingerprint(), Signer: h.signer, SignerPQ: h.k.senderPQ, Protocol: 2,
+		Generation: 1, Timeout: time.Second, MaxResponseBytes: 8192, ConfirmedFingerprint: h.endpoint.Fingerprint(), Signer: h.signer, SignerPQ: h.k.senderPQ, Protocol: 2,
 	}
 	if _, err := NewEndpoint(base); err != nil {
 		t.Fatal(err)
@@ -624,9 +624,10 @@ func TestV2EndpointActivationRequiresConfirmedFingerprintAndConsistentMaterial(t
 	// Client construction refuses a half-configured protocol too.
 	cfg := h.endpoint.ClientConfig()
 	for name, mutate := range map[string]func(*ClientConfig){
-		"protocol 2 without the ml-dsa ack key": func(c *ClientConfig) { c.AckKeyMLDSA65 = sealedhook.MLDSAPublicKey{} },
-		"protocol 1 with the ml-dsa ack key":    func(c *ClientConfig) { c.Protocol = 1 },
-		"protocol 3":                            func(c *ClientConfig) { c.Protocol = 3 },
+		"protocol 2 without the ml-dsa ack key":     func(c *ClientConfig) { c.AckKeyMLDSA65 = sealedhook.MLDSAPublicKey{} },
+		"protocol 1 with the ml-dsa ack key":        func(c *ClientConfig) { c.Protocol = 1 },
+		"protocol 3":                                func(c *ClientConfig) { c.Protocol = 3 },
+		"protocol 2 with a bound under the minimum": func(c *ClientConfig) { c.MaxResponseBytes = 4096 },
 	} {
 		t.Run("client/"+name, func(t *testing.T) {
 			c := cfg
@@ -688,5 +689,91 @@ func TestV2EgressPolicyStillRefusesNonPublicDestinations(t *testing.T) {
 	}
 	if len(h.paths()) != 0 {
 		t.Fatal("refused egress reached the receiver")
+	}
+}
+
+// TestV2TransitionAndRollbackAgainstOneReceiver is the documented rollout, run
+// as a sequence against ONE receiver that serves both versions with ONE
+// generation, ONE Ed25519 sender key and ONE shared store. It also pins the
+// limits an operator must plan around: ownership is per route in the shared
+// store, and a namespace has one sentinel, so two routes cannot share one.
+func TestV2TransitionAndRollbackAgainstOneReceiver(t *testing.T) {
+	h := newHarnessV2(t, servesBoth)
+	v1Entry := h.newEndpoint(1, h.signer) // the original registry entry
+	v2Entry := h.endpoint                 // the protocol 2 entry: same generation, same Ed25519 key
+	module := func(e *Endpoint) *Module {
+		return h.newModule(e, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, staticResolver{netip.MustParseAddr("127.0.0.1")})
+	}
+	targetFor := func(e *Endpoint, route, ns string) adapter.Target {
+		return adapter.Target{ID: route, Generation: 1, Destination: adapter.Destination{Kind: adapter.Organization, Owner: ns, NumericID: e.DestinationID(ns)}}
+	}
+	manifestOf := func(values map[string]string) []adapter.ManifestEntry {
+		var out []adapter.ManifestEntry
+		for name, v := range values {
+			out = append(out, adapter.ManifestEntry{KeyID: "key_" + name, CanonicalName: name, Classification: adapter.SecretClassification, Value: v})
+		}
+		slices.SortFunc(out, func(a, b adapter.ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+		return out
+	}
+	// syncAs runs a route bound under `bound` through the registry entry `registry`.
+	syncAs := func(registry, bound *Endpoint, route, ns string, rev int64, values map[string]string, j *fakeJournal, teardown bool) (adapter.SyncResult, error) {
+		return module(registry).Sync(t.Context(), adapter.SyncRequest{Target: targetFor(bound, route, ns), Manifest: manifestOf(values), Ledger: j.ledger(), Source: source(rev), Teardown: teardown}, j)
+	}
+	value := func(ns, key string) string { return h.receiver.Snapshot(ns)[key].Value }
+
+	// 1. Protocol 1 delivery, as today.
+	j1 := newJournal()
+	if _, err := syncAs(v1Entry, v1Entry, "tgt_v1", "prod", 1, map[string]string{"KEPT_NAME": "one"}, j1, false); err != nil {
+		t.Fatalf("v1 delivery: %v", err)
+	}
+
+	// 2. The registry entry moves to protocol 2 with the SAME generation. The
+	// route bound under v1 fails closed before any request.
+	requests := len(h.paths())
+	if _, err := syncAs(v2Entry, v1Entry, "tgt_v1", "prod", 2, map[string]string{"KEPT_NAME": "two"}, j1, false); !errors.Is(err, adapter.ErrDestinationID) || len(h.paths()) != requests {
+		t.Fatalf("v1-bound route under the v2 entry = %v (%d new requests)", err, len(h.paths())-requests)
+	}
+
+	// 3. A new route bound under protocol 2 in the SAME namespace conflicts on
+	// the namespace sentinel: the v1 route still owns it. A new namespace works.
+	if _, err := syncAs(v2Entry, v2Entry, "tgt_v2x", "prod", 1, map[string]string{"V2_ONLY": "x"}, newJournal(), false); !errors.Is(err, adapter.ErrConflict) {
+		t.Fatalf("a second route in a namespace the v1 route holds: %v", err)
+	}
+	j2 := newJournal()
+	if _, err := syncAs(v2Entry, v2Entry, "tgt_v2", "stage", 1, map[string]string{"V2_ONLY": "x"}, j2, false); err != nil || value("stage", "secret/V2_ONLY") != "x" {
+		t.Fatalf("v2 delivery into a new namespace: %v", err)
+	}
+
+	// 4. Sender rollback: the registry returns to the protocol 1 entry (same
+	// generation, same key). The retained v1 route resumes; the v2 route fails
+	// closed.
+	requests = len(h.paths())
+	if _, err := syncAs(v1Entry, v2Entry, "tgt_v2", "stage", 2, map[string]string{"V2_ONLY": "y"}, j2, false); !errors.Is(err, adapter.ErrDestinationID) || len(h.paths()) != requests {
+		t.Fatalf("v2-bound route under the v1 entry = %v", err)
+	}
+	if _, err := syncAs(v1Entry, v1Entry, "tgt_v1", "prod", 2, map[string]string{"KEPT_NAME": "two"}, j1, false); err != nil || value("prod", "secret/KEPT_NAME") != "two" {
+		t.Fatalf("the retained v1 route did not resume after rollback: %v", err)
+	}
+
+	// 5. A PRUNED route does not come back by rollback. Tear the v1 route down,
+	// move to v2 in the same namespace, then roll back: a re-bound v1 route is a
+	// different route and conflicts with the names the v2 route now owns until
+	// the receiver operator releases them.
+	if _, err := syncAs(v1Entry, v1Entry, "tgt_v1", "prod", 3, nil, j1, true); err != nil {
+		t.Fatalf("teardown through the old boundary: %v", err)
+	}
+	if _, err := syncAs(v2Entry, v2Entry, "tgt_v2p", "prod", 1, map[string]string{"KEPT_NAME": "from-v2"}, newJournal(), false); err != nil {
+		t.Fatalf("v2 route in the released namespace: %v", err)
+	}
+	if _, err := syncAs(v1Entry, v1Entry, "tgt_v1b", "prod", 4, map[string]string{"KEPT_NAME": "again"}, newJournal(), false); !errors.Is(err, adapter.ErrConflict) || value("prod", "secret/KEPT_NAME") != "from-v2" {
+		t.Fatalf("a re-bound v1 route after a pruned rollback = %v", err)
+	}
+
+	// 6. The generation rule: both versions share the receiver's one generation,
+	// so a protocol 2 entry at another generation is refused and applies nothing.
+	bumped := h.newEndpointV2(2, h.signer, h.k.senderPQ)
+	_, err := syncAs(bumped, bumped, "tgt_v2c", "stage", 1, map[string]string{"V2_ONLY": "z"}, newJournal(), false)
+	if err == nil || !strings.Contains(err.Error(), "generation_mismatch") || value("stage", "secret/V2_ONLY") != "x" {
+		t.Fatalf("a generation 2 entry against a generation 1 receiver = %v", err)
 	}
 }

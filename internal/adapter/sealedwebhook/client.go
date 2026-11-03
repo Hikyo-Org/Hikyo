@@ -134,6 +134,9 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	if cfg.MaxResponseBytes <= 0 || cfg.MaxResponseBytes > MaxResponseBytes {
 		return nil, fmt.Errorf("sealed-webhook: max response bytes must be in (0, %d]", MaxResponseBytes)
 	}
+	if protocol == 2 && cfg.MaxResponseBytes < sealedhook.MinResponseBytesV2 {
+		return nil, fmt.Errorf("sealed-webhook: protocol 2 needs max response bytes of at least %d", sealedhook.MinResponseBytesV2)
+	}
 	publicDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
 	if err != nil {
 		return nil, fmt.Errorf("sealed-webhook: egress policy: %w", err)

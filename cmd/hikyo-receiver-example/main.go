@@ -102,30 +102,35 @@ func keygen(args []string, stdout io.Writer) error {
 	return err
 }
 
-// senderKeygen writes the Hikyo instance's two protocol 2 signing keys with
-// mode 0600 and prints the public halves and key ids a receiver pins.
+// senderKeygen writes the Hikyo instance's ML-DSA-65 signing key with mode
+// 0600 and prints its public half and key id. The instance keeps its existing
+// Ed25519 signing key (the one its protocol 1 receivers already pin); only a
+// new installation passes -with-ed25519 to mint that one too.
 func senderKeygen(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("sender-keygen", flag.ContinueOnError)
-	dir := fs.String("dir", ".", "directory for signing-ed25519.pem and signing-mldsa65.pem")
+	dir := fs.String("dir", ".", "directory for signing-mldsa65.pem (and signing-ed25519.pem with -with-ed25519)")
+	withEd := fs.Bool("with-ed25519", false, "also generate a new Ed25519 signing key (new installations only)")
 	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	edPEM, _, err := sealedhook.GenerateSigningKey()
-	if err != nil {
 		return err
 	}
 	pqPEM, _, err := sealedhook.GenerateMLDSASigningKey()
 	if err != nil {
 		return err
 	}
-	if err := writeSecret(filepath.Join(*dir, "signing-ed25519.pem"), edPEM); err != nil {
-		return err
-	}
 	if err := writeSecret(filepath.Join(*dir, "signing-mldsa65.pem"), pqPEM); err != nil {
 		return err
 	}
-	if err := pubkey([]string{"-pem", filepath.Join(*dir, "signing-ed25519.pem")}, stdout); err != nil {
-		return err
+	if *withEd {
+		edPEM, _, err := sealedhook.GenerateSigningKey()
+		if err != nil {
+			return err
+		}
+		if err := writeSecret(filepath.Join(*dir, "signing-ed25519.pem"), edPEM); err != nil {
+			return err
+		}
+		if err := pubkey([]string{"-pem", filepath.Join(*dir, "signing-ed25519.pem")}, stdout); err != nil {
+			return err
+		}
 	}
 	return pubkey([]string{"-pem", filepath.Join(*dir, "signing-mldsa65.pem")}, stdout)
 }
@@ -143,14 +148,14 @@ func pubkey(args []string, stdout io.Writer) error {
 		return err
 	}
 	if ed, err := sealedhook.ParseSigningKeyPEM(raw); err == nil {
-		_, err = fmt.Fprintf(stdout, "ed25519: %s\nkey_id_v1: %s\nkey_id_v2: %s\n", ed.Public(), ed.Public().ID(), ed.Public().IDV2())
+		_, err = fmt.Fprintf(stdout, "public_key: %s\nkey_id_v1: %s\nkey_id_v2: %s\n", ed.Public(), ed.Public().ID(), ed.Public().IDV2())
 		return err
 	}
 	pq, err := sealedhook.ParseMLDSASigningKeyPEM(raw)
 	if err != nil {
 		return errors.New("pubkey: not an Ed25519 or ML-DSA-65 PKCS#8 signing key")
 	}
-	_, err = fmt.Fprintf(stdout, "mldsa65: %s\nkey_id_v2: %s\n", strings.TrimPrefix(pq.Public().String(), "mldsa65:"), pq.Public().ID())
+	_, err = fmt.Fprintf(stdout, "public_key: %s\nkey_id_v2: %s\n", pq.Public(), pq.Public().ID())
 	return err
 }
 
@@ -350,7 +355,21 @@ func serve(args []string) error {
 			return err
 		}
 		tmp := *statePath + ".tmp"
-		if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		// The state is acknowledged only after it is on disk: spec section 7
+		// requires a durable apply before the acknowledgement.
+		if _, err := f.Write(raw); err != nil {
+			f.Close()
+			return err
+		}
+		if err := f.Sync(); err != nil {
+			f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
 			return err
 		}
 		return os.Rename(tmp, *statePath)

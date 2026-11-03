@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -530,6 +532,14 @@ func TestV2GenerateVectors(t *testing.T) {
 			x.TargetID, x.InstanceID, x.RecipientID = "payments", "hikyo-eu", recipientIDV2("age1pq1other")
 		})), "recipient"},
 		{"hybrid ciphertext with an extra stanza", "envelope", string(f.resign(t, encryptTo(t, f.payloadJSON(), hybridID.Recipient(), func() age.Recipient { i, _ := age.ParseHybridIdentity(f.otherIdent); return i.Recipient() }()), func(x *EnvelopeV2) { x.TargetID, x.InstanceID = "payments", "hikyo-eu" })), "payload"},
+		{"case-variant member name", "envelope", strings.Replace(string(sealed.Body), `"v":2`, `"V":2`, 1), "malformed"},
+		{"upper-case duplicate of a signature member", "envelope", string(withMember(sealed.Body, `"SIG_ED25519":"`+strings.Repeat("A", ed25519SigBase64)+`"`)), "malformed"},
+		{"duplicate member inside source", "envelope", strings.Replace(string(sealed.Body), `"revision":7`, `"revision":7,"revision":8`, 1), "malformed"},
+		{"line break inside the ciphertext base64", "envelope", string(f.resign(t, nil, func(x *EnvelopeV2) {
+			x.TargetID, x.InstanceID = "payments", "hikyo-eu"
+			x.Ciphertext = x.Ciphertext[:8] + "\n" + x.Ciphertext[8:]
+		})), "malformed"},
+		{"ack with a case-variant member", "ack", strings.Replace(string(ack), `"status"`, `"STATUS"`, 1), "malformed"},
 		{"ack with the ml-dsa signature stripped", "ack", func() string {
 			a := parsedAck
 			a.SigMLDSA65 = ""
@@ -627,31 +637,55 @@ func TestV2PublishedVectors(t *testing.T) {
 }
 
 // TestV2LargestEnvelopeFitsTheRecomputedBound seals the largest payload the
-// protocol allows (256 maximum-length names, about 1 MiB of ciphertext) and
-// checks the body fits MaxEnvelopeV2, then that one more byte of plaintext is
-// refused before any signing work.
+// protocol allows: 256 maximum-length names on the longer surface and a value
+// sized by bisection until the age ciphertext sits at the 1 MiB limit. The
+// body must fit MaxEnvelopeV2, and one more byte of plaintext must be refused.
 func TestV2LargestEnvelopeFitsTheRecomputedBound(t *testing.T) {
 	f := newFixtureV2(t)
-	d := draftV2(f.now)
-	d.Names, d.Values = nil, nil
-	for i := range MaxNames {
-		name := "N" + strings.Repeat("X", 240) + strings.Repeat("0", 4) + strconv.Itoa(1000+i)
-		d.Names = append(d.Names, Name{Surface: "secret", Name: name})
-		d.Values = append(d.Values, Value{Surface: "secret", Name: name, Value: strings.Repeat("v", 3600)})
+	build := func(valueSize int) Draft {
+		d := draftV2(f.now)
+		d.Names, d.Values = nil, nil
+		for i := range MaxNames {
+			name := "N" + strings.Repeat("X", 251) + fmt.Sprintf("%04d", i) // 256 characters
+			d.Names = append(d.Names, Name{Surface: "variable", Name: name})
+			v := "v"
+			if i == 0 {
+				v = strings.Repeat("v", valueSize)
+			}
+			d.Values = append(d.Values, Value{Surface: "variable", Name: name, Value: v})
+		}
+		return d
 	}
-	sealed, err := f.sealer.Seal(d)
+	lo, hi := 0, MaxCiphertext
+	var best Sealed
+	for lo < hi { // largest value size that still seals
+		mid := (lo + hi + 1) / 2
+		sealed, err := f.sealer.Seal(build(mid))
+		switch {
+		case err == nil:
+			lo, best = mid, sealed
+		case errors.Is(err, ErrTooLarge):
+			hi = mid - 1
+		default:
+			t.Fatal(err)
+		}
+	}
+	e, err := ParseEnvelopeV2(best.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sealed.Body) > MaxEnvelopeV2 {
-		t.Fatalf("largest envelope %d exceeds MaxEnvelopeV2 %d", len(sealed.Body), MaxEnvelopeV2)
+	ct, _ := base64.StdEncoding.DecodeString(e.Ciphertext)
+	if MaxCiphertext-len(ct) > 1024 || len(ct) > MaxCiphertext {
+		t.Fatalf("ciphertext %d is not at the %d limit", len(ct), MaxCiphertext)
 	}
-	if _, err := f.opener.Open(sealed.Body, f.now); err != nil {
+	if len(best.Body) > MaxEnvelopeV2 {
+		t.Fatalf("largest envelope %d exceeds MaxEnvelopeV2 %d", len(best.Body), MaxEnvelopeV2)
+	}
+	if _, err := f.opener.Open(best.Body, f.now); err != nil {
 		t.Fatalf("largest envelope does not open: %v", err)
 	}
-	t.Logf("largest envelope: %d bytes of %d allowed", len(sealed.Body), MaxEnvelopeV2)
-	d.Values[0].Value = strings.Repeat("v", MaxCiphertext)
-	if _, err := f.sealer.Seal(d); !errors.Is(err, ErrTooLarge) {
+	t.Logf("largest envelope: %d bytes of %d allowed (ciphertext %d of %d, %d names of 256 characters)", len(best.Body), MaxEnvelopeV2, len(ct), MaxCiphertext, len(e.Names))
+	if _, err := f.sealer.Seal(build(lo + 2048)); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("oversize payload = %v, want ErrTooLarge", err)
 	}
 }
@@ -675,4 +709,101 @@ func BenchmarkV2SealOpen(b *testing.B) {
 		}
 	})
 	b.Logf("one-value envelope: %d bytes", len(sealed.Body))
+}
+
+// TestV2MemberSetIsExactCaseAndBoundedBeforeDecoding covers review findings 4
+// and 7: encoding/json matches member names case-insensitively and decodes
+// every array element, so the exact-case member set and the names bound must be
+// enforced on the token stream before the struct decode.
+func TestV2MemberSetIsExactCaseAndBoundedBeforeDecoding(t *testing.T) {
+	f := newFixtureV2(t)
+	sealed, _ := f.sealer.Seal(draftV2(f.now))
+	ack, _ := f.acker.SignAck("sha256:"+strings.Repeat("a", 64), strings.Repeat("b", 64), AckApplied, "")
+	edit := func(body []byte, from, to string) []byte {
+		if !strings.Contains(string(body), from) {
+			t.Fatalf("fixture lacks %q", from)
+		}
+		return []byte(strings.Replace(string(body), from, to, 1))
+	}
+	good := string(sealed.Body)
+	i := strings.Index(good, `"sig_ed25519":"`)
+	realSig := good[i+len(`"sig_ed25519":"`) : i+len(`"sig_ed25519":"`)+ed25519SigBase64]
+	cases := map[string][]byte{
+		"upper-case duplicate signature":  withMember(sealed.Body, `"SIG_ED25519":"`+strings.Repeat("A", ed25519SigBase64)+`"`),
+		"upper-case version member":       edit(sealed.Body, `"v":2`, `"V":2`),
+		"mixed-case suite member":         edit(sealed.Body, `"suite"`, `"Suite"`),
+		"upper-case nested source member": edit(sealed.Body, `"org"`, `"ORG"`),
+		"duplicate nested source member":  edit(sealed.Body, `"revision":7`, `"revision":7,"revision":8`),
+		"case-variant name member":        edit(sealed.Body, `"surface"`, `"Surface"`),
+		"unknown nested source member":    edit(sealed.Body, `"revision":7`, `"revision":7,"extra":1`),
+		"duplicate real signature":        withMember(sealed.Body, `"sig_ed25519":"`+realSig+`"`),
+		"non-canonical ed25519 signature tail": func() []byte {
+			const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+			k := strings.IndexByte(alphabet, realSig[85])
+			return edit(sealed.Body, realSig, realSig[:85]+string(alphabet[k+1])+realSig[86:])
+		}(),
+		"ack upper-case member":             edit(ack, `"status"`, `"STATUS"`),
+		"ack duplicate member":              withMember(ack, `"status":"applied"`),
+		"ack case-variant signature member": withMember(ack, `"SIG_MLDSA65":"x"`),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			var err error
+			if strings.HasPrefix(name, "ack") {
+				_, err = ParseAckV2(body)
+			} else {
+				_, err = f.opener.Open(body, f.now)
+			}
+			if !errors.Is(err, ErrMalformed) {
+				t.Fatalf("accepted or wrong class: %v", err)
+			}
+		})
+	}
+
+	// Names are bounded on the token stream: a body of hundreds of thousands of
+	// empty name objects must not be decoded into structs first.
+	var big strings.Builder
+	big.WriteString(`{"v":2,"suite":"ed25519+mldsa65","names":[`)
+	for big.Len() < MaxEnvelopeV2-8 {
+		big.WriteString(`{},`)
+	}
+	big.WriteString(`{}]}`)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err := ParseEnvelopeV2([]byte(big.String()))
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, ErrMalformed) && !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("oversize names = %v", err)
+	}
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 4<<20 {
+		t.Fatalf("parsing %d bytes of empty names allocated %d bytes cumulatively; the bound must apply before decoding", big.Len(), grew)
+	}
+
+	// Ciphertext base64 must be canonical: no line breaks, no stray padding bits.
+	e, _ := ParseEnvelopeV2(sealed.Body)
+	withBreak := f.resign(t, nil, func(x *EnvelopeV2) { x.Ciphertext = x.Ciphertext[:8] + "\n" + x.Ciphertext[8:] })
+	if _, err := f.opener.Open(withBreak, f.now); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("a line break in the ciphertext base64 opened: %v", err)
+	}
+	_ = e
+}
+
+func TestV2LargestAcknowledgementFitsTheMinimumResponseBound(t *testing.T) {
+	f := newFixtureV2(t)
+	largest := 0
+	for _, c := range []struct {
+		status AckStatus
+		reason string
+	}{{AckApplied, ""}, {AckAlreadyApplied, ""}, {AckConflict, strings.Repeat("a", 64)}, {AckRejected, strings.Repeat("z", 64)}} {
+		ack, err := f.acker.SignAck("sha256:"+strings.Repeat("a", 64), strings.Repeat("b", 64), c.status, c.reason)
+		if err != nil {
+			t.Fatal(err)
+		}
+		largest = max(largest, len(ack))
+	}
+	t.Logf("largest legal acknowledgement: %d bytes (minimum bound %d)", largest, MinResponseBytesV2)
+	if largest > MinResponseBytesV2 || largest < 4900 {
+		t.Fatalf("largest ack %d vs bound %d: update the constant, the guide and the spec together", largest, MinResponseBytesV2)
+	}
 }

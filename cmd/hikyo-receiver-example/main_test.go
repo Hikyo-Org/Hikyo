@@ -114,14 +114,33 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	if err := run([]string{"sender-keygen", "-dir", sendDir}, &out); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), "PRIVATE KEY") || !strings.Contains(out.String(), "mldsa65:") || !strings.Contains(out.String(), "ed25519:") {
+	// By default only the ML-DSA key is minted: the instance keeps the Ed25519
+	// key its protocol 1 receivers already pin.
+	if strings.Contains(out.String(), "PRIVATE KEY") || !strings.Contains(out.String(), "public_key: mldsa65:") || strings.Contains(out.String(), "ed25519") {
 		t.Fatalf("sender-keygen output = %q", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(sendDir, "signing-ed25519.pem")); err == nil {
+		t.Fatal("sender-keygen replaced or created the Ed25519 key without being asked")
+	}
+	out.Reset()
+	if err := run([]string{"sender-keygen", "-with-ed25519", "-dir", t.TempDir()}, &out); err != nil || !strings.Contains(out.String(), "public_key: ed25519:") || strings.Contains(out.String(), "ed25519: ed25519") {
+		t.Fatalf("new installation output = %q, %v", out.String(), err)
+	}
+	edDir := t.TempDir()
+	if err := run([]string{"sender-keygen", "-with-ed25519", "-dir", edDir}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(edDir, "signing-ed25519.pem"), filepath.Join(sendDir, "signing-ed25519.pem")); err != nil {
+		t.Fatal(err)
 	}
 	out.Reset()
 	if err := run([]string{"pubkey", "-pem", filepath.Join(sendDir, "signing-mldsa65.pem")}, &out); err != nil {
 		t.Fatal(err)
 	}
 	senderPQ := kv(t, out.String())
+	if !strings.HasPrefix(senderPQ["public_key"], "mldsa65:") {
+		t.Fatalf("pubkey = %v", senderPQ)
+	}
 	out.Reset()
 	if err := run([]string{"pubkey", "-pem", filepath.Join(sendDir, "signing-ed25519.pem")}, &out); err != nil {
 		t.Fatal(err)
@@ -156,7 +175,7 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	cfg, _ := json.Marshal(map[string]any{
 		"target_id": "payments", "instance_id": "hikyo", "generation": 4,
 		"hybrid_identity_file": "identity-hybrid.age", "ack_key_file": "ack.pem", "ack_key_mldsa65_file": "ack-mldsa65.pem",
-		"senders_v2": []map[string]string{{"key": senderEd["ed25519"], "key_mldsa65": "mldsa65:" + senderPQ["mldsa65"]}, {"key": senderEd["ed25519"], "key_mldsa65": "mldsa65:" + senderPQ["mldsa65"], "not_after": "2026-10-01T00:00:00Z"}},
+		"senders_v2": []map[string]string{{"key": senderEd["public_key"], "key_mldsa65": senderPQ["public_key"]}, {"key": senderEd["public_key"], "key_mldsa65": senderPQ["public_key"], "not_after": "2026-10-01T00:00:00Z"}},
 		"bindings":   map[string]string{"prod": "token"},
 	})
 	path := filepath.Join(recvDir, "receiver.json")

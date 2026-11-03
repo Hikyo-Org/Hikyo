@@ -80,14 +80,14 @@ func sealedWebhookRegistryV2(t *testing.T) *config.SealedWebhookConfig {
 	_, ackPQText, _ := sealedhook.GenerateMLDSASigningKey()
 	ackEd, _ := sealedhook.ParsePublicKey(ackEdText)
 	ackPQ, _ := sealedhook.ParseMLDSAPublicKey(ackPQText)
-	fp, err := sealedhook.FingerprintV2("https://recv2.example", recipient, ackEd, ackPQ, 2)
+	fp, err := sealedhook.FingerprintV2("https://recv2.example", recipient, ackEd, ackPQ, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	registry.SigningKeyMLDSA65PEM = pqPEM
 	registry.Targets = append(registry.Targets, config.SealedWebhookTarget{
 		ID: "payments-pq", Origin: "https://recv2.example", RecipientKey: recipient, AckKey: ackEdText, AckKeyMLDSA65: ackPQText,
-		Protocol: 2, Generation: 2, Timeout: 5 * time.Second, MaxResponseBytes: 4096, ConfirmedFingerprint: fp,
+		Protocol: 2, Generation: 1, Timeout: 5 * time.Second, MaxResponseBytes: 8192, ConfirmedFingerprint: fp,
 	})
 	return registry
 }
@@ -113,6 +113,7 @@ func TestSealedWebhookMixedRegistryActivatesEachTargetUnderItsOwnProtocol(t *tes
 
 func TestSealedWebhookProtocolTwoActivationRefusesBeforeServing(t *testing.T) {
 	for name, edit := range map[string]func(*config.SealedWebhookConfig){
+		"response bound under one real acknowledgement": func(c *config.SealedWebhookConfig) { c.Targets[1].MaxResponseBytes = 4096 },
 		"fingerprint not reconfirmed after a recipient swap": func(c *config.SealedWebhookConfig) {
 			_, c.Targets[1].RecipientKey, _ = sealedhook.GenerateHybridRecipient()
 		},

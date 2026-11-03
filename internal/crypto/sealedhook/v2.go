@@ -48,6 +48,13 @@ const (
 	// plus 128 KiB for 256 names, identifiers and both signatures.
 	MaxEnvelopeV2 = MaxCiphertextBase64 + 128<<10
 
+	// MinResponseBytesV2 is the smallest acknowledgement bound a protocol 2
+	// target may configure: the largest legal acknowledgement (two signatures
+	// of 4,412 and 88 characters, a 64 character reason) is asserted to fit
+	// below it. A smaller bound would refuse every real acknowledgement as
+	// oversized after the receiver had already applied the value.
+	MinResponseBytesV2 = 5120
+
 	// MaxHeaderV2 bounds the age header before any key is tried. One hybrid
 	// stanza is about 1.6 KiB.
 	MaxHeaderV2 = 4096
@@ -304,7 +311,7 @@ func ParseEnvelopeV2(body []byte) (EnvelopeV2, error) {
 		return EnvelopeV2{}, ErrTooLarge
 	}
 	var e EnvelopeV2
-	if err := rejectDuplicateMembers(body); err != nil {
+	if err := checkShape(body, envelopeV2); err != nil {
 		return EnvelopeV2{}, err
 	}
 	if err := strictDecode(body, &e); err != nil {
@@ -471,32 +478,97 @@ func checkHybridHeader(ct []byte) error {
 	return nil
 }
 
-// rejectDuplicateMembers refuses a JSON object that repeats a top-level member.
-// encoding/json keeps the last copy silently, which would let a message carry
-// two signatures where version 2 requires exactly one of each.
-func rejectDuplicateMembers(raw []byte) error {
+// shape describes the exact member set of a JSON value for checkShape.
+type shape struct {
+	fields map[string]*shape // an object: exactly these members, case-sensitive
+	item   *shape            // an array of this shape
+	limit  int               // maximum array length
+}
+
+var (
+	scalar      = &shape{}
+	nameShape   = &shape{fields: map[string]*shape{"surface": scalar, "name": scalar}}
+	sourceShape = &shape{fields: map[string]*shape{"org": scalar, "project": scalar, "environment": scalar, "revision": scalar}}
+	envelopeV2  = &shape{fields: map[string]*shape{
+		"v": scalar, "suite": scalar, "key_id_ed25519": scalar, "key_id_mldsa65": scalar, "recipient_id": scalar,
+		"target_id": scalar, "instance_id": scalar, "namespace": scalar, "route": scalar, "generation": scalar,
+		"source": sourceShape, "op": scalar, "names": {item: nameShape, limit: MaxNames}, "ciphertext": scalar,
+		"ciphertext_digest": scalar, "idempotency_key": scalar, "issued_at": scalar, "expires_at": scalar,
+		"sig_ed25519": scalar, "sig_mldsa65": scalar,
+	}}
+	ackV2 = &shape{fields: map[string]*shape{
+		"v": scalar, "suite": scalar, "envelope_digest": scalar, "idempotency_key": scalar, "status": scalar, "reason": scalar,
+		"key_id_ed25519": scalar, "key_id_mldsa65": scalar, "sig_ed25519": scalar, "sig_mldsa65": scalar,
+	}}
+)
+
+// checkShape walks the token stream before the struct decode. encoding/json
+// matches member names case-insensitively and keeps the last duplicate, and it
+// decodes every array element, so a body could carry a second signature under
+// another spelling or hundreds of thousands of empty names. Here every member
+// must be spelled exactly, appear once, and belong to the set; arrays stop at
+// their limit before anything is built from them.
+func checkShape(raw []byte, want *shape) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return fmt.Errorf("%w: not a JSON object", ErrMalformed)
+	if err := walkShape(dec, want); err != nil {
+		return err
 	}
-	seen := map[string]bool{}
-	for dec.More() {
-		tok, err := dec.Token()
-		key, ok := tok.(string)
-		if err != nil || !ok || seen[key] {
-			return fmt.Errorf("%w: duplicate or invalid member", ErrMalformed)
+	if _, err := dec.Token(); err != io.EOF {
+		return fmt.Errorf("%w: trailing data", ErrMalformed)
+	}
+	return nil
+}
+
+func walkShape(dec *json.Decoder, s *shape) error {
+	bad := func() error { return fmt.Errorf("%w: member set", ErrMalformed) }
+	tok, err := dec.Token()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrMalformed, err)
+	}
+	delim, isDelim := tok.(json.Delim)
+	switch {
+	case s.fields != nil:
+		if !isDelim || delim != '{' {
+			return bad()
 		}
-		seen[key] = true
-		var skip json.RawMessage
-		if err := dec.Decode(&skip); err != nil {
-			return fmt.Errorf("%w: %v", ErrMalformed, err)
+		seen := map[string]bool{}
+		for dec.More() {
+			key, err := dec.Token()
+			name, ok := key.(string)
+			child := s.fields[name]
+			if err != nil || !ok || child == nil || seen[name] {
+				return bad()
+			}
+			seen[name] = true
+			if err := walkShape(dec, child); err != nil {
+				return err
+			}
 		}
+		_, err = dec.Token() // the closing brace
+	case s.item != nil:
+		if !isDelim || delim != '[' {
+			return bad()
+		}
+		for n := 0; dec.More(); n++ {
+			if n >= s.limit {
+				return fmt.Errorf("%w: too many array elements", ErrMalformed)
+			}
+			if err := walkShape(dec, s.item); err != nil {
+				return err
+			}
+		}
+		_, err = dec.Token()
+	case isDelim:
+		return bad()
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrMalformed, err)
 	}
 	return nil
 }
 
 func decodeExact(s string, n int) ([]byte, bool) {
-	raw, err := base64.StdEncoding.DecodeString(s)
+	raw, err := base64.StdEncoding.Strict().DecodeString(s)
 	return raw, err == nil && len(raw) == n
 }
 
@@ -535,8 +607,11 @@ func (o *OpenerV2) Open(body []byte, now time.Time) (Opened, error) {
 	if !pinned.NotAfter.IsZero() && issued.After(pinned.NotAfter) {
 		return Opened{}, ErrUnknownKey
 	}
-	ct, err := base64.StdEncoding.DecodeString(e.Ciphertext)
-	if err != nil || len(ct) == 0 || len(ct) > MaxCiphertext {
+	// Canonical base64 only: encoding/base64 skips line breaks, and Strict
+	// refuses non-zero trailing bits, so the encoded form is the one the
+	// digest and the body digest cover.
+	ct, err := base64.StdEncoding.Strict().DecodeString(e.Ciphertext)
+	if err != nil || strings.ContainsAny(e.Ciphertext, "\r\n") || len(ct) == 0 || len(ct) > MaxCiphertext {
 		return Opened{}, fmt.Errorf("%w: ciphertext encoding", ErrMalformed)
 	}
 	if Digest(ct) != e.CiphertextDigest {
@@ -624,7 +699,7 @@ func ParseAckV2(body []byte) (AckV2, error) {
 		return AckV2{}, ErrTooLarge
 	}
 	var a AckV2
-	if err := rejectDuplicateMembers(body); err != nil {
+	if err := checkShape(body, ackV2); err != nil {
 		return AckV2{}, err
 	}
 	if err := strictDecode(body, &a); err != nil {

@@ -1,12 +1,14 @@
 package isolation
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -31,7 +33,10 @@ import (
 // store, outbox runtime, worker and sender module, egress dialer and TLS
 // against the in-tree reference receiver (which actually verifies both
 // signatures, decrypts the hybrid ciphertext and signs the acknowledgement).
-// Nothing is mocked except the receiver being local. It always runs: the
+// The loader, module factory and push authorizer are test closures shaped like
+// the production ones (internal/app/adapter_loader.go is unexported) and the
+// registry file parsing is bypassed: endpoints are built with the same
+// constructor the boot path uses. The receiver is local. It always runs: the
 // receiver needs no external service. Both engines run it.
 //
 // Covered: encrypt, send, receiver verify and decrypt, dual-signed
@@ -76,8 +81,35 @@ type swReceiver struct {
 }
 
 type swRequest struct {
-	path string
-	body []byte
+	path   string
+	body   []byte
+	status int
+	resp   []byte
+}
+
+// swWriter records what the receiver answered. It passes Hijack through so the
+// crash-window hook can still drop the connection.
+type swWriter struct {
+	http.ResponseWriter
+	status int
+	buf    bytes.Buffer
+}
+
+func (w *swWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *swWriter) Write(p []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	w.buf.Write(p)
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *swWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.ResponseWriter.(http.Hijacker).Hijack()
 }
 
 func mustEd(t *testing.T) *sealedhook.Signer {
@@ -122,13 +154,23 @@ func newSWReceiver(t *testing.T) *swReceiver {
 		body, _ := io.ReadAll(req.Body)
 		req.Body = io.NopCloser(bytes.NewReader(body))
 		r.mu.Lock()
+		index := len(r.log)
 		r.log = append(r.log, swRequest{path: req.URL.Path, body: body})
-		next, gate := r.handler, r.gate
+		gate := r.gate
 		r.mu.Unlock()
 		if gate != nil {
 			gate(req.URL.Path, body)
 		}
-		next.ServeHTTP(w, req)
+		// Read the handler AFTER the gate: a request held at the gate must meet
+		// the receiver configuration in force when it is released.
+		r.mu.Lock()
+		next := r.handler
+		r.mu.Unlock()
+		rec := &swWriter{ResponseWriter: w}
+		next.ServeHTTP(rec, req)
+		r.mu.Lock()
+		r.log[index].status, r.log[index].resp = rec.status, rec.buf.Bytes()
+		r.mu.Unlock()
 	}))
 	t.Cleanup(r.server.Close)
 	r.roots = x509.NewCertPool()
@@ -410,12 +452,57 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	}
 	appliedAfterFirst := applied()
 
+	// logFrom returns a copy of the receiver log from an index.
+	logFrom := func(from int) []swRequest {
+		recv.mu.Lock()
+		defer recv.mu.Unlock()
+		return append([]swRequest(nil), recv.log[from:]...)
+	}
+	keyOf := func(e swRequest) string { return idemOfV2Body(t, e.body) }
+	statusOf := func(e swRequest) string {
+		if e.status != http.StatusOK {
+			return fmt.Sprintf("http-%d", e.status)
+		}
+		ack, err := sealedhook.ParseAckV2(e.resp)
+		if err != nil {
+			return "unparsed"
+		}
+		return string(ack.Status)
+	}
+	// outboxPending is the durable retry state: one live job for the target.
+	outboxPending := func(why string) {
+		t.Helper()
+		if n := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_outbox WHERE target_id='%s' AND state IN ('queued','running')`, target.ID)); n != 1 {
+			t.Fatalf("%s: %d live outbox jobs, want exactly 1 awaiting retry", why, n)
+		}
+		if got := inspect(); got.LastErrorClass == "" || got.Health() == adapter.HealthConverged {
+			t.Fatalf("%s: health %q class %q, want a recorded failure", why, got.Health(), got.LastErrorClass)
+		}
+	}
+	// appliedOnce fails when any idempotency key was acknowledged "applied"
+	// more than once: that would be a double apply.
+	appliedOnce := func(why string) {
+		t.Helper()
+		applies := map[string]int{}
+		for _, e := range logFrom(0) {
+			if e.path == sealedhook.SyncPathV2 && statusOf(e) == string(sealedhook.AckApplied) {
+				if e.resp != nil {
+					if env, err := sealedhook.ParseEnvelopeV2(e.body); err == nil && env.Op != sealedhook.OpProbe {
+						applies[env.IdempotencyKey]++
+					}
+				}
+			}
+		}
+		for key, n := range applies {
+			if n > 1 {
+				t.Fatalf("%s: idempotency key %.12s was applied %d times", why, key, n)
+			}
+		}
+	}
+
 	// 2. Duplicate delivery: replaying a recorded request is answered
-	// already_applied without a second effect, and a resync of the same
-	// revision converges with no new applied effect.
-	recv.mu.Lock()
-	captured := recv.log[len(recv.log)-1]
-	recv.mu.Unlock()
+	// already_applied without a second effect.
+	captured := logFrom(recv.requests() - 1)[0]
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, sealedhook.SyncPathV2, bytes.NewReader(captured.body))
 	req.Header.Set("Content-Type", sealedhook.ContentTypeV2)
@@ -426,16 +513,17 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	if applied() != appliedAfterFirst || value() != swPlain1 {
 		t.Fatalf("duplicate delivery changed receiver state: %d -> %d effects, value %q", appliedAfterFirst, applied(), value())
 	}
-	// A manual resync fences the target with a new generation, so its effects
-	// carry new idempotency keys (existing behavior, protocol-blind). It must
-	// converge to the same value without a conflict.
+	// A manual resync fences the target with a new generation, which is an
+	// input of the idempotency key, so its effects carry NEW keys and the
+	// receiver applies them again (existing, protocol-blind behavior). Same
+	// value, no conflict, exactly one more set of effects.
 	if _, err := svc.SyncTarget(ctx, operator, scope, target.ID); err != nil {
 		t.Fatal(err)
 	}
 	drain(worker)
 	converged(1, "resync of the same revision")
-	if value() != swPlain1 {
-		t.Fatalf("resync changed the value to %q", value())
+	if value() != swPlain1 || applied() != 2*appliedAfterFirst {
+		t.Fatalf("resync: value %q, %d effects, want the same value and %d effects (new generation, new keys)", value(), applied(), 2*appliedAfterFirst)
 	}
 
 	// 3. Ambiguous result and restart: the receiver applies, then the
@@ -469,163 +557,201 @@ func runSealedWebhookProtocolTwo(t *testing.T, db *store.DB) {
 	if value() != swPlain2 {
 		t.Fatalf("value after retry = %q", value())
 	}
-	recv.mu.Lock()
-	firstKey, retryKey := idemOfV2Body(t, recv.log[before].body), ""
-	for _, e := range recv.log[before+1:] {
-		if k := idemOfV2Body(t, e.body); k == firstKey {
-			retryKey = k
-			break
+	entries := logFrom(before)
+	lostKey := keyOf(entries[0])
+	var answers []string
+	for _, e := range entries {
+		if keyOf(e) == lostKey {
+			answers = append(answers, statusOf(e))
 		}
 	}
-	recv.mu.Unlock()
-	if retryKey == "" {
-		t.Fatal("the retry did not reuse the idempotency key of the ambiguous attempt")
+	if len(answers) < 2 || answers[0] != "unparsed" && answers[0] != "http-0" || answers[len(answers)-1] != string(sealedhook.AckAlreadyApplied) {
+		t.Fatalf("answers for the key whose acknowledgement was lost = %v, want the dropped attempt then already_applied", answers)
 	}
 	if got := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects e JOIN audit_tenant_events o ON o.id=e.outcome_audit_id WHERE e.target_id='%s' AND e.outcome='unknown' AND o.type='adapter.push_outcome'`, target.ID)); got == 0 {
 		t.Fatal("the ambiguous attempt left no unknown OUTCOME audit row")
 	}
 
-	// 4. Concurrent key rotation. The receiver retires the sender pair and
-	// pins a new one while a worker is delivering; the registry is replaced
-	// (a restart with the new key files) mid-run. Deliveries before the
-	// replacement are unacknowledged and retried; none is lost or doubled.
+	// 4. Concurrent key rotation. The first revision 3 request is HELD at the
+	// receiver while the receiver retires the sender pair and pins a new one;
+	// it is then released into the new configuration, refused with no
+	// acknowledgement, and the retry under the same idempotency key succeeds
+	// once the registry carries the new pair.
 	nextEd, nextPQ := mustEd(t), mustPQ(t)
+	var held atomic.Bool
+	heldIn, heldRelease := make(chan struct{}), make(chan struct{})
+	recv.mu.Lock()
+	recv.gate = func(string, []byte) {
+		if held.CompareAndSwap(false, true) {
+			close(heldIn)
+			<-heldRelease
+		}
+	}
+	recv.mu.Unlock()
+	rotationFrom := recv.requests()
+	publish(swPlain3)
+	rotating := make(chan error, 1)
+	go func() {
+		advance(time.Second)
+		_, err := newWorker("sw-node-rotating").RunOnce(ctx)
+		rotating <- err
+	}()
+	select {
+	case <-heldIn:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the first revision 3 request never reached the receiver")
+	}
+	recv.swap(recv.build(false, true, []sealedhook.PinnedSenderV2{
+		{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: time.Now().Add(-time.Hour)}, // the receiver judges with real time
+		{Ed: nextEd.Public(), PQ: nextPQ.Public()},
+	}), true)
+	close(heldRelease)
+	if err := <-rotating; err != nil {
+		t.Fatalf("worker holding the request across the rotation: %v", err)
+	}
+	heldEntry := logFrom(rotationFrom)[0]
+	if statusOf(heldEntry) != "http-400" {
+		t.Fatalf("the request held across the rotation was answered %q, want a refusal with no acknowledgement", statusOf(heldEntry))
+	}
+	heldKey := keyOf(heldEntry)
+	outboxPending("after the held request was refused")
 	recv.mu.Lock()
 	recv.gate = nil
 	recv.mu.Unlock()
-	publish(swPlain3)
-	done := make(chan error, 1)
-	go func() {
-		w := newWorker("sw-node-rotating")
-		for range 40 {
-			advance(adapter.LeaseTime + time.Minute)
-			if _, err := w.RunOnce(ctx); err != nil {
-				done <- err
-				return
-			}
-			if got := inspect(); got.Health() == adapter.HealthConverged && got.ConvergedRevision != nil && *got.ConvergedRevision == 3 {
-				done <- nil
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		done <- errors.New("rotation never converged")
-	}()
-	time.Sleep(60 * time.Millisecond)
-	recv.swap(recv.build(false, true, []sealedhook.PinnedSenderV2{
-		{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: now().Add(-time.Hour)},
-		{Ed: nextEd.Public(), PQ: nextPQ.Public()},
-	}), true)
-	time.Sleep(60 * time.Millisecond)
 	endpointRotated := reg.v2(1, nextEd, nextPQ)
 	if endpointRotated.Fingerprint() != endpointA.Fingerprint() {
 		t.Fatal("rotating the sender pair must not change the fingerprint")
 	}
-	reg.set(endpointRotated)
-	if err := <-done; err != nil {
-		t.Fatalf("worker during rotation: %v", err)
-	}
+	reg.set(endpointRotated) // the restart that loads the new key files
+	advance(adapter.LeaseTime + time.Minute)
+	drain(newWorker("sw-node-after-rotation"))
 	converged(3, "rotation")
 	if value() != swPlain3 {
 		t.Fatalf("value after rotation = %q", value())
 	}
+	var retry swRequest
+	for _, e := range logFrom(rotationFrom + 1) {
+		if keyOf(e) == heldKey {
+			retry = e
+			break
+		}
+	}
+	retryEnv, err := sealedhook.ParseEnvelopeV2(retry.body)
+	if err != nil || retryEnv.KeyIDEd25519 != nextEd.Public().IDV2() || retryEnv.KeyIDMLDSA65 != nextPQ.Public().ID() || statusOf(retry) != string(sealedhook.AckApplied) {
+		t.Fatalf("retry of the held key under the new pair = %+v, status %q", retryEnv.KeyIDEd25519, statusOf(retry))
+	}
 
-	// 5. Multi-node takeover. Node 1 dispatches and stalls inside the
-	// receiver; its lease expires; node 2 takes over and converges; node 1
-	// then returns to a fence that refuses it. The receiver applies each
-	// effect once.
+	// 5. Multi-node takeover. Node 1's request is applied by the receiver and
+	// then STALLED before the acknowledgement (a process that dies after the
+	// apply, before the OUTCOME). Its lease expires; node 2 takes over, settles
+	// the open effect as unknown, retries and gets already_applied; node 1
+	// then returns to the fence, which refuses it. Each effect is applied once.
 	var stalled atomic.Bool
 	entered, release := make(chan struct{}), make(chan struct{})
-	recv.mu.Lock()
-	recv.gate = func(path string, _ []byte) {
-		// Only the first request stalls; sync.Once would block the takeover too.
+	recv.receiver.SetAfterApply(func(http.ResponseWriter) bool {
 		if stalled.CompareAndSwap(false, true) {
 			close(entered)
 			<-release
 		}
-	}
-	recv.mu.Unlock()
+		return true
+	})
+	takeoverFrom := recv.requests()
 	publish(swPlain4)
-	node1 := newWorker("sw-node-1b")
 	node1Done := make(chan error, 1)
 	go func() {
 		advance(time.Second)
-		_, err := node1.RunOnce(ctx)
+		_, err := newWorker("sw-node-1b").RunOnce(ctx)
 		node1Done <- err
 	}()
 	select {
 	case <-entered:
-	case <-time.After(20 * time.Second):
-		t.Fatal("node 1 never dispatched")
+	case <-time.After(30 * time.Second):
+		t.Fatal("node 1's request was never applied")
 	}
 	advance(2 * adapter.LeaseTime)
-	node2 := newWorker("sw-node-2b")
-	drain(node2)
+	drain(newWorker("sw-node-2b"))
 	converged(4, "takeover by node 2")
 	appliedByNode2 := applied()
 	close(release)
-	if err := <-node1Done; err == nil {
-		t.Log("node 1 finished without error after losing its lease; the fence still must not have changed state")
+	if err := <-node1Done; !errors.Is(err, adapter.ErrSuperseded) {
+		t.Fatalf("node 1 after losing its lease = %v, want the superseded fence", err)
 	}
 	converged(4, "after the stale worker returned")
 	if applied() != appliedByNode2 || value() != swPlain4 {
 		t.Fatalf("stale worker changed receiver state: %d -> %d effects, value %q", appliedByNode2, applied(), value())
 	}
+	stalledKey := keyOf(logFrom(takeoverFrom)[0])
+	var sawAlreadyApplied bool
+	for _, e := range logFrom(takeoverFrom) {
+		sawAlreadyApplied = sawAlreadyApplied || keyOf(e) == stalledKey && statusOf(e) == string(sealedhook.AckAlreadyApplied)
+	}
+	if !sawAlreadyApplied {
+		t.Fatal("node 2's retry of the applied-but-unacknowledged effect was not answered already_applied")
+	}
+	appliedOnce("takeover")
 	if open := queryInt(t, db, fmt.Sprintf(`SELECT COUNT(*) FROM adapter_effects WHERE target_id='%s' AND outcome IS NULL`, target.ID)); open != 0 {
 		t.Fatalf("open effects after takeover = %d", open)
 	}
-	recv.mu.Lock()
-	recv.gate = nil
-	recv.mu.Unlock()
 
 	// 6. Skew with no downgrade: the receiver is rolled back to a build that
 	// reads version 1 only. The version 2 target stays unconverged and
 	// retries as version 2; no version 1 request is ever sent. Re-upgrading
-	// the receiver converges it.
+	// the receiver converges it. The retired sender pair stays pinned with a
+	// not_after in the past from here on.
+	retiredPin := sealedhook.PinnedSenderV2{Ed: recv.edSender.Public(), PQ: recv.pqSender.Public(), NotAfter: time.Now().Add(-time.Hour)}
+	currentPin := sealedhook.PinnedSenderV2{Ed: nextEd.Public(), PQ: nextPQ.Public()}
 	recv.swap(recv.build(true, false, nil), true)
-	pathsBefore := len(recv.paths())
+	skewFrom := recv.requests()
 	publish("sw-plaintext-skew")
 	attempts(worker, 3)
-	if got := inspect(); got.Health() == adapter.HealthConverged {
-		t.Fatal("a version 2 target converged against a version 1 only receiver")
+	skewed := logFrom(skewFrom)
+	if len(skewed) == 0 {
+		t.Fatal("no delivery attempt reached the version 1 only receiver: the phase proved nothing")
 	}
-	for _, p := range recv.paths()[pathsBefore:] {
-		if p != sealedhook.SyncPathV2 {
-			t.Fatalf("a protocol 2 target sent %s: it must never downgrade", p)
+	for _, e := range skewed {
+		if e.path != sealedhook.SyncPathV2 || e.status != http.StatusNotFound {
+			t.Fatalf("a protocol 2 target sent %s and was answered %d: it must send only version 2 and be refused", e.path, e.status)
 		}
 	}
-	recv.swap(recv.build(true, true, []sealedhook.PinnedSenderV2{{Ed: nextEd.Public(), PQ: nextPQ.Public()}}), true)
+	outboxPending("version 1 only receiver")
+	recv.swap(recv.build(true, true, []sealedhook.PinnedSenderV2{retiredPin, currentPin}), true)
 	advance(adapter.LeaseTime + time.Minute)
 	drain(worker)
 	converged(5, "after the receiver is upgraded again")
 
-	// 7. Restore of target custody. An older registry (the retired sender pair
-	// and an older generation, as a restored key file and registry would
-	// bring back) revives nothing: the changed boundary fails closed before
-	// any request, and the retired pair is refused by the receiver.
-	requestsBefore := recv.requests()
+	// 7. Restore of target custody. An older registry (another generation, the
+	// version 1 entry, or the retired sender pair's key files restored from a
+	// backup) revives nothing: a changed boundary fails closed before any
+	// request, and the retired pair is refused by the receiver for its
+	// not_after, not merely because it is unknown.
+	restoreFrom := recv.requests()
 	reg.set(reg.v2(2, nextEd, nextPQ)) // a different generation is a different trust boundary
 	publish("sw-plaintext-restore-1")
 	attempts(worker, 3)
-	if got := inspect(); got.Health() == adapter.HealthConverged {
-		t.Fatal("a registry at another generation converged the target bound under the old boundary")
-	}
 	reg.set(reg.v1(1)) // registry restored to the version 1 entry of the same origin
 	attempts(worker, 3)
-	if recv.requests() != requestsBefore {
-		t.Fatalf("a changed trust boundary reached the receiver (%d requests)", recv.requests()-requestsBefore)
+	if recv.requests() != restoreFrom {
+		t.Fatalf("a changed trust boundary reached the receiver (%d requests)", recv.requests()-restoreFrom)
 	}
-	reg.set(endpointRotated)
-	retired := reg.v2(1, recv.edSender, recv.pqSender) // key files restored from backup
-	reg.set(retired)
+	outboxPending("changed trust boundary")
+	reg.set(reg.v2(1, recv.edSender, recv.pqSender)) // the retired pair's key files, restored
 	attempts(worker, 3)
-	if got := inspect(); got.Health() == adapter.HealthConverged {
-		t.Fatal("the retired sender pair delivered after its retirement")
+	retired := logFrom(restoreFrom)
+	if len(retired) == 0 {
+		t.Fatal("the retired pair never reached the receiver: the phase proved nothing")
 	}
+	for _, e := range retired {
+		env, err := sealedhook.ParseEnvelopeV2(e.body)
+		if err != nil || env.KeyIDEd25519 != recv.edSender.Public().IDV2() || statusOf(e) != "http-400" {
+			t.Fatalf("retired pair request answered %q", statusOf(e))
+		}
+	}
+	outboxPending("retired sender pair")
 	reg.set(endpointRotated)
 	advance(adapter.LeaseTime + time.Minute)
 	drain(worker)
 	converged(6, "restored current authority")
+	appliedOnce("whole run")
 
 	// No audit payload carries a value, the binding or ciphertext.
 	for _, secret := range []string{swPlain1, swPlain2, swPlain3, swPlain4, swBinding, "AGE-SECRET-KEY"} {

@@ -103,6 +103,9 @@ func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 			return nil, fmt.Errorf("endpoint %s: %w", cfg.ID, err)
 		}
 	case 2:
+		if cfg.MaxResponseBytes < sealedhook.MinResponseBytesV2 {
+			return nil, fmt.Errorf("sealed-webhook: endpoint %s: a protocol 2 acknowledgement is about 5 KB, so max response bytes must be at least %d", cfg.ID, sealedhook.MinResponseBytesV2)
+		}
 		if e.ackPQ, err = sealedhook.ParseMLDSAPublicKey(cfg.AckKeyMLDSA65); err != nil {
 			return nil, fmt.Errorf("endpoint %s: ack key (ML-DSA-65): %w", cfg.ID, err)
 		}
