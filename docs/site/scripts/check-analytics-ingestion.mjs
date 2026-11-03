@@ -32,7 +32,8 @@ export async function checkAnalyticsIngestion(browser, origin) {
       Object.defineProperty(navigator, 'sendBeacon', { value: () => true });
     });
     const page = await context.newPage();
-    await page.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+    // The query and hash must not reach PostHog through any URL field.
+    await page.goto(`${origin}/?utm_source=ingestion-check#hash`, { waitUntil: 'domcontentloaded' });
     const consent = page.locator('[data-posthog-consent]');
     if (await consent.count() === 0) {
       assert.notEqual(process.env.POSTHOG_REQUIRED, 'true', 'required analytics consent is missing');
@@ -83,10 +84,12 @@ export async function checkAnalyticsIngestion(browser, origin) {
       assert.ok(properties.distinct_id, 'event must carry a distinct_id');
       assert.equal(event.$set, undefined, 'event must not set person properties');
       assert.equal(event.$set_once, undefined, 'event must not set person properties');
-      // Every event sent during this visit must carry exactly this set.
+      // Every event received during this visit must carry exactly this set.
       assert.deepEqual(properties, {
         $current_url: `${origin}/`,
         $geoip_disable: true,
+        $host: new URL(origin).host,
+        $pathname: '/',
         $process_person_profile: false,
         distinct_id: properties.distinct_id,
         token: apiKey,
