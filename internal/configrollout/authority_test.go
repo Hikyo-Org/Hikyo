@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -832,7 +833,7 @@ func TestStartupFloorRaisesAndRefusesStaleEnrollment(t *testing.T) {
 		if got := mutations(a.fixture); len(got) != 0 {
 			t.Fatalf("%s: stale enrollment caused mutations %v", name, got)
 		}
-		if after := journalData(t, a); !maps_equal(before, after) {
+		if after := journalData(t, a); !maps.Equal(before, after) {
 			t.Fatalf("%s: journal changed", name)
 		}
 	}
@@ -853,18 +854,6 @@ func TestStartupFloorRaisesAndRefusesStaleEnrollment(t *testing.T) {
 	if err := a.c.reconcileTrust(t.Context()); !errors.Is(err, ErrTrust) {
 		t.Fatal("obsolete generation resurrected authority", err)
 	}
-}
-
-func maps_equal(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for key, value := range a {
-		if b[key] != value {
-			return false
-		}
-	}
-	return true
 }
 
 func TestCompatibilityStartupWritesNothingAndRefusesRollbackBelowFloor(t *testing.T) {
@@ -1001,7 +990,7 @@ func TestKeyRotationAndJournalResetBehaviorIsStated(t *testing.T) {
 			t.Fatal(got)
 		}
 		b.refused(t, b.sign(t, Command{Sequence: 9, Action: ActionRestore, Intent: a.intent, PlanDigest: response.PlanDigest}), ErrTrust)
-		if !maps_equal(oldJournal, journalData(t, a)) {
+		if !maps.Equal(oldJournal, journalData(t, a)) {
 			t.Fatal("refusal altered the journal")
 		}
 	})
