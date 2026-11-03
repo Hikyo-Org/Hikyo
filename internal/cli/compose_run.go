@@ -254,9 +254,9 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 
 	// (4) Bound reauth ceremony: a live disclosure window over the environment,
 	// opened inline (TOTP) where the environment's window allows it, otherwise by
-	// the browser's ceremony over the keys the run injects. Required under
-	// --config-only too: the exception's four conditions are locked without a
-	// projection carve-out (api-cli-surface ADR).
+	// the browser's ceremony over the secret keys the run injects, or the config
+	// keys under --config-only. Required under --config-only too: the exception's
+	// four conditions are locked without a projection carve-out (api-cli-surface ADR).
 	d := disclosure{purpose: "reveal", keys: func(ctx context.Context, env string) ([]string, error) {
 		if !configOnly {
 			return sensitiveKeyIDs(covered.Keys), nil

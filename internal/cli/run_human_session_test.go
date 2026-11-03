@@ -174,6 +174,7 @@ func TestRunHumanSessionConfirmsThenReauthenticatesThenExports(t *testing.T) {
 	var order []string
 	var exportBearer string
 	var exported apigen.ExportValuesRequest
+	exports := 0
 	fixture := runHumanServer(t, true)
 	ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -188,6 +189,7 @@ func TestRunHumanSessionConfirmsThenReauthenticatesThenExports(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(apigen.ReauthResult{SessionToken: &rotated, SessionId: "ses_rotated"})
 		case strings.HasSuffix(r.URL.Path, "/values/export"):
 			order = append(order, "export")
+			exports++
 			exportBearer = r.Header.Get("Authorization")
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -224,6 +226,9 @@ func TestRunHumanSessionConfirmsThenReauthenticatesThenExports(t *testing.T) {
 	if got := strings.Join(slices.Compact(order), ","); got != "confirm,code,reauth,export" {
 		t.Errorf("order = %s, want confirm,code,reauth,export", got)
 	}
+	if exports != 1 {
+		t.Errorf("exports = %d, want 1 pinned to the confirmed revision", exports)
+	}
 	if exportBearer != "Bearer hses_rotated" {
 		t.Errorf("export presented %q, want the rotated session", exportBearer)
 	}
@@ -231,7 +236,7 @@ func TestRunHumanSessionConfirmsThenReauthenticatesThenExports(t *testing.T) {
 		t.Errorf("export pinned revision %v, want the confirmed 7", exported.Revision)
 	}
 	if !slices.Contains(injected, "LOG_LEVEL=info") {
-		t.Errorf("child environment = %v", injected)
+		t.Error("child environment lacks LOG_LEVEL=info")
 	}
 }
 

@@ -19,13 +19,13 @@ already binds this exception to `values export`.
   would authorize nothing.
 - **Stale single-decision windows:** `ensureRevealWindow` now runs a new ceremony instead of trusting one, for every caller. A valid window
   left live by a failed export or a partly completed `values diff --reveal` costs one extra passkey on the rerun.
-- **Rate limit:** each launch counts toward the export limit of 5 per minute per principal, shared with audit export. The sixth exits 7.
+- **Rate limit:** each launch that reaches the export counts toward the export limit of 5 per minute per principal, shared with audit export. The sixth exits 7.
 - **`values export` consent:** `exportSecretKeyIDs` now includes sticky secrets, which the server's unit already counted.
 
 ## Evidence
 
 - `internal/isolation/run_human_session_e2e_test.go` runs against a booted server. It reproduced the bug before the fix and now covers
-  decline, the full projection, `--config-only`, and both publish cases. It passes on SQLite and on Postgres 18.6, using CI's pinned image.
+  decline, the full projection, `--config-only`, and a publish during the prompt for each projection. It passes on SQLite and on Postgres 18.6, using CI's pinned image.
 - `internal/cli/run_human_session_test.go` covers ordering, the rotated session, ceremony units and error reporting.
 - Three independent review rounds on `claude-opus-5-5`. Their findings were fixed except the items below.
 - A real terminal and a real browser or passkey ceremony were not exercised.

@@ -79,7 +79,7 @@ func runHumanSessionDelivery(t *testing.T, engine store.Engine) {
 	// Enumeration precedes disclosure: a decline leaves no record and no process.
 	code, stderr, injected, terminal := run(t, strings.NewReader("n\n"))
 	if code != cli.ExitRefused || injected != nil || !strings.Contains(stderr, "declined") {
-		t.Fatalf("declined: exit=%d env=%v stderr=%s", code, injected, stderr)
+		t.Fatalf("declined: exit=%d started=%t stderr=%s", code, injected != nil, stderr)
 	}
 	if !strings.Contains(terminal.String(), "DATABASE_PASSWORD") {
 		t.Fatalf("confirmation did not enumerate the secret key: %s", terminal.String())
@@ -109,7 +109,7 @@ func runHumanSessionDelivery(t *testing.T, engine store.Engine) {
 		t.Fatalf("config-only: exit=%d stderr=%s", code, stderr)
 	}
 	if !slices.Contains(injected, "DATABASE_URL=postgres://dev") || slices.Contains(injected, "DATABASE_PASSWORD=dev-secret") {
-		t.Fatalf("config-only child environment = %v", injected)
+		t.Fatal("config-only child environment lacks DATABASE_URL or holds DATABASE_PASSWORD")
 	}
 	if prompt := terminal.String(); !strings.Contains(prompt, "2 value(s)") || strings.Contains(prompt, "DATABASE_PASSWORD") {
 		t.Fatalf("config-only confirmation enumerated the wrong set: %s", prompt)
@@ -119,31 +119,40 @@ func runHumanSessionDelivery(t *testing.T, engine store.Engine) {
 	}
 
 	// A publish during the prompt must not disclose what the human did not see.
-	publishDuringPrompt := func(value string) io.Reader {
+	publishDuringPrompt := func(key, value string) io.Reader {
 		answer := strings.NewReader("y\n")
 		return readerFunc(func(p []byte) (int, error) {
 			if answer.Len() == 2 {
-				publishComposeValues(t, rig.db, map[string]string{"DATABASE_PASSWORD": value})
+				publishComposeValues(t, rig.db, map[string]string{key: value})
 			}
 			return answer.Read(p)
 		})
 	}
-	code, stderr, injected, _ = run(t, publishDuringPrompt("published-during-the-prompt"))
+	code, stderr, injected, _ = run(t, publishDuringPrompt("DATABASE_PASSWORD", "published-during-the-prompt"))
 	if code != cli.ExitRefused || injected != nil || !strings.Contains(stderr, "published to during this run") {
-		t.Fatalf("publish during the prompt: exit=%d env=%v stderr=%s", code, injected, stderr)
+		t.Fatalf("publish during the prompt: exit=%d started=%t stderr=%s", code, injected != nil, stderr)
 	}
 	if got := disclosures(); got != 1 {
 		t.Fatalf("publish during the prompt wrote a disclosure record: total %d, want 1", got)
 	}
 
+	// Config-only needs no reveal-history, and still injects the confirmed revision.
+	code, stderr, injected, _ = run(t, publishDuringPrompt("DATABASE_URL", "postgres://published-too-late"), "--config-only")
+	if code != cli.ExitOK {
+		t.Fatalf("config-only publish during the prompt: exit=%d stderr=%s", code, stderr)
+	}
+	if !slices.Contains(injected, "DATABASE_URL=postgres://dev") {
+		t.Fatal("config-only child environment lacks the confirmed DATABASE_URL")
+	}
+
 	// With reveal-history the run injects exactly the revision that was confirmed.
 	execRaw(t, rig.db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_c_adm_history', '`+cAdmin+`', 'reveal-history', '`+cOrg+`', '`+cPrj+`', '`+cEnv+`', `+ts+`)`)
 	seedOrigins(t, rig.db)
-	code, stderr, injected, _ = run(t, publishDuringPrompt("published-too-late"))
+	code, stderr, injected, _ = run(t, publishDuringPrompt("DATABASE_PASSWORD", "published-too-late"))
 	if code != cli.ExitOK {
 		t.Fatalf("publish during the prompt with reveal-history: exit=%d stderr=%s", code, stderr)
 	}
 	if !slices.Contains(injected, "DATABASE_PASSWORD=published-during-the-prompt") {
-		t.Fatalf("injected %v, want the confirmed revision's value", injected)
+		t.Fatal("child environment lacks the confirmed revision's value")
 	}
 }
