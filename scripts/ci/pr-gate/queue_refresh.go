@@ -62,7 +62,7 @@ func (q *queueController) reassessHeld(ctx context.Context, rereads bool, work f
 		return errors.New("queue reconciliation requires a held head")
 	}
 	if q.repo.ID == 0 {
-		if err := q.init(ctx); err != nil {
+		if err := q.initRepository(ctx); err != nil {
 			return err
 		}
 	}
@@ -601,7 +601,7 @@ func (s *queueReconciliation) retireMovedGroup(ctx context.Context, err error) e
 // but the subsequent workflow read failed, a held-head blocking reserve remains
 // possible. A failed repository read never supplies guessed ownership.
 func (q *queueController) initializedFailure(ctx context.Context, id int64, name string, cause error) error {
-	if q.checkName != queueCheckName || q.repo.ID <= 0 || q.repo.ID != id || !strings.EqualFold(q.repo.FullName, q.repoName) || !strings.EqualFold(name, q.repoName) || !shaPattern.MatchString(q.expectedHead) {
+	if (q.checkName != queueCheckName && q.checkName != devCheckName) || q.repo.ID <= 0 || q.repo.ID != id || !strings.EqualFold(q.repo.FullName, q.repoName) || !strings.EqualFold(name, q.repoName) || !shaPattern.MatchString(q.expectedHead) {
 		return cause
 	}
 	return q.reassess(ctx, func(context.Context) error { return cause })

@@ -101,8 +101,8 @@ func dispatchFixture(t *testing.T, prCount, groupCount int) (*queueFixture, *dis
 	}
 	t.Setenv("GITHUB_RUN_ID", "555")
 	t.Setenv("GITHUB_RUN_ATTEMPT", "1")
-	f.api.responses[f.c.endpoint("actions/workflows/ci-queue-gate.yml")] = workflow{ID: 30, Path: ".github/workflows/ci-queue-gate.yml", Name: "queue-gate"}
-	f.api.responses[f.c.endpoint("actions/runs/555")] = run{ID: 555, Attempt: 1, WorkflowID: 30, Path: ".github/workflows/ci-queue-gate.yml", Name: "queue-gate", Event: "schedule", HeadSHA: f.pr.Base.SHA, HeadBranch: "main", Repository: f.event.Repository, HeadRepository: f.event.Repository, CreatedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)}
+	f.api.responses[f.c.endpoint("actions/workflows/ci-queue-gate.yml")] = workflow{ID: 30, Path: ".github/workflows/ci-queue-gate.yml", Name: "gate-queue"}
+	f.api.responses[f.c.endpoint("actions/runs/555")] = run{ID: 555, Attempt: 1, WorkflowID: 30, Path: ".github/workflows/ci-queue-gate.yml", Name: "gate-queue", Event: "schedule", HeadSHA: f.pr.Base.SHA, HeadBranch: "main", Repository: f.event.Repository, HeadRepository: f.event.Repository, CreatedAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)}
 	e := f.event
 	e.Ref = "refs/heads/main"
 	return f, a, e

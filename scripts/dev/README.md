@@ -107,7 +107,7 @@ Changes to `scripts/ops/audit-collector/` or its
 standard-library Python rehearsal in the tooling lane (`auditCollector` in the
 plan). It uses disposable local fixtures, never a configured source or destination.
 The mandatory
-full-candidate lint job runs every refusal and deadline supervisor fixture;
+full lint job runs every refusal and deadline supervisor fixture;
 per-commit feedback spends its budget on the selected source checks.
 
 A pass means the listed checks completed. It does not cover full Go tests,

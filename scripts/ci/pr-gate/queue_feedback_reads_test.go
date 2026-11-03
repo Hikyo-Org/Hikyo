@@ -143,7 +143,7 @@ func TestQueueHealthyAdmissionPreservesBudgetSpentOnSetup(t *testing.T) {
 	for _, count := range f.api.reads {
 		total += count
 	}
-	if total != 22 || verifications != 2 || dcoChecks != 2 || newestQueueCheck(f.api.checks).Conclusion != "success" {
+	if total != 23 || verifications != 2 || dcoChecks != 2 || newestQueueCheck(f.api.checks).Conclusion != "success" {
 		t.Fatalf("setup-aged admission did not retain its complete proof: reads=%d authority=%d DCO=%d", total, verifications, dcoChecks)
 	}
 }

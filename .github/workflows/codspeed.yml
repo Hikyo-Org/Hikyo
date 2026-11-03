@@ -1,4 +1,4 @@
-name: codspeed
+name: perf-codspeed
 
 # Daily and manual main runs use the same budget-checked walltime lane.
 # Benchmark smoke runs inside ci.yml's required core tests, without paid runners.
