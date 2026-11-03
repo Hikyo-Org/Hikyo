@@ -112,6 +112,12 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 				_, err := held.CreateProfile(ctx, op, "held-profile", pkiPQPolicy("whatever"))
 				return err
 			},
+			// The generated-key gate runs before generation and before any profile
+			// lookup, so no profile or issuer needs to exist to reach it.
+			"generated leaf key": func() error {
+				_, err := held.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "none", GenerateKey: true, KeyAlgorithm: "mldsa65", DNSNames: []string{"held.svc.example.com"}})
+				return err
+			},
 		}
 		for name, run := range heldRefusals {
 			if err := run(); !errors.Is(err, service.ErrPKIAlgorithmHeld) || !errors.Is(err, domain.ErrInvalid) {
@@ -372,7 +378,9 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		}
 
 		// --- Relying parties that must refuse ---------------------------------------
-		// (a) A peer that trusts only a classical root cannot authenticate the chain.
+		// (a) A root that did not sign this path cannot anchor it. This is only
+		// UnknownAuthority: crypto/x509 would accept a classical root that really
+		// signed an ML-DSA intermediate (see TestRealClassicalAnchorOverMLDSAPath).
 		classicalOnly := runMLDSATLS(t, serverPeer, clientPeer, rootPEM, tlsOptions{clientRoots: poolOf(t, classicRoot.Issuer.CertificatePEM)})
 		var unknownAuthority x509.UnknownAuthorityError
 		if !errors.As(classicalOnly.clientErr, &unknownAuthority) || classicalOnly.appBytes != "" {
@@ -538,7 +546,7 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 			t.Fatalf("re-sealed key signs under another identity: %v", err)
 		}
 
-		// --- Restart: a fresh service over the same database --------------------------------
+		// --- A fresh service struct over the same *store.DB (NOT a process restart: ML-DSA restart is NOTRUN) ---
 		restarted := pkiPQSvc(t, db, clock)
 		restartedCert, err := restarted.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "pq-web", CSRPEM: csrPEM, DNSNames: []string{"restart.svc.example.com"}})
 		if err != nil || restartedCert.Certificate.IssuerVersion != 2 {
@@ -549,25 +557,48 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		var wg sync.WaitGroup
 		outcomes := make([]error, 6)
 		views := make([]service.CertificateView, 6)
+		// The rotation and the revocation start once one issuance has succeeded (or
+		// all four have finished), so the race always has a success to check and the
+		// remaining issuances still overlap the rotation.
+		firstDone := make(chan struct{})
+		var once sync.Once
+		var issueWG sync.WaitGroup
 		for i := range 4 {
 			wg.Add(1)
+			issueWG.Add(1)
 			go func() {
 				defer wg.Done()
+				defer issueWG.Done()
 				res, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "pq-web", CSRPEM: csrPEM, DNSNames: []string{"race" + string(rune('a'+i)) + ".svc.example.com"}})
 				views[i], outcomes[i] = res.Certificate, err
+				if err == nil {
+					once.Do(func() { close(firstDone) })
+				}
 			}()
 		}
+		go func() { issueWG.Wait(); once.Do(func() { close(firstDone) }) }()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-firstDone
 			_, outcomes[4] = svc.RotateIssuer(ctx, op, "pq-issuing", service.PKIIssuerRequest{})
 		}()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-firstDone
 			_, outcomes[5] = restarted.RevokeCertificate(ctx, human, env, restartedCert.Certificate.ID, "superseded")
 		}()
 		wg.Wait()
+		succeeded := 0
+		for i := range 4 {
+			if outcomes[i] == nil {
+				succeeded++
+			}
+		}
+		if succeeded == 0 {
+			t.Fatalf("no concurrent issuance succeeded, so the race checked nothing: %v", outcomes[:4])
+		}
 		for i, err := range outcomes {
 			switch {
 			case err == nil:
@@ -591,15 +622,58 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 			t.Fatalf("%d active versions of pq-issuing after the race, want exactly 1", n)
 		}
 
-		// --- Switching the algorithm off stops new writes, never revocation coverage ------------------
+		// --- Switching the algorithm off, with ML-DSA rows already present ------------------------------
+		// The gate refuses NEW ML-DSA keys; it does not stop everything that touches an
+		// existing ML-DSA issuer. What is refused, then what is NOT (registered in the
+		// handoff as known limits; a restore is one way such rows exist with the gate off).
 		if _, err := held.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "pq-web", CSRPEM: csrPEM, DNSNames: []string{"off.svc.example.com"}}); !errors.Is(err, service.ErrPKIAlgorithmHeld) {
-			t.Fatalf("issuance with the algorithm switched off: %v", err)
+			t.Fatalf("ML-DSA leaf with the algorithm switched off: %v", err)
 		}
 		if _, err := held.RotateIssuer(ctx, op, "pq-issuing", service.PKIIssuerRequest{}); !errors.Is(err, service.ErrPKIAlgorithmHeld) {
 			t.Fatalf("rotation with the algorithm switched off: %v", err)
 		}
 		if _, err := held.PublishIssuerCRL(ctx, op, "pq-issuing", 1); err != nil {
 			t.Fatalf("an existing ML-DSA issuer must keep publishing its CRL when the algorithm is switched off: %v", err)
+		}
+		// KNOWN LIMIT 1: a classical leaf is still newly issued, with an ML-DSA signature,
+		// by an existing ML-DSA issuer that a classical profile names.
+		offLeaf, err := held.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "classic-web", CSRPEM: classicalCSR, DNSNames: []string{"off-classical.svc.example.com"}})
+		if err != nil || parseLeaf(t, offLeaf.Certificate).SignatureAlgorithm != x509.MLDSA65 {
+			t.Fatalf("known limit 1 changed: classical leaf issued by an existing ML-DSA issuer with the gate off: %v", err)
+		}
+		// KNOWN LIMIT 2: ...and renewed the same way.
+		clock.Advance(20 * time.Hour)
+		offRenewed, err := held.RenewCertificate(ctx, human, env, offLeaf.Certificate.ID)
+		if err != nil || parseLeaf(t, offRenewed).SignatureAlgorithm != x509.MLDSA65 {
+			t.Fatalf("known limit 2 changed: classical leaf renewed by an existing ML-DSA issuer with the gate off: %v", err)
+		}
+		// KNOWN LIMIT 3: a classical profile may name an existing ML-DSA issuer.
+		namingPolicy := pkiWebPolicy()
+		namingPolicy.AllowedIssuers = []string{"pq-issuing"}
+		if _, err := held.CreateProfile(ctx, op, "classic-names-pq", namingPolicy); err != nil {
+			t.Fatalf("known limit 3 changed: classical profile naming an ML-DSA issuer with the gate off: %v", err)
+		}
+		// KNOWN LIMIT 4: a pending ML-DSA version created while the gate was on is
+		// activated by install with the gate off (install has no algorithm check).
+		pending, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "intermediate", Name: "pq-pending-off", CommonName: "PQ Pending", KeyAlgorithm: "mldsa65"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pendingCSR, err := pki.ParseCSR([]byte(pending.Issuer.CSRPEM))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pendingDER, err := pki.SignIntermediate(offlineParent, pendingCSR.PublicKey, pki.Subject{CommonName: "PQ Pending"}, clock.Now(), 24*time.Hour*30)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := held.InstallIssuerCertificate(ctx, op, "pq-pending-off", pki.CertificatePEM(pendingDER), pki.CertificatePEM(offlineRootDER)); err != nil || got.State != "active" {
+			t.Fatalf("known limit 4 changed: install with the gate off: %v %+v", err, got)
+		}
+		// KNOWN LIMIT 5: a stored mldsa65 profile is returned by the service as is.
+		// Through the frozen API that value is outside the closed response enum.
+		if shown, err := held.ShowProfile(ctx, op, "pq-web"); err != nil || len(shown.Policy.KeyAlgorithms) != 1 || shown.Policy.KeyAlgorithms[0] != pki.MLDSA65 {
+			t.Fatalf("known limit 5 changed: stored ML-DSA profile read with the gate off: %v", err)
 		}
 
 		// --- Restore hold ------------------------------------------------------------------------
@@ -618,6 +692,44 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		}
 		if _, err := svc.PublishIssuerCRL(ctx, op, "pq-issuing", 1); err != nil {
 			t.Fatalf("CRL publication after release: %v", err)
+		}
+
+		// --- Response sizes: the list returns up to 500 rows, each with its PEMs (P3) -------------------
+		// The CLI reads at most 8 MiB of a response (internal/cli/client.go), so the
+		// per-row size decides how many ML-DSA rows `cert list` can show. Measured here,
+		// registered in the handoff; no bound was changed.
+		rows, err := svc.ListCertificates(ctx, human, env)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var pqRow, classicalRow int
+		for _, row := range rows {
+			size := len(row.CertificatePEM) + len(row.ChainPEM)
+			switch {
+			case row.KeyAlgorithm == "mldsa65" && size > pqRow:
+				pqRow = size
+			case row.KeyAlgorithm == "ecdsa-p256" && row.IssuerName == "pq-issuing" && size > classicalRow:
+				classicalRow = size
+			}
+		}
+		if pqRow == 0 || classicalRow == 0 {
+			t.Fatalf("no sample rows: pq=%d classical-under-pq=%d", pqRow, classicalRow)
+		}
+		t.Logf("list row PEM bytes: ML-DSA leaf under ML-DSA issuer %d (8 MiB admits about %d rows); ECDSA leaf under ML-DSA issuer %d (about %d rows)",
+			pqRow, (8<<20)/pqRow, classicalRow, (8<<20)/classicalRow)
+
+		// --- Retirement: expire the leaves, retire the old version, the key is destroyed --------------------
+		clock.Advance(100 * time.Hour)
+		sweepPKI(t, svc)
+		retired, err := svc.RetireIssuer(ctx, op, "pq-issuing", 1)
+		if err != nil || retired.State != "retired" {
+			t.Fatalf("retire the expired ML-DSA version: %v %+v", err, retired)
+		}
+		if n := count(`SELECT COUNT(*) FROM pki_issuers WHERE id='` + issuing.Issuer.ID + `' AND encrypted_private_key IS NULL AND dek_version IS NULL`); n != 1 {
+			t.Fatal("retirement did not destroy the ML-DSA issuer key")
+		}
+		if _, err := svc.IssuerCRL(ctx, op, "pq-issuing", 1); err != nil {
+			t.Fatalf("the retired version's last CRL must stay readable: %v", err)
 		}
 
 		// --- Compromise ----------------------------------------------------------------------------------

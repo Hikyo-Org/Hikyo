@@ -328,28 +328,56 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 		t.Fatal(err)
 	}
 	runCLI(cli.ExitOK, "pki", "issuer", "import", "classic-import", "--key-file", controlKeyFile, "--cert-file", controlCertFile)
+	// refusedCLI runs a command that must be refused with the contract exit
+	// code and returns its stderr, so each case can also assert WHY.
 	refusedCLI := func(args ...string) string {
 		t.Helper()
 		stdout, stderr := &strings.Builder{}, &strings.Builder{}
 		invocation := ios()
 		invocation.Stdout, invocation.Stderr = stdout, stderr
-		if got := cli.Run(t.Context(), invocation, args); got == cli.ExitOK {
-			t.Fatalf("hikyo %s succeeded; the ML-DSA surface is on HOLD\nstdout: %s", strings.Join(args, " "), stdout)
+		if got := cli.Run(t.Context(), invocation, args); got != cli.ExitRefused {
+			t.Fatalf("hikyo %s exited %d, want the refusal %d\nstdout: %s\nstderr: %s", strings.Join(args, " "), got, cli.ExitRefused, stdout, stderr)
 		}
 		return stderr.String()
 	}
-	for name, args := range map[string][]string{
-		"create-root":    {"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"},
-		"rotate":         {"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"},
-		"import":         {"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile},
-		"profile create": {"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy},
-		"cert issue":     append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key", "--key-algorithm", "mldsa65", "--dns", "hold.svc.e2e.test"}, env...),
+	// The generated-key case runs as the workload principal: the human session
+	// is stopped earlier by the browser mint ceremony, before any algorithm
+	// check, so it would pass for an ECDSA request too. The workload reached key
+	// generation above with ed25519 (workerCert), so the request shape is valid
+	// and "(key_algorithm)" is the algorithm refusal.
+	heldKeyOut := filepath.Join(workDir, "held-worker.key")
+	const contractRefusal = "the request does not satisfy the API contract"
+	for _, c := range []struct {
+		name    string
+		args    []string
+		machine bool
+		reason  string
+	}{
+		{"create-root", []string{"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"}, false, contractRefusal + " (key_algorithm)"},
+		{"rotate", []string{"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"}, false, contractRefusal + " (key_algorithm)"},
+		// The import algorithm comes from the key, so the refusal is the service
+		// gate; the wire hides its reason. The positive control above proves the
+		// same request shape with a classical key is accepted.
+		{"import", []string{"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile}, false, contractRefusal},
+		{"profile create", []string{"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy}, false, contractRefusal},
+		{"cert issue (generated key, workload)", append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key",
+			"--key-algorithm", "mldsa65", "--uri", "spiffe://e2e.test/ns/prod/sa/held", "--output-file", heldKeyOut, "-o", "json"}, workload...), true, contractRefusal + " (key_algorithm)"},
 	} {
-		stderr := refusedCLI(args...)
-		t.Logf("%s refused: %.160s", name, strings.TrimSpace(stderr))
-		if strings.Contains(stderr, "PRIVATE KEY") {
-			t.Errorf("%s: the refusal leaked key text: %s", name, stderr)
+		if c.machine {
+			stateDir = machineState
 		}
+		stderr := refusedCLI(c.args...)
+		stateDir = humanState
+		t.Logf("%s refused: %.160s", c.name, strings.TrimSpace(stderr))
+		if !strings.Contains(stderr, c.reason) {
+			t.Errorf("%s: refusal reason = %q, want it to contain %q", c.name, strings.TrimSpace(stderr), c.reason)
+		}
+		if strings.Contains(stderr, "mint ceremony") || strings.Contains(stderr, "PRIVATE KEY") {
+			t.Errorf("%s: refused for the wrong reason or leaked key text: %s", c.name, stderr)
+		}
+	}
+	if _, err := os.Stat(heldKeyOut); err == nil {
+		t.Fatal("a refused generated-key request wrote a key file")
 	}
 	if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE key_algorithm <> 'ecdsa-p256' AND key_algorithm <> 'ecdsa-p384' AND key_algorithm <> 'rsa-3072' AND key_algorithm <> 'rsa-4096'`); n != 0 {
 		t.Fatalf("the public surface created %d issuers outside the classical set", n)

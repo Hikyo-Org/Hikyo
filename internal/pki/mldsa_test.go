@@ -509,7 +509,7 @@ func TestMLDSARelyingPartyWithoutMLDSARefuses(t *testing.T) {
 		t.Helper()
 		out := filepath.Join(dir, name)
 		cmd := exec.CommandContext(t.Context(), goTool, "build", "-o", out, "./testdata/fipsclient")
-		cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
+		cmd.Env = os.Environ()
 		if fips {
 			cmd.Env = append(cmd.Env, "GOFIPS140=v1.0.0")
 		}
@@ -521,37 +521,6 @@ func TestMLDSARelyingPartyWithoutMLDSARefuses(t *testing.T) {
 	fipsClient, plainClient := build("fips-client", true), build("plain-client", false)
 
 	rootFile := filepath.Join(dir, "root.pem")
-	serve := func(pair tls.Certificate) (addr string, appBytes func() string, stop func()) {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var mu sync.Mutex
-		var got string
-		go func() {
-			for {
-				raw, err := listener.Accept()
-				if err != nil {
-					return
-				}
-				go func() {
-					defer raw.Close()
-					_ = raw.SetDeadline(time.Now().Add(10 * time.Second))
-					conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13})
-					if conn.Handshake() != nil {
-						return
-					}
-					buf := make([]byte, 4)
-					n, _ := io.ReadFull(conn, buf)
-					mu.Lock()
-					got += string(buf[:n])
-					mu.Unlock()
-					_, _ = conn.Write([]byte("pong"))
-				}()
-			}
-		}()
-		return listener.Addr().String(), func() string { mu.Lock(); defer mu.Unlock(); return got }, func() { _ = listener.Close() }
-	}
 	// Dated from the real clock: the client binary uses the system time.
 	live := newMLDSAChainAt(t, time.Now().UTC())
 	realPair, err := tls.X509KeyPair([]byte(CertificatesPEM([][]byte{live.leaf.Raw, live.issuing.Certificate.Raw})), mustPrivateKeyPEM(t, live.leafKey))
@@ -561,7 +530,7 @@ func TestMLDSARelyingPartyWithoutMLDSARefuses(t *testing.T) {
 	if err := os.WriteFile(rootFile, []byte(CertificatePEM(live.root.Certificate.Raw)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	addr, appBytes, stop := serve(realPair)
+	addr, appBytes, stop := serveTLS(t, realPair)
 	defer stop()
 	run := func(binary string) (string, error) {
 		out, err := exec.CommandContext(t.Context(), binary, addr, "web.svc.example.com", rootFile).CombinedOutput()
@@ -590,4 +559,206 @@ func mustPrivateKeyPEM(t testing.TB, key crypto.Signer) []byte {
 		t.Fatal(err)
 	}
 	return PrivateKeyPEM(pkcs8)
+}
+
+// TestMLDSAAnchorMustBeARealSelfSignedRoot covers the two ways a chain can end
+// early or end badly: a list that stops below the real (classical) root so an
+// ML-DSA intermediate is mistaken for the anchor, and a trust anchor whose
+// self-signature was damaged.
+func TestMLDSAAnchorMustBeARealSelfSignedRoot(t *testing.T) {
+	now := epoch
+	classical := newRoot(t) // the real root
+	mk := func(parent Parent, name string, pathLen int) (Parent, []byte) {
+		key, err := GenerateKey(MLDSA65)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := caTemplate(pkix.Name{CommonName: name}, bigInt(int64(100+pathLen)), now, 30*24*time.Hour, pathLen)
+		der, err := x509.CreateCertificate(rand.Reader, template, parent.Certificate, key.Public(), parent.Signer)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cert, err := x509.ParseCertificate(der)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Parent{Certificate: cert, Signer: key}, der
+	}
+	// Real path: classical root R, ML-DSA Y, ML-DSA X, issuer I (all ML-DSA below R).
+	y, _ := mk(classical, "Y", 2)
+	x, _ := mk(y, "X", 1)
+	issuerKey, _ := GenerateKey(MLDSA65)
+	template := caTemplate(pkix.Name{CommonName: "I"}, bigInt(7), now, 24*time.Hour*10, 0)
+	issuerDER, err := x509.CreateCertificate(rand.Reader, template, x.Certificate, issuerKey.Public(), x.Signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attack 1: present only [X] as if it were the root. Every certificate in the
+	// list is ML-DSA-65, so CheckPath alone would pass.
+	if err := CheckPath([]*x509.Certificate{mustParse(t, issuerDER), x.Certificate}); err != nil {
+		t.Fatalf("test premise: the truncated list should look pure: %v", err)
+	}
+	for name, chain := range map[string][]*x509.Certificate{
+		"stops at X":         {x.Certificate},
+		"stops at Y":         {x.Certificate, y.Certificate},
+		"classical root too": {x.Certificate, y.Certificate, classical.Certificate},
+	} {
+		_, err := VerifyCA(issuerDER, issuerKey.Public(), chain, now)
+		if name == "classical root too" {
+			// The honest full path contains a classical root: a mixed path.
+			if !errors.Is(err, ErrInvalidCA) {
+				t.Errorf("%s: want ErrInvalidCA, got %v", name, err)
+			}
+			continue
+		}
+		if !errors.Is(err, ErrInvalidCA) {
+			t.Errorf("%s: a truncated ML-DSA chain was installed: %v", name, err)
+		}
+	}
+
+	// Attack 2: the real ML-DSA root with a tampered self-signature, supplied as
+	// the chain anchor. x509 Verify skips anchor signatures.
+	c := newMLDSAChainAt(t, now)
+	damaged := bytes.Clone(c.root.Certificate.Raw)
+	damaged[len(damaged)-3] ^= 0x01
+	damagedRoot, err := x509.ParseCertificate(damaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyCA(c.issuing.Certificate.Raw, c.issuing.Signer.Public(), []*x509.Certificate{damagedRoot}, now); !errors.Is(err, ErrInvalidCA) {
+		t.Fatalf("an intermediate was installed under a root with a damaged self-signature: %v", err)
+	}
+	// Control: the intact chain installs.
+	if _, err := VerifyCA(c.issuing.Certificate.Raw, c.issuing.Signer.Public(), []*x509.Certificate{c.root.Certificate}, now); err != nil {
+		t.Fatalf("control: %v", err)
+	}
+	// CheckPQPath is the same rule for a relying party's verified chain.
+	if err := CheckPQPath([]*x509.Certificate{c.leaf, c.issuing.Certificate}); err == nil {
+		t.Fatal("a verified chain without its anchor was labelled a PQ path")
+	}
+	if err := CheckPQPath([]*x509.Certificate{c.leaf, c.issuing.Certificate, c.root.Certificate}); err != nil {
+		t.Fatalf("control: %v", err)
+	}
+}
+
+func mustParse(t testing.TB, der []byte) *x509.Certificate {
+	t.Helper()
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
+}
+
+// serveTLS accepts TLS 1.3 connections on loopback, reads four application bytes
+// after a successful handshake, answers "pong", and reports every byte it read.
+func serveTLS(t testing.TB, pair tls.Certificate) (addr string, appBytes func() string, stop func()) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var got string
+	go func() {
+		for {
+			raw, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer raw.Close()
+				_ = raw.SetDeadline(time.Now().Add(10 * time.Second))
+				conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13})
+				if conn.Handshake() != nil {
+					return
+				}
+				buf := make([]byte, 4)
+				n, _ := io.ReadFull(conn, buf)
+				mu.Lock()
+				got += string(buf[:n])
+				mu.Unlock()
+				_, _ = conn.Write([]byte("pong"))
+			}()
+		}
+	}()
+	return listener.Addr().String(), func() string { mu.Lock(); defer mu.Unlock(); return got }, func() { _ = listener.Close() }
+}
+
+// TestRealClassicalAnchorOverMLDSAPath is the relying-party view of DEC-19. The
+// anchor here is a classical root that really signed an ML-DSA intermediate,
+// which signed an ML-DSA leaf. Go's crypto/x509 and crypto/tls accept that path
+// (they check each link, not that the anchor is post-quantum), so a plain client
+// that trusts the classical root authenticates and talks. Only a VerifyConnection
+// walk with CheckPQPath refuses it, before any application byte. This is the test
+// harness for that walk, not a production hop (no product relying party performs
+// it yet).
+func TestRealClassicalAnchorOverMLDSAPath(t *testing.T) {
+	now := time.Now().UTC()
+	rootKey, _ := GenerateKey(ECDSAP384)
+	rootDER, err := CreateRoot(rootKey, Subject{CommonName: "Classical Anchor"}, now, 365*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCert := mustParse(t, rootDER)
+	issuerKey, _ := GenerateKey(MLDSA65)
+	template := caTemplate(pkix.Name{CommonName: "PQ Issuing under classical"}, bigInt(11), now, 30*24*time.Hour, 0)
+	issuerDER, err := x509.CreateCertificate(rand.Reader, template, rootCert, issuerKey.Public(), rootKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuerCert := mustParse(t, issuerDER)
+	leafKey, _ := GenerateKey(MLDSA65)
+	policy := basePolicy()
+	policy.KeyAlgorithms = []KeyAlgorithm{MLDSA65}
+	policy.KeyUsages = []KeyUsage{UsageDigitalSignature}
+	policy = policy.Normalize()
+	resolved, err := policy.Check(Request{DNSNames: []string{"web.svc.example.com"}, PublicKey: leafKey.Public()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, _ := NewSerial()
+	nb, na, _ := LeafWindow(issuerCert, now, resolved.TTL)
+	leafDER, err := SignLeaf(Parent{Certificate: issuerCert, Signer: issuerKey}, resolved, Leaf{Serial: serial, PublicKey: leafKey.Public(), NotBefore: nb, NotAfter: na, KeyUsages: policy.KeyUsages, ExtKeyUsages: policy.ExtKeyUsages})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.X509KeyPair([]byte(CertificatesPEM([][]byte{leafDER, issuerDER})), mustPrivateKeyPEM(t, leafKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr, appBytes, stop := serveTLS(t, pair)
+	defer stop()
+	roots := x509.NewCertPool()
+	roots.AddCert(rootCert)
+	dial := func(config *tls.Config) error {
+		config.RootCAs, config.ServerName, config.MinVersion = roots, "web.svc.example.com", tls.VersionTLS13
+		conn, err := tls.Dial("tcp", addr, config)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+		if _, err := conn.Write([]byte("ping")); err != nil {
+			return err
+		}
+		reply := make([]byte, 4)
+		_, err = io.ReadFull(conn, reply)
+		return err
+	}
+	// 1. A plain client that trusts the classical root accepts the path.
+	if err := dial(&tls.Config{}); err != nil {
+		t.Fatalf("crypto/tls refused a valid path under a classical root: %v", err)
+	}
+	if appBytes() != "ping" {
+		t.Fatalf("control: server saw %q", appBytes())
+	}
+	// 2. A PQ-requiring walk refuses it before any application byte.
+	err = dial(&tls.Config{VerifyConnection: func(cs tls.ConnectionState) error { return CheckPQPath(cs.VerifiedChains[0]) }})
+	if err == nil || !strings.Contains(err.Error(), "post-quantum") && !strings.Contains(err.Error(), "mixes") {
+		t.Fatalf("a PQ-requiring relying party accepted a real classical anchor: %v", err)
+	}
+	if appBytes() != "ping" {
+		t.Fatalf("the refusing client sent application bytes: server saw %q", appBytes())
+	}
 }

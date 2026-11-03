@@ -3,6 +3,7 @@ package pki
 import (
 	"bytes"
 	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,5 +155,21 @@ func TestMLDSAOpenSSLInterop(t *testing.T) {
 	}
 	if _, err := ParsePrivateKey(seedOnly); err != nil {
 		t.Errorf("an OpenSSL seed-only ML-DSA key is not importable: %v", err)
+	}
+	// Converting the default form to seed-only keeps the same key.
+	run(dir, "pkey", "-in", "default.key", "-provparam", "ml-dsa.output_formats=seed-only", "-out", "converted.key")
+	converted, _ := os.ReadFile(filepath.Join(dir, "converted.key"))
+	convertedKey, err := ParsePrivateKey(converted)
+	if err != nil {
+		t.Fatalf("the converted key is not importable: %v", err)
+	}
+	pubOut := run(dir, "pkey", "-in", "default.key", "-pubout")
+	block, _ := pem.Decode([]byte(pubOut))
+	if block == nil {
+		t.Fatalf("no public key in %q", pubOut)
+	}
+	opensslPublic, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil || !PublicKeysEqual(convertedKey.Public(), opensslPublic) {
+		t.Fatalf("conversion changed the public key: %v", err)
 	}
 }
