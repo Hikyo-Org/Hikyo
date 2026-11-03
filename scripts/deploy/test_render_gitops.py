@@ -25,6 +25,9 @@ DIGEST = "sha256:" + "b" * 64
 IMAGE = {"repository": gitops.IMAGE, "digest": "sha256:" + "c" * 64}
 
 
+INJECTED_NAME = "x\n        - name: pwn\n          hostPath:\n            path: /"
+
+
 class GitOpsTests(unittest.TestCase):
     def setUp(self):
         self.work = tempfile.TemporaryDirectory()
@@ -106,6 +109,11 @@ class GitOpsTests(unittest.TestCase):
             (("rootKey", "existingSecret"), {"data": "must-not-enter-Git"}),
             (("network", "trustedProxyCIDRs"), ["not-a-CIDR"]),
             (("externalOrigin",), "https://user:password@hikyo.example.com"),
+            (("upgrade", "existingClaim"), INJECTED_NAME),
+            (("upgrade", "stateExistingClaim"), INJECTED_NAME),
+            (("rootKey", "existingSecret"), INJECTED_NAME),
+            (("database", "existingSecret"), INJECTED_NAME),
+            (("tls", "existingSecret"), INJECTED_NAME),
         ]:
             with self.subTest(path=path):
                 values = copy.deepcopy(self.values)

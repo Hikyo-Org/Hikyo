@@ -28,6 +28,7 @@ IDENTITY = WORKFLOWS + "nightly.yml@refs/heads/main"
 ISSUER = "https://token.actions.githubusercontent.com"
 # release-channel.sh classifies 0.x tags as prereleases.
 STABLE_VERSION = r"[1-9][0-9]*\.[0-9]+\.[0-9]+"
+K8S_NAME = r"[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?"
 NIGHTLY_VERSION = r"[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[1-9][0-9]*\.g[0-9a-f]{8}"
 
 
@@ -126,6 +127,12 @@ def validate_values(values: dict) -> None:
     for owner in ("database", "rootKey", "tls"):
         if not values.get(owner, {}).get("existingSecret"):
             raise ValueError(f"{owner}.existingSecret is required; keep secret values outside Git")
+    # A chart template may render these unquoted, so a crafted name could add pod spec fields.
+    names = [upgrade["existingClaim"], upgrade["stateExistingClaim"],
+             *(values[owner]["existingSecret"] for owner in ("database", "rootKey", "tls")),
+             values["database"].get("tls", {}).get("existingSecret", "")]
+    if not all(isinstance(name, str) and (not name or re.fullmatch(K8S_NAME, name)) for name in names):
+        raise ValueError("claim and secret references must be Kubernetes resource names")
     origin = urlsplit(str(values.get("externalOrigin", "")))
     if (origin.scheme != "https" or not origin.hostname or origin.username or origin.password
             or origin.path not in ("", "/") or origin.query or origin.fragment

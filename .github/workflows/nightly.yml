@@ -1001,10 +1001,14 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.2.3
+      - name: Verify Helm before it receives the publication token
+        # setup-helm does not check its download. This is the linux-amd64 binary
+        # from the archive matching get.helm.sh's published v4.2.3 checksum.
+        run: printf 'aeb4645b9e6658948efa290e28dd23ae75a16fb73f137942f2294fd5c7fcb573  %s\n' "$(command -v helm)" | sha256sum -c -
       - name: Prepare chart inspection dependency
         run: |
           python3 -m venv "$RUNNER_TEMP/nightly-chart-python"
-          "$RUNNER_TEMP/nightly-chart-python/bin/python" -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
+          "$RUNNER_TEMP/nightly-chart-python/bin/python" -m pip install --disable-pip-version-check --require-hashes --only-binary :all: -r scripts/release/nightly-chart-requirements.txt
           printf '%s\n' "$RUNNER_TEMP/nightly-chart-python/bin" >>"$GITHUB_PATH"
       - name: Authenticate Helm publication
         run: |

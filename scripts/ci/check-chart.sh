@@ -742,6 +742,15 @@ if helm template fixture "$chart" $required_server_values >/dev/null 2>&1; then
 	fail 'chart accepted a server listener without trusted proxy CIDRs'
 fi
 # shellcheck disable=SC2086 # Deliberately expand fixed test flags into argv.
+for claim in upgrade.existingClaim upgrade.stateExistingClaim; do
+	if helm template fixture "$chart" $required_server_values \
+		--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+		--set-string "$claim=x
+        - name: pwn" >/dev/null 2>&1; then
+		fail "chart accepted a crafted $claim"
+	fi
+done
+# shellcheck disable=SC2086 # Deliberately expand fixed test flags into argv.
 if helm template fixture "$chart" $required_server_values \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set rootKey.existingSecret= >/dev/null 2>&1; then

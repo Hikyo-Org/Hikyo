@@ -40,11 +40,13 @@
           }
         },
         "existingClaim": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
         },
         "stateExistingClaim": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
         },
         "evidence": {
           "type": "boolean"
