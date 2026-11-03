@@ -279,16 +279,6 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 	if err := preflightUnattendedRoute(ctx, route); err != nil {
 		return err
 	}
-	// Refuse before the journal and before any export, and only where this run
-	// would export: the coordinator also runs on every start with no upgrade
-	// pending, and must not stop a hybrid-policy container from booting then.
-	exports := (state.Pending.Phase == upgrade.Healthy || state.Pending.Phase == upgrade.BackupPreparing) &&
-		(previous == nil || previous.Phase == "complete" || previous.Phase == "preparing" || state.Pending.Phase == upgrade.BackupPreparing)
-	if exports {
-		if err := requireCustodyMatchesBackupPolicy(cfg.BackupRecipients, vault.Recipient()); err != nil {
-			return err
-		}
-	}
 	journal := previous
 	if journal == nil || journal.Phase == "complete" {
 		manifest, err := route.Plan.SourceManifest(database.Engine)
@@ -319,7 +309,13 @@ func runPreparedUnattended(ctx context.Context, cfg *config.Config, options Unat
 			request.CheckConfiguration = func(ctx context.Context, projection *upgrade.CandidateConfiguration, values map[string]string) error {
 				var err error
 				preparedConfig, err = resolveCandidateConfiguration(ctx, cfg, projection, values)
-				return err
+				if err != nil {
+					return err
+				}
+				// The effective managed policy, compared before the gate fences the
+				// source and so before any export. Only runs that export reach here,
+				// so a start with nothing pending still boots under a hybrid policy.
+				return requireCustodyMatchesBackupPolicy(preparedConfig.BackupRecipients, vault.Recipient())
 			}
 			if _, err := upgradegate.Run(ctx, request); err != nil {
 				return err

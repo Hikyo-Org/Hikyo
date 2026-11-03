@@ -140,9 +140,6 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	if err != nil {
 		return err
 	}
-	if err := ValidateBackupPolicy(cfg); err != nil {
-		return err
-	}
 	if !filepath.IsAbs(cfg.Store.Path) {
 		cfg.Store.Path = filepath.Join(c.WorkingDirectory, cfg.Store.Path)
 	}
@@ -287,7 +284,13 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 		}
 		defer vault.Close()
 		// Before the journal, the public evidence and the service stop.
-		if err := requireCustodyMatchesBackupPolicy(cfg.BackupRecipients, vault.Recipient()); err != nil {
+		root, err := crypto.ReadRootKey(c.RootKeyFile, "")
+		if err != nil {
+			return err
+		}
+		err = requireAutomaticCustodyMatchesPolicy(ctx, cfg, database, root, vault.Recipient())
+		crypto.Zero(root)
+		if err != nil {
 			return err
 		}
 		publicKey, err := host.PublishPublicEvidence("operator.pub", vault.PublicKey())

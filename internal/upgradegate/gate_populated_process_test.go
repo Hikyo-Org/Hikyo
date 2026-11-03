@@ -2,6 +2,7 @@ package upgradegate_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -156,6 +157,22 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 						}
 						if frozen.State.Pending.Phase != upgrade.BackupPreparing || frozen.State.Applied != booted.State.Applied {
 							t.Fatal("pre-backup fence changed installed source")
+						}
+						// A configuration refusal on an already frozen source (what a hybrid
+						// policy over X25519 custody raises) fails the run and changes nothing:
+						// the same fence, intent and maintenance remain, and the next run
+						// without the refusal resumes it. The operator reverts the policy or
+						// takes the manual route; the host is not left half-changed.
+						refused := request
+						refused.CheckConfiguration = func(context.Context, *upgrade.CandidateConfiguration, map[string]string) error {
+							return app.ErrHybridPolicyClassicalCustody
+						}
+						if _, err := upgradegate.RunSignedGateProcessFixture(t, refused, claim(target)); !errors.Is(err, app.ErrHybridPolicyClassicalCustody) {
+							t.Fatalf("frozen source did not surface the policy refusal: %v", err)
+						}
+						still, err := upgrade.InspectControl(t.Context(), cfg)
+						if err != nil || still.Pending.Phase != upgrade.BackupPreparing || !still.Maintenance || still.Pending.Preparation == nil || *still.Pending.Preparation != *frozen.State.Pending.Preparation || still.Generation != frozen.State.Generation {
+							t.Fatalf("policy refusal changed the frozen source: %v", err)
 						}
 						err = upgrade.WithLock(t.Context(), cfg, func(session *upgrade.Session) error {
 							authority, err := session.PrepareExport(t.Context(), plan)

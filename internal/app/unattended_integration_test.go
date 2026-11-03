@@ -232,22 +232,38 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("preflight refusal created upgrade journal: %v", err)
 			}
-			// A hybrid backup policy with the X25519 custody identity must refuse
-			// before the journal, the scratch, the maintenance fence and any export.
-			// The same child, started with no upgrade pending, must still boot.
-			recipients, dir := fixture.Config.BackupRecipients, fixture.Config.BackupDir
+			// A hybrid MANAGED backup policy with the X25519 custody identity must
+			// refuse before the journal fence, the scratch and any export. The
+			// config comes from LoadBootstrap, which moves owner settings into
+			// ManagedInputs and leaves BackupRecipients empty, as in production.
+			// The same child, started with nothing pending, must still boot.
 			_, hybridRecipient, genErr := backup.GenerateHybridIdentity()
 			if genErr != nil {
 				t.Fatal(genErr)
 			}
-			fixture.Config.BackupRecipients, fixture.Config.BackupDir = []string{hybridRecipient}, t.TempDir()
+			hybridValues := map[string]string{"HIKYO_BACKUP_RECIPIENTS": hybridRecipient, "HIKYO_BACKUP_DIR": t.TempDir()}
+			for key, value := range values {
+				hybridValues[key] = value
+			}
+			hybridConfig, _, loadErr := config.LoadBootstrap("server", nil, func(key string) string { return hybridValues[key] }, nil)
+			if loadErr != nil {
+				t.Fatal(loadErr)
+			}
+			if len(hybridConfig.BackupRecipients) != 0 || hybridConfig.ManagedInputs["HIKYO_BACKUP_RECIPIENTS"] != hybridRecipient {
+				t.Fatal("fixture is not the production LoadBootstrap shape")
+			}
+			plain := fixture.Config
+			fixture.Config = *hybridConfig
 			policyRefusal := runChild(1)
-			fixture.Config.BackupRecipients, fixture.Config.BackupDir = recipients, dir
+			fixture.Config = plain
 			if policyRefusal == nil || !strings.Contains(policyRefusal.Error(), "refusing before any backup") {
 				t.Fatalf("hybrid policy with X25519 custody did not refuse the upgrade: %v", policyRefusal)
 			}
-			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("policy refusal created an upgrade journal: %v", err)
+			// The refusal comes from the gate's configuration check, which runs
+			// before the source is fenced. The journal may exist, still "preparing",
+			// and the next run, once the policy is reverted, resumes from it.
+			if journal, err := readAutomaticJournal(filepath.Join(directory, "operation.json")); err != nil || (journal != nil && journal.Phase != "preparing") {
+				t.Fatalf("policy refusal left an unexpected journal %+v: %v", journal, err)
 			}
 			if exports, _ := filepath.Glob(filepath.Join(directory, "backup-*")); len(exports) != 0 {
 				t.Fatalf("policy refusal exported a backup: %v", exports)
@@ -255,6 +271,8 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if after, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN}); err != nil || after.Applied.Release != identities[0] || after.Pending.Phase != upgrade.Healthy || after.Maintenance {
 				t.Fatalf("policy refusal changed the healthy source: %v", err)
 			}
+			// Reverting the policy (the plain config) lets the same journal and the
+			// same healthy source proceed: the refusal did not strand anything.
 			if err := runChild(1); err != nil {
 				t.Fatalf("image replacement: %v", err)
 			}
@@ -263,9 +281,9 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			}
 			// With nothing pending, a hybrid policy must not stop the container
 			// from starting: the refusal applies only where an export would run.
-			fixture.Config.BackupRecipients, fixture.Config.BackupDir = []string{hybridRecipient}, t.TempDir()
+			fixture.Config = *hybridConfig
 			hybridRestart := runChild(1)
-			fixture.Config.BackupRecipients, fixture.Config.BackupDir = recipients, dir
+			fixture.Config = plain
 			if hybridRestart != nil {
 				t.Fatalf("hybrid policy blocked a start with no upgrade pending: %v", hybridRestart)
 			}
