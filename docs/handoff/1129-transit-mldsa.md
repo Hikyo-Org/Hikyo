@@ -203,9 +203,9 @@ revision `1f10525f7626503f8ce4a7f6d4e8a851986aa000`.
 | `openssl pkeyutl -verify` (OpenSSL 4.0.3) on the frozen SPKI, signature and message, `-pkeyopt context-string:hikyo/transit/sign/v1` | 2 | Local, outside CI, run by me: "Signature Verified Successfully". Without the context option, with another context string, and with a tampered message: "Signature Verification Failure" (exit 1) |
 | Generated Zod schema proof for the freeze decision: `zTransitKeyList.safeParse` with one `ed25519` and one `mldsa65` item | 2 | Fails on `items.1.algorithm` (`invalid_value`); the Ed25519-only list parses |
 | `node scripts/ci/check-doc-status.mjs --check` | 2 | PASS (35 ledger entries) |
-| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh` against the PR base | 2 | FASTFEEDBACK_SIGDCO |
-| `scripts/ci/fast-feedback.sh` (base `origin/dunky13/pqc-adr-amendments`) | 2 | FASTFEEDBACK |
-| `go test -p 2 -timeout 40m -count=1 ./internal/lint/...` | 2 | LINT |
+| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh` against the PR base | 2 | PASS: 5 commits cryptographically verified, 5 signed off (head `99dcfe97f`) |
+| `scripts/ci/fast-feedback.sh` (base `origin/dunky13/pqc-adr-amendments`) | 2 | PASS at `99dcfe97f` (clean tree, base `e5539c280`): diff check, Go formatting of 18 files, test compile of nine packages. The first attempt inside the validation job was refused because the checkout was dirty with the documentation edits, so it was rerun after committing them; the queue job that carried it therefore shows exit 1 although every test in it passed |
+| `go test -p 2 -timeout 40m -count=1 ./internal/lint/...` | 2 | INCONCLUSIVE: `panic: test timed out after 40m0s` at `99dcfe97f` under queue and host load, with no `--- FAIL` in 1147 lines of output. Not rerun, as instructed (hosted CI runs it). This is not a pass |
 | Hosted CI on `ae1855d2c` (round 1 head) | 1 | `repository invariants (boundary, lint, CI policy)` PASS, `ci-feedback` go, frontend and tooling PASS, `ops-floor` amd64 and arm64 PASS, DCO report PASS. `ci-queue-required` FAILS, as expected: the base is a stacked branch, not `main`. The earlier round-1 statement "hosted CI NOT RUN" was stale. Hosted CI for the round 2 head is pending |
 
 Round 1 local lint: it passed once (499 s) before a comment-only edit, then two
