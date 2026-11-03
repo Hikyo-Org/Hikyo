@@ -18,20 +18,29 @@ import { Glyph } from './Glyph.tsx';
 export function Disclosure({
   label,
   defaultOpen = false,
+  open: controlled,
+  onOpenChange,
   className,
   children,
 }: {
   label: ReactNode;
   defaultOpen?: boolean;
+  /** Pass with `onOpenChange` when something other than the toggle must open it. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /** Classes for the content box, e.g. a layout for what it holds. */
   className?: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [uncontrolled, setUncontrolled] = useState(defaultOpen);
+  const open = controlled ?? uncontrolled;
   const contentId = useId();
   return (
     <div className="disclosure">
-      <button type="button" className="disclosure__toggle" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)}>
+      <button type="button" className="disclosure__toggle" aria-expanded={open} aria-controls={contentId} onClick={() => {
+        setUncontrolled(!open);
+        onOpenChange?.(!open);
+      }}>
         <Glyph name="chevron" className="disclosure__chevron" />
         <span>{label}</span>
       </button>

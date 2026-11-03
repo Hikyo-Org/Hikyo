@@ -86,3 +86,36 @@ export const ExistingFolderKeepsItsName: Story = {
     await expect(args.onCreate).toHaveBeenCalledWith(expect.objectContaining({ folderPath: 'Team keys/日本語' }));
   },
 };
+
+export const JsonInferredFromValue: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.selectOptions(canvas.getByLabelText('Type'), 'json');
+    const infer = canvas.getByRole('button', { name: 'Infer schema from this value' });
+    await expect(infer).toBeDisabled();
+    await expect(canvas.getByText('Enter a valid JSON value to infer a schema from it.')).toBeVisible();
+
+    await userEvent.click(canvas.getByLabelText('First value (optional)'));
+    await userEvent.paste('{"host":"db.internal","port":5432}');
+    await userEvent.click(infer);
+    await expect(canvas.getAllByLabelText('Field name')).toHaveLength(2);
+    await expect(canvas.getByLabelText('Schema document')).not.toHaveDisplayValue(/db\.internal|5432/);
+    await expect(canvas.getByRole('button', { name: 'Replace schema from this value' })).toBeEnabled();
+  },
+};
+
+export const JsonInferenceOffForSecret: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.selectOptions(canvas.getByLabelText('Type'), 'json');
+    await userEvent.click(canvas.getByLabelText('First value (optional)'));
+    await userEvent.paste('{"host":"db.internal"}');
+    await userEvent.click(canvas.getByRole('button', { name: 'Infer schema from this value' }));
+    await expect(canvas.getAllByLabelText('Field name')).toHaveLength(1);
+
+    // Marking the key secret after inferring still removes the sampled names.
+    await userEvent.click(canvas.getByRole('checkbox', { name: /secret/i }));
+    await expect(canvas.queryAllByLabelText('Field name')).toHaveLength(0);
+    await expect(canvas.getByText(/schema was removed/)).toBeVisible();
+    await expect(canvas.getByLabelText('Schema document')).toHaveValue('');
+    await expect(canvas.getByRole('button', { name: 'Infer schema from this value' })).toBeDisabled();
+  },
+};
