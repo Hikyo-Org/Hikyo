@@ -489,7 +489,14 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return err
 	}
 	if final.Head.SHA != p.Head.SHA || final.Base.SHA != p.Base.SHA || final.Base.Ref != p.Base.Ref || finalPolicy != policy {
-		return q.queueMovement(ctx, number)
+		if err := q.queueMovement(ctx, number); err != nil {
+			return err
+		}
+		// A dev push does not reassess open PRs, so only a rerun clears this barrier.
+		if q.checkName == devCheckName && final.Head.SHA == p.Head.SHA && final.Base.SHA != p.Base.SHA {
+			return errors.New("dev advanced during admission; the pending barrier stays until the rerun reassesses this head")
+		}
+		return nil
 	}
 	if result.Conclusion == "success" {
 		// The final authority checks are independent reads of one phase, so they

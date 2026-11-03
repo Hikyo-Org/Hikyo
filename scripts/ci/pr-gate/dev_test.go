@@ -192,6 +192,53 @@ func TestDevAdmissionRechecksLiveBaseAndApprovals(t *testing.T) {
 	}
 }
 
+func TestDevBaseMovementFailsSoTheRetryReassesses(t *testing.T) {
+	for name, moved := range map[string]bool{"dev advanced": true, "dev still": false} {
+		t.Run(name, func(t *testing.T) {
+			f := newDevFixture(t)
+			if moved {
+				f.api.readHook = func(path string, count int) {
+					if path == f.c.endpoint("git/ref/heads/dev") && count == 2 {
+						f.api.responses[path] = map[string]any{"ref": "refs/heads/dev", "object": map[string]string{"type": "commit", "sha": strings.Repeat("f", 40)}}
+					}
+				}
+			}
+			err := f.q.admit(context.Background(), f.pr.Number)
+			latest := f.api.writes[len(f.api.writes)-1]
+			if !moved {
+				if err != nil || latest["conclusion"] != "success" {
+					t.Fatalf("unmoved dev: err=%v, latest=%+v", err, latest)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "dev advanced") {
+				t.Fatalf("a moved dev must fail the job so the retry runs: %v", err)
+			}
+			f.assertNoSuccess(t)
+			if latest["status"] != "queued" {
+				t.Fatalf("moved dev left no pending barrier: %+v", latest)
+			}
+		})
+	}
+}
+
+func TestMainBaseMovementStaysPendingWithoutFailing(t *testing.T) {
+	f := newQueueFixture(t)
+	path := f.c.endpoint("git/ref/heads/" + f.c.admissionBranch())
+	f.api.readHook = func(got string, count int) {
+		if got == path && count == 2 {
+			f.api.responses[path] = map[string]any{"ref": "refs/heads/" + f.c.admissionBranch(), "object": map[string]string{"type": "commit", "sha": strings.Repeat("f", 40)}}
+		}
+	}
+	if err := f.q.admit(context.Background(), f.pr.Number); err != nil {
+		t.Fatalf("a main push reassesses every PR, so this must not fail: %v", err)
+	}
+	f.assertNoSuccess(t)
+	if latest := f.api.writes[len(f.api.writes)-1]; latest["status"] != "queued" {
+		t.Fatalf("moved main left no pending barrier: %+v", latest)
+	}
+}
+
 func TestDevForkVouchRemainsOwnedByMain(t *testing.T) {
 	f := newDevFixture(t)
 	f.pr.Head.Repo.ID, f.pr.Head.Repo.FullName = 11, "contributor/Hikyo"

@@ -68,17 +68,24 @@ selects 'dev push renaming the publisher away' all
 compare '{"status":"ahead","files":[{"filename":"a"}]}'
 jq '.files = [range(0; 300) | {filename: "f\(.)"}]' "$work/compare.json" >"$work/new.json"; mv "$work/new.json" "$work/compare.json"
 selects 'dev push at the compare file limit' all
+jq '.files |= .[1:]' "$work/compare.json" >"$work/new.json"; mv "$work/new.json" "$work/compare.json"
+selects 'dev push just under the compare file limit' none
 compare '{"status":"diverged","files":[]}'
 selects 'dev push whose compare diverged' all
+compare '{"status":"behind","files":[{"filename":"a"}]}'
+selects 'dev push whose compare is behind' all
+compare '{"status":"ahead","files":[]}'
+selects 'dev push ahead with no listed files' all
 compare '{"status":"ahead"}'
 selects 'dev push with no file list' all
 compare 'not json'
 selects 'dev push with an unreadable compare' all
-compare '{"status":"ahead","files":[]}'
+# A compare that would select none, so these prove the failure itself fails open.
+compare '{"status":"ahead","files":[{"filename":"a"}]}'
 : >"$work/compare.fail"
 selects 'dev push when compare fails' all
 rm "$work/compare.fail"
-for mutation in '.before="0000000000000000000000000000000000000000"' 'del(.before)' '.before="bad"' '.before=null' '.after="bad"' 'del(.after)' '.forced=true'; do
+for mutation in '.before="0000000000000000000000000000000000000000"' 'del(.before)' '.before="bad"' '.before=null' '.after="bad"' 'del(.after)' '.forced=true' 'del(.forced)'; do
   push_event refs/heads/dev "$previous"
   jq "$mutation" "$work/event.json" >"$work/new.json"; mv "$work/new.json" "$work/event.json"
   selects "dev push with $mutation" all
