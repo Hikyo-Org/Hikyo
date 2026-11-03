@@ -160,10 +160,10 @@ func (a *startedReadAPI) read(ctx context.Context, path string, out any) error {
 func TestQueueRouteCheckRunsBesideFeedback(t *testing.T) {
 	f := newQueueFixture(t)
 	f.q.targeted = true
-	b := f.barrier(t, map[string]int{"git/ref/heads/dev": 1, "actions/workflows/ci-feedback.yml": 1})
-	_ = f.q.admit(context.Background(), f.pr.Number)
-	if !b.overlapped() {
-		t.Fatal("the route check and feedback did not overlap")
+	f.barrier(t, map[string]int{"git/ref/heads/dev": 1, "actions/workflows/ci-feedback.yml": 1})
+	// A serial read gives up on the barrier, even though it closes when the other arrives.
+	if err := f.q.admit(context.Background(), f.pr.Number); errors.Is(err, errReadsNotOverlapped) {
+		t.Fatal(err)
 	}
 }
 

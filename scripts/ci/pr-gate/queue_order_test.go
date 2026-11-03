@@ -184,7 +184,7 @@ func TestDevDCORefusalBeatsTheCIDefinitionCheck(t *testing.T) {
 	files := "pulls/7/files?per_page=100&page=1"
 	for name, response := range map[string]any{
 		"failed read": errors.New(files),
-		"refusal":     []map[string]string{{"filename": ".github/workflows/ci-dev.yml"}},
+		"refusal":     []map[string]string{{"filename": ".github/workflows/ci-dev.yml", "status": "removed"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newDevFixture(t)
