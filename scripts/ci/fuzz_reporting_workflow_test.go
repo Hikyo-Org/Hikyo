@@ -119,7 +119,10 @@ func TestDevStatusReportIsBoundToDevPushes(t *testing.T) {
 		Jobs map[string]struct {
 			If          string            `yaml:"if"`
 			Permissions map[string]string `yaml:"permissions"`
-			Steps       []struct {
+			Concurrency struct {
+				Group string `yaml:"group"`
+			} `yaml:"concurrency"`
+			Steps []struct {
 				With map[string]string `yaml:"with"`
 				Run  string            `yaml:"run"`
 			} `yaml:"steps"`
@@ -129,6 +132,9 @@ func TestDevStatusReportIsBoundToDevPushes(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := workflow.Jobs["report-dev"]
+	if job.Concurrency.Group != "dev-status-issue" {
+		t.Fatal("two red runs must not each open the dev status issue")
+	}
 	for _, condition := range []string{"workflow_run.name == 'ci-dev'", "workflow_run.path == '.github/workflows/ci-dev.yml'", "workflow_run.event == 'push'", "workflow_run.head_branch == 'dev'"} {
 		if !strings.Contains(job.If, condition) {
 			t.Fatalf("dev status report lost %q", condition)

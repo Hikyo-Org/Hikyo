@@ -33,14 +33,15 @@ Go build-cache bucket or paid cache capacity is added.
 
 - Main moves whenever a newer green dev commit exists. A stable release is a tag on
   any main commit, and every main commit passed the full queue.
-- A failed promotion leaves main unchanged and means no new nightly. The workflow
+- A failed promotion leaves main unchanged, so no new dev code reaches a nightly. The
+  scheduled nightly still publishes main's tip if that has none yet. The workflow
   run fails for a missing dev proof, an unexpected state or a refused write. It also
   fails, printing the PR link and the check's title and summary in the job log, when
-  an open promotion for the same commit has a refused or failed `ci-queue-required`
-  check, or has not landed after 3 hours. A PR younger than that, such as one from a
-  manual run, stays green while it waits. A failed queue run leaves the promotion PR
-  open with a red `trusted-merge-ci` run; the next run queues it again for the same
-  commit, or replaces it when dev has moved.
+  an open promotion has a refused or failed `ci-queue-required` check, or has not
+  landed after 3 hours, including when the run also re-arms or replaces it. A younger
+  PR, such as one from a manual run, stays green while it waits. A failed queue run
+  leaves the promotion PR open with a red `trusted-merge-ci` run; the next run queues
+  it again for the same commit, or replaces it when dev has moved.
 - A manual promotion takes about one queue run plus the nightly itself.
 - `nightly-manual.yml` still publishes main's tip now without promoting anything.
 - A promotion that changes `.github/` needs no second approval when it comes from
