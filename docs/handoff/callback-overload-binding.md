@@ -95,8 +95,8 @@ PostgreSQL runs the same tests against the repaired code.
 
 ## Accepted tradeoffs
 
-- **A credential on a browser-bound callback now counts. This needs an explicit
-  maintainer decision.** A browser finishing a login spends one source or budget slot
+- **A credential on a browser-bound callback now counts. The maintainer accepted this
+  on 2026-11-03.** A browser finishing a login spends one source or budget slot
   it did not spend before, and over the limit it gets the refusal instead of
   completing, where `main` completed it. That includes a dead `__Host-hikyo` cookie, the
   usual re-login after expiry, and the source allowance can be shared behind NAT. The
@@ -141,5 +141,5 @@ browser or identity provider. Merging to `dev` starts the full `ci-dev` validati
 
 ## Remaining work
 
-1. Maintainer security review, especially the tradeoffs above.
+1. Maintainer security review, especially the `AdmitSessionPresentation` change.
 2. Change the `OIDCDone` copy so `too_many_requests` reads as a rate limit.
