@@ -6,11 +6,15 @@ with ML-DSA-65 signatures. Existing enrollments are unchanged: without the
 `authority` object in the enrollment they keep one Ed25519 key and the v1
 command bytes, byte for byte.
 
-Everything here was checked against the code at the candidate named in the
-[handoff](../handoff/1131-rollout-trust.md). The commands that touch a real
-cluster were **not run** (NOTRUN): the tests drive the real producer, mailbox
-and controller against an instrumented fake Kubernetes API. Rehearse every
-cluster step on a disposable cluster first.
+What was checked, at the candidate named in the
+[handoff](../handoff/1131-rollout-trust.md): the controller, server and mailbox
+behavior described here, driven by tests against an instrumented fake Kubernetes
+API; the OpenSSL key-generation commands (by a test); `--print-authority-ids`;
+the chart values and their refusals; and the `helm template` command in step 5
+(run locally with the flags shown, rendering the right namespace). Every
+`kubectl` command here, the Pod deletions and the enrollment ConfigMap
+recreation were **not run** (NOTRUN) on a real cluster. Rehearse them on a
+disposable cluster first.
 
 ## What the strict profile does and does not claim
 
@@ -22,7 +26,8 @@ required), with the trust anchor installed by you. Exceptions: E-11, E-14, E-15.
 
 - The controller derives the required signature set from its own enrollment,
   never from the command. A command with a missing, extra, duplicate,
-  reordered or other-algorithm signature is refused before any Kubernetes call.
+  reordered or other-algorithm signature is refused before any write: the
+  controller reads the command and journal Secrets first, then refuses.
 - Both signatures cover identical bytes that include the label
   `hikyo/config-rollout/command/v2`, the trust generation, the required set, the
   key ids and a digest of the enrolled target. A signature from one suite does
@@ -182,27 +187,47 @@ ROLLOUT="$FULLNAME-rollout"
    ConfigMap (compared on a fixture): the Deployment and the controller
    StatefulSet are rendered identically.
 5. The enrollment ConfigMap is immutable, so it cannot be updated in place.
-   Delete it, recreate it from the render, and restart both consumers by
-   deleting their Pods. Do **not** use `kubectl rollout restart`: it edits the
-   Deployment's pod template, and the controller's Restore refuses a Deployment
-   whose spec is neither the plan's before nor after state. Deleting Pods leaves
-   the template alone:
+   Render the new one first and check it, then delete the old one, apply the
+   new one and restart both consumers by deleting their Pods. Do **not** use
+   `kubectl rollout restart`: it edits the Deployment's pod template, and the
+   controller's Restore refuses a Deployment whose spec is neither the plan's
+   before nor after state. Deleting Pods leaves the template alone.
+
+   Render (both flags are required):
 
    ```sh
-   helm template RELEASE CHART -f values.yaml -s templates/rollout-custody.yaml > rollout-custody.yaml
-   # Keep ONLY the document with kind ConfigMap and name $ROLLOUT-enrollment
-   # in enrollment-configmap.yaml. Never apply the other documents in that
-   # file: they are the empty control Secrets and the Lease.
+   KUBE_VERSION=$(kubectl version -o json | jq -r '.serverVersion.gitVersion')
+   helm template RELEASE CHART -f values.yaml --namespace "$NS" \
+     --kube-version "$KUBE_VERSION" -s templates/rollout-custody.yaml > rollout-custody.yaml
+   ```
+
+   Without `--kube-version` the chart refuses to render
+   (`enrolled config rollout requires Kubernetes 1.36`); with only
+   `--kube-version` it renders `target.namespace: default`, and applying that
+   would install a wrong, immutable enrollment after the old one was deleted.
+   Check the result before deleting anything. Expect exactly your namespace and
+   generation (checked on a fixture with `--namespace ns --kube-version v1.36.1`):
+
+   ```sh
+   grep -o '\"namespace\":\"[^\]*\"' rollout-custody.yaml
+   grep -o '\"generation\":[0-9]*' rollout-custody.yaml
+   ```
+
+   The file holds one ConfigMap and also the empty control Secrets and the
+   Lease. Keep **only** the ConfigMap document (kind `ConfigMap`, name
+   `$ROLLOUT-enrollment`) in `enrollment-configmap.yaml` and never apply the
+   rest. Then:
+
+   ```sh
    kubectl -n "$NS" delete configmap $ROLLOUT-enrollment
    kubectl -n "$NS" apply -f enrollment-configmap.yaml
    kubectl -n "$NS" delete pod -l app.kubernetes.io/name=hikyo,app.kubernetes.io/instance=RELEASE
    kubectl -n "$NS" delete pod $ROLLOUT-0
    ```
 
-   The render of `templates/rollout-custody.yaml` holds exactly one ConfigMap
-   (checked on a fixture). `RELEASE` is the Helm release name; the server Pods
-   carry the Deployment's two selector labels, which you can confirm with
-   `kubectl -n "$NS" get pods --show-labels`. The cluster commands are NOTRUN.
+   `RELEASE` is the Helm release name; the server Pods carry the Deployment's
+   two selector labels, which you can confirm with
+   `kubectl -n "$NS" get pods --show-labels`. The `kubectl` commands are NOTRUN.
 
    **`helm upgrade` is not used here on purpose, and its effect on a live
    Deployment is unverified.** The chart renders the Deployment's arguments and
@@ -303,8 +328,10 @@ proceed you give up the retained entry:
    reopen replay of old commands.
 
 The same procedure applies when the journal entry no longer matches the
-enrollment's incarnation, owner or source aliases (G-1), with one exception: it
-does **not** work for an enrollment id change (G-4).
+enrollment's incarnation, owner or source aliases (G-1). After a database
+restore it needs `command.json` cleared too (see
+[Restore, takeover and restart](#restore-takeover-and-restart)). It does **not**
+work for an enrollment id change (G-4).
 
 ## Retire the enrollment or a key without replacing it
 
@@ -324,12 +351,19 @@ to `journal.json`, and the controller refuses an enrollment below it:
 - the compatibility profile once any strict generation was recorded;
 - another key set at the same generation.
 
-The refusal is visible: the controller exits with
-`authority trust state refused`, and per-command reconciliation returns the same
-refusal if the floor rose under a running process. The refused start writes
+The refusal at start is visible: the controller exits with
+`authority trust state refused`. Per-command reconciliation returns the same
+refusal if the floor rose under a running process, but the controller loop
+discards per-command errors (`custody.go`), so that one is **not** visible: the
+mailbox simply gets no response. The refused start writes
 nothing to any Secret or to the target. Its only write is the custody Lease,
 whose epoch the existing admission policy requires. Fix the enrollment, do not
 clear the floor.
+
+A **malformed `trust.json`** also refuses a start, under either profile: the
+base controller ignored that key, so this is a change for a compatibility
+controller too. It needs journal write and it fails closed. Delete the key only
+as the break-glass below.
 
 Clearing the floor is possible and is **break-glass**: deleting `trust.json`
 (or emptying the whole journal Secret) makes the controller forget it, and a
@@ -363,11 +397,39 @@ fails closed. It is not a supported rollback.
   restore and re-enroll to the intended generation before resuming Apply.
 - Restoring the Hikyo database changes the recovery incarnation, and the
   enrollment pins the incarnation, so you must re-enroll with the new one. The
-  controller's retained journal entry carries the old incarnation, so under the
-  strict profile **the controller then refuses to start** with
-  `authority trust state refused` until you clear `journal.json` as in
-  [Replace the ML-DSA key](#replace-the-ml-dsa-key) (keep `trust.json`). Open
-  rollouts did not survive the database restore in any case.
+  site page asks for new object identities and no stale control messages
+  (`configuration-rollouts`). Re-creating the control Secrets gives them new
+  UIDs, which means a new enrollment and an empty floor (see Rollback). The
+  in-place alternative below keeps the Secrets and removes the stale messages,
+  which is what that sentence protects:
+  1. Check the target first. If the receipt is **not** `applied` or `restored`
+     the target is open and clearing keys is not enough (G-1):
+
+     ```sh
+     kubectl -n "$NS" get secret $ROLLOUT-receipt \
+       -o jsonpath='{.data.receipt\.json}' | base64 -d | jq .phase
+     ```
+
+     Restore the target by hand from the receipt first (G-2, G-3).
+  2. Re-enroll with the new incarnation (steps 4 and 5). Under the strict
+     profile the controller then refuses to start with
+     `authority trust state refused`, because its retained entry carries the
+     old incarnation.
+  3. Clear the stale journal entry (keep `trust.json`) **and the stale command**:
+
+     ```sh
+     kubectl -n "$NS" patch secret $ROLLOUT-journal --type=json \
+       -p '[{"op":"remove","path":"/data/journal.json"}]'
+     kubectl -n "$NS" patch secret $ROLLOUT-command --type=json \
+       -p '[{"op":"remove","path":"/data/command.json"}]'
+     ```
+
+     The server's sequence counter is a database table, so the restore rolled
+     it back, while the command Secret still holds the higher sequence. Without
+     the second command the mailbox refuses every new command
+     (`Mailbox.Send` conflicts when the stored sequence is not lower; tested).
+     Replacing the ML-DSA key needs only `journal.json` cleared, because the
+     counter keeps rising.
 
 ## Gaps and registered residual risk
 
@@ -376,7 +438,7 @@ Each gap names its residual risk, what the claim is limited to, and an owner
 
 | ID | Gap | Residual risk | Claim limited to |
 | --- | --- | --- | --- |
-| G-1 | The journal anchor requires the retained entry to match the enrollment: the ML-DSA key (or, for a v1 entry, the Ed25519 key), the generation, and its shape, meaning enrollment id, owner, incarnation and any source alias the entry names. A changed incarnation, owner or removed alias, a replaced ML-DSA key, and an Ed25519 rotation over a v1 entry all fail. The controller refuses visibly at start and writes nothing but the lease | Availability: the controller stays down until the operator clears `journal.json`, which loses the stored plan | Plans survive only the transitions listed above |
+| G-1 | The journal anchor requires the retained entry to match the enrollment: the ML-DSA key (or, for a v1 entry, the Ed25519 key), the generation, and its shape, meaning enrollment id, owner, incarnation and any source alias the entry names. A changed incarnation, owner or removed alias, a replaced ML-DSA key, and an Ed25519 rotation over a v1 entry all fail. The controller refuses visibly at start and writes nothing but the lease. After a database restore the rolled-back sequence counter also needs `command.json` cleared. **If the target is open** (receipt not `applied` or `restored`), prepare and restore both return a conflict even with both keys cleared, the plan having gone with `journal.json`, and the controller loop discards that error, so nothing says so | Availability: the controller stays down until the operator clears `journal.json` (and `command.json` after a restore), which loses the stored plan; with an open target the rollout is blocked until the target is restored by hand (G-2, G-3) |  Plans survive only the transitions listed above |
 | G-2 | An open job (`applying` or `partial`) cannot cross a re-enrollment. The new provider refuses `Send`, `Response`, `RenewCommand` and `DecisionCommand` on the old row; reconciliation clears the active runtime and returns the error, the job becomes `partial` with `transport_failed`, and `app.Boot` is fatal on that error unless sources are pending (source reading, `internal/app/app.go`; the service half is tested, the boot half is not run). Restore needs a `partial` job and fails the same way, and recovery refuses unresolved jobs. Once the floor is raised the old enrollment is refused too. A key swap before this change refused the same row, so the new parts are the floor closing the way back and the instructions here | A job stranded across a switch has no in-band way out: availability and a rollout in an unknown state | Enroll only with no open job; no claim that a rollout survives a switch |
 | G-3 | Restore through Hikyo is not available across a re-enrollment, for a job started before it (see G-2). Restore also needs a `partial` job, which the procedure forbids crossing with, and `kubectl rollout restart` (or a Helm upgrade that re-applies rendered fields) changes the Deployment spec so the controller's Restore refuses | Restore of a pre-switch rollout is by hand from the receipt | The journal entry stays anchored; the plan is not restorable through Hikyo |
 | G-4 | Enrollment id changes. Clearing `journal.json` is not enough: the command Secret still holds the previous id's command and the producer's mailbox refuses to replace it at any sequence (tested at 1 and 99); the server's per-enrollment sequence is keyed by id and restarts at 1; rows for the old id are refused (`self_config_deployment.go`, `_restore.go`, `_renew.go`). It fails closed | Availability only | Unsupported; keep the id |

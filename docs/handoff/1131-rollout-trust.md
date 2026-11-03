@@ -16,7 +16,7 @@ explicit owner instruction (2026-11-02) and is not CLEAN. Operator procedure:
 
 Stacked on PR #1155 (base `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`, branch
 `dunky13/pqc-adr-amendments`). First review round head: `310eb9ffa`. Repaired
-code candidate: commit `b04a641c2d1b3dc967e4ae762cbaba3dce16e7ea`. The handoff commit that follows it changes
+code candidate: commit `e8942c452c28c343eb0488bfb75edda3cbfc930f`. The handoff commit that follows it changes
 only documentation.
 
 ## Review repair round (2026-11-03)
@@ -74,9 +74,33 @@ Opt-in strict profile, installed only by you, out of band (DEC-20 option c):
   refuses a stale enrollment (lower generation, rollback to the compatibility
   profile, other keys at the same generation), refuses a journal entry the
   installed keys cannot anchor (strict profile only), raises the floor, and only
-  then reads commands. The same floor check runs on every reconcile tick. The
+  then reads commands. The same floor check runs on every tick that has a decodable command (an empty or undecodable mailbox returns first, and nothing executes then). The
   compatibility profile keeps its historical start: an unreadable or
-  unverifiable journal never stops it, and only a persisted strict floor does.
+  unverifiable journal never stops it. Only a persisted strict floor does, and so
+  does a malformed `trust.json` (base ignored that key; it needs journal write
+  and fails closed).
+
+## Second review (`2ceda38b2`)
+
+No authority bypass. Two runbook procedures were wrong and six smaller items.
+All were checked first.
+
+| Finding | Verdict | Disposition |
+| --- | --- | --- |
+| 1 database-restore remedy incomplete | Confirmed by test: with only `journal.json` cleared a rolled-back sequence 2 conflicts with sequence 3 in the command Secret; with `command.json` cleared too a new prepare completes; with an open target both keys cleared still conflicts | Runbook adds the `command.json` patch, a receipt check first and the reconciliation with the site page's "new object identities" sentence. G-1 registers the open-target case and points at the manual restore (G-2, G-3). Two tests |
+| 2 `helm template` command | Confirmed by running it: no flags fails (`requires Kubernetes 1.36`), `--kube-version` alone renders `target.namespace: default` | Command now has `--namespace "$NS" --kube-version "$KUBE_VERSION"` and a check of the rendered namespace and generation before anything is deleted; run locally with the flags. The "everything was checked" sentence is narrowed to what was run |
+| 3 "or cannot be read" | Confirmed: removing the compatibility branch passed the package | Wrong-UID and missing-Secret cases added; the mutation now fails. The strict start reports it |
+| 4 alias claim | Confirmed | Test renamed; separate retained-prepare alias test added |
+| 5 parsed Ed25519 key not cleared on a later refusal | Confirmed | `ParseSigners` clears what `parseSigners` returned on every refusal; the helper is tested, the wrapper's call is not |
+| 6 compatibility start "unchanged" too wide | Confirmed: a malformed `trust.json` refuses a start | Stated in the runbook, here and in the PR body |
+| 7 wording | Confirmed | "before any write"; per-command refusals are not visible (`Run` discards them); the floor check runs on ticks with a decodable command |
+| 8 stale hosted and signature rows | Confirmed | Recorded above |
+
+The G-2 service half is tested with a stub provider that refuses every
+operation, as the test comments say. No test joins the real provider to the
+service: the provider half (`TestBootstrapDeploymentRefusesEveryOperationOnAPreRolloverRow`)
+and the service half (`TestOpenJobAcrossAReEnrollmentStaysOpenAndClearsTheRuntime`)
+are separate.
 
 ## Inventory (first acceptance item)
 
@@ -123,8 +147,11 @@ refuses a pre-rollover row (G-3).
 | Compatibility to dual with a new Ed25519 key, or straight to PQ-only | **Not anchorable** while the entry is still v1: `ErrTrust`, no write | `TestRetainedV1EntryAnchorsOnlyThroughTheKeptClassicalKey` |
 | Dual to PQ-only, after a strict command | The retained v2 entry anchors through its ML-DSA signature | `TestDualToPQOnlyKeepsTheRetainedPlanAndRefusesTheRetiredAlgorithm` |
 | Ed25519 key rotated, ML-DSA key kept, after a strict command | Anchors through the ML-DSA signature | `TestKeyRotationAndJournalResetBehaviorIsStated` |
-| ML-DSA key replaced with a retained entry | **Cannot be anchored.** Start refuses with `authority trust state refused`; per-command reconcile returns `ErrTrust`; only the custody Lease is written. G-1 | same test |
-| Incarnation, owner or enrollment id changed with a retained entry | Not anchorable (shape check). G-1 | `TestRetainedEntryIsUnanchorableAfterIdentityOrAliasChanges` |
+| ML-DSA key replaced with a retained entry | **Cannot be anchored.** Start refuses with `authority trust state refused`; per-command reconcile returns `ErrTrust` (not visible: `Run` discards per-command errors); only the custody Lease is written. G-1 | same test |
+| Incarnation, owner or enrollment id changed with a retained entry | Not anchorable (shape check). G-1 | `TestRetainedEntryIsUnanchorableAfterIdentityChanges` |
+| A source alias named by a retained prepare is removed from the enrollment | Not anchorable (`validBootstrap`). G-1 | `TestRetainedPrepareNamingAnAliasIsUnanchorableAfterTheAliasIsRemoved` |
+| Database restore (new incarnation), target terminal | Controller refuses at start until `journal.json` is cleared; then the server's rolled-back sequence counter conflicts with the higher sequence in the command Secret until `command.json` is cleared too; then a new prepare completes | `TestDatabaseRestoreNeedsTheCommandSecretClearedToo` |
+| Database restore, target still open (receipt not `applied` or `restored`) | Even with both keys cleared, prepare and restore return a conflict, nothing in the target changes, no response is written, and the controller loop discards the error. Manual restore from the receipt is the way out. G-1, G-2, G-3 | `TestDatabaseRestoreWithAnOpenTargetStaysBlockedAndTouchesNothing` |
 | Enrollment id changed, `journal.json` cleared | Still refused: the command Secret holds the old id's command and `Mailbox.Send` conflicts at any sequence. G-4 | `TestEnrollmentIDChangeStaysRefusedAfterClearingTheJournal` |
 | Only `journal.json` removed | Plan and accepted sequence are gone, so Restore is refused; the floor in `trust.json` remains | `TestKeyRotationAndJournalResetBehaviorIsStated` |
 | Whole journal Secret emptied | The floor is gone too: a stale enrollment would be accepted again. Registered residual, break-glass | same test |
@@ -156,10 +183,10 @@ Run from the repository root with a throwaway PostgreSQL 18 container
 | Mutation checks (skip ML-DSA verify; drop the floor check; take the required set from the command) | Each made named tests fail, then was reverted |
 | `go test -p 2 -count=1 -run 'SelfConfig\|Deployment\|Rollout\|NextRoot\|Candidate' ./internal/app/` | PASS |
 | `go test -p 2 -count=1 -run 'Deployment\|Rollout\|SelfConfig' ./internal/service/` with PostgreSQL | PASS (218 s), both engines |
-| `FAST_FEEDBACK_BASE=origin/dunky13/pqc-adr-amendments scripts/ci/fast-feedback.sh --working-tree`, pinned Node 26.12.1, through the shared queue | PASS (exit 0): diff check, Go format, test compile, docs content check. Hosted CI NOT RUN |
-| `scripts/ci/check-commit-signatures.sh` and `check-dco.sh` against the PR base | PASS at the first code commit; re-run on the final head before push (see PR) |
+| `FAST_FEEDBACK_BASE=origin/dunky13/pqc-adr-amendments scripts/ci/fast-feedback.sh`, pinned Node 26.12.1, through the shared queue | PASS (exit 0) at `2ceda38b2`: diff check, Go format, test compile, docs content check. Re-run for the final head in the PR body |
+| `scripts/ci/check-commit-signatures.sh` and `check-dco.sh` against the PR base | PASS at `2ceda38b2`: 7 commits cryptographically verified, 7 signed off. The result for the final head is in the PR body |
 | `go test -p 2 ./internal/lint/...` locally | NOT COMPLETE, three runs: the 10 minute default and a 40 minute queued run timed out on unrelated slow tests under a host load average of 14 to 19, and a third sat on `TestAlertCollectorSnapshotProtocolRejectsDrift` for over 30 minutes and was cancelled. No assertion failed. No further local run was made in the repair round |
-| Hosted CI on `310eb9ffa` (first review head) | `repository invariants (boundary, lint, CI policy)` pass (7 m 16 s), `feedback (go)`, `feedback (tooling)`, `feedback (frontend)`, `ops-floor` amd64 and arm64 pass. `ci-queue-required` fails by design for this PR: "Only the protected default branch can enter this merge queue", because the PR is stacked on #1155 and not on `main`. It is not a code failure. The repaired head's hosted result is in the PR |
+| Hosted CI on `310eb9ffa` (first review head) | `repository invariants (boundary, lint, CI policy)` pass (7 m 16 s), `feedback (go)`, `feedback (tooling)`, `feedback (frontend)`, `ops-floor` amd64 and arm64 pass. `ci-queue-required` fails by design for this PR: "Only the protected default branch can enter this merge queue", because the PR is stacked on #1155 and not on `main`. It is not a code failure. Repaired head `2ceda38b2` (run 41720668066): `repository invariants (boundary, lint, CI policy)` pass, with the step `Lint driver tests` printing `ok github.com/Hikyo-Org/hikyo/internal/lint 105.217s`; `feedback (go)` passed on attempt 2 after attempt 1 failed on a one-minute checkout step timeout (`git fetch`), a CI infrastructure failure; `ci-queue-required` fails for the same stacked-base reason. The head that contains this file is pending: see the PR |
 | `scripts/ci/check-doc-status.mjs` | NOTRUN: needs `docs/site` dependencies (`zod`), not installed in this worktree |
 
 Matrix (`internal/configrollout/authority_test.go`), run for dual and PQ-only
@@ -175,7 +202,13 @@ zero mutations:
   pair, wrong generation, wrong target digest, missing binding, wrong
   enrollment, wrong instance, wrong action, sequence zero, expired, future,
   legacy field beside strict, unknown algorithm: `TestStrictProfileRefusesWithZeroMutation`.
-- Added in the repair round: profile id inside the signed bytes
+- Added in the second repair round: database restore with a rolled-back
+  sequence and with an open target; compatibility `Run` with a wrong-UID or
+  missing journal Secret (removing the compatibility branch makes it fail; the
+  strict start reports it); a retained prepare naming an alias; `ParseSigners`
+  clears what it parsed before a refusal (the clearing helper is tested, the
+  wrapper's call to it is not).
+- Added in the first repair round: profile id inside the signed bytes
   (`TestProfileIDIsInsideTheSignedBytes`, matrix case `wrong profile`);
   compatibility `Run` keeps running with an unverifiable journal
   (`TestCompatibilityRunKeepsRunningWithAJournalThatDoesNotVerify`, fails on the
@@ -235,7 +268,7 @@ Owner for every row: Marc Went, on #1131.
 
 | ID | Item | Residual risk | Claim limited to |
 | --- | --- | --- | --- |
-| G-1 | The journal anchor requires the retained entry to match the enrollment: the ML-DSA key (the Ed25519 key for a v1 entry), the generation and the shape (enrollment id, owner, incarnation, source aliases). Replaced ML-DSA key, changed incarnation or owner, removed alias and an Ed25519 rotation over a v1 entry all fail. Visible refusal at start; remedy is clearing `journal.json`. No re-anchoring mechanism was built because the register decided none | Availability; the stored plan is lost | Plans survive only the transitions in the table above |
+| G-1 | The journal anchor requires the retained entry to match the enrollment: the ML-DSA key (the Ed25519 key for a v1 entry), the generation and the shape (enrollment id, owner, incarnation, source aliases). Replaced ML-DSA key, changed incarnation or owner, removed alias and an Ed25519 rotation over a v1 entry all fail. Visible refusal at start; remedy is clearing `journal.json`, and after a database restore also `command.json` (the sequence counter is a database table and rolls back; a stale higher sequence in the command Secret makes the mailbox refuse every command). **If the target is still open** (receipt not `applied` or `restored`) prepare and restore both conflict even with both keys cleared, and `Run` discards the error, so nothing signals it; manual restore from the receipt (G-2, G-3). No re-anchoring mechanism was built because the register decided none | Availability; the stored plan is lost; an open target blocks the rollout until restored by hand | Plans survive only the transitions in the table above |
 | G-2 | An open job cannot cross a re-enrollment (provider refuses `Send`, `Response`, `RenewCommand`, `DecisionCommand`; runtime cleared; job `partial`/`transport_failed`; boot fatal unless sources are pending, from source reading; recovery refuses unresolved jobs). Once the floor rises the old enrollment is refused. The key-swap behavior existed at base; the floor closing the way back and the fresh-decision claim were new and are corrected | A job stranded across the switch has no in-band way out | Enroll only with no open job |
 | G-3 | Restore through Hikyo is not available across a re-enrollment, and `kubectl rollout restart` or a Helm upgrade that re-applies rendered fields would make the controller's Restore refuse | Manual restore from the receipt | The journal entry stays anchored; the plan is not restorable through Hikyo |
 | G-4 | Enrollment id change: clearing `journal.json` is not enough (the command Secret still holds the old id's command); the per-enrollment sequence restarts at 1; rows for the old id are refused. Fails closed | Availability | Unsupported |
