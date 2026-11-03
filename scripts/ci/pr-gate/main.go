@@ -643,7 +643,31 @@ func (c *controller) readPRMetadata(ctx context.Context, number int) (pull, erro
 	return p, nil
 }
 func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
-	p, err := c.readPRMetadata(ctx, number)
+	// The live branch read does not depend on the PR read, so dev admission, whose
+	// open PRs always target its branch, issues both at once. Anything that turns
+	// out not to need the ref (a closed or retargeted PR) simply ignores it.
+	type liveRef struct {
+		Ref    string `json:"ref"`
+		Object struct {
+			Type string `json:"type"`
+			SHA  string `json:"sha"`
+		} `json:"object"`
+	}
+	var ref liveRef
+	var refErr error
+	refRead := func(ctx context.Context) {
+		refErr = c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.admissionBranch())), &ref)
+	}
+	var p pull
+	var err error
+	prRead := func(ctx context.Context) { p, err = c.readPRMetadata(ctx, number) }
+	var refDone bool
+	if c.checkName == devCheckName {
+		settle(ctx, prRead, refRead)
+		refDone = true
+	} else {
+		prRead(ctx)
+	}
 	if err != nil {
 		return p, err
 	}
@@ -651,15 +675,11 @@ func (c *controller) readPR(ctx context.Context, number int) (pull, error) {
 	// advances. Resolve the authenticated branch ref on every read, including
 	// final publication, instead of treating that PR metadata as the live tip.
 	if p.State == "open" && p.Base.Ref == c.admissionBranch() {
-		var ref struct {
-			Ref    string `json:"ref"`
-			Object struct {
-				Type string `json:"type"`
-				SHA  string `json:"sha"`
-			} `json:"object"`
+		if !refDone {
+			refRead(ctx)
 		}
-		if err := c.api.read(ctx, c.endpoint("git/ref/heads/"+url.PathEscape(c.admissionBranch())), &ref); err != nil {
-			return p, err
+		if refErr != nil {
+			return p, refErr
 		}
 		if ref.Ref != "refs/heads/"+c.admissionBranch() || ref.Object.Type != "commit" || !shaPattern.MatchString(ref.Object.SHA) {
 			return p, errors.New("invalid live default-branch ref")
