@@ -277,6 +277,18 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		if _, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "classic-web", CSRPEM: csrPEM, DNSNames: []string{"a.svc.example.com"}}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("ML-DSA key under the classical profile: %v", err)
 		}
+		// The leaf key and the path are separate dimensions: a classical leaf key
+		// under the ML-DSA issuer is signed with ML-DSA but is not ML-DSA end to end.
+		mixedLeaf, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "classic-web", CSRPEM: classicalCSR, DNSNames: []string{"mixed.svc.example.com"}})
+		if err != nil {
+			t.Fatalf("classical leaf under an ML-DSA issuer: %v", err)
+		}
+		if got := parseLeaf(t, mixedLeaf.Certificate); got.SignatureAlgorithm != x509.MLDSA65 || mixedLeaf.Certificate.KeyAlgorithm != "ecdsa-p256" {
+			t.Fatalf("mixed leaf: key %s signature %v", mixedLeaf.Certificate.KeyAlgorithm, got.SignatureAlgorithm)
+		}
+		if err := pki.CheckPQPath(chainOf(t, mixedLeaf.Certificate, pqRoot.Issuer.CertificatePEM)); err == nil {
+			t.Fatal("a classical leaf key under an ML-DSA issuer was labelled a PQ path")
+		}
 		// Tampered proof of possession and a profile-violating name.
 		tamperedCSR := []byte(csrPEM)
 		tamperedCSR[len(tamperedCSR)-40] ^= 0x01

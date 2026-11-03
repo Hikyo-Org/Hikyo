@@ -7,10 +7,18 @@ import (
 	"crypto/elliptic"
 	"crypto/mldsa"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,17 +33,20 @@ type mldsaChain struct {
 	leaf          *x509.Certificate
 }
 
-func newMLDSAChain(t testing.TB) mldsaChain {
+func newMLDSAChain(t testing.TB) mldsaChain { return newMLDSAChainAt(t, epoch) }
+
+// newMLDSAChainAt builds the chain with every certificate dated from now.
+func newMLDSAChainAt(t testing.TB, now time.Time) mldsaChain {
 	t.Helper()
 	rootKey, err := GenerateKey(MLDSA65)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDER, err := CreateRoot(rootKey, Subject{CommonName: "Hikyo ML-DSA Test Root"}, epoch, 365*24*time.Hour)
+	rootDER, err := CreateRoot(rootKey, Subject{CommonName: "Hikyo ML-DSA Test Root"}, now, 365*24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootCert, err := VerifyCA(rootDER, rootKey.Public(), nil, epoch)
+	rootCert, err := VerifyCA(rootDER, rootKey.Public(), nil, now)
 	if err != nil {
 		t.Fatalf("an ML-DSA-65 root is not a usable CA: %v", err)
 	}
@@ -53,11 +64,11 @@ func newMLDSAChain(t testing.TB) mldsaChain {
 	if err != nil {
 		t.Fatalf("ML-DSA CSR does not parse: %v", err)
 	}
-	issuerDER, err := SignIntermediate(root, csr.PublicKey, Subject{CommonName: "Hikyo ML-DSA Issuing CA"}, epoch, 90*24*time.Hour)
+	issuerDER, err := SignIntermediate(root, csr.PublicKey, Subject{CommonName: "Hikyo ML-DSA Issuing CA"}, now, 90*24*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	issuerCert, err := VerifyCA(issuerDER, issuerKey.Public(), []*x509.Certificate{rootCert}, epoch)
+	issuerCert, err := VerifyCA(issuerDER, issuerKey.Public(), []*x509.Certificate{rootCert}, now)
 	if err != nil {
 		t.Fatalf("ML-DSA intermediate does not install: %v", err)
 	}
@@ -79,7 +90,7 @@ func newMLDSAChain(t testing.TB) mldsaChain {
 		t.Fatal(err)
 	}
 	serial, _ := NewSerial()
-	notBefore, notAfter, err := LeafWindow(issuerCert, epoch, resolved.TTL)
+	notBefore, notAfter, err := LeafWindow(issuerCert, now, resolved.TTL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,4 +485,109 @@ func TestMLDSAPKCS8PEMIssuerImportRoundTrip(t *testing.T) {
 	if _, err := ParsePrivateKey(bytes.ReplaceAll(pem, []byte("PRIVATE KEY"), []byte("EC PRIVATE KEY"))); err == nil {
 		t.Fatal("an ML-DSA key parsed as SEC1")
 	}
+}
+
+// TestMLDSARelyingPartyWithoutMLDSARefuses runs a real TLS client built
+// against the Go FIPS 140-3 module v1.0.0, which has no ML-DSA, so it is a
+// maintained relying party that predates post-quantum signatures. It must
+// refuse the ML-DSA chain and send no application byte; the same program built
+// normally is the positive control.
+func TestMLDSARelyingPartyWithoutMLDSARefuses(t *testing.T) {
+	goTool, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go tool on PATH")
+	}
+	goroot, err := exec.CommandContext(t.Context(), goTool, "env", "GOROOT").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshots, _ := filepath.Glob(filepath.Join(strings.TrimSpace(string(goroot)), "lib", "fips140", "v1.0.0*.zip")); len(snapshots) == 0 {
+		t.Skip("this toolchain does not ship the FIPS 140-3 v1.0.0 module snapshot")
+	}
+	dir := t.TempDir()
+	build := func(name string, fips bool) string {
+		t.Helper()
+		out := filepath.Join(dir, name)
+		cmd := exec.CommandContext(t.Context(), goTool, "build", "-o", out, "./testdata/fipsclient")
+		cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod")
+		if fips {
+			cmd.Env = append(cmd.Env, "GOFIPS140=v1.0.0")
+		}
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("build %s: %v\n%s", name, err, output)
+		}
+		return out
+	}
+	fipsClient, plainClient := build("fips-client", true), build("plain-client", false)
+
+	rootFile := filepath.Join(dir, "root.pem")
+	serve := func(pair tls.Certificate) (addr string, appBytes func() string, stop func()) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var mu sync.Mutex
+		var got string
+		go func() {
+			for {
+				raw, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer raw.Close()
+					_ = raw.SetDeadline(time.Now().Add(10 * time.Second))
+					conn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS13})
+					if conn.Handshake() != nil {
+						return
+					}
+					buf := make([]byte, 4)
+					n, _ := io.ReadFull(conn, buf)
+					mu.Lock()
+					got += string(buf[:n])
+					mu.Unlock()
+					_, _ = conn.Write([]byte("pong"))
+				}()
+			}
+		}()
+		return listener.Addr().String(), func() string { mu.Lock(); defer mu.Unlock(); return got }, func() { _ = listener.Close() }
+	}
+	// Dated from the real clock: the client binary uses the system time.
+	live := newMLDSAChainAt(t, time.Now().UTC())
+	realPair, err := tls.X509KeyPair([]byte(CertificatesPEM([][]byte{live.leaf.Raw, live.issuing.Certificate.Raw})), mustPrivateKeyPEM(t, live.leafKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootFile, []byte(CertificatePEM(live.root.Certificate.Raw)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addr, appBytes, stop := serve(realPair)
+	defer stop()
+	run := func(binary string) (string, error) {
+		out, err := exec.CommandContext(t.Context(), binary, addr, "web.svc.example.com", rootFile).CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run(plainClient); err != nil || !strings.Contains(out, "ACCEPTED: pong") {
+		t.Fatalf("control: a client with ML-DSA must accept the chain: %v %s", err, out)
+	}
+	if appBytes() != "ping" {
+		t.Fatalf("control: server saw %q", appBytes())
+	}
+	out, err := run(fipsClient)
+	if err == nil || !strings.Contains(out, "REFUSED") {
+		t.Fatalf("a relying party without ML-DSA accepted the chain: %v %s", err, out)
+	}
+	if appBytes() != "ping" { // unchanged since the control: nothing new arrived
+		t.Fatalf("the refusing client leaked application bytes: server saw %q", appBytes())
+	}
+	t.Logf("relying party without ML-DSA: %s", strings.TrimSpace(out))
+}
+
+func mustPrivateKeyPEM(t testing.TB, key crypto.Signer) []byte {
+	t.Helper()
+	pkcs8, err := MarshalPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return PrivateKeyPEM(pkcs8)
 }
