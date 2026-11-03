@@ -38,6 +38,8 @@ type PQFixture struct {
 	ManifestSet             []byte
 	Version                 string
 	Commit                  string
+	// SignKeyless is the test-local delegated CI identity (nil on the legacy track).
+	SignKeyless func(payload []byte, commit, tag string) []byte
 }
 
 func mldsaPEM(t testing.TB, key *mldsa.PrivateKey) []byte {
@@ -79,8 +81,10 @@ func MLDSAMember(t testing.TB, key *mldsa.PrivateKey, kind string) PQMember {
 // pin and valid standard evidence for it.
 func NewPQStableWorkflow(t testing.TB) *PQFixture {
 	t.Helper()
-	f, material, stable, _ := StableWorkflow(t)
-	return attachPQ(t, f, material, stable)
+	f, material, stable, sign := StableWorkflow(t)
+	fx := attachPQ(t, f, material, stable)
+	fx.SignKeyless = sign
+	return fx
 }
 
 // NewPQLegacy returns the recovery-signed track (metadata and catalog signed by
@@ -221,4 +225,45 @@ func (fx *PQFixture) Resign(t testing.TB) {
 func (fx *PQFixture) ArtifactSet(t testing.TB, name string, payload []byte) []byte {
 	t.Helper()
 	return fx.Set(t, fx.ReleaseMembers(t, releasetrust.PQKindArtifact), fx.ReleaseMembers(t, releasetrust.PQKindArtifact), fx.ReleaseBinding(releasetrust.PQKindArtifact, name, 1), payload)
+}
+
+// Reissue re-signs metadata and catalog (classically by the delegated test
+// identity, and by the PQ release member) at a higher sequence, as a routine
+// subsequent update does.
+func (fx *PQFixture) Reissue(t testing.TB, sequence int64) {
+	t.Helper()
+	fx.Metadata.Sequence, fx.Catalog.Sequence = sequence, sequence
+	m := fx.Material
+	m.Metadata = JSON(t, fx.Metadata)
+	m.MetadataSignature = fx.SignKeyless(m.Metadata, fx.Commit, "v"+fx.Version)
+	fx.Catalog.StableMetadataSHA256 = releaseidentity.Hash(m.Metadata)
+	m.Catalog = JSON(t, fx.Catalog)
+	m.CatalogSignature = fx.SignKeyless(m.Catalog, fx.Commit, "v"+fx.Version)
+	fx.Material = m
+	fx.Resign(t)
+}
+
+// ReplaceRecovery models an operator-installed root replacement after the
+// ML-DSA recovery key was lost or compromised: a new key, a higher generation,
+// a new pin and a keyset re-signed at the next sequence by the new recovery set.
+// The classical recovery key and the release key are unchanged.
+func (fx *PQFixture) ReplaceRecovery(t testing.TB) {
+	t.Helper()
+	var root releasetrust.PQRoot
+	if err := json.Unmarshal(fx.RootV2, &root); err != nil {
+		t.Fatal(err)
+	}
+	fx.RecoveryKey = newMLDSA(t)
+	pemKey := mldsaPEM(t, fx.RecoveryKey)
+	fx.KeyFiles["recovery-mldsa-2.pub"] = pemKey
+	root.PQ.Generation++
+	root.PQ.Recovery[1] = releasetrust.PQRootKey{Algorithm: releasetrust.AlgorithmMLDSA65, ID: "recovery-mldsa-2", PublicKey: "recovery-mldsa-2.pub", SHA256: string(releaseidentity.Hash(pemKey))}
+	fx.RootV2 = JSON(t, root)
+	pin, err := releasetrust.NewPQPin(fx.RootV2, fx.KeyFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx.Pin = pin
+	fx.Keyset.Sequence++
+	fx.Resign(t)
 }
