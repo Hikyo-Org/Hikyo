@@ -15,7 +15,7 @@ validate; keep them outside Git and share local links when needed.
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
 trusted admission gates (`scripts/ci/pr-gate/queue_dco.go`, running `scripts/ci/check-dco.sh`) refuse
-a head when any commit in the range is missing one. They exempt only Dependabot's commits, on PRs
+a head when any non-merge commit in the range is missing one. Merge commits are not checked. They exempt only Dependabot's commits, on PRs
 it opened and on canonical `release/*` or `main` promotion heads that carry them.
 
 - Add both the signature and sign-off when you commit: `git commit -S -s`.
@@ -25,7 +25,7 @@ it opened and on canonical `release/*` or `main` promotion heads that carry them
   Signed-off-by: Your Name <your.email@example.com>
   ```
 
-- Every commit in the PR is checked, not just the tip. If you amend, rebase, or
+- Every non-merge commit in the PR is checked, not just the tip. If you amend, rebase, or
   add commits, each one still needs its own sign-off (`git rebase --signoff
   <base>` re-applies it across a range).
 - Sign off as you go. A missing sign-off on an already-pushed commit can only be
