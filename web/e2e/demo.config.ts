@@ -32,7 +32,8 @@ export default defineConfig({
   }, {
     // Replay needs an analytics-enabled build, whatever the main artifact was given.
     // The placeholder token is never sent: replay.spec.ts answers every PostHog request.
-    command: 'vite build --mode demo --outDir demo-dist-replay && node ../docs/site/scripts/test-csp.mjs --demo demo-dist-replay && vite preview --mode demo --outDir demo-dist-replay --port 5197 --strictPort',
+    // The explicit host matters: on Linux `localhost` can bind IPv6 only, leaving `url` unreachable.
+    command: 'vite build --mode demo --outDir demo-dist-replay && node ../docs/site/scripts/test-csp.mjs --demo demo-dist-replay && vite preview --mode demo --outDir demo-dist-replay --host 127.0.0.1 --port 5197 --strictPort',
     cwd: process.cwd(),
     env: { PUBLIC_POSTHOG_HOST: 'https://eu.i.posthog.com', PUBLIC_POSTHOG_PROJECT_TOKEN: 'phc_demo_replay_test_placeholder' },
     url: 'http://127.0.0.1:5197/demo/',
