@@ -113,11 +113,17 @@ change validate unchanged.
 * Automatic upgrade custody (`operator.age`) still generates an X25519 identity
   at enrollment, and `sudo hikyo upgrade` and the opted-in container upgrade
   export to that identity and retain the full-data archive. With a hybrid
-  `HIKYO_BACKUP_RECIPIENTS` they therefore **refuse before any backup** (and
-  before the service is stopped), rather than leave a classical archive of data
-  you asked to protect. Use the manual upgrade route with a hybrid recipient and
-  a separately held hybrid identity (see the manual upgrade runbook). An install
-  with X25519 recipients upgrades exactly as before.
+  `HIKYO_BACKUP_RECIPIENTS` (the effective managed value, not a stale
+  environment line) they therefore **refuse before any backup** and before the
+  service is stopped, rather than leave a classical archive of data you asked to
+  protect. Use the manual upgrade route with a hybrid recipient and a separately
+  held hybrid identity (see the manual upgrade runbook). An install with X25519
+  recipients upgrades exactly as before. The refusal changes nothing, but if an
+  earlier run already froze the source for backup, every start refuses until the
+  managed policy is X25519 again or you take the manual route. If the service
+  cannot run to change the policy, stop every replica and use
+  `hikyo admin config recover --revision N` with a retained revision whose
+  policy is X25519 (see [Managed configuration](/docs/managed-configuration/)).
 * The built-in secret scanner recognizes neither X25519 (`AGE-SECRET-KEY-1...`)
   nor hybrid (`AGE-SECRET-KEY-PQ-1...`) age identities: its age rule is not in
   the compiled ruleset. Keep identities out of managed values either way.
