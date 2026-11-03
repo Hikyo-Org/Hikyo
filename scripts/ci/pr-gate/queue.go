@@ -492,59 +492,81 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		return q.queueMovement(ctx, number)
 	}
 	if result.Conclusion == "success" {
-		decision, err := q.verify(ctx, p.Number, p.Head.SHA)
-		if err != nil {
-			return err
+		// The final authority checks are independent reads of one phase, so they
+		// run together (the setup-inclusive budget has no room for ten serial
+		// subprocesses). Each is a fresh read, none feeds another, and the
+		// verdicts below are taken in the order the serial code reached them: a
+		// failed or moved earlier check still returns before a later result is
+		// looked at.
+		var (
+			decision  policyDecision
+			verifyErr error
+			vouched   = true
+			vouchErr  error
+			code      int
+			dcoErr    error
+			r         *run
+			feedErr   error
+		)
+		settle(ctx,
+			func(ctx context.Context) { decision, verifyErr = q.verify(ctx, p.Number, p.Head.SHA) },
+			func(ctx context.Context) {
+				if p.Head.Repo.ID != q.repo.ID {
+					vouched, vouchErr = q.currentVouch(ctx, p)
+				}
+			},
+			func(ctx context.Context) { code, dcoErr = canonicalDCOResult(ctx, final, dcoVerifier) },
+			func(ctx context.Context) { r, feedErr = q.feedback(ctx, final) },
+		)
+		if verifyErr != nil {
+			return verifyErr
 		}
 		if decision.Code != 0 {
 			return q.queueMovement(ctx, number)
 		}
-		if p.Head.Repo.ID != q.repo.ID {
-			vouched, err := q.currentVouch(ctx, p)
-			if err != nil {
-				return err
-			}
-			if !vouched {
-				return q.queueMovement(ctx, number)
-			}
+		if vouchErr != nil {
+			return vouchErr
 		}
-		code, err := canonicalDCOResult(ctx, final, dcoVerifier)
-		if err != nil {
-			return err
+		if !vouched {
+			return q.queueMovement(ctx, number)
+		}
+		if dcoErr != nil {
+			return dcoErr
 		}
 		if code != 0 {
 			result = refused("Canonical DCO sign-off was refused during final admission verification.")
 		}
-		r, err := q.feedback(ctx, final)
-		if err != nil {
-			return err
+		if feedErr != nil {
+			return feedErr
 		}
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
 			return q.queueMovement(ctx, number)
 		}
-	}
-	if result.Conclusion == "success" {
-		roles, err := q.roles(ctx, p.Head.SHA)
-		if err != nil {
-			return err
-		}
-		if roles.Group && len(roles.Pulls) > 0 {
-			return q.roleCollision(ctx, roles)
-		}
-		present := false
-		for _, current := range roles.Pulls {
-			if current.Number == p.Number {
-				if !sameRolePull(current, final) {
-					return &staleHeadWork{expected: q.expectedHead}
-				}
-				present = true
+		// The role inventory is read last, after the checks above, so it is the
+		// newest observation before publication.
+		if result.Conclusion == "success" {
+			roles, err := q.roles(ctx, p.Head.SHA)
+			if err != nil {
+				return err
 			}
-		}
-		if !present {
-			return &staleHeadWork{expected: q.expectedHead}
-		}
-		if len(roles.Pulls) != 1 {
-			result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
+			if roles.Group && len(roles.Pulls) > 0 {
+				return q.roleCollision(ctx, roles)
+			}
+			present := false
+			for _, current := range roles.Pulls {
+				if current.Number == p.Number {
+					if !sameRolePull(current, final) {
+						return &staleHeadWork{expected: q.expectedHead}
+					}
+					present = true
+				}
+			}
+			if !present {
+				return &staleHeadWork{expected: q.expectedHead}
+			}
+			if len(roles.Pulls) != 1 {
+				result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
+			}
 		}
 	}
 	if trace != nil && selectedRun != nil {
