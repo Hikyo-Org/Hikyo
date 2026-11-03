@@ -13,7 +13,7 @@ jq -se --argjson bootstrap "$bootstrap" '
   def check:
     type == "object" and .context == "ci-dev-required" and
     (keys - ["context", "integration_id"] == []) and
-    (.integration_id == null or (.integration_id | type == "number" and . >= 0 and floor == .));
+    .integration_id == 15368;
   if length != 1 or (.[0] | type) != "object" then error("expected one policy object") else .[0] end |
   if (.rules | type) != "array" or any(.rules[]; type != "object" or (.type | type) != "string")
   then error("invalid dev rules") else . end |

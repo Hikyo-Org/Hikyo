@@ -136,13 +136,14 @@ func validateDevRules(rules []rule) error {
 				Strict *bool `json:"strict_required_status_checks_policy"`
 				Create *bool `json:"do_not_enforce_on_create"`
 				Checks []struct {
-					Context string `json:"context"`
+					Context     string `json:"context"`
+					Integration int64  `json:"integration_id"`
 				} `json:"required_status_checks"`
 			}
 			if err := decode(r.Parameters, &p); err != nil {
 				return err
 			}
-			if p.Strict == nil || *p.Strict || p.Create == nil || *p.Create || len(p.Checks) != 1 || p.Checks[0].Context != devCheckName {
+			if p.Strict == nil || *p.Strict || p.Create == nil || *p.Create || len(p.Checks) != 1 || p.Checks[0].Context != devCheckName || p.Checks[0].Integration != actionsAppID {
 				return errors.New("dev requires its distinct non-queue fast admission check")
 			}
 		case "pull_request":

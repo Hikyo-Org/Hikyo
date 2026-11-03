@@ -131,7 +131,7 @@ promotion() {
 	jq '.user = {id:320493937,login:"hikyo-nightly-release[bot]"} | .head.ref = "release/nightly-20261103-abcdef0" | .base.ref = "main"' "$work/pr.json" >"$work/pr-new.json"
 	mv "$work/pr-new.json" "$work/pr.json"
 	printf '[{"type":"creation"},{"type":"update"}]\n' >"$work/promotion-rules.json"
-	printf '[{"type":"pull_request"},{"type":"non_fast_forward"},{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci-dev-required"}]}}]\n' >"$work/dev-rules.json"
+	printf '[{"type":"pull_request"},{"type":"non_fast_forward"},{"type":"deletion"},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci-dev-required","integration_id":15368}]}}]\n' >"$work/dev-rules.json"
 	jq -n --arg head "$head" '[{base:{ref:"dev",repo:{full_name:"o/r"}},merged_at:"2026-11-03T00:00:00Z",merge_commit_sha:$head}]' >"$work/head-pulls.json"
 }
 
@@ -240,7 +240,9 @@ for rules in \
 	'[.[] | select(.type != "non_fast_forward")]' \
 	'[.[] | select(.type != "deletion")]' \
 	'[.[] | select(.type != "required_status_checks")]' \
-	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0].context) = "ci-queue-required"'; do
+	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0].context) = "ci-queue-required"' \
+	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0].integration_id) = 1' \
+	'(.[] | select(.type == "required_status_checks").parameters.required_status_checks[0]) |= del(.integration_id)'; do
 	fixture 1 "$promotion_files" "$done_run" success
 	promotion
 	jq "$rules" "$work/dev-rules.json" >"$work/dev-rules-new.json"

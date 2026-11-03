@@ -159,9 +159,10 @@ promotion_already_reviewed() {
 	# shellcheck disable=SC2016 # jq variables, not shell ones.
 	dev_protected=$(gh_read "repos/$GH_REPO/rules/branches/dev" --jq '
 		[.[].type] as $types |
-		[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] as $checks |
+		[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]] as $checks |
 		($types | index("pull_request") != null) and ($types | index("non_fast_forward") != null) and
-		($types | index("deletion") != null) and ($checks | index("ci-dev-required") != null)') ||
+		($types | index("deletion") != null) and
+		any($checks[]; .context == "ci-dev-required" and .integration_id == 15368)') ||
 		fail 'cannot verify dev protection' api-failure
 	[ "$dev_protected" = true ] || return 1
 	# A green tip merged recently. commits/{sha}/pulls can omit merged PRs for commits

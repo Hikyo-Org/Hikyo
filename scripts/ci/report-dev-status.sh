@@ -26,6 +26,9 @@ success)
 	# A rerun of an older green commit says nothing about the newer red one.
 	status=$($GH_BIN api "repos/$GH_REPO/compare/$red...$HEAD_SHA" --jq '.status')
 	case "$status" in ahead | identical) ;; *) exit 0 ;; esac
+	# A replaced pending report can leave a rerun of an older green commit to run here.
+	tip=$($GH_BIN api "repos/$GH_REPO/git/ref/heads/dev" --jq '.object.sha')
+	[ "$tip" = "$HEAD_SHA" ] || exit 0
 	$GH_BIN api -X POST "repos/$GH_REPO/issues/$number/comments" -f "body=Dev is green again at $HEAD_SHA: $RUN_URL" >/dev/null
 	$GH_BIN api -X PATCH "repos/$GH_REPO/issues/$number" -f state=closed >/dev/null
 	exit 0

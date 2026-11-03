@@ -99,8 +99,11 @@ PR.
    workflow could read an organization copy, and anyone with write access could then
    author promotions as the app. These are human steps in GitHub: generate a new private
    key in the App's settings, replace `NIGHTLY_RELEASE_APP_PRIVATE_KEY` in the
-   environment, delete the old key from the App, then delete the organization-level
-   secret of that name (organization Settings, Secrets and variables, Actions).
+   environment, and keep the old key until a mint with the new one succeeds: after step 3,
+   run `gh workflow run nightly-promote.yml --repo Hikyo-Org/Hikyo --ref main`, which
+   mints a token and exits while `dev` does not exist. Then delete the old key from the
+   App and the organization-level secret of that name (organization Settings, Secrets
+   and variables, Actions).
 3. Give the nightly release App the pull request permission, before the next
    22:17 UTC run. The promotion mints its token first, so until this is done the
    scheduled run fails, even while `dev` does not exist. This is a human step in

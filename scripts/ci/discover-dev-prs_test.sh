@@ -45,5 +45,5 @@ jq -n '[[],[]]' >"$work/pulls.json"
 if run >/dev/null 2>&1; then printf 'dev discovery accepted nonterminal short page\n' >&2; exit 1; fi
 reset
 jq -n --arg head "$head" '[[range(1; 101) | {number:., state:"open", base:{ref:"dev",repo:{full_name:"owner/repo"}}, head:{sha:$head}}]]' >"$work/pulls.json"
-run >/dev/null || { printf 'dev discovery refused a final page of exactly 100\n' >&2; exit 1; }
+run | jq -e --arg head "$head" '. == [{pr:1,head:$head}]' >/dev/null || { printf 'dev discovery mishandled a final page of exactly 100\n' >&2; exit 1; }
 printf 'dev discovery fixtures: exact current heads, superseded-head cleanup and malformed pagination refusals passed\n'

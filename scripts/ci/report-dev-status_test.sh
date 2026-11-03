@@ -37,6 +37,7 @@ case "$url" in
 */jobs\?*) json='{"jobs":[{"name":"validation / race shard (8)","conclusion":"failure"},{"name":"validation / `lint` @everyone","conclusion":"timed_out"},{"name":"validation / docs","conclusion":"success"}]}' ;;
 */workflows/ci-dev.yml/runs*) json=$GREEN_RUNS ;;
 */compare/*) json=$COMPARE ;;
+*/git/ref/heads/dev) json=$DEV_REF ;;
 *) exit 8 ;;
 esac
 if [ -n "$filter" ]; then
@@ -58,6 +59,7 @@ run() {
 }
 merge() { printf '{"commit":{"message":"%s","committer":{"name":"%s"}},"parents":[{},{}]}' "$1" "$2"; }
 
+export DEV_REF="{\"object\":{\"sha\":\"$head\"}}"
 export ISSUES='[]' GREEN_RUNS="{\"workflow_runs\":[{\"head_sha\":\"$green\"}]}"
 COMPARE="{\"status\":\"ahead\",\"total_commits\":3,\"commits\":[$(merge 'Merge pull request #41 from x/y\n\nMerge pull request #55 from a title' GitHub),$(merge 'Merge pull request #99 from forged' Mallory),{\"commit\":{\"message\":\"Merge pull request #77 squashed\",\"committer\":{\"name\":\"GitHub\"}},\"parents\":[{}]}]}"
 export COMPARE
@@ -78,6 +80,10 @@ run failure
 grep -F 'PATCH repos/o/r/issues/12 ' "$work/calls" >/dev/null || fail 'second red run did not update the issue'
 grep -F 'POST repos/o/r/issues ' "$work/calls" >/dev/null && fail 'duplicate issue opened'
 
+export DEV_REF="{\"object\":{\"sha\":\"$green\"}}"
+run success
+[ ! -s "$work/calls" ] || fail 'green rerun behind the dev tip closed the issue'
+export DEV_REF="{\"object\":{\"sha\":\"$head\"}}"
 run success
 grep -F 'PATCH repos/o/r/issues/12  state=closed' "$work/calls" >/dev/null || fail 'green run did not close the issue'
 
