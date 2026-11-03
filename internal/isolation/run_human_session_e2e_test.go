@@ -108,7 +108,7 @@ func runHumanSessionDelivery(t *testing.T, engine store.Engine) {
 	if code != cli.ExitOK {
 		t.Fatalf("config-only: exit=%d stderr=%s", code, stderr)
 	}
-	if !slices.Contains(injected, "DATABASE_URL=postgres://dev") || slices.Contains(injected, "DATABASE_PASSWORD=dev-secret") {
+	if !slices.Contains(injected, "DATABASE_URL=postgres://dev") || slices.ContainsFunc(injected, func(kv string) bool { return strings.HasPrefix(kv, "DATABASE_PASSWORD=") }) {
 		t.Fatal("config-only child environment lacks DATABASE_URL or holds DATABASE_PASSWORD")
 	}
 	if prompt := terminal.String(); !strings.Contains(prompt, "2 value(s)") || strings.Contains(prompt, "DATABASE_PASSWORD") {
