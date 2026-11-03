@@ -1,4 +1,4 @@
-name: apple-release-recovery
+name: release-apple-recovery
 
 on:
   schedule:

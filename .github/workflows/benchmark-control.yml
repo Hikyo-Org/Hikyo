@@ -1,4 +1,4 @@
-name: benchmark-control
+name: perf-control
 
 # Comment writes and spending decisions execute main tooling only. PR code
 # runs in pr-benchmark.yml's original read-only pull_request context.
@@ -8,7 +8,7 @@ on:
   issue_comment:
     types: [edited]
   workflow_run:
-    workflows: [pr-benchmark]
+    workflows: [perf-pr]
     types: [completed]
 
 permissions:

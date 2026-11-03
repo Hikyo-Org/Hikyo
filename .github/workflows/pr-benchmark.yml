@@ -1,4 +1,4 @@
-name: pr-benchmark
+name: perf-pr
 run-name: 'pr-benchmark #${{ github.event.pull_request.number }}'
 
 on:

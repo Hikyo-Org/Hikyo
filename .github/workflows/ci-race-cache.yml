@@ -5,7 +5,7 @@
 # tests then compile only their generated test mains. The key intentionally
 # matches reliability.yml and refreshes when go.mod or go.sum change, the same
 # staleness model as go-test-v2. No PR can publish here.
-name: ci-race-cache
+name: cache-seed-race
 
 on:
   workflow_dispatch:

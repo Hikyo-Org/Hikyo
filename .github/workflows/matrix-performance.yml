@@ -1,4 +1,4 @@
-name: matrix-performance
+name: perf-matrix
 
 # Browser rendering is measured on hosted Chromium, separately from the paid
 # CodSpeed pool. Checkout follows the original event, never caller input.

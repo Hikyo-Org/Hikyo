@@ -88,6 +88,9 @@ func materializedHeads(live *queueData, branch string) ([]string, error) {
 }
 
 func (q *queueController) roles(ctx context.Context, head string) (headRoles, error) {
+	if q.checkName == devCheckName {
+		return q.devRoles(ctx, head)
+	}
 	var roles headRoles
 	var pulls []pull
 	var live *queueData
@@ -110,7 +113,8 @@ func (q *queueController) roles(ctx context.Context, head string) (headRoles, er
 	roles.AllPulls = make(map[int]pull, len(pulls))
 	for _, p := range pulls {
 		roles.AllPulls[p.Number] = p
-		if p.Head.SHA == head {
+		// A dev PR holds no main queue role, so it cannot block this head's retirement.
+		if p.Head.SHA == head && p.Base.Ref != "dev" {
 			roles.Pulls = append(roles.Pulls, p)
 		}
 	}
@@ -143,11 +147,7 @@ func (q *queueController) roleCollision(ctx context.Context, roles headRoles) er
 
 func (q *queueController) runHead(ctx context.Context, name string, e event, kind string) error {
 	q.repo = repository{}
-	initialize := q.init
-	if kind == "admission" {
-		initialize = q.initRepository
-	}
-	if err := initialize(ctx); err != nil {
+	if err := q.initRepository(ctx); err != nil {
 		batch, parseErr := parseHeadBatch(e.Inputs.Work)
 		if name != "workflow_dispatch" || parseErr != nil {
 			return err
