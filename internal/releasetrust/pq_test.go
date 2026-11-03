@@ -232,6 +232,9 @@ func TestPQReleaseAndArtifactBindings(t *testing.T) {
 		{"artifact bytes substituted", releasetrust.ErrPQScope, func(t *testing.T, fx *testfixture.PQFixture, s releasetrust.Snapshot, k releasetrust.VerifiedPQKeyset, r releasetrust.VerifiedRelease, f releasetrust.PQFloor) error {
 			return releasetrust.VerifyPQArtifact(fx.Pin, k, r, name, strings.NewReader("substituted"), fx.ArtifactSet(t, name, payload))
 		}},
+		{"truncated download", releasetrust.ErrPQScope, func(t *testing.T, fx *testfixture.PQFixture, s releasetrust.Snapshot, k releasetrust.VerifiedPQKeyset, r releasetrust.VerifiedRelease, f releasetrust.PQFloor) error {
+			return releasetrust.VerifyPQArtifact(fx.Pin, k, r, name, bytes.NewReader(payload[:len(payload)-1]), fx.ArtifactSet(t, name, payload))
+		}},
 		{"artifact set for another name", releasetrust.ErrPQSignature, func(t *testing.T, fx *testfixture.PQFixture, s releasetrust.Snapshot, k releasetrust.VerifiedPQKeyset, r releasetrust.VerifiedRelease, f releasetrust.PQFloor) error {
 			return releasetrust.VerifyPQArtifact(fx.Pin, k, r, name, bytes.NewReader(payload), fx.ArtifactSet(t, "hikyo_linux_amd64.tar.gz", payload))
 		}},
