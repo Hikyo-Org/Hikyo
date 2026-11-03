@@ -64,7 +64,7 @@ chart_digest=$digest
 helm pull "oci://$chart@$chart_digest" --destination "$work/readback" >"$work/readback.log" 2>&1
 digest_from_log "$work/readback.log"
 [ "$digest" = "$chart_digest" ] || fail 'immutable chart readback digest mismatch'
-python3 -B "$script_dir/nightly_chart.py" compare "$package" "$work/readback/hikyo-$VERSION.tgz"
+python3 -B "$script_dir/nightly_chart.py" compare "$package" "$work/readback/hikyo@sha256-${chart_digest#sha256:}.tgz"
 if [ "$fresh" = true ]; then
 	cosign sign --yes --use-signing-config=false --rekor-url=https://rekor.sigstore.dev "$chart@$chart_digest"
 	verify_signature "$chart@$chart_digest"

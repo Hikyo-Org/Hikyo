@@ -43,7 +43,8 @@ route.
 
 Generate the root key once and create both required server Secrets first.
 Prepare a private `database-dsn` file containing the PostgreSQL DSN, with
-`sslmode=verify-full`; its value must not appear in argv or chart values:
+`sslmode=verify-full` and no trailing newline; its value must not appear in argv
+or chart values:
 
 ```bash
 umask 077

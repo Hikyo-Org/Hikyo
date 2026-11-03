@@ -60,9 +60,10 @@ Confirm the intended context and that this is a new release:
 
 ```sh
 set -eu
-kubectl config current-context
-helm list --all-namespaces --all
-kubectl get storageclass
+HIKYO_KUBE_CONTEXT=$(kubectl config current-context)
+printf '%s\n' "$HIKYO_KUBE_CONTEXT"
+helm list --kube-context "$HIKYO_KUBE_CONTEXT" --all-namespaces --all
+kubectl --context "$HIKYO_KUBE_CONTEXT" get storageclass
 ```
 
 Review that output before continuing. Namespace `hikyo`, release `hikyo` and the
@@ -103,8 +104,10 @@ cosign verify \
   "ghcr.io/hikyo-org/hikyo@$HIKYO_IMAGE_DIGEST"
 helm pull "oci://ghcr.io/hikyo-org/charts/hikyo@$HIKYO_CHART_DIGEST" \
   --destination "$HIKYO_RELEASE_DIR"
-helm show chart "$HIKYO_RELEASE_DIR/hikyo-$HIKYO_VERSION.tgz"
-helm show values "$HIKYO_RELEASE_DIR/hikyo-$HIKYO_VERSION.tgz" \
+# Helm saves a digest pull under the digest.
+HIKYO_CHART_ARCHIVE="$HIKYO_RELEASE_DIR/hikyo@sha256-${HIKYO_CHART_DIGEST#sha256:}.tgz"
+helm show chart "$HIKYO_CHART_ARCHIVE"
+helm show values "$HIKYO_CHART_ARCHIVE" \
   > "$HIKYO_RELEASE_DIR/chart-values.yaml"
 grep -Fx '  repository: ghcr.io/hikyo-org/hikyo' "$HIKYO_RELEASE_DIR/chart-values.yaml"
 grep -Fx "  digest: $HIKYO_IMAGE_DIGEST" "$HIKYO_RELEASE_DIR/chart-values.yaml"
@@ -123,7 +126,8 @@ chart rendering alone does not establish enforcement.
 
 Use a private directory on the operator workstation, outside version control.
 Prepare a `production-dsn` file through your protected secret workflow, with no
-trailing comments or shell syntax. It contains the complete PostgreSQL DSN using
+trailing comments, shell syntax or newline: the server refuses a DSN that ends in
+a newline, and `echo` adds one. It contains the complete PostgreSQL DSN using
 `sslmode=verify-full`. Place the certificate and private key
 in `tls.crt` and `tls.key`. Do not put DSNs or root keys in chart values, argv,
 shell history, logs, Git, or this runbook's evidence record.
@@ -145,12 +149,12 @@ test ! -e "$HIKYO_INPUT_DIR/root-key"
 openssl rand -hex 32 > "$HIKYO_INPUT_DIR/root-key"
 chmod 0600 "$HIKYO_INPUT_DIR/"*
 
-kubectl create namespace hikyo
-kubectl --namespace hikyo create secret generic hikyo-root-key \
+kubectl --context "$HIKYO_KUBE_CONTEXT" create namespace hikyo
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo create secret generic hikyo-root-key \
   --from-file=root-key="$HIKYO_INPUT_DIR/root-key"
-kubectl --namespace hikyo create secret generic hikyo-database \
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo create secret generic hikyo-database \
   --from-file=HIKYO_DB="$HIKYO_INPUT_DIR/production-dsn"
-kubectl --namespace hikyo create secret tls hikyo-server-tls \
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo create secret tls hikyo-server-tls \
   --cert="$HIKYO_INPUT_DIR/tls.crt" --key="$HIKYO_INPUT_DIR/tls.key"
 ```
 
@@ -168,9 +172,9 @@ not a capacity guarantee. Add an explicit `storageClassName` in reviewed local
 copies when your cluster requires one.
 
 ```sh
-kubectl apply -f chart/hikyo/examples/singleton/upgrade-public-pvc.yaml
-kubectl apply -f chart/hikyo/examples/singleton/upgrade-state-pvc.yaml
-kubectl --namespace hikyo get pvc hikyo-upgrade-public hikyo-upgrade-state
+kubectl --context "$HIKYO_KUBE_CONTEXT" apply -f chart/hikyo/examples/singleton/upgrade-public-pvc.yaml
+kubectl --context "$HIKYO_KUBE_CONTEXT" apply -f chart/hikyo/examples/singleton/upgrade-state-pvc.yaml
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo get pvc hikyo-upgrade-public hikyo-upgrade-state
 ```
 
 The storage administrator must provision both **new, empty** filesystems before
@@ -243,12 +247,12 @@ workload and operator diagnostics. The TLS helper has its own chart resources.
 Render locally, inspect the result, then install the fresh release:
 
 ```sh
-helm template hikyo "$HIKYO_RELEASE_DIR/hikyo-$HIKYO_VERSION.tgz" \
+helm template hikyo "$HIKYO_CHART_ARCHIVE" \
   --namespace hikyo --values hikyo-values.yaml > "$HIKYO_RELEASE_DIR/rendered.yaml"
-helm install hikyo "$HIKYO_RELEASE_DIR/hikyo-$HIKYO_VERSION.tgz" \
-  --namespace hikyo --values hikyo-values.yaml --wait --timeout 20m
-kubectl --namespace hikyo rollout status deployment/hikyo-hikyo --timeout=20m
-kubectl --namespace hikyo get pods -l app.kubernetes.io/instance=hikyo
+helm install hikyo "$HIKYO_CHART_ARCHIVE" \
+  --kube-context "$HIKYO_KUBE_CONTEXT" --namespace hikyo --values hikyo-values.yaml --wait --timeout 20m
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo rollout status deployment/hikyo-hikyo --timeout=20m
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo get pods -l app.kubernetes.io/instance=hikyo
 ```
 
 Do not use `--atomic`, automatic old-image rollback, or `helm upgrade --install`
@@ -266,8 +270,8 @@ working LoadBalancer implementation and an approved external address, review
 and apply the optional operator-owned L4 service:
 
 ```sh
-kubectl apply -f chart/hikyo/examples/singleton/public-service.yaml
-kubectl --namespace hikyo get service hikyo-public
+kubectl --context "$HIKYO_KUBE_CONTEXT" apply -f chart/hikyo/examples/singleton/public-service.yaml
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo get service hikyo-public
 ```
 
 It forwards TCP 443 to the application's native-TLS port. Configure any
@@ -291,7 +295,7 @@ for controlling-terminal disclosure; do not redirect or record the terminal:
 
 ```sh
 hikyo context create hikyo-bootstrap --instance "$HIKYO_ORIGIN" --tls-mode system-ca
-kubectl --namespace hikyo exec -it deployment/hikyo-hikyo -c server -- \
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo exec -it deployment/hikyo-hikyo -c server -- \
   /usr/local/bin/hikyo admin create --username admin
 hikyo account establish-credential --instance "$HIKYO_ORIGIN" --as admin
 hikyo login "$HIKYO_ORIGIN" --local --as admin --tls-mode system-ca
@@ -316,12 +320,12 @@ no server-release upgrade authority.
 Record desired and observed identities without exporting Secrets:
 
 ```sh
-kubectl --namespace hikyo get deployment hikyo-hikyo \
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo get deployment hikyo-hikyo \
   -o jsonpath='{.spec.template.spec.containers[?(@.name=="server")].image}{"\n"}'
-kubectl --namespace hikyo get pods -l app.kubernetes.io/name=hikyo \
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo get pods -l app.kubernetes.io/name=hikyo \
   -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[?(@.name=="server")].imageID}{"\n"}{end}'
-kubectl --namespace hikyo rollout restart deployment/hikyo-hikyo
-kubectl --namespace hikyo rollout status deployment/hikyo-hikyo --timeout=20m
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo rollout restart deployment/hikyo-hikyo
+kubectl --context "$HIKYO_KUBE_CONTEXT" --namespace hikyo rollout status deployment/hikyo-hikyo --timeout=20m
 hikyo doctor --instance "$HIKYO_ORIGIN" --as admin -o json
 ```
 
@@ -420,7 +424,7 @@ delivery slice, related to [#1068](https://github.com/Hikyo-Org/Hikyo/issues/106
 
 ## Removal and retained state
 
-`helm uninstall hikyo --namespace hikyo` removes chart-owned workloads. The
+`helm uninstall hikyo --kube-context "$HIKYO_KUBE_CONTEXT" --namespace hikyo` removes chart-owned workloads. The
 example's Secrets, PVC and optional public Service are operator-owned, and Helm
 does not remove the installed CRDs on uninstall. Retain datastore, root key,
 encrypted archives and installation custody through any recovery window. Remove

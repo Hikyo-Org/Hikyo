@@ -155,15 +155,20 @@ the release.
 With the fresh database and storage prerequisites satisfied:
 
 ```sh
+wait_failed=
 kubectl --context "$HIKYO_KUBE_CONTEXT" -n hikyo patch helmrelease hikyo \
   --type=merge -p '{"spec":{"suspend":false}}'
 kubectl --context "$HIKYO_KUBE_CONTEXT" -n hikyo wait \
-  --for=condition=Ready helmrelease/hikyo --timeout=660s
+  --for=condition=Ready helmrelease/hikyo --timeout=660s || wait_failed=1
 kubectl --context "$HIKYO_KUBE_CONTEXT" -n hikyo rollout status \
-  deployment/hikyo-hikyo --timeout=180s
+  deployment/hikyo-hikyo --timeout=180s || wait_failed=1
 kubectl --context "$HIKYO_KUBE_CONTEXT" -n hikyo patch helmrelease hikyo \
   --type=merge -p '{"spec":{"suspend":true}}'
+test -z "$wait_failed"
 ```
+
+The release is suspended again even when a wait fails, so it does not keep
+reconciling every 10 minutes while you investigate.
 
 Retain the HelmRelease's `lastAttemptedRevisionDigest`, exact deployed image and
 observed generation. Confirm the Helm action is terminal before considering
@@ -289,8 +294,9 @@ does not exclude external writers.
    or Argo manual while updating that record. Approve only the verified target
    after migration; then resume Flux for that single action or explicitly sync
    Argo. Check the new action/revision, exact target readiness and authenticated
-   diagnostics before restoring traffic. Suspend Flux again after success and
-   reconcile the parent source to that reviewed state.
+   diagnostics before restoring traffic. Suspend Flux again whether or not that
+   action succeeded, and confirm the action is terminal. After success, reconcile
+   the parent source to that reviewed state.
 6. If migration or candidate health fails, leave the installation in maintenance
    with reconciliation frozen and preserve public evidence and custody. Resume
    only the exact target/generation when allowed. If SQL writes are uncertain,

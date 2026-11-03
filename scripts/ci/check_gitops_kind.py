@@ -104,9 +104,9 @@ class Campaign:
         print("gitops-kind: creating owned cluster", self.cluster, flush=True)
         self.run("kind", "create", "cluster", "--name", self.cluster, "--image", NODE,
                  "--kubeconfig", self.environment["KUBECONFIG"], "--wait", "120s", timeout=240)
+        self.registry_created = True  # A failed `docker run` can still leave the named container.
         self.run("docker", "run", "--detach", "--rm", "--name", self.registry,
                  "--network", "kind", "--publish", "127.0.0.1::5000", REGISTRY)
-        self.registry_created = True
         self.host = self.run("docker", "port", self.registry, "5000/tcp").strip()
         address = self.run("docker", "inspect", self.registry, "--format",
                            '{{(index .NetworkSettings.Networks "kind").IPAddress}}').strip()
@@ -289,7 +289,9 @@ class Campaign:
                 errors.append(str(error))
         if self.registry_created:
             try:
-                self.run("docker", "stop", self.registry)
+                # Setup refused any earlier container with this name, so it is ours.
+                if self.registry in self.run("docker", "ps", "--all", "--format", "{{.Names}}").splitlines():
+                    self.run("docker", "rm", "--force", self.registry)
             except subprocess.SubprocessError as error:
                 errors.append(str(error))
         if errors:
@@ -329,7 +331,8 @@ def main() -> None:
             raise
         finally:
             campaign.cleanup()
-        args.receipt.write_text(json.dumps(campaign.evidence, indent=2) + "\n")
+        with args.receipt.open("x") as receipt:
+            receipt.write(json.dumps(campaign.evidence, indent=2) + "\n")
         print("gitops-kind: controller campaign passed; application/migration acceptance NOTRUN", flush=True)
 
 

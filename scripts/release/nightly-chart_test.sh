@@ -91,9 +91,14 @@ pull)
 	if [ "$anonymous" = true ] && [ "${PUBLIC:-true}" != true ]; then
 		echo '403 Forbidden: private package' >&2; exit 1
 	fi
-	cp "$FIXTURE/prepared.tgz" "$destination/hikyo-$VERSION.tgz"
+	# Real Helm 4 saves a digest pull under the digest and a version pull under the version.
+	case "$ref" in
+	*@sha256:*) saved="$destination/hikyo@sha256-${ref##*@sha256:}.tgz" ;;
+	*) saved="$destination/hikyo-$VERSION.tgz" ;;
+	esac
+	cp "$FIXTURE/prepared.tgz" "$saved"
 	if [ "${MISMATCH:-false}" = true ] || { [ "$anonymous" = true ] && [ "${PUBLIC_MISMATCH:-false}" = true ]; }; then
-		printf 'conflicting chart bytes\n' >"$destination/hikyo-$VERSION.tgz"
+		printf 'conflicting chart bytes\n' >"$saved"
 	fi
 	printf 'Pulled: %s\nDigest: %s\n' "$ref" "${READBACK_DIGEST:-$CHART_DIGEST}" >&2
 	if [ "${DUPLICATE_DIGEST:-false}" = true ]; then printf 'Digest: %s\n' "$CHART_DIGEST" >&2; fi

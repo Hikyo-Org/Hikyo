@@ -28,7 +28,7 @@ IDENTITY = WORKFLOWS + "nightly.yml@refs/heads/main"
 ISSUER = "https://token.actions.githubusercontent.com"
 # release-channel.sh classifies 0.x tags as prereleases.
 STABLE_VERSION = r"[1-9][0-9]*\.[0-9]+\.[0-9]+"
-K8S_NAME = r"[a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?"
+K8S_NAME = r"(?=.{1,253}\Z)[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*"
 NIGHTLY_VERSION = r"[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]{8}\.[1-9][0-9]*\.g[0-9a-f]{8}"
 
 
@@ -254,8 +254,13 @@ def main() -> None:
         documents = manifests(args.provider, args.chart_digest, args.source_commit,
                               args.chart_version, image, values, args.namespace, controller_namespace)
         with args.output.open("x") as output:
-            output.write("# Verified exact chart; controller activation requires operator approval.\n")
-            yaml.safe_dump_all(documents, output, sort_keys=False)
+            # open("x") just created this file, so a retry would otherwise refuse the partial record.
+            try:
+                output.write("# Verified exact chart; controller activation requires operator approval.\n")
+                yaml.safe_dump_all(documents, output, sort_keys=False)
+            except BaseException:
+                args.output.unlink(missing_ok=True)
+                raise
     print(f"Wrote {args.output}; review before applying. No cluster was changed.")
 
 

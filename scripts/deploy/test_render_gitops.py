@@ -110,6 +110,8 @@ class GitOpsTests(unittest.TestCase):
             (("network", "trustedProxyCIDRs"), ["not-a-CIDR"]),
             (("externalOrigin",), "https://user:password@hikyo.example.com"),
             (("upgrade", "existingClaim"), INJECTED_NAME),
+            (("database", "existingSecret"), "a..b"),
+            (("database", "existingSecret"), "a" * 254),
             (("upgrade", "stateExistingClaim"), INJECTED_NAME),
             (("rootKey", "existingSecret"), INJECTED_NAME),
             (("database", "existingSecret"), INJECTED_NAME),
