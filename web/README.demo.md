@@ -48,7 +48,7 @@ pnpm --dir web run preview:demo --port 5195 --strictPort
 
 The output is `web/demo-dist/`. Copy its contents into the `demo/` directory of
 any static website. No API routes, redirects, service worker, or history fallback
-are required. Navigation uses URLs such as `/demo/?account=admin#/orgs/...`.
+are required, and without PostHog settings the build records nothing. Navigation uses URLs such as `/demo/?account=admin#/orgs/...`.
 The account parameter comes before the hash. Serve over HTTP(S), not `file://`.
 
 For a project Pages site or another mount point, rebuild with that public base:
@@ -66,7 +66,8 @@ not publish anything.
 
 `src/demo/api.ts` installs an in-memory fetch adapter before React and the auth
 provider mount. It handles only the supported fixture reads and value
-mutations. Unsupported API calls and remote fetches return local refusals.
+mutations. Unsupported API calls and remote fetches return local refusals, except
+the PostHog origins of a build with session replay.
 Generated SDK response parsers still validate the payloads. There is no database,
 session storage, or local-storage persistence of demo values. Existing theme and
 UI preferences can still use their normal browser storage.
@@ -80,14 +81,41 @@ assurance is simulated. Use only sample values.
 Keep dynamic imports behind literal `import.meta.env.MODE === 'demo'` checks.
 An imported boolean alone does not remove dynamic chunks with this Vite build.
 The normal `build` command checks its emitted assets for demo implementation
-markers before compression. The demo adds no dependencies.
+markers, PostHog and the recorder before compression. The demo's only added
+dependency is `posthog-js`, a dev dependency bundled into a chunk that loads after
+consent.
 
 The static build adds a Content-Security-Policy meta tag before scripts load.
-Scripts, styles, images, and fonts stay on the same origin; network connections,
-base tags, and form submissions are refused. Both the build and the copied Pages
-artifact run the CSP gate. Browser tests reject console errors during normal
+Scripts, styles, images, and fonts stay on the same origin; base tags and form
+submissions are refused. Network connections are refused too, unless the build has
+analytics, which allows only the PostHog ingestion and assets hosts. Both the
+build and the copied Pages artifact run the CSP gate. Browser tests reject console errors during normal
 flows and verify that an injected inline script cannot execute. Header-only
 protections such as frame-ancestors are not supplied by a static meta policy.
+
+## Session replay
+
+The hosted demo can record sessions in PostHog. The normal application never does.
+A demo build enables this only when given `PUBLIC_POSTHOG_HOST` and
+`PUBLIC_POSTHOG_PROJECT_TOKEN`. Without them it has no consent control, no analytics
+config and `connect-src 'none'`. `POSTHOG_REQUIRED=true` fails a build missing them.
+
+Recording starts only after the visitor allows it in the demo toolbar, which saves
+the choice under `hikyo.demo.replay.consent`. The landing page's analytics choice
+promises no session recording, so it never applies here. Before consent the SDK is
+not downloaded. The fetch adapter forwards only the build's PostHog origins, and it
+still refuses every other external request. The SDK's ids, and any recording buffer it
+parks across a reload, live in this tab's `sessionStorage`, so an account switch stays
+in one recording. No cookies are set. Stopping replaces those ids with new ones not linked to the stopped
+recording, and they last until the tab closes.
+
+Inputs are masked, and a typed value is also masked wherever the app renders it
+again unchanged, as text or in an attribute. Sample data stays visible, including
+revealed fake secrets. Events other than recordings keep only their ids and page
+address, so no referrer is sent. At startup, every query parameter except `account` is
+removed from the page address, so campaign and click ids reach no URL. The SDK settings here turn off console capture, network timing, autocapture
+and heatmaps whatever the project sets, and strip bodies and headers if the project
+turns on network payload capture.
 
 ## Keeping the demo in sync
 
@@ -131,5 +159,7 @@ The browser suite needs the pinned Playwright Chromium installation, available
 in the existing CI image. Locally, `pnpm --dir web exec playwright install chromium`
 installs it. The suite serves the built `/demo/` artifact without Hikyo, exercises
 all three accounts on desktop and mobile, and rejects real API or external
-network requests. Unit tests cover schema validity, role refusals, isolated
+network requests after replay is declined. `e2e/demo/replay.spec.ts` builds a second
+copy with a placeholder token and answers every PostHog request locally: it covers
+consent, typed value masking, an account switch and stopping. Unit tests cover schema validity, role refusals, isolated
 state, selective publishing, stale draft rejection, unset values, and history.

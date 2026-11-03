@@ -37,6 +37,7 @@ func targetedFixtureEvent(f *queueFixture) event {
 }
 
 func TestTargetedAdmissionDeadlinePublishesFailureWithinReserve(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3") // The last attempt; a hosted runner sets 1.
 	f := newQueueFixture(t)
 	f.c.verify = func(ctx context.Context, _ int, _ string) (policyDecision, error) {
 		<-ctx.Done()
@@ -174,6 +175,7 @@ func TestAdmissionReserveNeverExtendsItsContextOrPublishesAfterIt(t *testing.T) 
 }
 
 func TestAdmissionDeadlineCannotTurnIncompleteFeedbackIntoSuccess(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3") // The last attempt; a hosted runner sets 1.
 	for _, status := range []string{"queued", "in_progress"} {
 		t.Run(status, func(t *testing.T) {
 			f := newQueueFixture(t)
