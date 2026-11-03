@@ -266,13 +266,13 @@ environment, custody and a separate authorization; this ticket authorizes none.
 ## Final checks
 
 Run on the candidate before the final handoff-only commit (the head moves by that
-commit only; the PR body names the pushed head).
+commit only; the PR body names the pushed head). First round and review-repair round.
 
 | Check | Result |
 | --- | --- |
-| `go test -p 2 -parallel 2 -run 'PKI\|Pki\|Certificate\|Audit'` over `internal/isolation`, `service`, `server`, `cli`, `store/...`, `audit`, `api/...`, queued, throwaway PostgreSQL 18 | PASS (isolation 572 s) |
-| `go test -p 2 -timeout 40m ./internal/lint/...`, queued | NOT CLEAN: the 40 minute limit expired under host load (`panic: test timed out`). Rerun with `-timeout 100m`: every test passed except `TestGrantLockCatchesLocklessWriter/ui`, which failed with `couldn't run 'go': exec: WaitDelay expired` (infrastructure under load, unrelated to this change). That test alone, rerun: PASS. No `reviewed_pins.json` change is needed: no migration, no raw SQL and no reviewed function changed. Hosted CI runs the full package |
-| `scripts/ci/fast-feedback.sh` with base `f5d5491829d6` (the transport-policy tip), Node 26.12.1, queued | PASS: whitespace, Go formatting, test compile of the touched packages, shellcheck, actionlint, docs content check |
-| `scripts/ci/check-commit-signatures.sh` and `check-dco.sh` against `origin/dunky13/pqc-1127-transport-policy` | PASS (51 signed, 45 DCO) |
-| `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout) | PASS, 35 ledger entries |
-| Hosted CI, real-provider, deployment, runtime | NOTRUN |
+| `go test -p 2 -parallel 2 -run 'PKI\|Pki\|Certificate\|Audit\|MLDSA\|Anchor\|RealClassical\|OpenSSL\|RelyingParty'` over `internal/isolation`, `pki`, `service`, `server`, `cli`, `store/...`, `audit`, `api/...`, queued, throwaway PostgreSQL 18 (CI-pinned digest) | PASS after the repairs (isolation 832 s). The lifecycle test also passed repeatedly (4 runs) after the concurrency gate |
+| `internal/lint` | **Not rerun locally in this round, by instruction.** Round 1 locally: the 40 minute limit expired under load; a 100 minute rerun failed only `TestGrantLockCatchesLocklessWriter/ui` (`exec: WaitDelay expired`), which passes alone. The reviewer reports hosted `repository invariants` passed at 241c53d35 including `internal/lint` in 73.9 s. Hosted result for the repaired head: read from `gh pr checks`, see the PR body |
+| `scripts/ci/fast-feedback.sh` with base `f5d5491829d6`, Node 26.12.1, queued | PASS (109 s): whitespace, Go formatting, test compile, shellcheck, actionlint, docs content check |
+| `check-commit-signatures.sh`, `check-dco.sh` against `origin/dunky13/pqc-1127-transport-policy` | PASS (55 signed, 49 DCO) |
+| `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout) | PASS |
+| Hosted CI | Not a substitute for the above. At the previous head only the Go lane's `go test -c` ran (no PKI or isolation test ran hosted); `feedback (frontend)` failed on a checkout timeout (infrastructure). No workflow installs an OpenSSL with ML-DSA, so `TestMLDSAOpenSSLInterop` should skip hosted. Real-provider, runtime, deployment: NOTRUN |
