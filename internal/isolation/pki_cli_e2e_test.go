@@ -278,10 +278,13 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	}
 
 	// --- ML-DSA-65 is HOLD on the public surface (#1133) ---------------------------
-	// The mechanism exists below the API, but /api/v1 is frozen and its PKI
-	// algorithm enums are closed, so the real server must keep refusing
-	// mldsa65 and create nothing. The import path takes its algorithm from the
-	// key rather than from an enum, so it is exercised with a real ML-DSA key.
+	// The mechanism exists below the API. The 2026-11-04 api-cli-surface
+	// amendment lets the contract name mldsa65, so the request now passes
+	// validation and the refusal is the service gate (service.PKI.MLDSAEnabled,
+	// false in production); the wire hides its reason. The server must keep
+	// refusing mldsa65 and create nothing. The import path takes its algorithm
+	// from the key rather than from an enum, so it is exercised with a real
+	// ML-DSA key.
 	// writeCA writes an intermediate CA key, its certificate and its chain (the
 	// root) for `pki issuer import ... --key-file --cert-file --chain-file`, so the
 	// refused and the control request use the identical flags.
@@ -346,7 +349,7 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	// is stopped earlier by the browser mint ceremony, before any algorithm
 	// check, so it would pass for an ECDSA request too. The workload reached key
 	// generation above with ed25519 (workerCert), so the request shape is valid
-	// and "(key_algorithm)" is the algorithm refusal.
+	// and the refusal is the algorithm gate.
 	heldKeyOut := filepath.Join(workDir, "held-worker.key")
 	const contractRefusal = "the request does not satisfy the API contract"
 	for _, c := range []struct {
@@ -355,15 +358,15 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 		machine bool
 		reason  string
 	}{
-		{"create-root", []string{"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"}, false, contractRefusal + " (key_algorithm)"},
-		{"rotate", []string{"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"}, false, contractRefusal + " (key_algorithm)"},
+		{"create-root", []string{"pki", "issuer", "create-root", "hold-root", "--common-name", "Held", "--key-algorithm", "mldsa65"}, false, contractRefusal},
+		{"rotate", []string{"pki", "issuer", "rotate", "e2e-issuing", "--key-algorithm", "mldsa65"}, false, contractRefusal},
 		// The import algorithm comes from the key, so the refusal is the service
 		// gate; the wire hides its reason. The positive control above proves the
 		// same request shape with a classical key is accepted.
 		{"import", []string{"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile, "--chain-file", holdChainFile}, false, contractRefusal},
 		{"profile create", []string{"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy}, false, contractRefusal},
 		{"cert issue (generated key, workload)", append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key",
-			"--key-algorithm", "mldsa65", "--uri", "spiffe://e2e.test/ns/prod/sa/held", "--output-file", heldKeyOut, "-o", "json"}, workload...), true, contractRefusal + " (key_algorithm)"},
+			"--key-algorithm", "mldsa65", "--uri", "spiffe://e2e.test/ns/prod/sa/held", "--output-file", heldKeyOut, "-o", "json"}, workload...), true, contractRefusal},
 	} {
 		if c.machine {
 			stateDir = machineState

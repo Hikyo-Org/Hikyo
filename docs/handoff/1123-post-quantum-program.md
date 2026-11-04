@@ -68,7 +68,7 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
 
 ### Merged on 2026-11-04
 
-Ten child and contract PRs and this ledger landed on `dev` with merge commits. #1172 is held
+The 13 PRs in the table below landed on `dev` with merge commits. #1172 is held
 (the owner decided the `/api/v1` freeze on 2026-11-04, but its merge waits for the owner's window),
 PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
 followed with a test repair. Each head below is the head that merged.

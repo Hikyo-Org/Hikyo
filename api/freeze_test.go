@@ -161,11 +161,11 @@ func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
 
 	// Each near miss is the amendment plus one more enum edit, and must fail.
 	transit := "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65]"
-	for name, edit := range map[string][2]string{
-		"mldsa44 on the same path":       {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa44]"},
-		"future mldsa87 on the same":     {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa87]"},
-		"mldsa65 on another enum":        {"enum: [software, external]", "enum: [software, external, mldsa65]"},
-		"mldsa65 on a PKI-adjacent enum": {"enum: [ed25519, ecdsa-p256, rsa-3072]", "enum: [ed25519, ecdsa-p256, rsa-3072, mldsa65]"},
+	for name, edit := range map[string][3]string{
+		"mldsa44 on the same path":       {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa44]", "mldsa44"},
+		"future mldsa87 on the same":     {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa87]", "mldsa87"},
+		"mldsa65 on another enum":        {"enum: [software, external]", "enum: [software, external, mldsa65]", "mldsa65"},
+		"mldsa65 on a PKI-adjacent enum": {"enum: [ed25519, ecdsa-p256, rsa-3072]", "enum: [ed25519, ecdsa-p256, rsa-3072, mldsa65]", "mldsa65"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if strings.Count(revised, edit[0]) == 0 {
@@ -176,8 +176,9 @@ func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(violations) == 0 {
-				t.Fatal("a near miss of the mldsa65 amendment passed the gate")
+			// The violation must be about the near miss, not an unrelated drift.
+			if len(violations) == 0 || !strings.Contains(render(violations), "`"+edit[2]+"`") {
+				t.Fatalf("a near miss of the mldsa65 amendment was not refused for %s:\n%s", edit[2], render(violations))
 			}
 		})
 	}
