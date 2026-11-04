@@ -1,11 +1,13 @@
 package isolation
 
 import (
+	"crypto"
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"errors"
 	"math/big"
 	"strings"
@@ -226,6 +228,47 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		pkcs844, _ := pki.MarshalPrivateKey(other44)
 		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-import-44", PrivateKeyPEM: pki.PrivateKeyPEM(pkcs844), CertificatePEM: pki.CertificatePEM(importRootDER)}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("ML-DSA-44 import: %v", err)
+		}
+		// Import refusals that the pki unit tests also cover, here through the service on
+		// both engines: a chain that stops below the real classical root, a trust anchor
+		// whose self-signature is damaged, and an expanded (not seed-only) PKCS#8 key.
+		classicalR := newClassicalRoot(t, clock.Now())
+		y := newMLDSACA(t, classicalR, "Y", 2, clock.Now())
+		x := newMLDSACA(t, y, "X", 1, clock.Now())
+		leafCAKey, _ := pki.GenerateKey(pki.MLDSA65)
+		leafCADER := signCA(t, x, leafCAKey.Public(), "I", 0, clock.Now())
+		leafCAPKCS8, _ := pki.MarshalPrivateKey(leafCAKey)
+		for name, chain := range map[string]string{
+			"chain stopping at X (real root is classical)": pki.CertificatePEM(x.Certificate.Raw),
+			"chain stopping at Y":                          pki.CertificatePEM(x.Certificate.Raw) + pki.CertificatePEM(y.Certificate.Raw),
+		} {
+			if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-trunc", PrivateKeyPEM: pki.PrivateKeyPEM(leafCAPKCS8), CertificatePEM: pki.CertificatePEM(leafCADER), ChainPEM: chain}); !errors.Is(err, domain.ErrInvalid) {
+				t.Errorf("import with a %s: %v", name, err)
+			}
+		}
+		damaged := append([]byte(nil), offlineRootDER...)
+		damaged[len(damaged)-3] ^= 0x01
+		underOffline := signCA(t, pki.Parent{Certificate: offlineRoot, Signer: offlineRootKey}, leafCAKey.Public(), "Under offline root", 0, clock.Now())
+		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-damaged-anchor", PrivateKeyPEM: pki.PrivateKeyPEM(leafCAPKCS8), CertificatePEM: pki.CertificatePEM(underOffline), ChainPEM: pki.CertificatePEM(damaged)}); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("import under a root with a damaged self-signature: %v", err)
+		}
+		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-control", PrivateKeyPEM: pki.PrivateKeyPEM(leafCAPKCS8), CertificatePEM: pki.CertificatePEM(underOffline), ChainPEM: pki.CertificatePEM(offlineRootDER)}); err != nil {
+			t.Errorf("control: the same import under the intact root must succeed: %v", err)
+		}
+		expanded := append([]byte{0x04, 0x82, 0x0f, 0xc0}, make([]byte, 4032)...)
+		forged, err := asn1.Marshal(struct {
+			Version    int
+			Algorithm  pkix.AlgorithmIdentifier
+			PrivateKey []byte
+		}{0, pkix.AlgorithmIdentifier{Algorithm: asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 18}}, expanded})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-expanded", PrivateKeyPEM: pki.PrivateKeyPEM(forged), CertificatePEM: pki.CertificatePEM(importRootDER)}); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("expanded PKCS#8 import: %v", err)
+		}
+		if n := count(`SELECT COUNT(*) FROM pki_issuers WHERE name IN ('pq-trunc','pq-damaged-anchor','pq-expanded')`); n != 0 {
+			t.Fatalf("refused imports left %d rows", n)
 		}
 		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-import-bad", PrivateKeyPEM: pki.PrivateKeyPEM(pqKeyPKCS8), CertificatePEM: pki.CertificatePEM(offlineRootDER)}); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("import of a key that does not match the certificate: %v", err)
@@ -559,7 +602,9 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		views := make([]service.CertificateView, 6)
 		// The rotation and the revocation start once one issuance has succeeded (or
 		// all four have finished), so the race always has a success to check and the
-		// remaining issuances still overlap the rotation.
+		// remaining issuances can overlap the rotation. Overlap is observed in
+		// instrumented runs (PostgreSQL showed "issuer changed while signing"
+		// conflicts), not guaranteed or asserted by this test.
 		firstDone := make(chan struct{})
 		var once sync.Once
 		var issueWG sync.WaitGroup
@@ -781,4 +826,57 @@ func queryHexKey(t *testing.T, db *store.DB, issuerID string) string {
 		q = `SELECT encode(encrypted_private_key,'hex') FROM pki_issuers WHERE id='` + issuerID + `'`
 	}
 	return queryString(t, db, q)
+}
+
+// newClassicalRoot is a self-signed ECDSA root, the real root of the truncation test.
+func newClassicalRoot(t *testing.T, now time.Time) pki.Parent {
+	t.Helper()
+	key, err := pki.GenerateKey(pki.ECDSAP384)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := pki.CreateRoot(key, pki.Subject{CommonName: "Real Classical Root"}, now, 365*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pki.Parent{Certificate: cert, Signer: key}
+}
+
+// signCA signs a CA certificate for public under parent, the way an offline
+// operator with a plain X.509 tool could (no Hikyo rule applied).
+func signCA(t *testing.T, parent pki.Parent, public crypto.PublicKey, name string, pathLen int, now time.Time) []byte {
+	t.Helper()
+	serial, err := pki.NewSerial()
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial, Subject: pkix.Name{CommonName: name},
+		NotBefore: now.Add(-time.Minute), NotAfter: now.Add(30 * 24 * time.Hour),
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign, BasicConstraintsValid: true, IsCA: true,
+		MaxPathLen: pathLen, MaxPathLenZero: pathLen == 0,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, parent.Certificate, public, parent.Signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
+}
+
+// newMLDSACA makes an ML-DSA CA under parent.
+func newMLDSACA(t *testing.T, parent pki.Parent, name string, pathLen int, now time.Time) pki.Parent {
+	t.Helper()
+	key, err := pki.GenerateKey(pki.MLDSA65)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(signCA(t, parent, key.Public(), name, pathLen, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pki.Parent{Certificate: cert, Signer: key}
 }

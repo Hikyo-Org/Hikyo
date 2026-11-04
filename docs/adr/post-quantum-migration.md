@@ -160,7 +160,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Private PKI
 
-Carried as a banner on [pki](./pki.md), which is the only copy. It is operative only when the #1133 implementation merges, and four implementation choices listed in a second banner there still await the owner's confirmation.
+Carried word for word (checked against the proposal at `e5539c280`) as the locked-amendment banner on [pki](./pki.md), which is the only copy and is operative only when the #1133 implementation merges. What the implementation added is in a second banner there, not locked, with five choices awaiting the owner's confirmation.
 
 ### Signed upgrade compatibility and stable workflow signing
 

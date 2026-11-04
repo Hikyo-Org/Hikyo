@@ -191,7 +191,7 @@ Hikyo hop enforces it.
 | Client trusting a **classical root that really signed** an ML-DSA intermediate and leaf | Go 1.27.3 `crypto/tls` | **Accepts** and exchanges data: `crypto/x509` checks each link, not that the anchor is post-quantum |
 | Same path, `VerifyConnection` walking the verified chain with `pki.CheckPQPath` | Go 1.27.3, test harness | Refuses, no application byte. Only such a walk refuses a real classical anchor |
 | Peer that requires a PQ-authenticated chain, facing an ECDSA chain | Go 1.27.3, test harness | Refuses even over the hybrid group, before any application byte |
-| Browsers, OpenSSH, Java, NSS, BoringSSL, Windows and macOS platform verifiers | none tested | **Unqualified.** Do not assume support. Owner unresolved: [qualification.md](../security/pqc/qualification.md) assigns the PKI matrix "incl. platform verifiers" to #1133, while #1134's text does not mention PKI, browsers or platform verifiers (see the handoff) |
+| Browsers, OpenSSH, Java, NSS, BoringSSL, Windows and macOS platform verifiers | none tested | **Unqualified.** Do not assume support. Owner: #1133 per [qualification.md](../security/pqc/qualification.md) line 57 ("incl. platform verifiers"); #1134's text does not mention PKI, browsers or platform verifiers, and the owner may move it (handoff G4) |
 
 E-18 stays registered: one listener certificate pair serves every client, so a
 strict ML-DSA leaf there may be rejected by browsers and compatibility clients.
@@ -270,8 +270,12 @@ owner and need amd64 numbers that were not measured.
 What must be retained, and who owns it: the offline root key (the operator, offline,
 for as long as any chain under it is valid), the root certificate (every relying
 party), each issuer version's last CRL (until its leaves expire), the sealed issuer
-keys and their backups (Hikyo's key hierarchy; restore sets the issuer hold and
-stored CRLs stay readable but stale until the hold is released).
+keys and their backups (Hikyo's key hierarchy). The restore behavior for the classical
+issuer is that restore sets the issuer hold and stored CRLs stay readable but stale
+until the hold is released. For an ML-DSA issuer only a manual `restore_hold` flag and
+the network `release-hold` were exercised; a real archive restore, `restore reconcile`
+and a real process restart with ML-DSA state were **not run** (handoff G6), so do not
+rely on restore behavior for ML-DSA issuers beyond that.
 
 ## Not in scope
 

@@ -1,7 +1,6 @@
 package isolation
 
 import (
-	"crypto/mldsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -283,51 +282,54 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	// algorithm enums are closed, so the real server must keep refusing
 	// mldsa65 and create nothing. The import path takes its algorithm from the
 	// key rather than from an enum, so it is exercised with a real ML-DSA key.
-	holdKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
-	if err != nil {
-		t.Fatal(err)
+	// writeCA writes an intermediate CA key, its certificate and its chain (the
+	// root) for `pki issuer import ... --key-file --cert-file --chain-file`, so the
+	// refused and the control request use the identical flags.
+	writeCA := func(prefix string, algorithm pki.KeyAlgorithm) (keyFile, certFile, chainFile string) {
+		t.Helper()
+		rootKey, err := pki.GenerateKey(algorithm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		rootDER, err := pki.CreateRoot(rootKey, pki.Subject{CommonName: prefix + " Root"}, now, 24*time.Hour*30)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootCert, err := x509.ParseCertificate(rootDER)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issuerKey, err := pki.GenerateKey(algorithm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		issuerDER, err := pki.SignIntermediate(pki.Parent{Certificate: rootCert, Signer: rootKey}, issuerKey.Public(), pki.Subject{CommonName: prefix + " Issuing"}, now, 24*time.Hour*10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pkcs8, err := pki.MarshalPrivateKey(issuerKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyFile, certFile, chainFile = filepath.Join(workDir, prefix+".key"), filepath.Join(workDir, prefix+".pem"), filepath.Join(workDir, prefix+"-chain.pem")
+		for path, content := range map[string][]byte{keyFile: pki.PrivateKeyPEM(pkcs8), certFile: []byte(pki.CertificatePEM(issuerDER)), chainFile: []byte(pki.CertificatePEM(rootDER))} {
+			if err := os.WriteFile(path, content, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return keyFile, certFile, chainFile
 	}
-	holdPKCS8, err := pki.MarshalPrivateKey(holdKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	holdRoot, err := pki.CreateRoot(holdKey, pki.Subject{CommonName: "Held PQ Root"}, time.Now().UTC(), 24*time.Hour*30)
-	if err != nil {
-		t.Fatal(err)
-	}
-	holdKeyFile, holdCertFile := filepath.Join(workDir, "hold.key"), filepath.Join(workDir, "hold.pem")
-	if err := os.WriteFile(holdKeyFile, pki.PrivateKeyPEM(holdPKCS8), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(holdCertFile, []byte(pki.CertificatePEM(holdRoot)), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	holdKeyFile, holdCertFile, holdChainFile := writeCA("hold", pki.MLDSA65)
 	holdPolicy := filepath.Join(workDir, "hold-policy.json")
 	if err := os.WriteFile(holdPolicy, []byte(strings.Replace(policy, `"ecdsa-p256","ed25519"`, `"mldsa65"`, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Positive control: the same import request shape with a classical CA key
-	// succeeds, so the ML-DSA refusals below are about the algorithm.
-	controlKey, err := pki.GenerateKey(pki.ECDSAP256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	controlPKCS8, err := pki.MarshalPrivateKey(controlKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	controlRoot, err := pki.CreateRoot(controlKey, pki.Subject{CommonName: "Control Root"}, time.Now().UTC(), 24*time.Hour*30)
-	if err != nil {
-		t.Fatal(err)
-	}
-	controlKeyFile, controlCertFile := filepath.Join(workDir, "control.key"), filepath.Join(workDir, "control.pem")
-	if err := os.WriteFile(controlKeyFile, pki.PrivateKeyPEM(controlPKCS8), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(controlCertFile, []byte(pki.CertificatePEM(controlRoot)), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runCLI(cli.ExitOK, "pki", "issuer", "import", "classic-import", "--key-file", controlKeyFile, "--cert-file", controlCertFile)
+	// Positive control: the identical import request shape (key, certificate and
+	// chain files) with a classical CA succeeds, so the ML-DSA refusal below is
+	// about the algorithm and not the shape.
+	controlKeyFile, controlCertFile, controlChainFile := writeCA("control", pki.ECDSAP256)
+	runCLI(cli.ExitOK, "pki", "issuer", "import", "classic-import", "--key-file", controlKeyFile, "--cert-file", controlCertFile, "--chain-file", controlChainFile)
 	// refusedCLI runs a command that must be refused with the contract exit
 	// code and returns its stderr, so each case can also assert WHY.
 	refusedCLI := func(args ...string) string {
@@ -358,7 +360,7 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 		// The import algorithm comes from the key, so the refusal is the service
 		// gate; the wire hides its reason. The positive control above proves the
 		// same request shape with a classical key is accepted.
-		{"import", []string{"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile}, false, contractRefusal},
+		{"import", []string{"pki", "issuer", "import", "hold-import", "--key-file", holdKeyFile, "--cert-file", holdCertFile, "--chain-file", holdChainFile}, false, contractRefusal},
 		{"profile create", []string{"pki", "profile", "create", "hold-profile", "--policy-file", holdPolicy}, false, contractRefusal},
 		{"cert issue (generated key, workload)", append([]string{"cert", "issue", "--profile", "e2e-web", "--generate-key",
 			"--key-algorithm", "mldsa65", "--uri", "spiffe://e2e.test/ns/prod/sa/held", "--output-file", heldKeyOut, "-o", "json"}, workload...), true, contractRefusal + " (key_algorithm)"},
