@@ -78,9 +78,15 @@ passkey reveals and downloads.
 the window was covered. Network replies still arrived. Foreground use is unaffected.
 A browser tab behaves similarly in general, but that was not measured here.
 
-**Reuse of Go code is smaller than the report claimed.** The spike imports no Hikyo
-package. A separate repository cannot import `internal/cli` at all, so the login and
-trust code would need extracting to a public package or rewriting.
+**Go reuse depends on where the shell lives.** The spike imports no Hikyo package. A
+nested module whose path starts with `github.com/Hikyo-Org/hikyo/` can import
+`internal/` packages, and one on another path is refused (both built on 2026-11-04).
+Importing `internal/cli` itself would pull in most of its 88.8 MB, so the login and
+trust code would still need moving to small packages first.
+
+**Passkey decision.** Like the CLI, the app opens the system browser to validate the
+passkey. The server side already exists (`runCLIDisclosureReauth`, `/reauth/cli`). The
+SPA has to hand the ceremony to the shell instead of calling `navigator.credentials`.
 
 ## Wails v3.1.0 on macOS
 
@@ -107,17 +113,17 @@ Options for the gap, in the order I would try them:
 | Handle downloads in app mode: the SPA hands bytes to a shell route | Small per site, and there are few sites | Needs an SPA change, and does not solve navigation policy |
 | Use Electron for the shell | Rewrite the 250 lines | Ships Chromium and its update duty, loses the small binary. WebAuthn still needs the hop |
 
-## Separate product issue
+## Rate limit: already fixed, not in v1.0.0
 
-Not caused by the shell, but found while testing. Both cookie and bearer sessions got
-their first 429 after 56 rapid requests (`whoami`, v1.0.0, loopback), consistent with
-`MetaPerIPPerMinute = 60` being charged by `AdmitPreauthentication` on session
-resolution (`internal/authz/session.go:219`). In a plain Chromium tab on the same
-instance, the default route made 94 API requests in 62 s, and 34 were 429, mostly from
-the `signals` and `pending` polls. The default route opened the system configuration
-project, whose `/events` returned 404, which may be what triggers the polling. Not
-root-caused. If the limit is per IP in production too, users behind one NAT would share
-it, so this deserves its own issue.
+Both cookie and bearer sessions got their first 429 after 56 rapid requests on v1.0.0.
+In a plain Chromium tab on the same instance, the default route made 94 API requests in
+62 s, and 34 were 429. The shell does not cause this.
+
+This is the known issue from the duplicate-polling work, not a new finding. `9732c1262`
+stops live sessions spending the 60 per minute source allowance, and `786f1cd9e`,
+`355e69049` and `6749314b9` cut the SPA's requests. None is in v1.0.0 or in
+`nightly.20261102.103`, and all are in `nightly.20261104.106`. I did not rerun the
+measurement on that nightly.
 
 ## Evidence and limits
 

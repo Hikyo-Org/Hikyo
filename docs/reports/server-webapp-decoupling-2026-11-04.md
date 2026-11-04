@@ -226,7 +226,7 @@ decides this.
 | Precedent | T3 Code, which you already run | None here | None here |
 | Custom scheme with streaming | Privileges exist, and T3 Code sets `stream` | Not researched | **Confirmed by the spike** |
 | Security update burden | **Ships Chromium**, so its CVEs oblige releases | System webview | System webview |
-| Reuses Go `internal/cli` trust code | No | No | Language only. `internal/` is not importable from a separate repo |
+| Reuses Go `internal/cli` trust code | No | No | Only as a nested module in this repo, and after moving that code to small packages |
 | Downloads, popups, navigation policy | Yes, as API | Not researched | **None on macOS in v3.1.0** |
 | Status | Stable | Stable (not researched further) | Stable: v3.1.0, released 2026-11-01. The earlier "beta" finding is out of date |
 
@@ -401,6 +401,7 @@ would therefore need a bridge release teaching field verifiers first.
 |---|---|
 | Same repo, tag like `app-v1.0.0` | Field update checks skip it, since it is not strict semver (`internal/updatecheck/updatecheck.go:87-90`). It should be published with "latest" off, because readers also query `releases/latest` (`internal/updatecheck/source.go:25,147`). **Every field binary still parses its assets:** one asset with an unsafe or duplicate name, an unexpected URL, zero size or a malformed digest makes the whole listing fail, which breaks update checks for all users (`internal/updatecheck/source.go:248-274`). `v*` rulesets do not apply, so add one |
 | Separate `hikyo-app` repo | No interaction with the field at all. Shell only, so the rejected "SPA in a separate repository" (`docs/adr/oss-mechanics.md:84`) does not apply under C1. Signing and CI are set up again |
+| Source here as a nested module, releases in a separate repo (recommended after the spike) | No interaction with field update checks. Allows `internal/` imports and same-PR SPA changes. CI handling of a second `go.mod` not checked |
 | Inside the `hikyo` manifest | 27 scripts, verifiers and workflows, 23 tests and 7 docs change ([Appendix C](#appendix-c-files-changed-if-the-app-joins-the-hikyo-manifest)), plus the bridge. `install.sh` would also download app payloads on every CLI install (`install/install.sh.in:135-150`) |
 
 **CI.** Webview builds likely need a native runner per OS (inference; nothing today
@@ -453,14 +454,17 @@ The "not an application to drag into Applications" sentence would need rewording
    no desktop app, which already exists. An API-only server blocks onboarding.
 3. **Is app + server required for v1?** Recommended: **no**, or a clearly labelled
    dev playground. Real secrets on a Mac server is a separate, large project.
-4. **Same repo or separate repo for the shell?** Recommended: **separate repo**.
-   Under C1 the shell is thin and the SPA stays in the server, so it costs little,
-   and it removes every interaction with field update checks. Same repo with
-   `app-v*` tags also avoids the manifest hazard, but every field binary would parse
-   those releases.
+4. **Same repo or separate repo for the shell?** Updated recommendation after the
+   spike: **source in this repo as a nested module, releases in a separate repo.** The
+   nested module can import `internal/` (tested) and keeps Wails and cgo out of the root
+   `go.mod`. SPA app mode and the shell can change in one PR, which matters because the
+   SPA must change for passkeys and downloads. App releases must not be published here:
+   field binaries list every release in this repo and read `releases/latest`
+   (`internal/updatecheck/source.go:24-25,194`), and one bad asset fails the listing
+   (`:248-274`). How CI lanes treat a second `go.mod` was not checked.
 5. **How should ADR amendments be reviewed**, given the governance conflict?
-6. **Is a browser hop per passkey reveal acceptable?** If not, C2 with Electron's
-   inline Touch ID becomes worth testing harder.
+6. **Is a browser hop per passkey reveal acceptable?** Decided: yes. Like the CLI, the
+   app opens the system browser to validate the passkey.
 7. **Do you still want the client-only CLI?** Not needed for the app. The ADR
    rejected it deliberately. See the measured saving in section 9.
 
