@@ -1,7 +1,7 @@
 # #1129: policy-bound ML-DSA-65 signing and verification in Transit, handoff
 
 Status: **draft implementation of the mechanism. The public API, CLI and WebUI
-surface is HOLD. Not merge-ready, not operative.** It needs maintainer security
+surface is HOLD. Held by the owner on 2026-11-04 until the `/api/v1` freeze is decided, because migration 00083 moves every instance's rollback floor for a capability nobody can reach yet. Not operative.** It needs maintainer security
 approval before merge (**security approval: not given**). Owner and maintainer are
 one person, so independent adversarial review compensates; cross-provider review
 is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
@@ -14,9 +14,9 @@ Stacked on the ADR amendment branch (PR #1155). Refs
 
 | Item | Value |
 | --- | --- |
-| Pull request | #1172, base `dunky13/pqc-adr-amendments` at `e5539c280b37ea3f6e3a8371a949aad8190ff0ad` (unchanged when rechecked) |
+| Pull request | #1172, base `dunky13/pqc-adr-amendments`. Evidence was taken at fork point `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`. The 2026-11-04 review ran the hold test and lifecycle on both engines on a trial merge with `76143506a`; no hosted run covers that tree |
 | First review round | `ae1855d2c962aca8ddb6f07166e237333c8b0edb` |
-| Validated code revision | `1f10525f7626503f8ce4a7f6d4e8a851986aa000` (the repair commit). Later commits change documentation (handoff, operations note, ADR banner) and tests only, except as listed in "Round 3" below |
+| Validated code revision | `8e11e9a36` (last code-validated commit); first repair `1f10525f7626503f8ce4a7f6d4e8a851986aa000`. Later commits change documentation (handoff, operations note, ADR banner) and tests only, except as listed in "Round 3" below |
 | Source re-pin | `origin/main` is `dd41e86b5` (2026-11-03). Between the issue's historical assessment `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` (which is also the `v1.0.0` commit) and `origin/main`, nothing changed in the Transit crypto, custody, service, server or CLI files, `api/openapi.yaml`, the web Transit routes or the migrations directory (`git diff --stat` empty). `main` ends at migration 82, so 83 is free there |
 | Inventory reconciliation (I22) | Re-ran the [census](../security/pqc/inventory.md#census-method-and-reconciliation) search 1 at `ae1855d2c`: 179 non-test Go files, the same count as the draft; the only Transit match is `internal/crypto/transit.go` (this change adds a `crypto/x509` import inside `internal/crypto`, inside the chokepoint). Search 4 over `api`, migrations, `clients` and `web/src` finds the I22 consumers (OpenAPI, generated Go and TypeScript clients, migrations 00065 and 00083, `web/src/api/transit.ts`, `web/src/routes/TransitKeyManagement.tsx`, `TransitOperations.tsx`); no new Transit consumer outside the I22 row. The row's bound note (message 64 KiB, context 1 KiB, wire 128 KiB; closed CHECK constraints and API enums) matches source |
 
