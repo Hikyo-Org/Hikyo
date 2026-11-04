@@ -173,6 +173,21 @@ the final code. Sign-in through the browser from inside the app was not built: s
 still come from `hikyo login` or the device endpoints. This round's code had my read-through
 and its tests, but no separate Standards and Spec review.
 
+## Automated security review of the second round
+
+An automated review of the second round raised four findings. Two have unit tests;
+the native download gate was compiled but not rerun in a live window.
+
+| Finding | Outcome |
+|---|---|
+| The bearer could follow a redirect off the instance | **Fixed.** Bearer requests no longer follow redirects, and a test confirms the redirect target is never contacted |
+| A hostile filename could loop forever in `downloadPath` | **Fixed.** The loop stops on any error other than "not found" and tries at most 1000 names. Control and format characters and over-long names are stripped |
+| The download gate accepted a page with no host | **Partly fixed.** The native gate now fails closed, but `saveThroughProxy` accepts any known connection rather than only the window's own. Navigation still allows no host for the first load, covered by the Go window check |
+| Instance code can write files with no prompt | **Not fixed, product requirement.** Needs a save panel, a user gesture and the quarantine flag |
+
+While the spike runs, a connected instance's code can drop files into `~/Downloads`.
+Run it only against instances you trust.
+
 ## Rate limit: already fixed, not in v1.0.0
 
 Both cookie and bearer sessions got their first 429 after 56 rapid requests on v1.0.0.
