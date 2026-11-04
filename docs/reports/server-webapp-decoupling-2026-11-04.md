@@ -227,11 +227,11 @@ decides this.
 | Custom scheme with streaming | Privileges exist, and T3 Code sets `stream` | Not researched | **Confirmed by the spike** |
 | Security update burden | **Ships Chromium**, so its CVEs oblige releases | System webview | System webview |
 | Reuses Go `internal/cli` trust code | No | No | Only as a nested module in this repo, and after moving that code to small packages |
-| Downloads, popups, navigation policy | Yes, as API | Not researched | **None on macOS in v3.1.0** |
+| Downloads, popups, navigation policy | Yes, as API | Not researched | None built in on macOS in v3.1.0. The spike added them from its own native code |
 | Status | Stable | Stable (not researched further) | Stable: v3.1.0, released 2026-11-01. The earlier "beta" finding is out of date |
 
 You chose to spike Wails. [The results](./wails-shell-spike-2026-11-04.md) confirm C1's
-core and name the Wails gap to resolve before committing to it.
+core, and the Wails gap closed with about 120 lines of our own native code.
 
 ## 6. Settings impact
 
@@ -480,8 +480,9 @@ The "not an application to drag into Applications" sentence would need rewording
 | 5 | Optional `app` artifact, Windows and Linux | Later |
 
 **Spike tests. Any failure sends you to C2 or B.** Run on 2026-11-04, results in the
-[spike report](./wails-shell-spike-2026-11-04.md): tests 1, 2, 5, 7 and 8 passed, 3 is
-partial, 4 was not run, and 6 failed on Wails rather than on C1:
+[spike report](./wails-shell-spike-2026-11-04.md): tests 1, 2, 5, 7 and 8 passed, 3 passed
+for reveal with a virtual authenticator, 4 was not run, and in 6 downloads pass but
+clipboard auto-clear fails:
 
 1. Under the custom origin with a CLI-class session, the SPA loads and every route
    renders against a real instance, including `AuthProvider` via `whoami`.

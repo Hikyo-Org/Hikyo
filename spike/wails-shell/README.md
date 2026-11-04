@@ -28,14 +28,24 @@ system CAs only.
 
 ## Known gaps
 
-No sign-in, keychain, connection list or app bundle. Downloads and passkeys do not
-work in the window. See the spike report.
+No sign-in, keychain, connection list or app bundle. See the spike report.
+
+`webview_darwin.{go,m}` adds the navigation policy, download and popup handlers Wails
+v3.1.0 lacks, to its delegate class at start-up. External links open in the system
+browser; `HIKYO_SPIKE_BROWSER=print` logs them instead. Downloads go to
+`HIKYO_SPIKE_DOWNLOAD_DIR`, else `~/Downloads`. Passkey reveals run through the system
+browser: the SPA posts to `/__shell/reauth` (see `web/src/api/values.ts`), and the shell
+does the CLI's loopback handoff.
+
+The passkey path needs that SPA change on the instance, because the SPA comes from the
+instance. On a released instance, "Use a passkey" still fails in the window. TOTP works.
 
 ## Tests and probes
 
-`go test -tags production .` covers the proxy's refusals and token rotation.
+`go test -tags production .` covers the proxy's refusals and token rotation, the reauth
+handoff, URL validation and download paths.
 
 `-probe FILE` runs JavaScript after each navigation and enables `/__spike/report`
 and `/__spike/sleep`. The files in `probes/` produced the report's evidence. Replace
-`__ORG__`, `__PROJECT__`, `__ENV__` and `__TOTP_SECRET__` first, and use them only on
+`__ORG__`, `__PROJECT__`, `__ENV__` and `__TOTP_SECRET__` first (`downloads.js` also wants a second `-instance`), and use them only on
 a disposable instance: `hardening.js` overwrites the clipboard.

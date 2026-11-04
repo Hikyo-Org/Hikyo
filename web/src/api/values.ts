@@ -170,6 +170,8 @@ export type PasskeyCeremonyInput = {
  * keys below" exists to prevent.
  */
 export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<void> {
+  // Spike: the desktop shell serves wails://, where WebAuthn has no valid RP ID, so it runs the CLI's system-browser handoff. (location is absent in the unit tests' node environment.)
+  if (globalThis.location?.protocol === 'wails:') return runShellReauth(input);
   const epoch = captureSessionEpoch();
   const options = await parsed(reauthPasskeyStartOp, {
       body: {
@@ -180,6 +182,31 @@ export async function runPasskeyCeremony(input: PasskeyCeremonyInput): Promise<v
     });
   const request = requestOptions(options);
   await finishPasskeyCeremony(request, epoch);
+}
+
+const shellReauthOperations: Partial<Record<PasskeyCeremonyInput['operation'], string>> = {
+  reveal: 'value.reveal',
+  copy: 'value.copy-source',
+  publish: 'value.copy-destination',
+  approve: 'approval.vote',
+  reject: 'approval.vote',
+  bypass: 'approval.bypass',
+};
+
+async function runShellReauth(input: PasskeyCeremonyInput): Promise<void> {
+  const operation = shellReauthOperations[input.operation];
+  if (operation === undefined) throw new Error('this decision cannot be authorised from the desktop shell');
+  const response = await fetch('/__shell/reauth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      purpose: input.operation,
+      operation,
+      environment_ids: [input.environmentId],
+      key_ids: [...input.keyIds],
+    }),
+  });
+  if (!response.ok) throw new Error(`the system-browser ceremony failed (${response.status})`);
 }
 
 /** Run one adapter-purpose passkey ceremony over one zero-window environment. */

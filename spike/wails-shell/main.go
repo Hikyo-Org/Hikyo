@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -58,15 +59,35 @@ func loadSessions() map[string]session {
 	return out
 }
 
+// conn is one connection: the instance, its current bearer, and the proxy that spends it.
+type conn struct {
+	*httputil.ReverseProxy
+	origin *url.URL
+	mu     sync.RWMutex
+	token  string
+	busy   atomic.Bool // one reauth ceremony at a time
+}
+
+func (c *conn) bearer() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.token
+}
+
+func (c *conn) setBearer(t string) {
+	c.mu.Lock()
+	c.token = t
+	c.mu.Unlock()
+}
+
 // shortcut: system CA only, so an SPKI-pinned instance fails TLS; a real shell reuses the CLI's trust choice per connection.
-func newProxy(host string, s session) *httputil.ReverseProxy {
+func newConn(host string, s session) *conn {
 	origin, err := url.Parse(s.Origin)
 	if err != nil || origin.Host == "" {
 		log.Fatalf("%s: bad origin %q", host, s.Origin)
 	}
-	var mu sync.RWMutex
-	token := s.Token
-	return &httputil.ReverseProxy{
+	c := &conn{origin: origin, token: s.Token}
+	c.ReverseProxy = &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(origin)
 			h := pr.Out.Header
@@ -75,9 +96,7 @@ func newProxy(host string, s session) *httputil.ReverseProxy {
 			}
 			// Let Go's transport decode gzip: a scheme handler's bytes are not decoded by WebKit.
 			h.Del("Accept-Encoding")
-			mu.RLock()
-			h.Set("Authorization", "Bearer "+token)
-			mu.RUnlock()
+			h.Set("Authorization", "Bearer "+c.bearer())
 		},
 		ModifyResponse: func(r *http.Response) error {
 			r.Header.Del("Set-Cookie")
@@ -92,9 +111,7 @@ func newProxy(host string, s session) *httputil.ReverseProxy {
 			r.Body.Close()
 			out, rotated := takeRotatedToken(raw)
 			if rotated != "" {
-				mu.Lock()
-				token = rotated
-				mu.Unlock()
+				c.setBearer(rotated)
 				log.Printf("%s %s: session rotated, token withheld from the page", host, r.Request.URL.Path)
 			}
 			r.Body = io.NopCloser(bytes.NewReader(out))
@@ -109,6 +126,7 @@ func newProxy(host string, s session) *httputil.ReverseProxy {
 			http.Error(w, "instance unreachable", http.StatusBadGateway)
 		},
 	}
+	return c
 }
 
 // takeRotatedToken removes a rotated bearer from a response body. Step-up
@@ -156,10 +174,10 @@ func remarshal(raw []byte, body map[string]json.RawMessage) []byte {
 }
 
 // shell is outermost in Wails' chain, so instance code never reaches /wails/*.
-func shell(proxies map[string]*httputil.ReverseProxy, windowHosts map[string]string, probing bool) application.Middleware {
+func shell(proxies map[string]*conn, windowHosts map[string]string, probing bool) application.Middleware {
 	return func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			proxy, known := proxies[r.Host]
+			c, known := proxies[r.Host]
 			switch {
 			case !known:
 				log.Printf("refused unknown host %q %s", r.Host, r.URL.Path)
@@ -175,6 +193,8 @@ func shell(proxies map[string]*httputil.ReverseProxy, windowHosts map[string]str
 			case strings.HasPrefix(r.URL.Path, "/wails/"):
 				log.Printf("refused runtime path from %s: %s", r.Host, r.URL.Path)
 				http.Error(w, "runtime is not exposed to instance code", http.StatusForbidden)
+			case r.Method == http.MethodPost && r.URL.Path == "/__shell/reauth":
+				c.reauth(w, r)
 			case probing && r.URL.Path == "/__spike/sleep":
 				// An occluded WKWebView throttles setTimeout to about once a minute; network replies still arrive.
 				ms, _ := strconv.Atoi(r.URL.Query().Get("ms"))
@@ -185,7 +205,7 @@ func shell(proxies map[string]*httputil.ReverseProxy, windowHosts map[string]str
 				fmt.Printf("PROBE %s %s %s\n", time.Now().Format(time.TimeOnly), r.Host, body)
 				w.WriteHeader(http.StatusNoContent)
 			default:
-				proxy.ServeHTTP(w, r)
+				c.ServeHTTP(w, r)
 			}
 		})
 	}
@@ -201,7 +221,7 @@ func main() {
 	}
 
 	sessions := loadSessions()
-	proxies := map[string]*httputil.ReverseProxy{}
+	proxies := map[string]*conn{}
 	hosts := map[string]string{}
 	for i, name := range names {
 		s, ok := sessions[name]
@@ -209,11 +229,12 @@ func main() {
 			log.Fatalf("no session named %q; run hikyo login first", name)
 		}
 		host := fmt.Sprintf("conn-%d", i)
-		proxies[host] = newProxy(host, s)
+		proxies[host] = newConn(host, s)
 		hosts[name] = host
 		log.Printf("%s = %s (%s)", host, name, s.Origin)
 	}
 
+	connections = proxies
 	var probe string
 	if *probePath != "" {
 		raw, err := os.ReadFile(*probePath)

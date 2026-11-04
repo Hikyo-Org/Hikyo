@@ -10,12 +10,17 @@ v1.0.0 SPA from its instance on a CLI-class session, with no server change and n
 change. All 23 authenticated routes rendered, SSE was live, and a secret was revealed
 through the real UI with a TOTP code.
 
-Three things block a product as things stand:
+**Update, same day: the two main blockers are closed in the spike.** Native handlers
+added from our own code give Wails navigation policy, popups and downloads. A passkey
+reveal now completes through the system browser, on a protected environment, using a
+virtual authenticator. See [Second round](#second-round-handlers-and-passkey-hop).
 
-1. **Wails has no download, popup or navigation handling on macOS.** Downloads fail
-   silently. This is the framework's gap, not C1's.
-2. **Passkeys cannot run in the window**, as predicted. The system-browser path for
-   a passkey reveal needs SPA work and was not built, so that half is unproven.
+What remains before a product:
+
+1. **Downloads need a real design**: a save panel, the filename from the click, and the
+   macOS quarantine flag.
+2. **Only the disclosure ceremony is routed** to the browser. Other passkey sites in the
+   SPA still fail in the window.
 3. **Copied secrets are not auto-cleared**, because WebKit refuses the clipboard read
    the SPA does first.
 
@@ -36,10 +41,10 @@ Run against published v1.0.0 (`-tags=ui`, checksum verified) as `server --dev` o
 | 0 | Secure context under `wails://` (added) | **Pass** | `isSecureContext` true. `crypto.subtle`, `clipboard`, `credentials`, `localStorage`, `BroadcastChannel` present |
 | 1 | SPA and every route render | **Pass** | 23 authenticated routes, `AuthProvider` via `whoami`, no JS errors in the route walk. 403 and 404 responses matched missing grants. `/instance` needed a settled rate budget (see below) |
 | 2 | SSE live through the handler | **Pass when focused** | Events reached the page at the same millisecond as a direct reader (`08:27:34.598`). An occluded window saw about 21 s delay on one event |
-| 3 | Passkey and system browser | **Partly** | Device handoff completed in real Chromium, with TOTP, giving a `cli` session with `password, totp`. In the window, `navigator.credentials.get` gives `SecurityError: The origin of the document is not authorized for the provided RP ID`. No passkey hop was built or run |
-| 4 | OIDC and SAML | **Not tested** | `window.open` returned `null`, so the SPA's fallback would navigate the window itself to the provider. From source, not run |
+| 3 | Passkey and system browser | **Pass for reveal, virtual authenticator only** | Second round. In the window, `navigator.credentials.get` gives `SecurityError: The origin of the document is not authorized for the provided RP ID`, so the shell hands off to the browser. Device login also completed in real Chromium. Real Touch ID not run |
+| 4 | OIDC and SAML | **Not tested** | With handlers, `window.open` to https opens the system browser and the page gets `null`. The SPA's OIDC reauth waits on a `BroadcastChannel`, which cannot cross from the browser to the window, so it likely needs the same handoff. From source, not run |
 | 5 | No operation rejects a CLI session | **Pass for what ran, with one design fix** | Reads, TOTP step-up and TOTP reveal all worked, with `Origin: wails://…`, no cookie, no CSRF header. Rotation needs interception |
-| 6 | Downloads, clipboard auto-clear | **Fail** | `<a download>` and blob downloads produced no file and no navigation. Clipboard write works when focused. `readText` gives `NotAllowedError`, and `web/src/app/clipboard.ts` treats that as "do not clear" |
+| 6 | Downloads, clipboard auto-clear | **Downloads pass with handlers, auto-clear fails** | Without handlers, `<a download>` and blob downloads produced no file. Second round fixes that. Clipboard write works when focused. `readText` gives `NotAllowedError`, and `web/src/app/clipboard.ts` treats that as "do not clear" |
 | 7 | Connection isolation | **Pass after a fix** | `localStorage` is separate. CSP blocked cross-connection `fetch` and `<img>`. Top-level navigation was not blocked until the spike bound each window ID to its connection |
 | 8 | CSP, COOP, CORP | **Pass** | Assets load, and `connect-src 'self'` and `img-src 'self'` are enforced with correct origin semantics. One `script-src eval` violation of unknown source, no visible effect |
 
@@ -104,14 +109,69 @@ whose accepted messages are low-risk (drag, resize, ready) unless
 Also: the scheme is hard-coded as `wails`, and `window._wails` is injected into every
 page. v3.1.0 is 3 days old. Windows and Linux were not tested.
 
-Options for the gap, in the order I would try them:
+Options for the gap, as considered before the second round. The first was built and
+works:
 
 | Option | Cost | Risk |
 |---|---|---|
-| Add the delegate methods to Wails' class at runtime from our own cgo | Small, roughly 50 lines of Objective-C by estimate, untested | Relies on Wails internals, so each upgrade needs a recheck |
+| Add the delegate methods to Wails' class at runtime from our own cgo | **Built: 120 lines of Objective-C, all 5 methods took effect** | Relies on Wails internals: the class name and when the delegate is set. Each upgrade needs a recheck |
 | Carry a Wails fork or upstream a patch | Medium | Fork upkeep, or waiting on upstream |
 | Handle downloads in app mode: the SPA hands bytes to a shell route | Small per site, and there are few sites | Needs an SPA change, and does not solve navigation policy |
 | Use Electron for the shell | Rewrite the 250 lines | Ships Chromium and its update duty, loses the small binary. WebAuthn still needs the hop |
+
+## Second round: handlers and passkey hop
+
+Built by a Sonnet implementer, against an instance built from this branch with the SPA
+change. Downloads and reveal were driven by injected JavaScript and Playwright.
+
+**Native handlers** (`webview_darwin.m`). `class_addMethod` on `WebviewWindowDelegate`
+before any window exists works, with no change to the Wails module.
+
+| Scenario | Result |
+|---|---|
+| `<a download>` to a `wails://` URL | WKDownload cannot load the scheme (`NSURLErrorDomain -1002`). The shell cancels and Go fetches it through the connection instead. Bytes match a direct bearer `curl`: 1855 B, 1553 B and 708 B |
+| Blob `<a download>` | Works. 1,000,000 bytes arrived intact, including when the URL is revoked immediately, as `Audit.tsx` does |
+| The SPA's real buttons | Both definitions exports saved. Audit "Export JSONL" saved 23703 B of 23703 |
+| `window.open`, `target=_blank`, `location.href` to https | Open in the system browser. The window stays where it was |
+| `location.href` to the other connection | Cancelled natively, before the Go check |
+| `mailto:` | Cancelled |
+| `file://`, `javascript:` | Window stayed put with no policy callback. Cause not established, so not counted as a control |
+
+**Passkey reveal** (`reauth.go`, and one `web/src/api/values.ts` branch). On a protected
+environment, where the dialog offers only "Use a passkey":
+
+1. Clicking it posts to `/__shell/reauth`, which starts the CLI's existing handoff and
+   opens `/reauth/cli` in the browser.
+2. The passkey completes there, and the loopback callback returns the code.
+3. The shell redeems it, and keeps the rotated token. The page's response holds no token.
+4. The value appears in the same window, same view, with page state kept.
+
+The old token then got 401 and `whoami` stayed 200. No server change was needed.
+
+**Things this showed:**
+
+- **The user must return to the window themselves.** The shell could not take focus back
+  from the browser. The reveal waits at "Return to this window to complete the reveal"
+  and then finishes by itself, with state kept.
+- **Downloads lose the filename.** The policy callback never sees the `download`
+  attribute, so the definitions exports saved as `export` and `export (1)`.
+- **Downloads need hardening before real use.** Instance code can trigger them without a
+  prompt, into a fixed directory, and files written by Go carry no
+  `com.apple.quarantine` flag, so Gatekeeper would not check them. The quarantine point
+  is from reading the code, not tested. `window.open` can also open browser tabs without
+  a prompt.
+- **Only disclosure is routed.** `runPasskeyCeremony` handles reveal, copy, publish,
+  approve, reject and bypass, and only reveal ran. Adapter, developer credential, step-up,
+  self-config and passkey enrolment still call WebAuthn directly and fail in the window.
+  `mint` and `access` are refused. The branch also skips the SPA's session epoch check.
+- **`values.ts` is hash-pinned for security review.** The inventory was not updated, so
+  the repo's check would likely refuse this change outside a spike branch.
+
+**Limits:** a virtual authenticator, not Touch ID. The live flow ran on a build before
+`location?.protocol` was made optional for the unit tests. Unit tests and `tsc` pass on
+the final code. Sign-in through the browser from inside the app was not built: sessions
+still come from `hikyo login` or the device endpoints. This round's code had my read-through
+and its tests, but no separate Standards and Spec review.
 
 ## Rate limit: already fixed, not in v1.0.0
 
@@ -122,15 +182,14 @@ In a plain Chromium tab on the same instance, the default route made 94 API requ
 This is the known issue from the duplicate-polling work, not a new finding. `9732c1262`
 stops live sessions spending the 60 per minute source allowance, and `786f1cd9e`,
 `355e69049` and `6749314b9` cut the SPA's requests. None is in v1.0.0 or in
-`nightly.20261102.103`, and all are in `nightly.20261104.106`. I did not rerun the
-measurement on that nightly.
+`nightly.20261102.103`, and all are in `nightly.20261104.106`. hikyo.dbugit.io now
+reports `nightly.20261104.107`. I did not rerun the measurement.
 
 ## Evidence and limits
 
-**Not tested:** a hosted instance or real TLS; SPKI pinning; a real passkey (no
-virtual or hardware authenticator was used); the loopback handoff, since v1.0.0's CLI
-refuses loopback http without its socket, so the device endpoints were called directly
-and approved once in Chromium; OIDC, SAML; write flows beyond reveal, step-up and
+**Not tested:** a hosted instance or real TLS; SPKI pinning; a hardware passkey; the
+loopback login, since v1.0.0's CLI refuses loopback http without its socket, so the
+device endpoints were called directly and approved once in Chromium; OIDC, SAML; write flows beyond reveal, step-up and
 enrolment; Windows, Linux; signing or notarization.
 
 **Weaker evidence:** the enrolment POST ran directly against the API with the bearer,
