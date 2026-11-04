@@ -41,7 +41,7 @@ type SealedWebhookTarget struct {
 	MaxResponseBytes     int64
 	ConfirmedFingerprint string
 	// Protocol is the wire protocol version, 1 (default) or 2. A protocol 2
-	// target never falls back to protocol 1.
+	// target never falls back to protocol 1 after an error.
 	Protocol      int
 	AckKeyMLDSA65 string
 }

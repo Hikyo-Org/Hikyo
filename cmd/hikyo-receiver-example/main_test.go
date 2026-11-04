@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -211,5 +212,48 @@ func TestProtocolTwoKeygenFingerprintAndPQRequiredReceiver(t *testing.T) {
 	}
 	if _, err := loadReceiver(path); err == nil {
 		t.Fatal("missing ML-DSA ack key accepted")
+	}
+}
+
+// TestPersistStateSyncsTheFileThenTheRenamedEntry pins the durability order:
+// the temporary file is synced before the rename, and the parent directory is
+// synced after it, so an acknowledged apply cannot be undone by power loss.
+func TestPersistStateSyncsTheFileThenTheRenamedEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	var events []string
+	oldFile, oldDir := syncFile, syncDir
+	t.Cleanup(func() { syncFile, syncDir = oldFile, oldDir })
+	exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+	syncFile = func(f *os.File) error {
+		if len(events) == 0 && (exists(path) || !exists(path+".tmp")) {
+			t.Error("the file must be synced before the rename, while it is still the temporary file")
+		}
+		events = append(events, "file")
+		return oldFile(f)
+	}
+	syncDir = func(d string) error {
+		if d != dir || !exists(path) || exists(path+".tmp") {
+			t.Errorf("the directory must be synced after the rename (dir %q, state present %v)", d, exists(path))
+		}
+		events = append(events, "dir")
+		return oldDir(d)
+	}
+	if err := persistState(path, []byte(`{"values":{},"seen":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(events, ",") != "file,dir" {
+		t.Fatalf("sync events = %v, want file then dir", events)
+	}
+	if raw, _ := os.ReadFile(path); string(raw) != `{"values":{},"seen":{}}` {
+		t.Fatalf("state = %q", raw)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Fatalf("state mode = %v", info.Mode().Perm())
+	}
+	// A failed sync is a failed apply: nothing is acknowledged.
+	syncDir = func(string) error { return errors.New("sync refused") }
+	if err := persistState(path, []byte("{}")); err == nil {
+		t.Fatal("a failed directory sync was reported as a durable apply")
 	}
 }

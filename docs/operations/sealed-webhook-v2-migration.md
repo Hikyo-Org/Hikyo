@@ -32,8 +32,8 @@ shipped** in the Hikyo release and the release has no key generator for the
 instance's signing keys; build it from this repository's source
 (`go build ./cmd/hikyo-receiver-example`) on a host you trust. As a receiver it
 keeps all state in one plaintext JSON file (mode `0600`) that holds every
-delivered value, rewrites it whole on every apply (it now `fsync`s before it
-acknowledges, but there is no journal or backup), and keeps every idempotency
+delivered value, rewrites it whole on every apply (it syncs the file and then the directory
+before it acknowledges, but there is no journal or backup), and keeps every idempotency
 key forever (the map is unbounded). Spec section 7 requires a durable apply
 before the acknowledgement; a real receiver must provide that itself. Do not
 point production traffic at the example.
@@ -78,31 +78,25 @@ point production traffic at the example.
 
 ## Steps
 
-### 1. Upgrade the receiver to read protocol 2 (receiver first)
+### 1. Generate the receiver's protocol 2 keys (no configuration change yet)
 
-Run a receiver build that serves both paths, with its generation unchanged.
-Protocol 1 senders see no change. With the reference receiver:
+Receiver first. These commands change nothing on a running receiver, so protocol
+1 senders see no change. With the reference receiver (the directory must exist;
+the tool does not create it):
 
 ```sh
+umask 077
+mkdir -p ./v2-keys
 hikyo-receiver-example keygen -protocol 2 -dir ./v2-keys
 ```
 
 This writes `identity-hybrid.age`, `ack.pem` and `ack-mldsa65.pem` with mode
-`0600` and prints only `recipient_key`, `ack_key` and `ack_key_mldsa65`. The
-Ed25519 acknowledgement key (`ack_key_file`) is shared by both versions: if you
-already run a protocol 1 receiver, keep your existing `ack.pem` and do not
-pass the new one. Add to the receiver configuration (keep the protocol 1
-members for the transition):
-
-```json
-{
-  "hybrid_identity_file": "v2-keys/identity-hybrid.age",
-  "ack_key_mldsa65_file": "v2-keys/ack-mldsa65.pem",
-  "senders_v2": []
-}
-```
-
-Back up the new files in a failure domain separate from the receiver host.
+`0600` and prints only `recipient_key` (`age1pq1...`), `ack_key` and
+`ack_key_mldsa65`. The Ed25519 acknowledgement key (`ack_key_file`) is shared by
+both versions: if you already run a protocol 1 receiver, **keep your existing
+`ack.pem` and its `ack_key`**, delete the new `v2-keys/ack.pem`, and use the
+existing `ack_key` in step 3 and in the registry. Back up the new files in a
+failure domain separate from the receiver host.
 
 ### 2. Generate the instance's ML-DSA signing key
 
@@ -110,28 +104,40 @@ On the Hikyo host, through protected input, with a binary built from source:
 
 ```sh
 umask 077
+mkdir -p /etc/hikyo/sealed
 hikyo-receiver-example sender-keygen -dir /etc/hikyo/sealed
 ```
 
 It writes `signing-mldsa65.pem` (mode `0600`) and prints its public key and key
 id. It does **not** touch your Ed25519 key (`-with-ed25519` exists only for a
 new installation). Read your existing Ed25519 public key with
-`hikyo-receiver-example pubkey -pem /path/to/signing_key_file`. Pin both on the
-receiver as one **pair**:
+`hikyo-receiver-example pubkey -pem /path/to/signing_key_file`.
+
+### 3. Pin the sender pair, then enable protocol 2 on the receiver
+
+Pin the existing Ed25519 public key and the new ML-DSA public key together, as
+one **pair**, and only then add the protocol 2 members to the receiver
+configuration (keep the protocol 1 members). A receiver with the hybrid members
+and no pinned pair refuses to start (`at least one pinned sender pair is
+required`) and takes protocol 1 down with it, so add all three together:
 
 ```json
-"senders_v2": [{ "key": "ed25519:<hex>", "key_mldsa65": "mldsa65:<hex>" }]
+{
+  "hybrid_identity_file": "v2-keys/identity-hybrid.age",
+  "ack_key_mldsa65_file": "v2-keys/ack-mldsa65.pem",
+  "senders_v2": [{ "key": "ed25519:<hex>", "key_mldsa65": "mldsa65:<hex>" }]
+}
 ```
 
-### 3. Compute the fingerprint and read it over an independent channel
+Restart the receiver. It now serves both `/hikyo/v1/sync` and `/hikyo/v2/sync`
+with its generation unchanged. Compute the fingerprint, and read it over an
+independent channel (voice or another channel you control) to the instance admin:
 
 ```sh
 hikyo-receiver-example fingerprint -protocol 2 \
   -origin https://recv.example -recipient age1pq1... \
-  -ack-key ed25519:<hex> -ack-key-mldsa65 mldsa65:<hex> -generation <the current generation>
+  -ack-key ed25519:<your existing ack_key> -ack-key-mldsa65 mldsa65:<hex> -generation <the current generation>
 ```
-
-Read the result to the instance admin by voice or another channel you control.
 
 ### 4. Change the registry entry to protocol 2
 
@@ -181,7 +187,9 @@ manual resync to re-deliver the same values (new generation, new keys).
 
 - **Sender:** restore the protocol 1 entry (its fingerprint and unchanged
   generation) and remove `signing_key_file_mldsa65`. Targets still bound under
-  protocol 1 and not pruned resume. Protocol 2 routes fail closed. A route you
+  protocol 1 and not pruned resume, unless their names were released and a
+  protocol 2 route took the namespace (then they conflict, as below). Protocol 2
+  routes fail closed. A route you
   pruned does not come back: a re-bound protocol 1 route conflicts with names
   the protocol 2 route now owns until the receiver operator releases them, and
   you then publish a new revision.
@@ -217,7 +225,7 @@ manual resync to re-deliver the same values (new generation, new keys).
 | Hikyo does not start: `endpoint fingerprint was not confirmed` | The fingerprint was computed for other inputs; recompute with `-protocol 2` and the exact origin, keys and generation |
 | Hikyo does not start: `max response bytes must be at least 5120` | A protocol 2 acknowledgement is about 5 KB; set `max_response_bytes` to 5120 or more (8192 is a good value) |
 | Probes and pushes report `acknowledgement exceeded the configured size bound` | The same bound on a build that predates the check; raise it. The receiver may already have applied the value; the retry is answered `already_applied` |
-| Every push is unknown and retried | The receiver does not serve protocol 2 yet (step 1), or the sender pair is not pinned as a pair |
+| Every push is unknown and retried | The receiver does not serve protocol 2 yet (step 3), or the sender pair is not pinned as a pair |
 | `rejected: generation_mismatch` | The sender's generation differs from the receiver's one generation. Keep them equal for both versions |
 | Every protocol 1 target stopped signing correctly | `signing_key_file` was replaced; restore the Ed25519 key the receivers pin and use `signing_key_file_mldsa65` for the new key |
 | `conflict: exists_unowned` on `MANAGED_BY_HIKYO` | Another route holds the namespace sentinel; use a new namespace or prune the old route, then publish a new revision |

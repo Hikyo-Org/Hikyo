@@ -53,6 +53,24 @@ swapped after all deliveries); `encoding/json` matched `SIG_ED25519` and `V` cas
 a body of empty name objects allocated 99 MB per parse; and the other documentation claims. The
 repairs are in the commits after `9de6a536b`.
 
+## Second review repair (re-review of `8bad510a5`)
+
+Eight remaining defects, each verified first. Item 1 was reproduced with the built binary against a
+live v1 receiver: `keygen -dir` does not create the directory, and a receiver with the hybrid
+members and an empty `senders_v2` exits with `at least one pinned sender pair is required`, taking
+v1 down; the guide now creates the directory, generates keys first, and adds the hybrid members
+only together with a pinned pair (walked through again with the built binary: both paths answered,
+the fingerprint printed; the walkthrough also showed the fingerprint must use the existing
+`ack_key`, now stated). Item 2: rollback text qualified. Item 3: the "before allocation" claim is
+scoped to the body, names and member set, and the two-pass string cost is measured (49 MiB for one
+1.5 MB invalid-UTF-8 string, 41 MiB for 256 large names) and registered; the reviewer's v1
+comparison was not reproduced. Item 4: stray-bits cases and two vector negatives; removing
+`.Strict()` from either decode now fails. Item 5: real classical identities in the receiver test;
+removing the ack-signer check now fails. Item 6: scope fields at maximum, 1,478,120 bytes. Item 7:
+this file. Item 8: the parent directory is synced after the rename; the sync order is testable
+through two hooks and removing either sync fails; "after an error" added to the site and registry
+comment. The reference tool's directory sync is Unix-only.
+
 ## Acceptance
 
 Legend: DONE, PARTIAL, HOLD, NOTRUN.
@@ -63,12 +81,12 @@ Legend: DONE, PARTIAL, HOLD, NOTRUN.
 | Approved hybrid recipient and signatures; validate pinned identities and key ownership before enabling | **PARTIAL** | Fingerprint confirmation, key parsing and pair pinning DONE. The `adapter test` probe proves the responder holds both acknowledgement keys, **not** the hybrid identity: an acknowledgement carries nothing derived from the plaintext, so recipient ownership is not proven. Proving it needs a plaintext-derived ack field, a new mechanism, not built |
 | Protected key generation and import, algorithm-aware fingerprints; target configuration, API, CLI, UI and reference tooling | PARTIAL | Registry, fingerprints and reference tooling DONE (`sender-keygen` now mints only the ML-DSA key and leaves the instance's Ed25519 key alone; `pubkey` prints one prefixed form). No API, CLI or UI consumes the registry. **No product-binary generator**: the tool is unshipped. Keys are `0600` files (the v1 custody model), not sealed under the instance hierarchy |
 | Reject classical-only encryption, stripping, wrong key, other algorithm/target/version, mixed unlock paths; dual signatures all-required | DONE | Crypto, adapter and vector negatives; mutations (skip ML-DSA on envelopes, on acks, the not_after check) each fail tests. "Never downgrades" means no error path falls back; it does not stop an administrator restoring the v1 entry (R-1128-B) |
-| Bounds for hybrid and ML-DSA sizes; malformed, overlarge, truncated, expired, future, tampered refused without unsafe allocation | DONE | Member names are exact-case, unique and bounded (256 names) on the token stream before any struct decode (the 1.5 MB empty-names body now allocates under 4 MiB, was 99 MB); canonical base64; a protocol 2 response bound below 5,120 is refused at activation; largest legal envelope **1,477,423** of 1,529,176 bytes (256 names of 256 characters, ciphertext at the 1 MiB limit), largest legal ack 5,038 bytes |
+| Bounds for hybrid and ML-DSA sizes; malformed, overlarge, truncated, expired, future, tampered refused without unsafe allocation | DONE | Member names are exact-case, unique and bounded (256 names) on the token stream before any struct decode (the 1.5 MB empty-names body now allocates under 4 MiB, was 99 MB); canonical base64; a protocol 2 response bound below 5,120 is refused at activation; largest legal envelope **1,478,120** of 1,529,176 bytes (256 names of 256 characters, every identifier and integer at its maximum, ciphertext at the 1 MiB limit), largest legal ack 5,038 bytes |
 | Preserve authN/Z, egress, destination pinning, INTENT/OUTCOME audit, fences, retry, duplicate suppression, ambiguity | DONE | Journal path unchanged; exercised on both engines |
 | Exercise encrypt, send, receiver verify/decrypt, signed ack, reconcile; retry/restart, duplicate delivery, concurrent key rotation, multi-node takeover | DONE (local) | `TestAdapterSealedWebhookProtocolTwoEndToEnd` on SQLite and PostgreSQL: rotation now holds the first revision 3 request at the receiver while the pins change, asserts the 400 and the same-key retry under the new pair; the takeover stalls node 1 after the apply and before the ack, asserts the superseded fence, `already_applied` and at most one `applied` per key; failing phases assert attempts happened and the outbox state |
 | Keep v1 targets; PQ-required targets never downgrade on error; v1 data only under its policy | DONE | v1 tests and KAT unchanged and passing; skew matrix; no v1 request after any v2 error |
 | Skew, reader-first, key overlap and retirement, rollback to a v2-capable reader, restore of custody without reviving authority | DONE (local), with limits | `TestV2TransitionAndRollbackAgainstOneReceiver` runs the sequence against one receiver with one generation, one Ed25519 key and one shared store (and found the sentinel and per-route ownership limits now documented); pair retirement is exercised with a real `not_after` |
-| Publish vectors, receiver migration instructions, exact candidate evidence; no live push or production key change | PARTIAL (instructions) | Vectors DONE (16 negatives incl. case variants, nested duplicates, a line break in the ciphertext). The guide was corrected (bound, generation, key, ownership, rollback, probe, tool warning) and its commands are covered by tool tests, but it was not followed hands-on on a clean host. No live target was contacted and no production key was made |
+| Publish vectors, receiver migration instructions, exact candidate evidence; no live push or production key change | PARTIAL (instructions) | Vectors DONE (18 negatives incl. case variants, stray trailing bits in the ciphertext and signature base64, nested duplicates, a line break in the ciphertext). The guide was corrected (bound, generation, key, ownership, rollback, probe, tool warning) and its commands are covered by tool tests, but it was not followed hands-on on a clean host. No live target was contacted and no production key was made |
 
 ## Evidence
 
@@ -76,11 +94,12 @@ Local on Apple M2 Pro (arm64), Go 1.27.3, host load 10 to 12 from other jobs.
 
 | Class | Result |
 | --- | --- |
-| Unit and adapter | `go test ./internal/crypto/sealedhook ./internal/adapter/sealedwebhook ./internal/config ./internal/app ./cmd/hikyo-receiver-example`: pass |
+| Unit and adapter | `go test ./internal/crypto/sealedhook ./internal/adapter/sealedwebhook ./internal/sealedreceiver ./internal/config ./cmd/hikyo-receiver-example` and `go test -run SealedWebhook ./internal/app`: pass (the whole `internal/app` package is not claimed: see Final checks) |
 | Both engines | `TestAdapterSealedWebhookProtocolTwoEndToEnd` (SQLite, PostgreSQL 18) via `agent-heavy`: pass |
 | Cross-implementation | ML-DSA-65 signatures and context verified with OpenSSL 3.5.9; ciphertext decrypts with the `age` CLI v1.3.2 (same upstream as the library, so not independent for age) |
 | Lint, pins, fast-feedback, signatures, DCO, doc status | see "Final checks" |
-| Hosted CI, real receiver, deployment | NOTRUN |
+| Hosted CI | see Final checks (results read per head) |
+| Real receiver, live push, deployment | NOTRUN |
 
 Measured baseline (DEC-17; no threshold proposed): one-value envelope 7,873 bytes, ack 4,961
 bytes; seal 0.86 ms and open 0.50 ms per operation (includes both signatures, age hybrid wrap and

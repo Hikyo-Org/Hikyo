@@ -260,7 +260,7 @@ A target may opt in to protocol 2 (hybrid post-quantum encryption and
 Ed25519 plus ML-DSA-65 signatures) with `"protocol": 2`, an `age1pq1...`
 `recipient_key`, `ack_key_mldsa65`, and a top-level `signing_key_file_mldsa65`
 (a seed-only PKCS#8 PEM, mode `0600`). Protocol 1 is the default and is
-unchanged. A protocol 2 target never falls back to protocol 1, mixed or
+unchanged. A protocol 2 target never falls back to protocol 1 after an error, mixed or
 unused ML-DSA material refuses startup, and the fingerprint is
 algorithm-aware. A protocol 2 target needs `max_response_bytes` of at least
 5120, keeps the registry's existing Ed25519 `signing_key_file`, and keeps the

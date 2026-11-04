@@ -354,29 +354,54 @@ func serve(args []string) error {
 		if err != nil {
 			return err
 		}
-		tmp := *statePath + ".tmp"
-		f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-		if err != nil {
-			return err
-		}
-		// The state is acknowledged only after it is on disk: spec section 7
-		// requires a durable apply before the acknowledgement.
-		if _, err := f.Write(raw); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Close(); err != nil {
-			return err
-		}
-		return os.Rename(tmp, *statePath)
+		return persistState(*statePath, raw)
 	}
 	mux := http.NewServeMux()
 	mux.Handle(sealedhook.SyncPath, receiver)
 	mux.Handle(sealedhook.SyncPathV2, receiver)
 	server := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second}
 	return server.ListenAndServeTLS(*cert, *key)
+}
+
+// syncFile and syncDir are variables so a test can prove they run, and in
+// which order. They are what make an acknowledged apply survive power loss.
+var (
+	syncFile = func(f *os.File) error { return f.Sync() }
+	syncDir  = func(dir string) error {
+		d, err := os.Open(dir)
+		if err != nil {
+			return err
+		}
+		defer d.Close()
+		return d.Sync()
+	}
+)
+
+// persistState writes the state so that it survives power loss before the
+// receiver acknowledges: the temporary file is synced, renamed over the state
+// file, and then the parent directory is synced so the rename itself is
+// durable. Spec section 7 requires a durable apply before the acknowledgement.
+// shortcut: whole-file rewrite on every apply and Unix directory sync, fine
+// for a reference receiver, not for production.
+func persistState(path string, raw []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(raw); err != nil {
+		f.Close()
+		return err
+	}
+	if err := syncFile(f); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
 }

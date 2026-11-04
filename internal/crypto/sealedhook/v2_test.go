@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -103,6 +104,39 @@ func (f fixtureV2) payloadJSON() []byte {
 	p := Payload{IdempotencyKey: draftV2(f.now).IdempotencyKey, Binding: "binding-token", Values: []Value{{Surface: "secret", Name: "DB_PASSWORD", Value: plaintextMarker}}}
 	raw, _ := json.Marshal(p)
 	return raw
+}
+
+// withStrayBits returns b64 with the final data character (the one before any
+// padding) moved to the next alphabet entry. In canonical base64 the spare low
+// bits of that character are zero, so +1 sets one: the decoded bytes are
+// unchanged and only a Strict decoder refuses it.
+func withStrayBits(b64 string) string {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	end := strings.IndexByte(b64, '=')
+	if end < 0 {
+		panic("withStrayBits: the base64 has no padding, so no character has spare bits")
+	}
+	return b64[:end-1] + string(alphabet[strings.IndexByte(alphabet, b64[end-1])+1]) + b64[end:]
+}
+
+// sealUnaligned seals the draft, lengthening the binding until the age
+// ciphertext is not a multiple of three bytes, so its base64 form has padding
+// and therefore spare bits a non-strict decoder would ignore.
+func (f fixtureV2) sealUnaligned(t testing.TB, d Draft) Sealed {
+	t.Helper()
+	for range 3 {
+		sealed, err := f.sealer.Seal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, _ := ParseEnvelopeV2(sealed.Body)
+		if strings.Contains(e.Ciphertext, "=") {
+			return sealed
+		}
+		d.Binding += "x"
+	}
+	t.Fatal("could not produce a padded ciphertext")
+	return Sealed{}
 }
 
 // withMember returns a copy of a JSON object with one more member appended.
@@ -532,6 +566,19 @@ func TestV2GenerateVectors(t *testing.T) {
 			x.TargetID, x.InstanceID, x.RecipientID = "payments", "hikyo-eu", recipientIDV2("age1pq1other")
 		})), "recipient"},
 		{"hybrid ciphertext with an extra stanza", "envelope", string(f.resign(t, encryptTo(t, f.payloadJSON(), hybridID.Recipient(), func() age.Recipient { i, _ := age.ParseHybridIdentity(f.otherIdent); return i.Recipient() }()), func(x *EnvelopeV2) { x.TargetID, x.InstanceID = "payments", "hikyo-eu" })), "payload"},
+		{"non-canonical ciphertext base64 tail (stray trailing bits)", "envelope", func() string {
+			d := draftV2(f.now)
+			d.TargetID, d.InstanceID = "payments", "hikyo-eu"
+			e, _ := ParseEnvelopeV2(f.sealUnaligned(t, d).Body)
+			e.Ciphertext = withStrayBits(e.Ciphertext)
+			raw, _ := json.Marshal(e)
+			return string(raw)
+		}(), "malformed"},
+		{"non-canonical ed25519 signature tail (stray trailing bits)", "envelope", func() string {
+			good := string(sealed.Body)
+			i := strings.Index(good, `"sig_ed25519":"`) + len(`"sig_ed25519":"`)
+			return good[:i] + withStrayBits(good[i:i+ed25519SigBase64]) + good[i+ed25519SigBase64:]
+		}(), "malformed"},
 		{"case-variant member name", "envelope", strings.Replace(string(sealed.Body), `"v":2`, `"V":2`, 1), "malformed"},
 		{"upper-case duplicate of a signature member", "envelope", string(withMember(sealed.Body, `"SIG_ED25519":"`+strings.Repeat("A", ed25519SigBase64)+`"`)), "malformed"},
 		{"duplicate member inside source", "envelope", strings.Replace(string(sealed.Body), `"revision":7`, `"revision":7,"revision":8`, 1), "malformed"},
@@ -644,6 +691,10 @@ func TestV2LargestEnvelopeFitsTheRecomputedBound(t *testing.T) {
 	f := newFixtureV2(t)
 	build := func(valueSize int) Draft {
 		d := draftV2(f.now)
+		// Every identifier and integer at its maximum, not only the names.
+		d.TargetID, d.InstanceID, d.Namespace = strings.Repeat("a", 63), strings.Repeat("b", 63), strings.Repeat("c", 63)
+		d.Route, d.Generation = strings.Repeat("r", 128), math.MaxInt64
+		d.Source = Source{Org: strings.Repeat("o", 128), Project: strings.Repeat("p", 128), Environment: strings.Repeat("e", 128), Revision: math.MaxInt64}
 		d.Names, d.Values = nil, nil
 		for i := range MaxNames {
 			name := "N" + strings.Repeat("X", 251) + fmt.Sprintf("%04d", i) // 256 characters
@@ -729,18 +780,21 @@ func TestV2MemberSetIsExactCaseAndBoundedBeforeDecoding(t *testing.T) {
 	i := strings.Index(good, `"sig_ed25519":"`)
 	realSig := good[i+len(`"sig_ed25519":"`) : i+len(`"sig_ed25519":"`)+ed25519SigBase64]
 	cases := map[string][]byte{
-		"upper-case duplicate signature":  withMember(sealed.Body, `"SIG_ED25519":"`+strings.Repeat("A", ed25519SigBase64)+`"`),
-		"upper-case version member":       edit(sealed.Body, `"v":2`, `"V":2`),
-		"mixed-case suite member":         edit(sealed.Body, `"suite"`, `"Suite"`),
-		"upper-case nested source member": edit(sealed.Body, `"org"`, `"ORG"`),
-		"duplicate nested source member":  edit(sealed.Body, `"revision":7`, `"revision":7,"revision":8`),
-		"case-variant name member":        edit(sealed.Body, `"surface"`, `"Surface"`),
-		"unknown nested source member":    edit(sealed.Body, `"revision":7`, `"revision":7,"extra":1`),
-		"duplicate real signature":        withMember(sealed.Body, `"sig_ed25519":"`+realSig+`"`),
-		"non-canonical ed25519 signature tail": func() []byte {
-			const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-			k := strings.IndexByte(alphabet, realSig[85])
-			return edit(sealed.Body, realSig, realSig[:85]+string(alphabet[k+1])+realSig[86:])
+		"upper-case duplicate signature":       withMember(sealed.Body, `"SIG_ED25519":"`+strings.Repeat("A", ed25519SigBase64)+`"`),
+		"upper-case version member":            edit(sealed.Body, `"v":2`, `"V":2`),
+		"mixed-case suite member":              edit(sealed.Body, `"suite"`, `"Suite"`),
+		"upper-case nested source member":      edit(sealed.Body, `"org"`, `"ORG"`),
+		"duplicate nested source member":       edit(sealed.Body, `"revision":7`, `"revision":7,"revision":8`),
+		"case-variant name member":             edit(sealed.Body, `"surface"`, `"Surface"`),
+		"unknown nested source member":         edit(sealed.Body, `"revision":7`, `"revision":7,"extra":1`),
+		"duplicate real signature":             withMember(sealed.Body, `"sig_ed25519":"`+realSig+`"`),
+		"non-canonical ed25519 signature tail": edit(sealed.Body, realSig, withStrayBits(realSig)),
+		"non-canonical ciphertext base64 tail": func() []byte {
+			unaligned := f.sealUnaligned(t, draftV2(f.now))
+			e, _ := ParseEnvelopeV2(unaligned.Body)
+			e.Ciphertext = withStrayBits(e.Ciphertext)
+			raw, _ := json.Marshal(e)
+			return raw
 		}(),
 		"ack upper-case member":             edit(ack, `"status"`, `"STATUS"`),
 		"ack duplicate member":              withMember(ack, `"status":"applied"`),

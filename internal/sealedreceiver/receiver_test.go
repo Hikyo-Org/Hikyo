@@ -35,18 +35,35 @@ func TestNewRequiresAVersionAndItsMaterial(t *testing.T) {
 	if _, err := New(good); err != nil {
 		t.Fatal(err)
 	}
-	for name, edit := range map[string]func(*Config){
-		"no identity at all":          func(c *Config) { c.HybridIdentity = "" },
-		"no version 2 ack signer":     func(c *Config) { c.AckSignerV2 = nil },
-		"no version 2 sender pairs":   func(c *Config) { c.SendersV2 = nil },
-		"no generation":               func(c *Config) { c.Generation = 0 },
-		"a version 1 identity alone":  func(c *Config) { c.Identity = "AGE-SECRET-KEY-1x" },
-		"a classical hybrid identity": func(c *Config) { c.HybridIdentity = "AGE-SECRET-KEY-1x" },
+	// Real, parseable classical material, so each refusal below is the
+	// receiver's own rule and not a parse error.
+	identityV1, _, err := sealedhook.GenerateRecipient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	edPEM, _, _ := sealedhook.GenerateSigningKey()
+	ed, _ := sealedhook.ParseSigningKeyPEM(edPEM)
+	pinnedV1 := []sealedhook.PinnedKey{{Key: ed.Public()}}
+	// A complete version 1 receiver is accepted too.
+	v1Only := Config{Identity: identityV1, AckSigner: ed, Senders: pinnedV1, TargetID: "payments", InstanceID: "hikyo", Generation: 1}
+	if _, err := New(v1Only); err != nil {
+		t.Fatalf("a complete version 1 receiver was refused: %v", err)
+	}
+	for name, cfg := range map[string]func() Config{
+		"no identity at all":                       func() Config { c := good; c.HybridIdentity = ""; return c },
+		"no version 2 ack signer":                  func() Config { c := good; c.AckSignerV2 = nil; return c },
+		"no version 2 sender pairs":                func() Config { c := good; c.SendersV2 = nil; return c },
+		"no generation":                            func() Config { c := good; c.Generation = 0; return c },
+		"version 1 identity without an ack signer": func() Config { c := v1Only; c.AckSigner = nil; return c },
+		"version 1 identity without sender pins":   func() Config { c := v1Only; c.Senders = nil; return c },
+		"a classical identity in the hybrid slot": func() Config {
+			c := good
+			c.HybridIdentity = identityV1
+			return c
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			c := good
-			edit(&c)
-			if _, err := New(c); err == nil {
+			if _, err := New(cfg()); err == nil {
 				t.Fatal("accepted")
 			}
 		})

@@ -331,11 +331,23 @@ state, and the digest and idempotency key are those of the request. A missing,
 duplicate or wrong-size signature, an acknowledgement signed by one algorithm
 only, or an acknowledgement of another version is never a success.
 
-### 11.5 Bounds (DEC-08), enforced before allocation or expensive work
+### 11.5 Bounds (DEC-08)
+
+Scope of "before allocation": the request body, the declared length, the names
+array (counted on the token stream) and the member set are enforced before any
+value is built from them, and field lengths are checked before base64 decoding
+and before any verification. String **contents** are not: `checkShape` and the
+struct decode each decode every string, so a string-heavy body costs about
+twice what one pass would. Measured as cumulative allocation per parse: a 1.5 MB
+string of invalid UTF-8 allocates about 49 MiB (about 220 ms), 256 names with
+large strings about 41 MiB, empty names at the bound under 0.01 MiB, and a 64 KiB
+acknowledgement at most about 2.2 MiB. The body bound caps all of it and the
+reference receiver has no concurrency cap; a receiver exposed to untrusted
+callers needs one (registered in 11.10).
 
 | Field | Bound |
 |---|---|
-| Request body | at most 1,529,176 bytes: 1,398,104 base64 ciphertext characters plus 128 KiB for 256 names (about 300 bytes each), identifiers, the 4,412 and 88 character signatures and key ids. The largest legal envelope measured is 1,477,423 bytes (256 names of 256 characters, ciphertext at the 1 MiB limit). A declared `Content-Length` over the bound is refused before reading |
+| Request body | at most 1,529,176 bytes: 1,398,104 base64 ciphertext characters plus 128 KiB for 256 names (about 300 bytes each), identifiers, the 4,412 and 88 character signatures and key ids. The largest legal envelope measured is 1,478,120 bytes (256 names of 256 characters, every identifier and integer at its maximum, ciphertext at the 1 MiB limit). A declared `Content-Length` over the bound is refused before reading |
 | Ciphertext | 1 MiB decoded (unchanged); base64 length checked before decoding |
 | Age header | at most 4096 bytes before the `---` line, exactly one stanza of type `mlkem768x25519` with one argument decoding to 1120 bytes and a body decoding to 32 bytes; anything else (X25519, scrypt, ssh, plugin, unknown, several stanzas) is refused before any key is tried |
 | Signature fields | exact encoded lengths above, checked before base64 decoding and before any verification |
@@ -421,8 +433,9 @@ Receiver first, as in the [migration policy](../security/pqc/migration.md):
    its names).
 5. **Sender rollback** is the protocol 1 registry entry (its fingerprint and
    generation, which did not change) and removal of `signing_key_file_mldsa65`.
-   Targets still bound under protocol 1 and not pruned resume. A protocol 2 route
-   fails closed. A route that was pruned does not come back: a re-bound protocol
+   Targets still bound under protocol 1 and not pruned resume, unless their
+   names were released and a protocol 2 route took the namespace (then they
+   conflict, as below). A protocol 2 route fails closed. A route that was pruned does not come back: a re-bound protocol
    1 route is a different route and conflicts with names the protocol 2 route
    now owns until the receiver operator releases them, and a conflict is
    recorded per revision, so publish a new revision afterwards.
@@ -461,6 +474,11 @@ already recorded are exposed to a recording adversary.
   [migration policy](../security/pqc/migration.md) forbids as a recovery
   method. "Never downgrades" means only that no error path falls back. Owning
   tickets: #1128, #1135.
+- **Two-pass string decode (cost, not a bypass).** Each string in a body is
+  decoded by the member-set walk and again by the struct decode, bounded by
+  the 1,529,176 byte body cap; see the scope note in 11.5. No concurrency cap
+  exists in the reference receiver. Owning ticket: #1128 for the receiver
+  guidance; a production receiver owns its own admission control.
 - **The probe proves the acknowledgement keys, not the recipient.** A verified
   acknowledgement proves the responder holds both acknowledgement keys. It
   contains nothing derived from the plaintext, so it does not prove the
