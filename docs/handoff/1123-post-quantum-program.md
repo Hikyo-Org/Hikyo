@@ -69,7 +69,7 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
 ### Merged on 2026-11-04
 
 The 13 PRs in the table below landed on `dev` with merge commits. #1172 is held
-(the owner decided the `/api/v1` freeze on 2026-11-04, but its merge waits for the owner's window),
+(the owner decided the `/api/v1` freeze on 2026-11-04, and #1172 follows the amendment),
 PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
 followed with a test repair. Each head below is the head that merged.
 
@@ -132,7 +132,7 @@ Decided on 2026-11-04, as recommended:
 
 Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
 
-8. **The `/api/v1` freeze: option A.** [api-cli-surface](../adr/api-cli-surface.md) (#25) is amended so the closed Transit and PKI enums grow once, for `mldsa65` only. It sets no precedent. The skew break (a `v1.0.0` Zod consumer fails a whole list holding one `mldsa65` value, once an operator creates such a key) is accepted and stated in the banner. Cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN. The amendment enables nothing: Transit has no mechanism on `dev` (it is on #1172) and PKI stays behind `MLDSAEnabled`, false in production. Merge waits for the owner's window.
+8. **The `/api/v1` freeze: option A.** [api-cli-surface](../adr/api-cli-surface.md) (#25) is amended so the closed Transit and PKI enums grow once, for `mldsa65` only. It sets no precedent. The skew break (a `v1.0.0` Zod consumer fails a whole list holding one `mldsa65` value, once an operator creates such a key) is accepted and stated in the banner. Cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN. The amendment enables nothing: Transit has no mechanism on `dev` (it is on #1172) and PKI stays behind `MLDSAEnabled`, false in production. It lands after the 2026-11-04 nightly promotion, so that promotion carries the `dev` head already tested.
 9. Confirmed as built: the #1126 profile selector and vault generation path, the #1127 proxy leg, #1132 signing granularity, and #1133 keeping the `VerifyConnection` walk and platform verifiers. Packet C-10's step 2 abort is "restore the pre-upgrade backup".
 10. Transit signed bytes: the departure described in the [#1129 handoff](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
 
