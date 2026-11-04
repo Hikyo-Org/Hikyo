@@ -48,6 +48,9 @@ type Enrollment struct {
 	LeaseName         string    `json:"lease_name"`
 	LeaseUID          types.UID `json:"lease_uid"`
 	ExecutorPod       string    `json:"executor_pod"`
+	// Authority is the strict-profile trust state. Absent means the compatibility
+	// profile: one Ed25519 key and the v1 command bytes, unchanged.
+	Authority *Authority `json:"authority,omitempty"`
 }
 
 // Command is emitted only after the coordinator durably authorizes its action.
@@ -67,11 +70,17 @@ type Command struct {
 	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitempty"`
 	IssuedAt              time.Time                       `json:"issued_at"`
 	ExpiresAt             time.Time                       `json:"expires_at"`
+	// Authority is set only under the strict profile and is signed with the
+	// command: generation, required set, key ids and target digest.
+	Authority *CommandAuthority `json:"authority,omitempty"`
 }
 
+// SignedCommand carries the v1 Ed25519 signature (compatibility profile) or one
+// signature per required algorithm (strict profile), never both.
 type SignedCommand struct {
-	Command   Command `json:"command"`
-	Signature []byte  `json:"signature"`
+	Command    Command            `json:"command"`
+	Signature  []byte             `json:"signature,omitempty"`
+	Signatures []CommandSignature `json:"signatures,omitempty"`
 }
 
 // Response contains no configuration values, source contents or credentials.
@@ -87,7 +96,7 @@ type Response struct {
 }
 
 func validEnrollment(e Enrollment) bool {
-	if !safeName(e.ID) || !safeName(e.OwnerInstanceID) || !safeName(e.Incarnation) || !safeName(e.Target.StableNodeID) || !validTopologyEnrollment(e.Target) || e.CommandSecretUID == "" || e.ResponseSecretUID == "" || e.JournalSecretUID == "" || e.LeaseUID == "" || e.Target.DeploymentUID == "" || len(validation.IsDNS1123Label(e.Target.Namespace)) != 0 {
+	if !safeName(e.ID) || !safeName(e.OwnerInstanceID) || !safeName(e.Incarnation) || !safeName(e.Target.StableNodeID) || !validTopologyEnrollment(e.Target) || e.CommandSecretUID == "" || e.ResponseSecretUID == "" || e.JournalSecretUID == "" || e.LeaseUID == "" || e.Target.DeploymentUID == "" || len(validation.IsDNS1123Label(e.Target.Namespace)) != 0 || e.Authority != nil && !validAuthority(*e.Authority) {
 		return false
 	}
 	seen := map[string]bool{}
@@ -109,7 +118,13 @@ func ParseEnrollment(raw []byte) (Enrollment, error) {
 	return cloneEnrollment(enrollment), nil
 }
 
+// validCommand is the shape check plus the strict-profile binding: the command
+// must name the verifier's own generation, key ids and target.
 func validCommand(c Command, e Enrollment) bool {
+	return validCommandShape(c, e) && sameBinding(c.Authority, expectedBinding(e))
+}
+
+func validCommandShape(c Command, e Enrollment) bool {
 	if c.EnrollmentID != e.ID || c.Sequence == 0 || !validIntent(c.Intent) || c.Intent.OwnerInstanceID != e.OwnerInstanceID || c.Intent.Incarnation != e.Incarnation || c.IssuedAt.IsZero() || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > 10*time.Minute {
 		return false
 	}
@@ -139,7 +154,7 @@ func SignCommand(ctx context.Context, signer crypto.Signer, command Command) (Si
 	if err := ctx.Err(); err != nil {
 		return SignedCommand{}, err
 	}
-	if signer == nil {
+	if signer == nil || command.Authority != nil {
 		return SignedCommand{}, ErrInvalid
 	}
 	if key, ok := signer.Public().(ed25519.PublicKey); !ok || len(key) != ed25519.PublicKeySize {
@@ -156,18 +171,17 @@ func SignCommand(ctx context.Context, signer crypto.Signer, command Command) (Si
 	return SignedCommand{Command: command, Signature: sig}, nil
 }
 
-func verifyCommand(signed SignedCommand, e Enrollment, public ed25519.PublicKey) bool {
-	if len(public) != ed25519.PublicKeySize || !validCommand(signed.Command, e) {
-		return false
-	}
-	raw, err := json.Marshal(signed.Command)
-	return err == nil && len(raw) <= maxRecordBytes && ed25519.Verify(public, append([]byte(commandDomain), raw...), signed.Signature)
-}
-
 // VerifySignedCommand authenticates a persisted command against enrollment.
 // TTL is enforced at first acceptance; fresh submits need fresh source proofs.
+// It holds only an Ed25519 key, so it accepts only the compatibility profile.
 func VerifySignedCommand(signed SignedCommand, e Enrollment, public ed25519.PublicKey) bool {
-	return verifyCommand(signed, e, public)
+	return verifyCommand(signed, e, PublicKeys{Ed25519: public})
+}
+
+// VerifySignedCommandKeys authenticates a persisted command under the
+// enrollment's trust state, compatibility or strict.
+func VerifySignedCommandKeys(signed SignedCommand, e Enrollment, keys PublicKeys) bool {
+	return CheckKeys(e, keys) == nil && verifyCommand(signed, e, keys)
 }
 
 // Mailbox is the server's entire Kubernetes authority: write one precreated
@@ -186,7 +200,7 @@ func NewMailbox(client kubernetes.Interface, e Enrollment) (*Mailbox, error) {
 }
 
 func (m *Mailbox) Send(ctx context.Context, signed SignedCommand) error {
-	if !validCommand(signed.Command, m.enrollment) || len(signed.Signature) != ed25519.SignatureSize {
+	if !validCommand(signed.Command, m.enrollment) || !validEnvelope(signed, m.enrollment) {
 		return ErrInvalid
 	}
 	raw := mustJSON(signed)
