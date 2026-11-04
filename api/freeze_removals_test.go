@@ -350,6 +350,29 @@ func TestFreezeRefusesChangesUnderAnyStabilityLevel(t *testing.T) {
 	}
 }
 
+func TestFreezeDoesNotRefuseEdits(t *testing.T) {
+	response := func(schema string) string {
+		return `"responses":{"200":{"description":"ok","content":{"application/json":{"schema":` + schema + `}}}}`
+	}
+	const ok = `"responses":{"200":{"description":"ok"}}`
+	object := `{"type":"object","properties":{"x":{"type":"string"}}}`
+	for _, tc := range []struct{ name, base, revised string }{
+		{"empty-items-removed", response(`{"type":"array","items":{}}`), response(`{"type":"array"}`)},
+		{"empty-additional-properties-removed", response(`{"type":"object","additionalProperties":{}}`), response(`{"type":"object"}`)},
+		{"empty-additional-properties-to-true", response(`{"type":"object","additionalProperties":{}}`), response(`{"type":"object","additionalProperties":true}`)},
+		{"items-added", response(`{"type":"array"}`), response(`{"type":"array","items":` + object + `}`)},
+		{"additional-properties-added", response(`{"type":"object"}`), response(`{"type":"object","additionalProperties":` + object + `}`)},
+		{"whole-callback-added", ok, ok + `,"callbacks":{"notice":{"{$request.query.url}":{"post":{` + ok + `}}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			violations, err := api.CheckFreeze(freezeOperationDocument(tc.base), freezeOperationDocument(tc.revised))
+			if err != nil || len(violations) != 0 {
+				t.Fatalf("a compatible edit was refused: %v, %v", violations, err)
+			}
+		})
+	}
+}
+
 func TestFreezeStillPermitsOpenEnumGrowth(t *testing.T) {
 	document := func(values string) []byte {
 		return freezeOperationDocument(`"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"type":"string","x-extensible-enum":` + values + `}}}}}`)

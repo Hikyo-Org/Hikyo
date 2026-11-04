@@ -23,7 +23,9 @@ recover a finding that the checker never emits.
    parameters, properties, subschemas (such as an array's `items`), open-enum
    values, responses (including `default` and wildcards), response links and
    media-type encodings. Traversal covers request bodies, parameters, response
-   bodies and headers, including nested/composed schemas and resolved references.
+   bodies and headers, including nested schemas, modified composed branches and
+   resolved references. Deleting an empty `items` or `additionalProperties`
+   schema removes nothing and is not refused.
 2. Every upstream checker finding still passes through the existing addition
    allowlist. New upstream IDs remain forbidden until explicitly reviewed. The
    stability threshold is set to `draft`, because a `x-stability-level` of
@@ -50,17 +52,11 @@ Both directions of declaration movement are tested.
 
 ## Known limits
 
-These remain uncaught and are not removals of a declared element. The freeze
-guard stays dormant until the first stable tag, so resolve them before cutting it:
-
-- Callback expressions differing only inside `{...}` normalize to one endpoint,
-  so removing one of them, or renaming the placeholder, is not reported.
-- Request narrowing: `additionalProperties: false` added on a nested object or
-  the body root, and `not` or `pattern` added at the body root.
-- `servers` URL changes and `explode`, `allowEmptyValue` or `allowReserved` flips.
-- A property removed inside an encoding header.
-- A `$ref` inside response-header `content` makes diffing fail with an error. The
-  gate fails closed, but gives no specific diagnostic.
+The gate still passes some forbidden changes that also passed on oasdiff v1.34.1,
+including a security alternative removed next to `{}`, closed-enum values in
+response headers and request media-type renames. They are listed with reproductions in
+[the follow-up issue](https://github.com/Hikyo-Org/Hikyo/issues/1217), which must be resolved before the first stable
+tag. The freeze guard stays dormant until that tag.
 
 ## Regression evidence and local verification
 
@@ -72,8 +68,8 @@ including ordinary, deprecated, past/future-sunset and malformed-sunset property
 removals; inline, nested, array, composed and shared/recursive schemas;
 operation/inherited parameters; endpoints; callbacks, including cyclic ones; each
 removal upstream omits; and every stability level. Positive cases preserve
-permitted additions in every property context, open-enum growth and
-identical-document comparisons.
+permitted additions in every property context, added subschemas and whole
+callbacks, open-enum growth and identical-document comparisons.
 
 Run from the repository root with its pinned Go toolchain:
 
