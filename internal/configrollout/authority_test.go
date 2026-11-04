@@ -1731,7 +1731,7 @@ func TestRetainedPrepareNamingAnAliasIsUnanchorableAfterTheAliasIsRemoved(t *tes
 // A valid Ed25519 block followed by a refused block must not leave the parsed
 // key readable: the refusal returns no signers. That ParseSigners clears the keys
 // it parsed is not asserted, because those copies are unreachable from a test.
-func TestParseSignersClearsWhatItParsedBeforeARefusal(t *testing.T) {
+func TestParseSignersRefusalReturnsNoSigners(t *testing.T) {
 	signers, _ := newKeyMaterial(t)
 	edDER, _ := x509.MarshalPKCS8PrivateKey(signers.Ed25519)
 	good := pemOf(t, "PRIVATE KEY", edDER)
