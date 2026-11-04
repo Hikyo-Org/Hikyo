@@ -207,7 +207,7 @@ and aggregates. The owner may move any of them.
   classical anchor exists only in tests, and no Hikyo hop enforces PQ authentication
   (pin-based clients are E-20). *Residual risk:* a strict hop negotiates the hybrid group
   but accepts a classical or mixed chain. *Owner:* #1133, confirmed by the owner on 2026-11-04:
-  `docs/handoff/1127-transport-policy.md` (line 184, "`VerifyConnection` ML-DSA
+  `docs/handoff/1127-transport-policy.md` ("`VerifyConnection` ML-DSA
   authentication on strict-marked clients: #1133") and `profiles.md` line 160
   place it there, and #1127's profile is group-only. Criterion 6 is
   PARTIAL because of it.
