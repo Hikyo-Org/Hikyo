@@ -23,6 +23,7 @@ implementation becomes operative when #1158 or #1156 merges, although those tick
 | [Migration](migration.md) | Reader-first ladder, keys and escrow, mixed paths, retirement, floor, recovery, dispositions, exception register |
 | [External compatibility](external-compatibility.md) | #1134 register: external routes, classification, owners, recheck triggers, allowed capability statement, strict-route HOLD |
 | [Qualification](qualification.md) | Requirement-to-test matrix, scope, estimates, critical path |
+| [Qualification packet](qualification-packet.md) | #1135: integrated packet for one candidate: requirement and exception maps, per-child acceptance, ladder, rollback, budgets, contradictions, capability statement. Verdict HOLD |
 | [Pairing feasibility](pairing-feasibility.md) | #1130: threat analysis, feasibility survey, separable blockers and owner options for pairing (HOLD) |
 | [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the owner's decisions), waiver and governance route, proposed amendment text |
 | [Handoff](../../handoff/1124-pqc-contract.md) | Acceptance-criterion map, dated PR state, evidence, HOLD and NOTRUN, next steps |

@@ -30,7 +30,7 @@ nothing here transfers.
 | Focused: `./internal/configrollout/... ./internal/releasetrust/... ./internal/crypto/... ./internal/tlspolicy/... ./internal/backupreceipt/...`, same job | **exit 0**; all packages `ok` |
 | `go run ./scripts/release/compatibility --development --check internal/buildcompat/development.json` against an empty scratch database on the same PostgreSQL, queue job 3263 | **exit 0**, no output |
 | Hosted `gh` read on #1195 at 2026-11-04T02:04Z | `repository invariants (boundary, lint, CI policy)` success with `Repository invariant tests` and `Lint driver tests` success; `feedback` (go, tooling, frontend) and `ops-floor` (amd64, arm64) success; `ci-queue-required` fails by design ("Only the protected default branch can enter this merge queue."). No integration finding in `reviewed_pins.json` |
-| Integration facts | Migrations: only `00083` (both engines). `development.json` matches. Doc links resolve. No PQ verifier has a non-test caller outside `internal/releasetrust`. Contradictions C-01 to C-11 are in the packet |
+| Integration facts | Migrations: only `00083` (both engines). `development.json` matches. Doc links resolve. No PQ verifier has a non-test caller outside `internal/releasetrust`. Contradictions C-01 to C-14 are in the packet |
 
 Not run, so not claimed: `internal/lint` locally (instructed), the full app,
 service, server, store, pairing, selfupdate, sshca, pki and cli suites, fuzz,
@@ -43,7 +43,7 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | 1 | Map every requirement and exception to candidate, versions, digests, topology, configuration, peers, evidence | PARTIAL | Maps done by evidence class. Artifact digests, topology, effective configuration and peer versions do not exist: nothing was built for release or deployed |
 | 2 | Legacy, compatible reader, new writes, strict enforcement with the actual consumers | PARTIAL | Ladder in the packet. Strict is NOT BUILT for backups, unreachable for Transit, PKI and release, HOLD for pairing; TLS strict per process only; the rest is local or fake-API |
 | 3 | Integrated negative tests (stripping, fallback, unknown version, malformed, wrong scope, stale trust, replay, exhaustion) with vectors and fuzz | PARTIAL | Children have per-surface negatives; the union ran only the listed isolation and focused tests. Wycheproof NOTRUN, no long fuzz, no integrated cross-surface negative suite exists |
-| 4 | Backup/restore and custody drills, trust rollover, issuer lifecycle, pairing/revocation, webhook reconciliation, controller failover on both engines | PARTIAL | Backup drills, webhook takeover simulation, PKI/Transit lifecycle on both engines at the candidate. Upgrade-custody drill with hybrid: not possible (refused by design). Trust-root rollover, pairing, real failover: NOTRUN or HOLD |
+| 4 | Backup/restore and custody drills, trust rollover, issuer lifecycle, pairing/revocation, webhook reconciliation, controller failover on both engines | PARTIAL | Backup drills, webhook takeover simulation, PKI/Transit lifecycle on both engines at the candidate. The manual-route upgrade-export and upgrade-drill with a hybrid identity passed on both engines in #1126's own run (not rerun here); no hybrid vault (automatic custody) drill exists, because `sudo hikyo upgrade` and the unattended upgrade refuse a hybrid policy. Trust-root rollover, pairing, real failover: NOTRUN or HOLD |
 | 5 | Rollback at every migration phase incl. rejection of a binary below the floor; interrupted writes; restored stale state; retirement | PARTIAL | Rollback table in the packet. A pre-83 binary against an 83 database and a pre-migration-6 binary: NOTRUN. No retirement drill. Webhook has no floor |
 | 6 | Real TLS groups and certificate authentication across ingress, backend and client graph | NOTRUN | Only in-process handshakes. No real deployment observed |
 | 7 | amd64 and arm64 sizes, latency, CPU, memory, concurrency against approved budgets | HOLD | Recorded child numbers (M2 Pro arm64 only, loaded host). DEC-17 thresholds unset; amd64 NOTRUN; no measurement taken here |
@@ -81,6 +81,20 @@ start"), so removal cannot be re-confirmed now. Scratch binaries, help
 captures and logs stay in the session scratch directory and are not committed.
 Throwaway keys used for `--print-authority-ids` were deleted. No production key
 material, provider, cluster or receiver was touched.
+
+## Review repair (independent review of `6336263`)
+
+An independent review of the first version found 21 findings (3 high, 7 medium,
+11 low). Each was checked against source or the cited handoff first; none was
+wrong. Repairs, in one commit: the stage 1.1 abort is now "restore the
+pre-upgrade backup" and the `migration.md` step 2 conflict is in C-10; opt-in
+wording on every capability row; the #1129 round-3 review claim; manual-route
+hybrid upgrade commands; the missing receipt on plain exports (E-19, #1126);
+attribution of keygen and receipt v2; #1128 qualifiers; #1133 ownership by
+default; three further contradictions (C-12 to C-14); the `backup keygen`
+datastore requirement (checked on a candidate-built binary); and the low items.
+The README gained a row for the packet. **This repair has no independent
+review.**
 
 ## Retention and rollback of this change
 
