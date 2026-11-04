@@ -11,7 +11,7 @@ pairing ADR banner is not operative until that approval is given.
 Independent adversarial review is required; cross-provider review is SKIPPED by
 explicit owner instruction (2026-11-02) and is not CLEAN.
 
-Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`, head `f5d549182`). Draft PR
+Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Draft PR
 base: that branch.
 
 ## What this delivers
@@ -24,7 +24,7 @@ base: that branch.
 
 ## Result in four sentences
 
-No standardized, maintained, reviewed post-quantum PAKE exists, so the PAKE half
+No standardized, maintained, reviewed post-quantum PAKE was found, so the PAKE half
 of #1130 stays on HOLD under DEC-13 (a) and E-01. **One DEC-13 premise has
 changed:** the register says `go-jose` lacks ML-DSA, but v4.1.8 (2026-11-02) adds
 it for Go 1.27 and RFC 9964 (May 2026) defines the JOSE identifiers. The proof
@@ -38,7 +38,7 @@ amended; this change is an input to the owner's recheck.
 
 | # | Criterion (short) | Status | Why |
 | --- | --- | --- | --- |
-| 1 | Focused threat analysis; TLS, PAKE and proof-signature guarantees stated | DONE | In the feasibility note, from pinned source. The offline-guessing statement is [derived] from the SRP structure, not run (the key-derivation cost is measured); independent review of the note is NOTRUN |
+| 1 | Focused threat analysis; TLS, PAKE and proof-signature guarantees stated | DONE | In the feasibility note, from pinned source. The offline-guessing statement is [derived] from the SRP structure, not run (the key-derivation cost is measured); two independent reviews of the note ran, and their findings are repaired |
 | 2 | Approve standards-backed implementation and composition with independent security review; else HOLD and name the blocker | HOLD | The ticket's own allowed outcome. Blocking decision: DEC-13 (a), no acceptable PQ PAKE. Blocking dependency: a standard or reviewed profile plus a maintained Go implementation with vectors (below) |
 | 3 | Versioned protocol, encodings, domain separation, algorithms, binding, replay, expiry, reviewed bounds | HOLD | Needs criterion 2. The size arithmetic for a proof signature is recorded as input |
 | 4 | Full lifecycle through server, CLI, API, client and durable state | HOLD | Needs criterion 2: the accepted PQ lifecycle does not exist |
@@ -58,7 +58,7 @@ amended; this change is an input to the owner's recheck.
 | External documents | Registry data (RFC 9964 level and date, draft revisions, dates, streams, expiry) fetched directly. Raw text of `draft-vos-cfrg-pqpake-03`, `draft-tschofenig-emu-pqpake-00` and `draft-irtf-cfrg-kemeleon-02` fetched from the IETF archive and read for the sections the note cites. RFC 9964 contents, RFC 9807, RFC 9449, the NIST page, the nginx page and the CFRG list were read through a page-summarizing tool: wording unverified. Library searches: none found, not "none exist". Not read: RFC 9964 after its first 100,000 characters |
 | Measurements (scratch module, not in the repository) | bcrypt cost 10 at 72.1 ms per hash on one core (Apple arm64, Go 1.27.3), and real ML-DSA-44/65/87 DPoP proofs built with `go-jose` v4.1.8: compact 5929, 8252 and 11147 bytes. Single runs, no budget implied |
 | Hosted CI, real-provider, runtime, deployment | NOTRUN. No pairing was run between two instances and no handshake group was observed |
-| Review | Independent adversarial review: pending. Cross-provider: SKIPPED by explicit owner instruction, not CLEAN |
+| Review | Two independent adversarial reviews ran, with 13 and 7 findings, all repaired. Cross-provider: SKIPPED by explicit owner instruction, not CLEAN |
 | Heavy checks | Not run: no code changed |
 
 ## Exact blocking decisions and dependencies
@@ -124,7 +124,7 @@ Actions only the owner can take, none done here:
    "None until a protocol is decided". The proposed drill runs the classical flow
    and so needs evidence; the row needs the same narrowing.
 4. **Refresh DEC-13's consequence column.** Proposed wording, not applied: "(b)
-   excluded by the issue; no standardized PQ PAKE exists (see pairing feasibility);
+   excluded by the issue; no standardized PQ PAKE found (see pairing feasibility);
    `go-jose` v4.1.8 (2026-11-02) supports ML-DSA on Go 1.27, so the library is not
    the DPoP blocker, but ML-DSA-65 DPoP is 8252 bytes against the 8192 cap and the
    2048-byte JWK and header bounds, and enrollment would stay classical. #1135 is
