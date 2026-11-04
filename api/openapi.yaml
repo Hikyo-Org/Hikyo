@@ -16283,7 +16283,7 @@ components:
         name: {$ref: "#/components/schemas/PkiName"}
         common_name: {type: string, maxLength: 64}
         organization: {type: string, maxLength: 64}
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096, mldsa65]}
         ttl_seconds: {type: integer, format: int64, minimum: 86400}
         parent: {$ref: "#/components/schemas/PkiName"}
         crl_distribution_url: {type: string, maxLength: 2048}
@@ -16298,7 +16298,7 @@ components:
       type: object
       additionalProperties: false
       properties:
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096, mldsa65]}
         ttl_seconds: {type: integer, format: int64, minimum: 86400}
         crl_distribution_url: {type: string, maxLength: 2048}
         private_key_pem:
@@ -16337,7 +16337,7 @@ components:
         ip_ranges: {type: array, items: {type: string, maxLength: 64}, maxItems: 64}
         uri_patterns: {type: array, items: {type: string, maxLength: 1024}, maxItems: 64}
         allow_wildcard_names: {type: boolean}
-        key_algorithms: {type: array, items: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}}
+        key_algorithms: {type: array, items: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096, mldsa65]}}
         key_usages: {type: array, items: {type: string, enum: [digital-signature, key-encipherment, key-agreement]}}
         ext_key_usages: {type: array, items: {type: string, enum: [server-auth, client-auth]}}
         max_ttl_seconds: {type: integer, format: int64, minimum: 300, maximum: 7776000}
@@ -16477,7 +16477,7 @@ components:
         issuer: {$ref: "#/components/schemas/PkiName"}
         csr_pem: {type: string, maxLength: 65536}
         generate_key: {type: boolean}
-        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096, mldsa65]}
         common_name: {type: string, maxLength: 255}
         dns_names: {type: array, items: {type: string, maxLength: 255}, maxItems: 100}
         ip_addresses: {type: array, items: {type: string, maxLength: 64}, maxItems: 100}
@@ -24853,7 +24853,7 @@ components:
 
     TransitAlgorithm:
       type: string
-      enum: [xchacha20-poly1305, ed25519, hmac-sha256]
+      enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65]
 
     TransitCustody:
       type: string
@@ -24887,7 +24887,10 @@ components:
           description: Where the version's material lives. The material itself is never returned.
         public_key:
           type: [string, "null"]
-          description: The Ed25519 public key (standard base64) for signing keys; public metadata.
+          description: >-
+            The public key (standard base64) for signing keys; public metadata. The encoding
+            depends on the key's algorithm: ed25519 is the raw 32-byte key, mldsa65 is the
+            DER SubjectPublicKeyInfo.
         created_at: {$ref: "#/components/schemas/Timestamp"}
 
     TransitKey:

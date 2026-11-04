@@ -132,3 +132,54 @@ func render(vs []api.Violation) string {
 	}
 	return b.String()
 }
+
+// The one-time mldsa65 amendment (api-cli-surface, 2026-11-04). The base is
+// the current spec with mldsa65 taken out of the enums it was added to, so the
+// pair is exactly the amendment and needs no v1.0.0 tag in the checkout.
+func mldsa65Pair(t *testing.T) (base, revised string) {
+	t.Helper()
+	revised = string(mustRead(t, "openapi.yaml"))
+	base = strings.ReplaceAll(revised, ", mldsa65]", "]")
+	if base == revised || strings.Contains(base, "mldsa65]") {
+		t.Fatal("could not derive the pre-amendment spec from the current one")
+	}
+	return base, revised
+}
+
+func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
+	base, revised := mldsa65Pair(t)
+	violations, err := api.CheckFreeze([]byte(base), []byte(revised))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("the exact mldsa65 additions were refused:\n%s", render(violations))
+	}
+	if n := len(api.MLDSA65EnumGrowth); n != 20 {
+		t.Fatalf("the exception lists %d findings, the amendment names 20", n)
+	}
+
+	// Each near miss is the amendment plus one more enum edit, and must fail.
+	transit := "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65]"
+	for name, edit := range map[string][3]string{
+		"mldsa44 on the same path":       {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa44]", "mldsa44"},
+		"future mldsa87 on the same":     {transit, "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65, mldsa87]", "mldsa87"},
+		"mldsa65 on another enum":        {"enum: [software, external]", "enum: [software, external, mldsa65]", "mldsa65"},
+		"mldsa65 on a PKI-adjacent enum": {"enum: [ed25519, ecdsa-p256, rsa-3072]", "enum: [ed25519, ecdsa-p256, rsa-3072, mldsa65]", "mldsa65"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if strings.Count(revised, edit[0]) == 0 {
+				t.Fatalf("fixture anchor %q is gone from the spec", edit[0])
+			}
+			mutated := strings.Replace(revised, edit[0], edit[1], 1)
+			violations, err := api.CheckFreeze([]byte(base), []byte(mutated))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The violation must be about the near miss, not an unrelated drift.
+			if len(violations) == 0 || !strings.Contains(render(violations), "`"+edit[2]+"`") {
+				t.Fatalf("a near miss of the mldsa65 amendment was not refused for %s:\n%s", edit[2], render(violations))
+			}
+		})
+	}
+}

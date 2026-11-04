@@ -109,8 +109,8 @@ The owner said "All open points as recommended" on 2026-11-04. For #1130 that de
 
 ### Scope-narrowing text for #1135 (accepted 2026-11-04)
 
-DEC-13 records that #1135 is blocked by #1130 and that the owner decided to narrow
-scope with #1130 as linked residual work. The text below makes that usable.
+DEC-13 records that #1135 was blocked by #1130 and that the owner narrowed scope
+with #1130 as linked residual work. The text below makes that usable.
 
 > #1135 qualifies instance pairing (I20) at its current classical profile only.
 > The pairing and revocation drill runs against the existing SRP-2048 and Ed25519
