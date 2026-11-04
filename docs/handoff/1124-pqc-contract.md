@@ -24,7 +24,7 @@ disposition.
 | [Profiles](../security/pqc/profiles.md) | Two claims, strength, parameters, bounds, symmetric floor, profiles, composition |
 | [Migration](../security/pqc/migration.md) | Ladder, keys, mixed paths, retirement, floor, recovery, dispositions, exceptions E-01 to E-22 |
 | [Qualification](../security/pqc/qualification.md) | Test matrix, scope, estimates, critical path |
-| [Proposed ADR](../adr/post-quantum-migration.md) | Register DEC-01 to DEC-20, waiver, governance route, proposed amendments; no locked ADR edited |
+| [Proposed ADR](../adr/post-quantum-migration.md) | Register DEC-01 to DEC-20, waiver, governance route, proposed amendments; locked ADRs changed only by the recorded banners |
 
 Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 [ADR](../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
@@ -50,7 +50,10 @@ locked-ADR edit. Later edits to the contract files change status wording only,
 except the 2026-11-04 recheck notes (README source pin, inventory rows I27 and I31 and
 the I31 introduction, the `scripts/ci` census class, one line reference and one Helm chart
 sentence in migration), which record
-changes on `dev` and alter no parameter, decision or exception.
+changes on `dev` and alter no parameter, decision or exception. The owner's 2026-11-04
+decisions are separate and do change the register: DEC-10 amended, E-22 added, E-19 widened,
+and the stale-node row in the profiles and qualification matrix replaced. The 2026-11-02
+approval does not cover them; package v0.7 records them.
 
 ## Acceptance criteria map
 

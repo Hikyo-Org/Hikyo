@@ -1,4 +1,4 @@
-# Target profiles, parameters and policy, draft v0.6
+# Target profiles, parameters and policy, draft v0.7
 
 Status: **owner decided and security approved, not operative**. The
 owner accepted the [register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`) as

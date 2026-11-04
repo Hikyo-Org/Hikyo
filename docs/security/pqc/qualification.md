@@ -1,4 +1,4 @@
-# Requirement-to-test matrix, scope and critical path, draft v0.6
+# Requirement-to-test matrix, scope and critical path, draft v0.7
 
 Status: **owner decided and security approved, not operative**. This tells dependent owners what evidence each
 surface needs so no one invents policy. Every row is a plan: execution is

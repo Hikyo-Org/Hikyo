@@ -102,6 +102,7 @@ linked documents.
 
 ### Register notes (not owner text)
 
+- **Package v0.7, 2026-11-04.** DEC-10 amended, E-22 added and E-19 widened, reviewed by `claude-opus-5-5` (not human review). The approver is the owner and sole maintainer; the immutable record is signed ledger commit `e26ff8e388537bd34c9194fff8fc51806122b253` on PR #1148.
 - **DEC-10 amended 2026-11-04.** The owner decided that strict is per process, that stale-node fencing is not built, and that the fence stays #1127 work. The 2026-11-02 acceptance of DEC-10 (a) stands with that change. The limit is registered as E-22 in the [migration policy](../security/pqc/migration.md#exception-register).
 - **Consequence column.** The Decision column is the owner's. The Consequence column is explanatory text written for review. DEC-04's Consequence was reworded in review (the 256-bit field statement holds only while no `operator.age` copy holds a root that opens the fields; the profiles and migration documents use the same wording) and is not the owner's text.
 - **Amendment banners.** The banners on the API and CLI surface, encryption model, threat model and signed upgrade compatibility ADRs derive from these decisions and were narrowed in review. The owner chose to label them not owner-locked (2026-11-04). Each has a separate note stating its relation to the body of its ADR. Independent adversarial review of them is recorded on the amendment PR; cross-provider review is SKIPPED by explicit owner instruction, not CLEAN.
@@ -122,7 +123,7 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [transit](./transit.md) (#156, named in its decision text) | D2, D3, D4, D5, D9, D10 | DEC-02, 03, 07, 08 |
 | [remote-instance-pairing](./remote-instance-pairing.md) (its record names #8 and #71 as reopened) | Cryptographic profile; Limits of the guarantee | DEC-13 |
 | [pki](./pki.md) (#154) | D2, D3, D5, D7, D9 | DEC-02, 03, 06, 08, 19 |
-| [signed-upgrade-compatibility](./signed-upgrade-compatibility.md) (#638, its lock record) | Release identity and trust; Backup and restore custody | DEC-03, 11, 14, 15 |
+| [signed-upgrade-compatibility](./signed-upgrade-compatibility.md) (#638, its lock record) | Release identity and trust; Backup and restore custody | DEC-03, 07, 11, 14, 15 |
 | [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14 |
 | [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14 |
 | [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14 |
@@ -130,8 +131,8 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [ops-spec](./ops-spec.md) (#32; recipient hygiene "exactly one age identity per retention class") | Listed because DEC-08 and DEC-12 touch recipients; no change proposed | DEC-08 |
 
 Non-ADR owners: `docs/spec/sealed-webhook.md` (#1128) and the self-configuration
-specs (#1131); DEC-18 does not state their revision route, so the owning child
-proposes it: HOLD.
+specs (#1131); DEC-18 does not state their revision route. The owner chose the declared-amendment
+banner on 2026-11-04.
 
 ### Encryption model
 

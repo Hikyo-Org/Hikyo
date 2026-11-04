@@ -1,4 +1,4 @@
-# Post-quantum migration contract, draft v0.6
+# Post-quantum migration contract, draft v0.7
 
 Tracking: [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), under
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Assessed 2026-11-02.
