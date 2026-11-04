@@ -105,7 +105,8 @@ export function SectionTabs({
   // The browser's own fragment scroll ran before the tab was shown; redo it.
   // A retired `?tab=` link gets no browser scroll at all, and its panel may now sit below others.
   useEffect(() => {
-    const target = safeDecode(hash.slice(1)) ?? retired;
+    const fragment = safeDecode(hash.slice(1));
+    const target = fragment !== undefined && document.getElementById(fragment) !== null ? fragment : retired;
     if (target !== undefined) document.getElementById(target)?.scrollIntoView({ block: 'start' });
   }, [hash, retired]);
 

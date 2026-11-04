@@ -23,10 +23,10 @@ it.each(['#%', '#%E0%A4%A'])('opens the first tab for the malformed fragment %s 
   }
 });
 
-it('opens and scrolls to the tab that now holds a section an older ?tab= link names', async () => {
+it.each(['/?tab=sessions', '/?tab=sessions#nowhere'])('opens and scrolls to the tab that now holds the section %s names', async (entry) => {
   const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   const { container, unmount } = await renderForm(
-    <MemoryRouter initialEntries={['/?tab=sessions']}>
+    <MemoryRouter initialEntries={[entry]}>
       <SectionTabs
         label="Demo sections"
         idPrefix="demo"
