@@ -296,14 +296,18 @@ environment, custody and a separate authorization; this ticket authorizes none.
 
 ## Final checks
 
-Run on the candidate before the final handoff-only commit (the head moves by that
-commit only; the PR body names the pushed head). First round and review-repair round.
+Last review round, run on the candidate before the final handoff-only commit (the
+head moves by that commit only; the PR body names the pushed head and the hosted
+results read for it).
 
 | Check | Result |
 | --- | --- |
-| `go test -p 2 -parallel 2 -run 'PKI\|Pki\|Certificate\|Audit\|MLDSA\|Anchor\|RealClassical\|OpenSSL\|RelyingParty'` over `internal/isolation`, `pki`, `service`, `server`, `cli`, `store/...`, `audit`, `api/...`, queued, throwaway PostgreSQL 18 (CI-pinned digest) | PASS after the repairs (isolation 832 s). The lifecycle test also passed repeatedly (4 runs) after the concurrency gate |
-| `internal/lint` | **Not rerun locally in this round, by instruction.** Round 1 locally: the 40 minute limit expired under load; a 100 minute rerun failed only `TestGrantLockCatchesLocklessWriter/ui` (`exec: WaitDelay expired`), which passes alone. The reviewer reports hosted `repository invariants` passed at 241c53d35 including `internal/lint` in 73.9 s. Hosted result for the repaired head: read from `gh pr checks`, see the PR body |
-| `scripts/ci/fast-feedback.sh` with base `f5d5491829d6`, Node 26.12.1, queued | PASS (109 s): whitespace, Go formatting, test compile, shellcheck, actionlint, docs content check |
-| `check-commit-signatures.sh`, `check-dco.sh` against `origin/dunky13/pqc-1127-transport-policy` | PASS (55 signed, 49 DCO) |
-| `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout) | PASS |
-| Hosted CI | Not a substitute for the above. At the previous head only the Go lane's `go test -c` ran (no PKI or isolation test ran hosted); `feedback (frontend)` failed on a checkout timeout (infrastructure). No workflow installs an OpenSSL with ML-DSA, so `TestMLDSAOpenSSLInterop` should skip hosted. Real-provider, runtime, deployment: NOTRUN |
+| `TestPKIMLDSALifecycle` (now also truncated chain, damaged anchor with an intact-root control, expanded PKCS#8 through the service) and `TestPKICLISQLite`, `TestPKICLIPostgres` (import control with key, certificate and chain files), throwaway PostgreSQL 18 at the CI-pinned digest | PASS on SQLite and PostgreSQL |
+| `go test -count=1 ./internal/pki/` | PASS |
+| Earlier this round's consumer sweep (isolation, service, server, cli, store, audit, api), queued, both engines | PASS at `de7d8313f`; the changes since are tests and docs in `internal/isolation` and Markdown |
+| `internal/lint` | **Not run locally, by instruction.** The reviewer reports hosted `repository invariants` (including `internal/lint`) passed at `de7d8313f` (112.7 s) and at `53327d51e`. Hosted result for this head: in the PR body |
+| `scripts/ci/fast-feedback.sh`, base the updated transport-policy tip, Node 26.12.1, queued | PASS (55 s) |
+| `check-commit-signatures.sh`, `check-dco.sh` against `origin/dunky13/pqc-1127-transport-policy` | PASS (13 signed, 10 DCO) |
+| `check-doc-status.mjs --check` (dependencies borrowed from another checkout) | PASS |
+| Locked banner vs the proposal at `e5539c280` | Script: the banner body equals the proposal's body word for word (91 words after the header); every added clause is in the second banner |
+| Hosted CI | At earlier heads only the Go lane's `go test -c` ran (no PKI or isolation test ran hosted). No workflow installs an OpenSSL with ML-DSA, so `TestMLDSAOpenSSLInterop` should skip hosted. Real-provider, runtime, deployment: NOTRUN |
