@@ -101,16 +101,14 @@ hybrid upgrade commands; the missing receipt on plain exports (E-19, #1126);
 attribution of keygen and receipt v2; #1128 qualifiers; #1133 ownership by
 default; three further contradictions (C-12 to C-14); the `backup keygen`
 datastore requirement (checked on a candidate-built binary); and the low items.
-The README gained a row for the packet. **This repair has no independent
-review.**
+The README gained a row for the packet. It was reviewed independently on 2026-11-04.
 
 A second repair, after an independent review of the repaired head, corrects
 the `backup keygen --help` claim, the old-binary refusal claims (NOTRUN), the
 `escrow verify` description, the step 1.4 command and its surface runbook, the
 stale handoff and packet text, the "default behavior is unchanged" overstatement
 (the packet now lists the default-path changes), and the 2026-11-04 owner
-decisions (merge status, #1172 held, evidence pin). **This repair has no
-independent review.**
+decisions (merge status, #1172 held, evidence pin). It was reviewed independently on 2026-11-04.
 
 ## Retention and rollback of this change
 
@@ -119,8 +117,7 @@ else is created or changed.
 
 ## Next authorized step
 
-Independent Standards and Spec review of these documents and green hosted CI,
-then merge to `dev` as the owner authorized on 2026-11-04, then the owner's
+Green hosted CI, then merge to `dev` as the owner authorized on 2026-11-04, then the owner's
 decisions still open in the packet's "Release and blocked", then a separately
 authorized environment. Issue closure, release and deployment are not
 authorized.
