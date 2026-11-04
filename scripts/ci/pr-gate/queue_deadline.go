@@ -53,6 +53,12 @@ type admissionTrace struct {
 	PR     pull
 	Policy *liveQueuePolicy
 	Run    *run
+	// PolicyRead and FeedbackRead record that the invocation's read returned.
+	// Policy stays nil for a policy that returned disabled, and Run for feedback
+	// that returned none, so a nil alone does not say the read never finished. A
+	// trace the budget cut off before a read has nothing to compare with, and a
+	// difference there is not movement.
+	PolicyRead, FeedbackRead bool
 }
 
 func (q *queueController) executeTargeted(ctx context.Context, name string, e event, b admissionBudget) error {
@@ -119,6 +125,33 @@ func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBu
 	return errors.Join(failures...)
 }
 
+// Every error reaches these records, so they name no cause. They say what
+// reassesses the head, which is what the gate workflows react to: ci-dev-gate.yml
+// and ci-queue-gate.yml run on a PR event, a feedback run, a push to main and a
+// schedule, and take a pr_number dispatch. A push to dev reassesses nothing unless
+// it changed the dev publisher (scripts/ci/discover-dev-prs.sh), so it is not named.
+func (q *queueController) reassessedBy(number int) string {
+	gate := "gate-queue"
+	if q.checkName == devCheckName {
+		gate = "gate-dev"
+	}
+	return fmt.Sprintf("It is reassessed by a new push to this PR, a feedback result, a push to main, the schedule, or manually: gh workflow run %s -f pr_number=%d.", gate, number)
+}
+
+const unfinished = "The publisher did not finish: it failed or ran out of its budget. No verdict was reached. Merging stays blocked."
+
+func (q *queueController) pendingText(number int) outcome {
+	return pending(unfinished + " A failed run is rerun only while attempts remain. " + q.reassessedBy(number))
+}
+
+func (q *queueController) refusalText(number int) outcome {
+	required := "Feedback and full queue validation remain required."
+	if q.checkName == devCheckName {
+		required = "Fast feedback, DCO and policy remain required."
+	}
+	return refused(unfinished + " " + required + " The linked run names the error; if it persists, fix it before reassessing. " + q.reassessedBy(number))
+}
+
 func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace) error {
 	p, err := q.readPR(ctx, t.PR.Number)
 	if err != nil {
@@ -129,18 +162,26 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 	if p.State != "open" || p.Head != t.PR.Head || p.Base != t.PR.Base {
 		return errors.New("current PR moved during admission failure publication; refusing a different tuple")
 	}
+	// Dev PRs hold no queue role. A pending record here is retired by the next pass;
+	// retirement skips completed records, so a refusal would stay red on this head.
+	if q.checkName == queueCheckName && p.Base.Ref == "dev" {
+		return errors.New("a dev PR holds no queue role; no refusal is published, and its pending record stays until the next pass retires it")
+	}
 	policy, err := q.policy(ctx)
 	if err != nil {
 		return err
 	}
-	if t.Policy == nil || policy != *t.Policy {
+	// A read that never returned is not movement, unless the queue is off now: the
+	// schedule, a push to main and a dispatch do nothing then, so the refusal text
+	// would be wrong. The record already on the head stays.
+	if (t.PolicyRead || !policy.Enabled) && (t.Policy == nil || policy != *t.Policy) {
 		return errors.New("current protection moved or was not captured before admission failure")
 	}
 	r, err := q.feedback(ctx, p)
 	if err != nil {
 		return err
 	}
-	if (r == nil) != (t.Run == nil) || r != nil && !sameSourceEvent(*r, *t.Run) {
+	if t.FeedbackRead && ((r == nil) != (t.Run == nil) || r != nil && !sameSourceEvent(*r, *t.Run)) {
 		return errors.New("useful feedback attempt moved during admission failure publication")
 	}
 	own, err := q.ownedChecks(ctx, p)
@@ -178,10 +219,10 @@ func (q *queueController) refuseAdmission(ctx context.Context, t *admissionTrace
 			selected = &own[i]
 		}
 	}
-	result := refused("The targeted publisher failed or ran out of its setup-inclusive sixty-second budget. All selected feedback and full queue validation remain required; reassess after correcting the error.")
+	result := q.refusalText(final.Number)
 	if admissionRetryRemains() {
-		// Still blocking, but not a verdict: the failed run is rerun with a new budget.
-		result = pending("The targeted publisher failed or ran out of its setup-inclusive sixty-second budget. Admission and merging stay blocked; the failed run is rerun automatically with a new budget.")
+		// Still blocking, but not a verdict: a rerun follows while attempts remain.
+		result = q.pendingText(final.Number)
 	}
 	return q.publish(ctx, final, newBinding(q.repo.ID, final, r), selected, result)
 }

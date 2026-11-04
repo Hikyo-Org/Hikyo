@@ -359,6 +359,9 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	// repeats the feedback, policy, verifier, DCO and role reads before a success is
 	// published. The contract's copies stay bound by SHA and digest; the route is
 	// routing, not a trust boundary, and is read once.
+	if trace != nil {
+		trace.PolicyRead = true
+	}
 	var initial *initialReads
 	if policy.Enabled {
 		initial = q.runInitialReads(ctx, p, captured == nil, trace != nil)
@@ -370,7 +373,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		if err != nil {
 			return err
 		}
-		trace.Run = earlyFeedback
+		trace.Run, trace.FeedbackRead = earlyFeedback, true
 	}
 	var initialRoles headRoles
 	if policy.Enabled {
@@ -621,10 +624,9 @@ func (q *queueController) queueMovement(ctx context.Context, number int) error {
 	if err := q.blockMovement(ctx, number, "queue admission final comparison"); err != nil {
 		return err
 	}
-	// A dev push does not reassess open PRs, so only a rerun reliably clears this
-	// barrier, and it reaches a real verdict. A main push reassesses every PR.
+	// A dev push does not reassess open PRs, so the job fails to say what will.
 	if q.checkName == devCheckName {
-		return errors.New("admission state moved; the pending barrier stays until the rerun reassesses this head")
+		return errors.New("admission state moved; the pending barrier stays until the head is reassessed: a rerun while attempts remain, a new push to this PR, a feedback result, a push to main, the schedule or a manual dispatch")
 	}
 	return nil
 }
