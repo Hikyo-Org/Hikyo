@@ -1,4 +1,4 @@
-# Migration policy, draft v0.6
+# Migration policy, draft v0.7
 
 Status: **owner decided and security approved, not operative**.
 Policy and requirements for DEC-11 to
@@ -179,7 +179,7 @@ KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (no library pat
 Source facts: P-256 primary and recovery keys; the recovery key signs root,
 policy, bridges and the legacy-track metadata and catalog; the Sigstore keyless
 workflow identity signs stable metadata and catalog (`snapshot.go:139,180`);
-nightly and the manifest are keyless (`.github/workflows/nightly.yml`), while the
+nightly, its manifest and its Helm chart are keyless (`.github/workflows/nightly.yml`), while the
 installer checks nightly metadata and catalog with `openssl` against the P-256
 recovery key (`install/upgrade-nightly.sh:115`) and the manifest with cosign
 (`:382`); the pinned-key parser rejects ML-DSA; pinned trust carries no floor input
@@ -196,7 +196,7 @@ integrity of the downloaded bytes and nothing against a quantum adversary.
 | Document or artifact | Signer today | PQ signer (DEC-14) |
 | --- | --- | --- |
 | Root, stable policy, bridges, legacy-track metadata and catalog | Recovery key (P-256) | ML-DSA recovery key, all-required with the classical key |
-| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:622`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
+| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:633`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
 | Releases signed with the primary key before keyless; the in-tree chart `primary.pub` (keyed mode) | Primary key (P-256) | None: historical verification only (E-12) |
 | Nightly track and image-replacement paths | Keyless; own stamped trust | None (E-15) |
 
@@ -285,6 +285,7 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 | E-16 | Operator pin rotation and break-glass (I08) | P-256 authenticated | #1126 | DEC-12 |
 | E-17 | Unobservable readers, verifiers and local floors (I07, I26) | Third-party installs cannot be measured; floor is a local claim | #1126, #1132 | DEC-11 |
 | E-18 | Single listener certificate pair (`internal/app/tls.go:31`): a strict ML-DSA leaf may be rejected by browsers and compat clients; sole ML-DSA recovery key (I09, I26) | Availability and recovery | #1127, #1132 | DEC-06, DEC-14 |
-| E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today | #1126 | DEC-11 |
+| E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today, so `backup-receipt/v2` (the signed upgrade compatibility banner) does not meet "every export path emits a receipt" | #1126 | DEC-11 |
 | E-20 | Pin-based owned clients on strict hops (`internal/cli/client.go:151`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
 | E-21 | Host-authority recovery of configuration (`internal/service/self_config_recovery.go:55`, repair boot in `internal/app/app.go:369`; every strict surface, starting with I09, I11) | Can select a published revision below strict without the MFA-bound plan, and a repair boot runs the previous policy; host access is already operator-equivalent | #1127 | DEC-10 |
+| E-22 | Stale-node fencing under strict (every strict surface; starts with I09, I11). Peer: any node of a multi-node instance whose active generation is below the desired one. Version: from the first release that can select strict (#1127) until a fence ships. Expiry: 180 days from the owner's decision on 2026-11-04, so 2027-05-03, or the next trigger. Recheck trigger: #1127 designing the fence, or a stale node observed serving after strict was selected | Strict is per process. A stale node keeps serving after strict is selected and is not reported as not enforcing; no fence is built | #1127 | DEC-10 (amended 2026-11-04) |

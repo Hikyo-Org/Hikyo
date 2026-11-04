@@ -102,6 +102,9 @@ owner or duplicate its changes. Stack a dependent delta when necessary.
 
 ## Dependency and deliverable register
 
+The "Initial gate" column is the state when this draft was written. Current delivery
+state, per ticket and PR, is in the [handoff](../handoff/1123-post-quantum-program.md#delivery-state-on-2026-11-04).
+
 This copies the dependency order from #1123 as a reviewable checkpoint. All
 eleven children were open when read. No approved #1124 profile receipt was
 present in the retrieved issue discussion. Open/closed state is not approval

@@ -135,7 +135,7 @@ func TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(t *testing.T
 				}
 				out := apigen.RevisionDetail{Revision: detail.Revision, Keys: []apigen.SnapshotKey{}}
 				for _, key := range detail.Keys {
-					out.Keys = append(out.Keys, apigen.SnapshotKey{KeyId: key.KeyID, Name: key.Name, Classification: apigen.KeyClassification(key.Classification)})
+					out.Keys = append(out.Keys, apigen.SnapshotKey{KeyId: key.KeyID, Name: key.Name, Classification: apigen.KeyClassification(key.Classification), Sensitive: key.Sensitive})
 				}
 				encode(out)
 			case strings.HasSuffix(r.URL.Path, "/auth/cli-reauth/start"):

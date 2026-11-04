@@ -242,7 +242,7 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 	// or the named subset).
 	unit := func(names []string) func(context.Context, string) ([]string, error) {
 		return func(ctx context.Context, env string) ([]string, error) {
-			return keyIDsOf(ctx, client, project, env, apigen.KeyClassificationSecret, names)
+			return keyIDsOf(ctx, client, project, env, names)
 		}
 	}
 	ceremony := func(envs []string, d disclosure, attempt func() error) error {
@@ -772,10 +772,9 @@ func renderCell(ios IO, f Format, cell apigen.ValueCell, outputFile string, dang
 }
 
 // keyIDsOf resolves the enumerated unit of a disclosure in one environment:
-// the ids of its keys of one classification (all of them, or the named
-// subset). It reads the non-revealing list, which discloses nothing; the ids
+// the ids of its secret keys (all of them, or the named subset). It reads the non-revealing list, which discloses nothing; the ids
 // are what the browser ceremony binds and what the disclosure then consumes.
-func keyIDsOf(ctx context.Context, client *Client, projectBase, env string, class apigen.KeyClassification, names []string) ([]string, error) {
+func keyIDsOf(ctx context.Context, client *Client, projectBase, env string, names []string) ([]string, error) {
 	var list apigen.ValueList
 	if err := client.Do(ctx, http.MethodGet, projectBase+"/environments/"+url.PathEscape(env)+"/values", nil, &list); err != nil {
 		return nil, err
@@ -786,7 +785,7 @@ func keyIDsOf(ctx context.Context, client *Client, projectBase, env string, clas
 	}
 	var out []string
 	for _, cell := range list.Items {
-		if cell.Classification != class {
+		if cell.Classification != apigen.KeyClassificationSecret {
 			continue
 		}
 		if len(wanted) > 0 && !wanted[cell.Name] {
@@ -810,14 +809,20 @@ func exportSecretKeyIDs(ctx context.Context, client *Client, envBase string, rev
 	if err := client.Do(ctx, http.MethodGet, envBase+"/revisions/"+which, nil, &covered); err != nil {
 		return nil, err
 	}
+	return sensitiveKeyIDs(covered.Keys), nil
+}
+
+// sensitiveKeyIDs is a snapshot's secret keys plus occurrences a declassification
+// left sticky-secret. It is the server's disclosure unit at the latest revision;
+// a historical revision can also count a key tightened since, which fails closed.
+func sensitiveKeyIDs(keys []apigen.SnapshotKey) []string {
 	var out []string
-	for _, item := range covered.Keys {
-		if item.Classification != apigen.KeyClassificationSecret {
-			continue
+	for _, item := range keys {
+		if item.Sensitive {
+			out = append(out, string(item.KeyId))
 		}
-		out = append(out, string(item.KeyId))
 	}
-	return out, nil
+	return out
 }
 
 // copyCellToClipboard accepts only plaintext explicitly disclosed by the server.
