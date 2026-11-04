@@ -5,13 +5,14 @@ on 2026-11-04 once required checks and reviews are green. That instruction is th
 maintainer security approval for this PR (DEC-06 requires one per implementation
 PR), and publication in the next nightly is accepted. It does not authorize a
 release or deployment, and it does not decide the open items under Remaining work
-(the stale-node fence, the proxy leg, DEC-17 budgets and the rest stay open).
+(the proxy leg, DEC-17 budgets and the rest stay open; the stale-node fence stays unbuilt
+#1127 work, as the owner accepted).
 Owner and maintainer are one person, so adversarial review compensates;
 cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN.
 Operator-facing text is in [transport policy](../operations/transport-policy.md).
 
-Stacked on the ADR amendment branch, draft PR #1155. Merge order is bottom-up, so
-#1155 merges first; no base or head SHA is pinned here. Refs
+Stacked on the ADR amendment PR #1155, which merges first. No base or head SHA is
+pinned here. Refs
 [#1127](https://github.com/Hikyo-Org/Hikyo/issues/1127); the PR does not close it.
 
 ## Scope of the claim
@@ -175,7 +176,7 @@ source. A proxy or database terminator outside the process is outside any claim.
 
 ## Remaining work
 
-- Land the api-cli-surface declared amendment for `tls_profile` (draft PR #1155); it becomes operative only when this implementation merges.
+- The api-cli-surface declared amendment for `tls_profile` landed in #1155 and becomes operative when this implementation merges.
 - **Stale-node fencing: not built.** A node below the desired generation keeps
   serving its old profile and is only reported as `pending`. Managed
   certificates behave the same way today. A node-side loop that makes the strict
@@ -217,7 +218,7 @@ source. A proxy or database terminator outside the process is outside any claim.
   needs no profile line yet.
 - **api-cli-surface amendment (not edited here).** `tls_profile` extends the
   owner-locked #966 amendment's closed bundle field set (clause 5) and its
-  sticky-entry rule (clause 4). The declared amendment is in draft PR #1155 (the
+  sticky-entry rule (clause 4). The declared amendment is in #1155 (the
   base of this PR) and is operative only when this implementation merges. It is listed under Remaining work.
 - **Migration 6 was not exercised end to end.** It ran only through
   `MigrateConfiguration` scenarios on SQLite and PostgreSQL (the `store/upgrade`
@@ -260,4 +261,5 @@ was contacted.
 
 Hosted CI and the independent pre-merge reviews, then merge bottom-up under the
 2026-11-04 authorization. No release or deployment is authorized. The stale-node
-fence, the proxy-leg choice and the DEC-17 budgets remain open.
+fence stays unbuilt, as the owner accepted, and the proxy-leg choice and the DEC-17 budgets
+remain open.
