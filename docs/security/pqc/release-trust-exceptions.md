@@ -38,4 +38,3 @@ column below says what was read and what was not.
 
 No row is closed by this change. Each is registered with a named owner and an
 unblocking trigger so that the missing control stays visible.
-
