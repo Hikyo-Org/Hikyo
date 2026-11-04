@@ -159,11 +159,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Remote-instance pairing
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** The cryptographic
-> profile is unchanged. A recorded exception states that SRP-2048 and Ed25519
-> DPoP give classical authenticity only, that no PQ PAKE composition is
-> authorized, and that the transcript is protected only by the TLS pin. Pairing
-> starts at compatibility, so no hybrid group is required of it.
+Landed as the 2026-11-02 banner on [remote-instance-pairing](./remote-instance-pairing.md), which is the only copy.
 
 ### Private PKI
 
