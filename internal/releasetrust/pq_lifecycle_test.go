@@ -89,17 +89,29 @@ func (h host) apply(t *testing.T, fx *testfixture.PQFixture, requirePQ bool) err
 				return err
 			}
 		}
+		// An authenticated keyset or snapshot is remembered even when a later stage
+		// refuses this update, so an older keyset cannot be replayed to revive a key.
+		remember := func(floor releasetrust.PQFloor) error {
+			if floor == (releasetrust.PQFloor{}) {
+				return nil
+			}
+			remembered, encodeErr := releasetrust.EncodePQFloor(floor)
+			if encodeErr != nil {
+				return nil
+			}
+			return atomicWrite(h.pqPath(), remembered)
+		}
 		keyset, next, err := releasetrust.VerifyPQSnapshot(fx.Pin, snapshot, fx.Material, fx.Sets, pqFloor)
 		if err != nil {
-			// An authenticated keyset is remembered even when it refuses this update.
-			if remembered, encodeErr := releasetrust.EncodePQFloor(next); encodeErr == nil && next != (releasetrust.PQFloor{}) {
-				if writeErr := atomicWrite(h.pqPath(), remembered); writeErr != nil {
-					return writeErr
-				}
+			if writeErr := remember(next); writeErr != nil {
+				return writeErr
 			}
 			return err
 		}
 		if next, err = releasetrust.VerifyPQRelease(fx.Pin, keyset, snapshot, release, fx.Stable.Manifest, fx.ManifestSet, next); err != nil {
+			if writeErr := remember(next); writeErr != nil {
+				return writeErr
+			}
 			return err
 		}
 		if pending, err = releasetrust.EncodePQFloor(next); err != nil {
@@ -226,9 +238,12 @@ func TestLifecycleFailuresChangeNoState(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		want error
-		edit func(t *testing.T, fx *testfixture.PQFixture)
+		// release is true when the refusal comes after the snapshot stage, which
+		// authenticated the new metadata and catalog and so advances the PQ floor.
+		release bool
+		edit    func(t *testing.T, fx *testfixture.PQFixture)
 	}{
-		{"bad ML-DSA signature on metadata", releasetrust.ErrPQSignature, func(t *testing.T, fx *testfixture.PQFixture) {
+		{"bad ML-DSA signature on metadata", releasetrust.ErrPQSignature, false, func(t *testing.T, fx *testfixture.PQFixture) {
 			var set releasetrust.PQSignatureSet
 			if err := json.Unmarshal(fx.Sets.MetadataSet, &set); err != nil {
 				t.Fatal(err)
@@ -238,9 +253,9 @@ func TestLifecycleFailuresChangeNoState(t *testing.T) {
 			set.Signatures[0].Signature = base64.StdEncoding.EncodeToString(sig)
 			fx.Sets.MetadataSet = testfixture.JSON(t, set)
 		}},
-		{"stripped PQ sidecar", releasetrust.ErrPQMissing, func(t *testing.T, fx *testfixture.PQFixture) { fx.Sets.CatalogSet = nil }},
-		{"stripped manifest sidecar", releasetrust.ErrPQMissing, func(t *testing.T, fx *testfixture.PQFixture) { fx.ManifestSet = nil }},
-		{"random signature bytes", releasetrust.ErrPQSignature, func(t *testing.T, fx *testfixture.PQFixture) {
+		{"stripped PQ sidecar", releasetrust.ErrPQMissing, false, func(t *testing.T, fx *testfixture.PQFixture) { fx.Sets.CatalogSet = nil }},
+		{"stripped manifest sidecar", releasetrust.ErrPQMissing, true, func(t *testing.T, fx *testfixture.PQFixture) { fx.ManifestSet = nil }},
+		{"random signature bytes", releasetrust.ErrPQSignature, true, func(t *testing.T, fx *testfixture.PQFixture) {
 			var set releasetrust.PQSignatureSet
 			if err := json.Unmarshal(fx.ManifestSet, &set); err != nil {
 				t.Fatal(err)
@@ -265,8 +280,20 @@ func TestLifecycleFailuresChangeNoState(t *testing.T) {
 				t.Fatal("accepted a failing update")
 			}
 			class(t, err, c.want)
-			if after := h.snapshotState(t); !bytes.Equal(before[0], after[0]) || !bytes.Equal(before[1], after[1]) {
-				t.Fatal("a refused update changed persisted state")
+			after := h.snapshotState(t)
+			if !bytes.Equal(before[0], after[0]) {
+				t.Fatal("a refused update changed the classical floor")
+			}
+			if !c.release {
+				if !bytes.Equal(before[1], after[1]) {
+					t.Fatal("a refused update changed persisted state")
+				}
+				return
+			}
+			was, _ := releasetrust.DecodePQFloor(before[1])
+			now, err := releasetrust.DecodePQFloor(after[1])
+			if err != nil || now.MetadataSequence != 3 || now.ReleaseSequence != was.ReleaseSequence || now.KeysetSequence != was.KeysetSequence {
+				t.Fatalf("a release-stage refusal must keep exactly the snapshot-stage floor: %+v %v", now, err)
 			}
 		})
 	}
@@ -389,6 +416,66 @@ func TestLifecycleSignerRotationRevocationAndOfflineRecovery(t *testing.T) {
 			t.Fatal("generation rollback accepted")
 		}
 	})
+}
+
+func TestLifecycleReleaseRefusalRemembersAuthenticatedKeyset(t *testing.T) {
+	h := host{dir: t.TempDir()}
+	fx := testfixture.NewPQStableWorkflow(t)
+	if err := h.apply(t, fx, true); err != nil {
+		t.Fatal(err)
+	}
+	// Keyset 1 with key A signing at sequence 5, as an attacker holding A would offer it.
+	fx.Reissue(t, 5)
+	old := *fx
+	// Keyset 2 drops key A. Metadata and catalog verify under key B, but the
+	// manifest set is stripped, so the release stage refuses after the keyset
+	// and snapshot stages have authenticated keyset 2.
+	fx.ReplaceReleaseKey(t)
+	fx.Reissue(t, 3)
+	fx.ManifestSet = nil
+	err := h.apply(t, fx, true)
+	class(t, err, releasetrust.ErrPQMissing)
+	remembered, err := releasetrust.DecodePQFloor(h.read(t, h.pqPath()))
+	if err != nil || remembered.KeysetSequence != 2 {
+		t.Fatalf("the refusing keyset was not remembered: %+v %v", remembered, err)
+	}
+	before := h.snapshotState(t)
+	class(t, h.apply(t, &old, true), releasetrust.ErrPQRollback)
+	if after := h.snapshotState(t); !bytes.Equal(before[0], after[0]) || !bytes.Equal(before[1], after[1]) {
+		t.Fatal("the replay changed state")
+	}
+}
+
+// A snapshot that skipped the PQ snapshot stage is refused by the release stage.
+func TestPQReleaseRequiresTheSnapshotStageFloor(t *testing.T) {
+	fx := testfixture.NewPQStableWorkflow(t)
+	h := host{dir: t.TempDir()}
+	if err := h.apply(t, fx, true); err != nil {
+		t.Fatal(err)
+	}
+	floor, err := releasetrust.DecodePQFloor(h.read(t, h.pqPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyset, _, err := releasetrust.VerifyPQKeyset(fx.Pin, floor, fx.Sets.Keyset, fx.Sets.KeysetSet, fx.KeyFiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A newer snapshot that only passed the classical stage.
+	fx.Reissue(t, 4)
+	snapshot, err := releasetrust.VerifySnapshot(fx.Pinned, fx.Material, releasetrust.SnapshotFloor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, err := releasetrust.VerifyStable(snapshot, fx.Stable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := releasetrust.VerifyPQRelease(fx.Pin, keyset, snapshot, release, fx.Stable.Manifest, fx.ManifestSet, floor)
+	class(t, err, releasetrust.ErrPQScope)
+	if next != floor {
+		t.Fatal("a refusal must return the input floor")
+	}
 }
 
 func sha(raw []byte) string { return string(releaseidentity.Hash(raw)) }

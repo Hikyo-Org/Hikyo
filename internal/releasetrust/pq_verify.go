@@ -304,38 +304,51 @@ func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, s
 // VerifyPQRelease requires the maintainer-held ML-DSA signature over the exact
 // manifest bytes, bound to channel, version, sequence, source commit and policy.
 // Historical keyed releases and nightlies have no PQ signer (E-12, E-15) and are
-// refused here rather than reported as verified.
+// refused here rather than reported as verified. The floor argument must be the
+// one VerifyPQSnapshot returned for this snapshot. On a refusal other than a
+// floor that fails its own check, the input floor comes back beside the error.
 func VerifyPQRelease(pin PQPin, keyset VerifiedPQKeyset, snapshot Snapshot, release VerifiedRelease, manifestRaw, setRaw []byte, floor PQFloor) (PQFloor, error) {
 	if err := floor.check(pin); err != nil {
 		return PQFloor{}, err
 	}
+	// Every later refusal returns the input floor: it already holds the keyset
+	// and snapshot stages, so a caller that persists it never forgets them.
 	if !snapshot.Valid() || !release.Valid() || release.SnapshotDigest() != snapshot.Digest() {
-		return PQFloor{}, pqErr(ErrPQScope, "release does not belong to this snapshot")
+		return floor, pqErr(ErrPQScope, "release does not belong to this snapshot")
+	}
+	// The floor must come from VerifyPQSnapshot over this same snapshot, so a
+	// snapshot that skipped the PQ snapshot stage is refused here.
+	if floor.MetadataSequence != snapshot.state.metadata.Sequence || floor.MetadataSHA256 != snapshot.state.floor.MetadataSHA256 ||
+		floor.CatalogSequence != snapshot.state.catalog.Sequence || floor.CatalogSHA256 != snapshot.state.floor.CatalogSHA256 {
+		return floor, pqErr(ErrPQScope, "snapshot has not passed the PQ snapshot stage")
 	}
 	identity := release.Identity()
 	if identity.Profile != releaseidentity.StableV1 || release.state.signingKeyID != StableWorkflowSigner {
-		return PQFloor{}, pqErr(ErrPQScope, "no PQ signer exists for this channel or historical signer")
+		return floor, pqErr(ErrPQScope, "no PQ signer exists for this channel or historical signer")
 	}
 	if releaseidentity.Hash(manifestRaw) != identity.ManifestSHA256 {
-		return PQFloor{}, pqErr(ErrPQScope, "manifest bytes differ from the verified release")
+		return floor, pqErr(ErrPQScope, "manifest bytes differ from the verified release")
 	}
 	signers, err := keyset.releaseSet(int64(identity.Sequence))
 	if err != nil {
-		return PQFloor{}, err
+		return floor, err
 	}
 	binding := PQBinding{Kind: PQKindReleaseManifest, Channel: string(identity.Profile), Version: identity.Version, Subject: "release-manifest.json", Source: identity.Commit, Sequence: identity.Sequence, Policy: release.PolicyDigest()}
 	if err := verifyPQSet(pin, signers, binding, sha256Of(manifestRaw), setRaw); err != nil {
-		return PQFloor{}, err
+		return floor, err
 	}
 	if int64(identity.Sequence) < floor.ReleaseSequence {
-		return PQFloor{}, pqErr(ErrPQRollback, "release sequence")
+		return floor, pqErr(ErrPQRollback, "release sequence")
 	}
 	next := floor.withPin(pin)
 	next.ReleaseSequence, next.ReleasePin = int64(identity.Sequence), pin.digest
 	if keyset.state.pin != pin.digest || next.KeysetPinSHA256 != pin.digest || next.KeysetSequence != keyset.state.sequence || next.KeysetSHA256 != keyset.state.digest {
-		return PQFloor{}, pqErr(ErrPQScope, "keyset differs from the persisted verification")
+		return floor, pqErr(ErrPQScope, "keyset differs from the persisted verification")
 	}
-	return next, floor.Advance(next)
+	if err := floor.Advance(next); err != nil {
+		return floor, err
+	}
+	return next, nil
 }
 
 // VerifyPQArtifact binds exact artifact bytes: the bytes must hash to the

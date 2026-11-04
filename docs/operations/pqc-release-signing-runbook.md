@@ -49,10 +49,13 @@ Only these algorithm identifiers exist in the PQ form: `ecdsa-p256-sha256` and
 1. The owner names ML-DSA recovery custody and a failure domain separate from
    the datastore and the root key (E-18, DEC-12). Software custody only; no HSM
    or KMS is assumed.
-2. A release containing the readers and verifiers has shipped and the reviewed
-   minimum version is recorded. Without it nothing can verify a PQ document.
+2. A release whose shipping path calls the readers and verifiers has shipped and
+   the reviewed minimum version is recorded. A release that only contains them,
+   with no caller, does not count: the readers are unwired today. Without a
+   caller nothing can verify a PQ document.
 3. The maintainer has reviewed the verifier and this runbook and given security
-   approval for the implementation. "Security approval: not given" holds today.
+   approval for enabling a signer. The owner's 2026-11-04 authorization to merge
+   the verifier implementation does not satisfy this: it enables no signer.
 4. The owner has decided how the pin reaches hosts (a second stamped value
    beside the unchanged v1 root, or something else). That mechanism is **not
    built** and is not designed here.
@@ -133,8 +136,9 @@ that tool and is not part of this ticket.
   beside it, or every release is refused (the verifier fails closed).
 - Revocation: mark the key revoked in a new keyset sequence. A revoked key
   cannot sign even for sequences it once covered. A host that has verified the
-  revoking keyset remembers its sequence, even if it refused that update, so an
-  older keyset is refused as a rollback. This holds only where the PQ floor is
+  revoking keyset remembers its sequence, even if it refused that update (at the
+  keyset, snapshot or release stage, provided the caller persists the floor those
+  stages return), so an older keyset is refused as a rollback. This holds only where the PQ floor is
   persisted, which no host does yet (NOT BUILT, E-17), and the floor is a local
   claim. The verifier does not remember revoked key identities: a later keyset
   signed by the full recovery set could list a revoked key again. Never do so;
