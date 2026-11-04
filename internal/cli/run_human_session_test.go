@@ -152,56 +152,69 @@ func TestRunHumanSessionConfigOnlyStillNeedsTheWindow(t *testing.T) {
 func TestRunHumanSessionBindsComposeInstanceBeforeNetwork(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		for _, match := range []bool{false, true} {
-			name := "sole-trusted"
-			if explicit {
-				name = "explicit"
-			}
-			if match {
-				name += "/matched-normalized"
-			} else {
-				name += "/mismatched"
-			}
-			t.Run(name, func(t *testing.T) {
-				requests := 0
-				fixture := runHumanServer(t, true)
-				ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					requests++
-					fixture.ServeHTTP(w, r)
-				}))
-				state, err := cli.NewState(ios.Env)
-				if err != nil {
-					t.Fatal(err)
+			// The matched case runs again with an equivalent spelling (leading
+			// zero in the port) of the stored origin.
+			for _, respelled := range []bool{false, true} {
+				if respelled && !match {
+					continue
 				}
-				entry, err := state.Trust().Lookup("local")
-				if err != nil {
-					t.Fatal(err)
-				}
-				origin := "https://repository-instance.example"
-				if match {
-					origin = entry.Origin + "/"
-				}
-				config := "version: 1\ninstance: " + origin + "\norg: org_70\nproject: prj_70\nenvironment: env_70\nslug: acme\ntargets:\n  api:\n    keys: [LOG_LEVEL]\n    services: [api]\n"
-				if err := os.WriteFile(filepath.Join(ios.Workdir, "hikyo-compose.yaml"), []byte(config), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				ios.StderrIsTerminal = func() bool { return true }
-				ios.TerminalSession, _ = terminalSession(t, "y\n")
-				execed := false
-				ios.Exec = func(string, []string, []string) error { execed = true; return nil }
-				args := []string{"run", "--use-human-session", "--config-only"}
+				name := "sole-trusted"
 				if explicit {
-					args = append(args, "--instance", "local")
+					name = "explicit"
 				}
-				args = append(args, "--", "true")
-				code := cli.Run(t.Context(), ios, args)
 				if match {
-					if code != cli.ExitOK || !execed || requests == 0 {
-						t.Fatalf("matched instance: exit=%d exec=%v requests=%d stderr=%s", code, execed, requests, stderr)
-					}
-				} else if code != cli.ExitUsage || execed || requests != 0 || !strings.Contains(stderr.String(), "refusing rather than picking one") {
-					t.Fatalf("mismatched instance: exit=%d exec=%v requests=%d stderr=%s", code, execed, requests, stderr)
+					name += "/matched-normalized"
+				} else {
+					name += "/mismatched"
 				}
-			})
+				if respelled {
+					name += "/respelled"
+				}
+				t.Run(name, func(t *testing.T) {
+					requests := 0
+					fixture := runHumanServer(t, true)
+					ios, _, stderr := definitionsTestIO(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						requests++
+						fixture.ServeHTTP(w, r)
+					}))
+					state, err := cli.NewState(ios.Env)
+					if err != nil {
+						t.Fatal(err)
+					}
+					entry, err := state.Trust().Lookup("local")
+					if err != nil {
+						t.Fatal(err)
+					}
+					origin := "https://repository-instance.example"
+					if match {
+						origin = entry.Origin + "/"
+					}
+					if respelled {
+						origin = strings.Replace(entry.Origin, "127.0.0.1:", "127.0.0.1:0", 1)
+					}
+					config := "version: 1\ninstance: " + origin + "\norg: org_70\nproject: prj_70\nenvironment: env_70\nslug: acme\ntargets:\n  api:\n    keys: [LOG_LEVEL]\n    services: [api]\n"
+					if err := os.WriteFile(filepath.Join(ios.Workdir, "hikyo-compose.yaml"), []byte(config), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					ios.StderrIsTerminal = func() bool { return true }
+					ios.TerminalSession, _ = terminalSession(t, "y\n")
+					execed := false
+					ios.Exec = func(string, []string, []string) error { execed = true; return nil }
+					args := []string{"run", "--use-human-session", "--config-only"}
+					if explicit {
+						args = append(args, "--instance", "local")
+					}
+					args = append(args, "--", "true")
+					code := cli.Run(t.Context(), ios, args)
+					if match {
+						if code != cli.ExitOK || !execed || requests == 0 {
+							t.Fatalf("matched instance: exit=%d exec=%v requests=%d stderr=%s", code, execed, requests, stderr)
+						}
+					} else if code != cli.ExitUsage || execed || requests != 0 || !strings.Contains(stderr.String(), "refusing rather than picking one") {
+						t.Fatalf("mismatched instance: exit=%d exec=%v requests=%d stderr=%s", code, execed, requests, stderr)
+					}
+				})
+			}
 		}
 	}
 }

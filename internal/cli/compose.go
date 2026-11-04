@@ -328,7 +328,7 @@ func machineEntry(st *State, resolved Resolved, cfg *machineConfig) (TrustEntry,
 	if err != nil {
 		return TrustEntry{}, err
 	}
-	if cfgOrigin != "" && entry.Origin != cfgOrigin {
+	if cfgOrigin != "" && !sameOrigin(entry.Origin, cfgOrigin) {
 		return TrustEntry{}, failf(ExitUsage,
 			"instance %q resolves to origin %s but %s names %s — refusing rather than picking one",
 			instance, entry.Origin, cfg.Name, cfgOrigin)

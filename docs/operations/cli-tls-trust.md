@@ -30,7 +30,8 @@ Trust entries and provisioned bundles share these fields:
 | Existing loopback HTTP socket | Absent | Absent | Required for credential transport |
 
 Both also accept an optional `tls_profile` (#1127): omitted or `compat` keeps
-the table's behavior, and `strict` additionally requires TLS 1.3 and the hybrid
+the table's behavior (an explicit empty string or `null` is refused, as it is for
+`tls_mode`), and `strict` additionally requires TLS 1.3 and the hybrid
 `X25519MLKEM768` group on an HTTPS entry. It is allowed with either HTTPS mode,
 never with a local socket, and does not change the mode's trust model: strict
 protects handshake confidentiality only, and an SPKI pin still gives no
@@ -55,7 +56,8 @@ zeros in the port and the textual form of an IP literal, so `https://h`,
   profile) differs, instead of picking one. This also applies to compat-only
   stores whose entries for one origin differ in mode or pin: they still load, but
   an origin-based lookup of them is refused until you name the entry with
-  `--instance`. Entries with the same policy resolve deterministically: the exact spelling
+  `--instance`; the instance you name may spell the configured origin differently
+  (for example with `:443`). Entries with the same policy resolve deterministically: the exact spelling
   asked for first, then the lowest name.
 
 Unknown modes and conflicting combinations are refused. An absent mode on

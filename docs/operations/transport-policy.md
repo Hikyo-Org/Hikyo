@@ -1,10 +1,16 @@
 # Post-quantum key-exchange policy for controlled hops (#1127)
 
-Status: **implemented on this branch, not released, not operative.** The
+Status: **implemented on this branch.** The owner authorized merge to `dev` on
+2026-11-04 once required checks and reviews are green, which is the maintainer
+security approval for this change, and accepted publication in the next nightly.
+It is operative only after it merges and a build containing it is deployed and
+applied. The stale-node fence (DEC-10) is not part of that authorization: the
+owner amended DEC-10 so strict is per-process (see
+[Strict is a per-process property](#strict-is-a-per-process-property-until-a-fence-exists)),
+and the fence stays #1127 work. The
 [decision register](../adr/post-quantum-migration.md#decision-register) (DEC-05,
-DEC-06, DEC-10) is owner decided and security approved but takes effect only
-when its ADR amendments land and this change merges after its own maintainer
-security approval. The [handoff](../handoff/1127-transport-policy.md) records
+DEC-06, DEC-10) carries the decisions, and the DEC-10 amendment and E-22 are
+registered in #1155. The [handoff](../handoff/1127-transport-policy.md) records
 evidence, the hop capability matrix and the remaining work.
 
 ## What strict does and does not claim
@@ -97,12 +103,17 @@ upgrade maintenance listener uses the same certificate and profile.
 ## Strict is a per-process property until a fence exists
 
 Strict is enforced by each process on its own listener. Hikyo does not yet fence
-a node whose active configuration generation is below the desired one (DEC-10
-requires the fence; it is not built and its criterion is HOLD). Until it exists:
+a node whose active configuration generation is below the desired one. #1155
+amends DEC-10 so that strict is per-process and registers the gap as E-22; the
+fence itself is not built and stays #1127 work (its criterion is HOLD). Until it
+exists:
 
 - A stale node keeps admitting credentials and data on the listener at the
-  profile it last activated, including `compat`. Node status reports it as
-  `pending`; that is a report, not enforcement.
+  profile it last activated, including `compat`. Node status shows it as
+  `pending`, but that state is derived from generation and revision data
+  (`internal/service/self_config_status.go`), not from the node reporting what it
+  enforces. A silent node is `pending` or `unknown` for the same reason. It is
+  not a "not enforcing" report and it does not stop the node serving.
 - **No fleet-wide claim can be made**, however many nodes are strict. A claim is
   only about one node, at one activated generation, on its own listener.
 - Repair and recovery boots run the previous completed configuration snapshot
@@ -118,7 +129,7 @@ requires the fence; it is not built and its criterion is HOLD). Until it exists:
 | --- | --- | --- |
 | Configured support | server log `native listener TLS policy ... evidence=configured` at each generation; `tls_profile` in the CLI trust entry | What the hop is set to enforce. Not proof any connection used it |
 | Test negotiation | `go test` evidence in the PR and handoff | A handshake in an isolated fixture. Not production |
-| Observed negotiation | server debug log `native listener TLS negotiation ... evidence=observed`; CLI `-vv` line `TLS hop=cli-client profile=... version=... group=... evidence=observed` | A handshake this process completed, with TLS version and `ConnectionState.CurveID` mapped to closed names. An unmapped or missing group is `unknown`, never inferred |
+| Observed negotiation | server debug log `native listener TLS negotiation ... evidence=observed`; CLI `-vv` line `TLS hop=cli-client profile=... version=... group=... evidence=observed` | A handshake that reached verification in this process, which runs before the handshake finishes, so it may still fail afterwards. Recorded with TLS version and `ConnectionState.CurveID` mapped to closed names. An unmapped or missing group is `unknown`, never inferred |
 
 Observation is of this process's own connection. It is never used to infer the
 group of a proxy, ingress or other terminator in front of or behind it. No peer

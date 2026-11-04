@@ -31,7 +31,7 @@ func leafOf(t *testing.T, chainPEM []byte) *x509.Certificate {
 // roots. A pin gives confidentiality below strict and no authenticity claim.
 func pinnedEntry(t *testing.T, peer *tlstest.Peer, profile string) TrustEntry {
 	t.Helper()
-	return TrustEntry{Name: "peer", Origin: peer.URL, TLSMode: TLSModeSPKI, SPKIPin: SPKIFingerprint(leafOf(t, peer.CertPEM)), TLSProfile: profile}
+	return TrustEntry{Name: "peer", Origin: peer.URL, TLSMode: TLSModeSPKI, SPKIPin: SPKIFingerprint(leafOf(t, peer.CertPEM)), TLSProfile: TLSProfile(profile)}
 }
 
 func cliGet(t *testing.T, entry TrustEntry) (*http.Response, error) {
@@ -128,7 +128,7 @@ func TestCLITrustEntryProfileIsValidatedAndSticky(t *testing.T) {
 	https := TrustEntry{Name: "a", Origin: "https://hikyo.example.test", TLSMode: TLSModeSystemCA}
 	for _, bad := range []string{"Strict", "pq", " strict"} {
 		e := https
-		e.TLSProfile = bad
+		e.TLSProfile = TLSProfile(bad)
 		if err := validateTLSMode(e); err == nil {
 			t.Fatalf("profile %q accepted", bad)
 		}
@@ -434,5 +434,73 @@ func TestDeveloperCredentialDeleteByOriginMatchesEquivalentSpellings(t *testing.
 	}
 	if all, err := st.DeveloperCredentials(); err != nil || len(all) != 0 {
 		t.Fatalf("an equivalent origin spelling must delete the credential: %v %v", err, all)
+	}
+}
+
+// lookupByOrigin advises naming an instance when spellings differ in policy, so
+// the named-instance check must accept any spelling of the configured origin.
+func TestMachineEntryNamedInstanceAcceptsEquivalentOriginSpelling(t *testing.T) {
+	state := &State{dir: t.TempDir()}
+	pin := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	entries := map[string]TrustEntry{
+		"a": {Name: "a", Origin: "https://h.example.test", TLSMode: TLSModeSystemCA},
+		"b": {Name: "b", Origin: "https://h.example.test:443", TLSMode: TLSModeSPKI, SPKIPin: pin},
+	}
+	if err := state.Trust().write(entries); err != nil {
+		t.Fatal(err)
+	}
+	for _, instanceOrigin := range []string{"https://h.example.test", "https://h.example.test.", "https://h.example.test:443"} {
+		cfg := &machineConfig{Name: "hikyo.yaml", Instance: instanceOrigin}
+		if _, err := machineEntry(state, Resolved{Values: map[Dimension]string{}, Sources: map[Dimension]Source{}}, cfg); err == nil || !strings.Contains(err.Error(), "name one of them with --instance") {
+			t.Fatalf("%s: differing policies must be refused by origin: %v", instanceOrigin, err)
+		}
+		for _, name := range []string{"a", "b"} {
+			resolved := Resolved{Values: map[Dimension]string{DimInstance: name}, Sources: map[Dimension]Source{}}
+			got, err := machineEntry(state, resolved, cfg)
+			if err != nil || got.Name != name {
+				t.Fatalf("--instance %s with config %s must resolve: %v %+v", name, instanceOrigin, err, got)
+			}
+		}
+	}
+	other := &machineConfig{Name: "hikyo.yaml", Instance: "https://other.example.test"}
+	resolved := Resolved{Values: map[Dimension]string{DimInstance: "a"}, Sources: map[Dimension]Source{}}
+	if _, err := machineEntry(state, resolved, other); err == nil || !strings.Contains(err.Error(), "refusing rather than picking one") {
+		t.Fatalf("a different origin must still be refused: %v", err)
+	}
+}
+
+func TestDeveloperCredentialLookupMatchesEquivalentSpellings(t *testing.T) {
+	st := &State{dir: t.TempDir()}
+	token, _, err := crypto.NewArtifact(crypto.ArtifactDeveloperCredential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := DeveloperCredentialArtifact{ID: "dev_01989abc-def0-7123-8123-000000000005", Origin: "https://h.example.test:443", Org: "o", Project: "p", Environment: "e", Token: token, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := st.PutDeveloperCredential(c); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.developerCredentialFor("https://h.example.test", "o", "p", "e", time.Now())
+	if err != nil || got.ID != c.ID {
+		t.Fatalf("an equivalent origin spelling must find the credential: %v %+v", err, got)
+	}
+}
+
+// An omitted tls_profile means compat. An explicit empty or null value is
+// refused, as it is for tls_mode, so it cannot be read as a deliberate choice.
+func TestTrustJSONRefusesExplicitEmptyAndNullProfile(t *testing.T) {
+	for _, value := range []string{`""`, `null`, `"Strict"`, `1`} {
+		bundle := `{"name":"a","origin":"https://hikyo.example.test","tls_mode":"system-ca","tls_profile":` + value + `}`
+		var b TrustBundle
+		if err := decodeTrustJSON([]byte(bundle), &b); err == nil {
+			t.Errorf("bundle with tls_profile %s accepted as %q", value, b.TLSProfile)
+		}
+		var entries map[string]TrustEntry
+		if err := decodeTrustJSON([]byte(`{"a":`+bundle+`}`), &entries); err == nil {
+			t.Errorf("trust entry with tls_profile %s accepted", value)
+		}
+	}
+	var b TrustBundle
+	if err := decodeTrustJSON([]byte(`{"name":"a","origin":"https://hikyo.example.test","tls_mode":"system-ca"}`), &b); err != nil || b.TLSProfile != "" {
+		t.Fatalf("an omitted tls_profile must still mean compat: %v %q", err, b.TLSProfile)
 	}
 }
