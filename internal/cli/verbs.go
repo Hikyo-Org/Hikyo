@@ -945,7 +945,7 @@ func establishWithTLSMode(ios IO, st *State, target, name, trustFile, socket, tl
 		if socket != "" && socket != bundle.CLISocket {
 			return TrustEntry{}, failf(ExitRefused, "the explicit local CLI socket does not match the provisioned trust bundle")
 		}
-		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, TLSMode: bundle.TLSMode, CLISocket: bundle.CLISocket}
+		entry := TrustEntry{Name: cmp.Or(name, bundle.Name), Origin: origin, SPKIPin: bundle.SPKIPin, TLSMode: bundle.TLSMode, CLISocket: bundle.CLISocket, TLSProfile: bundle.TLSProfile}
 		if err := requireSameTLSMode(tlsMode, entry); err != nil {
 			return TrustEntry{}, err
 		}

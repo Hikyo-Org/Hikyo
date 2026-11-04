@@ -198,7 +198,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 			if err != nil {
 				return err
 			}
-			if session.Origin != cfgOrigin {
+			if !sameOrigin(session.Origin, cfgOrigin) {
 				return failf(ExitUsage,
 					"instance %q resolves to origin %s but %s names %s; refusing rather than picking one",
 					session.Instance, session.Origin, composeConfigName, cfgOrigin)

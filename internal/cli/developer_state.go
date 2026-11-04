@@ -84,7 +84,7 @@ func (s *State) deleteDeveloperCredentials(origin, id string) error {
 		return err
 	}
 	for key, c := range all {
-		if c.Origin == origin && (id == "" || key == id) {
+		if sameOrigin(c.Origin, origin) && (id == "" || key == id) {
 			delete(all, key)
 		}
 	}
@@ -99,7 +99,7 @@ func (s *State) developerCredentialFor(origin, org, project, environment string,
 	var found DeveloperCredentialArtifact
 	expired := false
 	for _, c := range all {
-		if c.Origin != origin || c.Org != org || c.Project != project || c.Environment != environment {
+		if !sameOrigin(c.Origin, origin) || c.Org != org || c.Project != project || c.Environment != environment {
 			continue
 		}
 		if !now.Before(c.ExpiresAt) {

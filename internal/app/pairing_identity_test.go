@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/remotefetch"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
@@ -44,7 +45,7 @@ func TestPairingIdentityRequiresExplicitHTTPSOriginWithoutIO(t *testing.T) {
 
 func TestPairingIdentityOverridePrecedesNativeCertificateAndCapturesGeneration(t *testing.T) {
 	certPEM, keyPEM, _ := tlstest.MintServerCert(t, "pairing.example")
-	certificate, err := newManagedCertificate(string(certPEM), string(keyPEM))
+	certificate, err := newManagedCertificate(string(certPEM), string(keyPEM), tlspolicy.ProfileCompat)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestPairingIdentityOverridePrecedesNativeCertificateAndCapturesGeneration(t
 
 func TestPairingIdentityObservesNativeTLSAndNeverInfersPublicKey(t *testing.T) {
 	certPEM, keyPEM, leaf := tlstest.MintServerCert(t, "127.0.0.1")
-	certificate, err := newManagedCertificate(string(certPEM), string(keyPEM))
+	certificate, err := newManagedCertificate(string(certPEM), string(keyPEM), tlspolicy.ProfileCompat)
 	if err != nil {
 		t.Fatal(err)
 	}
