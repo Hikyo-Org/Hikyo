@@ -1,12 +1,15 @@
 # #1128: versioned hybrid-encrypted, PQ-signed sealed webhook delivery (protocol 2), handoff
 
-Status: **draft implementation. Not merge-ready, not operative. Security approval: not given.**
+Status: **owner authorized merge on 2026-11-04** (the maintainer security approval for this PR) and
+accepted the declared-amendment revision route for the spec. Protocol 2 is usable after merge when a
+target is explicitly configured; protocol 1 is the default and unchanged. The registered limits
+(R-1128-A, R-1128-B, X19) and the open items below are not closed by that approval.
 Owner and maintainer are one person, so independent adversarial review compensates;
 cross-provider review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
 Refs [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128); the PR does not close it.
 Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Operator text:
 [receiver and sender migration](../operations/sealed-webhook-v2-migration.md). Protocol text:
-[spec section 11](../spec/sealed-webhook.md#11-protocol-version-2-proposed-not-operative).
+[spec section 11](../spec/sealed-webhook.md#11-protocol-version-2).
 
 ## Decisions applied, nothing newly selected
 
@@ -20,11 +23,11 @@ primitive or composition was added.
 
 | Area | Change |
 | --- | --- |
-| Spec | Section 11 of `docs/spec/sealed-webhook.md`, marked proposed; sections 1 to 10 (v1) untouched |
+| Spec | Section 11 of `docs/spec/sealed-webhook.md`, a declared amendment operative at merge; sections 1 to 10 (v1) untouched |
 | Crypto (`internal/crypto/sealedhook/v2.go`) | New file beside v1. Dual suite `ed25519+mldsa65` (both required), hybrid recipient, version-separated path, media types and labels, `ed25519-sha256:` / `mldsa65-sha256:` / `mlkem768x25519-sha256:` ids, `swh2-...` fingerprint, `ciphertext_digest`, exact-length fields checked before base64 decoding, one-stanza age header allowlist with a 4096-byte header bound (copy of the #1126 scan: this leaf package may not import `crypto/backup`), an exact-case unique member set and the names bound checked on the token stream before any struct decode, canonical base64. v1 code only gained shared validators (`validateScope`, `validateWindow`, `validateStatus`, `destinationID`, `idempotencyKey`) |
 | Sender (`internal/adapter/sealedwebhook`) | `Endpoint`, `Client`, `Module` select the protocol per target; route table has `deliver` and `deliver.v2`; a protocol 2 client verifies both ack signatures and never emits a v1 request. `Client.RootCAs` test wiring added (same pattern as awssm; `Endpoint.ClientConfig` never sets it) |
 | Registry (`internal/config`, `internal/app`) | Per-target `protocol` (absent = 1), `ack_key_mldsa65`, top-level `signing_key_file_mldsa65` (same `0600` check). Mixed, missing or unused ML-DSA material refuses boot |
-| Reference receiver (`internal/sealedreceiver`, `cmd/hikyo-receiver-example`) | Serves v1 and v2 independently; PQ-required receiver omits v1 and answers 404 there; Content-Length bound; tool gains `keygen -protocol 2`, `sender-keygen`, `pubkey`, `fingerprint -protocol 2` |
+| Reference receiver (`internal/sealedreceiver`, `cmd/hikyo-receiver-example`) | Serves v1 and v2 under separate recipient identities, sender pins and acknowledgement signers (the Ed25519 keys may be shared); PQ-required receiver omits v1 and answers 404 there; Content-Length bound; tool gains `keygen -protocol 2`, `sender-keygen`, `pubkey`, `fingerprint -protocol 2` |
 | Vectors | `internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json` (positive, signed bytes, derived ids, negatives) |
 | Docs | Migration guide; site registry notes |
 
@@ -122,10 +125,18 @@ unwrap), `go test -bench V2SealOpen`, three runs, loaded host. amd64 NOTRUN.
 
 ## Registered limits and HOLDs
 
-- **R-1128-A (classical write path while both versions are served):** a stolen or forged Ed25519
-  key can rewrite or prune values a route owns through the v1 path, including values delivered
-  under v2, within the same route, generation and revision checks. The v2 authenticity claim holds
-  only after v1 is retired on the receiver. Owning tickets: #1128, #1135 (closure).
+- **R-1128-A (classical write path while both versions are served):** an actor with the pinned
+  Ed25519 sender key and the namespace binding credential (a thief needs it separately; a future
+  Ed25519 forger reads it from recorded v1 traffic) can rewrite or prune values a route owns
+  through the v1 path, including values delivered under v2. The route, generation and revision
+  checks do not bound that actor, who chooses the revision and idempotency key and whose lookup runs
+  before the route checks. Measured on the reference receiver: a forged v1 write at revision
+  MaxInt64 makes a genuine v2 write at a lower revision answer `rejected/stale_revision` and the
+  stored value stays forged; a forged v1 write with a future v2 idempotency key makes the genuine
+  delivery answer `already_applied` with no write, which the sender maps to success. The v2
+  authenticity claim holds only for state written after v1 is retired and the shared store has been
+  inspected or reset; retirement does not repair existing entries. Operator step added to the guide
+  and spec 11.8 step 6. No mechanism added. Owning tickets: #1128, #1135 (closure).
 - **R-1128-B (no rollback floor):** the registry is an operator file; an administrator can restore
   the v1 entry and retained targets resume classical delivery. DEC-11's floor does not exist for
   this surface, and the migration policy forbids rollback by stripping PQ verification. Owning
@@ -133,6 +144,11 @@ unwrap), `go test -bench V2SealOpen`, three runs, loaded host. amd64 NOTRUN.
 - **Recipient ownership is not proven by the probe** (see acceptance).
 - **Reference tool is not production software:** plaintext state file, whole-file rewrite (now
   fsynced), unbounded idempotency map; documented in the guide.
+- **Directory fsync failure in the reference tool:** if the directory sync fails after the rename,
+  the new state is on disk but the apply rolls memory back and answers 503, so memory trails the file
+  until restart. Where that sync always fails (Windows, some network filesystems) a v1 receiver that
+  worked before now answers 503 on every apply. Code kept; effect stated in the guide and in the
+  `persistState` and `apply` comments.
 - **Test coverage of the reference receiver:** `internal/sealedreceiver` now has its own small
   package test; its protocol behavior is covered by the adapter and isolation tests.
 
@@ -141,9 +157,9 @@ unwrap), `go test -bench V2SealOpen`, three runs, loaded host. amd64 NOTRUN.
   No per-hop selector was built.
 - **Suite:** only the dual suite exists. PQ-only (the DEC-03 end state) is a later suite and trust
   generation: not built.
-- **Revision route (HOLD, owner):** DEC-18 states none for this owner. Proposal: a declared-amendment
-  banner on `docs/adr/deployment-adapter.md`, the route #163 used, carrying section 11 once the
-  implementation is accepted. The ADR is not edited here.
+- **Revision route (accepted 2026-11-04):** DEC-18 states none for this owner. The owner accepted a
+  declared-amendment banner on `docs/adr/deployment-adapter.md`, the route #163 used, carrying
+  section 11; it is added in this PR and is operative when the PR merges.
 - **Threat model:** the "future quantum forger" attacker class named for the authenticity children
   is the parent's call; not landed.
 - **Receiver reach (E-17):** third-party receivers cannot be observed, so the reader-first gate for
@@ -166,9 +182,9 @@ is a separate recorded decision.
 
 ## Next authorized step
 
-Independent Standards, Spec and security review of this draft, the owner's decision on the revision
-route, and maintainer security approval. Then, only with explicit target authorization, a push to a
-non-production receiver using the migration guide.
+Merge is authorized (2026-11-04). Moving any target to protocol 2, a push to a receiver, and
+retiring protocol 1 on a receiver each remain separate, explicitly authorized operator actions
+following the migration guide.
 
 ## Final checks
 

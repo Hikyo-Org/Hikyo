@@ -648,8 +648,8 @@ arbitrary URL. The instance administrator lists receivers in the file named by
    `confirmed_fingerprint` and restarts. A missing or different fingerprint
    refuses startup; a changed host, port, or key changes the fingerprint.
 
-**Protocol 2 (draft, not operative until its spec revision route is accepted and the
-implementation merges).** A target can opt in to a second protocol version that
+**Protocol 2 (opt-in per target; usable after the implementation merges, with registered
+limits in the spec).** A target can opt in to a second protocol version that
 encrypts to an age hybrid X25519 plus ML-KEM-768 recipient and requires both an
 Ed25519 and an ML-DSA-65 signature on every request and acknowledgement.
 Upgrade the receiver first; a protocol 2 target never sends a protocol 1

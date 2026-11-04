@@ -381,6 +381,10 @@ var (
 // receiver acknowledges: the temporary file is synced, renamed over the state
 // file, and then the parent directory is synced so the rename itself is
 // durable. Spec section 7 requires a durable apply before the acknowledgement.
+// A directory sync that fails after the rename returns an error although the
+// new state is on disk, so the apply answers 503 and memory trails the file
+// until restart; where that sync always fails (Windows, some network
+// filesystems) every apply answers 503.
 // shortcut: whole-file rewrite on every apply and Unix directory sync, fine
 // for a reference receiver, not for production.
 func persistState(path string, raw []byte) error {

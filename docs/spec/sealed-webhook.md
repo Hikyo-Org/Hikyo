@@ -214,21 +214,23 @@ and pruned last on teardown, exactly as on the other adapters.
 Tenant-configurable URLs, JOSE/JWS envelopes, webhook ingestion into Hikyo,
 and receiver SDKs beyond the reference example.
 
-## 11. Protocol version 2 (proposed, not operative)
+## 11. Protocol version 2
 
-> **Proposed text ([#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128)).**
-> This section is not operative until the implementing PR merges and the
-> revision route below is accepted. Sections 1 to 10 are the version 1
-> protocol and are unchanged: version 1 targets stay byte-compatible and keep
-> their original policy. Independent adversarial review is required;
-> cross-provider review is SKIPPED by explicit owner instruction (2026-11-02)
-> and is not CLEAN. Security approval: not given.
+> **Declared amendment ([#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128)).**
+> Operative when the implementing PR merges: a target configured with
+> `"protocol": 2` uses this section. It is opt-in per target and never
+> automatic. Sections 1 to 10 are the version 1 protocol and are unchanged:
+> version 1 targets stay byte-compatible and keep their original policy.
+> Independent adversarial review was required and done; cross-provider review
+> is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN. The
+> owner authorized merge on 2026-11-04, which is the maintainer security
+> approval for this change. That approval does not close the registered limits
+> in 11.10 or the open items listed in the handoff.
 >
-> **Revision route (proposed; DEC-18 does not state one for this owner).** A
-> declared-amendment banner on [deployment-adapter.md](../adr/deployment-adapter.md),
-> the route #163 used, carrying this section's text. HOLD for the owner: this
-> section is not operative until that route is accepted **and** the
-> implementation merges, whatever any published guide says.
+> **Revision route.** DEC-18 does not state one for this owner. The owner
+> accepted on 2026-11-04 the declared-amendment banner on
+> [deployment-adapter.md](../adr/deployment-adapter.md), the route #163 used,
+> carrying this section.
 
 Decisions applied: DEC-01 (age hybrid recipient `mlkem768x25519`), DEC-02
 (ML-DSA-65 only), DEC-03 (all required signatures verify, required set from the
@@ -377,10 +379,18 @@ ML-DSA-65 key with an optional `not_after`), never from the presented message.
    both signatures.
 4. A receiver that is **PQ-required** serves only `/hikyo/v2/sync` and answers
    404 for the version 1 path even for pinned version 1 sender keys. A
-   receiver in transition serves both paths with independent identities,
-   acknowledgement signers and sender pins; each message is interpreted only
-   under its own version. It has **one** generation, **one** applied-values
-   store and **one** idempotency store, shared by both versions (see 11.10).
+   receiver in transition serves both paths with separate recipient identities
+   (X25519 and hybrid), separate sender pins (an Ed25519 key for version 1, a
+   key pair for version 2) and separate acknowledgement signers; each message is
+   interpreted only under its own version. The Ed25519 keys **may be shared**:
+   the reference receiver builds the version 2 acknowledgement signer from the
+   version 1 Ed25519 acknowledgement key plus an ML-DSA-65 key, and 11.8 step 2
+   keeps the instance's existing Ed25519 signing key as half of the sender pair.
+   A shared Ed25519 key never authorizes version 2 by itself (both signatures
+   are required), but it does authorize version 1, which is the path 11.10
+   limits. The ML-DSA-65 keys and the recipient identities are never shared. It
+   has **one** generation, **one** applied-values store and **one** idempotency
+   store, shared by both versions (see 11.10).
 
 ### 11.7 Sender behavior
 
@@ -441,7 +451,11 @@ Receiver first, as in the [migration policy](../security/pqc/migration.md):
    recorded per revision, so publish a new revision afterwards.
    **Receiver rollback** is only to a build that reads version 2.
 6. Retire version 1 on the receiver (remove the X25519 identity and version 1
-   pins) only after no sender uses it; that is a separate decision.
+   pins) only after no sender uses it; that is a separate decision. At
+   retirement the receiver operator also inspects, or resets, the shared
+   applied-values and idempotency store: entries written through the version 1
+   path while both versions were served are not repaired by retirement
+   (R-1128-A).
 7. Key rotation overlaps by pinning the new sender pair and giving the old pair
    a `not_after`; a pair is two keys and rotates as one. Changing the
    recipient or either acknowledgement key is a new generation (step 3).
@@ -453,18 +467,35 @@ authenticity claim and the payload's protection rests on the hybrid recipient.
 The age file key is 16 bytes (category 1 floor, DEC-04). Version 1 messages
 already recorded are exposed to a recording adversary.
 
-### 11.10 Registered limits of a dual-serving receiver (proposed)
+### 11.10 Registered limits of a dual-serving receiver
 
 - **R-1128-A, classical write path while both versions are served.** A receiver
   that still serves version 1 accepts version 1 envelopes signed by the pinned
-  Ed25519 key. An actor who steals that key, or a future actor who can forge
-  Ed25519, can rewrite or prune the values a route owns in the shared store,
-  including values originally delivered under version 2, subject to the same
-  route, generation and revision checks. The version 2 all-required rule does
-  not protect values a version 1 path can also write. Claim limited: the
-  authenticity claim for version 2 delivery holds only after version 1 is
-  retired on the receiver (step 6). Owning tickets: #1128 (this child), #1135
-  (closure record).
+  Ed25519 key and carrying the namespace binding credential. An actor who holds
+  both can rewrite or prune the values a route owns in the shared store,
+  including values originally delivered under version 2. The actor is either a
+  key thief, who needs the binding credential separately, or a future actor who
+  can forge Ed25519 and who can read the binding credential out of recorded
+  version 1 traffic (the credential travels only inside the X25519 age
+  ciphertext). The checks on the version 1 path do not bound this actor: the
+  actor chooses the `source.revision` and the `idempotency_key`, and the
+  idempotency lookup runs before the route checks. Two effects were measured
+  against the reference receiver:
+  (a) a forged version 1 write with a very high revision (for example the
+  maximum int64) makes a genuine version 2 write at a lower revision answer
+  `rejected: stale_revision`, and the stored value stays the forged one;
+  (b) a forged version 1 write that carries the idempotency key of a future
+  version 2 delivery makes the genuine delivery answer `already_applied` with no
+  write, and the sender maps that to a success it records as owned.
+  The version 2 all-required rule does not protect values or keys a version 1
+  path can also write. Claim limited: the authenticity claim for version 2
+  delivery holds only for state written after version 1 is retired and the
+  shared store has been inspected or reset (step 6). Retiring version 1 stops
+  new classical writes; it does not repair the applied-values or idempotency
+  entries already in the store, so those entries stay forged until the operator
+  clears them. No mechanism is added for this and the idempotency store rules
+  are unchanged. Owning tickets: #1128 (this child), #1135 (closure
+  record).
 - **R-1128-B, no rollback floor for this surface.** DEC-11 requires a floor
   that a binary or operator cannot lower by stripping PQ verification. No
   floor exists here: the registry is an operator file, and an instance

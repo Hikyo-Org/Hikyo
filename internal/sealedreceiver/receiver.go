@@ -27,8 +27,11 @@ import (
 
 // Config is the receiver's pinned trust material and tenant bindings. A
 // receiver serves protocol version 1 when Identity is set and version 2 when
-// HybridIdentity is set; each version has its own identity, acknowledgement
-// signer and sender pins, so one version's keys never authorize the other. A
+// HybridIdentity is set; each version has its own recipient identity, sender
+// pins and acknowledgement signer. The Ed25519 keys may be shared between the
+// versions (the reference receiver builds the version 2 signer from the
+// version 1 Ed25519 acknowledgement key), but a shared Ed25519 key never
+// authorizes version 2 alone because both signatures are required. A
 // PQ-required receiver sets only the version 2 fields and answers 404 on the
 // version 1 path.
 type Config struct {
@@ -291,7 +294,10 @@ func (r *Receiver) apply(o sealedhook.Opened) (sealedhook.AckStatus, string, boo
 	r.state.Seen[e.IdempotencyKey] = result
 	if r.Persist != nil {
 		if err := r.Persist(r.state); err != nil {
-			// Roll memory back so it never disagrees with disk.
+			// Roll memory back so the next apply starts from the last state
+			// Persist reported as stored. Persist can fail after the new state
+			// reached disk (the reference tool's directory fsync runs after
+			// the rename), so memory can then trail disk until restart.
 			delete(r.state.Seen, e.IdempotencyKey)
 			if hadBucket {
 				r.state.Values[e.Namespace] = before

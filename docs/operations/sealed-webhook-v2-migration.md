@@ -1,9 +1,12 @@
 # Sealed webhook protocol 2: receiver and sender migration
 
-Status: **draft implementation of [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128),
-not operative until the spec revision route is accepted and the implementation
-merges, security approval: not given.** The protocol is the proposed
-[section 11 of the sealed webhook spec](../spec/sealed-webhook.md#11-protocol-version-2-proposed-not-operative).
+Status: **protocol 2 of [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128)
+is usable after the implementation merges, when a target is explicitly
+configured for it.** The owner authorized merge on 2026-11-04 and accepted the
+declared-amendment revision route for the spec. That is not a claim that the
+registered limits below are closed, and cross-provider review was SKIPPED by
+owner instruction, not CLEAN. The protocol is
+[section 11 of the sealed webhook spec](../spec/sealed-webhook.md#11-protocol-version-2).
 Nothing here authorizes a production key change, a push to a live receiver, or
 retiring protocol 1. Follow the order: receiver first.
 
@@ -34,7 +37,11 @@ instance's signing keys; build it from this repository's source
 keeps all state in one plaintext JSON file (mode `0600`) that holds every
 delivered value, rewrites it whole on every apply (it syncs the file and then the directory
 before it acknowledges, but there is no journal or backup), and keeps every idempotency
-key forever (the map is unbounded). Spec section 7 requires a durable apply
+key forever (the map is unbounded). If the directory sync fails after the rename (some
+network filesystems and Windows reject it), the new state is already on disk but the apply
+answers 503 and the in-memory state is rolled back, so it trails the file until restart;
+a protocol 1 receiver that worked before can then answer 503 on every apply. Run it on a
+local Unix filesystem. Spec section 7 requires a durable apply
 before the acknowledgement; a real receiver must provide that itself. Do not
 point production traffic at the example.
 
@@ -47,8 +54,14 @@ point production traffic at the example.
 - While a receiver serves **both** versions, a stolen or forged Ed25519 sender
   key can still write or prune the values a route owns through the protocol 1
   path, including values first delivered under protocol 2. The protocol 2
-  authenticity claim holds only after protocol 1 is retired on the receiver
-  (R-1128-A in the spec).
+  authenticity claim holds only for state written after protocol 1 is retired
+  and the shared store has been inspected or reset (R-1128-A in the spec). The
+  actor also needs the namespace binding credential, which a future Ed25519
+  forger reads from recorded protocol 1 traffic. Such an actor picks the
+  revision and idempotency key: a forged very high revision makes a genuine
+  protocol 2 write answer `stale_revision` and leaves the forged value stored,
+  and a forged future idempotency key makes the genuine delivery answer
+  `already_applied` without a write, which the sender records as success.
 - There is no rollback floor for this surface: restoring the protocol 1
   registry entry returns retained targets to classical delivery (R-1128-B).
 - The age file key is 16 bytes (category 1 floor).
@@ -214,8 +227,11 @@ manual resync to re-deliver the same values (new generation, new keys).
   receiver that serves both.
 - **Retire protocol 1 on the receiver** (remove `identity_file`, the protocol 1
   `senders` and answer 404 on `/hikyo/v1/sync`) only after no sender uses it.
-  That is a separate decision with its own record, and it is what ends the
-  classical write path (R-1128-A). Nothing here makes it.
+  That is a separate decision with its own record, and it is what ends new
+  classical writes (R-1128-A). Nothing here makes it. At retirement, inspect or
+  reset the receiver's shared applied-values and idempotency store: entries
+  written through protocol 1 while both versions were served are not repaired
+  by retirement, and a forged revision or idempotency key stays in force.
 - Do not destroy the old identity while retained ciphertext still needs it.
 
 ## Troubleshooting

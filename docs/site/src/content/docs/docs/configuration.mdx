@@ -264,8 +264,8 @@ unchanged. A protocol 2 target never falls back to protocol 1 after an error, mi
 unused ML-DSA material refuses startup, and the fingerprint is
 algorithm-aware. A protocol 2 target needs `max_response_bytes` of at least
 5120, keeps the registry's existing Ed25519 `signing_key_file`, and keeps the
-receiver's one `generation`. The protocol 2 text is a draft: it is not operative
-until its spec revision route is accepted and its implementation merges. The
+receiver's one `generation`. Protocol 2 is usable after its implementation merges, when a
+target is explicitly configured for it; the registered limits are in the spec. The
 steps, rollback and key overlap are in the
 [receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/sealed-webhook-v2-migration.md).
 
