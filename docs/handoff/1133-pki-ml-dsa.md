@@ -9,8 +9,8 @@ and rotates no ML-DSA key; the locked relying-party matrix condition is unmet
 (choice 4 below, criterion 9 PARTIAL); the five implementation choices below stay
 open and can still change; the open decisions listed under "Next authorized step"
 are undecided. **One behavior reaches production without the opt-in:** the
-chain-path check in `VerifyCA` (`internal/service/pki.go`, create-intermediate with
-`--parent`, install and import) does not consult the gate, so an operator who never
+chain-path checks (`VerifyCA` for import and install; `SignIntermediate` in
+`internal/pki/sign.go` for create-intermediate with `--parent`) do not consult the gate, so an operator who never
 enabled ML-DSA now gets a refusal ("the path mixes classical and post-quantum keys
 or signatures") when importing, rotating or installing a classical issuer under an
 ML-DSA root; before this change that was accepted. A classical chain under a
@@ -117,7 +117,7 @@ with no row created.
 
 These are **not** locked text. The ADR carries the proposal word for word in the
 locked-amendment banner (checked by script against the proposal at `e5539c280`) and
-everything below in a second banner marked "awaiting owner confirmation". Five
+everything below in a second banner marked "open for the owner to confirm or change". Five
 choices need the owner: the path and anchor rule, rotation, the `sha256:`
 fingerprints, unconditional ML-DSA leaves, and mixed key and issuer combinations.
 
@@ -125,7 +125,7 @@ fingerprints, unconditional ML-DSA leaves, and mixed key and issuer combinations
   over an ML-DSA intermediate "is not a PQ-authenticated chain". Hikyo cannot
   attach a label to a chain it stores, so it refuses to create, install or import
   one, in both directions (classical under ML-DSA too), and requires the ML-DSA
-  path to end at a self-signed anchor. Existing classical chains are unaffected,
+  path to end at a self-signed anchor. Classical chains under a classical root are unaffected,
   including a root outside Hikyo's key set. The check is on the path as supplied; it
   cannot know the supplied root is the one relying parties trust.
 - **"Needs an offline PQ root" is policy, not enforced.** An online ML-DSA
@@ -162,7 +162,7 @@ Legend: DONE, PARTIAL, HOLD (blocked by a decision outside the register), NOTRUN
 | Criterion | Status | Notes |
 | --- | --- | --- |
 | 1. Land the scoped PKI amendment | PARTIAL, pending owner confirmation | The locked-amendment banner on `pki.md` is the proposal word for word (script-checked) with the required sentence; a second banner holds the implementation's additions and five choices the owner has not confirmed (path and anchor rule, rotation rule, `sha256:` fingerprints as a DEC-07 (a) departure, unconditional ML-DSA leaves, mixed key and issuer combinations). The pointer in the migration ADR says the text is carried there and operative on merge. The proposal file is deleted |
-| 2. Issuer generation and import, protected PKCS#8 custody, evaluation root, intermediate CSR and install, activation, leaf issuance and renewal | DONE at service level on both engines; **HOLD through the API, CLI and WebUI** | `TestPKIMLDSALifecycle`: ML-DSA evaluation root, Hikyo-signed intermediate, offline-signed intermediate through CSR and `InstallIssuerCertificate`, import, CSR and generated-key leaves, renewal. Refusals through the service on both engines: wrong key, classical root over the PQ CSR, truncated chain, damaged anchor (with an intact-root control), ML-DSA-44 and -87, and a seed-plus-expanded PKCS#8 built from the seed of a key that matches the certificate (refused as an unparseable private key; fails if the seed-only rule is lost, shown by a local mutation). The seed-only rule is `crypto/x509`'s PKCS#8 parser, which Hikyo calls; the expanded-only and short-seed forms are covered at parser level by `internal/pki` (`mldsa_test.go`), not through the service |
+| 2. Issuer generation and import, protected PKCS#8 custody, evaluation root, intermediate CSR and install, activation, leaf issuance and renewal | DONE at service level on both engines; **HOLD through the API, CLI and WebUI** | `TestPKIMLDSALifecycle`: ML-DSA evaluation root, Hikyo-signed intermediate, offline-signed intermediate through CSR and `InstallIssuerCertificate`, import, CSR and generated-key leaves, renewal. Refusals through the service on both engines: wrong key, classical root over the PQ CSR, truncated chain, damaged anchor (with an intact-root control), ML-DSA-44 and -87, and a seed-plus-expanded PKCS#8 built from the seed of a key that matches the certificate (rerun on SQLite only after its last change; refused as an unparseable private key; fails if the seed-only rule is lost, shown by a local mutation). The seed-only rule is `crypto/x509`'s PKCS#8 parser, which Hikyo calls; the expanded-only and short-seed forms are covered at parser level by `internal/pki` (`mldsa_test.go`), not through the service |
 | 3. Closed enums, constraints, generated types, clients, fingerprints, size limits | PARTIAL | DONE: service vocabulary, audit enum, schemas (no constraint exists), queries (raw strings), fingerprints (spelling unchanged, see DEC-07 above), **request** caps measured (12% and 9% of the cap). **Not covered: response and list sizes** (registered gap G1). **HOLD: OpenAPI enums, generated Go and TypeScript clients, CLI help, WebUI lists** (freeze) |
 | 4. Preserve managed policy, environment authorization, SAN/EKU/TTL/name rules, no export, display-once | DONE (service level) | Lifecycle test: reader refused, name outside profile refused, algorithm mismatch refused both ways, adding `mldsa65` to a classical profile is `domain.ErrConflict` (widening), generated key not in any row or audit payload, a later read returns no key. Existing classical suites unchanged. The gate-off limits G2 are the exception |
 | 5. Certificate and CRL validation, issuance, renewal, revocation, overlap and retirement, unsupported relying-party refusal; reject unknown or mismatched algorithms, invalid chains and CSRs, wrong keys, tampered signatures | DONE after the review repairs (P1, S2, S6) | Independent validation by `crypto/x509`, `crypto/mldsa` directly and OpenSSL 4.0.3. Tampered leaf, CRL, CSR and root self-signature, swapped CSR key, unrelated root, truncated chains, mixed chains all refused. Overlap: version 2 issues, version 1 keeps signing its CRL; retirement now runs: leaves expire, the old version retires, its key is destroyed and its last CRL stays readable. A real classical anchor is accepted by `crypto/x509` and refused only by a `VerifyConnection` walk (test harness) |
@@ -243,8 +243,7 @@ and aggregates. The owner may move any of them.
   second node could mishandle an ML-DSA issuer row in a way nobody has seen; the guide
   says an older build is unsupported once an ML-DSA issuer exists, which is a
   statement, not a test. Production creates no such row while `MLDSAEnabled` is false.
-  *Owner:* #1133 (`qualification.md` line 57 requires multi-node and both-engine
-  evidence there); #1135 verifies; the owner may move it.
+  *Owner:* #1133 (`qualification.md` line 57 requires both-engine restore, and the ticket names multi-node); #1135 verifies; the owner may move it.
 
 ## Measured baseline (DEC-17)
 

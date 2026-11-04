@@ -49,7 +49,7 @@ every check and is for evaluation only.
 - The reverse is refused too: an ECDSA or RSA intermediate cannot sit under an
   ML-DSA root. A classical issuer under a classical root, including a root outside
   Hikyo's own key set, is unaffected. This check does not depend on the
-  `MLDSAEnabled` gate: it runs on every create, install and import, so a classical
+  `MLDSAEnabled` gate: the path checks run on every create, install and import, so a classical
   issuer under an ML-DSA root is refused even on an instance that has not enabled
   ML-DSA.
 - A classical root over an ML-DSA intermediate is valid X.509 and would verify in
