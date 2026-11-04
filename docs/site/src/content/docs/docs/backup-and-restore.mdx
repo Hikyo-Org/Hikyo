@@ -317,14 +317,14 @@ hikyo backup export --recipient <recipient> --out "$HIKYO_BACKUP_DIR"
 
 The command refuses to write an unencrypted archive. It reads neither the
 recipients nor the destination from the environment or the stored policy, so
-both flags are required. Repeat `--recipient` for a complete replacement
-recipient set.
+both are required, except that `--passphrase-file` can stand in for `--recipient`.
+Repeat `--recipient` for a complete replacement recipient set.
 
 An export with `--out OTHER_DIR` can replace the recorded recovery point while
 placing the archive outside `HIKYO_BACKUP_DIR`. Scheduled pruning then reports
 `recovery_uncertain` and preserves candidates because it cannot verify that
-recovery point in the managed directory. Run `hikyo backup export` with `--out`
-set to `HIKYO_BACKUP_DIR` to record a fresh recovery point there, then rerun pruning. Independently
+recovery point in the managed directory. Run `hikyo backup export` with `--recipient` and
+with `--out` set to `HIKYO_BACKUP_DIR` to record a fresh recovery point there, then rerun pruning. Independently
 managed copies outside that directory need their own retention controls.
 
 Verify the reported path, byte count, engine, and schema version. Move a copy to
