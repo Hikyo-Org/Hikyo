@@ -282,6 +282,11 @@ func TestVerdictWriteGraceIsBounded(t *testing.T) {
 		stop()
 		t.Fatal("an unbudgeted run was detached from its context")
 	}
+	q.targeted, q.queueDeadline = true, time.Time{}
+	if got, stop := q.verdictWriteContext(live); got != live {
+		stop()
+		t.Fatal("a run with no deadline was given an expired write context")
+	}
 }
 
 func TestStuckVerdictWriteLeavesRoomForTheRefusal(t *testing.T) {
