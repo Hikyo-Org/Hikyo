@@ -61,6 +61,16 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | DEC-07 id spellings and hash inputs differ across surfaces; #1129 and #1133 depart (C-01) | #1128, #1129, #1131, #1132, #1133 | Owner decision |
 | No defect was found in the integrated run. A defect would be reported against its child, not patched here | | |
 
+## Checks on this PR's documents
+
+| Check | Result |
+| --- | --- |
+| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh` against `origin/dunky13/pqc-1135-candidate` | exit 0 and exit 0: 3 commits verified, 3 signed off |
+| `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout through a temporary link, removed) | exit 0, 35 ledger entries verified |
+| `scripts/ci/fast-feedback.sh` with `FAST_FEEDBACK_BASE=origin/dunky13/pqc-1135-candidate`, queue job 3270 | exit 0: diff check only, no lane selected for docs |
+| New files searched for the em dash character and for machine-local paths | none found |
+| Hosted CI on this PR | not read at the time of writing; see the PR |
+
 ## Environment and cleanup
 
 A disposable PostgreSQL 18.6 container (`pqc1135-pg`, `--rm`, loopback port) and
