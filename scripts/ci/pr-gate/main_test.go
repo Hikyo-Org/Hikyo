@@ -178,6 +178,7 @@ type fakeAPI struct {
 	reads             map[string]int
 	writes            []map[string]any
 	writeErr          error
+	writeHook         func(context.Context, map[string]any) error
 	checks            []check
 	nextID            int64
 }
@@ -262,7 +263,7 @@ func (f *fakeAPI) read(_ context.Context, path string, result any) error {
 	}
 	return decode(data, result)
 }
-func (f *fakeAPI) write(_ context.Context, method, path string, payload, result any) error {
+func (f *fakeAPI) write(ctx context.Context, method, path string, payload, result any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -280,6 +281,11 @@ func (f *fakeAPI) write(_ context.Context, method, path string, payload, result 
 	f.writes = append(f.writes, mutation)
 	if f.writeErr != nil {
 		return f.writeErr
+	}
+	if f.writeHook != nil {
+		if err := f.writeHook(ctx, mutation); err != nil {
+			return err
+		}
 	}
 	var created check
 	if err := decode(data, &created); err != nil {

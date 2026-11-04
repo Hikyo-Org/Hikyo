@@ -235,3 +235,25 @@ func TestAdmissionFailurePublicationRejectsForeignCheckAndLostWrite(t *testing.T
 		})
 	}
 }
+
+// A pass whose write outlasted the work clock replaced itself with a barrier one second
+// after GitHub applied it, which kept #1187 out of the merge queue.
+func TestVerdictWriteOutlivesTheWorkClock(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "1")
+	const work = 300 * time.Millisecond
+	f := newQueueFixture(t)
+	f.api.writeHook = func(ctx context.Context, w map[string]any) error {
+		if w["conclusion"] != "success" {
+			return nil
+		}
+		time.Sleep(work + 100*time.Millisecond)
+		return ctx.Err()
+	}
+	b := admissionBudget{Started: time.Now().Add(-45 * time.Second), Deadline: time.Now().Add(admissionReserve + work)}
+	if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err != nil {
+		t.Fatalf("a published pass failed the job: %v", err)
+	}
+	if latest := newestQueueCheck(f.api.checks); latest == nil || latest.Conclusion != "success" {
+		t.Fatalf("the pass was replaced: %+v", latest)
+	}
+}
