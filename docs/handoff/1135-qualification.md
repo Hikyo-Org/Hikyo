@@ -1,10 +1,12 @@
 # #1135: integrated PQ qualification packet, handoff
 
-Written 2026-11-04 for the draft PR that refs
+Written 2026-11-04 for the PR that refs
 [#1135](https://github.com/Hikyo-Org/Hikyo/issues/1135). **Result: HOLD.** The
 packet exists; the qualification it describes does not. The PR does not close
-#1135 or #1123. Security approval: not given. Independent adversarial review is
-required; cross-provider review is SKIPPED by explicit owner instruction
+#1135 or #1123, which stays open. Security approval: the owner's 2026-11-04
+merge authorization applies to each PR that merges under it, #1172 (Transit,
+migration 00083) excepted because it is held; nothing wider. Independent
+adversarial review is required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN. These documents have no independent review.
 
 Deliverables: [packet](../security/pqc/qualification-packet.md) (requirement and
@@ -20,7 +22,8 @@ PR #1195, branch `dunky13/pqc-1135-candidate`, commit
 `db58307e5a8aa54d684c52fed9148b9649dc9683`; Go 1.27.3 darwin/arm64; PostgreSQL
 18.6 from `postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941`.
 The candidate was unchanged when fetched and when last read. If it moves,
-nothing here transfers.
+nothing here transfers. It contains #1172, which is held, so it is not evidence
+for the tree that lands; that tree has hosted CI only.
 
 ## Integrated run (the only test run, once, through the shared queue)
 
@@ -47,8 +50,8 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | 5 | Rollback at every migration phase incl. rejection of a binary below the floor; interrupted writes; restored stale state; retirement | PARTIAL | Rollback table in the packet. A pre-83 binary against an 83 database and a pre-migration-6 binary: NOTRUN. No retirement drill. Webhook has no floor |
 | 6 | Real TLS groups and certificate authentication across ingress, backend and client graph | NOTRUN | Only in-process handshakes. No real deployment observed |
 | 7 | amd64 and arm64 sizes, latency, CPU, memory, concurrency against approved budgets | HOLD | Recorded child numbers (M2 Pro arm64 only, loaded host). DEC-17 thresholds unset; amd64 NOTRUN; no measurement taken here |
-| 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval not given |
-| 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; one run (`--print-authority-ids`). Every real-environment step NOTRUN |
+| 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval only as the 2026-11-04 merge authorization, none for #1172 |
+| 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; two runs with throwaway input (`--print-authority-ids`, OpenSSL key generation) and one `backup keygen` run that established its datastore requirement. Every real-environment step NOTRUN |
 | 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement), no row effective | Packet. No exception is effective (peers, versions and expiry are the owner's) |
 | 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met; pairing narrowing text unaccepted |
 | 12 | Record what can be released and what is blocked, plus remaining human and environment actions | DONE | Packet, "Release and blocked", lists only, no recommendation |
@@ -63,12 +66,17 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 
 ## Checks on this PR's documents
 
+The first four rows ran once, on the branch as it stood after its first three
+commits (the packet, the runbook and this handoff), before the review repair.
+They were not rerun on the repair or on the later repair rounds.
+
 | Check | Result |
 | --- | --- |
 | `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh` against `origin/dunky13/pqc-1135-candidate` | exit 0 and exit 0: 3 commits verified, 3 signed off |
 | `node scripts/ci/check-doc-status.mjs --check` (dependencies borrowed from another checkout through a temporary link, removed) | exit 0, 35 ledger entries verified |
 | `scripts/ci/fast-feedback.sh` with `FAST_FEEDBACK_BASE=origin/dunky13/pqc-1135-candidate`, queue job 3270 | exit 0: diff check only, no lane selected for docs |
 | New files searched for the em dash character and for machine-local paths | none found |
+| Review repair rounds | Documents only. Checked again for the em dash character and machine-local paths in the files each round changed; the signature, DCO, doc-status and fast-feedback checks were not rerun locally. Hosted CI on the PR is the evidence for the head |
 | Hosted CI on this PR | not read at the time of writing; see the PR |
 
 ## Environment and cleanup
@@ -96,13 +104,23 @@ datastore requirement (checked on a candidate-built binary); and the low items.
 The README gained a row for the packet. **This repair has no independent
 review.**
 
+A second repair, after an independent review of the repaired head, corrects
+the `backup keygen --help` claim, the old-binary refusal claims (NOTRUN), the
+`escrow verify` description, the step 1.4 command and its surface runbook, the
+stale handoff and packet text, the "default behavior is unchanged" overstatement
+(the packet now lists the default-path changes), and the 2026-11-04 owner
+decisions (merge status, #1172 held, evidence pin). **This repair has no
+independent review.**
+
 ## Retention and rollback of this change
 
-Revert the three documents. Nothing else is created or changed.
+Revert the four files: the three documents and the README index row. Nothing
+else is created or changed.
 
 ## Next authorized step
 
-Independent Standards and Spec review of these documents, then the owner's
-decisions listed in the packet's "Release and blocked", then a separately
-authorized environment. Merge, issue closure, release and deployment are not
+Independent Standards and Spec review of these documents and green hosted CI,
+then merge to `dev` as the owner authorized on 2026-11-04, then the owner's
+decisions still open in the packet's "Release and blocked", then a separately
+authorized environment. Issue closure, release and deployment are not
 authorized.

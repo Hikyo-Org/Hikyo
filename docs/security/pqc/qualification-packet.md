@@ -7,14 +7,49 @@ needs all mandatory scoped work with real qualification evidence, or an
 explicit owner-approved scope reduction. No real environment, deployment, real
 provider, real cluster or real receiver was authorized, and none was used.
 Mandatory children are PARTIAL or HOLD, the hosted merge-group graph never ran
-on this stacked draft, maintainer security approval is not given for any
-child, and no independent review covers the integrated candidate. Nothing below
+on the candidate's stacked base, the only maintainer security approval is the
+owner's 2026-11-04 merge authorization (see Merge status), and no independent
+review covers the integrated candidate. Nothing below
 is a pass of a parent requirement.
 
 Refs [#1135](https://github.com/Hikyo-Org/Hikyo/issues/1135), parent
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Companion files: the
 [staged rollout runbook](../../operations/pqc-staged-rollout.md) (not
 executable) and the [handoff](../../handoff/1135-qualification.md).
+
+## Merge status (owner decisions of 2026-11-04)
+
+Marc Went, the owner and maintainer, said "review them once more, and merge when
+green", then "as recommended" to the recommendations below. This section states
+what that makes true at merge and no more. The verdict above does not change.
+
+- **Authorization.** Merge to `dev` is authorized when green, bottom-up, and
+  publication in the next nightly is accepted. That instruction is the
+  maintainer security approval for each PR that merges under it. It is not
+  approval for release or deployment, enables nothing by default, and does not
+  close #1123, which stays open.
+- **Held.** #1172 (Transit, migration 00083) does not merge until the
+  `/api/v1` freeze is decided. Migration 00083 and Transit ML-DSA are not in
+  what merges. Every statement below about 00083, Transit or the "two floors"
+  describes the candidate, which contains #1172, not the tree that lands.
+- **As built.** #1141, #1192 and #1190 merge as built. Their open owner
+  choices stay recorded as open and can still change.
+- **Evidence.** All local results here are pinned to candidate `68b2673de`.
+  That candidate is not evidence for the tree that lands: the tree that lands
+  has hosted CI only. No local run, integrated run or independent review covers
+  it.
+- **Decided.** C-10: the rollback policy is accepted for the next nightly.
+  Stale-node fence: accepted as a recorded limit; DEC-10 is amended so strict
+  is per process and E-22 is registered, in `migration.md` on branch
+  `dunky13/pqc-adr-amendments` (#1155), and the fence stays #1127 work.
+  `backup-receipt/v2`: kept as built, banner extended, E-19 gap registered.
+  Revision route for non-ADR specs: the declared-amendment banner. The
+  `api-cli-surface` banner and the three narrowed banners are relabeled as not
+  owner-locked in #1155.
+- **Still open.** The API freeze, Transit signed bytes, ML-DSA recovery custody
+  (DEC-14), the #1183 and F-nn decisions, DEC-17 thresholds, the #1126 profile
+  selector and vault path, #1132 signing granularity, the #1127 proxy leg, and
+  #1133's five choices.
 
 ## Candidate and toolchain
 
@@ -31,8 +66,9 @@ executable) and the [handoff](../../handoff/1135-qualification.md).
 Review provenance, stated once: the candidate merge `68b2673de` has no review of
 any kind. Each child's last repair has no independent re-review (per-child
 table). Cross-provider review is SKIPPED by explicit owner instruction
-(2026-11-02) and is not CLEAN. Maintainer security approval: not given for any
-child. Owner and maintainer are one person, so none of this is independent
+(2026-11-02) and is not CLEAN. Maintainer security approval: the owner's
+2026-11-04 merge authorization for each child that merges, none for #1172.
+Owner and maintainer are one person, so none of this is independent
 human review.
 
 ## What this packet ran at the candidate
@@ -101,10 +137,10 @@ Reported, not repaired. The register text is the owner's and no child edited it.
 | C-07 | **No E-nn row is effective.** DEC-10 needs exact peer, version, expiry and recheck trigger. #1134 proposes terms for E-02 to E-07 and E-13 and says none is effective; #1130 proposes E-01 terms the owner has not accepted; `release-trust-exceptions.md` is "drafted for review, not operative". No document at the candidate carries all four fields for any E row | `external-compatibility.md`, `pairing-feasibility.md`, `release-trust-exceptions.md` | Owner names peers and accepts terms |
 | C-08 | **Pairing scope text is unaccepted.** DEC-13 says #1135 is blocked by #1130 and that scope is narrowed with #1130 as residual work. #1130 proposes narrowing text and asks for a README, qualification-row and DEC-13 refresh. The qualification row still says "None until a protocol is decided", and #1130 is still in the "Blocked by" list | handoff 1130; `qualification.md` | Owner accepts the text and edits the issue links |
 | C-09 | **Index gaps.** `release-trust-exceptions.md` is not listed in `README.md`; the pairing banner is operative "when this docs PR merges" (#1130) while every other banner is operative when the implementation merges; the proposed `deployment-adapter` banner for the webhook revision route and the threat-model "quantum forger" class have not landed; `README.md` says "no ADR amendment has landed", stale at the candidate because banners have landed on locked ADRs (operative only when their implementation merges). The sentence is the contract's text and is not edited here | `README.md`, ADR banners | Owner |
-| C-10 | **Two floors move on merge that the register does not name together.** Migration 83 (#1129) and runtimeconfig migration 6 (#1127) both reach every upgraded instance whether or not the feature is used. See Rollback. This conflicts with `migration.md` step 2, which gives "Revert binary" as the abort for deploying readers: an old binary runs against the moved floor and refuses it. For a reader build carrying these two floors the abort in the runbook is "restore the pre-upgrade backup" | `migration.md`; handoffs 1127, 1129 | Owner decides ordering and rollback policy and the step 2 abort |
+| C-10 | **Two floors move on the candidate that the register does not name together.** Migration 83 (#1129) and runtimeconfig migration 6 (#1127) both reach every upgraded instance whether or not the feature is used. See Rollback. This conflicts with `migration.md` step 2, which gives "Revert binary" as the abort for deploying readers: a moved floor is not shown to be survivable by an old binary. Whether an old binary refuses migration 83 or runtimeconfig migration 6 was not run (PQ-09, Rollback; `migrate.Check` has no production caller). For a reader build carrying these two floors the abort in the runbook is "restore the pre-upgrade backup", because the refusal is NOTRUN | `migration.md`; handoffs 1127, 1129 | **Decided 2026-11-04 for this round:** the rollback policy is accepted for the next nightly. #1172 is held, so migration 83 is not in what merges and only runtimeconfig migration 6 moves a floor on merge. The step 2 abort wording stays the owner's to settle |
 | C-11 | **Banner wording differs** (`api-cli-surface` says adversarial review "is recorded on the amendment PR", others say "is required"; `threat-model`, `encryption-model` and pairing carry the sentence once in different forms). Wording inconsistency, not a missing banner | ADR banners | Cosmetic |
 | C-12 | **DEC-09 closed error classes are not one set.** The register names six classes (unsupported, malformed, over bound, wrong key or scope, invalid signature, missing required signature). `releasetrust` has those six plus `ErrPQRollback`; `sealedhook` has eight sentinels (`ErrMalformed`, `ErrSignature`, `ErrUnknownKey`, `ErrExpired`, `ErrPayload`, `ErrAckMismatch`, `ErrTooLarge`, `ErrRecipient`); `configrollout` uses `ErrInvalid`, `ErrConflict`, `ErrTrust`. Each is closed per surface; none maps to the register's six | `releasetrust/pq.go`, `sealedhook/sealedhook.go`, `sealedhook/v2.go`, `configrollout/kubernetes.go`, `authority.go` | Owner says whether DEC-09 means one shared vocabulary |
-| C-13 | **DEC-12 key generation is applied unevenly.** `migration.md` says entropy is `crypto/rand` and imported keys are accepted for new strict material only if generated by the maintained tool. The #1131 and #1133 guides generate ML-DSA keys with OpenSSL (`openssl genpkey -algorithm ML-DSA-65`), and the code accepts them (webhook keys by path; the webhook handoff says the rule is not enforced). The runbook's key-loading rule names only webhook keys | `migration.md`; `config-rollout-authority.md`; `pki-ml-dsa.md` | Owner says whether OpenSSL-generated seeds are the "maintained tool" |
+| C-13 | **DEC-12 key generation is applied unevenly.** `migration.md` says entropy is `crypto/rand` and imported keys are accepted for new strict material only if generated by the maintained tool. The #1131 and #1133 guides generate ML-DSA keys with OpenSSL (`openssl genpkey -algorithm ML-DSA-65`), and the code accepts them (webhook keys by path; the webhook handoff says the rule is not enforced). The runbook's key-loading rule names webhook keys as unenforced and the rollout and PKI guides as generating ML-DSA seeds with OpenSSL | `migration.md`; `config-rollout-authority.md`; `pki-ml-dsa.md` | Owner says whether OpenSSL-generated seeds are the "maintained tool" |
 | C-14 | **#1132 registers a departure from "any trust change requires every required algorithm of the current pinned set".** In the verifier a higher PQ generation passes the floor check with no signature and `NewPQPin` verifies none: the root is whatever the operator installs (E-11). It is registered in the #1132 handoff, not in the register | `migration.md` (Compromise recovery); handoff 1132 | Owner accepts or rejects the departure |
 
 ## Requirement map, PQ-01 to PQ-15
@@ -119,9 +155,9 @@ github.com (no key, no write), besides the stand-alone peers named.
 | ID | Children | Source | Local | Hosted | Peer, provider | Runtime, deployment | Overall and why |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | PQ-01 inventory | #1124 | PARTIAL: I01 to I32 at a pin; completeness beyond the stated searches not claimed; I18 omits PS algorithms and I25 is stale (#1134) | n/a | n/a | n/a | n/a | PARTIAL. Maintainer review of the data-flow and exception matrix HOLD |
-| PQ-02 approved profiles | #1124 | Owner decided DEC-01 to DEC-20 and approved the policy text on 2026-11-02, after being told final repairs were not re-reviewed | n/a | n/a | n/a | n/a | PARTIAL. Decided, not operative: each ADR amendment becomes operative only when its implementation merges, and each needs its own security approval (not given). Stale premises C-02 |
+| PQ-02 approved profiles | #1124 | Owner decided DEC-01 to DEC-20 and approved the policy text on 2026-11-02, after being told final repairs were not re-reviewed | n/a | n/a | n/a | n/a | PARTIAL. Decided, not operative: each ADR amendment becomes operative only when its implementation merges, and each needs its own security approval, which the owner's 2026-11-04 merge authorization supplies for each PR that merges, #1172 excepted. Stale premises C-02 |
 | PQ-03 hybrid backups | #1126 (#1158) | PASS: hybrid recipient, receipt v2, drill | PASS: L1 hybrid drills on both engines, L2 `crypto/backup` and `backupreceipt` | compile and invariants | `age` CLI 1.3.2 opens hybrid archives (same upstream, not independent) | NOTRUN | PARTIAL. Strict profile NOT BUILT; strict restore provenance HOLD (E-19); vault reads but does not generate hybrid identities; no preflight reader floor; rollback documented not demonstrated; restart of a process not tested; `RunAutomaticUpgrade` NOTRUN |
-| PQ-04 controlled-hop confidentiality | #1127 (#1156) | PASS for listener, CLI bundle, operator client library option | PASS per child (real `Boot`); at the candidate only L2 `tlspolicy` ran | compile and invariants | None | NOTRUN: no production group observed | PARTIAL. Stale-node fence HOLD; strict reaches no external hop; no deployed Kubernetes operator can select strict; proxy, database, adapter, federation hops are compat and NOTRUN; authentication stays classical (E-20) |
+| PQ-04 controlled-hop confidentiality | #1127 (#1156) | PASS for listener, CLI bundle, operator client library option | PASS per child (real `Boot`); at the candidate only L2 `tlspolicy` ran | compile and invariants | None | NOTRUN: no production group observed | PARTIAL. Stale-node fence not built, accepted limit E-22; strict reaches no external hop; no deployed Kubernetes operator can select strict; proxy, database, adapter, federation hops are compat and NOTRUN; authentication stays classical (E-20) |
 | PQ-05 delivery, command and proof lifecycles | #1128, #1129, #1130, #1131 | webhook v2 PASS; Transit mechanism PARTIAL; rollout PASS; pairing none | PASS at candidate: webhook v2 e2e on both engines, Transit e2e on both engines. Rollout per child with an instrumented fake Kubernetes API; L2 `configrollout` ok | compile and invariants | Reference receiver only; no real receiver, no real cluster | NOTRUN | **HOLD.** Pairing HOLD (#1130); Transit and PKI unreachable through the API (freeze); rollout kind rehearsal NOTRUN; open job and restore cannot cross a re-enrollment (G-2, G-3) |
 | PQ-06 certificates and external identities | #1133, #1134 | PKI mechanism PASS below the API; register drafted | PASS at candidate: PKI lifecycle on both engines, CLI refusal on each engine. Go and OpenSSL 4.0.3 relying parties per child | compile and invariants | No browser, platform verifier, Java, NSS; no external route verified | NOTRUN | **HOLD.** API/CLI/WebUI refuse `mldsa65`; G1 to G6 open; F-09 strict-route refusal HOLD; no route is "verified supported" |
 | PQ-07 installer and updater | #1132 (#1192) | Readers and verifiers only | PASS per child; L2 `releasetrust` ok, test-local sequencer | compile and invariants | None | NOTRUN | **HOLD.** No signer, no root, no shipping path calls the verifiers, no bridge can close E-11 and E-15, ML-DSA recovery custody not named (DEC-14) |
@@ -130,8 +166,8 @@ github.com (no key, no write), besides the stand-alone peers named.
 | PQ-10 preserved invariants | all | Authorization before crypto, redacted audit, re-encryption coverage kept | PASS on both engines at candidate for webhook, Transit (restart, DEK rotation, re-encryption, concurrent rotation), PKI service; backup drills | compile and invariants | n/a | NOTRUN | PARTIAL. Restore holds with an ML-DSA key (Transit, PKI), real process restart (PKI G6), true multi-node takeover (Transit, PKI) NOTRUN. Webhook takeover is a two-node simulation |
 | PQ-11 measured budgets | #1127, #1128, #1129, #1131, #1132, #1133 | n/a | Apple M2 Pro arm64 only, loaded host (Budgets) | n/a | n/a | NOTRUN | **HOLD.** DEC-17 thresholds are unset by the owner; amd64 NOTRUN everywhere; no compliance statement is possible. This packet took no measurement |
 | PQ-12 owned external register | #1134 (#1171) | 24 routes X01 to X24 drafted | PASS (children): OpenSSH 10.3p1 negotiation, libsodium 1.0.22 | compile and invariants | NOTRUN: OpenSSH 10.6, real providers, PostgreSQL hybrid, federation, mail | NOTRUN | **HOLD.** Owner dispositions not recorded; F-09 HOLD; terms none effective (C-07) |
-| PQ-13 validated final candidate | #1135 | n/a | L1 to L3 above, partial | invariants and feedback pass; ci-queue-required fails by design; full graph never ran | n/a | n/a | **HOLD.** No complete-diff local checks of the union, no independent Standards, Spec or adversarial review of the candidate, security approval not given for any child |
-| PQ-14 operator handoff | #1135 and owners | Runbook drafted | Commands checked against `--help` of a binary built from the candidate; no command executed against an instance except `config-rollout --print-authority-ids` with throwaway keys | n/a | n/a | NOTRUN | **HOLD.** Not executable while the owner's open decisions stand |
+| PQ-13 validated final candidate | #1135 | n/a | L1 to L3 above, partial | invariants and feedback pass; ci-queue-required fails by design; full graph never ran | n/a | n/a | **HOLD.** No complete-diff local checks of the union, no independent Standards, Spec or adversarial review of the candidate, maintainer security approval only as the 2026-11-04 merge authorization, none for #1172 |
+| PQ-14 operator handoff | #1135 and owners | Runbook drafted | Commands checked against `--help` of a binary built from the candidate; no command executed against an instance except `config-rollout --print-authority-ids` with throwaway keys; `backup keygen` ran once (no database created) and OpenSSL key generation once, both throwaway | n/a | n/a | NOTRUN | **HOLD.** Not executable while the owner's open decisions stand |
 | PQ-15 honest closure | parent maintainer | n/a | n/a | n/a | n/a | n/a | **HOLD.** Mandatory children incomplete; the DEC-13 narrowing for pairing is decided in the register but its text is unaccepted (C-08); no other scope reduction exists |
 
 ## Exception map, E-01 to E-21
@@ -160,7 +196,7 @@ peer, version, expiry and recheck trigger (none does, C-07).
 | E-17 | Unobservable readers, verifiers and local floors | #1126, #1132, #1135 | PQ floor persistence on a real host NOT BUILT; R-11 old binaries cannot refuse; no fleet-wide claim is possible. **#1135 verification: not possible by construction**, third-party and offline copies cannot be measured | Registered, unclosable |
 | E-18a | Single listener certificate pair excludes non-ML-DSA clients | #1127 | Not built; no strict ML-DSA listener certificate exists | Registered |
 | E-18b | Sole ML-DSA recovery key (R-12) | #1132 | Custody not named (DEC-14) | **HOLD** |
-| E-19 | Archive provenance without a signed receipt | #1126 | Receipts unsigned; only an upgrade export builds a receipt at the candidate (`internal/service/backup.go`), so a plain `hikyo backup export` archive has none. **The requirement that every export path emits a receipt (`migration.md`, `qualification.md`) is unmet and unregistered by #1126;** residual risk: no provenance claim for any plain-export archive; owner #1126. Header-versus-inventory binding is also a requirement | **HOLD.** Strict backup claims unavailable |
+| E-19 | Archive provenance without a signed receipt | #1126 | Receipts unsigned; only an upgrade export builds a receipt at the candidate (`internal/service/backup.go`), so a plain `hikyo backup export` archive has none. **The requirement that every export path emits a receipt (`migration.md`, `qualification.md`) is unmet.** The candidate predates it; #1126's repair registers it as NOT BUILT under E-19 in its handoff. Residual risk: no provenance claim for any plain-export archive; owner #1126. Header-versus-inventory binding is also a requirement | **HOLD.** Strict backup claims unavailable |
 | E-20 | Pin-based clients on strict hops | #1127 | Documented; strict gives confidentiality with no authenticity claim | Registered |
 | E-21 | Host-authority recovery below strict; repair boot runs previous snapshot | #1127 | Registered, not redesigned | Registered |
 
@@ -179,10 +215,10 @@ no independent review according to the child PR body or handoff.
 | Child, PR, ticket | Handoff status | HOLD, PARTIAL and NOTRUN items | Last repair without independent review |
 | --- | --- | --- | --- |
 | #1124 contract, #1155 | Owner decided, security approved for policy text, not operative; amendments HOLD | Maintainer review of data-flow matrix HOLD; every measurement NOTRUN | Repairs after review at `6263944a2` (HIGH 1, MEDIUM 4, LOW 6, all repaired by narrowing); the `api-cli-surface` banner |
-| #1126 backups, #1158 | Criteria 1 PASS (vault PARTIAL), 2 PASS (offline tooling PARTIAL), 3 PARTIAL, 4 PASS, 5 PASS, 6 PARTIAL, 7 PASS except restart, 8 PASS (automatic custody PARTIAL), 9 PASS, 10 PARTIAL; strict provenance HOLD | Strict profile, signed receipts, a receipt on every export path (only upgrade exports build one), hybrid vault generation, multi-identity vault, vault re-seal on root rotation (#1154), scanner rule: NOT BUILT or HOLD; `backup-receipt/v2` owner ruling pending; policy race window; `RunAutomaticUpgrade` NOTRUN; no recovery for a source frozen at `backup-preparing` whose policy became hybrid | `4bad16b59` |
+| #1126 backups, #1158 | Criteria 1 PASS (vault PARTIAL), 2 PASS (offline tooling PARTIAL), 3 PARTIAL, 4 PASS, 5 PASS, 6 PARTIAL, 7 PASS except restart, 8 PASS (automatic custody PARTIAL), 9 PASS, 10 PARTIAL; strict provenance HOLD | Strict profile, signed receipts, a receipt on every export path (only upgrade exports build one; registered as NOT BUILT, E-19, in #1126's repaired handoff), hybrid vault generation, multi-identity vault, vault re-seal on root rotation (#1154), scanner rule: NOT BUILT or HOLD; `backup-receipt/v2` owner ruling pending; policy race window; `RunAutomaticUpgrade` NOTRUN; no recovery for a source frozen at `backup-preparing` whose policy became hybrid | `4bad16b59` |
 | #1127 transport, #1156 | Core path only. Listener PASS; stale-node fence HOLD; evidence PARTIAL; hop coverage PARTIAL; budgets NOTRUN | CLI `--tls-profile` flag, CRD field, metric series, proxy-to-backend, database, mixed-version old binary, platform verifiers, multi-node Apply under load, migration 6 end to end with two release identities: NOTRUN or not built | `266436c47`, `f5d549182` |
 | #1128 webhook v2, #1188 | Specification and identifiers: DONE (text), second review NOTRUN; hybrid recipient, signatures and key ownership: PARTIAL (the probe does not prove recipient ownership); key generation, configuration and tooling: PARTIAL (no API, CLI or UI consumes the registry; no product-binary generator); reject classical-only, stripping and substitution: DONE; bounds: DONE; authorization, egress, audit and fences preserved: DONE; end-to-end lifecycle: DONE (local); keep v1 targets and no downgrade on error: DONE; skew, reader-first, overlap and rollback: DONE (local), with limits; vectors, migration instructions and evidence: PARTIAL (instructions not followed hands-on on a clean host) | Real receiver and push NOTRUN; Wycheproof NOTRUN; revision route HOLD; R-1128-A, R-1128-B; PQ-only suite not built | Second-round repairs (`8bad510a5` onward) need re-review |
-| #1129 Transit, #1172 | Mechanism complete below the API. API, OpenAPI, clients, CLI, WebUI HOLD (v1 freeze, owner decision) | Restore hold with ML-DSA key, instance re-encrypt, multi-node takeover, pre-83 binary against 83 database, Wycheproof pin: NOTRUN; signed-bytes departure awaits owner | Round-3 repairs at `8e11e9a36` have no independent review; `afda0f96b` is documentation |
+| #1129 Transit, #1172 (held, not merging) | Mechanism complete below the API. API, OpenAPI, clients, CLI, WebUI HOLD (v1 freeze, owner decision) | Restore hold with ML-DSA key, instance re-encrypt, multi-node takeover, pre-83 binary against 83 database, Wycheproof pin: NOTRUN; signed-bytes departure awaits owner | Round-3 repairs at `8e11e9a36` have no independent review; `afda0f96b` is documentation |
 | #1130 pairing, #1190 | HOLD. Criterion 1 DONE; 6 PARTIAL; 2, 3, 4, 5, 7, 8, 9, 10 HOLD | No PQ PAKE; ML-DSA-65 DPoP is 8252 bytes against the 8192 cap; E-01 not effective; scope text unaccepted | Repair answering the first review; re-review pending |
 | #1131 rollout, #1186 | DONE for the controller and signer on a fake API; PARTIAL for restart/restore, runbook; independent review of repaired head HOLD | Real cluster and kind rehearsal, upgrade-source commands under strict, old binary against new data, `helm upgrade` effect: NOTRUN; G-1 to G-4 | Repair after `2ceda38b2`; "needs review of the repaired head" |
 | #1132 release verifiers, #1192 | Criteria 4 DONE in the verifier; 1, 2, 3, 7, 8, 9, 10, 11 PARTIAL; 5 NOT BUILT or HOLD; 6 DONE for release trust, HOLD for receipts | Bridge HOLD; verification on every official path NOT BUILT; persisted PQ floor on a real host NOT BUILT; R-01 to R-17 not operative; runbook not executable | Round-three repairs |
@@ -198,7 +234,7 @@ fleet, a real hop or a real artifact is NOTRUN everywhere.
 | Surface | Legacy | Compatible reader first | New writes | Strict enforcement |
 | --- | --- | --- | --- | --- |
 | Backups | D: frozen legacy archives open under the new reader (child) | D: reader allowlist, mixed stanzas refused (child, L2) | D: hybrid keygen, export and receipt v2 (child run; L2 `backupreceipt` covers the receipt only); hybrid drill and restore on both engines (L1, whose drill tests call `backup.GenerateHybridIdentity` directly) | NOT BUILT (no selector); provenance HOLD (E-19) |
-| TLS listener | D: `compat` default, migration 6 records it (child) | n/a | D: `strict` via managed config in a real `Boot` (child) | D per process only; no stale-node fence (HOLD); NOTRUN on a real hop and as a fleet |
+| TLS listener | D: `compat` default, migration 6 records it (child) | n/a | D: `strict` via managed config in a real `Boot` (child) | D per process only; no stale-node fence (accepted limit E-22); NOTRUN on a real hop and as a fleet |
 | Sealed webhook | D: v1 unchanged, byte-compatible (child, L1) | D: reference receiver serves v1 and v2 independently; receiver-first (child, L1) | D: protocol 2 sender, dual signatures, both engines (L1) | D with the reference receiver omitting v1 (404); R-1128-A, R-1128-B; real receiver NOTRUN |
 | Transit | D: Ed25519 unchanged through the real server (L1) | n/a (verification consumers are the same service) | D below the API only (L1 service level); the real server refuses `mldsa65` (L1) | Not applicable; no public surface |
 | Rollout | D: v1 command bytes pinned to a base-commit value (child) | D: compatibility to dual, key kept (child, fake API) | D: dual and PQ-only signing, delivery, verification (child, fake API) | D: floor and anchor at the controller (fake API); kind and real cluster NOTRUN |
@@ -213,7 +249,7 @@ fleet, a real hop or a real artifact is NOTRUN everywhere.
 | Backups: hybrid recipients | Configure X25519 recipients again; keep every identity that wrote a retained archive | Legacy archives open with the new reader (child); hybrid drill (L1) | Old binary against a hybrid archive was run against pre-change code once by the child, not by me; reader floor not enforced by preflight; automatic upgrade of a frozen source cannot recover |
 | TLS strict | Publish and apply `compat`. **Format floor:** runtimeconfig migration 6 writes `HIKYO_TLS_PROFILE=compat` into a new desired revision; an older binary refuses it as an unknown key, so binary rollback is a backup restore | Refusal of unknown values; recovery baseline keeps strict (child) | A real old binary against migration 6 data; migration 6 with two real release identities; E-21 repair boot below strict; CLI older than the closed-set decoder silently drops `tls_profile` |
 | Webhook v2 | Restore the v1 registry entry and remove `signing_key_file_mldsa65` | Sender rollback and receiver skew with the reference receiver (child, L1) | **No floor exists** (R-1128-B): an administrator can restore v1, which is a downgrade of the property; receiver rollback only to a v2-capable build |
-| Transit ML-DSA | **Migration 00083 is roll-forward only and moves the floor for every instance that upgrades**, whether or not an `mldsa65` key exists; downgrade means restoring a pre-83 archive | Migration rebuilds and keeps CHECKs on both engines (child); L1 | Whether a release binary older than this change refuses an 83 database is NOTRUN (`migrate.Check` has no production caller); restore-hold with an ML-DSA key NOTRUN |
+| Transit ML-DSA | **Migration 00083 (#1172, held and not in what merges) is roll-forward only and moves the floor for every instance that upgrades**, whether or not an `mldsa65` key exists; downgrade means restoring a pre-83 archive | Migration rebuilds and keeps CHECKs on both engines (child); L1 | Whether a release binary older than this change refuses an 83 database is NOTRUN (`migrate.Check` has no production caller); restore-hold with an ML-DSA key NOTRUN |
 | PKI ML-DSA | Never delete an ML-DSA issuer, CRL or key to roll back; turning `MLDSAEnabled` off is not a rollback (G2) | Retirement and CRL continuity on both engines at service level (L1) | Older Hikyo build against a database holding an ML-DSA issuer; real archive restore with an ML-DSA issuer; real process restart (G6) |
 | Rollout strict | Floor in the journal Secret `trust.json` blocks rollback; the only way back is clearing it, an owner break-glass act that resurrects whatever you reinstall; rolling the controller image back after a strict command fails closed | Floor, stale-enrollment and takeover tests (child, fake API) | Real cluster; old binary against new data (modelled); a restore of the journal Secret restores an older floor |
 | Release trust | None to roll back: nothing is written. When a signer exists, never lower a floor or re-enable a revoked key | Revert only | PQ floor persistence NOT BUILT; a floor is an untrusted local claim (E-17) |
@@ -245,7 +281,19 @@ release, any real network path. The hosted `ops-floor` jobs are not PQ benchmark
 
 ## Capability statement, surface by surface
 
-Never read this as "PQ-ready". Every row below is opt-in; default behavior is unchanged (DEC-05). Each row separates five things: **confidentiality**
+Never read this as "PQ-ready". Every row below is opt-in (DEC-05), but default
+behavior is not entirely unchanged. Without any opt-in, the tree that lands
+also does these: origin lookup in the CLI trust store (`lookupByOrigin`,
+`internal/cli/compose.go`) matches equivalent origin spellings, so a store
+holding `https://h` and `https://h:443` at different pins or policies is now
+refused as ambiguous until `--instance` names one; deleting developer
+credentials for an origin (`deleteDeveloperCredentials`,
+`internal/cli/developer_state.go`) also removes those stored under equivalent
+spellings; `RunAutomaticUpgrade` (`internal/app/automatic_upgrade.go`) runs a
+new custody-versus-policy pre-check on every `sudo hikyo upgrade` and
+unattended upgrade, before the journal; and runtimeconfig migration 6 moves the
+rollback floor for every upgrading instance (C-10). Migration 00083 does the
+same on the candidate only, since #1172 is held. Each row separates five things: **confidentiality**
 (a recording adversary), **authenticity** (a future forger), **software
 capability** (the code can do it, locally), **enforced policy** (something
 refuses the weaker path) and **observed deployment** (a real hop or host was
@@ -254,9 +302,9 @@ seen doing it). Observed deployment is NOTRUN on every row.
 | Surface | Confidentiality | Authenticity | Software capability | Enforced policy | Remaining exceptions and HOLD |
 | --- | --- | --- | --- | --- | --- |
 | Backups and upgrade exports | Hybrid age recipients (X25519 + ML-KEM-768) protect new archives **only when hybrid recipients are configured; the default stays X25519 and `keygen` mints X25519 without `--hybrid`; automatic and unattended upgrade exports stay X25519 (a hybrid policy makes them refuse)**. Payload and metadata stay at the 16-byte age file key (category 1). The custody vault is age-scrypt and holds root escrow: no PQ claim | Classical (P-256 attestation; receipts unsigned) | Hybrid keygen, export and receipt v2 (child run; L2 `backupreceipt` for the receipt only); drill and restore on both engines (L1) | None. No selector; a classical-only set is still accepted; mixed and over-bound sets are refused | E-09, E-10, E-16, E-19 HOLD, E-17; vault re-seal #1154 |
-| Native TLS listener and owned clients | Handshake: TLS 1.3 with exactly `X25519MLKEM768`, tickets off, when `strict` is selected | Classical certificate chain or SPKI pin; none PQ | Real `Boot` with strict (child) | Per process, opt-in, via managed configuration; no fleet claim without a stale-node fence | E-08, E-18a, E-20, E-21; fence HOLD. **Strict TLS reaches no external hop**: no adapter, federation, mail, SAML, database, update or pairing transport reads a selector, and no deployed Kubernetes operator can select strict (a human operator selects it for the listener through managed configuration) |
+| Native TLS listener and owned clients | Handshake: TLS 1.3 with exactly `X25519MLKEM768`, tickets off, when `strict` is selected | Classical certificate chain or SPKI pin; none PQ | Real `Boot` with strict (child) | Per process, opt-in, via managed configuration; no fleet claim without a stale-node fence | E-08, E-18a, E-20, E-21, E-22 (fence not built, accepted limit). **Strict TLS reaches no external hop**: no adapter, federation, mail, SAML, database, update or pairing transport reads a selector, and no deployed Kubernetes operator can select strict (a human operator selects it for the listener through managed configuration) |
 | Sealed webhook protocol 2 | Hybrid age recipient for the payload; the TLS hop is TLS 1.2 or newer with a classical certificate and strict does not reach it | Opt-in per target (the default is protocol 1). Ed25519 and ML-DSA-65, both required, on envelope and acknowledgement. Holds only after v1 is retired on the receiver | Reference receiver and sender, both engines (L1) | None that survives an administrator restoring the v1 entry (R-1128-B) | R-1128-A, R-1128-B, recipient ownership unproven by the probe, E-17 (third-party receivers), reference tool not production software, X19 |
-| Transit | No change | ML-DSA-65 signing exists **below the API only**. The real server, CLI, OpenAPI, clients and WebUI refuse or do not list `mldsa65` because of the v1 freeze | Service, store, custody on both engines (L1) | Public-surface refusal (L1) | Owner decision on the freeze and the signed-bytes departure; migration 83 floor; restore, multi-node NOTRUN |
+| Transit | No change | ML-DSA-65 signing exists **below the API only**. The real server, CLI, OpenAPI, clients and WebUI refuse or do not list `mldsa65` because of the v1 freeze | Service, store, custody on both engines (L1) | Public-surface refusal (L1) | #1172 held: not in what merges. Owner decision on the freeze and the signed-bytes departure; migration 83 floor; restore, multi-node NOTRUN |
 | Private PKI | The Go TLS test pairs the strict group with an ML-DSA chain in a harness; no product hop does | ML-DSA-65 issuer, leaf and CRL exist **below the API only** and are refused through the real server and CLI. Relying parties tested: Go 1.27.3 and OpenSSL 4.0.3 only | Service level on both engines (L1) | `MLDSAEnabled` false in production wiring; install refuses mixed paths | Freeze decision; G1 to G6; five unconfirmed choices; E-18a; browsers and platform verifiers unqualified |
 | Rollout authority | None | Opt-in per enrollment (without the `authority` object the controller keeps one Ed25519 key and v1 bytes). Dual Ed25519 + ML-DSA-65 or ML-DSA-65 only, enrolled out of band by the operator; the anchor travels over classical cluster access (E-14) | Controller and signer on a fake API | Only under a strict enrollment: the controller refuses stripped, stale or wrong-key commands with no change to the target (fake API); a refusing start still writes the custody Lease and start-up state | G-1 to G-4; kind and real cluster NOTRUN; upgrade-source commands NOTRUN |
 | Release and update | None claimed | **No claim.** Verifiers exist in `internal/releasetrust`; no shipping path calls them, there is no signer, root or PQ floor on a real host | Verifier fixtures only | None | E-11, E-15, E-17, E-18b, R-01 to R-17. Authenticity of every other surface is conditional on these |
@@ -278,7 +326,7 @@ its own PR, review and security approval, none of it activating anything by
 default (DEC-05):** hybrid backup recipients (#1126); opt-in strict TLS listener
 and CLI bundle field (#1127); webhook protocol 2 sender and registry fields
 (#1128); the rollout strict enrollment profile (#1131); the unreachable
-mechanisms and verifiers (#1129, #1133, #1132); register and feasibility
+mechanisms and verifiers (#1133, #1132; #1129 is held and not releasable); register and feasibility
 documents (#1134, #1130). Each carries the floors and refusals in Rollback.
 
 **What stays blocked:** parent closure (#1123); every `pqc-auth` claim (E-11,
@@ -286,12 +334,16 @@ E-15); Transit and PKI public surface; the strict backup profile (E-19);
 fleet-wide strict TLS; pairing; release signing, bridge, roots and artifact
 verification on every path; any budget statement.
 
+**Decided on 2026-11-04 (see Merge status):** `backup-receipt/v2` kept as
+built; revision routes for non-ADR specs by the declared-amendment banner;
+stale-node fencing accepted as a recorded limit (E-22); the C-10 rollback
+policy accepted for the next nightly.
+
 **Pending owner decisions:** the v1 freeze for Transit and PKI (add the value
 with a guard exception, a new endpoint family, wait for v2, or leave
 unexposed); the #1129 signed-bytes and #1133 fingerprint and unconditional-leaf
-departures and the other #1133 choices; C-01 key-id construction; `backup-receipt/v2`
-ruling; revision routes for the webhook spec and self-configuration specs;
-stale-node fencing; DEC-17 thresholds and the target machines; ML-DSA recovery
+departures and the other #1133 choices; C-01 key-id construction; the #1183
+decisions; DEC-17 thresholds and the target machines; ML-DSA recovery
 key custody (DEC-14); release key versus recovery key and signing granularity; nightly PQ signer; the #1126 profile selector and the hybrid vault generation path; whether strict TLS applies to the proxy leg of a CLI with an `https://` proxy (#1127 deviation 5);
 acceptance of the #1130 narrowing text and E-01 terms; peers, versions and
 expiry for E-02 to E-07 and E-13; an F-09 disposition; ownership of the
@@ -302,8 +354,8 @@ to split E-18; owners for the #1133 G-items; C-12 to C-14.
 disposable environment and resource-specific authorization; amd64 and arm64
 measurement hosts; a kind cluster with a strict enrollment; a real non-production
 receiver; peer captures for external routes (F-02); an old-binary run against
-migration 83 and migration 6 data; a process-restart and archive-restore run with
-an ML-DSA issuer and key; maintainer security approval per child; independent
+migration 83 (candidate only) and migration 6 data; a process-restart and archive-restore run with
+an ML-DSA issuer and key; maintainer security approval for enablement, release and deployment (the 2026-11-04 merge authorization covers merging only); independent
 Standards, Spec and adversarial review of each final head and of the integrated
 candidate; the merge-group CI graph on a `dev`-based PR; pinned Wycheproof
 vectors and a longer fuzz campaign; a second independent age implementation.
