@@ -316,8 +316,8 @@ func VerifyPQRelease(pin PQPin, keyset VerifiedPQKeyset, snapshot Snapshot, rele
 	if !snapshot.Valid() || !release.Valid() || release.SnapshotDigest() != snapshot.Digest() {
 		return floor, pqErr(ErrPQScope, "release does not belong to this snapshot")
 	}
-	// The floor must come from VerifyPQSnapshot over this same snapshot, so a
-	// snapshot that skipped the PQ snapshot stage is refused here.
+	// The floor must name this snapshot's metadata and catalog, so a snapshot
+	// with other sequences or digests is refused. Policy material is not compared.
 	if floor.MetadataSequence != snapshot.state.metadata.Sequence || floor.MetadataSHA256 != snapshot.state.floor.MetadataSHA256 ||
 		floor.CatalogSequence != snapshot.state.catalog.Sequence || floor.CatalogSHA256 != snapshot.state.floor.CatalogSHA256 {
 		return floor, pqErr(ErrPQScope, "snapshot has not passed the PQ snapshot stage")

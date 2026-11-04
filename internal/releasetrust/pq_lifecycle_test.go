@@ -234,7 +234,7 @@ func TestLifecycleInterruptedUpdateConvergesAndNeverResets(t *testing.T) {
 	})
 }
 
-func TestLifecycleFailuresChangeNoState(t *testing.T) {
+func TestLifecycleFailuresLeaveOnlyTheExpectedFloor(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		want error

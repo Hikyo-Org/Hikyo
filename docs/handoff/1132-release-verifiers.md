@@ -110,10 +110,15 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
   `VerifyPQRelease` compares the keyset with the floor. A caller must pass the
   keyset object returned by the same `VerifyPQSnapshot` call to every later stage.
 - `VerifyPQRelease` requires its floor to carry the metadata and catalog sequences
-  and digests of the snapshot it is given, so a snapshot that skipped
-  `VerifyPQSnapshot` (for example a newer one after a full claim) is refused. The
-  caller must still pass the floor and snapshot from the same call; the digest
-  check is what catches a mismatch.
+  and digests of the snapshot it is given, so a snapshot with other sequences or
+  digests than the floor (for example a newer one after a full claim) is refused.
+  That is not proof the snapshot passed `VerifyPQSnapshot`: policy material is not
+  compared, and after a generation change a snapshot verified only under the old pin
+  passes this stage with `MetadataPin` still old, so `AuthenticityClaim` stays false.
+  The caller must pass the floor and snapshot from the same call. One accepted limit:
+  the floor can advance on genuinely signed metadata and catalog whose manifest never
+  verifies, so a re-cut at that sequence then fails as equivocation until a higher
+  sequence ships.
   `VerifyPQSnapshot` also requires the stable and nightly policy material it
   receives to be the material its snapshot was verified with, including when the
   snapshot saw no nightly policy.
@@ -297,9 +302,10 @@ the first PQ claim; a subsequent update at a higher sequence; a crash before and
 between the two floor writes, each converging on retry; a torn (half-written)
 PQ floor refusing, which proves a truncated file is refused and not that every
 damaged or missing file is (a missing file is a zero floor by design, and a
-restored file can state anything, E-17); bad ML-DSA signature, stripped sidecars
-and random bytes each leaving both state files byte-identical, with the error
-class asserted; rollback refused by both floors; release-key rotation; replay of
+restored file can state anything, E-17); bad signatures and stripped sidecars at
+or before the snapshot stage leaving both state files byte-identical, and a stripped
+or random manifest set at the release stage advancing only the PQ floor to the
+snapshot stage, with the error class asserted; rollback refused by both floors; release-key rotation; replay of
 the older keyset refused; a revocation that is remembered, so replaying the
 older keyset with fresh metadata the revoked key signed is refused (without the
 returned floor the same replay is accepted, which a control assertion shows);
