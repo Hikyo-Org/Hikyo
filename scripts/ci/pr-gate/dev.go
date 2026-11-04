@@ -84,7 +84,7 @@ func (q *queueController) executeDev(ctx context.Context, name string, e event, 
 		if p.State != "open" || p.Head.SHA != q.expectedHead || p.Base.Ref != "dev" {
 			return errors.Join(&staleHeadWork{expected: q.expectedHead}, q.reconciliation.retireHead(ctx, false))
 		}
-		return q.admit(ctx, number)
+		return q.admitProof(ctx, number, nil, &p)
 	})
 }
 
@@ -177,6 +177,39 @@ func (q *queueController) devPolicy(ctx context.Context) (liveQueuePolicy, error
 	if q.repo.DefaultBranch != "main" {
 		return liveQueuePolicy{}, errors.New("dev authority must remain on main")
 	}
+	// Main's tip and the publisher bytes at it do not depend on the ruleset
+	// reads, so they are fetched meanwhile. Their result is judged after the
+	// ruleset checks, in the order the serial code reached them.
+	authorityCtx, stop := context.WithCancel(ctx)
+	authority := make(chan struct{})
+	var mainSHA string
+	var trusted []byte
+	var authorityErr error
+	go func() {
+		defer close(authority)
+		var mainRef struct {
+			Ref    string `json:"ref"`
+			Object struct {
+				Type string `json:"type"`
+				SHA  string `json:"sha"`
+			} `json:"object"`
+		}
+		if authorityErr = q.api.read(authorityCtx, q.endpoint("git/ref/heads/main"), &mainRef); authorityErr != nil {
+			return
+		}
+		if mainRef.Ref != "refs/heads/main" || mainRef.Object.Type != "commit" || !shaPattern.MatchString(mainRef.Object.SHA) {
+			authorityErr = errors.New("invalid trusted main identity for dev policy")
+			return
+		}
+		mainSHA = mainRef.Object.SHA
+		// A privileged base-branch publisher must not be editable through the fast
+		// lane. CI policy changes land on main first, then flow back into dev.
+		trusted, authorityErr = q.contents(authorityCtx, devGateWorkflowPath, mainSHA)
+	}()
+	defer func() {
+		stop()
+		<-authority
+	}()
 	seen := make(map[int64]bool)
 	var id int64
 	for page := 1; ; page++ {
@@ -225,31 +258,16 @@ func (q *queueController) devPolicy(ctx context.Context) (liveQueuePolicy, error
 	if err := validateDevRules(effective); err != nil {
 		return liveQueuePolicy{}, err
 	}
-	var mainRef struct {
-		Ref    string `json:"ref"`
-		Object struct {
-			Type string `json:"type"`
-			SHA  string `json:"sha"`
-		} `json:"object"`
-	}
-	if err := q.api.read(ctx, q.endpoint("git/ref/heads/main"), &mainRef); err != nil {
-		return liveQueuePolicy{}, err
-	}
-	if mainRef.Ref != "refs/heads/main" || mainRef.Object.Type != "commit" || !shaPattern.MatchString(mainRef.Object.SHA) {
-		return liveQueuePolicy{}, errors.New("invalid trusted main identity for dev policy")
-	}
-	// A privileged base-branch publisher must not be editable through the fast
-	// lane. CI policy changes land on main first, then flow back into dev.
-	trusted, err := q.contents(ctx, devGateWorkflowPath, mainRef.Object.SHA)
-	if err != nil {
-		return liveQueuePolicy{}, err
+	<-authority
+	if authorityErr != nil {
+		return liveQueuePolicy{}, authorityErr
 	}
 	body, err := json.Marshal(struct {
 		Owner     devPolicyOwner
 		Effective []rule
 		Authority string
 		Publisher [sha256.Size]byte
-	}{owner, effective, mainRef.Object.SHA, sha256.Sum256(trusted)})
+	}{owner, effective, mainSHA, sha256.Sum256(trusted)})
 	if err != nil {
 		return liveQueuePolicy{}, err
 	}
@@ -377,6 +395,9 @@ func (q *queueController) mainRouteRefusal(ctx context.Context, p pull) (string,
 	return fmt.Sprintf("Feature PRs target dev. Retarget this one with: gh pr edit %d --base dev. This check stays red on this commit afterwards, which does not block dev; merge dev into the branch if its admission then fails. Main takes only same-repository release/ and hotfix/ branches and the CI definitions dev admission refuses.", p.Number), nil
 }
 
+// A verdict, not a failed read: another attempt would find the same bytes.
+var errDevPublisherDiffers = errors.New("dev publisher differs from main")
+
 func (q *queueController) devPublisherContract(ctx context.Context, p pull) error {
 	if q.checkName != devCheckName {
 		return nil
@@ -394,15 +415,25 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 	if mainRef.Ref != "refs/heads/main" || mainRef.Object.Type != "commit" || !shaPattern.MatchString(mainRef.Object.SHA) {
 		return errors.New("invalid trusted publisher authority")
 	}
-	trusted, err := q.contents(ctx, devGateWorkflowPath, mainRef.Object.SHA)
-	if err != nil {
-		return err
+	// The three copies are independent reads of one phase. Judge them in the
+	// order the serial code did: main's, then the base's, then the head's.
+	revisions := []string{mainRef.Object.SHA, p.Base.SHA, p.Head.SHA}
+	var copies [3][]byte
+	var failures [3]error
+	settle(ctx,
+		func(ctx context.Context) { copies[0], failures[0] = q.contents(ctx, devGateWorkflowPath, revisions[0]) },
+		func(ctx context.Context) { copies[1], failures[1] = q.contents(ctx, devGateWorkflowPath, revisions[1]) },
+		func(ctx context.Context) { copies[2], failures[2] = q.contents(ctx, devGateWorkflowPath, revisions[2]) },
+	)
+	if failures[0] != nil {
+		return failures[0]
 	}
-	for _, revision := range []string{p.Base.SHA, p.Head.SHA} {
-		candidate, err := q.contents(ctx, devGateWorkflowPath, revision)
-		if err != nil {
-			return err
+	trusted := copies[0]
+	for i, revision := range []string{p.Base.SHA, p.Head.SHA} {
+		if failures[i+1] != nil {
+			return failures[i+1]
 		}
+		candidate := copies[i+1]
 		if !bytes.Equal(trusted, candidate) {
 			// A main-side publisher repair must be able to flow back into
 			// dev. Only the exact authenticated main head can restore an
@@ -410,7 +441,7 @@ func (q *queueController) devPublisherContract(ctx context.Context, p pull) erro
 			if revision == p.Base.SHA && p.Head.SHA == mainRef.Object.SHA && p.Head.Repo.ID == q.repo.ID && strings.EqualFold(p.Head.Repo.FullName, q.repoName) {
 				continue
 			}
-			return errors.New("dev publisher changes must land through the full main promotion gate first")
+			return errDevPublisherDiffers
 		}
 	}
 	return nil

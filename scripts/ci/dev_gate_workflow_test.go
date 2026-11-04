@@ -69,7 +69,7 @@ func TestDevGateExecutesOnlyTrustedMainCodeUnderDistinctHeadLease(t *testing.T) 
 			}
 		}
 	}
-	if len(publish.Steps) != 4 || !strings.Contains(publish.Steps[0].Run, "PR_GATE_DEADLINE=$((started + 60))") ||
+	if len(publish.Steps) != 4 || publish.Steps[1].With["sparse-checkout"] != "scripts/ci" || !strings.Contains(publish.Steps[0].Run, "PR_GATE_DEADLINE=$((started + 60))") ||
 		!strings.Contains(publish.Steps[2].Run, "PR_GATE_DEADLINE - 15") || publish.Steps[3].If != "always()" ||
 		!strings.Contains(publish.Steps[3].Run, "--dev --dev-pr") || !strings.Contains(publish.Steps[3].Run, `--expected-head "$HEAD"`) {
 		t.Fatal("dev worker lost authenticated setup deadline, reserved settlement or typed producer mode")
