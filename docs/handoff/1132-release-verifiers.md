@@ -115,7 +115,7 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
   That is not proof the snapshot passed `VerifyPQSnapshot`: policy material is not
   compared, and after a generation change a snapshot verified only under the old pin
   passes this stage with `MetadataPin` still old, so `AuthenticityClaim` stays false.
-  The caller must pass the floor and snapshot from the same call. One accepted limit:
+  The caller must pass the floor and snapshot from the same call. One known limit:
   the floor can advance on genuinely signed metadata and catalog whose manifest never
   verifies, so a re-cut at that sequence then fails as equivocation until a higher
   sequence ships.
