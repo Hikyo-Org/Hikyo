@@ -394,7 +394,7 @@ re-enable a revoked key or destroy a retained key; see the runbook.
 ## Next authorized steps (each needs its own authority)
 
 1. Maintainer security review of this verifier; owner answers on release key
-   versus recovery key and on signing granularity.
+   versus recovery key once a signer exists. Signing granularity is confirmed as built.
 2. Owner names ML-DSA recovery custody (blocks the runbook).
 2a. Owner sets DEC-17 latency, CPU and memory thresholds from the baseline above
    before #1132 is accepted; none is proposed here.

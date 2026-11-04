@@ -213,5 +213,6 @@ and runtime acceptance are separate evidence classes and are reported separately
    shape that leaves the v1 root digest unchanged).
 4. Decide whether the nightly track gets a PQ signer (E-15).
 5. Set the DEC-17 latency, CPU and memory thresholds from the measured baseline.
-6. Approve the signing granularity: manifest only, or manifest plus every artifact
-   (a measured size difference is in the handoff).
+6. Signing granularity needs no approval: the owner confirmed it as built on 2026-11-04
+   (the measured size difference between manifest only and manifest plus every artifact
+   is in the handoff).

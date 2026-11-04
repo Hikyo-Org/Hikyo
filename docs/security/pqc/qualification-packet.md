@@ -234,7 +234,7 @@ no independent review according to the child PR body or handoff.
 | #1126 backups, #1158 | Criteria 1 PASS (vault PARTIAL), 2 PASS (offline tooling PARTIAL), 3 PARTIAL, 4 PASS, 5 PASS, 6 PARTIAL, 7 PASS except restart, 8 PASS (automatic custody PARTIAL), 9 PASS, 10 PARTIAL; strict provenance HOLD | Strict profile, signed receipts, a receipt on every export path (only upgrade exports build one; registered as NOT BUILT, E-19, in #1126's repaired handoff), hybrid vault generation, multi-identity vault, vault re-seal on root rotation (#1154), scanner rule: NOT BUILT or HOLD; `backup-receipt/v2` owner accepted on 2026-11-04; policy race window; `RunAutomaticUpgrade` NOTRUN; no recovery for a source frozen at `backup-preparing` whose policy became hybrid | `4bad16b59` |
 | #1127 transport, #1156 | Core path only. Listener PASS; stale-node fence HOLD; evidence PARTIAL; hop coverage PARTIAL; budgets NOTRUN | CLI `--tls-profile` flag, CRD field, metric series, proxy-to-backend, database, mixed-version old binary, platform verifiers, multi-node Apply under load, migration 6 end to end with two release identities: NOTRUN or not built | `266436c47`, `f5d549182` |
 | #1128 webhook v2, #1188 | Specification and identifiers: DONE (text), second review NOTRUN; hybrid recipient, signatures and key ownership: PARTIAL (the probe does not prove recipient ownership); key generation, configuration and tooling: PARTIAL (no API, CLI or UI consumes the registry; no product-binary generator); reject classical-only, stripping and substitution: DONE; bounds: DONE; authorization, egress, audit and fences preserved: DONE; end-to-end lifecycle: DONE (local); keep v1 targets and no downgrade on error: DONE; skew, reader-first, overlap and rollback: DONE (local), with limits; vectors, migration instructions and evidence: PARTIAL (instructions not followed hands-on on a clean host) | Real receiver and push NOTRUN; Wycheproof NOTRUN; revision route HOLD; R-1128-A, R-1128-B; PQ-only suite not built | Second-round repairs (`8bad510a5` onward) need re-review |
-| #1129 Transit, #1172 (held, not merging) | Mechanism complete below the API. API, OpenAPI, clients, CLI, WebUI not built at the candidate; the freeze is decided (option A) | Restore hold with ML-DSA key, instance re-encrypt, multi-node takeover, pre-83 binary against 83 database, Wycheproof pin: NOTRUN; signed-bytes departure accepted 2026-11-04 | Round-3 repairs at `8e11e9a36` have no independent review; `afda0f96b` is documentation |
+| #1129 Transit, #1172 (not merged in this round) | Mechanism complete below the API. API, OpenAPI, clients, CLI, WebUI not built at the candidate; the freeze is decided (option A) | Restore hold with ML-DSA key, instance re-encrypt, multi-node takeover, pre-83 binary against 83 database, Wycheproof pin: NOTRUN; signed-bytes departure accepted 2026-11-04 | Round-3 repairs at `8e11e9a36` have no independent review; `afda0f96b` is documentation |
 | #1130 pairing, #1190 | HOLD. Criterion 1 DONE; 6 PARTIAL; 2, 3, 4, 5, 7, 8, 9, 10 HOLD | No PQ PAKE; ML-DSA-65 DPoP is 8252 bytes against the 8192 cap; E-01 effective 2026-11-04; narrowing text accepted | Repair answering the first review; re-review pending |
 | #1131 rollout, #1186 | DONE for the controller and signer on a fake API; PARTIAL for restart/restore, runbook; independent review of repaired head HOLD | Real cluster and kind rehearsal, upgrade-source commands under strict, old binary against new data, `helm upgrade` effect: NOTRUN; G-1 to G-4 | Repair after `2ceda38b2`; "needs review of the repaired head" |
 | #1132 release verifiers, #1192 | Criteria 4 DONE in the verifier; 1, 2, 3, 7, 8, 9, 10, 11 PARTIAL; 5 NOT BUILT or HOLD; 6 DONE for release trust, HOLD for receipts | Bridge HOLD; verification on every official path NOT BUILT; persisted PQ floor on a real host NOT BUILT; R-01 to R-17 not operative; runbook not executable | Round-three repairs |
@@ -309,7 +309,7 @@ spellings; `RunAutomaticUpgrade` (`internal/app/automatic_upgrade.go`) runs a
 new custody-versus-policy pre-check on each fresh `sudo hikyo upgrade`, before the journal, and
 the unattended path runs one when the run would export; and runtimeconfig migration 6 moves the
 rollback floor for every upgrading instance (C-10). Migration 00083 does the
-same on the candidate only, since #1172 is held. Each row separates five things: **confidentiality**
+same on the candidate only, since #1172 did not merge. Each row separates five things: **confidentiality**
 (a recording adversary), **authenticity** (a future forger), **software
 capability** (the code can do it, locally), **enforced policy** (something
 refuses the weaker path) and **observed deployment** (a real hop or host was
@@ -328,8 +328,8 @@ seen doing it). Observed deployment is NOTRUN on every row.
 | External routes | Go's default hybrid group may be offered; whether it is negotiated is the peer's choice and was never observed | Peer-controlled classical signatures | None | None | E-02 to E-07, E-13 registered; of these only E-06 is effective, since 2026-11-04, and none at the candidate; F-09 narrowed (no strict claim on external routes). No route is verified supported |
 | Symmetric hierarchy, tokens, passwords | Retained; category-1 floor objects named; AEAD usage cap not re-derived | Out of scope | Unchanged | Unchanged | Usage cap NOTRUN |
 
-Unreachable today, stated plainly: Transit and PKI have ML-DSA below the API
-only; strict TLS reaches no external hop; release verifiers are called by no
+Unreachable today, stated plainly: PKI has ML-DSA below the API only, and Transit
+has it only at the candidate, because #1172 did not merge; strict TLS reaches no external hop; release verifiers are called by no
 shipping path; hybrid vault generation, a backup strict profile and a PQ
 webhook key generator in the product binary do not exist.
 
@@ -342,7 +342,7 @@ its own PR, review and security approval, none of it activating anything by
 default (DEC-05):** hybrid backup recipients (#1126); opt-in strict TLS listener
 and CLI bundle field (#1127); webhook protocol 2 sender and registry fields
 (#1128); the rollout strict enrollment profile (#1131); the unreachable
-mechanisms and verifiers (#1133, #1132; #1129 is held and not releasable); register and feasibility
+mechanisms and verifiers (#1133, #1132; #1129 is not merged and not releasable); register and feasibility
 documents (#1134, #1130). Each carries the floors and refusals in Rollback.
 
 **What stays blocked:** parent closure (#1123); every `pqc-auth` claim (E-11,

@@ -10,8 +10,8 @@
 > 2026-11-04 the owner authorized merging each green child PR to `dev` and
 > accepted publication in the next nightly; that is the maintainer security
 > approval for the PR that merges under it, and it authorizes no run of this
-> runbook. #1172 (Transit, migration 00083) is held and does not merge, so
-> neither is in what merges. Independent adversarial review is required;
+> runbook. #1172 (Transit, migration 00083) did not merge with this round, so
+> neither is in what merged. Independent adversarial review is required;
 > cross-provider review is SKIPPED by explicit owner instruction (2026-11-02)
 > and is not CLEAN. The surface runbooks it indexes carry their own caveats;
 > this file adds order, gates and abort rules and does not replace them.
@@ -52,11 +52,11 @@ contains no command; no PQ signing tool exists.
 | Prerequisite | State at the candidate |
 | --- | --- |
 | A named non-production environment and a written resource-specific authorization | None exists. HOLD |
-| Maintainer security approval for each child being enabled, independent adversarial review of its final head, and the child merged | The owner's 2026-11-04 merge authorization is the security approval for each PR that merges under it; #1172 is held. It covers merging, not enabling a feature anywhere. Independent review of each final head is still required. HOLD for any enablement |
+| Maintainer security approval for each child being enabled, independent adversarial review of its final head, and the child merged | The owner's 2026-11-04 merge authorization is the security approval for each PR that merges under it; #1172 did not merge with this round. It covers merging, not enabling a feature anywhere. Independent review of each final head is still required. HOLD for any enablement |
 | Owner decisions in the packet (DEC-17 thresholds, key custody, peers and expiry for exceptions, and the other open items listed in the packet's "Release and blocked") | Open. HOLD. Decided on 2026-11-04: `backup-receipt/v2` kept as built with the E-19 gap registered; the stale-node fence accepted as recorded limit E-22 (strict is per process; the fence stays #1127 work); the `/api/v1` freeze, option A |
 | Every node, receiver and restore host runs a build that contains the readers (the release with these changes) | No such release exists. NOTRUN |
 | Frozen legacy fixtures pass on first-party nodes | Passed locally by children; NOTRUN on any real node |
-| Backup of the datastore taken and a restore drill passed before any floor-moving upgrade (migration 83 and runtimeconfig migration 6 are roll-forward; migration 83 is #1172, which is held) | NOTRUN |
+| Backup of the datastore taken and a restore drill passed before any floor-moving upgrade (migration 83 and runtimeconfig migration 6 are roll-forward; migration 83 is #1172, which has not merged) | NOTRUN |
 | Operator attests the readers and verifiers Hikyo cannot observe (E-17) | Required; cannot be measured |
 
 ## Protected secret loading
@@ -101,7 +101,7 @@ previous gate is recorded.
 Gate: owner and maintainer records for the open decisions; no HOLD on the
 surface. Abort: nothing deployed. Decided on 2026-11-04: the rollback policy
 for the moved floor in what merges (runtimeconfig migration 6) is accepted for the next
-nightly, and #1172's migration 83 is held; the stale-node
+nightly, and #1172's migration 83 has not merged; the stale-node
 fence is a recorded limit (E-22). The packet's "Release and blocked" lists what
 stays open.
 

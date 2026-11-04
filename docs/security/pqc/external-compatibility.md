@@ -337,7 +337,7 @@ handshake to github.com that offered no key (fact 5).
 DEC-10 makes an exception effective only with an exact peer and version, an
 expiry and a recheck trigger. **E-06 is effective** since the owner's decision on
 2026-11-04 (peer GitHub Actions secrets API, version libsodium sealed box as
-documented today, expiry 2027-05-03, recheck trigger GitHub documenting a PQ option
+documented on 2026-11-03, API version `2022-11-28`, expiry 2027-05-03, recheck trigger GitHub documenting a PQ option
 or a different algorithm); its row is in the migration register. **None of the other
 rows is effective**, and recording this table does not make one effective: each
 stays ineffective until the owner names its peer and version. A date of 180 days from

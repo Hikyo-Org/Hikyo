@@ -5,7 +5,7 @@ Written 2026-11-04 for the PR that refs
 packet exists; the qualification it describes does not. The PR does not close
 #1135 or #1123, which stays open. Security approval: the owner's 2026-11-04
 merge authorization applies to each PR that merges under it, #1172 (Transit,
-migration 00083) excepted because it is held; nothing wider. Independent
+migration 00083) excepted for this round; nothing wider. Independent
 adversarial review is required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN. These documents had independent reviews on 2026-11-04, recorded below, with their findings repaired.
 
@@ -22,7 +22,7 @@ PR #1195, branch `dunky13/pqc-1135-candidate`, commit
 `db58307e5a8aa54d684c52fed9148b9649dc9683`; Go 1.27.3 darwin/arm64; PostgreSQL
 18.6 from `postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941`.
 The candidate was unchanged when fetched and when last read. If it moves,
-nothing here transfers. It contains #1172, which is held, so it is not evidence
+nothing here transfers. It contains #1172, which did not merge with this round, so it is not evidence
 for the tree that lands; that tree has hosted CI only.
 
 ## Integrated run (the only test run, once, through the shared queue)

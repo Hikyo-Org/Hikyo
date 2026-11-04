@@ -166,8 +166,8 @@ source. A proxy or database terminator outside the process is outside any claim.
    plumbing at `reporter.go` and `reconciler.go`.
 5. **Strict on the proxy leg.** A CLI with strict and `HTTPS_PROXY` naming an
    `https://` proxy applies the policy to the proxy connection too, because
-   `http.Transport` shares the config. Fail-closed and documented, but a
-   behavior to confirm with the maintainer.
+   `http.Transport` shares the config. Fail-closed and documented. The owner
+   confirmed this as built on 2026-11-04.
 6. **Maintenance listener** honors the profile with the certificate, so a strict
    node never serves classical TLS during an upgrade window (covered by
    `TestUpgradeWindowHonorsTheStrictProfile`).
@@ -261,5 +261,5 @@ was contacted.
 
 Hosted CI and the independent pre-merge reviews, then merge bottom-up under the
 2026-11-04 authorization. No release or deployment is authorized. The stale-node
-fence stays unbuilt, as the owner accepted, and the proxy-leg choice and the DEC-17 budgets
-remain open.
+fence stays unbuilt, as the owner accepted, and the owner confirmed the proxy leg as built. The DEC-17 budgets
+are deferred until an amd64 baseline exists.
