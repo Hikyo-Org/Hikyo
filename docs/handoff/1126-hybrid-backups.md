@@ -123,7 +123,7 @@ Acceptance criteria, in the issue's order:
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| 1 | Hybrid generation, validation, canonicalization, lookup, export, restore, protected input | PASS for the CLI **given explicit `--recipient`**, and for service, receipt and drill paths. On an adopted install the CLI does not read the stored managed policy (`LoadBootstrap` blanks it into `ManagedInputs`), so a no-flag `hikyo backup export` fails with "export needs at least one age recipient"; the stored policy is set through managed configuration. The CLI, diagnostics and drill tests (`backup_hybrid_test.go`, `backup_diagnostics_test.go`, `backup_drill_e2e_test.go`) set `BackupRecipients` by hand, so they do not exercise an adopted install. PARTIAL for the vault (reads, does not generate) |
+| 1 | Hybrid generation, validation, canonicalization, lookup, export, restore, protected input | PASS for the CLI **given explicit `--recipient` and `--out`**, and for service, receipt and drill paths. On every install the CLI reads neither the stored policy nor those environment values (`LoadBootstrap` blanks them into `ManagedInputs`), so a no-flag `hikyo backup export` fails with "export needs at least one age recipient" or "no destination"; the stored policy is set through managed configuration. The CLI, diagnostics and drill tests (`backup_hybrid_test.go`, `backup_diagnostics_test.go`, `backup_drill_e2e_test.go`) set `BackupRecipients` by hand, so they do not exercise an adopted install. PARTIAL for the vault (reads, does not generate) |
 | 2 | Algorithm-aware versioned fingerprints and receipt schemas; consumers updated | PASS for fingerprints, receipt v2, the gate's legacy and ledger verifiers, `CheckEvidenceArtifacts`, the production evidence loader, CLI `upgrade-export` and `upgrade-drill` (all now exercised with a v2 receipt); PARTIAL for documented offline tooling (none exists in the tree) and for the packaged nightly release path, which a hybrid policy refuses by design |
 | 3 | PQ-profile backups contain only hybrid recipients; reject classical, mixed, duplicate, malformed | PARTIAL: mixed, duplicate, malformed and unsupported are refused and labels are preserved; there is no selectable profile, so a classical-only set is still accepted by design (DEC-05) |
 | 4 | Zero-recipient, exclusivity, scrypt bound, header and stanza counts, final-chunk authentication, safe file creation | PASS (existing tests unchanged and passing, plus new ones) |
@@ -178,7 +178,7 @@ Acceptance criteria, in the issue's order:
 | Strict backup restore provenance (signed record, receipt signer, pin, quarantine, hold release) | HOLD (E-19) | Not designed here. No integrity claim for an archive restored without a signed receipt |
 | Receipt for every export path (migration policy and qualification row #1126) | NOT BUILT (E-19) | Only upgrade exports write a receipt. `hikyo backup export` and scheduled exports write none |
 | `restore run` and `restore drill` accept a receipt | NOT BUILT (E-19) | Neither command takes a receipt input; restore trust is the identity alone |
-| Migration step 4 for adopted installs | DOCUMENTED | Policy changes through managed configuration; the CLI needs `--recipient`; the effective policy is shown by drilling a scheduled archive with the hybrid identity |
+| Migration steps 4 and 5 | DOCUMENTED, not run end to end | Policy changes through managed configuration; the CLI needs `--recipient` and `--out`; the effective policy is shown by drilling an archive whose `backup.exported` audit event has `trigger` set to `scheduled`, with the hybrid identity |
 | PQ signatures on receipts and attestation | HOLD (#1132) | P-256 stays |
 | Hybrid identity generation inside the custody vault | NOT BUILT | `create` and enrollment have no selection input. A vault record holding a hybrid identity works; nothing creates one |
 | Vault holds one `backup_identity` | NOT BUILT | Keeping an old identity beside a new one needs its own escrow or a vault format change |
@@ -194,7 +194,7 @@ Acceptance criteria, in the issue's order:
 | Offline tooling for receipt fingerprints | NOT FOUND | No separate offline fingerprint tool exists in the tree; the library is the only parser |
 | Host environment-string limits for a 62,719-byte value | NOTRUN | Also `hostupgrade` passes one 1959-character recipient per argv entry |
 | Independent second age implementation | NOTRUN | Only the upstream CLI was run |
-| Locked ADR text naming `backup-receipt/v1` | NOT EDITED | `signed-upgrade-compatibility.md` names v1 in its body; its 2026-11-02 banner promises an algorithm-bearing namespace, not a schema bump. Hybrid receipts use `backup-receipt/v2` (the issue asks for versioned schemas). Confirm through the amendment route |
+| Locked ADR text naming `backup-receipt/v1` | NOT EDITED | `signed-upgrade-compatibility.md` names v1 in its body; its 2026-11-02 banner promises an algorithm-bearing namespace, not a schema bump. Hybrid receipts use `backup-receipt/v2` (the issue asks for versioned schemas). The owner accepted this on 2026-11-04, and the banner is extended |
 
 ### Changes to upgrade behavior to review
 
