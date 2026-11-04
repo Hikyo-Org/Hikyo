@@ -280,9 +280,11 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	// --- ML-DSA-65 is HOLD on the public surface (#1133) ---------------------------
 	// The mechanism exists below the API. The 2026-11-04 api-cli-surface
 	// amendment lets the contract name mldsa65, so the request now passes
-	// validation and the refusal is the service gate (service.PKI.MLDSAEnabled,
-	// false in production); the wire hides its reason. The server must keep
-	// refusing mldsa65 and create nothing. The import path takes its algorithm
+	// validation and the refusal is the service: the MLDSAEnabled gate (false in
+	// production), or checkRotationAlgorithm for a rotation, which would hold with
+	// the gate open. The wire hides the reason, so the rows below and
+	// TestMLDSA65OverHTTP carry the proof. The server must keep refusing mldsa65
+	// and create nothing. The import path takes its algorithm
 	// from the key rather than from an enum, so it is exercised with a real
 	// ML-DSA key.
 	// writeCA writes an intermediate CA key, its certificate and its chain (the
