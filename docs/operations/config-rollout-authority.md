@@ -205,12 +205,17 @@ ROLLOUT="$FULLNAME-rollout"
    (`enrolled config rollout requires Kubernetes 1.36`); with only
    `--kube-version` it renders `target.namespace: default`, and applying that
    would install a wrong, immutable enrollment after the old one was deleted.
-   Check the result before deleting anything. Expect exactly your namespace and
-   generation (checked on a fixture with `--namespace ns --kube-version v1.36.1`):
+   Check the result before deleting anything. The rendered file holds the
+   enrollment as one quoted JSON string, so the quotes are escaped inside the
+   YAML and a plain `grep` for `"namespace"` finds nothing. Extract the string
+   and decode it with `jq`. Expect exactly your namespace and the generation you
+   set (`none` when the chart renders the compatibility profile). Checked on
+   fixture renders with `--namespace ns --kube-version v1.36.1`, which printed
+   `ns` and `none` for the default profile and `ns` and `2` for generation 2:
 
    ```sh
-   grep -o '\"namespace\":\"[^\]*\"' rollout-custody.yaml
-   grep -o '\"generation\":[0-9]*' rollout-custody.yaml
+   sed -n 's/^  enrollment\.json: //p' rollout-custody.yaml |
+     jq -r 'fromjson | .target.namespace, (.authority.generation // "none")'
    ```
 
    The file holds one ConfigMap and also the empty control Secrets and the

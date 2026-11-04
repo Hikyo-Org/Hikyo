@@ -1,6 +1,6 @@
 # #1131: rollout commands and controller trust under ML-DSA-65, implementation handoff
 
-Written 2026-11-03 for the draft PR that refs
+Written 2026-11-03 for the PR that refs
 [#1131](https://github.com/Hikyo-Org/Hikyo/issues/1131). It records what this
 round implements, what it proves and what it leaves. It is evidence for one
 candidate, not a live status board. The governing decisions are the
@@ -8,10 +8,15 @@ candidate, not a live status board. The governing decisions are the
 (DEC-02, 03, 05, 07, 08, 09, 10, 17, 20), the
 [profiles](../security/pqc/profiles.md#signature-composition-and-stripping-resistance-dec-03)
 and [migration](../security/pqc/migration.md#rollout-authority-i23-and-pki-root-i24)
-text. **security approval: not given.** This changes authentication of commands
-that alter a running deployment and needs maintainer security approval and an
-independent adversarial review before merge. Cross-provider review is SKIPPED by
-explicit owner instruction (2026-11-02) and is not CLEAN. Operator procedure:
+text. **Merge authorized by the owner on 2026-11-04**, which is the maintainer
+security approval for this PR when it merges green; publication in the next
+nightly is accepted. This changes authentication of commands that alter a running
+deployment. The independent adversarial reviews of the repaired head are part of
+the merge gate, and cross-provider review is SKIPPED by explicit owner
+instruction (2026-11-02) and is not CLEAN. Open and undecided, so not implied by
+the merge: the `/api/v1` freeze, ML-DSA recovery custody, #1132 signing
+granularity, DEC-17 thresholds and the stale-node fence (a recorded limit, DEC-10
+is amended in #1155). Operator procedure:
 [config-rollout-authority](../operations/config-rollout-authority.md).
 
 Stacked on PR #1155 (base `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`, branch
@@ -41,6 +46,8 @@ none was refuted.
 | T3 interrupted-rollover test | Confirmed: it skipped the start-up floor write | Comment corrected |
 | T4 matrix through `reconcile` only | Confirmed | A tampered-signature case runs through `Run` and asserts only the Lease, the admission dry runs and the floor are written |
 | T5 zeroing claim | Confirmed: undecoded blocks were not cleared on an early error and the stage helper stopped clearing the parsed Ed25519 key | `pemBlocks` returns decoded blocks on refusal and `ParseSigners` clears them on every path; the stage helper clears the Ed25519 key again; the comment says what cannot be cleared |
+| Public key parsing stricter than base (later review) | Confirmed: base used `pem.Decode`, so a comment line, Bag Attributes or a `Comment:` header around the key parsed; the controller refused them and the immutable ConfigMap could not be edited | `ParsePublicKeys` tolerates that text again (still one type, at most two blocks, no trailing bytes); private key parsing stays strict, as the base server already refused those forms. `TestKeyFilesAreClosedSets` pins the three inputs |
+| Second Ed25519 key cleared where rejected (later review) | Confirmed as untested: the cleared copy is local to `parseSigners` and unreachable from a test | Test comment corrected; only the refusal is asserted. Removing that `clear` stays undetected, and the first key's clearing is covered |
 
 ## Result
 
@@ -279,21 +286,20 @@ Owner for every row: Marc Went, on #1131.
 | | Upgrade-source commands under the strict profile | | NOTRUN |
 | | Old binary against new data | | NOTRUN (modeled) |
 | | DEC-17 budgets, amd64 measurements | | NOTRUN |
-| | Independent adversarial review of the repaired head, maintainer security approval | | HOLD, pending |
+| | Independent adversarial review of the repaired head | | Part of the merge gate; maintainer security approval is the owner's 2026-11-04 merge authorization |
 
-## Proposed revision route for the self-configuration specs
+## Revision route for the self-configuration specs
 
-DEC-18 does not state one. Proposal: the owner accepts the revision of
-`docs/spec/self-configuration-full-catalogue.md` (signed-command paragraph) in
-the implementation PR that merges, recorded by the owner's decision on #1131,
-with no reopened ADR because no locked ADR pins the algorithm. This PR adds only
-a clearly marked **proposed, not operative** banner to that spec and one
-sentence to the site page. Nothing else in the specs changes.
+DEC-18 does not state one, so the declared-amendment banner is the route. This PR
+adds a **Declared amendment (operative when this PR merges; not owner-locked)**
+banner to `docs/spec/self-configuration-full-catalogue.md` (signed-command
+paragraph) and one sentence to the site page. No locked ADR pins the algorithm,
+so no ADR is reopened. Nothing else in the specs changes.
 
 ## Next authorized step
 
-Independent adversarial review (Standards, Spec and security) and the
-maintainer's security approval. Then, on a disposable kind cluster: extend the
+Independent adversarial review (Standards, Spec and security) of the repaired
+head and hosted CI, then merge under the owner's 2026-11-04 authorization. Then, on a disposable kind cluster: extend the
 kind rehearsal to enroll the dual profile, restart both consumers, send a
 strict command, a v1 command and a stale-generation enrollment, and record the
 results. Production enrollment, key rotation and any release remain separately

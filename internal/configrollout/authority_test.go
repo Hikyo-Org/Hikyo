@@ -558,11 +558,14 @@ func TestKeyFilesAreClosedSets(t *testing.T) {
 		"duplicate algorithm": {cat(pemOf(t, "PUBLIC KEY", edPub), pemOf(t, "PUBLIC KEY", otherPub)), false},
 		"three blocks":        {cat(pemOf(t, "PUBLIC KEY", edPub), pemOf(t, "PUBLIC KEY", pqPub), pemOf(t, "PUBLIC KEY", pqPub)), false},
 		"trailing junk":       {cat(pemOf(t, "PUBLIC KEY", edPub), []byte("junk")), false},
-		"preamble junk":       {cat([]byte("junk\n"), pemOf(t, "PUBLIC KEY", edPub)), false},
+		"comment preamble":    {cat([]byte("# authority key\n"), pemOf(t, "PUBLIC KEY", edPub)), true},
+		"bag attributes":      {cat([]byte("Bag Attributes\n    friendlyName: authority\n"), pemOf(t, "PUBLIC KEY", edPub)), true},
+		"dual with preamble":  {cat([]byte("junk\n"), pemOf(t, "PUBLIC KEY", edPub), []byte("more\n"), pemOf(t, "PUBLIC KEY", pqPub)), true},
+		"unrelated pem first": {cat(pemOf(t, "CERTIFICATE", edPub), pemOf(t, "PUBLIC KEY", edPub)), false},
 		"empty":               {nil, false},
 		"private as public":   {pemOf(t, "PRIVATE KEY", edPriv), false},
 		"wrong block type":    {pemOf(t, "CERTIFICATE", edPub), false},
-		"header":              {pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Headers: map[string]string{"a": "b"}, Bytes: edPub}), false},
+		"header":              {pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Headers: map[string]string{"Comment": "b"}, Bytes: edPub}), true},
 		"not a key":           {pemOf(t, "PUBLIC KEY", []byte("nope")), false},
 	} {
 		_, err := ParsePublicKeys(tc.raw)
@@ -581,6 +584,8 @@ func TestKeyFilesAreClosedSets(t *testing.T) {
 		"duplicate":           {cat(pemOf(t, "PRIVATE KEY", edPriv), pemOf(t, "PRIVATE KEY", otherPriv)), false},
 		"public as private":   {pemOf(t, "PUBLIC KEY", edPub), false},
 		"trailing junk":       {cat(pemOf(t, "PRIVATE KEY", edPriv), []byte("x")), false},
+		"preamble":            {cat([]byte("junk\n"), pemOf(t, "PRIVATE KEY", edPriv)), false},
+		"header":              {pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Headers: map[string]string{"Comment": "b"}, Bytes: edPriv}), false},
 		"empty":               {nil, false},
 	} {
 		parsed, err := ParseSigners(tc.raw)
@@ -1754,7 +1759,8 @@ func TestParseSignersClearsWhatItParsedBeforeARefusal(t *testing.T) {
 			t.Fatalf("%s: clearSigners left key bytes", name)
 		}
 	}
-	// A second Ed25519 key is cleared where it is rejected.
+	// A second Ed25519 key is refused. Its parsed copy is cleared inside
+	// parseSigners and is unreachable from here, so only the refusal is asserted.
 	_, second, _ := ed25519.GenerateKey(rand.Reader)
 	secondDER, _ := x509.MarshalPKCS8PrivateKey(second)
 	if _, err := parseSigners(append(append([]byte{}, good...), pemOf(t, "PRIVATE KEY", secondDER)...)); err == nil {

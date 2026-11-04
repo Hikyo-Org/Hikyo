@@ -376,17 +376,20 @@ func (s Signers) Public() PublicKeys {
 }
 
 // pemBlocks decodes consecutive blocks of one type and refuses anything else:
-// preamble, headers, a different type or trailing bytes. On refusal it still
+// a different type or trailing bytes, and unless lenient also preamble and
+// headers. Lenient is for public keys only: the base release accepted a
+// comment line, Bag Attributes or a Comment header around the key, and an
+// enrolled instance's immutable ConfigMap may hold one. On refusal it still
 // returns the blocks decoded so far, so a caller can clear their bytes.
-func pemBlocks(raw []byte, blockType string) ([]*pem.Block, bool) {
+func pemBlocks(raw []byte, blockType string, lenient bool) ([]*pem.Block, bool) {
 	var blocks []*pem.Block
 	rest := bytes.TrimSpace(raw)
 	for len(rest) > 0 {
-		if !bytes.HasPrefix(rest, []byte("-----BEGIN "+blockType+"-----")) {
+		if !lenient && !bytes.HasPrefix(rest, []byte("-----BEGIN "+blockType+"-----")) {
 			return blocks, false
 		}
 		block, next := pem.Decode(rest)
-		if block == nil || block.Type != blockType || len(block.Headers) != 0 {
+		if block == nil || block.Type != blockType || (!lenient && len(block.Headers) != 0) {
 			if block != nil {
 				blocks = append(blocks, block)
 			}
@@ -399,10 +402,11 @@ func pemBlocks(raw []byte, blockType string) ([]*pem.Block, bool) {
 }
 
 // ParsePublicKeys reads the installed authority public key file: one or two
-// PUBLIC KEY blocks, at most one Ed25519 and one ML-DSA-65 key. ML-DSA-44 and
+// PUBLIC KEY blocks (text around and headers inside them are tolerated, as in
+// the base release), at most one Ed25519 and one ML-DSA-65 key. ML-DSA-44 and
 // ML-DSA-87 (DEC-02), every other key type and duplicates are refused.
 func ParsePublicKeys(raw []byte) (PublicKeys, error) {
-	blocks, ok := pemBlocks(raw, "PUBLIC KEY")
+	blocks, ok := pemBlocks(raw, "PUBLIC KEY", true)
 	if !ok {
 		return PublicKeys{}, ErrInvalid
 	}
@@ -455,7 +459,7 @@ func clearSigners(signers Signers) {
 // parseSigners returns what it parsed before a refusal so ParseSigners can
 // clear it; a key it refuses is cleared here.
 func parseSigners(raw []byte) (Signers, error) {
-	blocks, ok := pemBlocks(raw, "PRIVATE KEY")
+	blocks, ok := pemBlocks(raw, "PRIVATE KEY", false)
 	defer func() {
 		for _, block := range blocks {
 			clear(block.Bytes)
