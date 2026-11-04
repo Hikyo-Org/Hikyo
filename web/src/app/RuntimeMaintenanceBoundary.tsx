@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
+import { isThrottled, retryAfterMilliseconds } from '../api/client.ts';
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { useResetOnChange } from './useResetOnChange.ts';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -74,26 +75,36 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
         const response = await fetch('/api/v1/runtime/status', {
           signal: request.signal, credentials: 'omit', cache: 'no-store', redirect: 'error',
         });
+        // Throttled is not interrupted: the instance answered, and the shared
+        // source allowance recovers sooner if this poll does not spend it. The
+        // client caps the wait at 30s, under the longest 60s window it can name.
+        if (response.status === 429) {
+          delay = Math.max(delay, retryAfterMilliseconds(response) ?? 0);
+          return;
+        }
         // Only a validated status body confirms maintenance. A proxy's HTML
         // 503 or an offline socket says nothing about the cause of the outage.
         if (!response.ok && response.status !== 503 && response.status !== 404) throw new Error('Runtime status unavailable');
         const result = runtimeStatus.parse(response.status === 404 ? { state: 'ready', phase: null } : await response.json());
         if (disposed) return;
-        failures = 0;
         if (result.state === 'ready' && (interrupted.current || latest.current.failure !== null)) {
           // Keep editing blocked until the root session has been revalidated.
           await latest.current.refreshSession(request.signal);
           request.signal.throwIfAborted();
           if (disposed) return;
         }
+        // Not before the refresh: a session check that keeps failing behind a
+        // healthy status read must still back off, not retry every second.
+        failures = 0;
         interrupted.current = result.state !== 'ready';
         setStatus(result);
         if (result.state !== 'ready' || latest.current.failure !== null) delay = 2_000;
-      } catch {
+      } catch (error) {
         if (disposed) return;
         interrupted.current = true;
         failures += 1;
         delay = Math.min(30_000, 1_000 * 2 ** Math.min(failures - 1, 5));
+        if (isThrottled(error)) delay = Math.max(delay, error.retryAfterMs ?? 0);
         setStatus({ state: 'reconnecting' });
       } finally {
         clearTimeout(timeout);

@@ -72,6 +72,11 @@ the five encryption/threat/Transit/pairing/PKI ADRs and the signed-upgrade ADR
 have no changes between those two revisions. This is a bounded navigation check,
 not the exhaustive inventory required by #1124 or a runtime PQ test.
 
+Feature PRs target `dev` since #1159, and this program's PR stack is rooted there.
+On 2026-11-03 the entry points below were rechecked against `dev`
+`3e687143e004c1376738145a5de6325e3544fa62`: none changed. Treat `dev` as the live base wherever
+this document or its children say canonical main.
+
 | Observed source boundary | Entry points at the starting base | Owning follow-up |
 | --- | --- | --- |
 | 32-byte symmetric key and one envelope algorithm identifier | `internal/crypto/crypto.go`, `internal/crypto/envelope.go` | #1124 retains the hierarchy unless an explicit evidence-backed decision changes it, and states its bounds |
@@ -92,10 +97,13 @@ maintenance, [#1113](https://github.com/Hikyo-Org/Hikyo/pull/1113) deployment an
 owned; release documentation [#1138](https://github.com/Hikyo-Org/Hikyo/pull/1138)
 and [#1139](https://github.com/Hikyo-Org/Hikyo/pull/1139) are merged into this
 base. None of them is PQ acceptance. Recheck live
-main, PR heads and ownership before taking a child; do not overwrite an active
+`dev`, PR heads and ownership before taking a child; do not overwrite an active
 owner or duplicate its changes. Stack a dependent delta when necessary.
 
 ## Dependency and deliverable register
+
+The "Initial gate" column is the state when this draft was written. Current delivery
+state, per ticket and PR, is in the [handoff](../handoff/1123-post-quantum-program.md#delivery-state-on-2026-11-04).
 
 This copies the dependency order from #1123 as a reviewable checkpoint. All
 eleven children were open when read. No approved #1124 profile receipt was

@@ -13,8 +13,8 @@ const (
 	BudgetAuthenticatedAPIBurst  = 600
 )
 
-// AdmitAuthenticatedAPI is called only with a live transaction-authenticated
-// session, once per network request. It is independent of expensive-path
+// AdmitAuthenticatedAPI is called only with a session proven live, by this
+// transaction or an earlier one on this node, once per network request. It is independent of expensive-path
 // budgets and includes reads and valid-but-forbidden operations.
 func (b *Budget) AdmitAuthenticatedAPI(sessionID string) error {
 	if b == nil {

@@ -83,7 +83,7 @@ refute 'public artifacts mount writable' \
 
 refute 'installation state replaced by temporary volume' \
 	templates/deployment.yaml \
-	's/claimName: {{ .Values.upgrade.stateExistingClaim }}/claimName: wrong-installation-state/'
+	's/claimName: {{ .Values.upgrade.stateExistingClaim | quote }}/claimName: wrong-installation-state/'
 
 refute 'installation custody placed on fsGroup volume root' \
 	templates/deployment.yaml \

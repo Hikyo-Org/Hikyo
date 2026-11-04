@@ -4,12 +4,13 @@ import { act, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle } from '../testkit/renderForm.tsx';
+import { ApiError } from '../api/client.ts';
 import { RuntimeMaintenanceBoundary } from './RuntimeMaintenanceBoundary.tsx';
 import { AuthProvider, useAuth } from './AuthProvider.tsx';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 
-const json = (body: object, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const json = (body: object, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 let cleanup: (() => Promise<void>) | undefined;
 
 beforeEach(() => vi.useFakeTimers());
@@ -21,8 +22,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(failure: Error | null = null) {
-  const refresh = vi.fn(async () => {});
+async function mount(failure: Error | null = null, refresh = vi.fn(async (): Promise<void> => {})) {
   const queries = new QueryClient();
   const result = await renderForm(<RuntimeMaintenanceBoundary failure={failure} refreshSession={refresh} queries={queries}>
     <input aria-label="Draft" defaultValue="Keep this draft" />
@@ -48,6 +48,143 @@ function SecretProbe() {
 }
 
 describe('runtime interruption', () => {
+  it('treats a throttled status read as throttled, not as an outage', async () => {
+    const fetcher = vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '20' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const { container } = await mount();
+    expect(container.querySelector('[inert]')).toBeNull();
+    expect(container.textContent).not.toContain('Reconnecting');
+    await advance(19_000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await advance(1_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[inert]')).toBeNull();
+  });
+
+  it('backs off a session refresh that keeps failing behind a healthy status read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ state: 'ready', phase: null })));
+    const refresh = vi.fn(async (): Promise<void> => { throw new Error('Identity unavailable'); });
+    await mount(new Error('Identity unavailable'), refresh);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    // Attempts at 1s, 3s and 7s: the delay doubles, it does not stay at one second.
+    await advance(7_000);
+    expect(refresh).toHaveBeenCalledTimes(4);
+  });
+
+  it('waits out a throttled session refresh before asking again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ state: 'ready', phase: null })));
+    const refresh = vi.fn(async (): Promise<void> => { throw new ApiError(429, 'request failed with 429', undefined, 20_000); });
+    await mount(new Error('Identity unavailable'), refresh);
+    await advance(19_000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await advance(1_000);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a live session in front of the operator through a throttled identity check', async () => {
+    let identityReads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith('/runtime/status')) return json({ state: 'ready', phase: null });
+      identityReads += 1;
+      return identityReads === 2
+        ? json({ error: { code: 'too_many_requests', message: 'too many requests' } }, 429, { 'Retry-After': '7' })
+        : json(authenticatedIdentity);
+    }));
+    function Refresh() {
+      const auth = useAuth();
+      return <button onClick={() => void auth.refreshSession()}>Refresh session</button>;
+    }
+    const result = await renderForm(<AuthProvider monitorRuntime><SessionProbe /><Refresh /></AuthProvider>);
+    cleanup = result.unmount;
+    await settle();
+    expect(identityReads).toBe(1);
+    const trigger = result.container.querySelector('button');
+    if (trigger === null) throw new Error('Missing refresh control');
+    await act(async () => { trigger.click(); });
+    await settle();
+    expect(identityReads).toBe(2);
+    expect(result.container.querySelector('[inert]')).toBeNull();
+    expect(result.container.textContent).not.toContain('Reconnecting');
+    expect(result.container.textContent).toContain('Session: authenticated');
+    await advance(6_000);
+    expect(identityReads).toBe(2);
+    await advance(1_000);
+    expect(identityReads).toBe(3);
+    expect(result.container.querySelector('[inert]')).toBeNull();
+  });
+
+  it('still fences a check the UI is waiting on when it is throttled', async () => {
+    let identityReads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.endsWith('/runtime/status')) return json({ state: 'ready', phase: null });
+      identityReads += 1;
+      return identityReads === 1
+        ? json(authenticatedIdentity)
+        : json({ error: { code: 'too_many_requests', message: 'too many requests' } }, 429, { 'Retry-After': '20' });
+    }));
+    function Revalidate() {
+      const auth = useAuth();
+      return <button onClick={() => void auth.revalidate()}>Revalidate</button>;
+    }
+    const result = await renderForm(<AuthProvider monitorRuntime><Revalidate /></AuthProvider>);
+    cleanup = result.unmount;
+    await settle();
+    const trigger = result.container.querySelector('button');
+    if (trigger === null) throw new Error('Missing revalidate control');
+    await act(async () => { trigger.click(); });
+    await settle();
+    expect(result.container.querySelector('[inert]')).not.toBeNull();
+  });
+
+  it('refetches once when an operation refreshes the session', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return url.endsWith('/runtime/status') ? json({ state: 'ready', phase: null }) : json(authenticatedIdentity);
+    }));
+    const read = vi.fn(async () => 'answer');
+    function Refresh() {
+      const auth = useAuth();
+      useQuery({ queryKey: ['working-set'], queryFn: read });
+      return <button onClick={() => void auth.refreshSession()}>Refresh session</button>;
+    }
+    const result = await renderForm(<AuthProvider monitorRuntime><Refresh /></AuthProvider>);
+    cleanup = result.unmount;
+    await settle();
+    read.mockClear();
+    const trigger = result.container.querySelector('button');
+    if (trigger === null) throw new Error('Missing refresh control');
+    await act(async () => { trigger.click(); });
+    await settle();
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it('honors the wait of a query that was throttled through the recovery deadline', async () => {
+    let statusReads = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.endsWith('/runtime/status')) return json(authenticatedIdentity);
+      statusReads += 1;
+      return statusReads === 1 ? new Response('', { status: 503 }) : json({ state: 'ready', phase: null });
+    }));
+    function Working() {
+      useQuery({ queryKey: ['working-set'], queryFn: async () => { throw new ApiError(429, 'request failed with 429', undefined, 25_000); } });
+      return null;
+    }
+    const result = await renderForm(<AuthProvider monitorRuntime><Working /></AuthProvider>);
+    cleanup = result.unmount;
+    await settle();
+    expect(statusReads).toBe(1);
+    // Recovery starts after one second and its 8 second deadline passes at 9.
+    await advance(9_000);
+    expect(statusReads).toBe(2);
+    await advance(24_000);
+    expect(statusReads).toBe(2);
+    await advance(1_000);
+    expect(statusReads).toBe(3);
+  });
+
   it('keeps a transient identity outage fenced until runtime recovery revalidates the cache', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ state: 'ready', phase: null })));
     let changeFailure: (failure: Error | null) => void = () => { throw new Error('not mounted'); };
