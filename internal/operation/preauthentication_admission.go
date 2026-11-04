@@ -1,6 +1,7 @@
 package operation
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -35,4 +36,62 @@ func AdmitPreauthentication(ctx context.Context) error {
 		audit.NoteRefusal(ctx, audit.RefusalAdmission)
 	}
 	return a.err
+}
+
+type liveSessionsKey struct{}
+
+// LiveSessions is one node's memory of the sessions it has proven live. It
+// decides only which limit a presentation spends, never whether it is accepted.
+type LiveSessions interface {
+	KnownLiveSession(verifier []byte) (sessionID string, known bool)
+	NoteLiveSession(verifier []byte, sessionID string)
+	ForgetSession(verifier []byte)
+}
+
+// WithLiveSessions moves a proven session from the source allowance, which bounds
+// credential guessing, to its own request budget.
+func WithLiveSessions(ctx context.Context, sessions LiveSessions) context.Context {
+	return context.WithValue(ctx, liveSessionsKey{}, sessions)
+}
+
+// AdmitSessionPresentation bounds a session artifact's reads. A session known live
+// spends its request budget; anything else spends the source allowance, unless
+// this request already paid for that verifier. Either is spent before the first
+// read. A session that died while known keeps spending its budget until one
+// resolution finds it dead and forgets it.
+func AdmitSessionPresentation(ctx context.Context, verifier []byte) error {
+	r, _ := ctx.Value(requestAdmissionKey{}).(*requestAdmission)
+	if sessions, _ := ctx.Value(liveSessionsKey{}).(LiveSessions); sessions != nil {
+		if sessionID, known := sessions.KnownLiveSession(verifier); known {
+			err := AdmitRequest(ctx, sessionID)
+			if err == nil && r != nil {
+				r.budgeted.CompareAndSwap(nil, &verifier)
+			}
+			return err
+		}
+	}
+	// The memory can lose a session during a request. That presentation has paid,
+	// and a later refusal could arrive after the request's effects are committed.
+	if r != nil {
+		if paid := r.budgeted.Load(); paid != nil && bytes.Equal(*paid, verifier) {
+			return nil
+		}
+	}
+	return AdmitPreauthentication(ctx)
+}
+
+// NoteSessionLive records that resolution proved the session live.
+func NoteSessionLive(ctx context.Context, verifier []byte, sessionID string) {
+	if sessions, _ := ctx.Value(liveSessionsKey{}).(LiveSessions); sessions != nil {
+		sessions.NoteLiveSession(verifier, sessionID)
+	}
+}
+
+// ForgetSession records that resolution found the session dead, so its next
+// presentation is charged to the source again. A fault proves nothing, and the
+// session's budget bounds any retries, so a fault leaves the memory alone.
+func ForgetSession(ctx context.Context, verifier []byte) {
+	if sessions, _ := ctx.Value(liveSessionsKey{}).(LiveSessions); sessions != nil {
+		sessions.ForgetSession(verifier)
+	}
 }

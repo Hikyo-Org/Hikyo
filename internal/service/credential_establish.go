@@ -178,6 +178,9 @@ func (s *Auth) completeFederatedEstablish(ctx context.Context, presented string,
 			return refuse(cause)
 		}
 		live, err := az.Authenticate(ctx, presented, s.now())
+		if err != nil && !credentialRefused(err) {
+			return err
+		}
 		if err != nil || live.SessionID != f.sessionID {
 			return refuse(causeBinding)
 		}

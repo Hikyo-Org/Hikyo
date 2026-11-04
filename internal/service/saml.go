@@ -444,6 +444,9 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 			case purposeLogin:
 			case purposeLink, purposeReauth:
 				initiating, lookupErr = az.AuthenticateSessionByID(ctx, transaction.InitiatingSessionID, now)
+				if lookupErr != nil && !credentialRefused(lookupErr) {
+					return lookupErr
+				}
 				if lookupErr != nil {
 					cause = samlCauseInitiatorMismatch
 				}

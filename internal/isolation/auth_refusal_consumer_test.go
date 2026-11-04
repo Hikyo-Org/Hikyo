@@ -146,3 +146,35 @@ func TestRequestRefusalCanonicalAdmissionSignal(t *testing.T) {
 		}
 	})
 }
+
+func TestRequestRefusalSessionBudgetSignal(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		limiter, err := admission.New(admission.Config{ArgonMemoryKiB: 64 * 1024, Now: func() time.Time { return time.Date(2026, 10, 28, 12, 0, 30, 0, time.UTC) }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		budget := service.NewBudgetWithClock(func() time.Time { return time.Date(2026, 10, 28, 12, 0, 30, 0, time.UTC) })
+		signals := service.NewRefusalSignals(db)
+		h := server.New(&server.API{Auth: authService(t, db), Admission: limiter, RequestBudget: budget, Refusals: signals}, nil)
+		const kind = crypto.ArtifactCLISession
+		token := preauthSession(t, db, kind, "signal")
+		if rec := preauthRequest(h, token, kind, "192.0.2.104", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusOK {
+			t.Fatalf("proving presentation = %d %s", rec.Code, rec.Body.String())
+		}
+		for range service.BudgetAuthenticatedAPIBurst - 1 {
+			if err := budget.AdmitAuthenticatedAPI("ses_preauth_" + string(kind) + "_signal"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if rec := preauthRequest(h, token, kind, "192.0.2.104", http.MethodGet, "/auth/whoami"); rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("over budget = %d %s", rec.Code, rec.Body.String())
+		}
+		var state audit.RefusalWindow
+		if err := json.Unmarshal([]byte(queryString(t, db, "SELECT state FROM auth_refusal_window WHERE id=1")), &state); err != nil {
+			t.Fatal(err)
+		}
+		if state.Counts[4] != 1 || len(state.Samples) != 1 || state.Samples[0].Stage != audit.RefusalAdmission {
+			t.Fatalf("budget refusal signal = %+v", state)
+		}
+	})
+}

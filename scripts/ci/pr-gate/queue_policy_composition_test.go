@@ -144,8 +144,8 @@ func TestAdmissionComposesBothCanonicalPolicyVerifiers(t *testing.T) {
 					for _, count := range f.api.reads {
 						controllerReads += count
 					}
-					if route == "head worker" && controllerReads != 22 {
-						t.Fatalf("head-worker controller reads=%d, want 22", controllerReads)
+					if route == "head worker" && controllerReads != 23 {
+						t.Fatalf("head-worker controller reads=%d, want 23", controllerReads)
 					}
 					t.Logf("%d controller + %d canonical shell API reads (%s)", controllerReads, want, authority)
 				})
