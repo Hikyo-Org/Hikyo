@@ -54,7 +54,7 @@ PR #1195 merges all nine child branches as the evidence candidate and is not for
 
 | Ticket | PR | Head | What exists | Limits that keep it open | Last repair reviewed |
 | --- | --- | --- | --- | --- | --- |
-| #1124 contract | #1150 | `771d15047` | Inventory, profiles, decisions, owner decided | Register premises need owner edits (packet C-01 to C-14) | Yes, before the base merges |
+| #1124 contract | #1150 | `771d15047` | Inventory, profiles, decisions, owner decided | Register premises need owner edits (packet C-01 to C-14) | Worker repairs yes; README repin `dee544c3c` and base merges no |
 | #1126 backups | #1158 | `9c01e77e7` | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | No |
 | #1127 transport | #1156 | `d3d662967` | Strict TLS 1.3 and `X25519MLKEM768` on the listener and owned clients | Per process only, no stale-node fence; no external hop | No |
 | #1128 webhooks | #1188 | `d70889f82` | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; revision route HOLD | No |
