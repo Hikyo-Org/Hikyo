@@ -56,7 +56,7 @@ const algorithmOperations: Record<TransitKey['algorithm'], TransitKey['allowed_o
   'xchacha20-poly1305': ['encrypt', 'decrypt', 'rewrap', 'datakey'],
   ed25519: ['sign', 'verify'],
   'hmac-sha256': ['hmac', 'hmac-verify'],
-  // Typing only: the option list above does not offer mldsa65 until #1172 brings the mechanism.
+  // Typing only: the option list below does not offer mldsa65 until #1172 brings the mechanism.
   mldsa65: ['sign', 'verify'],
 };
 
