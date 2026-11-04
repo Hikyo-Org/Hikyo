@@ -61,9 +61,9 @@ const MinRestoreSchemaVersion = 16
 func BackupUsage(w io.Writer) {
 	fmt.Fprint(w, `hikyo backup - age-encrypted instance export (server host only)
 
-  hikyo backup export --out DIR (--recipient AGE-RECIPIENT... | --passphrase-file PATH)
+  hikyo backup export --out DIR ((--recipient AGE-RECIPIENT)... | --passphrase-file PATH)
   hikyo backup keygen [--hybrid] [--output-file PATH | --dangerously-print]
-  hikyo backup upgrade-export [--bundle DIR] --out DIR --recipient AGE-RECIPIENT... [--json]
+  hikyo backup upgrade-export [--bundle DIR] --out DIR (--recipient AGE-RECIPIENT)... [--json]
   hikyo backup upgrade-drill --from ARCHIVE --receipt PATH --identity-file PATH
                       --root-key-file PATH (--target-sqlite PATH | --target-postgres-dsn-file PATH)
                       [--principal ID] [--project ORG/PROJECT] [--bundle DIR] [--out DIR]

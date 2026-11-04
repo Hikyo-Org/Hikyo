@@ -56,8 +56,8 @@ func storedProjection(t *testing.T) *upgrade.CandidateConfiguration {
 
 func bootstrapConfig(t *testing.T, recipients ...string) *config.Config {
 	t.Helper()
-	// The destination is a node setting and stays in the config; only owner
-	// settings such as the recipients move to ManagedInputs.
+	// LoadBootstrap blanks the destination and moves owner settings such as
+	// the recipients to ManagedInputs, so the CLI path sees neither.
 	values := map[string]string{"HIKYO_DB": "sqlite:" + filepath.Join(t.TempDir(), "hikyo.db"), "HIKYO_BACKUP_DIR": t.TempDir()}
 	if len(recipients) > 0 {
 		values["HIKYO_BACKUP_RECIPIENTS"] = strings.Join(recipients, ",")
