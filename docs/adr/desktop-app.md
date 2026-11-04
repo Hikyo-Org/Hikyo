@@ -139,9 +139,13 @@ on account-security changes.
 - It reads the top level and `login`, and leaves nested keys alone, because one could be a
   secret's name. The token is removed from the response, so it never reaches the page. A
   `session_token` on any other response is removed and treated as an error.
-- A failed check stops the connection with a visible error and asks for a new sign-in. It
-  still releases the response body without the token, because recovery codes in it can't be
-  fetched again, and a reissue has already deleted the old session.
+- A failed check stops the connection with a visible error, asks for a new sign-in and, if
+  the token parses, tries to revoke that session. It still releases the response body without
+  the token, because recovery codes in it can't be fetched again.
+- The check runs before the keychain write. The token and session id are stored in one
+  keychain item, so a crash can't leave them out of step.
+- The proxy asks for identity encoding, because it can't remove a token from a body it can't
+  read. A 2xx from a listed route that can't be parsed fails closed.
 - It writes the token to the keychain, then swaps it in, then releases the response.
 - One runs at a time. A new token is only known after its response arrives, so
   requests already in flight can get a 401. Idempotent ones are retried once with the
@@ -237,14 +241,14 @@ reach no other connection.
 | `GET origin` | Nothing | Returns the instance's real origin, for links the SPA builds |
 
 The handoff and approval pages are `/login/cli`, `/reauth/cli` and `/workspace/approve`.
-Before comparing, the shell refuses non-canonical input: dot segments, raw or encoded;
-backslashes; control characters or whitespace; a leading `//`; a query that fails strict
-decoding; and more than one `returnTo`. It then checks that the parsed origin is the
+`open-in-browser` refuses any `returnTo` parameter, because `/login?returnTo=...` and
+`/signup?returnTo=...` send a signed-in user straight to its target, and the SPA resolves
+that target with a URL parser after decoding it. It also refuses non-canonical input: dot
+segments, raw or encoded; backslashes; control characters or whitespace; a leading `//`;
+and a query that fails strict decoding. It then checks that the parsed origin is the
 connection's. The SPA's router ignores case and trailing slashes, so the comparison
 percent-decodes, lowercases and strips trailing slashes, as `web/src/app/loginReturn.ts`
-does after parsing the URL. A `returnTo` that normalizes to one of these pages is refused
-too, because `/login?returnTo=...` and `/signup?returnTo=...` send a signed-in user straight
-there.
+does after parsing the URL.
 
 The page cannot reach Wails' own runtime routes under `/wails/`.
 
@@ -388,6 +392,9 @@ so error semantics don't either.
   bypass of the app's code signature. It is the same trust boundary as the user's browser
   profile.
 - **Operators can't reliably tell the app from the CLI.** The label is client-asserted.
+- **A session can outlive its holder.** If a revocation fails, or the app crashes or loses a
+  response after the server commits, the new session stays live with no holder for up to
+  30 days idle and 90 days absolute, unless it is revoked from another signed-in session.
 - **Some work stays in the browser** in v1 (D7), so app users keep a browser session too.
   Passkey enrolment and identity linking there sign the app out (D6).
 - **The app works only with upgraded servers** (D8).
@@ -442,8 +449,14 @@ Settled on 2026-11-04:
 - **Fourth same-provider review, at `7ef5235882895f4af667d69ac4fe072f1b068bce`:** limited to
   D4, D9, D10, the banners and the status text. It found no blocker, one high finding (six
   of the eight rotation routes reissue the session, so the id check failed on them), two
-  medium (path normalization and the `owner-locked` label) and six low. All are repaired in
-  this text. REVIEW_PENDING
+  medium (path normalization and the `owner-locked` label) and six low. All are repaired.
+- **Fifth same-provider review, at `f525883879b5da6a6603b6b8ada649b11d920562`:** limited to
+  those D4, D6 and D9 repairs. It confirmed the route classification, response fields and
+  D6 against source. It found one high finding (decoded `returnTo` forms still reached the
+  handoff pages), one medium (a session left with no holder) and three low. The high, the
+  medium and two of the low are repaired in this text and have not had a further review. The
+  third low is an OpenAPI description, left to plan PR 1. No round ran anything except small
+  parser probes, and the shell these rules govern doesn't exist yet.
 - **Owner statements (2026-11-04):** asked for a Wails spike of the recommended design; said
   the app should open the native browser for passkeys, like the CLI; asked whether Hikyo
   should be a monorepo with separate build paths; approved writing ADR amendments and an

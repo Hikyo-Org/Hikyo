@@ -17,7 +17,7 @@ Done on 2026-11-04, except where noted. The ADR's status section has the record.
 4. The amendment text is applied as banners, each with [its own
    trigger](../../adr/desktop-app.md#amendments).
 
-Still needed: [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges, and the owner
+Still needed: the owner accepts D1 to D15 and [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges, and the owner
 authorizes each implementation PR. When a PR makes a banner operative, close that banner's
 reopened ticket, except #25, which stays open for its other reasons.
 
@@ -86,6 +86,10 @@ page need these changes, with no server change:
   `login` token from the same response. This is plausible, but not traced.
 - `key_ids` allows 500 on the handoff, against 10000 elsewhere. This affects every
   key-bound purpose. Decide what a larger unit does before calling the API impact complete.
+- `unlinkIdentity` in `api/openapi.yaml` says it deletes the identity's sessions, but it
+  deletes every session of the principal. Correct the description.
+- The enrolment gate's `/login?returnTo=...` in `app/App.tsx` must reach the shell without the
+  parameter, which `open-in-browser` refuses. Confirm no other caller sends one.
 - Browser enrolment and identity linking delete the app's session, including one confined
   until enrolment, so the app signs in again. Test that the app recovers cleanly.
 
