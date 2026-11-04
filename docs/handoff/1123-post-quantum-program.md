@@ -66,11 +66,33 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
 - #1141: importing, rotating or installing a classical issuer under an ML-DSA root is refused.
 - #1172, held: migration 00083 would move the rollback floor of every instance.
 
-The stack is rooted on `dev`: #1148, then #1150, then #1155. #1156 and #1158 stack on #1155,
-as do #1172 and #1186. #1171, #1188, #1190 and #1141 stack on #1156. #1192 stacks on #1158.
-PR #1195 merges all nine child branches as the evidence candidate and is not for merging.
-#1197 stacks on #1195 and lands last, moved onto `dev` with its packet documents only, so it
-cannot carry #1172.
+### Merged on 2026-11-04
+
+Ten child and contract PRs and this ledger landed on `dev` with merge commits. #1172 is held
+until the `/api/v1` freeze is decided, PR #1195 was evidence only and closed unmerged, and #1197
+lands last with its documents only. Each head below is the head that merged.
+
+| PR | Merged head | Merge commit |
+| --- | --- | --- |
+| #1148 | `5c7830c5c` | `6428249ee` |
+| #1150 | `0918418c5` | `af7929bf0` |
+| #1155 | `5d0d24299` | `9a82575a3` |
+| #1156 | `4e69c7b52` | `b1274dc96` |
+| #1158 | `46e7279e9` | `c70498b20` |
+| #1141 | `b3bfe5112` | `c7f10d263` |
+| #1186 | `c06edd893` | `c20ab5ae2` |
+| #1192 | `5fcc53268` | `6a8ec7af6` |
+| #1171 | `57f1c327e` | `7042dbe4d` |
+| #1188 | `d61ae5e2d` | `8cbd32446` |
+| #1190 | `a91256980` | `455b94655` |
+
+Review coverage is not identical to these heads. The independent review, re-review and final
+check each read earlier heads. After the final check came merges of `dev`, including two
+conflict resolutions on the register text (#1171, #1192), wording fixes on #1158, #1186, #1192
+and #1141, and CodeRabbit's three wording fixes on #1190. CodeRabbit reviewed only some of
+these PRs before its free limit. Hosted `ci-dev-required` and, for code, `repository
+invariants` and `ops-floor` passed on each merged head. The candidate's integrated run is not
+evidence for this tree.
 
 | Ticket | PR | What exists | Limits that keep it open | Independent review |
 | --- | --- | --- | --- | --- |
