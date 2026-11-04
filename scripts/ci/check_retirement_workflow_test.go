@@ -31,7 +31,7 @@ func reporterRepairWorkflowContract(raw []byte) error {
 	if err := queueTrustedJob(j); err != nil {
 		return err
 	}
-	if err := queueTrustedSetup(j, 0, 1); err != nil {
+	if err := queueTrustedSetup(j, 0, 1, false); err != nil {
 		return err
 	}
 	if j.Concurrency.Group != "merge-queue-report-${{ matrix.target.run }}-${{ matrix.target.attempt }}" || j.Concurrency.Cancel.Value != "false" || j.Concurrency.Queue != "max" {

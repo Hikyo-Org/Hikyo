@@ -57,9 +57,10 @@ func (c *managedCertificate) tlsConfig() *tls.Config {
 
 // observeTo logs every observed negotiation at debug level. Together with
 // logConfigured it keeps two evidence classes apart (#1127): "configured" says
-// what the active listener is set to enforce; "observed" is a handshake this
-// process completed. Values come from closed vocabularies. Authentication is not
-// claimed here.
+// what the active listener is set to enforce; "observed" is a handshake that
+// reached verification in this process. VerifyConnection runs before the
+// handshake finishes, so it may still fail afterwards. Values come from closed
+// vocabularies. Authentication is not claimed here.
 func (c *managedCertificate) observeTo(log *slog.Logger) {
 	if c == nil || log == nil {
 		return

@@ -40,11 +40,15 @@
           }
         },
         "existingClaim": {
-          "type": "string"
+          "type": "string",
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$",
+          "maxLength": 253
         },
         "stateExistingClaim": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$",
+          "maxLength": 253
         },
         "evidence": {
           "type": "boolean"

@@ -514,3 +514,40 @@ it('keeps unrelated matrix projections stable when only a draft receipt changes'
     view.client.clear();
   }
 });
+
+it.each([
+  { name: 'after the first signals snapshot', signalsStatus: 200 },
+  { name: 'even when signals fail', signalsStatus: 500 },
+])('reads each environment\'s values once on a cold load, $name', async ({ signalsStatus }) => {
+  const paths: string[] = [];
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const path = new URL(url, 'http://localhost').pathname;
+    paths.push(path);
+    const failed = path.endsWith('/signals') && signalsStatus !== 200;
+    const response = new Response(
+      JSON.stringify(failed ? { error: { code: 'internal', message: 'failed' } } : matrixResponse(path)),
+      { status: failed ? signalsStatus : 200, headers: { 'Content-Type': 'application/json' } },
+    );
+    // Signals answer last: a values read already finished is what a refresh would repeat.
+    const delay = path.endsWith('/signals') ? 20 : 0;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(response), delay));
+  }));
+  const view = await renderForm(<MatrixRows />, {
+    client: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  });
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
+    await settleTasks();
+    for (const environmentId of [devId, prodId]) {
+      const environmentPath = `/api/v1/orgs/${ref.org}/projects/${ref.project}/environments/${environmentId}`;
+      expect(paths.filter((path) => path === `${environmentPath}/values`)).toHaveLength(1);
+      expect(paths.indexOf(`${environmentPath}/signals`)).toBeLessThan(paths.indexOf(`${environmentPath}/values`));
+    }
+  } finally {
+    await view.unmount();
+    view.client.clear();
+  }
+});

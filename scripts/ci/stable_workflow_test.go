@@ -56,18 +56,19 @@ func TestStableSigningAndPublicationStaySeparate(t *testing.T) {
 		if candidate.ID == "release-source" {
 			source = candidate
 		}
-		if candidate.With["name"] == "release-source-tests-${{ github.run_id }}-${{ github.run_attempt }}" {
+		if candidate.With["name"] == "release-source-proof-${{ github.run_id }}-${{ github.run_attempt }}" {
 			evidence = candidate
 		}
 	}
-	if source == nil || !strings.Contains(source.Run, "createdb -U hikyo hikyo_release_tests") ||
-		!strings.Contains(source.Run, "./scripts/release/test-source.sh") || strings.Contains(source.Run, "go test ./...") {
-		t.Fatal("release source must preserve its dedicated database and use complete prepared partitions")
+	if source == nil || !strings.Contains(source.Run, "./scripts/ci/source-proof") ||
+		!strings.Contains(source.Run, `--mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA"`) ||
+		strings.Contains(source.Run, "./scripts/release/test-source.sh") {
+		t.Fatal("release source must revalidate complete exact-source proof without another ordinary source test pass")
 	}
-	if evidence == nil || evidence.If != "${{ always() && steps.release-source.outcome != 'skipped' }}" ||
+	if evidence == nil || evidence.If != "steps.release-source.outcome == 'success'" ||
 		!strings.HasPrefix(evidence.Uses, "actions/upload-artifact@") || evidence.With["if-no-files-found"] != "error" ||
-		evidence.With["path"] != "${{ runner.temp }}/release-source-tests/" {
-		t.Fatal("release source inventories and group results must survive failed test runs")
+		evidence.With["path"] != "${{ runner.temp }}/release-source-proof.json" {
+		t.Fatal("successful release source proof must be retained as exact small evidence")
 	}
 	signer := build.Jobs["build-signed-draft"]
 	if signer.Permissions["id-token"] != "write" {

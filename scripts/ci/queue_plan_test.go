@@ -76,7 +76,7 @@ func newDocsQueueFixture(t *testing.T, paths []string) *docsQueueFixture {
 	f.metadata = map[string]any{
 		"number": 7, "state": "open", "labels": []any{},
 		"base": map[string]any{"ref": "main", "repo": map[string]any{"full_name": "Hikyo-Org/Hikyo"}},
-		"head": map[string]any{"sha": f.head, "repo": map[string]any{"id": 8}},
+		"head": map[string]any{"sha": f.head, "ref": "feature/docs", "repo": map[string]any{"id": 8}},
 		"user": map[string]any{"id": 10, "login": "contributor", "type": "User"},
 	}
 	f.write(t, "bin/gh", "#!/bin/sh\nset -eu\ntest \"$1\" = api\ntest \"$2\" = repos/Hikyo-Org/Hikyo/pulls/7\ncat \"$QUEUE_FIXTURE_METADATA\"\n")
@@ -98,7 +98,7 @@ func (f *docsQueueFixture) env(t *testing.T) []string {
 		"QUEUE_FIXTURE_METADATA="+filepath.Join(f.dir, "metadata.json"),
 		"BASE_SHA="+f.base, "SOURCE_REVISION="+f.candidate,
 		"GITHUB_REPOSITORY=Hikyo-Org/Hikyo", "GITHUB_REF=refs/heads/gh-readonly-queue/main/pr-7-"+f.base,
-		"EVENT_NAME=merge_group", "GITHUB_EVENT_NAME=merge_group", "FULL_CANDIDATE=false", "HEAD_SHA="+f.head,
+		"EVENT_NAME=merge_group", "GITHUB_EVENT_NAME=merge_group", "DEVELOPMENT=false", "HEAD_SHA="+f.head,
 		"RUNNER_TEMP="+filepath.Join(f.dir, "runner"), "GITHUB_OUTPUT="+filepath.Join(f.dir, "output"),
 		"GITHUB_STEP_SUMMARY="+filepath.Join(f.dir, "summary"), "DEFAULT_BRANCH=main",
 	)
@@ -111,6 +111,8 @@ func TestDocsQueuePlanFallsBackForEveryUncertainBoundary(t *testing.T) {
 		mutate     func(*docsQueueFixture)
 	}{
 		{name: "readme", mode: "docs", paths: []string{"README.md"}},
+		{name: "docs release promotion", mode: "full", paths: []string{"README.md"}, mutate: func(f *docsQueueFixture) { f.metadata["head"].(map[string]any)["ref"] = "release/1.2.3" }},
+		{name: "missing head branch", mode: "full", paths: []string{"README.md"}, mutate: func(f *docsQueueFixture) { delete(f.metadata["head"].(map[string]any), "ref") }},
 		{name: "image", mode: "docs", paths: []string{"docs/assets/sponsors/logo.png"}},
 		{name: "landing", mode: "docs", paths: []string{"docs/site/src/pages/index.astro"}},
 		{name: "deleted docs", mode: "docs", paths: []string{"delete:docs/old.md"}},

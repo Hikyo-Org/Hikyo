@@ -2893,7 +2893,7 @@
     "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
     "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
     "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
-    "internal/runtimeconfig/catalogue.go:Catalogue": "329607ee50051195686ae19e26db9a8725c443781a73dd0e184ef67c8600e01c",
+    "internal/runtimeconfig/catalogue.go:Catalogue": "5d06d181e02ec3b8a82c6c6d6506926a0f330063e0c891ee08b4f6bc105f3979",
     "internal/runtimeconfig/migrations.go:Migrations": "44ceade46c82864efa5237336ea18e6b4cdee7a1cc61227e607b2ecc62a6e78f",
     "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
     "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
