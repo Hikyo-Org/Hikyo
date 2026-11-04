@@ -55,3 +55,45 @@ func checkConfigurationProjection(ctx context.Context, keys configurationReader,
 	}
 	return ctx.Err()
 }
+
+// CheckSourceConfiguration runs check over the stored managed configuration of
+// a source that is healthy or frozen for backup. It is read-only: it takes the
+// migration lock, grants no admission, fences nothing, and uses the same
+// decryption and migration preview as the gate. It reports false, leaving the
+// caller on its environment seed, when the datastore has no upgrade ledger yet
+// (a legacy source predates managed configuration).
+func CheckSourceConfiguration(ctx context.Context, store upgrade.Config, root []byte, check ConfigurationCheck) (bool, error) {
+	if _, err := upgrade.InspectControl(ctx, store); errors.Is(err, upgrade.ErrAbsent) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	checked := false
+	err := upgrade.WithLock(ctx, store, func(session *upgrade.Session) error {
+		state, err := session.Read(ctx)
+		if err != nil {
+			return err
+		}
+		if state.Pending == nil {
+			return errors.New("source configuration is unavailable: no upgrade operation state")
+		}
+		switch state.Pending.Phase {
+		case upgrade.Healthy:
+			keys, err := session.HealthyKeys(ctx, state)
+			if err != nil {
+				return err
+			}
+			checked = true
+			return checkUpgradeableConfiguration(ctx, keys, root, check)
+		case upgrade.BackupPreparing:
+			keys, err := session.FrozenKeys(ctx, state)
+			if err != nil {
+				return err
+			}
+			checked = true
+			return checkUpgradeableConfiguration(ctx, keys, root, check)
+		}
+		return errors.New("source configuration is unavailable in the current upgrade phase")
+	})
+	return checked, err
+}

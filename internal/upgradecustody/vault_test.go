@@ -332,3 +332,83 @@ func TestRewrapMigratesPassphraseCustodyWithoutChangingIdentity(t *testing.T) {
 		t.Fatal("rewrapped custody lost its private mode", err)
 	}
 }
+
+// A vault holding a hybrid backup identity opens, exports to its hybrid public
+// recipient, restores with the escrowed identity, and survives a rewrap. The
+// vault still GENERATES X25519 only: there is no selection input at enrollment.
+func TestCustodyHoldsHybridIdentityThroughRewrapAndRecovery(t *testing.T) {
+	const passphrase = "correct horse battery staple"
+	dir, classical := testVault(t)
+	hybridIdentity, hybridRecipient, err := backup.GenerateHybridIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if classical.Recipient() == hybridRecipient {
+		t.Fatal("fixture vault already hybrid")
+	}
+	r, err := unseal(dir, []byte(passphrase), instance, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.clear()
+	r.Identity = []byte(hybridIdentity)
+	ciphertext, err := seal(r, []byte(passphrase))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ciphertext) > 16<<10 {
+		t.Fatalf("custody ciphertext is %d bytes, over the 16 KiB bound", len(ciphertext))
+	}
+	handle, err := custodyDirectory(dir, false, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if err := publish(handle, ciphertext, true); err != nil {
+		t.Fatal(err)
+	}
+
+	derived, err := RootKeySecret(r.RootKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rewrap(dir, []byte(passphrase), derived, instance, os.Geteuid()); err != nil {
+		t.Fatal(err)
+	}
+	v, err := open(dir, derived, instance, os.Geteuid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer v.Close()
+	if v.Recipient() != hybridRecipient || !strings.HasPrefix(v.Recipient(), "age1pq1") {
+		t.Fatal("vault did not publish the hybrid recipient of its escrowed identity")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, fileName))
+	if err != nil || bytes.Contains(raw, []byte(hybridIdentity)) {
+		t.Fatal("hybrid identity present in plaintext custody", err)
+	}
+
+	var archive bytes.Buffer
+	w, err := backup.Encrypt(&archive, backup.Options{Recipients: []string{v.Recipient()}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("operator archive")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var restored bytes.Buffer
+	if err := backup.ExtractTo(&restored, bytes.NewReader(archive.Bytes()), v.BackupUnlock()); err != nil || restored.String() != "operator archive" {
+		t.Fatalf("hybrid custody could not recover its own archive: %v", err)
+	}
+	// The retired X25519 identity does not open the hybrid archive.
+	if err := backup.ExtractTo(&restored, bytes.NewReader(archive.Bytes()), classical.BackupUnlock()); err == nil {
+		t.Fatal("the previous X25519 identity opened a hybrid archive")
+	}
+	fingerprint, err := v.BackupUnlock().UpgradeRecipientFingerprint()
+	if err != nil || !strings.HasPrefix(fingerprint, backup.FingerprintPrefixHybrid) {
+		t.Fatalf("held hybrid fingerprint = %q, %v", fingerprint, err)
+	}
+}
