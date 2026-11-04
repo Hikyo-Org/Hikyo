@@ -283,3 +283,27 @@ func TestVerdictWriteGraceIsBounded(t *testing.T) {
 		t.Fatal("an unbudgeted run was detached from its context")
 	}
 }
+
+func TestStuckVerdictWriteLeavesRoomForTheRefusal(t *testing.T) {
+	t.Setenv("GITHUB_RUN_ATTEMPT", "3")
+	f := newQueueFixture(t)
+	f.api.writeHook = func(ctx context.Context, w map[string]any) error {
+		if w["conclusion"] != "success" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(admissionWriteGrace + 2*time.Second):
+			t.Error("the write outlived its grace")
+			return errors.New("write ran past its deadline")
+		}
+	}
+	b := admissionBudget{Started: time.Now().Add(-45 * time.Second), Deadline: time.Now().Add(admissionReserve + 100*time.Millisecond)}
+	if err := f.q.executeTargeted(context.Background(), "pull_request_target", targetedFixtureEvent(f), b); err == nil {
+		t.Fatal("a stuck write passed")
+	}
+	if latest := newestQueueCheck(f.api.checks); latest == nil || latest.Conclusion != "failure" {
+		t.Fatalf("the refusal did not land: %+v", latest)
+	}
+}
