@@ -64,7 +64,7 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
   before any journal.
 - #1186: a malformed `trust.json` or a persisted strict floor refuses the controller.
 - #1141: importing, rotating or installing a classical issuer under an ML-DSA root is refused.
-- #1172, held: migration 00083 would move the rollback floor of every instance.
+- #1172, not merged: migration 00083 will move the rollback floor of every instance.
 
 ### Merged on 2026-11-04
 

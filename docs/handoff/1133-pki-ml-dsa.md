@@ -206,10 +206,10 @@ and aggregates. The owner may move any of them.
   is used by `VerifyCA` for installs; the `VerifyConnection` walk that refuses a real
   classical anchor exists only in tests, and no Hikyo hop enforces PQ authentication
   (pin-based clients are E-20). *Residual risk:* a strict hop negotiates the hybrid group
-  but accepts a classical or mixed chain. *Owner:* #1133, unless the owner moves it:
+  but accepts a classical or mixed chain. *Owner:* #1133, confirmed by the owner on 2026-11-04:
   `docs/handoff/1127-transport-policy.md` (line 184, "`VerifyConnection` ML-DSA
   authentication on strict-marked clients: #1133") and `profiles.md` line 160
-  ("#1127, #1133") place it there, and #1127's profile is group-only. Criterion 6 is
+  place it there, and #1127's profile is group-only. Criterion 6 is
   PARTIAL because of it.
 - **G4, platform-verifier and browser qualification.** *Limited claim:* the matrix covers
   Go 1.27.3 and OpenSSL 4.0.3 only; nothing is claimed for browsers, OpenSSH, Java, NSS,
