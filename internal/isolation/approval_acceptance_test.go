@@ -86,7 +86,7 @@ func approvalAcceptanceFixture(t *testing.T, db *store.DB, quorum int) (approval
 			t.Fatal(err)
 		}
 	}
-	if _, err := (&service.Grants{DB: db}).Create(ctx, service.LocalPrincipal(orgAdmin), service.GrantSpec{
+	if _, err := (&service.Grants{DB: db}).Create(ctx, service.LocalPrincipal(root), service.GrantSpec{
 		Target: bob, Capability: domain.CapPublish, Scope: domain.Scope{Org: orgA},
 	}); err != nil {
 		t.Fatal(err)

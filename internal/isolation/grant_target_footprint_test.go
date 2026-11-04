@@ -330,11 +330,15 @@ func runResetFootprint(resetOrg domain.OrgID) func(t *testing.T, db *store.DB) {
 		refused := func(what string, p domain.PrincipalID, want error) {
 			t.Helper()
 			mints := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'auth.authority_minted'`)
+			authorities := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities`)
 			if err := reset(p); !errors.Is(err, want) {
 				t.Fatalf("%s: %v, want %v", what, err, want)
 			}
 			if got := queryInt(t, db, `SELECT COUNT(*) FROM audit_instance_events WHERE type = 'auth.authority_minted'`); got != mints {
 				t.Fatalf("%s: a refused reset minted an authority", what)
+			}
+			if got := queryInt(t, db, `SELECT COUNT(*) FROM credential_authorities`); got != authorities {
+				t.Fatalf("%s: a refused reset persisted a credential authority", what)
 			}
 		}
 		// Multi-org and instance-capability targets are out of reach of an
