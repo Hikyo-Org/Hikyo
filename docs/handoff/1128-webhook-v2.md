@@ -135,7 +135,7 @@ unwrap), `go test -bench V2SealOpen`, three runs, loaded host. amd64 NOTRUN.
   stored value stays forged; a forged v1 write with a future v2 idempotency key makes the genuine
   delivery answer `already_applied` with no write, which the sender maps to success. The v2
   authenticity claim holds only for state written after v1 is retired and the shared store has been
-  inspected or reset; retirement does not repair existing entries. Operator step added to the guide
+  reset, then resynchronized; inspection is not enough because entries record no protocol version, and retirement does not repair existing entries. Operator step added to the guide
   and spec 11.8 step 6. No mechanism added. Owning tickets: #1128, #1135 (closure).
 - **R-1128-B (no rollback floor):** the registry is an operator file; an administrator can restore
   the v1 entry and retained targets resume classical delivery. DEC-11's floor does not exist for

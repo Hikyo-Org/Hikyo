@@ -55,7 +55,7 @@ point production traffic at the example.
   key can still write or prune the values a route owns through the protocol 1
   path, including values first delivered under protocol 2. The protocol 2
   authenticity claim holds only for state written after protocol 1 is retired
-  and the shared store has been inspected or reset (R-1128-A in the spec). The
+  and the shared store has been reset (R-1128-A in the spec). The
   actor also needs the namespace binding credential, which a future Ed25519
   forger reads from recorded protocol 1 traffic. Such an actor picks the
   revision and idempotency key: a forged very high revision makes a genuine
@@ -228,10 +228,14 @@ manual resync to re-deliver the same values (new generation, new keys).
 - **Retire protocol 1 on the receiver** (remove `identity_file`, the protocol 1
   `senders` and answer 404 on `/hikyo/v1/sync`) only after no sender uses it.
   That is a separate decision with its own record, and it is what ends new
-  classical writes (R-1128-A). Nothing here makes it. At retirement, inspect or
-  reset the receiver's shared applied-values and idempotency store: entries
-  written through protocol 1 while both versions were served are not repaired
-  by retirement, and a forged revision or idempotency key stays in force.
+  classical writes (R-1128-A). Nothing here makes it. At retirement, reset the
+  receiver's shared applied-values and idempotency store: entries written through
+  protocol 1 while both versions were served are not repaired by retirement, and
+  a forged revision or idempotency key stays in force. Inspection is not enough,
+  because entries record no protocol version and only an implausible revision
+  stands out. On the reference receiver, stop it (state is loaded at startup and
+  rewritten whole from memory), remove its `-state` file, restart it, then have
+  every sender redeliver, because the reset also drops genuine values.
 - Do not destroy the old identity while retained ciphertext still needs it.
 
 ## Troubleshooting

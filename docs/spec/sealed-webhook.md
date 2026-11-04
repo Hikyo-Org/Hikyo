@@ -452,10 +452,14 @@ Receiver first, as in the [migration policy](../security/pqc/migration.md):
    **Receiver rollback** is only to a build that reads version 2.
 6. Retire version 1 on the receiver (remove the X25519 identity and version 1
    pins) only after no sender uses it; that is a separate decision. At
-   retirement the receiver operator also inspects, or resets, the shared
-   applied-values and idempotency store: entries written through the version 1
-   path while both versions were served are not repaired by retirement
-   (R-1128-A).
+   retirement the receiver operator also resets the shared applied-values and
+   idempotency store and resynchronizes: entries written through the version 1
+   path while both versions were served are not repaired by retirement, and
+   entries record no protocol version, so inspection catches only an implausible
+   revision (R-1128-A). For the reference receiver: stop it, because state is
+   loaded at startup and rewritten whole from memory; remove its `-state` file;
+   restart; then have every sender redeliver, because the reset also drops
+   genuine values.
 7. Key rotation overlaps by pinning the new sender pair and giving the old pair
    a `not_after`; a pair is two keys and rotates as one. Changing the
    recipient or either acknowledgement key is a new generation (step 3).
@@ -490,7 +494,7 @@ already recorded are exposed to a recording adversary.
   The version 2 all-required rule does not protect values or keys a version 1
   path can also write. Claim limited: the authenticity claim for version 2
   delivery holds only for state written after version 1 is retired and the
-  shared store has been inspected or reset (step 6). Retiring version 1 stops
+  shared store has been reset (step 6). Retiring version 1 stops
   new classical writes; it does not repair the applied-values or idempotency
   entries already in the store, so those entries stay forged until the operator
   clears them. No mechanism is added for this and the idempotency store rules
