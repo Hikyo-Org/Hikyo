@@ -25,7 +25,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto/sealedhook"
 )
 
-// Config is the receiver's pinned trust material and tenant bindings.
+// Config is the receiver's pinned trust material and tenant bindings. A
+// receiver serves protocol version 1 when Identity is set and version 2 when
+// HybridIdentity is set; each version has its own identity, acknowledgement
+// signer and sender pins, so one version's keys never authorize the other. A
+// PQ-required receiver sets only the version 2 fields and answers 404 on the
+// version 1 path.
 type Config struct {
 	Identity   string
 	AckSigner  *sealedhook.Signer
@@ -36,7 +41,11 @@ type Config struct {
 	// Bindings maps a namespace to the binding credential the tenant set as
 	// its Hikyo adapter credential.
 	Bindings map[string]string
-	Now      func() time.Time
+	// Version 2 trust material.
+	HybridIdentity string
+	AckSignerV2    *sealedhook.SignerV2
+	SendersV2      []sealedhook.PinnedSenderV2
+	Now            func() time.Time
 	// AfterApply runs after a mutation is durably applied and before the
 	// acknowledgement is written. Tests use it to simulate a crash window.
 	AfterApply func(w http.ResponseWriter) bool
@@ -63,27 +72,48 @@ type State struct {
 
 // Receiver is an http.Handler serving sealedhook.SyncPath.
 type Receiver struct {
-	cfg    Config
-	opener *sealedhook.Opener
-	mu     sync.Mutex
-	state  State
+	cfg      Config
+	opener   *sealedhook.Opener
+	openerV2 *sealedhook.OpenerV2
+	mu       sync.Mutex
+	state    State
 	// Persist, when set, is called with the new state after every mutation.
 	Persist func(State) error
 }
 
 // New validates the configuration.
 func New(cfg Config) (*Receiver, error) {
-	opener, err := sealedhook.NewOpener(cfg.Identity, cfg.Senders)
-	if err != nil {
-		return nil, err
+	r := &Receiver{cfg: cfg, state: State{Values: map[string]map[string]Entry{}, Seen: map[string]outcome{}}}
+	if cfg.Identity == "" && cfg.HybridIdentity == "" {
+		return nil, errors.New("sealedreceiver: at least one of a version 1 or version 2 identity is required")
 	}
-	if cfg.AckSigner == nil || !sealedhook.ValidID(cfg.TargetID) || !sealedhook.ValidID(cfg.InstanceID) || cfg.Generation < 1 {
-		return nil, errors.New("sealedreceiver: ack key, target id, instance id, and generation are required")
+	if cfg.Identity != "" {
+		opener, err := sealedhook.NewOpener(cfg.Identity, cfg.Senders)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.AckSigner == nil {
+			return nil, errors.New("sealedreceiver: a version 1 acknowledgement key is required")
+		}
+		r.opener = opener
 	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
+	if cfg.HybridIdentity != "" {
+		opener, err := sealedhook.NewOpenerV2(cfg.HybridIdentity, cfg.SendersV2)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.AckSignerV2 == nil {
+			return nil, errors.New("sealedreceiver: a version 2 acknowledgement key pair is required")
+		}
+		r.openerV2 = opener
 	}
-	return &Receiver{cfg: cfg, opener: opener, state: State{Values: map[string]map[string]Entry{}, Seen: map[string]outcome{}}}, nil
+	if !sealedhook.ValidID(cfg.TargetID) || !sealedhook.ValidID(cfg.InstanceID) || cfg.Generation < 1 {
+		return nil, errors.New("sealedreceiver: target id, instance id, and generation are required")
+	}
+	if r.cfg.Now == nil {
+		r.cfg.Now = time.Now
+	}
+	return r, nil
 }
 
 // SetAfterApply installs the crash-window hook (tests only).
@@ -111,6 +141,18 @@ func (r *Receiver) Restore(s State) {
 		s.Seen = map[string]outcome{}
 	}
 	r.state = s
+}
+
+// State returns a copy of the durable state, for tests and for moving state to
+// a replacement receiver (a restart or a rotated configuration).
+func (r *Receiver) State() State {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := State{Values: make(map[string]map[string]Entry, len(r.state.Values)), Seen: maps.Clone(r.state.Seen)}
+	for ns, b := range r.state.Values {
+		out.Values[ns] = maps.Clone(b)
+	}
+	return out
 }
 
 // Seed installs a pre-existing, unowned value.
@@ -152,20 +194,41 @@ func (r *Receiver) bucket(namespace string) map[string]Entry {
 }
 
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodPost || req.URL.Path != sealedhook.SyncPath || req.URL.RawQuery != "" {
+	version := 0
+	switch {
+	case req.URL.Path == sealedhook.SyncPath && r.opener != nil:
+		version = 1
+	case req.URL.Path == sealedhook.SyncPathV2 && r.openerV2 != nil:
+		version = 2
+	}
+	if req.Method != http.MethodPost || version == 0 || req.URL.RawQuery != "" {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	if media, _, err := mime.ParseMediaType(req.Header.Get("Content-Type")); err != nil || media != sealedhook.ContentType {
+	wantType, ackType, limit := sealedhook.ContentType, sealedhook.AckContentType, int64(sealedhook.MaxEnvelope)
+	if version == 2 {
+		wantType, ackType, limit = sealedhook.ContentTypeV2, sealedhook.AckContentTypeV2, sealedhook.MaxEnvelopeV2
+	}
+	if media, _, err := mime.ParseMediaType(req.Header.Get("Content-Type")); err != nil || media != wantType {
 		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(req.Body, sealedhook.MaxEnvelope+1))
-	if err != nil || len(body) > sealedhook.MaxEnvelope {
+	// A declared length over the bound is refused before any read.
+	if req.ContentLength > limit {
 		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	opened, err := r.opener.Open(body, r.cfg.Now())
+	body, err := io.ReadAll(io.LimitReader(req.Body, limit+1))
+	if err != nil || int64(len(body)) > limit {
+		http.Error(w, "too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	var opened sealedhook.Opened
+	if version == 2 {
+		opened, err = r.openerV2.Open(body, r.cfg.Now())
+	} else {
+		opened, err = r.opener.Open(body, r.cfg.Now())
+	}
 	if err != nil {
 		// No acknowledgement: an unauthenticated or expired envelope earns
 		// nothing signed. The sender records the outcome as unknown.
@@ -185,12 +248,17 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if applied && after != nil && !after(w) {
 		return
 	}
-	ack, err := r.cfg.AckSigner.SignAck(opened.Digest, opened.Envelope.IdempotencyKey, status, reason)
+	var ack []byte
+	if version == 2 {
+		ack, err = r.cfg.AckSignerV2.SignAck(opened.Digest, opened.Envelope.IdempotencyKey, status, reason)
+	} else {
+		ack, err = r.cfg.AckSigner.SignAck(opened.Digest, opened.Envelope.IdempotencyKey, status, reason)
+	}
 	if err != nil {
 		http.Error(w, "ack", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", sealedhook.AckContentType)
+	w.Header().Set("Content-Type", ackType)
 	_, _ = w.Write(ack)
 }
 

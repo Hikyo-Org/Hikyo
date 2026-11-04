@@ -648,6 +648,16 @@ arbitrary URL. The instance administrator lists receivers in the file named by
    `confirmed_fingerprint` and restarts. A missing or different fingerprint
    refuses startup; a changed host, port, or key changes the fingerprint.
 
+**Protocol 2 (draft, not operative until its spec revision route is accepted and the
+implementation merges).** A target can opt in to a second protocol version that
+encrypts to an age hybrid X25519 plus ML-KEM-768 recipient and requires both an
+Ed25519 and an ML-DSA-65 signature on every request and acknowledgement.
+Upgrade the receiver first; a protocol 2 target never sends a protocol 1
+request after an error and leaves the effect unknown if the receiver cannot read
+it (an administrator can still restore the protocol 1 entry). The TLS
+hop to the receiver is not covered by the strict transport policy. See the
+[receiver migration guide](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/sealed-webhook-v2-migration.md).
+
 **Binding a project.** A project administrator creates the adapter with the
 activated origin, the receiver namespace as `--owner`, and a binding
 credential the receiver operator issued for that namespace:

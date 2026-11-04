@@ -20,13 +20,24 @@ func activateSealedWebhookEndpoints(cfg *config.SealedWebhookConfig) (sealedWebh
 	if err != nil {
 		return nil, fmt.Errorf("sealed webhook: %w", err)
 	}
+	var signerPQ *sealedhook.MLDSASigner
+	if len(cfg.SigningKeyMLDSA65PEM) > 0 {
+		if signerPQ, err = sealedhook.ParseMLDSASigningKeyPEM(cfg.SigningKeyMLDSA65PEM); err != nil {
+			return nil, fmt.Errorf("sealed webhook: %w", err)
+		}
+	}
 	out := make(sealedWebhookEndpoints, len(cfg.Targets))
 	for _, target := range cfg.Targets {
-		endpoint, err := sealedwebhook.NewEndpoint(sealedwebhook.EndpointConfig{
+		endpointConfig := sealedwebhook.EndpointConfig{
 			ID: target.ID, InstanceID: cfg.InstanceID, Origin: target.Origin, RecipientKey: target.RecipientKey,
 			AckKey: target.AckKey, Generation: target.Generation, Timeout: target.Timeout,
 			MaxResponseBytes: target.MaxResponseBytes, ConfirmedFingerprint: target.ConfirmedFingerprint, Signer: signer,
-		})
+			Protocol: target.Protocol, AckKeyMLDSA65: target.AckKeyMLDSA65,
+		}
+		if target.Protocol == 2 {
+			endpointConfig.SignerPQ = signerPQ
+		}
+		endpoint, err := sealedwebhook.NewEndpoint(endpointConfig)
 		if err != nil {
 			return nil, fmt.Errorf("sealed webhook: %w", err)
 		}
