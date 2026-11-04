@@ -95,7 +95,7 @@ X25519 identity: archives already written for it stay readable only with it.
    install: pass both, with
    `hikyo backup export --recipient <hybrid recipient> --out "$HIKYO_BACKUP_DIR"`.
    Without them it fails with "export needs at least one age recipient" or
-   "no destination: pass --out DIR or set HIKYO_BACKUP_DIR".
+   "no destination: pass --out DIR (the CLI does not read HIKYO_BACKUP_DIR)".
 5. Prove the effective policy changed and the archive restores. A CLI export
    with `--recipient` proves only that flag, not the policy, and it delays the
    next scheduled export by a full interval (24 hours by default), which cannot
