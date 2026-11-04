@@ -106,7 +106,7 @@ X25519 identity: archives already written for it stay readable only with it.
    identity, against an empty scratch target. An archive still written to the
    X25519 recipient fails the drill, which shows the stored policy has not
    changed. For an
-   upgrade, run `upgrade-export --recipient <hybrid recipient>` and the operator
+   upgrade, run `upgrade-export --out DIR --recipient <hybrid recipient>` and the operator
    `upgrade-drill` with the hybrid identity; the receipt is `backup-receipt/v2`
    and its fingerprint begins `age-hybrid-mlkem768x25519-sha256:`. Neither
    `backup export` nor a scheduled export writes a receipt; only upgrade exports

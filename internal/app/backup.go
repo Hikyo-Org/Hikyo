@@ -66,11 +66,11 @@ func BackupUsage(w io.Writer) {
   hikyo backup upgrade-export [--bundle DIR] --out DIR (--recipient AGE-RECIPIENT)... [--json]
   hikyo backup upgrade-drill --from ARCHIVE --receipt PATH --identity-file PATH
                       --root-key-file PATH (--target-sqlite PATH | --target-postgres-dsn-file PATH)
-                      [--principal ID] [--project ORG/PROJECT] [--bundle DIR] [--out DIR]
-                      [--cosign PATH] [--signing-key PATH] [--valid-for 24h]
+                      [--principal ID] [--project ORG/PROJECT] [--bundle DIR] --out DIR
+                      [--cosign PATH] --signing-key PATH [--valid-for 24h]
 
 For a development datastore, put --dev immediately after the group:
-  hikyo backup --dev export
+  hikyo backup --dev export --out DIR --recipient AGE-RECIPIENT
 The production trust domain remains the default.
 
 export writes ONE age-encrypted archive holding a consistent snapshot of the
