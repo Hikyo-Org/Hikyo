@@ -48,14 +48,18 @@ residual work.
 
 On 2026-11-04 the owner said "review them once more, and merge when green", then "as
 recommended" to the choices below. That instruction is the maintainer security approval for
-each PR that merges under it. #1150's earlier approval covers its text at `27a16c276`. The
-final merged state is recorded by the last PR in this stack.
+each PR's final head that is independently reviewed and green at merge, as PQ-13 requires. It
+covers no earlier or later head. #1150's earlier approval covers its text at `27a16c276`. The
+last PR in this stack records each merged head.
 
 New capabilities are opt-in, but these changes reach every upgraded instance:
 
-- #1156: runtimeconfig migration 6 writes a desired revision older binaries cannot read, so a
-  binary rollback means restoring the upgrade's backup. The owner accepted this for the next
-  nightly.
+- #1156: runtimeconfig migration 6 writes a new desired revision. From reading the source,
+  older binaries refuse it, so a binary rollback means restoring the upgrade's backup; no old
+  binary was run. The owner accepted this for the next nightly.
+- #1156: the CLI matches origins across equivalent spellings. A store holding `https://h` and
+  `https://h:443` at different pins is now refused, and deleting developer credentials also
+  removes those stored under equivalent spellings.
 - #1158: the reader rule applies to every restore, and upgrades read the stored backup policy
   before any journal.
 - #1186: a malformed `trust.json` or a persisted strict floor refuses the controller.
@@ -68,19 +72,19 @@ PR #1195 merges all nine child branches as the evidence candidate and is not for
 #1197 stacks on #1195 and lands last, moved onto `dev` with its packet documents only, so it
 cannot carry #1172.
 
-| Ticket | PR | Head | What exists | Limits that keep it open | Independent review |
-| --- | --- | --- | --- | --- | --- |
-| #1124 contract | #1150 | `771d15047` | Inventory, profiles, decisions, owner decided | Register premises need owner edits (packet C-01 to C-14) | 2026-11-04, at this head |
-| #1126 backups | #1158 | `9c01e77e7` | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | 2026-11-04, at this head |
-| #1127 transport | #1156 | `d3d662967` | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, at this head |
-| #1128 webhooks | #1188 | `d70889f82` | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; revision route HOLD | 2026-11-04, at this head |
-| #1129 Transit | #1172 | `afda0f96b` | `mldsa65` below the API | Held from merge by the owner until the v1 freeze is decided; public surface HOLD; restore-hold and takeover NOTRUN | 2026-11-04, at this head |
-| #1130 pairing | #1190 | `35e057451` | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 not yet effective | 2026-11-04, at this head |
-| #1131 rollout | #1186 | `5e7bbef32` | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, at this head |
-| #1132 release | #1192 | `07eb2a721` | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, at this head |
-| #1133 PKI | #1141 | `c904100cd` | ML-DSA lifecycle below the API, gated off in production | Public surface HOLD on the v1 freeze; G1 to G6 | 2026-11-04, at this head |
-| #1134 external | #1171 | `912b4f5c8` | 24-route register, local qualification | No route verified; strict-route refusal HOLD (#1183) | 2026-11-04, at this head |
-| #1135 qualification | #1197 | `500a1827f` | Packet, runbook marked not executable, integrated run | HOLD by construction: no real environment was authorized | 2026-11-04, at this head |
+| Ticket | PR | What exists | Limits that keep it open | Independent review |
+| --- | --- | --- | --- | --- |
+| #1124 contract | #1150 | Inventory, profiles, decisions, owner decided | Register premises need owner edits (packet C-01 to C-14) | 2026-11-04, repairs re-reviewed |
+| #1126 backups | #1158 | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | 2026-11-04, repairs re-reviewed |
+| #1127 transport | #1156 | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, repairs re-reviewed |
+| #1128 webhooks | #1188 | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; declared-amendment route accepted | 2026-11-04, repairs re-reviewed |
+| #1129 Transit | #1172 | `mldsa65` below the API | Held from merge by the owner until the v1 freeze is decided; public surface HOLD; restore-hold and takeover NOTRUN | 2026-11-04, repairs re-reviewed |
+| #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 not yet effective | 2026-11-04, repairs re-reviewed |
+| #1131 rollout | #1186 | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, repairs re-reviewed |
+| #1132 release | #1192 | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, repairs re-reviewed |
+| #1133 PKI | #1141 | ML-DSA lifecycle below the API, gated off in production | Public surface HOLD on the v1 freeze; G1 to G7 | 2026-11-04, repairs re-reviewed |
+| #1134 external | #1171 | 24-route register, local qualification | No route verified; strict-route refusal HOLD (#1183) | 2026-11-04, repairs re-reviewed |
+| #1135 qualification | #1197 | Packet, runbook marked not executable, integrated run | HOLD by construction: no real environment was authorized | 2026-11-04, repairs re-reviewed |
 
 The candidate `68b2673de` passed one integrated run on SQLite and PostgreSQL (11 top-level
 tests, 55 PASS lines, none skipped or failed), the focused packages, and hosted
@@ -93,7 +97,7 @@ Decided on 2026-11-04, as recommended:
 
 1. Merge to `dev` when green and accept publication in the next nightly, with rollback floors,
    except #1172, which is held until the `/api/v1` freeze is decided. This settles packet C-10's
-   ordering and rollback policy for this round.
+   rollback policy for this round.
 2. Stale-node fencing: strict is per process, recorded in DEC-10 and E-22. The fence stays #1127 work.
 3. `backup-receipt/v2`: the banner is extended, and the E-19 receipt requirement stays registered as unmet.
 4. The #1155 banners that were not the owner's exact text are labeled as not owner-locked.
@@ -108,7 +112,7 @@ Still open. None blocks merging what is listed above, and each blocks use or clo
 3. ML-DSA recovery key custody: no release signer until it is named (DEC-14).
 4. Per-route strict selection (#1183), and the F-nn decisions #1175, #1178 and #1179.
 5. DEC-17 budget thresholds, from the baselines each child recorded.
-6. #1126 profile selector and vault generation path, #1127 proxy-leg confirmation.
+6. #1126 profile selector and vault generation path, #1127 proxy-leg confirmation, and packet C-10's step 2 abort wording.
 7. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked condition, and whether #1133 keeps the `VerifyConnection` walk and platform verifiers.
 8. #1132's key-role shape, sidecar floor, shared banner wording, signing granularity and pin delivery. No signer can exist until these and custody are settled.
 9. #1130's options A to D, E-01 fields, DEC-13 wording and the narrowing text #1135 needs.
