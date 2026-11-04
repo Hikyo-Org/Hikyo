@@ -1,11 +1,13 @@
 # Private PKI with ML-DSA-65 issuers and leaves (#1133)
 
-Status: **mechanism implemented below the API, not operative, public surface on
-HOLD.** The [PKI ADR](../adr/pki.md) amendment becomes operative only when the
-#1133 implementation merges after its own maintainer security approval
-(**security approval: not given**). Nothing here authorizes creating a
-production root or activating trust anywhere. The [handoff](../handoff/1133-pki-ml-dsa.md)
-holds the evidence and the acceptance status.
+Status: **mechanism implemented below the API, public surface on HOLD.** The
+owner authorized the merge on 2026-11-04 and the [PKI ADR](../adr/pki.md)
+amendment is operative with it. `MLDSAEnabled` stays false in production, the
+locked relying-party matrix condition is unmet, and the five implementation
+choices in the ADR's second banner stay open for the owner. Nothing here
+authorizes creating a production root or activating trust anywhere. The
+[handoff](../handoff/1133-pki-ml-dsa.md) holds the evidence and the acceptance
+status.
 
 ## The HOLD you must know first
 
@@ -45,8 +47,11 @@ every check and is for evaluation only.
   says is the root; it cannot know that an operator-supplied root is the one the
   relying parties trust.
 - The reverse is refused too: an ECDSA or RSA intermediate cannot sit under an
-  ML-DSA root. An existing classical chain, including one behind a root outside
-  Hikyo's own key set, is unaffected.
+  ML-DSA root. A classical issuer under a classical root, including a root outside
+  Hikyo's own key set, is unaffected. This check does not depend on the
+  `MLDSAEnabled` gate: it runs on every create, install and import, so a classical
+  issuer under an ML-DSA root is refused even on an instance that has not enabled
+  ML-DSA.
 - A classical root over an ML-DSA intermediate is valid X.509 and would verify in
   a relying party, which is exactly why it is not accepted as a PQ-authenticated
   chain.

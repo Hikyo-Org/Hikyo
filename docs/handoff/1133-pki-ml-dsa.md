@@ -1,9 +1,20 @@
 # #1133: ML-DSA-65 private certificate lifecycle, handoff
 
-Status: **draft implementation of the mechanism. The public API, CLI and WebUI
-surface is HOLD on the owner's API-freeze decision. Not merge-ready, not
-operative.** It needs maintainer security approval before merge (**security
-approval: not given**). Owner and maintainer are one person, so independent
+Status: **implementation of the mechanism, below the API. The public API, CLI and
+WebUI surface is HOLD on the owner's API-freeze decision.** The owner authorized
+the merge to `dev` on 2026-11-04, accepted publication in the next nightly, and
+that instruction is the maintainer security approval for this PR. What merging
+means: `MLDSAEnabled` stays false in production, so the product creates, imports
+and rotates no ML-DSA key; the locked relying-party matrix condition is unmet
+(choice 4 below, criterion 9 PARTIAL); the five implementation choices below stay
+open and can still change; the open decisions listed under "Next authorized step"
+are undecided. **One behavior reaches production without the opt-in:** the
+chain-path check in `VerifyCA` (`internal/service/pki.go`, create-intermediate with
+`--parent`, install and import) does not consult the gate, so an operator who never
+enabled ML-DSA now gets a refusal ("the path mixes classical and post-quantum keys
+or signatures") when importing, rotating or installing a classical issuer under an
+ML-DSA root; before this change that was accepted. A classical chain under a
+classical root is unaffected. Owner and maintainer are one person, so independent
 adversarial review compensates; cross-provider review is SKIPPED by explicit
 owner instruction (2026-11-02) and is not CLEAN. Operator-facing text:
 [Private PKI with ML-DSA-65](../operations/pki-ml-dsa.md).
@@ -151,13 +162,13 @@ Legend: DONE, PARTIAL, HOLD (blocked by a decision outside the register), NOTRUN
 | Criterion | Status | Notes |
 | --- | --- | --- |
 | 1. Land the scoped PKI amendment | PARTIAL, pending owner confirmation | The locked-amendment banner on `pki.md` is the proposal word for word (script-checked) with the required sentence; a second banner holds the implementation's additions and five choices the owner has not confirmed (path and anchor rule, rotation rule, `sha256:` fingerprints as a DEC-07 (a) departure, unconditional ML-DSA leaves, mixed key and issuer combinations). The pointer in the migration ADR says the text is carried there and operative on merge. The proposal file is deleted |
-| 2. Issuer generation and import, protected PKCS#8 custody, evaluation root, intermediate CSR and install, activation, leaf issuance and renewal | DONE at service level on both engines; **HOLD through the API, CLI and WebUI** | `TestPKIMLDSALifecycle`: ML-DSA evaluation root, Hikyo-signed intermediate, offline-signed intermediate through CSR and `InstallIssuerCertificate`, import, CSR and generated-key leaves, renewal. Refusals through the service on both engines: wrong key, classical root over the PQ CSR, truncated chain, damaged anchor (with an intact-root control), ML-DSA-44 and -87, expanded PKCS#8 |
+| 2. Issuer generation and import, protected PKCS#8 custody, evaluation root, intermediate CSR and install, activation, leaf issuance and renewal | DONE at service level on both engines; **HOLD through the API, CLI and WebUI** | `TestPKIMLDSALifecycle`: ML-DSA evaluation root, Hikyo-signed intermediate, offline-signed intermediate through CSR and `InstallIssuerCertificate`, import, CSR and generated-key leaves, renewal. Refusals through the service on both engines: wrong key, classical root over the PQ CSR, truncated chain, damaged anchor (with an intact-root control), ML-DSA-44 and -87, and a seed-plus-expanded PKCS#8 built from the seed of a key that matches the certificate (refused as an unparseable private key; fails if the seed-only rule is lost, shown by a local mutation). The seed-only rule is `crypto/x509`'s PKCS#8 parser, which Hikyo calls; the expanded-only and short-seed forms are covered at parser level by `internal/pki` (`mldsa_test.go`), not through the service |
 | 3. Closed enums, constraints, generated types, clients, fingerprints, size limits | PARTIAL | DONE: service vocabulary, audit enum, schemas (no constraint exists), queries (raw strings), fingerprints (spelling unchanged, see DEC-07 above), **request** caps measured (12% and 9% of the cap). **Not covered: response and list sizes** (registered gap G1). **HOLD: OpenAPI enums, generated Go and TypeScript clients, CLI help, WebUI lists** (freeze) |
 | 4. Preserve managed policy, environment authorization, SAN/EKU/TTL/name rules, no export, display-once | DONE (service level) | Lifecycle test: reader refused, name outside profile refused, algorithm mismatch refused both ways, adding `mldsa65` to a classical profile is `domain.ErrConflict` (widening), generated key not in any row or audit payload, a later read returns no key. Existing classical suites unchanged. The gate-off limits G2 are the exception |
 | 5. Certificate and CRL validation, issuance, renewal, revocation, overlap and retirement, unsupported relying-party refusal; reject unknown or mismatched algorithms, invalid chains and CSRs, wrong keys, tampered signatures | DONE after the review repairs (P1, S2, S6) | Independent validation by `crypto/x509`, `crypto/mldsa` directly and OpenSSL 4.0.3. Tampered leaf, CRL, CSR and root self-signature, swapped CSR key, unrelated root, truncated chains, mixed chains all refused. Overlap: version 2 issues, version 1 keeps signing its CRL; retirement now runs: leaves expire, the old version retires, its key is destroyed and its last CRL stays readable. A real classical anchor is accepted by `crypto/x509` and refused only by a `VerifyConnection` walk (test harness) |
 | 6. Actual TLS with a Go client and server, chain and key exchange proved separately | PARTIAL: the Go client and server evidence is DONE for Go 1.27.3 only; the product `VerifyConnection` walk is not built (G3) | Mutual TLS on loopback with service-issued chains and `tlspolicy` strict. Group: `CurveID == X25519MLKEM768` on both ends. Authentication: client offered `MLDSA65`, ML-DSA-65 leaf keys, every certificate of both verified chains signed ML-DSA-65. The same chain over `X25519` works, a classical-group client is refused by a strict server. Refusals: a root that did not sign the path (UnknownAuthority only), a `VerifyConnection` walk against a classical chain and against a real classical anchor (test harness; no product hop performs it), and a client built with `GOFIPS140=v1.0.0`. Browsers, OpenSSH and other stacks: **not inferred, unqualified** |
-| 7. DEK rotation and re-encryption, concurrent issue/rotate/revoke, multi-node and restart, restore hold, reconciliation, prior-issuer CRL on both engines | PARTIAL | DONE on both engines: `rotate-dek --instance` plus `ReencryptInstance` re-seals the ML-DSA key (ciphertext changes, it still signs under the same identity), concurrent issue/rotate/revoke (at least one issuance must succeed; exactly one active version; every issued leaf verifies; PostgreSQL may exhaust serializable retries, accepted as a clean conflict), manual restore hold, release and CRL publication, retiring-issuer CRL. **NOTRUN, registered as G6:** a real process restart with ML-DSA state, `restore reconcile`, and a real archive restore with an ML-DSA issuer. Also NOTRUN: true multi-node takeover (single-process harness only) and instance-wide corruption refusal beyond the existing classical test |
-| 8. Reader-first deployment, CA trust distribution, classical compatibility, rollback, cross-signing only if approved | PARTIAL | Documented in the operations guide; classical compatibility tested (existing suites plus the classical path in the TLS test, a P-521 root chain). Cross-signing and hybrid chains are not offered (not approved). NOTRUN: an older Hikyo binary against a database holding an ML-DSA issuer; interrupted-activation rehearsal beyond "a refused install leaves the version pending" (tested) |
+| 7. DEK rotation and re-encryption, concurrent issue/rotate/revoke, multi-node and restart, restore hold, reconciliation, prior-issuer CRL on both engines | PARTIAL | DONE on both engines: `rotate-dek --instance` plus `ReencryptInstance` re-seals the ML-DSA key (ciphertext changes, it still signs under the same identity), manual restore hold, release and CRL publication, retiring-issuer CRL. **Concurrency, weaker claim:** a concurrent issue, rotate and revoke block runs and its invariants hold (at least one issuance succeeds, exactly one active version, every issued leaf verifies; PostgreSQL may exhaust serializable retries, accepted as a clean conflict), but it does **not** prove a race: rotate and revoke start only after the first issuance succeeded, conflict errors are tolerated, and no overlap is asserted. Overlap was seen in instrumented runs only. **NOTRUN, registered as G6 and G7:** a real process restart with ML-DSA state, `restore reconcile`, a real archive restore with an ML-DSA issuer, true multi-node takeover (single-process harness only) and instance-wide corruption refusal beyond the existing classical test |
+| 8. Reader-first deployment, CA trust distribution, classical compatibility, rollback, cross-signing only if approved | PARTIAL | Documented in the operations guide; classical compatibility tested (existing suites plus the classical path in the TLS test, a P-521 root chain). Cross-signing and hybrid chains are not offered (not approved). NOTRUN, registered as G7: an older Hikyo binary against a database holding an ML-DSA issuer; interrupted-activation rehearsal beyond "a refused install leaves the version pending" (tested) |
 | 9. Benchmarks, offline-root procedure, compatibility matrix with exact versions | PARTIAL | Benchmarks and the procedure are done (guide validated against the code and OpenSSL; amd64 not measured; thresholds are the owner's). The compatibility matrix covers Go and OpenSSL only; **platform verifiers and browsers are not qualified**; the owner is #1133 per `qualification.md` line 57 unless moved (G4) |
 | 10. Retain scope | DONE | No public CA, ACME, OCSP, HSM or KMIP, no production root activation, no SSH signature migration |
 
@@ -222,6 +233,18 @@ and aggregates. The owner may move any of them.
   an ML-DSA issuer could surface behavior (G2, a stale CRL, a held issuer) nobody has
   seen. *Owner:* #1133: `qualification.md` line 57 requires both-engine restore there;
   #1135 verifies. It is blocked on the freeze for (a) and (c) through the public path.
+- **G7, multi-node, corruption and downgrade rehearsals: NOTRUN.** *Limited claim:*
+  the evidence is a single-process harness over one database. Not exercised: (a) true
+  multi-node takeover with ML-DSA issuer state (criterion 7), (b) instance-wide
+  corruption refusal with an ML-DSA row, beyond the existing classical test
+  (criterion 7), (c) an older Hikyo binary reading a database that holds an ML-DSA
+  issuer (criterion 8), and (d) an interrupted activation beyond "a refused install
+  leaves the version pending" (criterion 8). *Residual risk:* an older binary or a
+  second node could mishandle an ML-DSA issuer row in a way nobody has seen; the guide
+  says an older build is unsupported once an ML-DSA issuer exists, which is a
+  statement, not a test. Production creates no such row while `MLDSAEnabled` is false.
+  *Owner:* #1133 (`qualification.md` line 57 requires multi-node and both-engine
+  evidence there); #1135 verifies; the owner may move it.
 
 ## Measured baseline (DEC-17)
 
@@ -287,12 +310,13 @@ environment, custody and a separate authorization; this ticket authorizes none.
 1. The owner decides the freeze question above. Then a follow-up lands the
    contract change, regenerates the clients, extends the CLI and WebUI lists and
    flips `MLDSAEnabled` in `internal/app/generation.go` (the one wiring point).
-2. Independent adversarial Standards and Spec review of this candidate, then
-   maintainer security approval, then merge only if the owner authorizes it.
-3. The owner confirms or moves the owners named in G1 to G6, in particular who
+2. Merge to `dev` is authorized (2026-11-04) once required CI and the independent
+   reviews are green; merge order is bottom-up in the stack. Merging does not
+   authorize release or deployment and does not close #1133.
+3. The owner confirms or moves the owners named in G1 to G7, in particular who
    qualifies platform verifiers and browsers for the PKI (G4); #1135 aggregates qualification and needs the thresholds from the owner's
    reading of the baseline. The owner also confirms or changes the five
-   implementation choices and decides G1 to G3 and G6.
+   implementation choices and decides G1 to G3, G6 and G7.
 
 ## Final checks
 
@@ -302,7 +326,7 @@ results read for it).
 
 | Check | Result |
 | --- | --- |
-| `TestPKIMLDSALifecycle` (now also truncated chain, damaged anchor with an intact-root control, expanded PKCS#8 through the service) and `TestPKICLISQLite`, `TestPKICLIPostgres` (import control with key, certificate and chain files), throwaway PostgreSQL 18 at the CI-pinned digest | PASS on SQLite and PostgreSQL |
+| `TestPKIMLDSALifecycle` (also truncated chain, damaged anchor with an intact-root control, seed-plus-expanded PKCS#8 through the service) and `TestPKICLISQLite`, `TestPKICLIPostgres` (import control with key, certificate and chain files), throwaway PostgreSQL 18 at the CI-pinned digest | PASS on SQLite and PostgreSQL in the previous review round. After the last repair (the seed-plus-expanded test): PASS on SQLite only, PostgreSQL not run (no Docker on the repair host, `HIKYO_TEST_POSTGRES_DSN` unset); the change is test-only and engine-independent |
 | `go test -count=1 ./internal/pki/` | PASS |
 | Earlier this round's consumer sweep (isolation, service, server, cli, store, audit, api), queued, both engines | PASS at `de7d8313f`; the changes since are tests and docs in `internal/isolation` and Markdown |
 | `internal/lint` | **Not run locally, by instruction.** The reviewer reports hosted `repository invariants` (including `internal/lint`) passed at `de7d8313f` (112.7 s) and at `53327d51e`. Hosted result for this head: in the PR body |

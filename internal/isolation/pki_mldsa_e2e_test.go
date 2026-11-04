@@ -255,17 +255,34 @@ func TestPKIMLDSALifecycle(t *testing.T) {
 		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-control", PrivateKeyPEM: pki.PrivateKeyPEM(leafCAPKCS8), CertificatePEM: pki.CertificatePEM(underOffline), ChainPEM: pki.CertificatePEM(offlineRootDER)}); err != nil {
 			t.Errorf("control: the same import under the intact root must succeed: %v", err)
 		}
-		expanded := append([]byte{0x04, 0x82, 0x0f, 0xc0}, make([]byte, 4032)...)
-		forged, err := asn1.Marshal(struct {
+		// Seed plus expanded, built from the seed of the key that matches importRootDER,
+		// so the only thing wrong with the import is the encoding: a parser that ignored
+		// the seed-only rule would take the seed and accept it. Zero-filled expanded bytes
+		// are never read by an accepting parser; a rejecting one refuses the form itself.
+		type pkcs8Info struct {
 			Version    int
 			Algorithm  pkix.AlgorithmIdentifier
 			PrivateKey []byte
-		}{0, pkix.AlgorithmIdentifier{Algorithm: asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 3, 18}}, expanded})
+		}
+		var matching pkcs8Info
+		if _, err := asn1.Unmarshal(pqKeyPKCS8, &matching); err != nil || len(matching.PrivateKey) != 34 {
+			t.Fatalf("matching key: %v (%d bytes)", err, len(matching.PrivateKey))
+		}
+		pair, err := asn1.Marshal(struct {
+			Seed     []byte
+			Expanded []byte
+		}{matching.PrivateKey[2:], make([]byte, 4032)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-expanded", PrivateKeyPEM: pki.PrivateKeyPEM(forged), CertificatePEM: pki.CertificatePEM(importRootDER)}); !errors.Is(err, domain.ErrInvalid) {
-			t.Errorf("expanded PKCS#8 import: %v", err)
+		matching.PrivateKey = pair
+		forged, err := asn1.Marshal(matching)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "import", Name: "pq-expanded", PrivateKeyPEM: pki.PrivateKeyPEM(forged), CertificatePEM: pki.CertificatePEM(importRootDER)})
+		if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "private key") {
+			t.Errorf("seed-plus-expanded PKCS#8 import must be refused as an unparseable private key: %v", err)
 		}
 		if n := count(`SELECT COUNT(*) FROM pki_issuers WHERE name IN ('pq-trunc','pq-damaged-anchor','pq-expanded')`); n != 0 {
 			t.Fatalf("refused imports left %d rows", n)
