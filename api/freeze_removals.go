@@ -67,6 +67,10 @@ func (c *freezeRemovalCheck) paths(paths *diff.PathsDiff) {
 				}
 			}
 			if method.CallbacksDiff != nil {
+				// oasdiff has no checker for callbacks removed as a whole.
+				for _, name := range method.CallbacksDiff.Deleted {
+					c.add("hikyo-callback-removed", operation, path, fmt.Sprintf("callback %q removed from the frozen API", name))
+				}
 				for _, callback := range method.CallbacksDiff.Modified {
 					c.paths(callback)
 				}

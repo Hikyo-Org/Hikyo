@@ -3,8 +3,10 @@
 ## Result and scope
 
 Follow up the oasdiff deferral in [PR #1109](https://github.com/Hikyo-Org/Hikyo/pull/1109).
-Upgrade oasdiff from v1.34.1 to v1.35.0 while preserving the additive-only
-policy in `docs/adr/api-cli-surface.md`. The authored API specification,
+Preserve the additive-only policy in `docs/adr/api-cli-surface.md` on oasdiff
+v1.35.0, which reached `dev` through
+[PR #1174](https://github.com/Hikyo-Org/Hikyo/pull/1174) without this gate change
+and left both past-sunset fixtures failing there. The authored API specification,
 allowlist, release policy and freeze-tag activation rules are unchanged.
 
 ## Why the gate needs its own removal check
@@ -16,10 +18,11 @@ recover a finding that the checker never emits.
 
 `api.CheckFreeze` now combines two independent sources of violations:
 
-1. Structural endpoint, parameter and property deletions produce Hikyo-owned
-   error IDs, without consulting deprecation or sunset metadata. Property
-   traversal covers request bodies, parameters, response bodies and headers,
-   including modified callbacks, nested/composed schemas and resolved references.
+1. Structural endpoint, callback, parameter and property deletions produce
+   Hikyo-owned error IDs, without consulting deprecation or sunset metadata.
+   Property traversal covers request bodies, parameters, response bodies and
+   headers, including modified callbacks, nested/composed schemas and resolved
+   references. oasdiff has no checker for a callback removed as a whole.
 2. Every upstream checker finding still passes through the existing addition
    allowlist. New upstream IDs remain forbidden until explicitly reviewed.
 
@@ -28,6 +31,10 @@ to refuse its deletions. Recursive/shared schemas and callbacks have bounded
 traversal. Violations have a total sort order for reproducible diagnostics.
 The structural check can report a removal alongside an upstream finding for
 the same edit. Both identify a forbidden change; neither suppresses the other.
+
+Known limit: oasdiff matches paths with template placeholders normalized, so two
+callback expressions differing only inside `{...}` count as the same endpoint.
+Removing one of them, or renaming the placeholder, is not reported.
 
 Before diffing, normalize inherited parameters into each operation with the
 upstream common-parameter helper, including callback paths. This operates only
@@ -43,8 +50,9 @@ failures: `a forbidden change passed the gate`. Keep those negative fixtures.
 The additional tests assert specific structural violation IDs and locations,
 including ordinary, deprecated, past/future-sunset and malformed-sunset property
 removals; inline, nested, array, composed and shared/recursive schemas;
-operation/inherited parameters; endpoints and callback properties. Positive
-cases preserve permitted additions and identical-document comparisons.
+operation/inherited parameters; endpoints, callback properties, whole callbacks
+and callback expressions. Positive cases preserve permitted additions, in every
+property context, and identical-document comparisons.
 
 Run from the repository root with its pinned Go toolchain:
 

@@ -128,7 +128,7 @@ func TestFreezeRemovalDiagnosticsAreStable(t *testing.T) {
 }
 
 func TestFreezeStillPermitsPropertyAdditions(t *testing.T) {
-	for _, context := range []string{"request", "response"} {
+	for _, context := range []string{"request", "response", "parameter", "parameter-content", "response-header"} {
 		for _, shape := range []string{"inline", "nested", "array", "allOf", "anyOf", "oneOf", "reference", "recursive-reference"} {
 			t.Run(context+"/"+shape, func(t *testing.T) {
 				base := freezeSchemaDocument(context, shape, `{"type":"object","properties":{"kept":{"type":"string"}}}`)
@@ -171,6 +171,44 @@ func TestFreezeRejectsPastSunsetCallbackPropertyRemoval(t *testing.T) {
 		return v.ID == "hikyo-property-removed" && v.Path == "{$request.query.url}"
 	}) {
 		t.Fatalf("missing callback property-removal violation: %v", violations)
+	}
+}
+
+func TestFreezeRejectsCallbackRemovals(t *testing.T) {
+	const responses = `"responses":{"200":{"description":"ok"}}`
+	const endpoint = `{"post":{` + responses + `}}`
+	document := func(callbacks string) []byte {
+		return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/api/v1/thing":{"post":{%s%s}}}}`, responses, callbacks))
+	}
+	for _, tc := range []struct{ name, base, revised, wantID, wantPath string }{
+		{
+			"whole-callback",
+			`,"callbacks":{"notice":{"{$request.query.url}":` + endpoint + `}}`, ``,
+			"hikyo-callback-removed", "/api/v1/thing",
+		},
+		{
+			"empty-callback",
+			`,"callbacks":{"notice":{}}`, ``,
+			"hikyo-callback-removed", "/api/v1/thing",
+		},
+		{
+			"callback-expression",
+			`,"callbacks":{"notice":{"{$request.query.url}/kept":` + endpoint + `,"{$request.query.url}/removed":` + endpoint + `}}`,
+			`,"callbacks":{"notice":{"{$request.query.url}/kept":` + endpoint + `}}`,
+			"hikyo-endpoint-removed", "{$request.query.url}/removed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			violations, err := api.CheckFreeze(document(tc.base), document(tc.revised))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(violations, func(v api.Violation) bool {
+				return v.ID == tc.wantID && v.Path == tc.wantPath && v.Operation == "POST" && v.Level == "ERR"
+			}) {
+				t.Fatalf("missing callback removal violation %q at %q: %v", tc.wantID, tc.wantPath, violations)
+			}
+		})
 	}
 }
 
