@@ -136,15 +136,13 @@ describe('advisory invalidation mapping', () => {
 });
 
 describe('recovery catch-up', () => {
-  it('refetches the whole matrix working set by project-wide prefix', () => {
+  it('refetches topology, signals and pending drafts by project-wide prefix', () => {
     expect(advisoryRecoveryInvalidations(ref)).toEqual([
       ['environments', ref.org, ref.project],
       ['matrix-keys', ref.org, ref.project],
       ['matrix-groups', ref.org, ref.project],
-      ['values', ref.org, ref.project],
       ['matrix-signals', ref.org, ref.project],
       ['matrix-pending', ref.org, ref.project],
-      ['environment-settings', ref.org, ref.project],
     ]);
   });
 });
@@ -189,8 +187,17 @@ describe('advisory liveness', () => {
 
 describe('fallback poll selector', () => {
   it('polls exactly while the stream is not healthy', () => {
-    expect(signalsPollInterval('healthy')).toBe(false);
-    expect(signalsPollInterval('connecting')).toBe(SIGNALS_FALLBACK_POLL_MS);
-    expect(signalsPollInterval('failed')).toBe(SIGNALS_FALLBACK_POLL_MS);
+    expect(signalsPollInterval('healthy', 3)).toBe(false);
+    expect(signalsPollInterval('connecting', 3)).toBe(SIGNALS_FALLBACK_POLL_MS);
+    expect(signalsPollInterval('failed', 3)).toBe(SIGNALS_FALLBACK_POLL_MS);
+  });
+
+  it('stays inside the 60 per minute source allowance at any project size', () => {
+    for (const environments of [1, 3, 10, 25, 100]) {
+      const interval = signalsPollInterval('failed', environments);
+      if (interval === false) throw new Error('an unhealthy stream must poll');
+      // Signals plus pending drafts, per environment, per poll.
+      expect(2 * environments * (60_000 / interval)).toBeLessThanOrEqual(20);
+    }
   });
 });

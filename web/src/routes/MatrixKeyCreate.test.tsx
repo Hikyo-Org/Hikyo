@@ -251,6 +251,266 @@ describe('MatrixKeyCreate', () => {
   });
 });
 
+/** A control resolved through its visible label text, as an assistive technology would. */
+function byLabelText(container: HTMLElement, text: string): Field {
+  const label = [...container.querySelectorAll('label')].find((candidate) => candidate.textContent === text);
+  const control = label === undefined ? null : container.ownerDocument.getElementById(label.htmlFor);
+  if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) {
+    throw new Error(`no control labelled ${text}`);
+  }
+  return control;
+}
+
+function buttonText(container: HTMLElement, text: string): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === text);
+}
+
+describe('MatrixKeyCreate JSON Schema', () => {
+  async function chooseJson(container: HTMLElement): Promise<void> {
+    await act(async () => set(byLabel(container, 'matrix-create-type'), 'json'));
+  }
+
+  it('infers a schema from the first value on click only, then submits it', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"host":"db","port":5432}'));
+
+    const schema = byLabelText(view.container, 'Schema document');
+    expect(schema.value).toBe('');
+    const infer = buttonText(view.container, 'Infer schema from this value');
+    if (infer === undefined) throw new Error('no infer button');
+    expect(infer.disabled).toBe(false);
+    await act(async () => infer.click());
+
+    const expected = JSON.stringify(
+      {
+        type: 'object',
+        properties: { host: { type: 'string' }, port: { type: 'integer' } },
+        required: ['host', 'port'],
+      },
+      null,
+      2,
+    );
+    expect(schema.value).toBe(expected);
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe(
+      'Schema filled in from this value. Field names are exported to Git; review it below.',
+    );
+    expect(buttonText(view.container, 'Replace schema from this value')).toBeDefined();
+    // The sample's values never reach the schema.
+    expect(schema.value).not.toContain('"db"');
+    expect(schema.value).not.toContain('5432');
+
+    await fillNameAndSubmit(view.container, 'DB');
+    const payload = view.onCreate.mock.calls[0]![0];
+    expect(payload.rule).toEqual({ type: 'json', jsonSchema: expected });
+    expect(payload.firstValue?.value).toBe('{"host":"db","port":5432}');
+    await view.unmount();
+  });
+
+  it('disables inference until the first value is valid JSON', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    const infer = buttonText(view.container, 'Infer schema from this value');
+    expect(infer?.disabled).toBe(true);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{oops'));
+    expect(infer?.disabled).toBe(true);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '[1]'));
+    expect(infer?.disabled).toBe(false);
+    await view.unmount();
+  });
+
+  it('disables inference for a secret key and says why', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+
+    expect(buttonText(view.container, 'Infer schema from this value')?.disabled).toBe(true);
+    expect(view.container.textContent).toContain(
+      'Schema inference is off for secret keys: field names would be exported to Git.',
+    );
+    expect(byLabelText(view.container, 'Schema document').value).toBe('');
+    await view.unmount();
+  });
+
+  it('removes an inferred schema when the key is then marked secret, keeping a hand-written one', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    expect(byLabelText(view.container, 'Schema document').value).toContain('AKIAEXAMPLE');
+
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    expect(byLabelText(view.container, 'Schema document').value).toBe('');
+    expect(view.container.textContent).toContain('The schema was removed');
+    await view.unmount();
+  });
+
+  it('keeps a schema rewritten by hand after inferring, once no sampled name is left in it', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    await act(async () => set(byLabelText(view.container, 'Schema document'), '{"type":"string"}'));
+
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    expect(byLabelText(view.container, 'Schema document').value).toBe('{"type":"string"}');
+    expect(view.container.textContent).not.toContain('The schema was removed');
+    await view.unmount();
+  });
+
+  it('leaves no sampled name behind a type flip and an identical Replace, once the key is secret', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'string'));
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '"x"'));
+    await act(async () => buttonText(view.container, 'Replace schema from this value')?.click());
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'object'));
+    expect(byLabelText(view.container, 'Schema document').value).not.toContain('AKIAEXAMPLE');
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(0);
+    await view.unmount();
+  });
+
+  it('sees through an escaped spelling of a sampled name', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    await act(async () =>
+      set(
+        byLabelText(view.container, 'Schema document'),
+        '{"type":"object","properties":{"\\u0041KIAEXAMPLE":{"type":"string"}}}',
+      ),
+    );
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    expect(byLabelText(view.container, 'Schema document').value).toBe('');
+    await view.unmount();
+  });
+
+  it('holds no refusal for rows the secret tick removed', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"a":1}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    await act(async () => buttonText(view.container, 'Remove')?.click());
+    await act(async () => buttonText(view.container, 'Add field')?.click());
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(0);
+    await fillNameAndSubmit(view.container, 'DB');
+    expect(view.onCreate).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('shows the secret reason, not an older note, once the key is secret', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), 'null'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    expect(view.container.textContent).toContain('A null value has no shape');
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    expect(view.container.textContent).not.toContain('A null value has no shape');
+    expect(view.container.textContent).toContain('Schema inference is off for secret keys');
+    await view.unmount();
+  });
+
+  it('removes inferred names on the secret tick even while the builder has them hidden', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"AKIAEXAMPLE":"x"}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    // Any JSON empties the text while the tree keeps the fields for flipping back.
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'any'));
+    expect(byLabelText(view.container, 'Schema document').value).toBe('');
+
+    await act(async () => checkboxNamed(view.container, 'secret').click());
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'object'));
+    expect(byLabelText(view.container, 'Schema document').value).not.toContain('AKIAEXAMPLE');
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(0);
+    await view.unmount();
+  });
+
+  it('does not lose a blank row silently when Replace infers identical text', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), '{"a":1}'));
+    await act(async () => buttonText(view.container, 'Infer schema from this value')?.click());
+    await act(async () => buttonText(view.container, 'Add field')?.click());
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(2);
+
+    await act(async () => buttonText(view.container, 'Replace schema from this value')?.click());
+    expect(view.container.querySelectorAll('.schema-builder__field')).toHaveLength(1);
+    await view.unmount();
+  });
+
+  it('keeps the current schema and explains when a null sample has no shape', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabelText(view.container, 'Schema document'), '{"type":"object"}'));
+    await act(async () => set(byLabel(view.container, 'matrix-create-value'), 'null'));
+    await act(async () => buttonText(view.container, 'Replace schema from this value')?.click());
+    expect(byLabelText(view.container, 'Schema document').value).toBe('{"type":"object"}');
+    expect(view.container.textContent).toContain('A null value has no shape');
+    await view.unmount();
+  });
+
+  it('blocks submit while a field has no name', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'object'));
+    await act(async () => buttonText(view.container, 'Add field')?.click());
+    // A new blank row is not a mistake yet; saving is what refuses it.
+    expect(view.container.textContent).not.toContain('Every field needs a name.');
+    await fillNameAndSubmit(view.container, 'DB');
+
+    expect(view.onCreate).not.toHaveBeenCalled();
+    expect(alertText(view.container)).toBe('Every field needs a name.');
+
+    await act(async () => set(byLabelText(view.container, 'Field name'), 'host'));
+    await act(async () => view.container.querySelector<HTMLButtonElement>('button[type="submit"]')?.click());
+    expect(view.onCreate).toHaveBeenCalledTimes(1);
+    expect(view.onCreate.mock.calls[0]![0].rule).toEqual({
+      type: 'json',
+      jsonSchema: JSON.stringify(
+        { type: 'object', properties: { host: { type: 'string' } }, required: ['host'] },
+        null,
+        2,
+      ),
+    });
+    await view.unmount();
+  });
+
+  it('submits the string rules set through the builder', async () => {
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabelText(view.container, 'Value is'), 'string'));
+    await act(async () => set(byLabelText(view.container, 'Min length'), '3'));
+    await act(async () => set(byLabelText(view.container, 'Pattern'), '^[a-z]+$'));
+
+    await fillNameAndSubmit(view.container, 'TOKEN');
+    expect(view.onCreate.mock.calls[0]![0].rule).toEqual({
+      type: 'json',
+      jsonSchema: JSON.stringify({ type: 'string', minLength: 3, pattern: '^[a-z]+$' }, null, 2),
+    });
+    await view.unmount();
+  });
+
+  it('submits a hand-written schema the builder cannot show byte-identical', async () => {
+    const handWritten = '{"type":"integer","minimum":1}';
+    const view = await render();
+    await chooseJson(view.container);
+    await act(async () => set(byLabelText(view.container, 'Schema document'), handWritten));
+    expect(view.container.textContent).toContain('the builder cannot show');
+    expect(buttonText(view.container, 'Add field')).toBeUndefined();
+
+    await fillNameAndSubmit(view.container, 'TOKEN');
+    expect(view.onCreate.mock.calls[0]![0].rule).toEqual({ type: 'json', jsonSchema: handWritten });
+    await view.unmount();
+  });
+});
+
 describe('editDistance / nearMissKeyName', () => {
   it('counts a transposition as one edit and ignores exact or distant names', () => {
     expect(editDistance('DATABASE_URL', 'DATABSE_URL')).toBe(1);

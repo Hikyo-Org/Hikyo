@@ -111,8 +111,8 @@ export function useRuleMutations(org: string) {
   const queries = useQueryClient();
   const settle = async (_result: void, failure: Error | null) => {
     try {
-      // The session owner invalidates all queries both before and after
-      // whoami. A concurrent third refetch can inherit a canceled retryer and
+      // The session owner marks all queries stale before whoami and refetches
+      // them after it. A concurrent third refetch can inherit a canceled retryer and
       // report uncertainty even when the authoritative listing succeeded.
       // Settle the owner first, then confirm this listing before enabling edits.
       try {

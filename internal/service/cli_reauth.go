@@ -233,6 +233,9 @@ func (s *Auth) StartCLIReauth(ctx context.Context, presented string, intent Reau
 	expires := now.Add(CLIReauthLifetime)
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := az.Authenticate(ctx, presented, now)
+		if err != nil && !credentialRefused(err) {
+			return fmt.Errorf("authenticate initiating CLI: %w", err)
+		}
 		if err != nil {
 			return captureCLIReauthFailure(ctx, az, "start", cliReauthAuditContext{HandoffID: id, Operation: operation, EnvironmentSet: intent.environmentSet}, "unauthenticated", fmt.Errorf("authenticate initiating CLI: %w", err))
 		}
@@ -396,6 +399,9 @@ func (s *Auth) ApproveCLIReauth(ctx context.Context, actor Actor, state string) 
 	var out CLIReauthApproval
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := az.Authenticate(ctx, actor.bearer, now)
+		if err != nil && !credentialRefused(err) {
+			return err
+		}
 		if err != nil {
 			return captureCLIReauthFailure(ctx, az, "approve", cliReauthAuditContext{}, "unauthenticated", err)
 		}
@@ -552,6 +558,9 @@ func (s *Auth) RedeemCLIReauth(ctx context.Context, code, pkceVerifier string) (
 			return captureCLIReauthFailure(ctx, az, "redeem", detail, "pkce_mismatch", ErrCLIReauthInvalid)
 		}
 		caller, err := az.AuthenticateSessionByID(ctx, h.SessionID, now)
+		if err != nil && !credentialRefused(err) {
+			return err
+		}
 		if err != nil || caller.Principal != h.PrincipalID || caller.Artifact != ArtifactCLI.String() {
 			return captureCLIReauthFailure(ctx, az, "redeem", detail, "unauthenticated", domain.ErrUnauthenticated)
 		}

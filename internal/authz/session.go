@@ -159,9 +159,10 @@ func AssuranceRank(a Assurance) int {
 //
 // Credential-liveness failures return domain.ErrUnauthenticated:
 // absent, malformed, unknown, expired, generation-superseded and
-// epoch-superseded artifacts are indistinguishable. Grammatical artifacts
-// first spend the transport's source allowance; its overload and datastore
-// faults propagate independently of credential liveness. On HTTP requests a live
+// epoch-superseded artifacts are indistinguishable while the source has
+// allowance. Grammatical artifacts first spend that allowance, unless this node
+// has proven that exact session live, which spends its request budget instead.
+// Overload and datastore faults propagate. On HTTP requests a live
 // identity is then admitted against the attached OpenAPI operation; an excluded
 // class returns the uniform domain.ErrNotFound and records the named refusal.
 func (a *TxAuthorizer) Authenticate(ctx context.Context, presented string, now time.Time) (Identity, error) {
@@ -216,7 +217,8 @@ func (a *TxAuthorizer) resolveSession(ctx context.Context, presented string, now
 	if !grammatical {
 		return Identity{}, domain.ErrUnauthenticated
 	}
-	if err := operation.AdmitPreauthentication(ctx); err != nil {
+	verifier := crypto.ArtifactVerifier(presented)
+	if err := operation.AdmitSessionPresentation(ctx, verifier); err != nil {
 		return Identity{}, err
 	}
 
@@ -226,11 +228,17 @@ func (a *TxAuthorizer) resolveSession(ctx context.Context, presented string, now
 	// two, and a generation-superseded one three — a query-count oracle for
 	// which artifacts exist and why they died. The predicates are evaluated
 	// after all three reads, together.
-	row, rowErr := a.r.SessionByVerifier(ctx, crypto.ArtifactVerifier(presented))
+	row, rowErr := a.r.SessionByVerifier(ctx, verifier)
 	if rowErr != nil && !errors.Is(rowErr, domain.ErrNotFound) {
 		return Identity{}, rowErr
 	}
-	return a.authenticateResolvedSession(ctx, row, rowErr, now)
+	id, err := a.authenticateResolvedSession(ctx, row, rowErr, now)
+	if err == nil {
+		operation.NoteSessionLive(ctx, verifier, id.SessionID)
+	} else if errors.Is(err, domain.ErrUnauthenticated) {
+		operation.ForgetSession(ctx, verifier)
+	}
+	return id, err
 }
 
 // AuthenticateCaller resolves every ordinary caller class — a human session,
