@@ -368,10 +368,7 @@ func TestPQBridgeNeedsTheFullRecoverySet(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted tampered bridge evidence")
 			}
-			if c.want == releasetrust.ErrPQScope {
-				return // the unchanged legacy catalog check refuses first
-			}
-			class(t, err, c.want)
+			class(t, err, c.want) // the unchanged catalog check refuses first, wrapped in the closed set
 		})
 	}
 }

@@ -2,6 +2,8 @@ package releasetrust_test
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -90,20 +92,49 @@ func BenchmarkPQVerifyArtifactSignature(b *testing.B) {
 	}
 }
 
-// TestPQSizesArePinned pins the frozen size facts the baseline cites. The
-// fixture's names and digests have fixed lengths, so these are exact.
+// TestPQSizesArePinned pins the size facts the baseline cites. Everything that
+// does not depend on an ECDSA signature is exact: an ML-DSA signature is always
+// 3,309 B and the fixture's names and digests have fixed lengths. An ECDSA P-256
+// ASN.1 signature is 8 to 72 B (observed mostly 70, sometimes 69), so the
+// recovery-role set varies with it; the test checks the whole DER range instead
+// of the values it happened to see.
 func TestPQSizesArePinned(t *testing.T) {
 	fx := testfixture.NewPQStableWorkflow(t)
 	for name, c := range map[string]struct{ got, want int }{
-		"release-role signature set":  {len(fx.ManifestSet), 4592},
-		"recovery-role signature set": {len(fx.Sets.KeysetSet), 4831},
-		"ML-DSA-65 public key PEM":    {len(fx.KeyFiles["recovery-mldsa-1.pub"]), 2726},
-		"P-256 public key PEM":        {len(fx.Pinned.RecoveryPublicKey), 178},
+		"release-role signature set": {len(fx.ManifestSet), 4592},
+		"ML-DSA-65 public key PEM":   {len(fx.KeyFiles["recovery-mldsa-1.pub"]), 2726},
+		"P-256 public key PEM":       {len(fx.Pinned.RecoveryPublicKey), 178},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s: %d bytes, want %d", name, c.got, c.want)
 		}
 	}
-	t.Logf("root v2 %d B; keyset %d B; metadata set %d B; policy set %d B; legacy metadata %d B; manifest %d B",
-		len(fx.RootV2), len(fx.Sets.Keyset), len(fx.Sets.MetadataSet), len(fx.Sets.StablePolicySet), len(fx.Material.Metadata), len(fx.Stable.Manifest))
+	var set releasetrust.PQSignatureSet
+	if err := json.Unmarshal(fx.Sets.KeysetSet, &set); err != nil {
+		t.Fatal(err)
+	}
+	var der int
+	for _, signature := range set.Signatures {
+		raw, err := base64.StdEncoding.DecodeString(signature.Signature)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch signature.Algorithm {
+		case releasetrust.AlgorithmMLDSA65:
+			if len(raw) != 3309 {
+				t.Errorf("ML-DSA-65 signature is %d bytes", len(raw))
+			}
+		case releasetrust.AlgorithmECDSAP256:
+			der = len(raw)
+		}
+	}
+	if der < 8 || der > 72 {
+		t.Fatalf("ECDSA DER signature of %d bytes is outside 8 to 72", der)
+	}
+	// 4,735 B is the recovery-role set without its ECDSA signature text.
+	if want := 4735 + 4*((der+2)/3); len(fx.Sets.KeysetSet) != want {
+		t.Errorf("recovery-role set is %d bytes, want %d for a %d-byte DER signature", len(fx.Sets.KeysetSet), want, der)
+	}
+	t.Logf("root v2 %d B; keyset %d B; recovery-role set %d B (ECDSA DER %d B); metadata set %d B; policy set %d B; legacy metadata %d B; manifest %d B",
+		len(fx.RootV2), len(fx.Sets.Keyset), len(fx.Sets.KeysetSet), der, len(fx.Sets.MetadataSet), len(fx.Sets.StablePolicySet), len(fx.Material.Metadata), len(fx.Stable.Manifest))
 }

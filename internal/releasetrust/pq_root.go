@@ -102,7 +102,10 @@ type PQReleaseKey struct {
 type verifiedKeyset struct {
 	sequence int64
 	digest   releaseidentity.Digest
-	keys     []verifiedReleaseKey
+	// pin is the pin the keyset verified under; later stages refuse a keyset
+	// object that belongs to another pin.
+	pin  releaseidentity.Digest
+	keys []verifiedReleaseKey
 }
 
 type verifiedReleaseKey struct {
@@ -140,7 +143,7 @@ func VerifyPQKeyset(pin PQPin, floor PQFloor, keysetRaw, setRaw []byte, keyFiles
 	if err := checkFloor(keyset.Sequence, digest, floor.KeysetSequence, floor.KeysetSHA256); err != nil {
 		return VerifiedPQKeyset{}, PQFloor{}, pqErr(ErrPQRollback, "keyset sequence")
 	}
-	state := &verifiedKeyset{sequence: keyset.Sequence, digest: digest}
+	state := &verifiedKeyset{sequence: keyset.Sequence, digest: digest, pin: pin.digest}
 	ids, names := map[string]bool{}, map[string]bool{}
 	for _, entry := range keyset.Keys {
 		if entry.Algorithm != AlgorithmMLDSA65 || entry.ID == "" || !validRootKey(RootKey{ID: entry.ID, PublicKey: entry.PublicKey, SHA256: entry.SHA256}) ||
@@ -167,8 +170,11 @@ func VerifyPQKeyset(pin PQPin, floor PQFloor, keysetRaw, setRaw []byte, keyFiles
 	return VerifiedPQKeyset{state: state}, next, nil
 }
 
-// releaseSet returns the single non-revoked release key covering sequence,
-// mirroring the v1 primary-key rule that exactly one key covers a release.
+// releaseSet returns the one release key covering sequence. Exactly one entry
+// may cover a sequence and it must not be revoked: a revoked entry still counts
+// toward coverage, so replacing a revoked key over the same range means removing
+// its entry (or closing its range before the sequence), not adding a second
+// entry beside it. This mirrors the v1 primary-key rule.
 func (k VerifiedPQKeyset) releaseSet(sequence int64) ([]pqRequired, error) {
 	if !k.Valid() {
 		return nil, pqErr(ErrPQScope, "unverified keyset")

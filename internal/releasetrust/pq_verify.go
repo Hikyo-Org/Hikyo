@@ -118,6 +118,9 @@ func EncodePQFloor(f PQFloor) ([]byte, error) {
 	if err := f.Validate(); err != nil {
 		return nil, err
 	}
+	if f.zero() {
+		return nil, pqErr(ErrPQMalformed, "an empty PQ floor is not persisted")
+	}
 	raw, err := json.Marshal(f)
 	return append(raw, '\n'), err
 }
@@ -142,7 +145,10 @@ func PQFloorPath(statePath string) string {
 	return filepath.Join(filepath.Dir(statePath), strings.TrimSuffix(filepath.Base(statePath), ".json")+"-pq.json")
 }
 
-// Advance refuses counter rollback and equivocation on every sequence.
+// Advance refuses counter rollback on every sequence and equivocation (the same
+// sequence with different bytes) for keyset, metadata and catalog. The release
+// stage stores a sequence and a pin but no digest, so release equivocation is not
+// detected (R-17).
 func (f PQFloor) Advance(next PQFloor) error {
 	if err := f.Validate(); err != nil {
 		return err
@@ -178,6 +184,15 @@ type PQSnapshotSets struct {
 	CatalogSet        []byte
 	StablePolicySet   []byte
 	NightlyPolicySet  []byte
+}
+
+// sameStablePolicy reports whether the material's stable policy is the one the
+// snapshot authenticated (and absent when the snapshot had none).
+func sameStablePolicy(state *snapshotState, material SnapshotMaterial) bool {
+	if state.workflowPolicy == nil {
+		return len(material.StablePolicy) == 0
+	}
+	return releaseidentity.Hash(material.StablePolicy) == state.stablePolicy
 }
 
 // linkedRecovery requires the PQ pin to extend exactly the v1 root and recovery
@@ -218,7 +233,12 @@ func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, s
 		return VerifiedPQKeyset{}, keysetFloor, err
 	}
 	state := snapshot.state
-	if releaseidentity.Hash(material.Metadata) != state.floor.MetadataSHA256 || releaseidentity.Hash(material.Catalog) != state.floor.CatalogSHA256 {
+	// Policy sets are valid across releases, so the only protection against a
+	// policy that the snapshot never authenticated is that this call receives the
+	// same material the snapshot was verified with.
+	if releaseidentity.Hash(material.Metadata) != state.floor.MetadataSHA256 || releaseidentity.Hash(material.Catalog) != state.floor.CatalogSHA256 ||
+		!sameStablePolicy(state, material) || (material.NightlyPolicy != nil) != state.nightlySeen ||
+		(state.nightlySeen && releaseidentity.Hash(material.NightlyPolicy) != state.nightlyPolicy) {
 		return refuse(pqErr(ErrPQScope, "PQ evidence differs from the authenticated snapshot"))
 	}
 	version := ""
@@ -259,7 +279,7 @@ func VerifyPQSnapshot(pin PQPin, snapshot Snapshot, material SnapshotMaterial, s
 			return refuse(err)
 		}
 	}
-	if material.NightlyPolicy != nil {
+	if state.nightlySeen {
 		// A nightly policy has no sequence of its own; its currency is the
 		// catalog's digest inventory, so the binding carries the constant 1.
 		binding := PQBinding{Kind: PQKindNightlyPolicy, Channel: string(releaseidentity.NightlyV1), Subject: "nightly-policy.json", Sequence: 1, Policy: state.legacyStablePolicy}
@@ -312,7 +332,7 @@ func VerifyPQRelease(pin PQPin, keyset VerifiedPQKeyset, snapshot Snapshot, rele
 	}
 	next := floor.withPin(pin)
 	next.ReleaseSequence, next.ReleasePin = int64(identity.Sequence), pin.digest
-	if next.KeysetSequence != keyset.state.sequence || next.KeysetSHA256 != keyset.state.digest {
+	if keyset.state.pin != pin.digest || next.KeysetPinSHA256 != pin.digest || next.KeysetSequence != keyset.state.sequence || next.KeysetSHA256 != keyset.state.digest {
 		return PQFloor{}, pqErr(ErrPQScope, "keyset differs from the persisted verification")
 	}
 	return next, floor.Advance(next)
@@ -322,8 +342,8 @@ func VerifyPQRelease(pin PQPin, keyset VerifiedPQKeyset, snapshot Snapshot, rele
 // digest the verified manifest lists, and the release signer must have signed
 // that digest under the artifact's name, version, channel, sequence and source.
 func VerifyPQArtifact(pin PQPin, keyset VerifiedPQKeyset, release VerifiedRelease, name string, reader io.Reader, setRaw []byte) error {
-	if !pin.Valid() || !release.Valid() {
-		return pqErr(ErrPQScope, "unverified release")
+	if !pin.Valid() || !release.Valid() || !keyset.Valid() || keyset.state.pin != pin.digest {
+		return pqErr(ErrPQScope, "unverified release or a keyset verified under another pin")
 	}
 	identity := release.Identity()
 	if identity.Profile != releaseidentity.StableV1 || release.state.signingKeyID != StableWorkflowSigner {
