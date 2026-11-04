@@ -53,7 +53,7 @@ contains no command; no PQ signing tool exists.
 | --- | --- |
 | A named non-production environment and a written resource-specific authorization | None exists. HOLD |
 | Maintainer security approval for each child being enabled, independent adversarial review of its final head, and the child merged | The owner's 2026-11-04 merge authorization is the security approval for each PR that merges under it; #1172 is held. It covers merging, not enabling a feature anywhere. Independent review of each final head is still required. HOLD for any enablement |
-| Owner decisions in the packet (freeze, DEC-17 thresholds, key custody, peers and expiry for exceptions, and the other open items listed in the packet's "Release and blocked") | Open. HOLD. Decided on 2026-11-04: `backup-receipt/v2` kept as built with the E-19 gap registered; the stale-node fence accepted as recorded limit E-22 (strict is per process; the fence stays #1127 work) |
+| Owner decisions in the packet (DEC-17 thresholds, key custody, peers and expiry for exceptions, and the other open items listed in the packet's "Release and blocked") | Open. HOLD. Decided on 2026-11-04: `backup-receipt/v2` kept as built with the E-19 gap registered; the stale-node fence accepted as recorded limit E-22 (strict is per process; the fence stays #1127 work); the `/api/v1` freeze, option A |
 | Every node, receiver and restore host runs a build that contains the readers (the release with these changes) | No such release exists. NOTRUN |
 | Frozen legacy fixtures pass on first-party nodes | Passed locally by children; NOTRUN on any real node |
 | Backup of the datastore taken and a restore drill passed before any floor-moving upgrade (migration 83 and runtimeconfig migration 6 are roll-forward; migration 83 is #1172, which is held) | NOTRUN |
@@ -171,10 +171,10 @@ rehearsal, every `kubectl` and `helm` step and the real cluster are **NOTRUN**.
 
 | Surface | Why there is no stage |
 | --- | --- |
-| Transit ML-DSA (#1129, PR #1172) | Held by the owner until the `/api/v1` freeze is decided; it does not merge, so migration 00083 and Transit ML-DSA are not in what merges. At the candidate the API, CLI and clients refuse `mldsa65` (v1 freeze) and migration 00083 moves the rollback floor for every upgrading instance |
-| Private PKI ML-DSA (#1133) | Same freeze; `MLDSAEnabled` is false in production wiring |
+| Transit ML-DSA (#1129, PR #1172) | Not merged. The owner decided the `/api/v1` freeze on 2026-11-04, and #1172 still needs its public surface and its own review, so migration 00083 and Transit ML-DSA are not in what merged. At the candidate the API, CLI and clients refuse `mldsa65` (v1 freeze) and migration 00083 moves the rollback floor for every upgrading instance |
+| Private PKI ML-DSA (#1133) | `MLDSAEnabled` is false in production wiring |
 | Release trust (#1132) | No signer, no root, no caller of the verifiers on any shipping path; custody of the ML-DSA recovery key is not named. See the [signing runbook](pqc-release-signing-runbook.md), also not executable |
-| Pairing (#1130) | HOLD; no PQ protocol |
+| Pairing (#1130) | HOLD; no PQ protocol. The classical pairing and revocation drill is NOTRUN |
 | External routes (#1134) | No selector reaches them; nothing to enable |
 
 ## Abort criteria (any one stops the stage)

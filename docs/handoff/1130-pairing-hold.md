@@ -25,7 +25,7 @@ Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`) until that merges.
 
 No standardized, maintained, reviewed post-quantum PAKE was found, so the PAKE half
 of #1130 stays on HOLD under DEC-13 (a) and E-01. **One DEC-13 premise has
-changed:** the register says `go-jose` lacks ML-DSA, but v4.1.8 (2026-11-02) adds
+changed:** the register said `go-jose` lacks ML-DSA (corrected in the DEC-13 row), but v4.1.8 (2026-11-02) adds
 it for Go 1.27 and RFC 9964 (May 2026) defines the JOSE identifiers. The proof
 signature is separable and no longer library-blocked, but ML-DSA-65 does not fit
 the code's closed bounds (JWK 2048, header 2048, proof 8192; measured 2655, 2698,
@@ -102,10 +102,11 @@ The owner said "All open points as recommended" on 2026-11-04. For #1130 that de
    [migration](../security/pqc/migration.md#exception-register), recorder case included.
    The exception is effective from that date.
 3. **DEC-13 wording.** The proposed wording is applied to the DEC-13 row in the
-   [register](../adr/post-quantum-migration.md#decision-register).
+   [register](../adr/post-quantum-migration.md#decision-register), with its last sentence
+   updated to say the narrowing is done.
 4. **#1135 narrowing.** The text below is accepted. The
    [qualification matrix](../security/pqc/qualification.md) pairing row and the
-   [packet](../security/pqc/qualification-packet.md) (C-08, "Still open") now say it.
+   [packet](../security/pqc/qualification-packet.md) (C-08) now say it. The pairing and revocation drill it requires is NOTRUN.
 
 ### Scope-narrowing text for #1135 (accepted 2026-11-04)
 
@@ -125,8 +126,7 @@ with #1130 as linked residual work. The text below makes that usable.
 > route for pairing and proof authority, recorded in the closure note.
 
 Left to the parent, not done in this change: removing #1130 from #1135's "Blocked by"
-list (or confirming that "narrowed with linked residual work" is the intended reading),
-and noting the same narrowing on #1123's pairing acceptance line. Issues are not edited
+list and noting the same narrowing on #1123's pairing acceptance line. Issues are not edited
 here.
 
 ## Beyond the ticket, and for the reviewer

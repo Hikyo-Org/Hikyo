@@ -16,7 +16,7 @@ approval" ([register](../../adr/post-quantum-migration.md#decision-register)).
 The owner gave that maintainer security approval on 2026-11-04 by authorizing this merge.
 On the same day the owner decided option A below (stay HOLD under E-01), accepted the
 E-01 fields in [E-01 as registered](#e-01-as-registered-and-the-accepted-row), and
-accepted the DEC-13 wording and the #1135 narrowing text in the
+accepted the DEC-13 wording (its last sentence since updated to say the narrowing is done) and the #1135 narrowing text in the
 [handoff](../../handoff/1130-pairing-hold.md). #1130 stays open as the tracked residual gap.
 
 Source read at `f5d549182` (PR #1156 head). The four named files, and
@@ -41,7 +41,7 @@ exists".
    independently analyzed by at least three different groups". Section 2 names
    long-lived passwords as the primary use case of its CPaceOQUAKE+ variant, and it calls one-time device pairing "a
    comparatively weak motivating example". DEC-13's PAKE blocker stands.
-2. **One DEC-13 premise has changed.** The register says "`go-jose` lacks ML-DSA".
+2. **One DEC-13 premise has changed.** The register said "`go-jose` lacks ML-DSA"; the row is now corrected.
    `go-jose` v4.1.8, published 2026-11-02T17:56:45Z (the day of the decision), adds
    ML-DSA behind `//go:build go1.27`, and RFC 9964 (Proposed Standard, 2026-05-20)
    defines the JOSE identifiers. Hikyo builds with Go 1.27.3 but pins `go-jose`

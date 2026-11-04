@@ -207,6 +207,6 @@ Acceptance criteria, in the issue's order:
 ## Next step
 
 The owner authorized merge to `dev` on 2026-11-04 when required checks and
-reviews are green, with publication in the next nightly accepted. Still open and
-not decided: the #1126 profile selector and the vault generation path, and the
+reviews are green, with publication in the next nightly accepted. The owner confirmed
+the profile selector and vault generation path as built on 2026-11-04. Still open: the
 E-19 provenance work. Release and deployment are not authorized by this PR.

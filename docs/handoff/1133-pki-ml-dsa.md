@@ -1,14 +1,15 @@
 # #1133: ML-DSA-65 private certificate lifecycle, handoff
 
 Status: **implementation of the mechanism, below the API. The public API, CLI and
-WebUI surface is HOLD on the owner's API-freeze decision.** The owner authorized
+WebUI surface stays refused: the owner decided the API freeze on 2026-11-04 and the service
+gate still holds.** The owner authorized
 the merge to `dev` on 2026-11-04, accepted publication in the next nightly, and
 that instruction is the maintainer security approval for this PR. What merging
 means: `MLDSAEnabled` stays false in production, so the product creates, imports
 and rotates no ML-DSA key; the locked relying-party matrix condition is unmet
-(choice 4 below, criterion 9 PARTIAL); the five implementation choices below stay
-open and can still change; the open decisions listed under "Next authorized step"
-are undecided. **One behavior reaches production without the opt-in:** the
+(choice 4 below, criterion 9 PARTIAL); the five implementation choices below are
+deferred by the owner until ML-DSA is enabled for PKI and can still change; the rest of
+"Next authorized step" says what stays open. **One behavior reaches production without the opt-in:** the
 chain-path checks (`VerifyCA` for import and install; `SignIntermediate` in
 `internal/pki/sign.go` for create-intermediate with `--parent`) do not consult the gate, so an operator who never
 enabled ML-DSA now gets a refusal when importing, rotating or installing a classical
@@ -308,16 +309,16 @@ environment, custody and a separate authorization; this ticket authorizes none.
 
 ## Next authorized step
 
-1. The owner decides the freeze question above. Then a follow-up lands the
-   contract change, regenerates the clients, extends the CLI and WebUI lists and
+1. The owner decided the freeze question above, and the contract change is its own
+   pull request. A follow-up, with its own authorization, extends the CLI and WebUI lists and
    flips `MLDSAEnabled` in `internal/app/generation.go` (the one wiring point).
 2. Merge to `dev` is authorized (2026-11-04) once required CI and the independent
    reviews are green; merge order is bottom-up in the stack. Merging does not
    authorize release or deployment and does not close #1133.
-3. The owner confirms or moves the owners named in G1 to G7, in particular who
-   qualifies platform verifiers and browsers for the PKI (G4); #1135 aggregates qualification and needs the thresholds from the owner's
-   reading of the baseline. The owner also confirms or changes the five
-   implementation choices and decides G1 to G3, G6 and G7.
+3. The owner confirmed on 2026-11-04 that #1133 keeps the `VerifyConnection` walk (G3) and
+   platform verifiers and browsers (G4), and can still move the other owners named in G1 to G7; #1135 aggregates qualification and needs the thresholds from the owner's
+   reading of the baseline. The five implementation choices are deferred until ML-DSA is
+   enabled for PKI, and G1, G2, G6 and G7 stay the owner's to decide.
 
 ## Final checks
 

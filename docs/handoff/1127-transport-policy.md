@@ -5,7 +5,7 @@ on 2026-11-04 once required checks and reviews are green. That instruction is th
 maintainer security approval for this PR (DEC-06 requires one per implementation
 PR), and publication in the next nightly is accepted. It does not authorize a
 release or deployment, and it does not decide the open items under Remaining work
-(the proxy leg, DEC-17 budgets and the rest stay open; the stale-node fence stays unbuilt
+(the owner confirmed the proxy leg as built on 2026-11-04; DEC-17 budgets and the rest stay open; the stale-node fence stays unbuilt
 #1127 work, as the owner accepted).
 Owner and maintainer are one person, so adversarial review compensates;
 cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN.

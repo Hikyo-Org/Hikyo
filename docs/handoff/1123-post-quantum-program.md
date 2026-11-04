@@ -69,7 +69,7 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
 ### Merged on 2026-11-04
 
 The 13 PRs in the table below landed on `dev` with merge commits. #1172 is held
-(the owner decided the `/api/v1` freeze on 2026-11-04, and #1172 follows the amendment),
+(the owner decided the `/api/v1` freeze on 2026-11-04, which ends that hold; #1172 still needs its public surface and its own review),
 PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
 followed with a test repair. Each head below is the head that merged.
 
@@ -128,7 +128,7 @@ Decided on 2026-11-04, as recommended:
 4. The #1155 banners that were not the owner's exact text are labeled as not owner-locked.
 5. Merge order is bottom-up.
 6. The non-ADR specs (#1188, #1186) use the declared-amendment banner.
-7. #1141, #1192 and #1190 merge as built, with their choices below still open.
+7. #1141, #1192 and #1190 merge as built, with their choices decided or deferred below.
 
 Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
 
@@ -139,7 +139,7 @@ Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
 Decided on 2026-11-04, when the owner said "All open points as recommended":
 
 11. #1130 pairing: option A, HOLD under E-01. The E-01 fields are accepted (expiry 2027-05-03, every
-    release to date, recorder case included) and the DEC-13 wording is applied. #1135 qualifies I20 at its
+    release to date, recorder case included) and the DEC-13 wording is applied, with its last sentence updated to say the narrowing is done. #1135 qualifies I20 at its
     classical profile only, and #1130 no longer blocks it. #1130 stays open as the tracked residual gap.
 12. #1183 (F-09): narrowed under DEC-06. Strict stays on the listener and owned clients, with no strict
     claim on any external route and no per-route selector.
@@ -152,15 +152,18 @@ Decided on 2026-11-04, when the owner said "All open points as recommended":
 16. The register's dispositions for F-01 to F-11 are accepted; their issues stay open as tracked work,
     except the four above.
 
-Still open. None blocks merging what is listed above, and each blocks use or closure. Each is deferred
-by the owner until the condition it names:
+Still open. None blocks merging what is listed above, and each blocks use or closure. Items 1 to 4 are
+deferred by the owner until the condition each names:
 
-1. ML-DSA recovery key custody (DEC-14), until a signer exists. No release signer until it is named.
+1. ML-DSA recovery key custody (DEC-14), until a signer exists. No release signer ships until it is named.
 2. DEC-17 budget thresholds, from the baselines each child recorded, until an amd64 baseline exists.
 3. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked
    condition, until ML-DSA is enabled for PKI.
 4. #1132's key roles, sidecar floor, shared banner wording and pin delivery, until a signer exists. No
-   signer can exist until these and custody are settled.
+   signer can ship until these and custody are settled.
+5. Not deferred, and listed in the packet's "Pending owner decisions": whether one key-id construction is
+   required across surfaces (C-01), the nightly PQ signer, peers, versions and expiry for E-02 to E-05, E-07
+   and E-13, whether to split E-18, owners for the #1133 G-items, and C-12 to C-14.
 
 ### Tickets and issues touched
 
