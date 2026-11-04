@@ -61,6 +61,11 @@ func Prepare(values map[string]string) (*Bundle, error) {
 	}
 	if len(policy.BackupRecipients) > 0 {
 		if err := (backup.Options{Recipients: policy.BackupRecipients}).Validate(); err != nil {
+			// A violated policy bound is named; a malformed key never echoes
+			// its value, so private material pasted by mistake stays out.
+			if backup.IsPolicyError(err) {
+				return nil, fmt.Errorf("HIKYO_BACKUP_RECIPIENTS: %w", err)
+			}
 			return nil, errors.New("HIKYO_BACKUP_RECIPIENTS contains an invalid public recipient")
 		}
 	}

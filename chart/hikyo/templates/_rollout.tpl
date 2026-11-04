@@ -23,6 +23,16 @@ namespace and rollout identity so equal release names can coexist. */}}
 {{- range $key := list "enrollmentID" "ownerInstanceID" "incarnation" "deploymentUID" "commandSecretUID" "responseSecretUID" "journalSecretUID" "leaseUID" "authorityPublicKey" "authorityExistingSecret" "authorityKey" -}}
 {{- if empty (index $.Values.rollout $key) -}}{{- fail (printf "rollout.%s is required for enrolled custody" $key) -}}{{- end -}}
 {{- end -}}
+{{- /* Helm --reuse-values may retain defaults from before rollout.authority existed. */ -}}
+{{- $authority := .Values.rollout.authority | default dict -}}
+{{- if gt (int64 $authority.generation) 0 -}}
+{{- if not (or (deepEqual $authority.required (list "ed25519" "mldsa65")) (deepEqual $authority.required (list "mldsa65"))) -}}{{- fail "rollout.authority.required must be exactly [ed25519, mldsa65] or [mldsa65]" -}}{{- end -}}
+{{- if ne (len $authority.keyIDs) (len $authority.required) -}}{{- fail "rollout.authority.keyIDs must list one key id per required algorithm, in the same order" -}}{{- end -}}
+{{- range $index, $id := $authority.keyIDs -}}
+{{- if not (hasPrefix (printf "%s-sha256:" (index $authority.required $index)) $id) -}}{{- fail "rollout.authority.keyIDs entry does not match its algorithm" -}}{{- end -}}
+{{- if not (regexMatch "^(ed25519|mldsa65)-sha256:[0-9a-f]{64}$" $id) -}}{{- fail "rollout.authority.keyIDs entries are <algorithm>-sha256:<64 lowercase hex>" -}}{{- end -}}
+{{- end -}}
+{{- else if or $authority.required $authority.keyIDs -}}{{- fail "rollout.authority.required and keyIDs need rollout.authority.generation above zero" -}}{{- end -}}
 {{- if .Values.rollout.upgradeSources -}}
 {{- range $alias := .Values.rollout.upgradeStateAliases -}}
 {{- $source := index $.Values.rollout.upgradeSources $alias -}}
@@ -64,7 +74,10 @@ namespace and rollout identity so equal release names can coexist. */}}
 {{- $name := include "hikyo.rollout.name" . -}}
 {{- $target := dict "namespace" .Release.Namespace "deployment" (include "hikyo.fullname" .) "deployment_uid" .Values.rollout.deploymentUID "container" "server" "stable_node_id" (printf "%s-server" (include "hikyo.fullname" .)) "config_secret" (printf "%s-config" $name) "rollback_secret" (printf "%s-rollback" $name) "request_secret" (printf "%s-plan" $name) "receipt_secret" (printf "%s-receipt" $name) "sources" .Values.rollout.fileSources "database_sources" .Values.rollout.databaseSources "root_sources" .Values.rollout.rootSources "upgrade_sources" .Values.rollout.upgradeSources "initial_upgrade_source" .Values.rollout.initialUpgradeSource -}}
 {{- if .Values.rollout.topologyNodeIDs -}}{{- $_ := set $target "topology_node_ids" .Values.rollout.topologyNodeIDs -}}{{- end -}}
-{{- dict "id" .Values.rollout.enrollmentID "owner_instance_id" .Values.rollout.ownerInstanceID "incarnation" .Values.rollout.incarnation "target" $target "command_secret" (printf "%s-command" $name) "command_secret_uid" .Values.rollout.commandSecretUID "response_secret" (printf "%s-response" $name) "response_secret_uid" .Values.rollout.responseSecretUID "journal_secret" (printf "%s-journal" $name) "journal_secret_uid" .Values.rollout.journalSecretUID "lease_name" $name "lease_uid" .Values.rollout.leaseUID "executor_pod" (printf "%s-0" $name) | toJson -}}
+{{- $enrollment := dict "id" .Values.rollout.enrollmentID "owner_instance_id" .Values.rollout.ownerInstanceID "incarnation" .Values.rollout.incarnation "target" $target "command_secret" (printf "%s-command" $name) "command_secret_uid" .Values.rollout.commandSecretUID "response_secret" (printf "%s-response" $name) "response_secret_uid" .Values.rollout.responseSecretUID "journal_secret" (printf "%s-journal" $name) "journal_secret_uid" .Values.rollout.journalSecretUID "lease_name" $name "lease_uid" .Values.rollout.leaseUID "executor_pod" (printf "%s-0" $name) -}}
+{{- $authority := .Values.rollout.authority | default dict -}}
+{{- if gt (int64 $authority.generation) 0 -}}{{- $_ := set $enrollment "authority" (dict "profile" "pqc-auth/1" "generation" (int64 $authority.generation) "required" $authority.required "key_ids" $authority.keyIDs) -}}{{- end -}}
+{{- $enrollment | toJson -}}
 {{- end -}}
 
 {{/* The initial enrolled alias describes startup exactly; it does not silently

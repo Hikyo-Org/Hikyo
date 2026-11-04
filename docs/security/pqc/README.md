@@ -21,6 +21,7 @@ implementation becomes operative when #1158 or #1156 merges, although those tick
 | [Inventory](inventory.md) | Source-pinned boundaries I01 to I32: purpose, custody, lifetime, writers, readers, recovery, provenance; census and bounds |
 | [Profiles](profiles.md) | Confidentiality and authenticity defined separately; strength, parameters, encodings, bounds, strict and compatibility profiles, composition |
 | [Migration](migration.md) | Reader-first ladder, keys and escrow, mixed paths, retirement, floor, recovery, dispositions, exception register |
+| [External compatibility](external-compatibility.md) | #1134 register: external routes, classification, owners, recheck triggers, allowed capability statement, strict-route HOLD |
 | [Qualification](qualification.md) | Requirement-to-test matrix, scope, estimates, critical path |
 | [Pairing feasibility](pairing-feasibility.md) | #1130: threat analysis, feasibility survey, separable blockers and owner options for pairing (HOLD) |
 | [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the owner's decisions), waiver and governance route, proposed amendment text |

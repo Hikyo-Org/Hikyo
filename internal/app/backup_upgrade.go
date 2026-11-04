@@ -59,7 +59,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	dir := fs.String("out", cfg.BackupDir, "public ciphertext and receipt destination")
 	jsonOutput := fs.Bool("json", false, "emit machine-readable ciphertext and receipt paths")
 	var recipients recipientList
-	fs.Var(&recipients, "recipient", "public age X25519 recipient; repeatable")
+	fs.Var(&recipients, "recipient", "public age recipient, X25519 or hybrid (age1pq1...); repeatable, all one class")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func runUpgradeDrill(ctx context.Context, args []string, out io.Writer, trust Tr
 	bundleDir := fs.String("bundle", trust.BundleDirectory, "verified offline release artifact directory")
 	source := fs.String("from", "", "exact encrypted upgrade archive")
 	receiptFile := fs.String("receipt", "", "public receipt for that archive")
-	identityFile := fs.String("identity-file", "", "operator-held age X25519 identity")
+	identityFile := fs.String("identity-file", "", "operator-held age identity file, X25519 or hybrid")
 	rootFile := fs.String("root-key-file", "", "separately escrowed source root key")
 	sqlitePath := fs.String("target-sqlite", "", "empty scratch SQLite path")
 	postgresFile := fs.String("target-postgres-dsn-file", "", "file selecting an empty scratch PostgreSQL database")

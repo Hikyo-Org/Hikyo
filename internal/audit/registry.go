@@ -3821,7 +3821,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:   map[Trail]bool{TrailTenant: true},
 		Schema: Schema{
 			"serial":          {Kind: KindString, Required: true},
-			"key_algorithm":   {Kind: KindString, Required: true, Enum: []string{"ecdsa-p256", "ecdsa-p384", "ed25519", "rsa-2048", "rsa-3072", "rsa-4096"}},
+			"key_algorithm":   {Kind: KindString, Required: true, Enum: []string{"ecdsa-p256", "ecdsa-p384", "ed25519", "rsa-2048", "rsa-3072", "rsa-4096", "mldsa65"}},
 			"principal_class": {Kind: KindString, Required: true},
 		},
 	},

@@ -124,9 +124,9 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [remote-instance-pairing](./remote-instance-pairing.md) (its record names #8 and #71 as reopened) | Cryptographic profile; Limits of the guarantee | DEC-13 |
 | [pki](./pki.md) (#154) | D2, D3, D5, D7, D9 | DEC-02, 03, 06, 08, 19 |
 | [signed-upgrade-compatibility](./signed-upgrade-compatibility.md) (#638, its lock record) | Release identity and trust; Backup and restore custody | DEC-03, 07, 11, 14, 15 |
-| [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14 |
-| [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14 |
-| [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14 |
+| [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14, 15 |
+| [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14, 15 |
+| [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14, 15 |
 | [api-cli-surface](./api-cli-surface.md) (#25; found while implementing #1127) | The closed trust-store and bundle field set, and the sticky-entry rule, from the #966 amendment | DEC-05, 06 |
 | [ops-spec](./ops-spec.md) (#32; recipient hygiene "exactly one age identity per retention class") | Listed because DEC-08 and DEC-12 touch recipients; no change proposed | DEC-08 |
 
@@ -163,30 +163,11 @@ Landed as the 2026-11-02 banner on [remote-instance-pairing](./remote-instance-p
 
 ### Private PKI
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** D5's closed key set
-> gains `mldsa65` for issuers and leaves only if the #1133 relying-party
-> matrix passes; adding an algorithm is widening and uses a new bound
-> profile. D2: issuer keys stay sealed seed-only PKCS#8. D3: a PQ chain needs an
-> offline PQ root (DEC-19); a classical root over an ML-DSA intermediate is not a
-> PQ-authenticated chain. D7: CRLs signed by the issuer algorithm. D9
-> (Surfaces): the closed API enum gains the algorithm; PEM and request caps are
-> OpenAPI and server constants outside the ADR and suffice at ML-DSA-65 sizes
-> [estimate].
+Carried word for word (checked against the proposal at `e5539c280`) as the locked-amendment banner on [pki](./pki.md), which is the only copy and is operative only when the #1133 implementation merges. What the implementation added is in a second banner there, not locked, with five choices awaiting the owner's confirmation.
 
 ### Signed upgrade compatibility and stable workflow signing
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** Trust documents
-> (root, metadata, catalog, stable policy, nightly policies, bridges) gain a
-> PQ-capable form valid only when the pinned required signature set verifies;
-> progression is sequence-only; a PQ authenticity claim is made only after a
-> persisted verification that required every algorithm. How PQ keys first reach
-> existing installs is unsolved and is a #1132 feasibility question: the claim
-> stays HOLD until #1132 closes or registers every binary-replacement path, and
-> the nightly track and image replacement have no PQ signer. Stable ML-DSA
-> signatures would come from a maintainer-held key at the local publish step,
-> not from keyless CI; keyless signing is unchanged and stays a classical
-> exception. Backup custody landed as the 2026-11-02 banner on that ADR's custody
-> section.
+Landed as the 2026-11-02 banners on [signed-upgrade-compatibility](./signed-upgrade-compatibility.md#release-identity-and-trust), [stable-workflow-signing](./stable-workflow-signing.md), [system-architecture](./system-architecture.md) and [oss-mechanics](./oss-mechanics.md), with the proposal text verbatim and operative only when #1132 merges. The proposal block as it stood is in this file at commit `4bad16b59`.
 
 ## Locked constraints preserved
 

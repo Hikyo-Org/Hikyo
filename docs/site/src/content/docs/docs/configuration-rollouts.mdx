@@ -32,7 +32,10 @@ Host, GitOps and multi-member HA bootstrap providers are not implemented.
    PKCS#8 PEM (`PRIVATE KEY`); its public encoding is X.509 PKIX PEM (`PUBLIC KEY`).
    Reference the private Secret through `rollout.authorityExistingSecret` and
    `rollout.authorityKey`, and put only the public PEM in
-   `rollout.authorityPublicKey`. Never reuse the Hikyo root key.
+   `rollout.authorityPublicKey`. Never reuse the Hikyo root key. An optional
+   strict profile adds an ML-DSA-65 key beside it through `rollout.authority`;
+   the default stays this single Ed25519 key. Enroll, rotate and retire it only
+   as described in the repository's `docs/operations/config-rollout-authority.md`.
 3. Record the actual Deployment, command/response/journal Secret and Lease UIDs.
    Fill `rollout.deploymentUID`, `commandSecretUID`, `responseSecretUID`,
    `journalSecretUID`, `leaseUID`, and the owner's admitted `ownerInstanceID`
