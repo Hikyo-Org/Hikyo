@@ -1,4 +1,4 @@
-# Target profiles, parameters and policy, draft v0.6
+# Target profiles, parameters and policy, draft v0.7
 
 Status: **owner decided and security approved, not operative**. The
 owner accepted the [register](../../adr/post-quantum-migration.md#decision-register) (`DEC-nn`) as
@@ -209,7 +209,7 @@ and moves only with peer evidence (exception E-08).
 | --- | --- |
 | Precedence | 1. Adopted managed configuration (changed through the MFA-bound plan and Apply, or by host-authority recovery selecting a published revision, which can select one below strict: E-21); 2. bootstrap file or environment before adoption; 3. default `compat`. `GODEBUG`, Go defaults and per-request flags never relax an adopted strict setting |
 | Downgrade rejection | Lowering strict is a managed change with durable redacted audit. Writers refuse classical output under strict; readers refuse objects below the persisted profile or format floor. Outside strict, frozen historical archives stay restorable (DEC-05); where strict is selected, receipt-or-quarantine applies to them like any other archive, so an archive without a receipt waits on the undesigned hold release (E-19) |
-| Stale nodes | A node whose active generation is below the desired one is fenced: it does not admit credentials or data on the strict surface (fails closed) and is reported as not enforcing. Losing only the claim while still serving is not enough |
+| Stale nodes | **Strict is per process (owner decision, 2026-11-04).** Stale-node fencing is not built and stays #1127 work. A node whose active generation is below the desired one keeps serving after strict is selected and is not reported as not enforcing, so an enforcement claim names the process and its generation, not the instance. Registered as E-22 |
 | Managed rollout | Policy joins the prepared and active application generation, as certificates do |
 | Exceptions | Each names a person owner (default Marc Went), exact peer and version, scope, claim limitation, expiry and recheck trigger. **Expiry: at most 180 days or the next trigger; at most two renewals, a third requires an ADR-recorded scope decision.** The cap is a recorded rule, not a control: the sole approver can waive it by a recorded decision, which no mechanism prevents. Mitigation is only the dated record and the adversarial review of renewals |
 | Evidence to claim enforcement | Effective policy (sanitized); the observed negotiated group or verified signature set on the real path; a negative test showing the classical-only peer or stripped signature refused before data; candidate commit and peer versions. Evidence classes are separate ([qualification](qualification.md#evidence-classes)) |

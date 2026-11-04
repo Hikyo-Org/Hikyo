@@ -35,10 +35,16 @@ func (a *API) observeRefusals(next http.Handler) http.Handler {
 			if status < 400 {
 				return
 			}
-			if sample, ok := audit.PendingRefusal(ctx); ok {
-				_ = a.Refusals.Record(ctx, sample)
-			}
+			a.recordPendingRefusal(ctx)
 		}
 		next.ServeHTTP(sw, r.WithContext(ctx))
 	})
+}
+
+// recordPendingRefusal also serves a refusal answered by redirect, which the status
+// gate in observeRefusals cannot see.
+func (a *API) recordPendingRefusal(ctx context.Context) {
+	if sample, ok := audit.PendingRefusal(ctx); ok {
+		_ = a.Refusals.Record(ctx, sample)
+	}
 }

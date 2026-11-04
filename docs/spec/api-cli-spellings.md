@@ -183,8 +183,8 @@ Restated in [domain-model.md](./domain-model.md) § Canonical key grammar, satis
 The verbs the Compose delivery ticket wires. Both families are **machine-only**:
 they accept a credential through `--token-file <path>` or `HIKYO_TOKEN` and
 nothing else, and never fall back to the stored human session (`--token` does
-not exist; the `--use-human-session` exception is not in this build and is a
-refusal). Target resolution is the standard per-dimension chain
+not exist; `run`'s `--use-human-session` exception is the one human path, and it
+discloses through `values export` rather than this route). Target resolution is the standard per-dimension chain
 (`--instance/--org/--project/--env`, then `HIKYO_*`, then `./.hikyo.json`, then
 `--context`) with `hikyo-compose.yaml` folded in **after** it: the config fills a
 dimension the chain left unresolved, and a disagreement with an already-resolved

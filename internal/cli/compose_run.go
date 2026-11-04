@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -197,7 +198,7 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 			if err != nil {
 				return err
 			}
-			if session.Origin != cfgOrigin {
+			if !sameOrigin(session.Origin, cfgOrigin) {
 				return failf(ExitUsage,
 					"instance %q resolves to origin %s but %s names %s; refusing rather than picking one",
 					session.Instance, session.Origin, composeConfigName, cfgOrigin)
@@ -216,45 +217,31 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 	if err != nil {
 		return err
 	}
-	org, env := resolved.Get(DimOrg), resolved.Get(DimEnv)
+	base, err := environmentBase(project, resolved, flags, "run --use-human-session")
+	if err != nil {
+		return err
+	}
+	env := resolved.Get(DimEnv)
 	if echo := resolved.Echo(); echo != "" {
 		fmt.Fprintf(ios.Stderr, "target: %s [origin %s, artifact human-session]\n", echo, session.Origin)
 	}
 
-	// (4) Bound reauth ceremony: a live disclosure window over the environment,
-	// opened inline (TOTP) where the environment's window allows it; a
-	// 0-window environment is refused with the browser path named. Required
-	// under --config-only too: the exception's four conditions are locked
-	// without a projection carve-out (api-cli-surface ADR).
-	if err := ensureRevealWindow(ctx, client, st, ios, &session, project, env,
-		// The unit is what the run will inject: the environment's secret keys
-		// for the full projection, its config keys under --config-only - the
-		// exception's "enumerated environment/key-set" named as the act is.
-		disclosure{purpose: "reveal", keys: func(ctx context.Context, env string) ([]string, error) {
-			class := apigen.KeyClassificationSecret
-			if configOnly {
-				class = apigen.KeyClassificationConfig
-			}
-			return keyIDsOf(ctx, client, project, env, class, nil)
-		}},
-		failf(ExitAuth, "a live disclosure window is required: run the reveal ceremony first")); err != nil {
+	// (3) Enumerated confirmation, from revision metadata: names cross here, and
+	// plaintext and disclosure records come only after the human has agreed.
+	var covered apigen.RevisionDetail
+	if err := client.Do(ctx, http.MethodGet, base+"/revisions/latest", nil, &covered); err != nil {
 		return err
 	}
-
-	resp, err := fetchDelivery(ctx, client, org, resolved.Get(DimProject), env, configOnly, nil, "")
-	if err != nil {
-		return err
-	}
-	if !configOnly {
-		if missing := unrevealedSecrets(resp.Keys); len(missing) > 0 {
-			return failf(ExitRefused, "hikyo run: cannot deliver secret(s) %s — %s",
-				strings.Join(missing, ", "), machineRevealOptIn)
+	var names []string
+	for _, key := range covered.Keys {
+		if !configOnly || !key.Sensitive {
+			names = append(names, key.Name)
 		}
 	}
-	fetched := deliveredValues(resp.Keys)
-
-	// (3) Enumerated confirmation on the controlling terminal.
-	names := slices.Sorted(maps.Keys(fetched))
+	slices.Sort(names)
+	if err := refuseLoaderControl(names, runLoaderControlAck(cfg)); err != nil {
+		return err
+	}
 	prompt := fmt.Sprintf("About to inject %d value(s) into environment %s and exec %q:\n  %s\nProceed",
 		len(names), env, childArgs[0], strings.Join(names, "\n  "))
 	ok, err := terminalSession.ConfirmEnumerated(prompt)
@@ -263,6 +250,72 @@ func runHumanSession(ctx context.Context, ios IO, st *State, flags commonFlags, 
 	}
 	if !ok {
 		return failf(ExitRefused, "hikyo run --use-human-session: declined at the confirmation")
+	}
+
+	// (4) Bound reauth ceremony: a live disclosure window over the environment,
+	// opened inline (TOTP) where the environment's window allows it, otherwise by
+	// the browser's ceremony over the secret keys the run injects, or the config
+	// keys under --config-only. Required under --config-only too: the exception's
+	// four conditions are locked without a projection carve-out (api-cli-surface ADR).
+	d := disclosure{purpose: "reveal", keys: func(ctx context.Context, env string) ([]string, error) {
+		if !configOnly {
+			return sensitiveKeyIDs(covered.Keys), nil
+		}
+		// A config-only export spends no single-decision window, so at a 0-second
+		// window the passkey ceremony would authorize nothing this run does.
+		var window apigen.RevealWindow
+		if err := client.Do(ctx, http.MethodGet, revealWindowPath(project, env), nil, &window); err != nil {
+			return nil, err
+		}
+		if window.EffectiveWindowSeconds <= 0 {
+			return nil, failf(ExitRefused, "hikyo run --use-human-session --config-only: environment %s takes a passkey ceremony per disclosure, and a config-only run has no disclosure to spend it on; run without --config-only, or use a machine credential", env)
+		}
+		var unit []string
+		for _, key := range covered.Keys {
+			if !key.Sensitive {
+				unit = append(unit, string(key.KeyId))
+			}
+		}
+		return unit, nil
+	}}
+	if err := ensureRevealWindow(ctx, client, st, ios, &session, project, env, d,
+		failf(ExitAuth, "a live disclosure window is required: run the reveal ceremony first")); err != nil {
+		return err
+	}
+
+	// delivery.fetch refuses human sessions at artifact admission, so this
+	// exception discloses through the human export verb. Pinning the confirmed
+	// revision keeps a publish during this run from disclosing unconfirmed keys:
+	// it makes this export historical, and secrets there need reveal-history.
+	reveal := !configOnly
+	var exported apigen.ExportedValues
+	if err := client.Do(ctx, http.MethodPost, base+"/values/export",
+		apigen.ExportValuesRequest{Reveal: &reveal, Revision: &covered.Revision}, &exported); err != nil {
+		// Only a refusal the server answered proves nothing was disclosed.
+		var refusal *Error
+		if asCLIError(err, &refusal) && (refusal.Code == ExitRefused || refusal.Code == ExitNotFound) {
+			var latest apigen.RevisionDetail
+			if client.Do(ctx, http.MethodGet, base+"/revisions/latest", nil, &latest) == nil && latest.Revision != covered.Revision {
+				return failf(ExitRefused, "hikyo run --use-human-session: environment %s was published to during this run; nothing was disclosed or injected, run it again (server: %v)", env, err)
+			}
+		}
+		return err
+	}
+	fetched := map[string]string{}
+	for _, item := range exported.Items {
+		if item.Value != nil {
+			fetched[item.Name] = *item.Value
+		}
+	}
+	// A key reclassified during this run can leave a confirmed name undelivered.
+	var missing []string
+	for _, name := range names {
+		if _, ok := fetched[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return failf(ExitRefused, "hikyo run: the server did not deliver confirmed key(s) %s; nothing was injected", strings.Join(missing, ", "))
 	}
 
 	merged, err := prepareRunEnvironment(fetched, runLoaderControlAck(cfg), allowOverride, childArgs)
@@ -302,9 +355,8 @@ func serveRunOffline(ios IO, cfg *compose.Config, stateDir string, binding crypt
 	}
 	// Loader-control BEFORE any disclosure record is written (finding 6): an
 	// unacknowledged loader-control key is refused even when serving stale.
-	if refused, _ := delivery.Unacknowledged(rowNames(payload.Rows), ack); len(refused) > 0 {
-		return nil, failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
-			strings.Join(refused, ", "))
+	if err := refuseLoaderControl(rowNames(payload.Rows), ack); err != nil {
+		return nil, err
 	}
 	stamp := payload.GenerationStamps[runGenerationKey]
 	if err := appendOfflineRecords(ios, stateDir, payload.Rows, binding, stamp); err != nil {
@@ -514,11 +566,20 @@ func runDeveloperOnline(ctx context.Context, ios IO, stack *composeStack, childA
 	return executeRunChild(ios, childArgs, merged)
 }
 
+// refuseLoaderControl refuses a key that can steer the child's loader unless the
+// config acknowledges it by name.
+func refuseLoaderControl(names, ack []string) error {
+	if refused, _ := delivery.Unacknowledged(names, ack); len(refused) > 0 {
+		return failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
+			strings.Join(refused, ", "))
+	}
+	return nil
+}
+
 // prepareRunEnvironment validates and merges values before any snapshot or child execution.
 func prepareRunEnvironment(fetched map[string]string, ack, allowOverride, childArgs []string) ([]string, error) {
-	if refused, _ := delivery.Unacknowledged(slices.Sorted(maps.Keys(fetched)), ack); len(refused) > 0 {
-		return nil, failf(ExitRefused, "hikyo run: refusing loader-control key(s) %s; acknowledge each by name in the config's `run.acknowledge_loader_control`",
-			strings.Join(refused, ", "))
+	if err := refuseLoaderControl(slices.Sorted(maps.Keys(fetched)), ack); err != nil {
+		return nil, err
 	}
 
 	// Merge: fetched wins; a differing collision is a hard error unless named in

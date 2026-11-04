@@ -1,15 +1,19 @@
 # #1127: post-quantum key-exchange policy on controlled hops, handoff
 
-Status: **draft implementation, core path only. Not merge-ready, not operative.**
-It needs maintainer security approval before merge (DEC-06 and the
-[register](../adr/post-quantum-migration.md#decision-register) require one per
-implementation PR). Owner and maintainer are one person, so adversarial review
-compensates; cross-provider review is SKIPPED by explicit owner instruction and
-is not CLEAN. Operator-facing text is in
-[transport policy](../operations/transport-policy.md).
+Status: **implementation, core path only.** The owner authorized merge to `dev`
+on 2026-11-04 once required checks and reviews are green. That instruction is the
+maintainer security approval for this PR (DEC-06 requires one per implementation
+PR), and publication in the next nightly is accepted. It does not authorize a
+release or deployment, and it does not decide the open items under Remaining work
+(the proxy leg, DEC-17 budgets and the rest stay open; the stale-node fence stays unbuilt
+#1127 work, as the owner accepted).
+Owner and maintainer are one person, so adversarial review compensates;
+cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN.
+Operator-facing text is in [transport policy](../operations/transport-policy.md).
 
-Stacked on the ADR amendment branch (base `26f112bde5b92acb1157be969683b8ca00ae15ae`).
-Refs [#1127](https://github.com/Hikyo-Org/Hikyo/issues/1127); the PR does not close it.
+Stacked on the ADR amendment PR #1155, which merges first. No base or head SHA is
+pinned here. Refs
+[#1127](https://github.com/Hikyo-Org/Hikyo/issues/1127); the PR does not close it.
 
 ## Scope of the claim
 
@@ -42,7 +46,7 @@ revision (E-21) is registered, not redesigned.
 | Criterion | Status | Notes |
 | --- | --- | --- |
 | Map hops and terminators; unexamined stays UNKNOWN | PARTIAL | Matrix below. Go-owned configs verified against current source (`MinVersion` search, unchanged since the draft map). SDK paths, browsers, TS client UNKNOWN |
-| Stale-node fencing on the strict surface (DEC-10) | HOLD | Not built, by decision of this round; the owner decides. Strict is a per-process property: a stale node keeps admitting credentials at its old profile and no fleet-wide claim can be made (see operations doc) |
+| Stale-node fencing on the strict surface (DEC-10) | HOLD | Not built. The owner accepted this as a recorded limit on 2026-11-04: #1155 amends DEC-10 so strict is per-process and registers E-22; the fence stays #1127 work. Strict is a per-process property: a stale node keeps admitting credentials at its old profile and no fleet-wide claim can be made (see operations doc) |
 | Policy through the approved configuration path, validated default, upgrade compatibility, managed semantics, restart/reload | PASS for the listener | Default `compat`, migration 6 explicit, Apply closes old connections. Client selection is PARTIAL (see remaining work) |
 | Strict requires approved version and group; incompatible peers fail before credentials; certificate/hostname/trust intact; tickets and resumption reviewed | PASS for listener, CLI, operator client | Real handshakes; server-side non-delivery checked |
 | Sanitized negotiation evidence, three classes separate, no proxy inference | PARTIAL | Logs and CLI line. No metric (ops-spec registry is pinned and locked; needs its own amendment). Operator client and CLI-less clients have no evidence line |
@@ -67,7 +71,7 @@ Commands are run from the repository root; `go test` uses `-p 2`.
 | `go test -p 2 -count=1 ./internal/store/upgrade/ ./internal/store/migrate/` with a throwaway PostgreSQL 18 container (`HIKYO_TEST_POSTGRES_DSN`), then the same on SQLite only | PASS on both engines, including the new `old-tls-profile-catalogue` and `existing-strict-profile` migration scenarios; the container was removed |
 | `go test -p 2 -count=1 ./internal/service/ -run 'SelfConfig\|Seed\|Managed\|Config'` | PASS (subset, not the full package) |
 | `go test -p 2 -run '^$' -bench Handshake -benchtime 200x ./internal/tlspolicy/` | LOCAL numbers, Apple M2 Pro, arm64 darwin, in-memory pipe, P-256 test chain: compat 452 us, 873 allocs, 3799 handshake bytes; strict 446 us, 865 allocs, 3723 bytes. Go's default already offers the hybrid group, so strict's byte cost equals compat's on this toolchain. Not a target measurement, no budget |
-| `FAST_FEEDBACK_BASE=<stack base> scripts/ci/fast-feedback.sh --working-tree` (pinned Node 26.12.1) | PASS: diff check, Go formatting, test compile of nine packages, docs content check. Hosted CI NOT RUN |
+| `FAST_FEEDBACK_BASE=<stack base> scripts/ci/fast-feedback.sh --working-tree` (pinned Node 26.12.1) | PASS: diff check, Go formatting, test compile of nine packages, docs content check. Hosted CI is run by the PR, not by this table |
 | `scripts/ci/check-go-imports.sh` | PASS |
 
 Queue note: `agent-heavy run` lost its daemon socket (`i/o timeout`) four times
@@ -172,7 +176,7 @@ source. A proxy or database terminator outside the process is outside any claim.
 
 ## Remaining work
 
-- Land the api-cli-surface declared amendment for `tls_profile` (draft PR #1155); it becomes operative only when this implementation merges.
+- The api-cli-surface declared amendment for `tls_profile` landed in #1155 and becomes operative when this implementation merges.
 - **Stale-node fencing: not built.** A node below the desired generation keeps
   serving its old profile and is only reported as `pending`. Managed
   certificates behave the same way today. A node-side loop that makes the strict
@@ -214,15 +218,37 @@ source. A proxy or database terminator outside the process is outside any claim.
   needs no profile line yet.
 - **api-cli-surface amendment (not edited here).** `tls_profile` extends the
   owner-locked #966 amendment's closed bundle field set (clause 5) and its
-  sticky-entry rule (clause 4). The declared amendment is in draft PR #1155 (head
-  `e5539c280`, the base of this PR) and is operative only when this
-  implementation merges. It is listed under Remaining work.
+  sticky-entry rule (clause 4). The declared amendment is in #1155 (the
+  base of this PR) and is operative only when this implementation merges. It is listed under Remaining work.
 - **Migration 6 was not exercised end to end.** It ran only through
   `MigrateConfiguration` scenarios on SQLite and PostgreSQL (the `store/upgrade`
   tests). The upgrade gate never ran it with two real release identities: both dev
   binaries share one identity, and a new binary refusing a base database with
   "catalogue has changed" is a dev-build artifact observed by the reviewer, not
   something these tests cover. NOTRUN.
+
+## Later repair rounds
+
+The first repair round (`ec3a9dfc9`) is the section above. `claude-opus-5-5`
+reviewed `c02a6b2a3`, `ec3a9dfc9` and `11dddadca`; `266436c47` and `f5d549182`
+had no independent review before the pre-merge round.
+
+- **`11dddadca` (second round).** Equivalent origin spellings (default port,
+  trailing dot) share the profile rules in `Put` and origin lookup; a store
+  already holding equivalent origins with different profiles is refused at load.
+- **`266436c47` (third round).** `hikyo context delete --instance` repairs a store
+  refused for conflicting profiles; origin comparison uses the numeric port and
+  parsed IP literals; lookup by origin is deterministic.
+- **`f5d549182`.** Five reviewed raw-SQL pin hashes in
+  `internal/lint/testdata/reviewed_pins.json` moved because migration 6 moved
+  `runtimeconfig.MigrationVersion` from 5 to 6. SQL text is unchanged.
+- **Pre-merge round (2026-11-04).** Named-instance checks in `machineEntry` and
+  `runHumanSession` compare origins with `sameOrigin`, as `lookupByOrigin` does,
+  and so does the developer-credential lookup; an explicit empty or null
+  `tls_profile` is refused like `tls_mode`; the observed-negotiation wording says
+  "reached verification", not "completed"; the `HIKYO_TLS_PROFILE` catalogue
+  description states the per-process limit, which moves the `Catalogue` pin in
+  `reviewed_pins.json`.
 
 ## Rollback and key retention
 
@@ -231,7 +257,9 @@ is created, rotated or destroyed by this feature. An older binary must not be
 used as a workaround: it refuses the unknown key. No external peer or provider
 was contacted.
 
-## Next authorized step
+## Next step
 
-Independent Standards and Spec review of this draft, then maintainer security
-approval of the policy behavior. No merge, release or deployment is authorized.
+Hosted CI and the independent pre-merge reviews, then merge bottom-up under the
+2026-11-04 authorization. No release or deployment is authorized. The stale-node
+fence stays unbuilt, as the owner accepted, and the proxy-leg choice and the DEC-17 budgets
+remain open.
