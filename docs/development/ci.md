@@ -235,7 +235,9 @@ permission. Workers have no workflow-dispatch permission.
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
 uses 45 seconds and reserves the remaining absolute budget for a fresh blocking
-publication. Feedback retains its four-minute job limit; maintenance
+publication. A verdict whose checks finished before the 45 seconds may spend three
+more seconds on its write, because a write cut off after GitHub applied it would make
+the run replace its own pass with a barrier. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.

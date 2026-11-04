@@ -13,6 +13,10 @@ import (
 const admissionSeconds = 60
 const admissionReserve = 15 * time.Second
 
+// How far a verdict's write may run past the work clock. The fail-safe and the refusal
+// share the rest of the reserve, and together took about six seconds on a live run.
+const admissionWriteGrace = 3 * time.Second
+
 // A failed targeted run is rerun by ci-queue-retry.yml while its run attempt is
 // below this. Each attempt is a new job with its own sixty-second budget; the
 // workflow's `run_attempt < 3` is the only loop bound, so keep both in step.
@@ -53,6 +57,16 @@ type admissionTrace struct {
 
 func (q *queueController) executeTargeted(ctx context.Context, name string, e event, b admissionBudget) error {
 	return q.withAdmissionBudget(ctx, b, func(work context.Context) error { return q.execute(work, name, e) })
+}
+
+// The proof is finished, so the work clock must not cut the write that publishes it.
+// GitHub can apply a write whose reply is lost; the run then counted as unfinished and
+// replaced its own pass with a barrier.
+func (q *queueController) verdictWriteContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if !q.targeted || q.queueDeadline.IsZero() || ctx.Err() != nil {
+		return ctx, func() {}
+	}
+	return context.WithDeadline(context.WithoutCancel(ctx), q.queueDeadline.Add(admissionWriteGrace-admissionReserve))
 }
 
 func (q *queueController) withAdmissionBudget(ctx context.Context, b admissionBudget, invoke func(context.Context) error) error {
