@@ -58,8 +58,7 @@ what that makes true at merge and no more. The verdict above does not change.
   enabled for PKI. #1132's key roles, sidecar floor, banner wording, pin delivery
   and recovery custody, until a signer exists. DEC-17 thresholds, until an amd64
   baseline exists.
-- **Still open.** The API freeze, Transit signed bytes, ML-DSA recovery custody
-  (DEC-14), the #1126 profile selector and vault path, #1132 signing granularity,
+- **Still open.** The API freeze, Transit signed bytes, the #1126 profile selector and vault path, #1132 signing granularity,
   the #1127 proxy leg, peers and expiry for the exceptions other than E-01, E-06 and E-22, and
   C-10's step 2 abort wording.
 
@@ -185,8 +184,8 @@ github.com (no key, no write), besides the stand-alone peers named.
 ## Exception map, E-01 to E-22
 
 "Evidence" is what the candidate shows. "Effective" is whether the row carries
-peer, version, expiry and recheck trigger. Only E-22, added by the owner's decision after the
-candidate, does (C-07).
+peer, version, expiry and recheck trigger. Only E-01, E-06 and E-22, set by the owner's decisions after the
+candidate, do (C-07).
 
 | ID | Limit (short) | Child | Evidence at the candidate | State |
 | --- | --- | --- | --- | --- |
@@ -358,8 +357,7 @@ with a guard exception, a new endpoint family, wait for v2, or leave
 unexposed); the #1129 signed-bytes and #1133 fingerprint and unconditional-leaf
 departures and the other #1133 choices (deferred by the owner until ML-DSA is
 enabled for PKI); C-01 key-id construction; DEC-17 thresholds and the target machines
-(deferred until an amd64 baseline exists); ML-DSA recovery
-key custody (DEC-14); release key versus recovery key and signing granularity (#1132's key roles, sidecar floor, banner wording, pin delivery and recovery custody are deferred until a signer exists); nightly PQ signer; the #1126 profile selector and the hybrid vault generation path; whether strict TLS applies to the proxy leg of a CLI with an `https://` proxy (#1127 deviation 5);
+(deferred until an amd64 baseline exists); release key versus recovery key and signing granularity (#1132's key roles, sidecar floor, banner wording, pin delivery and recovery custody are deferred until a signer exists, as is DEC-14 custody); nightly PQ signer; the #1126 profile selector and the hybrid vault generation path; whether strict TLS applies to the proxy leg of a CLI with an `https://` proxy (#1127 deviation 5);
 peers, versions and
 expiry for E-02 to E-05, E-07 and E-13; ownership of the
 `VerifyConnection` walk and platform-verifier qualification (C-05); whether

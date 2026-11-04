@@ -21,10 +21,10 @@ implementation becomes operative when #1158 or #1156 merges, although those tick
 | [Inventory](inventory.md) | Source-pinned boundaries I01 to I32: purpose, custody, lifetime, writers, readers, recovery, provenance; census and bounds |
 | [Profiles](profiles.md) | Confidentiality and authenticity defined separately; strength, parameters, encodings, bounds, strict and compatibility profiles, composition |
 | [Migration](migration.md) | Reader-first ladder, keys and escrow, mixed paths, retirement, floor, recovery, dispositions, exception register |
-| [External compatibility](external-compatibility.md) | #1134 register: external routes, classification, owners, recheck triggers, allowed capability statement, strict-route HOLD |
+| [External compatibility](external-compatibility.md) | #1134 register: external routes, classification, owners, recheck triggers, allowed capability statement, the F-09 strict-route narrowing and the F-01, F-04 and F-05 decisions |
 | [Qualification](qualification.md) | Requirement-to-test matrix, scope, estimates, critical path |
 | [Qualification packet](qualification-packet.md) | #1135: integrated packet for one candidate: requirement and exception maps, per-child acceptance, ladder, rollback, budgets, contradictions, capability statement. Verdict HOLD |
-| [Pairing feasibility](pairing-feasibility.md) | #1130: threat analysis, feasibility survey, separable blockers and owner options for pairing (HOLD) |
+| [Pairing feasibility](pairing-feasibility.md) | #1130: threat analysis, feasibility survey, separable blockers and owner options for pairing (HOLD under E-01; option A decided 2026-11-04) |
 | [Proposed ADR](../../adr/post-quantum-migration.md) | Decision register DEC-01 to DEC-20 (the owner's decisions), waiver and governance route, proposed amendment text |
 | [Handoff](../../handoff/1124-pqc-contract.md) | Acceptance-criterion map, dated PR state, evidence, HOLD and NOTRUN, next steps |
 
