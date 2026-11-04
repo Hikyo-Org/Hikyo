@@ -213,3 +213,334 @@ and pruned last on teardown, exactly as on the other adapters.
 
 Tenant-configurable URLs, JOSE/JWS envelopes, webhook ingestion into Hikyo,
 and receiver SDKs beyond the reference example.
+
+## 11. Protocol version 2
+
+> **Declared amendment ([#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128)).**
+> Operative when the implementing PR merges: a target configured with
+> `"protocol": 2` uses this section. It is opt-in per target and never
+> automatic. Sections 1 to 10 are the version 1 protocol and are unchanged:
+> version 1 targets stay byte-compatible and keep their original policy.
+> Independent adversarial review was required and done; cross-provider review
+> is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN. The
+> owner authorized merge on 2026-11-04, which is the maintainer security
+> approval for this change. That approval does not close the registered limits
+> in 11.10 or the open items listed in the handoff.
+>
+> **Revision route.** DEC-18 does not state one for this owner. The owner
+> accepted on 2026-11-04 the declared-amendment banner on
+> [deployment-adapter.md](../adr/deployment-adapter.md), the route #163 used,
+> carrying this section.
+
+Decisions applied: DEC-01 (age hybrid recipient `mlkem768x25519`), DEC-02
+(ML-DSA-65 only), DEC-03 (all required signatures verify, required set from the
+verifier's pinned state, suite-bound bytes), DEC-07 (algorithm-bearing
+identifiers, new labels), DEC-08 (numeric bounds below). Version 2 selects
+exactly one suite and negotiates nothing:
+
+| Role | Algorithm | Text form |
+|---|---|---|
+| Payload encryption | age `HybridRecipient`, X25519 + ML-KEM-768, stanza type `mlkem768x25519` | recipient `age1pq1...` (1959 characters); identity `AGE-SECRET-KEY-PQ-1...` |
+| Envelope and acknowledgement signing | **both** Ed25519 and ML-DSA-65, both required (suite `ed25519+mldsa65`) | `ed25519:` + 64 hex; `mldsa65:` + 3904 lowercase hex (1952 bytes) |
+
+ML-DSA-65 alone (DEC-03 end state) is a later suite with its own string, label
+version and trust generation. It is **not built** here: no verifier accepts a
+single-algorithm signature set in version 2.
+
+### 11.1 Version separation
+
+A version 2 message cannot be read as version 1 or the reverse:
+
+- Path `POST {origin}/hikyo/v2/sync`; media types
+  `application/vnd.hikyo.sealed-envelope.v2+json` and
+  `application/vnd.hikyo.sealed-ack.v2+json`. A version 1 only receiver
+  answers 404 or 415, which the sender classifies as "no acknowledgement"
+  (outcome unknown, retried). **There is no fallback to version 1 on any error.**
+- Every domain label is new: `hikyo/sealed-webhook/{envelope,ack,fingerprint,destination,idempotency,key-id}/v2`.
+  A label belongs to one purpose and appears as the first length-prefixed field
+  of every signed or hashed input. It is also the ML-DSA `Options.Context`
+  (pure ML-DSA, no pre-hash, hedged signing).
+- Every JSON member name is spelled exactly as listed, appears once, and
+  belongs to the object's member set, at every depth. A case variant
+  (`SIG_ED25519`, `V`), a duplicate or an unknown member refuses the message
+  before any value is built from it; `encoding/json` alone would match case
+  variants and keep the last duplicate.
+- The `v` member is `2` and the `suite` member must equal `ed25519+mldsa65`;
+  both are inside the signed bytes. Any other version, suite, algorithm,
+  member, or key identifier prefix is refused, never defaulted.
+- A signature made under another algorithm, target, route, version, suite,
+  recipient or key identifier does not verify because every one of them is in
+  the signed bytes.
+
+### 11.2 Identifiers
+
+- Key id: `ed25519-sha256:` or `mldsa65-sha256:` followed by the lowercase hex
+  SHA-256 over length-prefixed `hikyo/sealed-webhook/key-id/v2`, the algorithm
+  name, and the raw public key. Version 1 key ids (`sha256:...`) are never
+  accepted in version 2.
+- Recipient id: `mlkem768x25519-sha256:` + hex SHA-256 over length-prefixed
+  `hikyo/sealed-webhook/key-id/v2`, `age-mlkem768x25519`, and the canonical
+  recipient text.
+- Fingerprint: `swh2-mlkem768x25519-ed25519-mldsa65-sha256:` + hex SHA-256 over
+  length-prefixed `hikyo/sealed-webhook/fingerprint/v2`, canonical origin,
+  canonical hybrid recipient, canonical Ed25519 acknowledgement key text,
+  canonical ML-DSA-65 acknowledgement key text, the suite string, generation.
+  Changing any of them changes the fingerprint and the destination id, so
+  targets bound under another fingerprint (including a version 1 fingerprint
+  of the same origin) fail closed before any request is sent.
+
+### 11.3 Envelope
+
+JSON object with exactly these members (unknown members refused):
+
+| Member | Rule |
+|---|---|
+| `v` | `2` |
+| `suite` | `ed25519+mldsa65` |
+| `key_id_ed25519`, `key_id_mldsa65` | the sender's two key ids, as in 11.2 |
+| `recipient_id` | the pinned recipient id; the receiver refuses any other before decrypting |
+| `target_id`, `instance_id`, `namespace`, `route`, `generation`, `source`, `op`, `names` | as section 4 |
+| `ciphertext` | standard base64 of the age ciphertext, at most 1 MiB decoded (1,398,104 base64 characters) |
+| `ciphertext_digest` | `sha256:` + hex SHA-256 of the raw ciphertext bytes |
+| `idempotency_key` | 64 lowercase hex, derived under the version 2 idempotency label; also the replay context |
+| `issued_at`, `expires_at` | as section 4; `0 < expires_at - issued_at <= 5m` |
+| `sig_ed25519` | base64 of exactly 64 bytes (88 characters) |
+| `sig_mldsa65` | base64 of exactly 3309 bytes (4412 characters) |
+
+**Signed bytes.** Length-prefixed fields (uint32 big-endian length, base-10 ASCII
+integers) in order: `hikyo/sealed-webhook/envelope/v2`, `v`, `suite`,
+`key_id_ed25519`, `key_id_mldsa65`, `recipient_id`, `target_id`, `instance_id`,
+`namespace`, `route`, `generation`, `source.org`, `source.project`,
+`source.environment`, `source.revision`, `op`, the count of `names`, then
+`surface` and `name` per entry, `ciphertext_digest`, `idempotency_key`,
+`issued_at`, `expires_at`. Both signatures cover these identical bytes; the
+ciphertext is bound through its digest, which the receiver recomputes.
+
+**Payload** and its rules are section 4's. The ciphertext is encrypted to
+exactly one recipient, the pinned hybrid recipient.
+
+### 11.4 Acknowledgement
+
+Members: `v` (`2`), `suite`, `envelope_digest` (SHA-256 of the exact request
+body), `idempotency_key`, `status`, `reason` (rules of section 5), the
+acknowledgement signer's `key_id_ed25519` and `key_id_mldsa65`, `sig_ed25519`,
+`sig_mldsa65`. Signed bytes: length-prefixed
+`hikyo/sealed-webhook/ack/v2`, `v`, `suite`, `key_id_ed25519`,
+`key_id_mldsa65`, `envelope_digest`, `idempotency_key`, `status`, `reason`.
+The sender accepts an acknowledgement only if **both** signatures verify under
+its two pinned acknowledgement keys, the suite and key ids match its pinned
+state, and the digest and idempotency key are those of the request. A missing,
+duplicate or wrong-size signature, an acknowledgement signed by one algorithm
+only, or an acknowledgement of another version is never a success.
+
+### 11.5 Bounds (DEC-08)
+
+Scope of "before allocation": the request body, the declared length, the names
+array (counted on the token stream) and the member set are enforced before any
+value is built from them, and field lengths are checked before base64 decoding
+and before any verification. String **contents** are not: `checkShape` and the
+struct decode each decode every string, so a string-heavy body costs about
+twice what one pass would. Measured as cumulative allocation per parse: a 1.5 MB
+string of invalid UTF-8 allocates about 49 MiB (about 220 ms), 256 names with
+large strings about 41 MiB, empty names at the bound under 0.01 MiB, and a 64 KiB
+acknowledgement at most about 2.2 MiB. The body bound caps all of it and the
+reference receiver has no concurrency cap; a receiver exposed to untrusted
+callers needs one (registered in 11.10).
+
+| Field | Bound |
+|---|---|
+| Request body | at most 1,529,176 bytes: 1,398,104 base64 ciphertext characters plus 128 KiB for 256 names (about 300 bytes each), identifiers, the 4,412 and 88 character signatures and key ids. The largest legal envelope measured is 1,478,120 bytes (256 names of 256 characters, every identifier and integer at its maximum, ciphertext at the 1 MiB limit). A declared `Content-Length` over the bound is refused before reading |
+| Ciphertext | 1 MiB decoded (unchanged); base64 length checked before decoding |
+| Age header | at most 4096 bytes before the `---` line, exactly one stanza of type `mlkem768x25519` with one argument decoding to 1120 bytes and a body decoding to 32 bytes; anything else (X25519, scrypt, ssh, plugin, unknown, several stanzas) is refused before any key is tried |
+| Signature fields | exact encoded lengths above, checked before base64 decoding and before any verification |
+| Public keys | ML-DSA-65 1952 bytes decoded (3904 hex characters), Ed25519 32 bytes, length checked before parsing |
+| Acknowledgement | 64 KiB (unchanged). A protocol 2 target must configure at least 5,120 bytes: a real acknowledgement is about 4,961 bytes and the largest legal one is 5,038. A smaller bound would refuse every acknowledgement after the receiver had applied the value, so activation refuses it |
+| Names | at most 256, counted on the token stream: a body of empty name objects is refused before any is decoded into a structure |
+| Ciphertext base64 | canonical only (no line breaks, no stray trailing bits) |
+| Names, lifetime, skew | 256, 5 minutes, 30 seconds (unchanged) |
+
+### 11.6 Receiver obligations
+
+Section 7's order applies with these additions. The required signature set comes
+from the receiver's **pinned sender entry** (a pair of one Ed25519 and one
+ML-DSA-65 key with an optional `not_after`), never from the presented message.
+
+1. Refuse without an acknowledgement (non-200): wrong path or media type, over
+   the body bound, malformed, an unpinned or mismatched key pair, a missing,
+   duplicate or wrong-size signature, either signature invalid, a
+   `ciphertext_digest` that does not match, a `recipient_id` that is not the
+   receiver's own, expired, or issued more than 30 seconds in the future. Both
+   signatures are verified before any decryption.
+2. Refuse a ciphertext whose header is not exactly one `mlkem768x25519`
+   stanza (no classical, passphrase, ssh, plugin or additional recipient).
+   This is a Hikyo-side check: age's decrypt path has no label check, so a
+   holder of a classical identity elsewhere is outside it.
+3. Everything else is section 7 steps 2 to 7. The acknowledgement carries
+   both signatures.
+4. A receiver that is **PQ-required** serves only `/hikyo/v2/sync` and answers
+   404 for the version 1 path even for pinned version 1 sender keys. A
+   receiver in transition serves both paths with separate recipient identities
+   (X25519 and hybrid), separate sender pins (an Ed25519 key for version 1, a
+   key pair for version 2) and separate acknowledgement signers; each message is
+   interpreted only under its own version. The Ed25519 keys **may be shared**:
+   the reference receiver builds the version 2 acknowledgement signer from the
+   version 1 Ed25519 acknowledgement key plus an ML-DSA-65 key, and 11.8 step 2
+   keeps the instance's existing Ed25519 signing key as half of the sender pair.
+   A shared Ed25519 key never authorizes version 2 by itself (both signatures
+   are required), but it does authorize version 1, which is the path 11.10
+   limits. The ML-DSA-65 keys and the recipient identities are never shared. It
+   has **one** generation, **one** applied-values store and **one** idempotency
+   store, shared by both versions (see 11.10).
+
+### 11.7 Sender behavior
+
+- Per-target `protocol` in the operator registry is `1` (default, absent) or
+  `2`. A protocol 2 target requires an `age1pq1` recipient, `ack_key` (Ed25519),
+  `ack_key_mldsa65` and the top-level `signing_key_file_mldsa65`; a protocol 1
+  target refuses all of them. The registry is checked at boot against the
+  confirmed fingerprint; any mismatch refuses the boot.
+- Outcome mapping, retry, backoff, idempotency, the Journal fences and the
+  durable INTENT and OUTCOME audit are those of section 8 and are
+  protocol-blind. An acknowledgement that is well formed but fails signature,
+  key, digest or idempotency binding is forged (terminal); anything else
+  without a valid acknowledgement is unknown and retried under the same key
+  **as version 2**. A protocol 2 target never emits a version 1 request after
+  an error. That is the only downgrade this section rules out: it does not
+  stop an administrator from restoring the protocol 1 registry entry (see
+  11.10). A manual resync fences the target with a new generation, which is an
+  input of the idempotency key, so it re-delivers under new keys and a receiver
+  applies the same values again; replay protection does not stop that, and a
+  receiver with apply-time side effects must expect it.
+- A private key never appears in an argument vector, log, audit payload, error
+  or response. Signing keys are `0600` PKCS#8 PEM files; the ML-DSA key is
+  seed-only PKCS#8 (the only form Go accepts).
+
+### 11.8 Rollout and lifecycle
+
+Receiver first, as in the [migration policy](../security/pqc/migration.md):
+
+1. Upgrade the receiver to read version 2 while still serving version 1.
+   Version 1 senders are unaffected, provided the receiver keeps its one
+   generation: both versions are checked against it.
+2. Generate the receiver's hybrid identity and ML-DSA acknowledgement key and
+   the instance's **ML-DSA** signing key. The instance **keeps its existing
+   Ed25519 signing key**: a single signer serves every target, so replacing it
+   would make the remaining protocol 1 targets sign with a key their receivers
+   do not pin. Pin the sender pair (the existing Ed25519 public key and the new
+   ML-DSA public key) on the receiver.
+3. Read the version 2 fingerprint to the instance admin out of band. The admin
+   changes the registry entry of that origin **in place** (an origin is
+   configured once) to protocol 2, **keeping the generation**. Moving to
+   protocol 2 changes the fingerprint and so the destination id: Hikyo targets
+   bound under the protocol 1 entry fail closed before any request and must be
+   re-bound. A rotation of the recipient or an acknowledgement key is the event
+   that raises the generation, and it raises it for both versions on a receiver
+   that serves both.
+4. Ownership is per route in the one shared store, and a namespace has one
+   sentinel. A new route in a namespace the old route still holds conflicts on
+   the sentinel: bind the protocol 2 route in a new namespace, or prune the old
+   route through the old boundary first (or have the receiver operator release
+   its names).
+5. **Sender rollback** is the protocol 1 registry entry (its fingerprint and
+   generation, which did not change) and removal of `signing_key_file_mldsa65`.
+   Targets still bound under protocol 1 and not pruned resume, unless their
+   names were released and a protocol 2 route took the namespace (then they
+   conflict, as below). A protocol 2 route fails closed. A route that was pruned does not come back: a re-bound protocol
+   1 route is a different route and conflicts with names the protocol 2 route
+   now owns until the receiver operator releases them, and a conflict is
+   recorded per revision, so publish a new revision afterwards.
+   **Receiver rollback** is only to a build that reads version 2.
+6. Retire version 1 on the receiver (remove the X25519 identity and version 1
+   pins) only after no sender uses it; that is a separate decision. At
+   retirement the receiver operator also resets the shared applied-values and
+   idempotency store and resynchronizes: entries written through the version 1
+   path while both versions were served are not repaired by retirement, and
+   entries record no protocol version, so inspection catches only an implausible
+   revision (R-1128-A). For the reference receiver: stop it, because state is
+   loaded at startup and rewritten whole from memory; remove its `-state` file;
+   restart; then have every sender redeliver, because the reset also drops
+   genuine values.
+7. Key rotation overlaps by pinning the new sender pair and giving the old pair
+   a `not_after`; a pair is two keys and rotates as one. Changing the
+   recipient or either acknowledgement key is a new generation (step 3).
+
+Residual limits: the webhook hop is TLS 1.2 or newer with the system trust
+store and the classical certificate; strict `tlspolicy` does not reach it
+(register row X19 of PR #1171), so the hop gives no post-quantum transport or
+authenticity claim and the payload's protection rests on the hybrid recipient.
+The age file key is 16 bytes (category 1 floor, DEC-04). Version 1 messages
+already recorded are exposed to a recording adversary.
+
+### 11.10 Registered limits of a dual-serving receiver
+
+- **R-1128-A, classical write path while both versions are served.** A receiver
+  that still serves version 1 accepts version 1 envelopes signed by the pinned
+  Ed25519 key and carrying the namespace binding credential. An actor who holds
+  both can rewrite or prune the values a route owns in the shared store,
+  including values originally delivered under version 2. The actor is either a
+  key thief, who needs the binding credential separately, or a future actor who
+  can forge Ed25519 and who can read the binding credential out of recorded
+  version 1 traffic (the credential travels only inside the X25519 age
+  ciphertext). The checks on the version 1 path do not bound this actor: the
+  actor chooses the `source.revision` and the `idempotency_key`, and the
+  idempotency lookup runs before the route checks. Two effects were measured
+  against the reference receiver:
+  (a) a forged version 1 write with a very high revision (for example the
+  maximum int64) makes a genuine version 2 write at a lower revision answer
+  `rejected: stale_revision`, and the stored value stays the forged one;
+  (b) a forged version 1 write that carries the idempotency key of a future
+  version 2 delivery makes the genuine delivery answer `already_applied` with no
+  write, and the sender maps that to a success it records as owned.
+  The version 2 all-required rule does not protect values or keys a version 1
+  path can also write. Claim limited: the authenticity claim for version 2
+  delivery holds only for state written after version 1 is retired and the
+  shared store has been reset (step 6). Retiring version 1 stops
+  new classical writes; it does not repair the applied-values or idempotency
+  entries already in the store, so those entries stay forged until the operator
+  clears them. No mechanism is added for this and the idempotency store rules
+  are unchanged. Owning tickets: #1128 (this child), #1135 (closure
+  record).
+- **R-1128-B, no rollback floor for this surface.** DEC-11 requires a floor
+  that a binary or operator cannot lower by stripping PQ verification. No
+  floor exists here: the registry is an operator file, and an instance
+  administrator can restore the protocol 1 entry, after which retained targets
+  resume classical delivery. That is an administrator action, not an
+  attacker's, but it is a rollback by removing PQ verification, which
+  [migration policy](../security/pqc/migration.md) forbids as a recovery
+  method. "Never downgrades" means only that no error path falls back. Owning
+  tickets: #1128, #1135.
+- **Two-pass string decode (cost, not a bypass).** Each string in a body is
+  decoded by the member-set walk and again by the struct decode, bounded by
+  the 1,529,176 byte body cap; see the scope note in 11.5. No concurrency cap
+  exists in the reference receiver. Owning ticket: #1128 for the receiver
+  guidance; a production receiver owns its own admission control.
+- **The probe proves the acknowledgement keys, not the recipient.** A verified
+  acknowledgement proves the responder holds both acknowledgement keys. It
+  contains nothing derived from the plaintext, so it does not prove the
+  responder holds the hybrid identity; a party with the acknowledgement keys but
+  not the identity could answer. Proving recipient ownership would need an
+  acknowledgement field derived from the plaintext, which is a new mechanism and
+  is not built.
+
+### 11.9 Published vectors
+
+[`internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json`](../../internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json)
+is the protocol vector: one envelope and its acknowledgement, the pinned public
+keys, the key ids, recipient id, fingerprint and destination id they derive, the
+exact signed bytes of both messages in hex, and negative bodies with the error
+class each must produce (stripped Ed25519 or ML-DSA signature, tampered scope,
+downgraded suite, version 1 member set, a classical-only recipient with valid
+signatures, an extra recipient stanza, another receiver's recipient id, an
+acknowledgement with a stripped or forged signature, an acknowledgement for
+another envelope). It contains one test-only age identity so a second
+implementation can decrypt. A conforming implementation recomputes the signed
+bytes from the parsed members, verifies both signatures under the context
+string equal to the label, and refuses every negative body.
+
+The ML-DSA signatures were also verified with a non-Go implementation
+(OpenSSL 3.5.9): wrap the raw 1952-byte key in the ML-DSA-65 SubjectPublicKeyInfo
+header `308207b2300b0609608648016503040312038207a100` and run
+`openssl pkeyutl -verify -pubin -keyform DER -inkey KEY.der -in SIGNED_BYTES -sigfile SIG -pkeyopt context-string:hikyo/sealed-webhook/envelope/v2`
+(the acknowledgement uses `.../ack/v2`). The ciphertext decrypts with the
+`age` command line tool (v1.3.2) and the vector identity, which is the same
+upstream project as the library, not an independent implementation of age.

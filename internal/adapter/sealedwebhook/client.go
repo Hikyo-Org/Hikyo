@@ -61,9 +61,12 @@ type operation struct {
 	Path   string
 }
 
-// operationRegistry is the complete linked route table.
+// operationRegistry is the complete linked route table: one POST per
+// protocol version. A client speaks exactly one of them and never retries a
+// failed version 2 request as version 1.
 var operationRegistry = map[string]operation{
-	"deliver": {Method: http.MethodPost, Path: sealedhook.SyncPath},
+	"deliver":    {Method: http.MethodPost, Path: sealedhook.SyncPath},
+	"deliver.v2": {Method: http.MethodPost, Path: sealedhook.SyncPathV2},
 }
 
 // ResponseError is a non-200 receiver answer. Bodies are never surfaced.
@@ -75,17 +78,27 @@ func (e *ResponseError) Error() string {
 
 // ClientConfig is the transport half of an Endpoint.
 type ClientConfig struct {
-	Origin           string
-	AckKey           sealedhook.PublicKey
+	Origin string
+	AckKey sealedhook.PublicKey
+	// AckKeyMLDSA65 and Protocol 2 select the version 2 protocol, which
+	// requires both acknowledgement keys.
+	AckKeyMLDSA65    sealedhook.MLDSAPublicKey
+	Protocol         int
 	AllowedCIDRs     []netip.Prefix
 	Timeout          time.Duration
 	MaxResponseBytes int64
+	// RootCAs replaces the system roots for test and emulator wiring (as in
+	// the awssm client). Endpoint.ClientConfig never sets it, so the operator
+	// registry cannot widen trust: production always uses the system roots.
+	RootCAs *x509.CertPool
 }
 
 // Client is the hand-rolled receiver transport.
 type Client struct {
 	origin   string
 	ackKey   sealedhook.PublicKey
+	ackPQ    sealedhook.MLDSAPublicKey
+	protocol int
 	maxBytes int64
 	http     *http.Client
 }
@@ -94,7 +107,7 @@ var _ API = (*Client)(nil)
 
 // NewClient builds the transport with the shared public-egress dialer.
 func NewClient(cfg ClientConfig) (*Client, error) {
-	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Timeout}, nil)
+	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Timeout}, cfg.RootCAs)
 }
 
 func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.Dialer, roots *x509.CertPool) (*Client, error) {
@@ -105,11 +118,24 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	if cfg.AckKey.String() == "" {
 		return nil, errors.New("sealed-webhook: a pinned acknowledgement key is required")
 	}
+	protocol := cfg.Protocol
+	if protocol == 0 {
+		protocol = 1
+	}
+	if protocol != 1 && protocol != 2 {
+		return nil, fmt.Errorf("sealed-webhook: unsupported protocol %d", protocol)
+	}
+	if (protocol == 2) != (cfg.AckKeyMLDSA65.String() != "") {
+		return nil, errors.New("sealed-webhook: protocol 2 requires, and protocol 1 refuses, the ML-DSA-65 acknowledgement key")
+	}
 	if cfg.Timeout <= 0 || cfg.Timeout > MaxTimeout || cfg.Timeout >= adapter.LeaseTime {
 		return nil, fmt.Errorf("sealed-webhook: timeout must be in (0, %s]", MaxTimeout)
 	}
 	if cfg.MaxResponseBytes <= 0 || cfg.MaxResponseBytes > MaxResponseBytes {
 		return nil, fmt.Errorf("sealed-webhook: max response bytes must be in (0, %d]", MaxResponseBytes)
+	}
+	if protocol == 2 && cfg.MaxResponseBytes < sealedhook.MinResponseBytesV2 {
+		return nil, fmt.Errorf("sealed-webhook: protocol 2 needs max response bytes of at least %d", sealedhook.MinResponseBytesV2)
 	}
 	publicDialer, err := netpolicy.NewPublicDialer(cfg.AllowedCIDRs, resolver, dialer)
 	if err != nil {
@@ -122,7 +148,7 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 		ForceAttemptHTTP2: true,
 	}
 	return &Client{
-		origin: origin, ackKey: cfg.AckKey, maxBytes: cfg.MaxResponseBytes,
+		origin: origin, ackKey: cfg.AckKey, ackPQ: cfg.AckKeyMLDSA65, protocol: protocol, maxBytes: cfg.MaxResponseBytes,
 		http: &http.Client{
 			Transport: transport,
 			Timeout:   cfg.Timeout,
@@ -149,13 +175,16 @@ func CanonicalOrigin(raw string) (string, error) {
 //     binding: adapter.ErrAckForged (terminal, attention);
 //   - verified ack: returned, whatever its status.
 func (c *Client) Deliver(ctx context.Context, d Delivery) (sealedhook.Ack, error) {
-	op := operationRegistry["deliver"]
+	op, contentType, ackType := operationRegistry["deliver"], sealedhook.ContentType, sealedhook.AckContentType
+	if c.protocol == 2 {
+		op, contentType, ackType = operationRegistry["deliver.v2"], sealedhook.ContentTypeV2, sealedhook.AckContentTypeV2
+	}
 	req, err := http.NewRequestWithContext(ctx, op.Method, c.origin+op.Path, bytes.NewReader(d.Body))
 	if err != nil {
 		return sealedhook.Ack{}, err
 	}
-	req.Header.Set("Content-Type", sealedhook.ContentType)
-	req.Header.Set("Accept", sealedhook.AckContentType)
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Accept", ackType)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return sealedhook.Ack{}, fmt.Errorf("%w: %w", ErrNoAck, sanitizeTransport(err))
@@ -171,10 +200,15 @@ func (c *Client) Deliver(ctx context.Context, d Delivery) (sealedhook.Ack, error
 	if resp.StatusCode != http.StatusOK {
 		return sealedhook.Ack{}, fmt.Errorf("%w: %w", ErrNoAck, &ResponseError{Status: resp.StatusCode})
 	}
-	if media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err != nil || media != sealedhook.AckContentType {
+	if media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err != nil || media != ackType {
 		return sealedhook.Ack{}, fmt.Errorf("%w: unexpected media type", ErrNoAck)
 	}
-	ack, err := sealedhook.VerifyAck(raw, c.ackKey, d.Digest, d.IdempotencyKey)
+	var ack sealedhook.Ack
+	if c.protocol == 2 {
+		ack, err = sealedhook.VerifyAckV2(raw, c.ackKey, c.ackPQ, d.Digest, d.IdempotencyKey)
+	} else {
+		ack, err = sealedhook.VerifyAck(raw, c.ackKey, d.Digest, d.IdempotencyKey)
+	}
 	switch {
 	case err == nil:
 		return ack, nil
