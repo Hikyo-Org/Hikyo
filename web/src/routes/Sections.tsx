@@ -53,8 +53,8 @@ export function useTabParam<Id extends string>(
   const fragment = safeDecode(hash.slice(1));
   const tab =
     ids.find((id) => id === requested) ??
-    (requested === null ? undefined : fromOldLink?.(requested)) ??
     (fragment === undefined ? undefined : fromOldLink?.(fragment)) ??
+    (requested === null ? undefined : fromOldLink?.(requested)) ??
     first;
   const setTab = (next: Id) =>
     setSearch(
@@ -87,19 +87,18 @@ export function SectionTabs({
 }) {
   const shown = sections.filter((section): section is TabSection => Boolean(section));
   const key = (id: string) => (id.startsWith(`${idPrefix}-`) ? id.slice(idPrefix.length + 1) : id);
+  // A `?tab=` link names a section without the page prefix (`oidc` for `instance-oidc`).
+  const linkNames = (link: string) => [link, `${idPrefix}-${link}`];
   const [tab, setTab] = useTabParam(
     shown.map((section) => key(section.id)),
     (link) => {
-      // A `?tab=` link names a section without the page prefix (`oidc` for `instance-oidc`).
-      const names = [link, `${idPrefix}-${link}`];
-      const owner = shown.find((section) => names.some((name) => section.id === name || section.anchors?.includes(name)));
+      const owner = shown.find((section) => linkNames(link).some((name) => section.id === name || section.anchors?.includes(name)));
       return owner === undefined ? undefined : key(owner.id);
     },
   );
   const { hash } = useLocation();
   const [search] = useSearchParams();
-  const oldTab = `${idPrefix}-${search.get('tab')}`;
-  const retired = shown.some((section) => section.anchors?.includes(oldTab)) ? oldTab : undefined;
+  const retired = linkNames(search.get('tab') ?? '').find((name) => shown.some((section) => section.anchors?.includes(name)));
   // The browser's own fragment scroll ran before the tab was shown; redo it.
   // A retired `?tab=` link gets no browser scroll at all, and its panel may now sit below others.
   useEffect(() => {
