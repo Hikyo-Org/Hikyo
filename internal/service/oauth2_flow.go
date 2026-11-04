@@ -282,6 +282,10 @@ func (s *Auth) OAuth2Callback(ctx context.Context, slug, code, stateValue, issPa
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		refused = nil
 		now := s.now()
+		caller, e := resolveCallbackCaller(ctx, az, presented, now)
+		if e != nil {
+			return e
+		}
 		epoch, e := az.CredentialEpoch(ctx)
 		if e != nil {
 			return e
@@ -335,7 +339,7 @@ func (s *Auth) OAuth2Callback(ctx context.Context, slug, code, stateValue, issPa
 			cause = causeIDPError
 		}
 		if cause == "" {
-			cause = s.checkOAuth2Binding(ctx, az, t, bindingCookie, presented, now)
+			cause = checkOAuth2Binding(t, bindingCookie, caller)
 		}
 		// A resolved transaction is spent by this callback, whatever the outcome:
 		// single-use, no replay.
@@ -408,7 +412,7 @@ func (s *Auth) OAuth2Callback(ctx context.Context, slug, code, stateValue, issPa
 	return result, err
 }
 
-func (s *Auth) checkOAuth2Binding(ctx context.Context, az *authz.TxAuthorizer, t authz.OAuth2Transaction, bindingCookie, presented string, now time.Time) string {
+func checkOAuth2Binding(t authz.OAuth2Transaction, bindingCookie string, caller authz.Identity) string {
 	switch t.BindingKind {
 	case bindingBrowserCookie:
 		// Constant-time: the browser-binding cookie is a bearer secret, and
@@ -419,8 +423,7 @@ func (s *Auth) checkOAuth2Binding(ctx context.Context, az *authz.TxAuthorizer, t
 		}
 		return ""
 	case bindingSession:
-		id, err := az.Authenticate(ctx, presented, now)
-		if err != nil || id.SessionID != t.InitiatingSessionID {
+		if caller.SessionID == "" || caller.SessionID != t.InitiatingSessionID {
 			return causeBinding
 		}
 		return ""
