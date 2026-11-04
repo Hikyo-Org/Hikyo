@@ -55,7 +55,7 @@ BEGIN {
 	type = "?"
 	scope = ""
 	bang = 0
-	if (match(text, /^[A-Za-z]+(\([^)]*\))?!?: */)) {
+	if (match(text, /^[A-Za-z][A-Za-z0-9_-]*(\([^)]*\))?!?: */)) {
 		prefix = substr(text, 1, RLENGTH)
 		candidate = prefix
 		sub(/[(!:].*/, "", candidate)

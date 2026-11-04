@@ -55,6 +55,7 @@ base=$(git rev-parse HEAD)
 commit -m 'not a conventional subject'
 commit -m 'wibble: an unknown type stays whole'
 commit -m 'wibble!: an unknown type can still break'
+commit -m 'build-v2!: a hyphenated type can still break'
 commit -m 'docs: mention the footer' -m 'see BREAKING CHANGE: mid-line is not a footer'
 commit -m 'fix(api):'
 commit -m 'feat(*): an odd scope stays plain'
@@ -83,6 +84,7 @@ Suggested SemVer bump from commit types: **major**. The nightly version itself s
 - rename the setting
 - **api:** drop the old route
 - rename the flag
+- build-v2!: a hyphenated type can still break
 - wibble!: an unknown type can still break
 ### Features (minor)
 - **web:** add the page
