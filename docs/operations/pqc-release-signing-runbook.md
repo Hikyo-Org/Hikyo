@@ -126,8 +126,11 @@ that tool and is not part of this ticket.
 - A rotation or revocation is a new keyset at the next sequence, signed by the
   **full** recovery set. One remaining algorithm cannot replace the other.
 - Rotation: add the new release key with a start sequence, close the old key's
-  range, publish the new keyset. Exactly one non-revoked key may cover a release
-  sequence; two covering keys are refused.
+  range, publish the new keyset. Exactly one entry may cover a release sequence
+  and it must not be revoked; two covering entries are refused. A revoked entry
+  still counts toward coverage, so when replacing a revoked key remove its entry
+  (or close its range before the sequence) rather than adding a second entry
+  beside it, or every release is refused (the verifier fails closed).
 - Revocation: mark the key revoked in a new keyset sequence. A revoked key
   cannot sign even for sequences it once covered. A host that has verified the
   revoking keyset remembers its sequence, even if it refused that update, so an
@@ -163,9 +166,24 @@ transition, and the claim it supports is limited accordingly (E-11, E-18).
    new one is refused as a rollback below the generation floor.
 6. Treat all evidence signed by the lost key as unverifiable for new decisions,
    and record the loss.
-7. This departs from the migration policy, which asks that any trust change need
+7. Floors are never lowered, so a keyset at an extreme sequence (the maximum
+   64-bit value) cannot be superseded even by a new generation. Producing it needs
+   the full recovery set, and the only exit is a fresh installation with no floor
+   from an independently verified source, which is itself the E-17 gap. Do not
+   sign a keyset whose sequence is not the next integer.
+8. This departs from the migration policy, which asks that any trust change need
    every required algorithm of the current pinned set. A lost key makes that
    impossible; the departure is registered in the handoff for the owner.
+
+## What the verifier's claim helper means
+
+`AuthenticityClaim` says the persisted record has keyset, metadata, catalog and a
+release each verified under the current pin. It stays true after a revocation until
+a stage is verified again, because the record keeps stages from earlier keysets. It
+does not say the release signer is still valid (R-15), it does not authenticate the
+record, and it does not lift E-11 or E-15. Do not use it as a freshness check. A
+superseded stable policy that a later catalog lists again is also still accepted
+(R-16).
 
 ## Rollback
 

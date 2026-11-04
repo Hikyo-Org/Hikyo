@@ -22,7 +22,7 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | Item | Value |
 | --- | --- |
 | Base | `origin/dunky13/pqc-1126-hybrid-backups` at `4bad16b59` (PR #1158) |
-| Code candidate | `fb915616b` (verifier, fixtures, tests; round one was `24d827709`, repaired after independent review). Later commits are documentation only and touch no Go file |
+| Code candidate | `5782f28f8` (verifier, fixtures, tests; round one was `24d827709`, round two `fb915616b`, each repaired after independent review). Later commits are documentation only and touch no Go file |
 | Toolchain | Go 1.27.3 darwin/arm64, `crypto/mldsa` from the standard library, no new module |
 | Files | `internal/releasetrust/pq.go`, `pq_root.go`, `pq_verify.go`, `testfixture/pq.go`, `pq_*_test.go` (including fuzz targets), `internal/selfupdate/pq_coexistence_test.go` |
 | Not touched | `parsePinnedKey`, `Snapshot.Digest()`, `SnapshotFloor`, every v1 schema and decoder, `release/trust/`, the installers, `scripts/release/`, `internal/lint/testdata/reviewed_pins.json`, macOS signing |
@@ -41,7 +41,7 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
 | Signed bytes | One input for all algorithms: length-prefixed label, profile, pin digest, generation, ordered `(algorithm, key id)` suite, then kind, channel, version, subject, source commit, sequence, policy digest and the SHA-256 of the exact bytes. The ML-DSA context is the label (`hikyo/release-trust/<kind>/v1`). A signature under suite {A,B} does not verify as {A}. `PQSigningInput` exposes the input so a future signer cannot drift |
 | Key identity | `<algorithm>:` plus SHA-256 over length-prefixed domain, algorithm and canonical SPKI |
 | Roles | **Recovery set** (P-256 and ML-DSA, both required): PQ keyset, stable policy, nightly policy, bridges, and metadata and catalog on the recovery-signed track. **Release set** (one maintainer-held ML-DSA key from the keyset): stable manifest, artifacts, and metadata and catalog under a keyless delegation. Each role is refused in the other's place. CI holds neither. The role for metadata and catalog is chosen from the authenticated metadata's signer field, a document claim: it can only move the requirement between two sets that both need an ML-DSA signature, and the delegated branch also needs the recovery-signed policy |
-| Keyset, `hikyo.dev/pq-release-keys/v1` | Recovery-signed, sequence-only list of release keys with release-sequence ranges and a revoked flag. Exactly one non-revoked key may cover a release sequence; a revoked key cannot sign for sequences it once covered. Rotation and revocation are new sequences, each needing the full recovery set |
+| Keyset, `hikyo.dev/pq-release-keys/v1` | Recovery-signed, sequence-only list of release keys with release-sequence ranges and a revoked flag. Exactly one entry may cover a release sequence and it must not be revoked. A revoked entry still counts toward coverage, so a replacement over the same range is refused as ambiguous until the revoked entry is removed (or its range closed before the sequence); a revoked key cannot sign for sequences it once covered. Rotation and revocation are new sequences, each needing the full recovery set |
 | Verifiers | `VerifyPQKeyset`, `VerifyPQSnapshot` (runs after the unchanged `VerifySnapshot`), `VerifyPQRelease`, `VerifyPQArtifact` (exact bytes, name, version, channel, sequence, source, policy), `VerifyPQBridge` (after the unchanged `VerifyBridge`). Historical keyed releases and nightlies are refused as having no PQ signer (E-12, E-15) |
 | PQ floor, `PQFloor` | A separate record: format, profile, generation, pin digest, and for keyset, metadata and catalog a sequence, a digest and the pin it was verified under, plus the highest PQ-verified release sequence and its pin. Sequence-only; refuses rollback, equivocation, a lower generation, the same generation with different pin bytes and a newer format than the reader knows; an empty record is refused on decode. `AuthenticityClaim` reports true only for a record that says keyset, metadata, catalog and a release each verified under exactly this pin, so a generation change needs every stage again. It does not authenticate the record: a hand-written or restored file can state anything (E-17). A refusal that follows an authenticated keyset (for example a revocation of every key covering the release) returns the keyset-advanced floor beside the error, and a caller persists it so an older keyset cannot be replayed |
 | Closed errors | `ErrPQUnsupported`, `Malformed`, `Bound`, `Scope`, `Signature`, `Missing`, `Rollback`. No key, signature or payload bytes in any message |
@@ -83,6 +83,25 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
   not: a later keyset signed by the full recovery set can list a revoked key
   again. "Never re-enable a revoked key" is a runbook rule, not something the
   verifier enforces. Registered gap.
+- **Further registered limits (round three).** Each is in the exception record with
+  owner Marc Went, ticket #1132 and an unblocking trigger: R-14 revoked key ids
+  are not remembered (above); R-15 the claim helper stays true after a revocation
+  until a stage is verified again, because the record combines the newest keyset
+  with stages verified under older ones (a test pins this); R-16 a superseded
+  stable policy stays PQ-valid if a later catalog lists it again, because policy
+  sets carry no floor; R-17 the release stage stores a sequence and a pin but no
+  digest, so release equivocation is not detected; and, under R-12, a keyset at a
+  very large sequence (the maximum `int64`) is accepted and later keysets are then
+  refused, even after a generation change, because floors are kept and never
+  lowered. Producing such a keyset needs the full recovery set; the only exit is a
+  fresh installation with no floor from an independently verified source (E-17).
+  The verifier does not cap keyset sequences.
+- A `VerifiedPQKeyset` belongs to the pin it verified under. Offering one to a later
+  stage under another pin is refused, and the release and artifact stages and
+  `VerifyPQSnapshot` all require the keyset floor's pin to be the current pin.
+  `VerifyPQSnapshot` also requires the stable and nightly policy material it
+  receives to be the material its snapshot was verified with, including when the
+  snapshot saw no nightly policy.
 - The P-256 recovery key now signs two inputs: the raw JSON of the legacy bundle
   and the PQ input. Domain separation is structural: every PQ input begins with a
   4-byte length prefix and a `hikyo/release-trust/` label, and a JSON document
@@ -180,7 +199,9 @@ claim, so the claim stays HOLD.**
    offline reinstall), which is recovery, not a bridge.
 
 Clients without the reader: given a PQ root, the shipped stable installer
-**fails closed and changes no state** (tested). Given only sidecars they ignore
+**fails closed and changes no state** is shown only for a hypothetical build
+stamped with a v2 root; a shipped client is never handed one, because the root is
+stamped at build time (R-11). Given only sidecars real clients ignore
 them and keep accepting classical-only releases; Hikyo cannot force them
 forward. The recovery path for the first case is the offline reinstall above.
 
@@ -199,7 +220,7 @@ number is a relative figure, not a production latency.
 | ML-DSA-65 public key | raw 1,952 B; SPKI DER 1,974 B; PEM 2,726 B; seed-only PKCS#8 54 B |
 | ML-DSA-65 signature | 3,309 B |
 | Signature set file, ML-DSA only (release role) | 4,592 B |
-| Signature set file, P-256 plus ML-DSA (recovery role) | 4,831 B |
+| Signature set file, P-256 plus ML-DSA (recovery role) | 4,827 B or 4,831 B observed (an ECDSA P-256 signature is 8 to 72 B of DER, usually 70, sometimes 69); the bounded range is 4,747 to 4,831 B. Not a fixed size |
 | v2 root / v1 root (fixture names) | 696 B / 373 B (`release/trust/root.json`) |
 | Keyset with one release key | 307 B |
 | Existing signed documents (repo `release/trust`) | metadata 796 B, catalog 421 B, stable policy 1,104 B, trusted root 6,787 B, each classical envelope 118 B |
@@ -238,8 +259,9 @@ signing the keyset, policy or a bridge; recovery key signing in the release role
 document bytes altered; a set bound to another sequence, policy, channel,
 version, source or name; a catalog set replayed as metadata; unknown, ML-DSA-87,
 duplicate, oversized or short signatures; substituted key id; every `NewPQPin`
-substitution listed above; rollback and equivocation of keyset, metadata, catalog
-and release; a newer floor format; a lower pin generation; a different pin at the
+substitution listed above; rollback and equivocation of keyset, metadata and catalog,
+and rollback of the release sequence (the release stage stores no digest, so release
+equivocation is not detected, R-17); a newer floor format; a lower pin generation; a different pin at the
 same generation; truncated and substituted artifacts; a revoked key; two keys
 covering one sequence; a v1 reader refusing the v2 root; the pinned-key parser
 and operator key id refusing ML-DSA; a classical-only snapshot that every v1 check
@@ -297,7 +319,7 @@ signs no second manifest); a long fuzz campaign.
 | 7 | Reject stripped, substituted, stale, expired or revoked, mixed channels, partial downloads, rollback below the format floor | PARTIAL | Tested, including a remembered revocation that blocks keyset replay. Not done: **expiry** (sequence-only; no clock; R-13), revoked key ids being remembered across a later recovery-signed keyset, and rollback on a binary built before the floor, which cannot refuse (E-17) |
 | 8 | Lifecycle across supported installation targets in disposable fixtures | PARTIAL | A test-local sequencer over the verifiers, plus the real stable installer's verification step ignoring sidecars. Not frozen metadata, not real-path tampering, no other target. Shell suites prove only that legacy is unchanged. Everything else NOTRUN |
 | 9 | Measure sizes and latency; update tests and signing workflow fixtures; secrets in custody | PARTIAL | Measured. No signing workflow was changed because no signer exists. No secret was created; fixture keys live in test memory |
-| 10 | External limitations as exceptions with owners; macOS gate | PARTIAL | R-01 to R-13 drafted with owner, trigger and ticket, but the record is "drafted for review, not operative" until the owner fills peer, version, expiry and trigger. macOS not touched |
+| 10 | External limitations as exceptions with owners; macOS gate | PARTIAL | R-01 to R-17 drafted with owner, trigger and ticket, but the record is "drafted for review, not operative" until the owner fills peer, version, expiry and trigger. macOS not touched |
 | 11 | Maintainer-reviewed runbook and exact artifact verification evidence | PARTIAL | [Runbook](../operations/pqc-release-signing-runbook.md) drafted, marked not executable, not yet maintainer-reviewed. No release artifact was verified |
 
 Amendment banners landed on `signed-upgrade-compatibility` (release identity and
@@ -321,6 +343,15 @@ cites the commit where the text stood.
 | `internal/lint` locally | **not run again** by instruction. The round-one local run timed out at 40 minutes under host load at `TestArtifactDisposableDatabaseProtocolsRejectDrift` and is not a pass |
 | Hosted `repository invariants (boundary, lint, CI policy)` | read for the new head and recorded in the PR description |
 | `go test -p 2 ./internal/boundary/...`, `fast-feedback.sh` (base `dunky13/pqc-1126-hybrid-backups`, Node from `.nvmrc`), `check-commit-signatures.sh`, `check-dco.sh`, `check-doc-status.mjs --check` | rerun for the new head; results in the PR description |
+
+### Review round three
+
+Fixed: the stale keyset object (M1), the unverified policy material (M2), the
+flaky size assertion (M3), plus L6 to L13 (coverage wording and test, closed
+statements, release equivocation wording, fuzz fixtures with fixed seeds, error
+classes, an empty floor refused on encode, DEC-15 in three dependency rows, and
+the antecedent sentence in two banner notes). M4 and the three L5 gaps are
+registered, not closed: R-12, R-14 to R-17.
 
 ## Key retention and rollback
 
