@@ -1,12 +1,12 @@
-# Post-quantum migration contract, draft v0.6
+# Post-quantum migration contract, draft v0.7
 
 Tracking: [#1124](https://github.com/Hikyo-Org/Hikyo/issues/1124), under
 [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Assessed 2026-11-02.
 
 **Status: owner decided and security approved, not operative.** The
 owner accepted [the register](../../adr/post-quantum-migration.md#decision-register)
-as recommended and gave maintainer security approval on 2026-11-02. This package grants no authority, and no ADR amendment has landed, so existing
-operative ADRs and runtime behavior remain authoritative. Source exploration and
+as recommended and gave maintainer security approval on 2026-11-02. This package grants no authority. Four ADR amendments are recorded as banners that are not owner-locked and become operative only when the implementation they name merges, so existing
+operative ADRs and runtime behavior remain authoritative until then. Source exploration and
 bounded planning may proceed in dependent tickets; implementation needs the ADR
 amendments it depends on and its own security approval before it can merge.
 On 2026-11-04 the owner authorized merge to `dev` once required checks are green, except

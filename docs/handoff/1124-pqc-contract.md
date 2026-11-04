@@ -13,8 +13,8 @@ owner-approvable contract so dependent implementers need not invent
 cryptographic policy. This draft supplies the documents. On 2026-11-02 the owner
 accepted DEC-01 to DEC-20 as recommended, replying "As recommended" to the register
 at `383290434d2cf614cd8aa31600c1f79d1e53f4d7` after being told its final repairs were not re-reviewed. Maintainer security approval
-of this text followed the same day at `27a16c276`. **No ADR amendment has landed**, so
-nothing here is operative. The issue may close only after those gates or an explicit scoped owner
+of this text followed the same day at `27a16c276`. **Four ADR amendments are recorded as banners that are not owner-locked** (encryption model, threat model recording-adversary class, signed upgrade compatibility backup custody, API and CLI trust-store field), each operative only when the implementation it names merges, so
+nothing here is operative yet. The other proposed amendments are HOLD. The issue may close only after those gates or an explicit scoped owner
 disposition.
 
 | File | Content |
@@ -22,9 +22,9 @@ disposition.
 | [README](../security/pqc/README.md) | Entry point, source pin, claim rules |
 | [Inventory](../security/pqc/inventory.md) | 32 boundaries (I01 to I32), census, trace, bounds |
 | [Profiles](../security/pqc/profiles.md) | Two claims, strength, parameters, bounds, symmetric floor, profiles, composition |
-| [Migration](../security/pqc/migration.md) | Ladder, keys, mixed paths, retirement, floor, recovery, dispositions, exceptions E-01 to E-21 |
+| [Migration](../security/pqc/migration.md) | Ladder, keys, mixed paths, retirement, floor, recovery, dispositions, exceptions E-01 to E-22 |
 | [Qualification](../security/pqc/qualification.md) | Test matrix, scope, estimates, critical path |
-| [Proposed ADR](../adr/post-quantum-migration.md) | Register DEC-01 to DEC-20, waiver, governance route, proposed amendments; no locked ADR edited |
+| [Proposed ADR](../adr/post-quantum-migration.md) | Register DEC-01 to DEC-20, waiver, governance route, proposed amendments; locked ADRs changed only by the recorded banners |
 
 Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 [ADR](../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
@@ -50,7 +50,10 @@ locked-ADR edit. Later edits to the contract files change status wording only,
 except the 2026-11-04 recheck notes (README source pin, inventory rows I27 and I31 and
 the I31 introduction, the `scripts/ci` census class, one line reference and one Helm chart
 sentence in migration), which record
-changes on `dev` and alter no parameter, decision or exception.
+changes on `dev` and alter no parameter, decision or exception. The owner's 2026-11-04
+decisions are separate and do change the register: DEC-10 amended, E-22 added, E-19 widened,
+and the stale-node row in the profiles and qualification matrix replaced. The 2026-11-02
+approval does not cover them; package v0.7 records them.
 
 ## Acceptance criteria map
 
@@ -64,9 +67,9 @@ changes on `dev` and alter no parameter, decision or exception.
 | 6 | Reader-first rollout, keys, retirement, floor, history, recovery, mixed-path refusal | [Migration](../security/pqc/migration.md); DEC-11, 12 | Proposal; HOLD |
 | 7 | Signature composition and stripping | [Profiles](../security/pqc/profiles.md#signature-composition-and-stripping-resistance-dec-03); DEC-03 | Proposal; HOLD |
 | 8 | Dispositions: SRP/DPoP, release root, Sigstore, SSH, federation, authenticators, custody | [Migration](../security/pqc/migration.md#dispositions-dec-13-to-dec-16-dec-19-dec-20); DEC-12 to DEC-16, 19, 20 | Proposal; HOLD |
-| 9 | ADR amendments, decisions, evidence; #26/#79 recheck | [ADR](../adr/post-quantum-migration.md) | Owner decisions and security approval recorded; amendments HOLD |
+| 9 | ADR amendments, decisions, evidence; #26/#79 recheck | [ADR](../adr/post-quantum-migration.md) | Owner decisions and security approval recorded; four amendments recorded as banners (not owner-locked), the rest HOLD |
 | 10 | Test matrix; scope, effort, critical path; unresolved choices | [Qualification](../security/pqc/qualification.md) | Drafted; estimates are estimates |
-| 11 | Commit approved inventory, ADRs and handoff with receipts | This handoff and the files above | Not yet: amendments outstanding |
+| 11 | Commit approved inventory, ADRs and handoff with receipts | This handoff and the files above | Not yet: the remaining proposed amendments are outstanding |
 
 ## State on 2026-11-02
 
@@ -131,7 +134,7 @@ on them. Go's `Sign` hedging was read from `crypto/internal/fips140/mldsa`.
 ## Remaining HOLD and NOTRUN
 
 DEC-01 to DEC-20 are owner decided and not operative; maintainer security approval is recorded, and
-every ADR amendment is HOLD. Largest uncertainties:
+every ADR amendment not yet recorded as a banner is HOLD, and the four recorded ones are operative only when their implementation merges. Largest uncertainties:
 pairing feasibility (#1130), release-root custody and field installers (#1132),
 external peers (#1134), and every measurement. The 22 to 38 engineer-week total
 is a low-confidence estimate above the issue's range; reasons are in
