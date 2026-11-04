@@ -15,8 +15,8 @@ deployment. The independent adversarial reviews of the repaired head are part of
 the merge gate, and cross-provider review is SKIPPED by explicit owner
 instruction (2026-11-02) and is not CLEAN. Open and undecided, so not implied by
 the merge: the `/api/v1` freeze, ML-DSA recovery custody, #1132 signing
-granularity, DEC-17 thresholds and the stale-node fence (a recorded limit, DEC-10
-is amended in #1155). Operator procedure:
+granularity and DEC-17 thresholds. The stale-node fence is decided, as a recorded limit:
+DEC-10 is amended in #1155. Operator procedure:
 [config-rollout-authority](../operations/config-rollout-authority.md).
 
 Stacked on PR #1155 (base `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`, branch
@@ -47,7 +47,7 @@ none was refuted.
 | T4 matrix through `reconcile` only | Confirmed | A tampered-signature case runs through `Run` and asserts only the Lease, the admission dry runs and the floor are written |
 | T5 zeroing claim | Confirmed: undecoded blocks were not cleared on an early error and the stage helper stopped clearing the parsed Ed25519 key | `pemBlocks` returns decoded blocks on refusal and `ParseSigners` clears them on every path; the stage helper clears the Ed25519 key again; the comment says what cannot be cleared |
 | Public key parsing stricter than base (later review) | Confirmed: base used `pem.Decode`, so a comment line, Bag Attributes or a `Comment:` header around the key parsed; the controller refused them and the immutable ConfigMap could not be edited | `ParsePublicKeys` tolerates that text again (still one type, at most two blocks, no trailing bytes); private key parsing stays strict, as the base server already refused those forms. `TestKeyFilesAreClosedSets` pins the three inputs |
-| Second Ed25519 key cleared where rejected (later review) | Confirmed as untested: the cleared copy is local to `parseSigners` and unreachable from a test | Test comment corrected; only the refusal is asserted. Removing that `clear` stays undetected, and the first key's clearing is covered |
+| Second Ed25519 key cleared where rejected (later review) | Confirmed as untested: the cleared copy is local to `parseSigners` and unreachable from a test | Test comment corrected; only the refusal is asserted. Removing that `clear`, or the `clearSigners` call in `ParseSigners`, stays undetected; only `clearSigners` itself is tested |
 
 ## Result
 

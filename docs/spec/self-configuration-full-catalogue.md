@@ -70,7 +70,7 @@ The browser first sends `prepare_only: true` with a stable idempotency key and e
 
 The reviewed plan digest binds owner, recovery incarnation, revision/snapshot, schema, fixed participants, current generation, external source versions and deployment effect. The UI labels the action **Reload live** or **Controlled rollout**. Final Apply reuses the request identity and includes the exact digest in fresh passkey/TOTP evidence. The final transaction rechecks authority, epoch, factor freshness, plan/job version and database clock before spending the proof once and recording the durable intent. Replayed or changed decisions cannot authorize another effect.
 
-> **Declared amendment (2026-11-04, [#1131](https://github.com/Hikyo-Org/Hikyo/issues/1131), per the [oss-mechanics.md](../adr/oss-mechanics.md) amendment procedure; operative when its implementation PR merges; not owner-locked).** Signed rollout commands
+> **Declared amendment (2026-11-04, [#1131](https://github.com/Hikyo-Org/Hikyo/issues/1131); operative when its implementation PR merges; not owner-locked).** Signed rollout commands
 > may carry, under an operator-installed enrollment `authority` record, one
 > Ed25519 and one ML-DSA-65 signature (or ML-DSA-65 alone), all required, over
 > bytes that bind the trust generation, key ids and target. The controller keeps a
