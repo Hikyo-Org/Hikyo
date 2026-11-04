@@ -34,7 +34,8 @@ latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow"
 if grep -F 'target_commitish' "$workflow" >/dev/null; then
 	fail 'nightly deduplication trusts mutable release metadata'
 fi
-grep -F 'uses: ./.github/workflows/ci.yml' "$workflow" >/dev/null || fail 'nightly does not run the full exact-source CI graph'
+grep -F -- '--mode main --commit "$GITHUB_SHA" --authority-commit "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'nightly does not verify complete exact-source CI proof'
+if grep -F 'uses: ./.github/workflows/ci.yml' "$workflow" >/dev/null; then fail 'nightly reruns the full CI graph instead of reusing queue proof'; fi
 grep -F 'needs: validation' "$workflow" >/dev/null || fail 'nightly publication does not wait for validation'
 # shellcheck disable=SC2016
 grep -F 'VALIDATION_RESULT: ${{ needs.validation.result }}' "$workflow" >/dev/null || fail 'nightly does not bind its validation result'
@@ -92,6 +93,13 @@ jq -e '
 	(.bypass_actors[0].actor_id | type) == "number" and
 	.bypass_actors[0].actor_id == 4700019
 ' "$repo_root/release/repository/nightly-tag-creation.json" >/dev/null || fail 'nightly tag creation is not restricted to the dedicated GitHub App'
+grep -F 'release/repository/nightly-promotion-branches.json' "$repo_root/scripts/release/configure-repository.sh" >/dev/null || fail 'nightly promotion branches are not installed'
+jq -e '
+	.target == "branch" and .enforcement == "active" and
+	.conditions.ref_name.include == ["refs/heads/release/nightly-*"] and
+	.bypass_actors == [{actor_id: 4700019, actor_type: "Integration", bypass_mode: "always"}] and
+	([.rules[].type] | sort) == ["creation", "update"]
+' "$repo_root/release/repository/nightly-promotion-branches.json" >/dev/null || fail 'nightly promotion branches are not restricted to the dedicated app'
 jq -e '.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]' \
 	"$repo_root/release/repository/release-tag-creation.json" >/dev/null || fail 'stable creation policy still captures nightlies'
 
@@ -134,6 +142,8 @@ for required in \
 	'./scripts/release/nightly-image.sh prepare' \
 	'./scripts/release/nightly-image.sh resolve' \
 	'./scripts/release/nightly-image.sh promote' \
+	'./scripts/release/nightly-chart.sh' \
+	'IMAGE_DIGEST: ${{ steps.verified-image.outputs.digest }}' \
 	"IMAGE_BUILT: \${{ steps.image.outcome == 'success' && steps.existing.outputs.exists != 'true' }}" \
 	'file: Dockerfile.release' \
 	'platforms: linux/amd64,linux/arm64' \
@@ -147,6 +157,8 @@ if sed -n '1,/^  container:/p' "$workflow" | grep -F 'packages: write' >/dev/nul
 	fail 'package write permission escapes the container job'
 fi
 "$repo_root/scripts/release/nightly-image_test.sh"
+"$repo_root/scripts/release/nightly-chart_test.sh"
+python3 -I -B -m unittest discover -s "$repo_root/scripts/release" -p test_nightly_chart.py
 "$repo_root/scripts/release/create-nightly-manifest_test.sh"
 
 "$repo_root/scripts/release/next-nightly-version_test.sh"
@@ -155,4 +167,5 @@ fi
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
+"$repo_root/scripts/release/nightly-promote_test.sh"
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'

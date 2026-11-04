@@ -28,7 +28,8 @@ import { fileURLToPath } from 'node:url';
 // fixed-posture assertion instead of hashing.
 // --demo DIST checks the standalone demo or its copied Pages directory. It has
 // no prototype exceptions or bootstrap allowlist, and keeps scripts/styles
-// self-only while refusing connections, base tags, and form submissions.
+// self-only while refusing base tags and form submissions. It refuses connections
+// too, except the PostHog ingestion and assets hosts of an analytics-enabled build.
 
 const args = process.argv.slice(2);
 const demo = args[0] === '--demo';
@@ -238,7 +239,14 @@ for await (const rel of glob('**/*.html', { cwd: dist })) {
     for (const override of ['script-src-elem', 'script-src-attr', 'style-src-elem']) {
       assert.equal(directive(override), undefined, `${page} demo must not override ${override}`);
     }
-    assert.equal(directive('connect-src'), "'none'", `${page} demo must refuse network connections`);
+    const analyticsHost = parseAttrs(html.match(/<[^>]*\bdata-posthog-host=[^>]*>/i)?.[0] ?? '')['data-posthog-host'];
+    assert.ok(analyticsHost || process.env.POSTHOG_REQUIRED !== 'true', `${page} demo must carry its PostHog config`);
+    // The host comes from the page under test, so it must prove itself first.
+    assert.ok(!analyticsHost || /^https:\/\/(eu|us)\.i\.posthog\.com$/.test(analyticsHost), `${page} demo may only connect to PostHog's own ingestion hosts`);
+    const allowedConnections = analyticsHost
+      ? `${analyticsHost} ${analyticsHost.replace('.i.posthog.com', '-assets.i.posthog.com')}`
+      : "'none'";
+    assert.equal(directive('connect-src'), allowedConnections, `${page} demo connections must be limited to PostHog, or refused without analytics`);
     assert.equal(directive('img-src'), "'self'", `${page} demo images must be same-origin only`);
     assert.equal(directive('font-src'), "'self'", `${page} demo fonts must be same-origin only`);
   }

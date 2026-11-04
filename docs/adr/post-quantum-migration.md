@@ -104,7 +104,8 @@ linked documents.
 
 Proposed text only, copied into the named ADR when its ticket is reopened. Backups and
 TLS come first: the encryption model, the confidentiality part of the threat model and
-the backup custody sentence of signed upgrade compatibility are recorded in those ADRs. Common review sentence: "Independent adversarial review is
+the backup custody sentence of signed upgrade compatibility and the trust-store field in
+the API and CLI surface are recorded in those ADRs. Common review sentence: "Independent adversarial review is
 required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN."
 
@@ -119,6 +120,7 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | [stable-workflow-signing](./stable-workflow-signing.md) (PR #714 and the owner's 2026-09-08 decision; it has no grilling issue) | Decision (keyless stable signing, recovery-signed policy) | DEC-14, 15 |
 | [system-architecture](./system-architecture.md) (#22; "Packaging & release artifacts" trust model, already superseded in part by stable-workflow-signing) | Signing trust model wording | DEC-14, 15 |
 | [oss-mechanics](./oss-mechanics.md) (#33; "Signing" custody, ceremony, rotation, compromise) | Same | DEC-14, 15 |
+| [api-cli-surface](./api-cli-surface.md) (#25; found while implementing #1127) | The closed trust-store and bundle field set, and the sticky-entry rule, from the #966 amendment | DEC-05, 06 |
 | [ops-spec](./ops-spec.md) (#32; recipient hygiene "exactly one age identity per retention class") | Listed because DEC-08 and DEC-12 touch recipients; no change proposed | DEC-08 |
 
 Non-ADR owners: `docs/spec/sealed-webhook.md` (#1128) and the self-configuration

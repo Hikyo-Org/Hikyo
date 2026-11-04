@@ -54,10 +54,8 @@ func TestMainPolicyContract(t *testing.T) {
 		"extra-context":        `(.rules[]|select(.type=="required_status_checks").parameters.required_status_checks)+=[{context:"ci-required-next"}]`,
 	}
 	validate := filepath.Join(root, "scripts/release/check-main-policy.sh")
-	for _, args := range [][]string{{filepath.Join(root, "release/repository/main-ci-gate.json")}, {"--legacy", filepath.Join(root, "release/repository/main-ci-gate-legacy.json")}} {
-		if out, err := exec.Command(validate, args...).CombinedOutput(); err != nil {
-			t.Fatalf("positive contract: %v %s", err, out)
-		}
+	if out, err := exec.Command(validate, filepath.Join(root, "release/repository/main-ci-gate.json")).CombinedOutput(); err != nil {
+		t.Fatalf("positive contract: %v %s", err, out)
 	}
 	for name, filter := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -77,42 +75,17 @@ func TestMainPolicyContract(t *testing.T) {
 			}
 		})
 	}
-	// Malformed shape/stream protection also owns the legacy rollback path.
-	legacy, err := os.ReadFile(filepath.Join(root, "release/repository/main-ci-gate-legacy.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"rules-object", "multiple-documents", "root-array", "rules-null", "rule-scalar"} {
-		c := exec.Command("jq", cases[name])
-		c.Stdin = strings.NewReader(string(legacy))
-		mutated, err := c.Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		file := filepath.Join(t.TempDir(), "legacy.json")
-		if err := os.WriteFile(file, mutated, 0600); err != nil {
-			t.Fatal(err)
-		}
-		if out, err := exec.Command(validate, "--legacy", file).CombinedOutput(); err == nil {
-			t.Fatalf("malformed legacy %s accepted: %s", name, out)
-		}
-	}
-
 }
 
 // Run the actual configuration script with an API double that permits only
 // owning-main reads and one atomic PUT. Any tag/security/release/git route is red.
 func TestMainOnlyConfiguration(t *testing.T) {
 	root := repositoryRoot(t)
-	for _, scenario := range []string{"legacy", "queue", "drift", "redacted", "duplicate", "missing", "put-failure", "multiple-before", "multiple-readback", "malformed-before", "multiple-list", "integration-positive", "integration-zero", "integration-null", "readback-null", "later-page", "duplicate-later-page", "page-limit", "malformed-page", "binding-drift", "legacy-linear-history", "queue-linear-history"} {
+	for _, scenario := range []string{"legacy-before", "queue", "drift", "redacted", "duplicate", "missing", "put-failure", "multiple-before", "multiple-readback", "malformed-before", "multiple-list", "integration-positive", "integration-zero", "integration-null", "readback-null", "later-page", "duplicate-later-page", "page-limit", "malformed-page", "binding-drift", "queue-linear-history"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()
 			before := filepath.Join(dir, "before.json")
-			policy := "main-ci-gate-legacy.json"
-			if scenario == "queue" || scenario == "queue-linear-history" {
-				policy = "main-ci-gate.json"
-			}
-			raw, err := os.ReadFile(filepath.Join(root, "release/repository", policy))
+			raw, err := os.ReadFile(filepath.Join(root, "release/repository/main-ci-gate.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,17 +103,16 @@ func TestMainOnlyConfiguration(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if scenario == "legacy-linear-history" {
-					control := filepath.Join(dir, "legacy-source.json")
-					if err := os.WriteFile(control, raw, 0600); err != nil {
-						t.Fatal(err)
-					}
-					if out, err := exec.Command(filepath.Join(root, "scripts/release/check-main-policy.sh"), "--legacy", control).CombinedOutput(); err != nil {
-						t.Fatalf("valid legacy linear-history source refused: %v %s", err, out)
-					}
-				}
 			}
 
+			if scenario == "legacy-before" {
+				c = exec.Command("jq", `(.rules[]|select(.type=="required_status_checks").parameters) |= (.strict_required_status_checks_policy=true | .required_status_checks[0].context="ci-required-next") | .rules |= map(select(.type!="merge_queue"))`)
+				c.Stdin = strings.NewReader(string(raw))
+				raw, err = c.Output()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			if strings.HasPrefix(scenario, "integration-") || scenario == "binding-drift" {
 				id := "15368"
 				if scenario == "integration-zero" {
@@ -226,7 +198,7 @@ esac
 			cmd := exec.Command(filepath.Join(root, "scripts/release/configure-repository.sh"), "--main-only", "example/repository")
 			cmd.Env = append(os.Environ(), "GH_BIN="+mock, "FIXTURE="+dir, "SCENARIO="+scenario)
 			out, err := cmd.CombinedOutput()
-			pass := scenario == "legacy" || scenario == "queue" || strings.HasPrefix(scenario, "integration-") || scenario == "readback-null" || scenario == "later-page"
+			pass := scenario == "queue" || strings.HasPrefix(scenario, "integration-") || scenario == "readback-null" || scenario == "later-page"
 			if pass != (err == nil) {
 				t.Fatalf("scenario result %v: %s", err, out)
 			}

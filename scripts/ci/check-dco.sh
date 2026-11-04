@@ -27,7 +27,8 @@ commits=$(git -C "$repo" rev-list --no-merges --reverse "$base..$head")
 # trailer block) and for which the DCO — a human-contributor attestation — is
 # meaningless. The git author header is attacker-controlled, so this is NOT a
 # trust decision: the caller must set DCO_EXEMPT_AUTHOR only after verifying
-# non-spoofable provenance (the GitHub PR actor), and leave it empty otherwise.
+# non-spoofable provenance (the GitHub PR actor, or a canonical promotion head
+# only write access can push), and leave it empty otherwise.
 # Default-closed — an unset var exempts nobody.
 exempt_author=${DCO_EXEMPT_AUTHOR:-}
 

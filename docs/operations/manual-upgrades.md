@@ -80,6 +80,9 @@ snapshot/
   metadata.sigstore.json
   catalog.json
   catalog.sigstore.json
+  stable-policy.json                   # workflow-signed releases only
+  stable-policy.sigstore.json          # workflow-signed releases only
+  stable-trusted-root.json             # workflow-signed releases only
 primary-keys/
   <each public_key filename in metadata.json>
 target-proofs/
@@ -87,11 +90,17 @@ target-proofs/
   release-manifest.sigstore.json
   release-candidate.json
   upgrade-compatibility.json
+  build-provenance.json                # workflow-signed releases only
+  build-provenance.json.sigstore.json  # workflow-signed releases only
 ```
+
+A release signed by the stable workflow, such as 1.0.0, needs the marked files. All
+of them are release assets.
 
 Copy the catalog producer's `upgrade-catalog.json` to `catalog.json` and its
 matching detached signature to `catalog.sigstore.json`, preserving their bytes.
-From each release download, copy only the four named public proof documents to
+Release assets already use the final names.
+From each release download, copy only the named public proof documents to
 a separate proof directory. Retain the downloaded binary/chart/image payloads
 and their verification results separately. Extra files, including per-artifact
 signature sidecars, executable archives and private keys, are refused in these
@@ -247,6 +256,8 @@ the evidence/backup/legacy-stop environment settings for ordinary restarts.
 
 This section retains manual defaults. New installations choosing unattended
 upgrades use the separate [container deployment runbook](unattended-container-upgrades.md).
+Controller-owned installations use the [Flux/Argo runbook](kubernetes-gitops.md),
+which preserves the same full-stop and verified manual migration requirements.
 
 `install/compose/server.yaml` provides a rootless manual server deployment.
 Supply its required environment variables in a protected local environment file;
