@@ -29,6 +29,35 @@ Trust entries and provisioned bundles share these fields:
 | HTTPS, system CA verification | `system-ca` | Absent | Absent |
 | Existing loopback HTTP socket | Absent | Absent | Required for credential transport |
 
+Both also accept an optional `tls_profile` (#1127): omitted or `compat` keeps
+the table's behavior, and `strict` additionally requires TLS 1.3 and the hybrid
+`X25519MLKEM768` group on an HTTPS entry. It is allowed with either HTTPS mode,
+never with a local socket, and does not change the mode's trust model: strict
+protects handshake confidentiality only, and an SPKI pin still gives no
+authenticity claim beyond the pin. See
+[transport policy](./transport-policy.md#clients-that-call-hikyo).
+
+Origins compare without the scheme's default port, a trailing host dot, leading
+zeros in the port and the textual form of an IP literal, so `https://h`,
+`https://h:443`, `https://h:0443` and `https://h.` name one server, as do
+`https://[::1]` and `https://[0:0:0:0:0:0:0:1]`. Refusals:
+
+- Establishing a second name for an origin with a **different TLS profile** is
+  refused; remove the existing entry deliberately first. Identical-policy aliases
+  stay allowed.
+- A trust store that already holds two entries for one origin with different
+  profiles is refused when it loads, naming both entries and the
+  `hikyo context delete --instance <name>` step. That command works on such a
+  store; it skips only this conflict check and still validates every entry. A store with no strict entry
+  loads exactly as before, even with several names for one origin.
+- Resolving a machine config's `instance:` origin to a trust entry is refused
+  when several entries match and their verification policy (mode, pin, socket or
+  profile) differs, instead of picking one. This also applies to compat-only
+  stores whose entries for one origin differ in mode or pin: they still load, but
+  an origin-based lookup of them is refused until you name the entry with
+  `--instance`. Entries with the same policy resolve deterministically: the exact spelling
+  asked for first, then the lowest name.
+
 Unknown modes and conflicting combinations are refused. An absent mode on
 HTTPS always means SPKI, so deleting a pin cannot enable CA verification. In
 SPKI mode the exact leaf pin remains the identity check, including for

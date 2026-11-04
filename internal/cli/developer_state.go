@@ -84,7 +84,7 @@ func (s *State) deleteDeveloperCredentials(origin, id string) error {
 		return err
 	}
 	for key, c := range all {
-		if c.Origin == origin && (id == "" || key == id) {
+		if sameOrigin(c.Origin, origin) && (id == "" || key == id) {
 			delete(all, key)
 		}
 	}
