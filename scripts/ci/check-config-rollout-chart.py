@@ -9,6 +9,7 @@ import copy
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import time
@@ -138,6 +139,19 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
     assert enrollment["target"]["initial_upgrade_source"] == "current"
     assert enrollment["target"]["stable_node_id"] == name + "-server"
     assert "authority" not in enrollment, "default enrollment must stay the Ed25519 compatibility profile"
+    # Helm --reuse-values replaces new chart defaults with the old coalesced map,
+    # so an install enrolled before rollout.authority existed must still render.
+    with tempfile.TemporaryDirectory() as reused:
+        reused_chart = Path(reused) / "chart"
+        shutil.copytree(chart, reused_chart)
+        reused_values = yaml.safe_load((reused_chart / "values.yaml").read_text())
+        reused_values["rollout"].pop("authority")
+        (reused_chart / "values.yaml").write_text(yaml.safe_dump(reused_values, sort_keys=False))
+        reused_raw = run("helm", "template", release, str(reused_chart), "--namespace", namespace,
+                         "--kube-version", "1.36.1", "-f", str(settings))
+        reused_config = next(d for d in yaml.safe_load_all(reused_raw)
+                             if d and d["kind"] == "ConfigMap" and d["metadata"]["name"] == executor + "-enrollment")
+        assert json.loads(reused_config["data"]["enrollment.json"]) == enrollment
     ed_id = "ed25519-sha256:" + "a" * 64
     pq_id = "mldsa65-sha256:" + "b" * 64
     strict = copy.deepcopy(values)
