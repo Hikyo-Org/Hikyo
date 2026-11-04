@@ -2420,11 +2420,12 @@ export const unlinkIdentity = <ThrowOnError extends boolean = false>(options: Op
  * transmitted out of band. The reset advances the target's session
  * generation and revokes its sessions in the same transaction.
  *
- * Org-scoped credential-reset reaches only a target whose grants lie
- * entirely within that org and who holds no instance capability; the
- * org-bounded test is evaluated in one serializable transaction with the
- * target's grant set (a concurrent grant landing conflicts with the
- * in-flight reset). A target holding an instance capability has no network
+ * Org-scoped credential-reset reaches only a target whose org footprint
+ * (grants, member-access rules, access grants, SCIM user rows, developer
+ * credentials and service accounts) is exactly that org and who holds no
+ * instance capability; the org-bounded test is evaluated in one
+ * serializable transaction with the target's grant set and footprint (a
+ * concurrent grant landing conflicts with the in-flight reset). A target holding an instance capability has no network
  * reset path at all — break-glass only. This route dispatches between the
  * org-scoped and instance-scoped credential-reset operations by that
  * classification. Every failure that could enumerate the

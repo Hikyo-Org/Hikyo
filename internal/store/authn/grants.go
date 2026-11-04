@@ -75,6 +75,33 @@ func (r *Resolver) GrantRowsForPrincipal(ctx context.Context, p domain.Principal
 	return out, nil
 }
 
+// PrincipalFootprintOrgs lists every org holding any row about the principal:
+// grants, access grants (expired or not), rules, its service account, its
+// developer credential and its SCIM provisioning. An instance-scope grant is
+// reported as the empty OrgID. It is not gated on privacy state, so a hidden
+// footprint still counts.
+func (r *Resolver) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
+	var out []domain.OrgID
+	if r.sq != nil {
+		rows, err := r.sq.ListPrincipalFootprintOrgs(ctx, string(p))
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range rows {
+			out = append(out, domain.OrgID(o.String))
+		}
+		return out, nil
+	}
+	rows, err := r.pg.ListPrincipalFootprintOrgs(ctx, string(p))
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range rows {
+		out = append(out, domain.OrgID(o.String))
+	}
+	return out, nil
+}
+
 // AddGrantOrigin attaches one origin to a grant row. Attaching an origin that
 // already holds the row is the dedup case and is a no-op, not an error: the
 // UNIQUE key makes the second attach a conflict, so the caller checks first

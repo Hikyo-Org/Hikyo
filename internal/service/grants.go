@@ -291,6 +291,14 @@ func (s *Grants) grantOneWithInvalidation(
 		return zero, nil, err
 	}
 
+	grantorGrants, err := az.GrantRowsForPrincipal(ctx, grantor)
+	if err != nil {
+		return zero, nil, err
+	}
+	if err := checkTargetFootprint(ctx, az, grantorGrants, grantor, spec.Target, spec.Scope.Org); err != nil {
+		return zero, nil, err
+	}
+
 	class, err := lockAndClassify(ctx, az, spec.Target, spec.Capability, spec.Scope, s.now)
 	if err != nil {
 		return zero, nil, err
@@ -301,10 +309,6 @@ func (s *Grants) grantOneWithInvalidation(
 	// path the threat model accepts and the one that keeps a fresh
 	// installation bootstrappable. Held only at PROJECT scope, it may grant
 	// only what the grantor currently holds at or above the target scope.
-	grantorGrants, err := az.GrantRowsForPrincipal(ctx, grantor)
-	if err != nil {
-		return zero, nil, err
-	}
 	unheld := !holds(grantorGrants, spec.Capability, spec.Scope)
 	if unheld && !mayGrantUnheld(grantorGrants, spec.Scope) {
 		return zero, nil, ErrGrantorLacksCapability
@@ -601,6 +605,44 @@ func hasOrigin(ctx context.Context, az *authz.TxAuthorizer, grantID string, o au
 		}
 	}
 	return false, nil
+}
+
+// checkTargetFootprint refuses a target whose footprint reaches an org (or the
+// instance, the empty OrgID) the actor does not administer, answering exactly
+// as for a nonexistent principal. Tenant isolation (#23): a principal outside
+// the orgs the actor administers must be indistinguishable from a nonexistent
+// one. A target already in the grant's own org is that org's member and stays
+// grantable. Only the actor-driven writers call it; SCIM, break-glass and
+// restore legitimately cross orgs.
+func checkTargetFootprint(ctx context.Context, az *authz.TxAuthorizer, actorGrants []authz.GrantRow, actor, target domain.PrincipalID, org domain.OrgID) error {
+	// Instance-scope grants are gated by the instance formula; a self-grant
+	// reveals nothing (org creation grants its creator the first membership).
+	if org == "" || actor == target {
+		return nil
+	}
+	lockErr := az.LockTargetPrincipal(ctx, target)
+	if lockErr != nil && !errors.Is(lockErr, domain.ErrNotFound) {
+		return lockErr
+	}
+	// Read the footprint even for a missing principal, so both answers cost the
+	// same round trips.
+	footprint, err := az.PrincipalFootprintOrgs(ctx, target)
+	if err != nil {
+		return err
+	}
+	if lockErr != nil {
+		return ErrUnknownPrincipal
+	}
+	if slices.Contains(footprint, org) {
+		return nil
+	}
+	reach := unheldGrantReach(actorGrants)
+	for _, o := range footprint {
+		if !reach.Instance && (o == "" || !slices.Contains(reach.Orgs, o)) {
+			return ErrUnknownPrincipal
+		}
+	}
+	return nil
 }
 
 // lockAndClassify is the first half every grant writer shares: take the

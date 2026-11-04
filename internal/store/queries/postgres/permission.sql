@@ -6,6 +6,25 @@
 SELECT id, capability, org_id, project_id, env_id FROM grants
 WHERE principal_id = sqlc.arg(principal_id);
 
+-- A principal's footprint: every org that holds any row about it (grants, timed
+-- access grants whether or not expired, member-access rules, its service
+-- account, its developer credential, its SCIM provisioning). An instance-scope
+-- grant yields a NULL org. Deliberately not gated on privacy state.
+-- hikyo:reason Authorized grant and rule writers read only the distinct org ids in which the target principal already holds any row, to refuse a target outside the actor's administered orgs with the nonexistent-principal answer; it returns no tenant identifiers beyond those org ids and writes nothing. Network credential-reset classification reads the same set to count the target's orgs.
+-- hikyo:authn-resolution
+-- name: ListPrincipalFootprintOrgs :many
+SELECT g.org_id FROM grants g WHERE g.principal_id = sqlc.arg(principal_id)
+UNION
+SELECT ag.org_id FROM access_grants ag WHERE ag.principal_id = sqlc.arg(principal_id)
+UNION
+SELECT r.org_id FROM rules r WHERE r.principal_id = sqlc.arg(principal_id)
+UNION
+SELECT sa.org_id FROM service_accounts sa WHERE sa.principal_id = sqlc.arg(principal_id)
+UNION
+SELECT dc.org_id FROM developer_credentials dc WHERE dc.principal_id = sqlc.arg(principal_id)
+UNION
+SELECT u.org_id FROM scim_users u JOIN accounts a ON a.id = u.account_id WHERE a.principal_id = sqlc.arg(principal_id);
+
 -- hikyo:authn-resolution
 -- name: InsertGrantOrigin :exec
 INSERT INTO grant_origins (id, grant_id, kind, subject, created_at)

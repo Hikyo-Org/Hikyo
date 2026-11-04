@@ -579,6 +579,49 @@ func (q *Queries) ListManageMembersHoldersForOrg(ctx context.Context, orgID sql.
 	return items, nil
 }
 
+const listPrincipalFootprintOrgs = `-- name: ListPrincipalFootprintOrgs :many
+SELECT g.org_id FROM grants g WHERE g.principal_id = ?1
+UNION
+SELECT ag.org_id FROM access_grants ag WHERE ag.principal_id = ?1
+UNION
+SELECT r.org_id FROM rules r WHERE r.principal_id = ?1
+UNION
+SELECT sa.org_id FROM service_accounts sa WHERE sa.principal_id = ?1
+UNION
+SELECT dc.org_id FROM developer_credentials dc WHERE dc.principal_id = ?1
+UNION
+SELECT u.org_id FROM scim_users u JOIN accounts a ON a.id = u.account_id WHERE a.principal_id = ?1
+`
+
+// A principal's footprint: every org that holds any row about it (grants, timed
+// access grants whether or not expired, member-access rules, its service
+// account, its developer credential, its SCIM provisioning). An instance-scope
+// grant yields a NULL org. Deliberately not gated on privacy state.
+// hikyo:reason Authorized grant and rule writers read only the distinct org ids in which the target principal already holds any row, to refuse a target outside the actor's administered orgs with the nonexistent-principal answer; it returns no tenant identifiers beyond those org ids and writes nothing. Network credential-reset classification reads the same set to count the target's orgs.
+// hikyo:authn-resolution
+func (q *Queries) ListPrincipalFootprintOrgs(ctx context.Context, principalID string) ([]sql.NullString, error) {
+	rows, err := q.db.QueryContext(ctx, listPrincipalFootprintOrgs, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sql.NullString
+	for rows.Next() {
+		var org_id sql.NullString
+		if err := rows.Scan(&org_id); err != nil {
+			return nil, err
+		}
+		items = append(items, org_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const projectMachineReveal = `-- name: ProjectMachineReveal :one
 SELECT machine_reveal, machine_reveal_generation FROM projects WHERE id = ?
 `
