@@ -1,6 +1,7 @@
 package runtimeconfig_test
 
 import (
+	"maps"
 	"strings"
 	"testing"
 
@@ -123,6 +124,24 @@ func TestPrepareLegacyDerivedIPOriginBeforeContextualApplication(t *testing.T) {
 	values["HIKYO_EXTERNAL_ORIGIN"] = "http://127.0.0.1:8081"
 	if _, err := runtimeconfig.PrepareForConfig(values, base); err == nil {
 		t.Fatal("nonmatching explicit IP origin must refuse contextual preparation")
+	}
+}
+
+func TestEveryCatalogueKeyHasAFolder(t *testing.T) {
+	counts := make(map[string]int)
+	for _, key := range runtimeconfig.Catalogue() {
+		folder := runtimeconfig.Folder(key.Name)
+		if folder == "" {
+			t.Errorf("catalogue key %s has no folder", key.Name)
+		}
+		counts[folder]++
+	}
+	want := map[string]int{"Audit": 2, "Authentication": 5, "Backup": 6, "Capacity": 2, "Deployment": 2, "MCP": 3, "Mail": 8, "Network": 3, "Updates": 1}
+	if !maps.Equal(counts, want) {
+		t.Fatalf("folders = %v, want %v", counts, want)
+	}
+	if folder := runtimeconfig.Folder("OTHER"); folder != "" {
+		t.Fatalf("unknown key folder = %q", folder)
 	}
 }
 
