@@ -179,7 +179,7 @@ KEM + SRP composition (forbidden by the issue) or ML-DSA JWS now (no library pat
 Source facts: P-256 primary and recovery keys; the recovery key signs root,
 policy, bridges and the legacy-track metadata and catalog; the Sigstore keyless
 workflow identity signs stable metadata and catalog (`snapshot.go:139,180`);
-nightly and the manifest are keyless (`.github/workflows/nightly.yml`), while the
+nightly, its manifest and its Helm chart are keyless (`.github/workflows/nightly.yml`), while the
 installer checks nightly metadata and catalog with `openssl` against the P-256
 recovery key (`install/upgrade-nightly.sh:115`) and the manifest with cosign
 (`:382`); the pinned-key parser rejects ML-DSA; pinned trust carries no floor input
@@ -196,7 +196,7 @@ integrity of the downloaded bytes and nothing against a quantum adversary.
 | Document or artifact | Signer today | PQ signer (DEC-14) |
 | --- | --- | --- |
 | Root, stable policy, bridges, legacy-track metadata and catalog | Recovery key (P-256) | ML-DSA recovery key, all-required with the classical key |
-| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:622`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
+| Stable metadata, catalog, manifests; packaged chart image policy (keyless mode, `.github/workflows/release.yml:633`) | Keyless workflow identity | Keyless unchanged (E-03) plus a maintainer-held ML-DSA signature at the local publish step ([stable workflow signing ADR](../../adr/stable-workflow-signing.md)) |
 | Releases signed with the primary key before keyless; the in-tree chart `primary.pub` (keyed mode) | Primary key (P-256) | None: historical verification only (E-12) |
 | Nightly track and image-replacement paths | Keyless; own stamped trust | None (E-15) |
 

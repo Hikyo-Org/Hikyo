@@ -29,11 +29,30 @@ disposition.
 Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 [ADR](../adr/post-quantum-migration.md#owner-decisions-already-made-2026-11-02).
 
+**Update 2026-11-04.** The owner superseded the "draft, not merge-ready" hold: merge
+to `dev` is authorized once required checks are green, bottom-up, and publication in
+the next nightly is accepted. Nothing becomes operative by merging. Decisions still
+open are listed in the ADR row for #1148.
+
+## What the maintainer approval covered
+
+Marc Went, the owner and sole maintainer, approved the contract text at
+`27a16c276` on 2026-11-02 as policy: the inventory including its data-flow trace,
+profiles, migration including the exception register, qualification, and the ADR
+register with its proposed amendments. That is the maintainer review of "the
+data-flow and exception matrix" that #1124's validation section asks for, given by
+the one person who is both owner and maintainer, so it is not independent human
+review. It did not cover any implementation, key, provider action, release or
+locked-ADR edit. Later edits to the contract files change status wording only,
+except the 2026-11-04 recheck notes (README source pin, inventory rows I27 and I31,
+the `scripts/ci` census class and one line reference in migration), which record
+changes on `dev` and alter no parameter, decision or exception.
+
 ## Acceptance criteria map
 
 | # | #1124 criterion | Answered in | Status |
 | --- | --- | --- | --- |
-| 1 | Inventory fields and listed surfaces | [Inventory](../security/pqc/inventory.md): boundaries table (purpose, parameters, custody, lifetime, horizon, recovery, provenance), trace table (writers, readers, verifiers), bounds, census | Drafted; maintainer review of the data-flow and exception matrix HOLD |
+| 1 | Inventory fields and listed surfaces | [Inventory](../security/pqc/inventory.md): boundaries table (purpose, parameters, custody, lifetime, horizon, recovery, provenance), trace table (writers, readers, verifiers), bounds, census | Drafted. The matrix is inside the text the owner approved as maintainer at `27a16c276` (see [what the approval covered](#what-the-maintainer-approval-covered)); no second human reviewed it |
 | 2 | Confidentiality and authenticity separate; strength; compliance | [Profiles](../security/pqc/profiles.md#two-claims-defined-separately), [strength](../security/pqc/profiles.md#required-strength-and-compliance-obligations); DEC-01, 02 | Proposal; HOLD |
 | 3 | Parameter sets, encodings, fingerprints, domain separation, size maxima, identifiers, vectors, errors, maintenance | Profiles: parameters, encodings, bounds, vectors and errata; DEC-01, 02, 07, 08, 09 | Proposal; HOLD |
 | 4 | Symmetric retention and assumptions; PQ versus FIPS | [Profiles: symmetric floor](../security/pqc/profiles.md#symmetric-floor-and-assumptions); DEC-04 | Proposal; usage cap NOTRUN |
@@ -65,7 +84,7 @@ the release-governance recheck is recorded in the ADR.
 | --- | --- |
 | Source inspection | Performed at the pin: `rg` census (search 1: 179 non-test Go files; search 2 for SDK-owned TLS and search 3 for `chart`, `deploy` and `install`, and searches 5 and 6 for release tooling and source supply chain, added after review; completeness beyond these searches is not claimed), per-row checks of constants and constructors, Go 1.27.3 standard library, age v1.3.2, `filippo.io/hpke` v0.4.0, `x/crypto/ssh` v0.58.0, `go-webauthn` v0.18.2, `go-jose` v4.1.6, sigstore v1.11.1, vendored gitleaks rule |
 | Local checks | New Markdown: no em-dash, no machine-local path, no task-list checkbox under `docs/adr`, relative links and anchors resolve. `scripts/ci/check-doc-status.mjs --check` and `check-doc-status_test.sh` pass. `scripts/ci/fast-feedback.sh --plan --working-tree` selects no lanes for these paths. Docs site verify results are in the PR description |
-| Independent review | Independent Standards, Spec and adversarial security reviews ran on earlier unpublished candidates. Confirmed findings were repaired by narrowing claims, registering gaps or stating child requirements; the last repairs were not re-reviewed. Final coverage is in the PR description. Human security review: NOTRUN |
+| Independent review | Independent Standards, Spec and adversarial security reviews ran on earlier unpublished candidates. Confirmed findings were repaired by narrowing claims, registering gaps or stating child requirements; the last repairs were not re-reviewed. Final coverage is in the PR description. Maintainer security approval of the text at `27a16c276` is recorded (scope below); independent human security review: NOTRUN |
 | Cross-provider review | SKIPPED by explicit owner instruction (see ADR); not CLEAN |
 | Hosted CI | NOTRUN for this revision |
 | Tests, handshakes, vectors, fuzz, measurements, both-engine drills | NOTRUN. Sizes are source constants or arithmetic; estimates are labelled |
@@ -98,7 +117,7 @@ on them. Go's `Sign` hedging was read from `crypto/internal/fips140/mldsa`.
 | #1123 links a "versioned TLS policy API" | The link is a version-pinned docs URL for `tls.Config`; Go 1.27.3 offers `MinVersion`, `MaxVersion` and `CurvePreferences` and no other group or version policy setting was found |
 | #1131 says to bootstrap PQ trust "through the existing authenticated authority" | DEC-20 option (a) is that wording and lets a classical forger install its own ML-DSA key; the decided option (c), operator re-enrollment, departs from it, and the owner accepted that on 2026-11-02 |
 | Earlier README: #1138, #1139 open | Both merged; #1140 is open and not a draft |
-| Earlier inventory: `charts` | The draft searched the wrong path. The real `chart/hikyo` exists at the pin and is now I31; open PR #1113 is a separate Helm distribution change |
+| Earlier inventory: `charts` | The draft searched the wrong path. The real `chart/hikyo` exists at the pin and is now I31; PR #1113 (Helm distribution, since merged into `dev`) is separate |
 | Earlier census | Search 1 alone missed `internal/storagehealth` (kubelet TLS with a bearer token) and the Kubernetes, OpenBao and default-transport clients; now I30 |
 | ML-DSA and FIPS | Certified module alias v1.0.0 has no ML-DSA; v1.26.0 with it is in process |
 | Library ML-DSA capability | Present in Go `x509`, `tls`, `x/crypto/ssh` (certificates under unspecified vendor names), `sigstore`, `go-webauthn`; absent in `go-jose`, `go-srp`, `go-oidc`, SAML libraries. Not product readiness |
