@@ -34,7 +34,7 @@ require (
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oapi-codegen/runtime v1.8.0
-	github.com/oasdiff/oasdiff v1.35.0
+	github.com/oasdiff/oasdiff v1.34.1
 	github.com/openbao/openbao/api/v2 v2.7.1
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.29.0

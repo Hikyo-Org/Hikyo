@@ -23,6 +23,11 @@ request property or required response property with a fixed past sunset date.
 Both failed with v1.35.0 because a forbidden change passed the gate. Restoring
 v1.34.1 makes both fixtures and the complete API package suite pass.
 
+The group update in #1174 moved oasdiff to v1.35.0 again, and post-merge `ci-dev`
+on `69d92e610` failed these fixtures in `test_core`, `web-go` and the race shard.
+The pin is restored and Dependabot now ignores v1.35.0 and later. #1125 owns the
+upgrade and must remove that ignore entry when it lands.
+
 ## Local evidence
 
 Run from the repository root with the pinned Go toolchain:

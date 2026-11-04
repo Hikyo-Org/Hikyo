@@ -26,3 +26,6 @@ updates:
       # Moving this generator requires an architecture ADR amendment.
       - dependency-name: github.com/oapi-codegen/oapi-codegen/v2
         versions: ['*']
+      # v1.35 suppresses past-sunset removals the API freeze must reject (#1125).
+      - dependency-name: github.com/oasdiff/oasdiff
+        versions: ['>=1.35.0']
