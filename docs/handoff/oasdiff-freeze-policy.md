@@ -18,29 +18,49 @@ recover a finding that the checker never emits.
 
 `api.CheckFreeze` now combines two independent sources of violations:
 
-1. Structural endpoint, callback, parameter and property deletions produce
-   Hikyo-owned error IDs, without consulting deprecation or sunset metadata.
-   Property traversal covers request bodies, parameters, response bodies and
-   headers, including modified callbacks, nested/composed schemas and resolved
-   references. oasdiff has no checker for a callback removed as a whole.
+1. A structural check on the diff produces Hikyo-owned error IDs, without
+   consulting deprecation or sunset metadata. It refuses deleted endpoints,
+   parameters, properties, subschemas (such as an array's `items`), open-enum
+   values, responses (including `default` and wildcards), response links and
+   media-type encodings. Traversal covers request bodies, parameters, response
+   bodies and headers, including nested/composed schemas and resolved references.
 2. Every upstream checker finding still passes through the existing addition
-   allowlist. New upstream IDs remain forbidden until explicitly reviewed.
+   allowlist. New upstream IDs remain forbidden until explicitly reviewed. The
+   stability threshold is set to `draft`, because a `x-stability-level` of
+   `alpha` or `draft` otherwise hides upstream findings for that operation.
+
+Upstream checkers do not descend into callbacks, so the gate cannot prove that
+a change inside one is additive. It refuses every callback removal and every
+change inside a callback, additions included. Adding a whole callback remains
+permitted, and `api/openapi.yaml` declares none today. This is a deliberate
+fail-closed choice; a future additive callback change needs this rule revisited.
 
 The structural property walker is supplied by oasdiff; Hikyo owns the decision
-to refuse its deletions. Recursive/shared schemas and callbacks have bounded
-traversal. Violations have a total sort order for reproducible diagnostics.
-The structural check can report a removal alongside an upstream finding for
-the same edit. Both identify a forbidden change; neither suppresses the other.
-
-Known limit: oasdiff matches paths with template placeholders normalized, so two
-callback expressions differing only inside `{...}` count as the same endpoint.
-Removing one of them, or renaming the placeholder, is not reported.
+to refuse its deletions. Violations have a total sort order for reproducible
+diagnostics. The structural check can report a removal alongside an upstream
+finding for the same edit. Both identify a forbidden change; neither suppresses
+the other.
 
 Before diffing, normalize inherited parameters into each operation with the
 upstream common-parameter helper, including callback paths. This operates only
-on freshly parsed documents. Removing a shadowed path declaration or moving an
-unchanged parameter to an operation is neutral; removing an effective inherited
-parameter still fails. Both directions of declaration movement are tested.
+on freshly parsed documents, and a seen-callback guard bounds cyclic references.
+Removing a shadowed path declaration or moving an unchanged parameter to an
+operation is neutral; removing an effective inherited parameter still fails.
+Both directions of declaration movement are tested.
+
+## Known limits
+
+These remain uncaught and are not removals of a declared element. The freeze
+guard stays dormant until the first stable tag, so resolve them before cutting it:
+
+- Callback expressions differing only inside `{...}` normalize to one endpoint,
+  so removing one of them, or renaming the placeholder, is not reported.
+- Request narrowing: `additionalProperties: false` added on a nested object or
+  the body root, and `not` or `pattern` added at the body root.
+- `servers` URL changes and `explode`, `allowEmptyValue` or `allowReserved` flips.
+- A property removed inside an encoding header.
+- A `$ref` inside response-header `content` makes diffing fail with an error. The
+  gate fails closed, but gives no specific diagnostic.
 
 ## Regression evidence and local verification
 
@@ -50,9 +70,10 @@ failures: `a forbidden change passed the gate`. Keep those negative fixtures.
 The additional tests assert specific structural violation IDs and locations,
 including ordinary, deprecated, past/future-sunset and malformed-sunset property
 removals; inline, nested, array, composed and shared/recursive schemas;
-operation/inherited parameters; endpoints, callback properties, whole callbacks
-and callback expressions. Positive cases preserve permitted additions, in every
-property context, and identical-document comparisons.
+operation/inherited parameters; endpoints; callbacks, including cyclic ones; each
+removal upstream omits; and every stability level. Positive cases preserve
+permitted additions in every property context, open-enum growth and
+identical-document comparisons.
 
 Run from the repository root with its pinned Go toolchain:
 

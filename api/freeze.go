@@ -103,7 +103,7 @@ func (v Violation) String() string {
 	if where == "" {
 		where = "(document)"
 	}
-	return fmt.Sprintf("[%s] %s: %s (oasdiff level %s)", v.ID, where, v.Text, v.Level)
+	return fmt.Sprintf("[%s] %s: %s (level %s)", v.ID, where, v.Text, v.Level)
 }
 
 // CheckFreeze diffs revised against base and returns every change that is not
@@ -139,7 +139,8 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 
 	// Every check, down to INFO. The default run reports breaking changes
 	// only, which is precisely the fail-open behaviour the ADR rejects.
-	config := checker.NewConfig(checker.GetAllChecks())
+	// Draft: a stability label is lifecycle metadata and must hide nothing.
+	config := checker.NewConfig(checker.GetAllChecks(), checker.WithStabilityLevel(checker.StabilityDraft))
 	changes := checker.CheckBackwardCompatibilityUntilLevel(config, report, sources, checker.INFO)
 
 	violations := freezeRemovals(report)

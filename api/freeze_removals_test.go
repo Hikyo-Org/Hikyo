@@ -12,7 +12,7 @@ import (
 // Exercise the public gate, including resolved and recursive schemas. A sunset
 // is lifecycle metadata, never permission to remove part of the frozen API.
 func TestFreezeRejectsPropertyRemovalsRegardlessOfSunset(t *testing.T) {
-	for _, context := range []string{"request", "response", "parameter", "parameter-content", "response-header"} {
+	for _, context := range []string{"request", "response", "parameter", "parameter-content", "response-header", "response-header-content"} {
 		for _, metadata := range []struct{ name, json string }{
 			{"ordinary", ""},
 			{"deprecated", `,"deprecated":true`},
@@ -21,6 +21,9 @@ func TestFreezeRejectsPropertyRemovalsRegardlessOfSunset(t *testing.T) {
 			{"invalid-sunset", `,"deprecated":true,"x-sunset":"invalid"`},
 		} {
 			for _, shape := range []string{"inline", "nested", "array", "allOf", "anyOf", "oneOf", "reference", "recursive-reference"} {
+				if freezeUnresolvableFixture(context, shape) {
+					continue
+				}
 				t.Run(context+"/"+metadata.name+"/"+shape, func(t *testing.T) {
 					required := ""
 					if context == "response" {
@@ -37,7 +40,7 @@ func TestFreezeRejectsPropertyRemovalsRegardlessOfSunset(t *testing.T) {
 					}
 					if !slices.ContainsFunc(violations, func(v api.Violation) bool {
 						return v.ID == "hikyo-property-removed" && v.Path == "/api/v1/thing" && v.Operation == "POST" &&
-							v.Level == "ERR" && strings.Contains(v.Text, "removed")
+							v.Level == "ERR" && strings.Contains(v.Text, `removed"`) && strings.Contains(v.Text, "removed from the frozen API")
 					}) {
 						t.Fatalf("missing structural property-removal violation: %v", violations)
 					}
@@ -45,6 +48,12 @@ func TestFreezeRejectsPropertyRemovalsRegardlessOfSunset(t *testing.T) {
 			}
 		}
 	}
+}
+
+// The loader leaves references inside header content unresolved, and the gate
+// then fails closed with a diffing error rather than returning a verdict.
+func freezeUnresolvableFixture(context, shape string) bool {
+	return context == "response-header-content" && strings.HasSuffix(shape, "reference")
 }
 
 func freezeSchemaDocument(context, shape, schema string) []byte {
@@ -77,6 +86,9 @@ func freezeSchemaDocument(context, shape, schema string) []byte {
 	if context == "response-header" {
 		operation = fmt.Sprintf(`"responses":{"200":{"description":"ok","headers":{"X-Fixture":{"schema":%s}}}}`, schema)
 	}
+	if context == "response-header-content" {
+		operation = fmt.Sprintf(`"responses":{"200":{"description":"ok","headers":{"X-Fixture":{"content":{"application/json":{"schema":%s}}}}}}`, schema)
+	}
 	return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/api/v1/thing":{"post":{%s}}}%s}`, operation, components))
 }
 
@@ -104,7 +116,7 @@ func TestFreezeRejectsPastSunsetEndpointAndParameterRemovals(t *testing.T) {
 				wantID = "hikyo-parameter-removed"
 			}
 			if !slices.ContainsFunc(violations, func(v api.Violation) bool {
-				return v.ID == wantID && v.Path == "/api/v1/thing" && v.Level == "ERR"
+				return v.ID == wantID && v.Path == "/api/v1/thing" && v.Operation == "GET" && v.Level == "ERR"
 			}) {
 				t.Fatalf("missing structural removal violation %q: %v", wantID, violations)
 			}
@@ -113,23 +125,37 @@ func TestFreezeRejectsPastSunsetEndpointAndParameterRemovals(t *testing.T) {
 }
 
 func TestFreezeRemovalDiagnosticsAreStable(t *testing.T) {
-	base := freezeSchemaDocument("request", "inline", `{"type":"object","properties":{"a":{"type":"string"},"b":{"type":"string"}}}`)
-	revised := freezeSchemaDocument("request", "inline", `{"type":"object"}`)
-	want, err := api.CheckFreeze(base, revised)
-	if err != nil || len(want) == 0 {
-		t.Fatalf("initial removal check: %v, %v", want, err)
+	document := func(properties string) []byte {
+		schema := fmt.Sprintf(`{"type":"object","properties":{%s}}`, properties)
+		operation := fmt.Sprintf(`{"requestBody":{"content":{"application/json":{"schema":%s}}},"responses":{"200":{"description":"ok"}}}`, schema)
+		return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/a":{"post":%[1]s,"put":%[1]s},"/b":{"post":%[1]s}}}`, operation))
 	}
-	for range 10 {
-		got, err := api.CheckFreeze(base, revised)
-		if err != nil || !slices.Equal(got, want) {
-			t.Fatalf("unstable diagnostics: got %v, %v; want %v", got, err, want)
+	base, revised := document(`"x":{"type":"string"},"y":{"type":"string"}`), document(``)
+	want := []string{`/a POST "x"`, `/a POST "y"`, `/a PUT "x"`, `/a PUT "y"`, `/b POST "x"`, `/b POST "y"`}
+	// The structural check ranges over maps, so one run can be ordered by luck.
+	for range 50 {
+		violations, err := api.CheckFreeze(base, revised)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var order []string
+		for _, v := range violations {
+			if v.ID == "hikyo-property-removed" {
+				order = append(order, fmt.Sprintf("%s %s %s", v.Path, v.Operation, strings.Fields(v.Text)[4]))
+			}
+		}
+		if !slices.Equal(order, want) {
+			t.Fatalf("diagnostic order: got %q, want %q", order, want)
 		}
 	}
 }
 
 func TestFreezeStillPermitsPropertyAdditions(t *testing.T) {
-	for _, context := range []string{"request", "response", "parameter", "parameter-content", "response-header"} {
+	for _, context := range []string{"request", "response", "parameter", "parameter-content", "response-header", "response-header-content"} {
 		for _, shape := range []string{"inline", "nested", "array", "allOf", "anyOf", "oneOf", "reference", "recursive-reference"} {
+			if freezeUnresolvableFixture(context, shape) {
+				continue
+			}
 			t.Run(context+"/"+shape, func(t *testing.T) {
 				base := freezeSchemaDocument(context, shape, `{"type":"object","properties":{"kept":{"type":"string"}}}`)
 				revised := freezeSchemaDocument(context, shape, `{"type":"object","properties":{"kept":{"type":"string"},"added":{"type":"string"}}}`)
@@ -146,70 +172,196 @@ func TestFreezeStillPermitsPropertyAdditions(t *testing.T) {
 	}
 }
 
-func TestFreezeRejectsPastSunsetCallbackPropertyRemoval(t *testing.T) {
-	document := func(properties string) []byte {
-		return []byte(fmt.Sprintf(`{
-			"openapi":"3.1.0",
-			"jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base",
-			"info":{"title":"fixture","version":"1"},
-			"paths":{"/api/v1/thing":{"post":{
-				"responses":{"200":{"description":"ok"}},
-				"callbacks":{"notice":{"{$request.query.url}":{"post":{
-					"requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{%s}}}}},
-					"responses":{"200":{"description":"ok"}}
-				}}}}
-			}}}
-		}`, properties))
-	}
-	base := document(`"kept":{"type":"string"},"removed":{"type":"string","deprecated":true,"x-sunset":"2000-01-01"}`)
-	revised := document(`"kept":{"type":"string"}`)
-	violations, err := api.CheckFreeze(base, revised)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.ContainsFunc(violations, func(v api.Violation) bool {
-		return v.ID == "hikyo-property-removed" && v.Path == "{$request.query.url}"
-	}) {
-		t.Fatalf("missing callback property-removal violation: %v", violations)
-	}
-}
-
-func TestFreezeRejectsCallbackRemovals(t *testing.T) {
+func TestFreezeRefusesCallbackRemovalsAndChanges(t *testing.T) {
 	const responses = `"responses":{"200":{"description":"ok"}}`
 	const endpoint = `{"post":{` + responses + `}}`
-	document := func(callbacks string) []byte {
-		return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/api/v1/thing":{"post":{%s%s}}}}`, responses, callbacks))
+	const expression = `"{$request.query.url}"`
+	callback := func(operation string) string {
+		return `,"callbacks":{"notice":{` + expression + `:{"post":{` + operation + `}}}}`
 	}
-	for _, tc := range []struct{ name, base, revised, wantID, wantPath string }{
+	body := func(schema string) string {
+		return `"requestBody":{"content":{"application/json":{"schema":` + schema + `}}},` + responses
+	}
+	for _, tc := range []struct{ name, base, revised, wantID string }{
+		{"whole-callback", `,"callbacks":{"notice":{` + expression + `:` + endpoint + `}}`, ``, "hikyo-callback-removed"},
+		{"empty-callback", `,"callbacks":{"notice":{}}`, ``, "hikyo-callback-removed"},
 		{
-			"whole-callback",
-			`,"callbacks":{"notice":{"{$request.query.url}":` + endpoint + `}}`, ``,
-			"hikyo-callback-removed", "/api/v1/thing",
-		},
-		{
-			"empty-callback",
-			`,"callbacks":{"notice":{}}`, ``,
-			"hikyo-callback-removed", "/api/v1/thing",
-		},
-		{
-			"callback-expression",
+			"expression",
 			`,"callbacks":{"notice":{"{$request.query.url}/kept":` + endpoint + `,"{$request.query.url}/removed":` + endpoint + `}}`,
 			`,"callbacks":{"notice":{"{$request.query.url}/kept":` + endpoint + `}}`,
-			"hikyo-endpoint-removed", "{$request.query.url}/removed",
+			"hikyo-callback-changed",
+		},
+		{
+			"past-sunset-property",
+			callback(body(`{"type":"object","properties":{"kept":{"type":"string"},"removed":{"type":"string","deprecated":true,"x-sunset":"2000-01-01"}}}`)),
+			callback(body(`{"type":"object","properties":{"kept":{"type":"string"}}}`)),
+			"hikyo-callback-changed",
+		},
+		{"request-body", callback(body(`{"type":"string"}`)), callback(responses), "hikyo-callback-changed"},
+		{
+			"response-status",
+			callback(`"responses":{"200":{"description":"ok"},"404":{"description":"gone"}}`), callback(responses),
+			"hikyo-callback-changed",
+		},
+		{"enum-value", callback(body(`{"type":"string","enum":["a","b"]}`)), callback(body(`{"type":"string","enum":["a"]}`)), "hikyo-callback-changed"},
+		{
+			"nested-callback",
+			callback(responses + `,"callbacks":{"inner":{` + expression + `:` + endpoint + `}}`), callback(responses),
+			"hikyo-callback-changed",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			violations, err := api.CheckFreeze(document(tc.base), document(tc.revised))
+			violations, err := api.CheckFreeze(freezeCallbackDocument(tc.base), freezeCallbackDocument(tc.revised))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !slices.ContainsFunc(violations, func(v api.Violation) bool {
-				return v.ID == tc.wantID && v.Path == tc.wantPath && v.Operation == "POST" && v.Level == "ERR"
+				return v.ID == tc.wantID && v.Path == "/api/v1/thing" && v.Operation == "POST" && v.Level == "ERR" && strings.Contains(v.Text, `"notice"`)
 			}) {
-				t.Fatalf("missing callback removal violation %q at %q: %v", tc.wantID, tc.wantPath, violations)
+				t.Fatalf("missing callback violation %q: %v", tc.wantID, violations)
 			}
 		})
 	}
+}
+
+func freezeCallbackDocument(callbacks string) []byte {
+	return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/api/v1/thing":{"post":{"responses":{"200":{"description":"ok"}}%s}}}}`, callbacks))
+}
+
+// A callback reaching itself through a reference must not hang the gate.
+func TestFreezeTerminatesOnCyclicCallbacks(t *testing.T) {
+	document := func(properties string) []byte {
+		return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},
+			"paths":{"/api/v1/thing":{"post":{"responses":{"200":{"description":"ok"}},"callbacks":{"notice":{"$ref":"#/components/callbacks/Loop"}}}}},
+			"components":{"callbacks":{"Loop":{"{$request.query.url}":{"post":{
+				"requestBody":{"content":{"application/json":{"schema":{"type":"object","properties":{%s}}}}},
+				"responses":{"200":{"description":"ok"}},
+				"callbacks":{"again":{"$ref":"#/components/callbacks/Loop"}}
+			}}}}}}`, properties))
+	}
+	violations, err := api.CheckFreeze(document(`"kept":{"type":"string"},"removed":{"type":"string"}`), document(`"kept":{"type":"string"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(violations, func(v api.Violation) bool { return v.ID == "hikyo-callback-changed" }) {
+		t.Fatalf("missing cyclic callback violation: %v", violations)
+	}
+}
+
+// Each of these passed the gate without a violation before the structural check
+// covered them. Deleting a subschema drops its nested properties unvisited.
+func TestFreezeRejectsRemovalsUpstreamChecksOmit(t *testing.T) {
+	const ok = `"200":{"description":"ok"}`
+	response := func(schema string) string {
+		return `"responses":{"200":{"description":"ok","content":{"application/json":{"schema":` + schema + `}}}}`
+	}
+	object := `{"type":"object","properties":{"x":{"type":"string"}}}`
+	list := func(fields string) string {
+		return response(`{"type":"object","properties":{"l":{"type":"array"` + fields + `}}}`)
+	}
+	values := func(fields string) string {
+		return response(`{"type":"object","properties":{"o":{"type":"object"` + fields + `}}}`)
+	}
+	parameter := func(fields string) string {
+		return `"parameters":[{"name":"filter","in":"query"` + fields + `}],"responses":{` + ok + `}`
+	}
+	for _, tc := range []struct{ name, base, revised, wantID string }{
+		{"array-items", list(`,"items":` + object), list(``), "hikyo-schema-removed"},
+		{"map-values", values(`,"additionalProperties":` + object), values(``), "hikyo-schema-removed"},
+		{
+			"request-items",
+			`"requestBody":{"content":{"application/json":{"schema":{"type":"array","items":` + object + `}}}},"responses":{` + ok + `}`,
+			`"requestBody":{"content":{"application/json":{"schema":{"type":"array"}}}},"responses":{` + ok + `}`,
+			"hikyo-schema-removed",
+		},
+		{
+			"parameter-schema-to-content",
+			parameter(`,"schema":{"type":"string"}`), parameter(`,"content":{"application/json":{"schema":{"type":"string"}}}`),
+			"hikyo-schema-removed",
+		},
+		{
+			"response-open-enum-value",
+			response(`{"type":"string","x-extensible-enum":["a","b"]}`), response(`{"type":"string","x-extensible-enum":["a"]}`),
+			"hikyo-enum-value-removed",
+		},
+		{
+			"nested-open-enum-value",
+			response(`{"type":"object","properties":{"kind":{"type":"string","x-extensible-enum":["a","b"]}}}`),
+			response(`{"type":"object","properties":{"kind":{"type":"string","x-extensible-enum":["a"]}}}`),
+			"hikyo-enum-value-removed",
+		},
+		{
+			"open-enum-declaration",
+			response(`{"type":"string","x-extensible-enum":["a"]}`), response(`{"type":"string"}`),
+			"hikyo-enum-value-removed",
+		},
+		{"default-response", `"responses":{` + ok + `,"default":{"description":"d"}}`, `"responses":{` + ok + `}`, "hikyo-response-removed"},
+		{"wildcard-response", `"responses":{` + ok + `,"4XX":{"description":"d"}}`, `"responses":{` + ok + `}`, "hikyo-response-removed"},
+		{
+			"response-link",
+			`"responses":{"200":{"description":"ok","links":{"next":{"operationId":"next"}}}}`, `"responses":{` + ok + `}`,
+			"hikyo-link-removed",
+		},
+		{
+			"encoding",
+			`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"f":{"type":"string"}}},"encoding":{"f":{"contentType":"text/plain"}}}}},"responses":{` + ok + `}`,
+			`"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"f":{"type":"string"}}}}}},"responses":{` + ok + `}`,
+			"hikyo-encoding-removed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			violations, err := api.CheckFreeze(freezeOperationDocument(tc.base), freezeOperationDocument(tc.revised))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.ContainsFunc(violations, func(v api.Violation) bool {
+				return v.ID == tc.wantID && v.Path == "/api/v1/thing" && v.Operation == "POST" && v.Level == "ERR"
+			}) {
+				t.Fatalf("missing violation %q: %v", tc.wantID, violations)
+			}
+		})
+	}
+}
+
+// A stability label is lifecycle metadata, like a sunset: it hides nothing.
+func TestFreezeRefusesChangesUnderAnyStabilityLevel(t *testing.T) {
+	for _, level := range []string{"draft", "alpha", "beta", "stable"} {
+		operation := func(fields string) []byte {
+			return freezeOperationDocument(`"x-stability-level":"` + level + `",` + fields)
+		}
+		const ok = `"responses":{"200":{"description":"ok"}}`
+		enum := func(values string) string {
+			return `"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"type":"string","enum":` + values + `}}}}}`
+		}
+		for name, change := range map[string]struct{ base, revised string }{
+			"security":      {`"security":[{"a":[]}],` + ok, ok},
+			"response-enum": {enum(`["a","b"]`), enum(`["a"]`)},
+		} {
+			t.Run(level+"/"+name, func(t *testing.T) {
+				violations, err := api.CheckFreeze(operation(change.base), operation(change.revised))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(violations) == 0 {
+					t.Fatal("a forbidden change passed the gate")
+				}
+			})
+		}
+	}
+}
+
+func TestFreezeStillPermitsOpenEnumGrowth(t *testing.T) {
+	document := func(values string) []byte {
+		return freezeOperationDocument(`"responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"type":"string","x-extensible-enum":` + values + `}}}}}`)
+	}
+	violations, err := api.CheckFreeze(document(`["a"]`), document(`["b","a"]`))
+	if err != nil || len(violations) != 0 {
+		t.Fatalf("a permitted open-enum addition was refused: %v, %v", violations, err)
+	}
+}
+
+func freezeOperationDocument(operation string) []byte {
+	return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"components":{"securitySchemes":{"a":{"type":"http","scheme":"bearer"}}},"paths":{"/api/v1/thing":{"post":{%s}}}}`, operation))
 }
 
 func TestFreezeComparesEffectiveParameters(t *testing.T) {
@@ -238,6 +390,9 @@ func TestFreezeComparesEffectiveParameters(t *testing.T) {
 						t.Fatalf("unchanged effective parameters were refused: %v", violations)
 					}
 				} else if !slices.ContainsFunc(violations, func(v api.Violation) bool {
+					if callback {
+						return v.ID == "hikyo-callback-changed" && v.Operation == "POST"
+					}
 					return v.ID == "hikyo-parameter-removed" && v.Operation == "POST"
 				}) {
 					t.Fatalf("missing sibling's inherited parameter-removal violation: %v", violations)
