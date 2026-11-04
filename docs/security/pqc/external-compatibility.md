@@ -1,10 +1,12 @@
 # External compatibility and residual-risk register, v2 (2026-11-03)
 
-Status: **draft for review, not operative. Owner dispositions are proposed, not
-recorded.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
+Status: **not an operative capability claim. Owner authorized merge of this
+documentation on 2026-11-04 (maintainer security approval for this PR only); owner
+dispositions for F-01 to F-11 are proposed, not recorded, and F-09 is open.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
 under [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Stacked on the
-transport policy (PR #1156, head `f5d5491829d6`; main merge-base
-`b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`). The tested candidate is named in the
+transport policy (PR #1156; the register was written and tested on its head
+`f5d5491829d6`; the base has since moved and the sweep was not rerun on it;
+main merge-base `b22eb0adb6480b3b2c61b8c86dee6df1a5a552a8`). The tested candidate is named in the
 [handoff](../../handoff/1134-external-compat.md). Route rows `Xnn` are new here;
 `Inn` is [inventory](inventory.md), `E-nn` and `DEC-nn` are the
 [migration register](migration.md#exception-register) and the
@@ -125,7 +127,7 @@ below or local-only:
 the CLI and operator clients to Hikyo (I11, owned, #1127), `internal/updater`
 (unix socket), `internal/hostupgrade` and `internal/app/unattended_process.go`
 (local health probes configured by the operator), `internal/netpolicy` (library),
-`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper whose callers pass the `updatecheck` transport). `internal/repscan` runs a
+`internal/mailtest`, `internal/tlstest` (fixtures), `internal/diagnostics` (a wrapper; three of its four callers pass an `updatecheck` client, and `internal/cli/client.go:224` wraps the CLI trust-entry transport, I11, #1127). `internal/repscan` runs a
 local `git` with remote access disabled. Inbound listeners are I09 (#1127). The
 re-sweep with the `DefaultTransport` and `LoadDefaultConfig` terms found the SAML
 metadata proxy leg (X11), the AWS STS and ambient credential chain (X23), and
@@ -166,7 +168,7 @@ so a classical chain is never assumed.
 | X20 | Update check, release download, self-update (I11, I26) | HTTPS to GitHub release hosts (`updatecheck/source.go:88`, `releaseDownloadHost`; `selfupdate/selfupdate.go:61`), public dialer, TLS 1.2 minimum | GitHub endpoint unknown | Public data; authenticity is I26 | Peer-controlled; unknown | Authenticity is signed metadata (P-256, E-11, E-15), not the TLS chain | WebPKI plus pinned release trust | Reinstall |
 | X21 | Pairing: remote fetch, directory, identity probe, proxy leg (I11, I20) | HTTPS to another Hikyo instance with a leaf SPKI pin (`remotefetch/remotefetch.go:248`, `pairing.go`, `directory.go`, `pairing_identity.go:58`) | Peer is a Hikyo instance; its listener may be strict (#1127) | Pairing credentials | Client at compat (Go default offered); peer may be strict | Pin replaces chain verification (E-20); SRP and DPoP classical (E-01) | Pin read over a classical chain | Revoke, re-pair |
 | X22 | Kubernetes API and kubelet (I30) | Bearer-token HTTPS via client-go (`cmd/hikyo/config_rollout.go:59`, `app/self_config_deployment.go:106`, `operator/manager.go:124`, `storagehealth/kubernetes.go:60`) | `client-go` v0.37.1; API server and kubelet builds unknown | Short-lived tokens | Cluster-controlled; unknown | Cluster CA, chain not observed | Cluster CA | Token refresh |
-| X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | STS: peer-controlled, unknown. Default IMDS (`http://169.254.169.254`) and ECS (`http://169.254.170.2`) endpoints: plain HTTP, no TLS | Chain not observed | WebPKI; link-local or private ambient endpoints | Re-assume the role |
+| X23 | AWS STS and the ambient credential chain (I14) | Separate `sts.<region>` endpoint (`awssm/auth.go:265-267`) with its own client and `STSAllowedCIDRs` dialer (`client.go:162-168`); AssumeRole and WebIdentity (`auth.go:289-302`); `LoadDefaultConfig` (`auth.go:313`) whose SDK-owned sources (IMDS, ECS, IRSA files) keep the SDK transport (`auth.go:270-272`). **Read from code, not run** | `aws-sdk-go-v2` v1.47.5; STS is not named in the AWS blog (X05) | Temporary credentials until expiry | STS: peer-controlled, unknown. Default IMDS (`http://169.254.169.254`) and ECS (`http://169.254.170.2`) endpoints: plain HTTP, no TLS | STS chain not observed; no chain on the plain-HTTP default IMDS and ECS endpoints | WebPKI; link-local or private ambient endpoints | Re-assume the role |
 | X24 | Installer downloads (I26; Hikyo's Go TLS does not apply) | `curl --proto =https` to the release source (`install/install.sh.in:78`, which also sets `--tlsv1.2`), and to `api.github.com`, `github.com` releases including cosign, and `raw.githubusercontent.com` (`install/upgrade-nightly.sh:365-380`, no `--tlsv1.2`) | Host `curl` and its TLS library; versions unknown | Public artifacts | Host-library-defined; unknown | Authenticity is pinned root hash and signed metadata (E-11, E-15), not this transport | Pinned root hash | Reinstall |
 ## Table B: disposition
 
@@ -183,7 +185,7 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 | X05 | compatibility-only | source: AWS blog and doc; negotiated group NOTRUN; AWS limits the claim to non-FIPS endpoints | Authorized capture; AWS states FIPS endpoint support | Strict could work only where a non-FIPS endpoint negotiates the group | F-02 | E-07, E-08 |
 | X06 | unknown | source: Cloudflare doc does not name `api.cloudflare.com` | Capture or doc names the host | Unknown | F-02 | E-07, E-08 |
 | X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03: runbook line for sshd operators (#1135) | E-02 limits only the signatures |
-| X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04: owner decision on the composite (ML-DSA-44, outside DEC-02, composite rejected by DEC-03) before any code | E-02 |
+| X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04: owner decision on the composite (ML-DSA-44, outside DEC-02, DEC-03 did not select composites) before any code | E-02 |
 | X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; owner decides credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 | E-05 |
 | X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` has no ML-DSA | `go-jose` adds ML-DSA; an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06: #1130/#1132 note | E-04 |
 | X11 | unknown | source only, including the SAML metadata proxy leg | As X02 | Unknown | F-02 | E-04, E-08 |
@@ -203,8 +205,8 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 
 ### Follow-ups
 
-Each line is a title and a one-sentence body that can be filed as written. All
-are owned by Marc Went; the parent files them. Rows served are in Table B.
+Each line is a title and a one-sentence body, filed as the linked issue. All
+are owned by Marc Went. Rows served are in Table B.
 
 | ID | Title | Body | Rows |
 | --- | --- | --- | --- |
@@ -230,7 +232,7 @@ or peer authenticity on this hop**.
 | --- | --- | --- | --- |
 | X01 | The sealed box is classical X25519 whatever the TLS group: a recorded or provider-stored value is readable once X25519 breaks, because the provider public key is public. Provider storage unknown | Nothing here (anonymous box) | No PQ confidentiality for GitHub-delivered secrets (E-06, E-07) |
 | X02 to X06, X11, X17, X19, X22 | The session: API calls, bearer credentials, and for adapters the plaintext secret values or the age ciphertext inside TLS, if the peer negotiates classical | Impersonation of the peer to Hikyo if the chain is classical | No PQ confidentiality or peer authenticity on this hop. Rotate long-lived credentials that crossed it after a strict migration (E-07 prior exposure) |
-| X23 | The web-identity token and the temporary credentials, which authorize secret writes until they expire; ambient sources (IMDS, ECS, IRSA) are SDK-owned and were read from code, not run | Impersonated STS or metadata endpoint | No PQ confidentiality or peer authenticity on this hop (E-07, E-08) |
+| X23 | The web-identity token and the temporary credentials, which authorize secret writes until they expire; ambient sources (IMDS, ECS, IRSA) are SDK-owned and were read from code, not run. On the default IMDS and ECS endpoints (plain HTTP) any on-path observer reads them today, with no quantum capability | STS: impersonated endpoint if the chain is classical. Default IMDS and ECS: nothing quantum is needed, since plain HTTP has no peer authentication to forge (a link-local or container-network on-path actor suffices) | No PQ confidentiality or peer authenticity on the STS hop. The default IMDS and ECS endpoints have no confidentiality or peer authenticity at all, PQ or classical (E-07, E-08) |
 | X07 | Nothing if both ends negotiate the hybrid KEX; the classical exchange is accepted by default sshd | Forged host or user signatures | Operator-owned; Hikyo makes none |
 | X08 | Not applicable (no confidentiality) | The CA private key, once recovered, lets the holder choose principals, validity and extensions. Exposure lasts until the CA leaves every sshd `TrustedUserCAKeys`. Hikyo's issuance policy and short TTLs do not constrain a forger, and the KRL only stops revoked serials and keys | No PQ authenticity for SSH CA certificates (E-02) |
 | X09, X10, X12 | Not applicable | Forged assertions, tokens or WebAuthn signatures log in as any user | No PQ authenticity for federated or passkey login (E-04, E-05) |
@@ -244,17 +246,18 @@ or peer authenticity on this hop**.
 
 ## Allowed capability statement
 
-Candidate: the tested head named in the handoff, on `f5d5491829d6`. For every
+Candidate: the tested head named in the handoff, written on `f5d5491829d6` (see the header for the base since). For every
 route in this register:
 
 - Hikyo claims **no post-quantum confidentiality and no post-quantum
   authenticity**. No route is verified supported. "PQ-ready" is not allowed.
 - Hikyo's own Go clients offer the library-default hybrid group
   (`X25519MLKEM768`) on external TLS hops, which is Go's default, not Hikyo policy.
-  The AWS SDK's default IMDS and ECS credential endpoints (X23) are plain HTTP,
-  with no TLS at all.
   Whether it is negotiated is the peer's choice and was **not observed in
-  production** on any route (NOTRUN).
+  production** on any TLS route (NOTRUN).
+- The AWS SDK's default IMDS and ECS credential endpoints (X23) are plain HTTP
+  with no TLS, so no group is negotiated there and the exposure needs no quantum
+  capability.
 - X01: the value is sealed to the provider's X25519 key with a libsodium
   sealed box. Confidentiality of that payload rests on X25519 and is classical.
   The route is not replaced or wrapped. Provider storage and TLS are unknown.
@@ -295,8 +298,8 @@ runtime exception naming.
   peer-evidence row per hop (E-08); (c) a decision whether "strict" for a
   provider-required envelope (X01) means the route is disabled. All are design
   decisions.
-- Owner: Marc Went. Owning ticket: none yet; the nearest is #1127's hop table
-  (E-08). Proposed: file under #1134's parent or extend #1127.
+- Owner: Marc Went. Owning ticket: [#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)
+  (F-09); the nearest related work is #1127's hop table (E-08).
 - Recheck trigger: the owner decides to extend DEC-06 scope, or a route gains a
   peer-evidence row showing it can negotiate the strict group.
 - Residual risk: every external route stays at compat; strict neither protects

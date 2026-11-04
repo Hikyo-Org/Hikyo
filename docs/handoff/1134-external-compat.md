@@ -1,21 +1,27 @@
 # #1134: external provider, SSH and federation compatibility, handoff
 
-Status: **draft, discovery and register. Not merge-ready, not operative.**
+Status: **discovery and register; documentation and tests only; not an
+operative capability claim.**
 Refs [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134); the PR does not
-close it. Security approval: not given. Independent adversarial review is
-required; cross-provider review is SKIPPED by explicit owner instruction
+close it. On 2026-11-04 the owner (Marc Went) authorized merge to `dev` when green
+and accepted publication in the next nightly; that is the maintainer security
+approval for this PR only. It does not decide F-09 or any other open item, and it
+does not authorize release or deployment. Open and undecided: F-09 (per-route
+strict selection, [#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)), the
+other F-nn dispositions (F-01 to F-11 are #1175 to #1185), and every proposed
+exception term, which stays ineffective until its peer is named (DEC-10).
+Independent adversarial review was done on `claude-opus-5-5` (see Independent
+review); cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN.
 
-Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`, head `f5d5491829d6`).
+Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). The register and the
+tests were written and run on its head `f5d5491829d6`; the base has since moved
+and the route sweep was not rerun on it.
 No ADR amendment is proposed for this ticket (the register names none for SSH,
 federation or authenticators), so no locked ADR is touched.
 
 **Tested SHA for the Go tests and lint: `613b3978ed6fd8df9525824d04d3ecd2d23edf48`.**
-The two review rounds since then (handoff `74d1fcc82`, and the re-review repair)
-touch documentation only, so the Go results stand; the repair commit is named
-in the PR. `374e7e6bc` was reviewed and found defective; `74d1fcc82` was
-re-reviewed and found four medium and five low defects; this version repairs
-them.
+Every commit since touches documentation only, so the Go results stand.
 
 ## Result
 
@@ -24,6 +30,29 @@ The register is [external-compatibility](../security/pqc/external-compatibility.
 capability statement, a named HOLD (F-09), proposed exception terms (none
 effective) and a local qualification record. No route is verified supported.
 The parent claim stays blocked.
+
+## Independent review
+
+Three review passes on `claude-opus-5-5`, plus a fourth on 2026-11-04:
+
+| Pass | Reviewed | Outcome | Repair |
+| --- | --- | --- | --- |
+| 1 | `374e7e6bc` | Defective | `613b3978e` |
+| 2 | `74d1fcc82` | Four medium and five low | `da1c3f357` |
+| 3 | `da1c3f357` | Six findings, none above medium | `9b4517d66`, `8117b44d0`, `912b4f5c8` |
+| 4 (2026-11-04) | `912b4f5c8` | Six findings (stale filing wording; X23 framed as a quantum risk although the default IMDS and ECS endpoints are plain HTTP; DEC-03 misquoted; `internal/diagnostics` callers; stale handoff status; an undisclosed edit) | The commit that carries this text |
+
+The repairs for passes 3 and 4 were made after checking each finding against
+source and have no further independent review. Cross-provider review: SKIPPED by
+explicit owner instruction (2026-11-02).
+
+## Disclosed edit outside this ticket's files
+
+`613b3978e` edited the TLS hop row in `docs/security/pqc/qualification.md` (the
+qualification matrix of an owner-approved package) without saying so in the first
+handoff or the PR. The change narrows the claim: strict-only refusal is stated for
+strict-marked hops, and on compat hops the group is observed and nothing is
+refused. The wording matches the #1127 transport policy.
 
 ## Facts that differ from the register (owner decides)
 
@@ -73,7 +102,7 @@ OpenSSH 10 (NOTRUN); they are local evidence.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| Inventory every route with contract, versions, lifetime, KEX, signatures, anchor, wrapping, owner, evidence | PARTIAL | X01 to X24 from a stated sweep (register "Sweep scope"; Go plus two installer scripts); a later census can add rows. X19 to X22 were added after the first review, X23 (AWS STS and ambient chain) and X24 (installers) after the second; the re-sweep also found the SAML metadata proxy leg (in X11) |
+| Inventory every route with contract, versions, lifetime, KEX, signatures, anchor, wrapping, owner, evidence | PARTIAL | X01 to X24 from a stated sweep (register "Sweep scope"; Go plus two installer scripts); a later census can add rows. X19 to X22 were added after the first review, X23 (AWS STS and ambient chain) and X24 (installers) after the second. X23's default IMDS and ECS endpoints are plain HTTP, so that leg needs no quantum capability to attack; the re-sweep also found the SAML metadata proxy leg (in X11) |
 | Verify current documentation; distinguish GitHub sealed box from storage and TLS, OpenSSH KEX from signatures | DONE | Read 2026-11-03; provider storage stays unknown |
 | Cover SSH CA and KRL, WebAuthn/COSE, OIDC/JWKS, SAML, database, cloud wrapping, trust services | DONE | X08 to X16; X14 and X16 now cite primary AWS and Sigstore documents; X16 is unknown, not blocked |
 | Classify each route with reason, owner, trigger, impact, follow-up; residual risk; deferral has owner disposition | PARTIAL | Owner named; the owner has not recorded dispositions. F-01 to F-11 are filed as #1175 to #1185 and defined in the register. Residual risk is per route class, with X16, X18, X20, X23 and X24 stated separately |
@@ -91,15 +120,17 @@ OpenSSH 10 (NOTRUN); they are local evidence.
 | source | Register rows; pinned versions from `go.mod`; module source searched for `go-jose` ML-DSA; OpenSSH `V_10_6_P1` source |
 | local | Tested SHA above: `go test -p 2 -count=1 ./internal/sshca/ ./internal/crypto/` PASS (OpenSSH 10.3p1, Go 1.27.3 darwin/arm64); one-off libsodium 1.0.22 interop PASS both ways, helper not committed |
 | local, repository checks | On the tested SHA: `go test -p 2 -count=1 -timeout 40m ./internal/lint/...` PASS (1387 s). A first run with Go's default 10 minute timeout FAILED at 601 s under host load and is not counted; `scripts/ci/fast-feedback.sh` through the queue with base `origin/dunky13/pqc-1127-transport-policy` PASS (diff check, Go formatting, test compile of `internal/crypto` and `internal/sshca`); `check-commit-signatures.sh` and `check-dco.sh` against that base PASS for the two commits then on the branch |
-| NOTRUN | `scripts/ci/check-doc-status.mjs` (docs/site dependencies not installed; no status ledger change); hosted CI; provider, peer, runtime, deployment |
+| hosted CI | At `912b4f5c8`: `feedback` (go, tooling, frontend) and `repository invariants (boundary, lint, CI policy)` PASS. `ci-queue-required` FAILED with "Only the protected default branch can enter this merge queue", because this PR is stacked on a non-default base; it is not a content failure. The commits after `912b4f5c8` are documentation only; read their checks on the PR |
+| NOTRUN | `scripts/ci/check-doc-status.mjs` (docs/site dependencies not installed; no status ledger change); provider, peer, runtime, deployment |
 
 ## Key retention and rollback
 
 No key, certificate, authenticator or trust anchor is created or changed. Rollback
 is reverting the documentation and the three test files.
 
-## Next authorized step
+## Next step
 
-Independent Standards and Spec review of the repair, then the owner records or
-amends the exception terms (naming peers) and dispositions for F-01 to F-11.
-Authorized peer captures (F-02) need a named environment.
+Owner authorized merge on 2026-11-04 once required checks are green, bottom-up
+after #1156. Still open for the owner: record dispositions for F-01 to F-11 (F-09
+first, since #1134 can close only after it) and name peers for the exception
+terms. Authorized peer captures (F-02) need a named environment.
