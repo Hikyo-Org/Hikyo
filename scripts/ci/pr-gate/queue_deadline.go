@@ -138,7 +138,7 @@ func (q *queueController) reassessedBy(number int) string {
 	return fmt.Sprintf("It is reassessed by a new push to this PR, a feedback result, a push to main, the schedule, or manually: gh workflow run %s -f pr_number=%d.", gate, number)
 }
 
-const unfinished = "The publisher did not finish: it failed or ran out of its budget. No verdict was reached. Merging stays blocked."
+const unfinished = "The publisher did not finish: it failed or ran out of its budget. Merging stays blocked."
 
 func (q *queueController) pendingText(number int) outcome {
 	return pending(unfinished + " A failed run is rerun only while attempts remain. " + q.reassessedBy(number))

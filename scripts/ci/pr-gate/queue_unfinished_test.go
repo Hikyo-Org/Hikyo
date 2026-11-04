@@ -237,12 +237,12 @@ func TestUnfinishedTextPerContext(t *testing.T) {
 				t.Fatalf("wrong outcomes: %+v %+v", pending, refusal)
 			}
 			for _, o := range []outcome{pending, refusal} {
-				for _, want := range []string{"The publisher did not finish", "No verdict was reached", "Merging stays blocked", "a new push to this PR", "a feedback result", "a push to main", "the schedule", tc.command} {
+				for _, want := range []string{"The publisher did not finish", "Merging stays blocked", "a new push to this PR", "a feedback result", "a push to main", "the schedule", tc.command} {
 					if !strings.Contains(o.Summary, want) {
 						t.Errorf("%q lacks %q", o.Summary, want)
 					}
 				}
-				for _, bad := range []string{"budget failure", "push to dev", "automatically", "setup-inclusive", tc.absent} {
+				for _, bad := range []string{"budget failure", "No verdict", "push to dev", "automatically", "setup-inclusive", tc.absent} {
 					if strings.Contains(o.Summary, bad) {
 						t.Errorf("%q must not contain %q", o.Summary, bad)
 					}

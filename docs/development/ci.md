@@ -286,7 +286,7 @@ never fails, if the PR, its base, the rules or the feedback attempt moves during
 attempt 3, or if setup fails on attempt 3, which publishes nothing.
 
 The pending and refusal records say only that the publisher did not finish (it
-failed or ran out of its budget) and that no verdict was reached. They name no
+failed or ran out of its budget) and that merging stays blocked. They name no
 cause, because every error reaches them, and the refusal says to fix an error that
 persists. A rerun is promised only while attempts remain; the records name what
 reassesses the head: a new push to this PR, a
