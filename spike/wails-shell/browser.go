@@ -14,7 +14,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
 )
+
+// bearerClient never follows a redirect. Go keeps Authorization on same-domain
+// redirects, and the bearer belongs to the instance's origin alone.
+var bearerClient = &http.Client{
+	Timeout:       5 * time.Minute,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
 
 // openExternal is the only place the shell opens a URL, and instance code
 // chooses those URLs, so it takes absolute http or https with a host and no
@@ -37,25 +46,43 @@ func openExternal(raw string) error {
 
 // downloadPath picks where a download lands: a base name only, never an existing file.
 // shortcut: a fixed directory and a numeric suffix; a product shows a save panel, when downloads are productised.
-func downloadPath(suggested string) string {
+func downloadPath(suggested string) (string, error) {
 	dir := os.Getenv("HIKYO_SPIKE_DOWNLOAD_DIR")
 	if dir == "" {
 		home, _ := os.UserHomeDir()
 		dir = filepath.Join(home, "Downloads")
 	}
-	base := strings.TrimLeft(path.Base(strings.ReplaceAll(suggested, `\`, "/")), ".")
+	// The name comes from instance code: no control or bidi characters, and short enough for the filesystem.
+	base := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, suggested)
+	base = strings.TrimLeft(path.Base(strings.ReplaceAll(base, `\`, "/")), ".")
 	if base == "" || base == "/" {
 		base = "download"
 	}
 	ext := filepath.Ext(base)
-	stem := strings.TrimSuffix(base, ext)
-	name := base
-	for i := 1; ; i++ {
-		if _, err := os.Lstat(filepath.Join(dir, name)); os.IsNotExist(err) {
-			return filepath.Join(dir, name)
-		}
-		name = stem + " (" + strconv.Itoa(i) + ")" + ext
+	if len(ext) > 20 {
+		ext = ""
 	}
+	stem := []rune(strings.TrimSuffix(base, ext))
+	for len(string(stem)) > 200 {
+		stem = stem[:len(stem)-1]
+	}
+	name := string(stem) + ext
+	for i := 1; i <= 1000; i++ {
+		_, err := os.Lstat(filepath.Join(dir, name))
+		if os.IsNotExist(err) {
+			return filepath.Join(dir, name), nil
+		}
+		if err != nil {
+			return "", err
+		}
+		name = string(stem) + " (" + strconv.Itoa(i) + ")" + ext
+	}
+	return "", errors.New("too many files with that name")
 }
 
 // connections lets a native callback find the connection a wails:// URL belongs to; main sets it.
@@ -76,7 +103,7 @@ func saveThroughProxy(raw string) (string, int64, error) {
 		return "", 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.bearer())
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := bearerClient.Do(req)
 	if err != nil {
 		return "", 0, err
 	}
@@ -88,7 +115,10 @@ func saveThroughProxy(raw string) (string, int64, error) {
 	if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil && params["filename"] != "" {
 		name = params["filename"]
 	}
-	dest := downloadPath(name)
+	dest, err := downloadPath(name)
+	if err != nil {
+		return "", 0, err
+	}
 	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return "", 0, err

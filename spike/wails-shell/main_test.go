@@ -131,7 +131,7 @@ func TestDownloadPath(t *testing.T) {
 		"report.csv":         "report (1).csv",
 	}
 	for in, want := range cases {
-		if got := downloadPath(in); got != filepath.Join(dir, want) {
+		if got, err := downloadPath(in); err != nil || got != filepath.Join(dir, want) {
 			t.Errorf("%q -> %s, want %s", in, got, want)
 		}
 	}
@@ -314,5 +314,44 @@ func TestSaveThroughProxy(t *testing.T) {
 		if _, _, err := saveThroughProxy(bad); err == nil {
 			t.Errorf("%q saved", bad)
 		}
+	}
+}
+
+func TestDownloadPathHostileNames(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HIKYO_SPIKE_DOWNLOAD_DIR", dir)
+	got, err := downloadPath(strings.Repeat("a", 5000) + ".txt")
+	if err != nil || len(filepath.Base(got)) > 204 || !strings.HasSuffix(got, ".txt") {
+		t.Fatalf("long name: %q %v", got, err)
+	}
+	got, err = downloadPath("re\u202Eadme\x00\n.txt")
+	if err != nil || filepath.Base(got) != "readme.txt" {
+		t.Fatalf("control characters: %q %v", got, err)
+	}
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HIKYO_SPIKE_DOWNLOAD_DIR", file) // Lstat gives ENOTDIR, which the old loop retried forever
+	if got, err := downloadPath("a.txt"); err == nil {
+		t.Fatalf("a bad directory must fail, not spin: %q", got)
+	}
+}
+
+func TestSaveThroughProxyKeepsTheBearerOnItsOrigin(t *testing.T) {
+	t.Setenv("HIKYO_SPIKE_DOWNLOAD_DIR", t.TempDir())
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { leaked.Store(true) }))
+	defer other.Close()
+	instance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL, http.StatusFound)
+	}))
+	defer instance.Close()
+	connections = map[string]*conn{"conn-0": newConn("conn-0", session{Origin: instance.URL, Token: "hik_1_x"})}
+	if _, _, err := saveThroughProxy("wails://conn-0/export"); err == nil {
+		t.Fatal("a redirect must fail the download")
+	}
+	if leaked.Load() {
+		t.Fatal("the request followed the redirect off the instance")
 	}
 }

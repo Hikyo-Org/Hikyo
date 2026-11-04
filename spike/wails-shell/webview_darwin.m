@@ -27,6 +27,10 @@ static void openOutside(NSURL *url) {
 @implementation SpikeDownloads
 - (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)name completionHandler:(void (^)(NSURL *))handler {
 	char *chosen = spikeDownloadPath((char *)name.UTF8String);
+	if (chosen == NULL) {
+		handler(nil); // nil cancels the download
+		return;
+	}
 	NSURL *destination = [NSURL fileURLWithPath:[NSString stringWithUTF8String:chosen]];
 	free(chosen);
 	note(@"download starts: %@ -> %@ (%@, %lld bytes expected)", response.URL, destination.path, response.MIMEType, response.expectedContentLength);
@@ -62,7 +66,8 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 	if (action.shouldPerformDownload) {
 		NSString *own = [NSString stringWithFormat:@"blob:wails://%@/", webView.URL.host];
 		BOOL blob = [scheme isEqualToString:@"blob"] && webView.URL.host != nil && [url.absoluteString hasPrefix:own];
-		if ([scheme isEqualToString:@"wails"] && sameConnection(webView, url)) {
+		// Unlike navigation, a download has no first-load case, so an unknown page host is refused.
+		if ([scheme isEqualToString:@"wails"] && webView.URL.host != nil && sameConnection(webView, url)) {
 			// WKDownload cannot load a custom scheme (NSURLErrorDomain -1002), so Go fetches it through the connection's proxy.
 			spikeSaveURL((char *)url.absoluteString.UTF8String);
 		} else if (blob) {

@@ -158,7 +158,7 @@ func (c *conn) post(ctx context.Context, path string, body, out any) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.bearer())
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := bearerClient.Do(req)
 	if err != nil {
 		return err
 	}

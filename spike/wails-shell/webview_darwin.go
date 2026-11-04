@@ -27,7 +27,11 @@ func spikeOpenURL(raw *C.char) {
 
 //export spikeDownloadPath
 func spikeDownloadPath(suggested *C.char) *C.char {
-	p := downloadPath(C.GoString(suggested))
+	p, err := downloadPath(C.GoString(suggested))
+	if err != nil {
+		log.Printf("refused download: %v", err)
+		return nil
+	}
 	log.Printf("download destination %s", p)
 	return C.CString(p) // freed by the caller
 }
