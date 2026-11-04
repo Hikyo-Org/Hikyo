@@ -1,0 +1,84 @@
+# #1135: integrated PQ qualification packet, handoff
+
+Written 2026-11-04 for the draft PR that refs
+[#1135](https://github.com/Hikyo-Org/Hikyo/issues/1135). **Result: HOLD.** The
+packet exists; the qualification it describes does not. The PR does not close
+#1135 or #1123. Security approval: not given. Independent adversarial review is
+required; cross-provider review is SKIPPED by explicit owner instruction
+(2026-11-02) and is not CLEAN. These documents have no independent review.
+
+Deliverables: [packet](../security/pqc/qualification-packet.md) (requirement and
+exception maps, per-child table, ladder, rollback, budgets, contradictions,
+capability statement, release and blocked) and the
+[runbook](../operations/pqc-staged-rollout.md) (not executable). No code, test,
+schema or configuration changed.
+
+## Exact candidate
+
+PR #1195, branch `dunky13/pqc-1135-candidate`, commit
+`68b2673dea9eb7053edd77eca2e585146bb5ad2c`, tree
+`db58307e5a8aa54d684c52fed9148b9649dc9683`; Go 1.27.3 darwin/arm64; PostgreSQL
+18.6 from `postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941`.
+The candidate was unchanged when fetched and when last read. If it moves,
+nothing here transfers.
+
+## Integrated run (the only test run, once, through the shared queue)
+
+| Item | Result |
+| --- | --- |
+| Isolation, SQLite and PostgreSQL 18.6: `TestAdapterSealedWebhookProtocolTwoEndToEnd`, `TestPKIMLDSALifecycle`, `TestPKICLISQLite`, `TestPKICLIPostgres`, `TestTransitMLDSA65EndToEnd`, `TestTransitPublicSurfaceHoldsMLDSA65{SQLite,Postgres}`, `TestBackupRestoreDrillHybrid{SQLite,Postgres}`, `TestRestoreDrillVerbHybrid{SQLite,Postgres}`; `-p 2 -parallel 2 -timeout 40m -count=1`, queue job 3261 | **exit 0**, `ok ... 149.003s`; 55 PASS lines (11 top-level), 0 SKIP, 0 FAIL. The webhook, PKI lifecycle and Transit end-to-end entries each ran `sqlite` and `postgres` subtests; the CLI and hold tests are one engine per function |
+| Focused: `./internal/configrollout/... ./internal/releasetrust/... ./internal/crypto/... ./internal/tlspolicy/... ./internal/backupreceipt/...`, same job | **exit 0**; all packages `ok` |
+| `go run ./scripts/release/compatibility --development --check internal/buildcompat/development.json` against an empty scratch database on the same PostgreSQL, queue job 3263 | **exit 0**, no output |
+| Hosted `gh` read on #1195 at 2026-11-04T02:04Z | `repository invariants (boundary, lint, CI policy)` success with `Repository invariant tests` and `Lint driver tests` success; `feedback` (go, tooling, frontend) and `ops-floor` (amd64, arm64) success; `ci-queue-required` fails by design ("Only the protected default branch can enter this merge queue."). No integration finding in `reviewed_pins.json` |
+| Integration facts | Migrations: only `00083` (both engines). `development.json` matches. Doc links resolve. No PQ verifier has a non-test caller outside `internal/releasetrust`. Contradictions C-01 to C-11 are in the packet |
+
+Not run, so not claimed: `internal/lint` locally (instructed), the full app,
+service, server, store, pairing, selfupdate, sshca, pki and cli suites, fuzz,
+benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
+
+## Ticket acceptance, in the issue's order
+
+| # | Criterion | Status | Why |
+| --- | --- | --- | --- |
+| 1 | Map every requirement and exception to candidate, versions, digests, topology, configuration, peers, evidence | PARTIAL | Maps done by evidence class. Artifact digests, topology, effective configuration and peer versions do not exist: nothing was built for release or deployed |
+| 2 | Legacy, compatible reader, new writes, strict enforcement with the actual consumers | PARTIAL | Ladder in the packet. Strict is NOT BUILT for backups, unreachable for Transit, PKI and release, HOLD for pairing; TLS strict per process only; the rest is local or fake-API |
+| 3 | Integrated negative tests (stripping, fallback, unknown version, malformed, wrong scope, stale trust, replay, exhaustion) with vectors and fuzz | PARTIAL | Children have per-surface negatives; the union ran only the listed isolation and focused tests. Wycheproof NOTRUN, no long fuzz, no integrated cross-surface negative suite exists |
+| 4 | Backup/restore and custody drills, trust rollover, issuer lifecycle, pairing/revocation, webhook reconciliation, controller failover on both engines | PARTIAL | Backup drills, webhook takeover simulation, PKI/Transit lifecycle on both engines at the candidate. Upgrade-custody drill with hybrid: not possible (refused by design). Trust-root rollover, pairing, real failover: NOTRUN or HOLD |
+| 5 | Rollback at every migration phase incl. rejection of a binary below the floor; interrupted writes; restored stale state; retirement | PARTIAL | Rollback table in the packet. A pre-83 binary against an 83 database and a pre-migration-6 binary: NOTRUN. No retirement drill. Webhook has no floor |
+| 6 | Real TLS groups and certificate authentication across ingress, backend and client graph | NOTRUN | Only in-process handshakes. No real deployment observed |
+| 7 | amd64 and arm64 sizes, latency, CPU, memory, concurrency against approved budgets | HOLD | Recorded child numbers (M2 Pro arm64 only, loaded host). DEC-17 thresholds unset; amd64 NOTRUN; no measurement taken here |
+| 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval not given |
+| 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; one run (`--print-authority-ids`). Every real-environment step NOTRUN |
+| 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement), no row effective | Packet. No exception is effective (peers, versions and expiry are the owner's) |
+| 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met; pairing narrowing text unaccepted |
+| 12 | Record what can be released and what is blocked, plus remaining human and environment actions | DONE | Packet, "Release and blocked", lists only, no recommendation |
+
+## Findings for the owning children (no code changed)
+
+| Finding | Child | Note |
+| --- | --- | --- |
+| Hybrid scanner claim in `migration.md` is too narrow (C-03) | #1126 | Neither age identity form is matched by the compiled scanner |
+| DEC-07 id spellings and hash inputs differ across surfaces; #1129 and #1133 depart (C-01) | #1128, #1129, #1131, #1132, #1133 | Owner decision |
+| No defect was found in the integrated run. A defect would be reported against its child, not patched here | | |
+
+## Environment and cleanup
+
+A disposable PostgreSQL 18.6 container (`pqc1135-pg`, `--rm`, loopback port) and
+a scratch database `hikyo_release_schema` were used. `DROP DATABASE` succeeded
+and `docker rm -f pqc1135-pg` printed the container name; `docker ps` then
+listed none. Docker Desktop later failed to start ("Docker Desktop is unable to
+start"), so removal cannot be re-confirmed now. Scratch binaries, help
+captures and logs stay in the session scratch directory and are not committed.
+Throwaway keys used for `--print-authority-ids` were deleted. No production key
+material, provider, cluster or receiver was touched.
+
+## Retention and rollback of this change
+
+Revert the three documents. Nothing else is created or changed.
+
+## Next authorized step
+
+Independent Standards and Spec review of these documents, then the owner's
+decisions listed in the packet's "Release and blocked", then a separately
+authorized environment. Merge, issue closure, release and deployment are not
+authorized.
