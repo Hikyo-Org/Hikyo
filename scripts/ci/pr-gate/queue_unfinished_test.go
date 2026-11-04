@@ -151,6 +151,42 @@ func TestAdmissionProtectionReadStates(t *testing.T) {
 			t.Fatalf("a refusal was published for a repository with the queue off: %+v", got)
 		}
 	})
+	t.Run("returned disabled and enabled since", func(t *testing.T) {
+		t.Setenv("GITHUB_RUN_ATTEMPT", "3")
+		f := unfinishedFixture(t, "queue")
+		allRules := f.rules
+		f.rules = f.rules[:len(f.rules)-1] // no merge_queue rule: the queue is off
+		f.policyRefresh()
+		// A policy read is two paths and the pass makes two, so read 5 is the reserve's first.
+		policyReads, enabled := 0, false
+		f.api.readHook = func(path string, _ int) {
+			if strings.Contains(path, "rulesets/") || strings.Contains(path, "rules/branches/") {
+				if policyReads++; policyReads == 5 {
+					f.rules = allRules
+					f.policyRefresh()
+					enabled = true
+				}
+			}
+		}
+		var prReads atomic.Int32
+		f.c.api = deadlineAPI{api: f.c.api, readHook: func(_ context.Context, path string) error {
+			// The final PR read of the pass fails, so the invocation ends in the reserve.
+			if strings.HasSuffix(path, "/pulls/7") && prReads.Add(1) == 2 {
+				return &githubReadError{path: path, status: 502}
+			}
+			return nil
+		}}
+		err := unfinishedInvoke("queue", f, freshBudget())
+		if !enabled {
+			t.Fatalf("the queue never came back before the reserve read it: %d policy reads", policyReads)
+		}
+		if err == nil || !strings.Contains(err.Error(), "current protection moved or was not captured before admission failure") {
+			t.Fatalf("a protection enabled since its disabled read must be reported as moved: %v", err)
+		}
+		if got := f.newestOnHead(); got.Status == "completed" {
+			t.Fatalf("a refusal was published although protection moved: %+v", got)
+		}
+	})
 	t.Run("never returned and the queue is off now", func(t *testing.T) {
 		t.Setenv("GITHUB_RUN_ATTEMPT", "3")
 		f := unfinishedFixture(t, "queue")
