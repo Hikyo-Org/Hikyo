@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { generatePath, Link } from 'react-router';
 
+import { isThrottled } from '../api/client.ts';
 import { reauthenticateSelfConfig, revisionNumber, selfConfigFailure, useSelfConfig, useSelfConfigActions, type SelfConfigIntent, type SelfConfigStatus } from '../api/selfConfig.ts';
 import { useRemotes } from '../api/remotes.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -17,14 +18,18 @@ import { Sep } from '../ui/Sep.tsx';
 import { Panel } from './Sections.tsx';
 
 export function InstanceConfig() {
-  const query = useSelfConfig();
+  const query = useSelfConfig({ live: true });
+  // Being paced is not losing the state: an open ceremony or a typed code must
+  // survive a 429, with new actions held until a read confirms it again.
+  const throttled = query.isError && isThrottled(query.error) && query.data !== undefined;
   const workspace = useWorkspaceContext();
   return <div className="page page--chrome">
     <h1>Hikyo configuration</h1>
     <p className="page__lede">Edit settings in the configuration project, publish a revision, then review and apply it. Ordinary settings reload live. Bootstrap source changes use an enrolled controlled rollout.</p>
     {query.isPending ? <p role="status">Loading configuration…</p> : null}
-    {query.isError ? <Alert>{selfConfigFailure(query.error)} Last confirmed state is unavailable. <Button type="button" onClick={() => void query.refetch()}>Refresh status</Button></Alert> : null}
-    {query.isSuccess ? <ConfigurationOwner key={query.data.owner_instance_id} status={query.data} stale={!query.isFetchedAfterMount} /> : null}
+    {throttled ? <p role="status">{selfConfigFailure(query.error)} Showing the last confirmed state.</p> : null}
+    {query.isError && !throttled ? <Alert>{selfConfigFailure(query.error)} Last confirmed state is unavailable. <Button type="button" onClick={() => void query.refetch()}>Refresh status</Button></Alert> : null}
+    {query.data !== undefined && (query.isSuccess || throttled) ? <ConfigurationOwner key={query.data.owner_instance_id} status={query.data} stale={!query.isFetchedAfterMount || throttled} /> : null}
     {workspace === null ? <ConfigurationRoot /> : null}
   </div>;
 }

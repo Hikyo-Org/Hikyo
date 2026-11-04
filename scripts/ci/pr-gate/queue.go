@@ -86,6 +86,9 @@ type liveQueuePolicy struct {
 }
 
 func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
+	if q.checkName == devCheckName {
+		return q.devPolicy(ctx)
+	}
 	var owner struct {
 		ID          int               `json:"id"`
 		Target      string            `json:"target"`
@@ -192,7 +195,7 @@ func (q *queueController) policy(ctx context.Context) (liveQueuePolicy, error) {
 
 func (q *queueController) execute(ctx context.Context, name string, e event) error {
 	if q.checkName != queueCheckName {
-		return errors.New("queue publisher cannot write the legacy full-proof context")
+		return errors.New("queue publisher can only write the queue context")
 	}
 	if q.repairOnly && name != "workflow_dispatch" {
 		return errors.New("group-only queue repair requires authenticated manual dispatch")
@@ -201,11 +204,7 @@ func (q *queueController) execute(ctx context.Context, name string, e event) err
 		return errors.New("targeted admission cannot execute a group or batch repair")
 	}
 	q.repo = repository{}
-	initialize := q.init
-	if q.targeted {
-		initialize = q.initRepository
-	}
-	if err := initialize(ctx); err != nil {
+	if err := q.initRepository(ctx); err != nil {
 		return q.initializedFailure(ctx, e.Repository.ID, e.Repository.FullName, err)
 	}
 	if e.Repository.ID != q.repo.ID || !strings.EqualFold(e.Repository.FullName, q.repoName) {
@@ -300,18 +299,23 @@ func (q *queueController) admit(ctx context.Context, number int) error {
 }
 
 func (q *queueController) admitCaptured(ctx context.Context, number int, captured *admissionSnapshot) error {
-	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number, captured) })
+	return q.reassess(ctx, func(ctx context.Context) error { return q.admitProof(ctx, number, captured, nil) })
 }
 
-func (q *queueController) admitProof(ctx context.Context, number int, captured *admissionSnapshot) error {
+// admitProof starts from read when the caller already read the PR for its own
+// routing. The final phase still re-reads the PR and compares it with that.
+func (q *queueController) admitProof(ctx context.Context, number int, captured *admissionSnapshot, read *pull) error {
 	dcoVerifier := q.dco
 	if dcoVerifier == nil {
 		var close func()
 		dcoVerifier, close = admissionDCOVerifier(q.repoName)
 		defer close()
 	}
-	p, err := q.readPR(ctx, number)
-	if err != nil {
+	var p pull
+	var err error
+	if read != nil {
+		p = *read
+	} else if p, err = q.readPR(ctx, number); err != nil {
 		return err
 	}
 	if p.State != "open" {
@@ -337,7 +341,7 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 		q.admissions[number] = trace
 	}
 	b := newBinding(q.repo.ID, p, nil)
-	result := pending("Merge queue is not active; the legacy full-candidate check remains required.")
+	result := pending("Merge queue is not active; the main ruleset must require it before this PR can merge.")
 	var policy liveQueuePolicy
 	if captured != nil {
 		policy = captured.policy
@@ -347,21 +351,36 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 			return err
 		}
 	}
+	// Once the policy is live, the initial authority reads are independent of
+	// one another: feedback, role inventory, route and publisher-contract checks
+	// all depend only on the PR just read. They run at
+	// once and are judged below in the order the serial code reached them; a
+	// result the serial code would not have reached is dropped. The final phase
+	// repeats the feedback, policy, verifier, DCO and role reads before a success is
+	// published. The contract's copies stay bound by SHA and digest; the route is
+	// routing, not a trust boundary, and is read once.
+	if trace != nil {
+		trace.PolicyRead = true
+	}
+	var initial *initialReads
+	if policy.Enabled {
+		initial = q.runInitialReads(ctx, p, captured == nil, trace != nil)
+	}
 	var earlyFeedback *run
 	if trace != nil && policy.Enabled {
 		trace.Policy = &policy
-		earlyFeedback, err = q.feedback(ctx, p)
+		earlyFeedback, err = initial.feedback, initial.feedbackErr
 		if err != nil {
 			return err
 		}
-		trace.Run = earlyFeedback
+		trace.Run, trace.FeedbackRead = earlyFeedback, true
 	}
 	var initialRoles headRoles
 	if policy.Enabled {
 		if captured != nil {
 			initialRoles = captured.roles
 		} else {
-			initialRoles, err = q.roles(ctx, p.Head.SHA)
+			initialRoles, err = initial.roles, initial.rolesErr
 			if err != nil {
 				return err
 			}
@@ -376,9 +395,23 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	}
 	var selectedRun *run
 	if policy.Enabled {
-		if p.Base.Ref != q.repo.DefaultBranch {
+		if p.Base.Ref != q.admissionBranch() {
+			// Dev PRs have their own admission check. Feedback callbacks reach this
+			// main gate too, and must not leave a queue check on their head.
+			if q.checkName == queueCheckName && p.Base.Ref == "dev" {
+				return q.reconciliation.retireHead(ctx, false)
+			}
 			result = refused("Only the protected default branch can enter this merge queue.")
+		} else if initial.routeErr != nil {
+			return initial.routeErr
+		} else if initial.route != "" {
+			result = refused(initial.route)
+		} else if errors.Is(initial.contractErr, errDevPublisherDiffers) {
+			result = refused("This PR's or dev's copy of the dev publisher differs from main's. Merge dev into this branch. If dev is behind main, the main-to-dev backmerge lands first. Publisher changes land through main.")
 		} else {
+			if initial.contractErr != nil {
+				return initial.contractErr
+			}
 			decision, err := q.verify(ctx, p.Number, p.Head.SHA)
 			if err != nil {
 				return err
@@ -434,7 +467,19 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					result = refused("Exact-head fast feedback failed; queue admission remains blocked.")
 					break
 				}
-				code, err := canonicalDCOResult(ctx, p, dcoVerifier)
+				// Dev's CI-definition check reads only the PR's file list and main,
+				// so it runs beside the DCO check. DCO is judged first.
+				var code int
+				var refusal string
+				var refusalErr error
+				if q.checkName == devCheckName {
+					settle(ctx,
+						func(ctx context.Context) { code, err = canonicalDCOResult(ctx, p, dcoVerifier) },
+						func(ctx context.Context) { refusal, refusalErr = q.devPolicyRefusal(ctx, p) },
+					)
+				} else {
+					code, err = canonicalDCOResult(ctx, p, dcoVerifier)
+				}
 				if err != nil {
 					return err
 				}
@@ -443,6 +488,16 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 					break
 				}
 				result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for protected merge queue", Summary: "Admission only. The mandatory queue must validate its current-base candidate against the trusted change plan before merging."}
+				if q.checkName == devCheckName {
+					if refusalErr != nil {
+						return refusalErr
+					}
+					if refusal != "" {
+						result = refused(refusal)
+						break
+					}
+					result = outcome{Status: "completed", Conclusion: "success", Title: "Ready for dev integration", Summary: "Exact-head fast feedback, canonical DCO and current trusted admission policy passed. Dev integration is asynchronous; main promotion still requires full current-base queue validation."}
+				}
 			default:
 				return errors.New("invalid queue policy verifier outcome")
 			}
@@ -455,74 +510,104 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	if err != nil {
 		return err
 	}
-	final, err := q.readPR(ctx, number)
+	// The final PR and policy reads are independent observations of one phase.
+	// They run together and are judged in the serial order: a failed or closed
+	// PR returns before the policy result is looked at.
+	var final pull
+	var finalPolicy liveQueuePolicy
+	var policyErr error
+	settle(ctx,
+		func(ctx context.Context) { final, err = q.readPR(ctx, number) },
+		func(ctx context.Context) { finalPolicy, policyErr = q.policy(ctx) },
+	)
 	if err != nil {
 		return err
 	}
 	if final.State != "open" {
 		return q.reconciliation.retireHead(ctx, false)
 	}
-	finalPolicy, err := q.policy(ctx)
-	if err != nil {
-		return err
+	if policyErr != nil {
+		return policyErr
 	}
 	if final.Head.SHA != p.Head.SHA || final.Base.SHA != p.Base.SHA || final.Base.Ref != p.Base.Ref || finalPolicy != policy {
 		return q.queueMovement(ctx, number)
 	}
 	if result.Conclusion == "success" {
-		decision, err := q.verify(ctx, p.Number, p.Head.SHA)
-		if err != nil {
-			return err
+		// The final authority checks are independent reads of one phase, so they
+		// run together (the setup-inclusive budget has no room for ten serial
+		// subprocesses). Each is a fresh read, none feeds another, and the
+		// verdicts below are taken in the order the serial code reached them: a
+		// failed or moved earlier check still returns before a later result is
+		// looked at.
+		var (
+			decision  policyDecision
+			verifyErr error
+			vouched   = true
+			vouchErr  error
+			code      int
+			dcoErr    error
+			r         *run
+			feedErr   error
+		)
+		settle(ctx,
+			func(ctx context.Context) { decision, verifyErr = q.verify(ctx, p.Number, p.Head.SHA) },
+			func(ctx context.Context) {
+				if p.Head.Repo.ID != q.repo.ID {
+					vouched, vouchErr = q.currentVouch(ctx, p)
+				}
+			},
+			func(ctx context.Context) { code, dcoErr = canonicalDCOResult(ctx, final, dcoVerifier) },
+			func(ctx context.Context) { r, feedErr = q.feedback(ctx, final) },
+		)
+		if verifyErr != nil {
+			return verifyErr
 		}
 		if decision.Code != 0 {
 			return q.queueMovement(ctx, number)
 		}
-		if p.Head.Repo.ID != q.repo.ID {
-			vouched, err := q.currentVouch(ctx, p)
-			if err != nil {
-				return err
-			}
-			if !vouched {
-				return q.queueMovement(ctx, number)
-			}
+		if vouchErr != nil {
+			return vouchErr
 		}
-		code, err := canonicalDCOResult(ctx, final, dcoVerifier)
-		if err != nil {
-			return err
+		if !vouched {
+			return q.queueMovement(ctx, number)
+		}
+		if dcoErr != nil {
+			return dcoErr
 		}
 		if code != 0 {
 			result = refused("Canonical DCO sign-off was refused during final admission verification.")
 		}
-		r, err := q.feedback(ctx, final)
-		if err != nil {
-			return err
+		if feedErr != nil {
+			return feedErr
 		}
 		if r == nil || selectedRun == nil || r.ID != selectedRun.ID || r.Attempt != selectedRun.Attempt || r.Status != "completed" || r.Conclusion != "success" {
 			return q.queueMovement(ctx, number)
 		}
-	}
-	if result.Conclusion == "success" {
-		roles, err := q.roles(ctx, p.Head.SHA)
-		if err != nil {
-			return err
-		}
-		if roles.Group && len(roles.Pulls) > 0 {
-			return q.roleCollision(ctx, roles)
-		}
-		present := false
-		for _, current := range roles.Pulls {
-			if current.Number == p.Number {
-				if !sameRolePull(current, final) {
-					return &staleHeadWork{expected: q.expectedHead}
-				}
-				present = true
+		// The role inventory is read last, after the checks above, so it is the
+		// newest observation before publication.
+		if result.Conclusion == "success" {
+			roles, err := q.roles(ctx, p.Head.SHA)
+			if err != nil {
+				return err
 			}
-		}
-		if !present {
-			return &staleHeadWork{expected: q.expectedHead}
-		}
-		if len(roles.Pulls) != 1 {
-			result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
+			if roles.Group && len(roles.Pulls) > 0 {
+				return q.roleCollision(ctx, roles)
+			}
+			present := false
+			for _, current := range roles.Pulls {
+				if current.Number == p.Number {
+					if !sameRolePull(current, final) {
+						return &staleHeadWork{expected: q.expectedHead}
+					}
+					present = true
+				}
+			}
+			if !present {
+				return &staleHeadWork{expected: q.expectedHead}
+			}
+			if len(roles.Pulls) != 1 {
+				result = refused("This head now belongs to multiple open PRs; final role admission is ambiguous.")
+			}
 		}
 	}
 	if trace != nil && selectedRun != nil {
@@ -536,7 +621,14 @@ func (q *queueController) admitProof(ctx context.Context, number int, captured *
 	return q.reconciliation.completeAdmission(ctx, p, b, result)
 }
 func (q *queueController) queueMovement(ctx context.Context, number int) error {
-	return q.blockMovement(ctx, number, "queue admission final comparison")
+	if err := q.blockMovement(ctx, number, "queue admission final comparison"); err != nil {
+		return err
+	}
+	// A dev push does not reassess open PRs, so the job fails to say what will.
+	if q.checkName == devCheckName {
+		return errors.New("admission state moved; the pending barrier stays until the head is reassessed: a rerun while attempts remain, a new push to this PR, a feedback result, a push to main, the schedule or a manual dispatch")
+	}
+	return nil
 }
 func (q *queueController) sharedHead(ctx context.Context, p pull) (bool, error) {
 	all, err := q.openPRs(ctx)
@@ -622,15 +714,21 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 			}
 			admitted, ignored := 0, 0
 			lanes := make(map[string]int)
+			usefulLanes := map[string]bool{"feedback (go)": true, "feedback (frontend)": true}
+			ignoredLanes := map[string]bool{"metadata (ignored) (go)": true, "metadata (ignored) (frontend)": true}
+			if q.checkName == devCheckName {
+				usefulLanes["feedback (tooling)"] = true
+				ignoredLanes["metadata (ignored) (tooling)"] = true
+			}
 			for _, j := range jobs {
 				lanes[j.Name]++
-				if j.Name == "metadata (ignored) (go)" || j.Name == "metadata (ignored) (frontend)" {
+				if ignoredLanes[j.Name] {
 					if j.Status != "completed" || j.Conclusion != "skipped" {
 						return nil, errors.New("invalid ignored metadata feedback")
 					}
 					ignored++
 				}
-				if j.Name == "feedback (go)" || j.Name == "feedback (frontend)" {
+				if usefulLanes[j.Name] {
 					admitted++
 					if j.HeadSHA != r.HeadSHA {
 						return nil, errors.New("feedback job source mismatch")
@@ -640,10 +738,18 @@ func (q *queueController) feedback(ctx context.Context, p pull) (*run, error) {
 					}
 				}
 			}
-			if ignored == 2 && admitted == 0 && lanes["metadata (ignored) (go)"] == 1 && lanes["metadata (ignored) (frontend)"] == 1 {
+			completeLanes := func(expected map[string]bool) bool {
+				for lane := range expected {
+					if lanes[lane] != 1 {
+						return false
+					}
+				}
+				return true
+			}
+			if ignored == len(ignoredLanes) && admitted == 0 && completeLanes(ignoredLanes) {
 				continue
 			}
-			if r.Status == "completed" && (admitted != 2 || lanes["feedback (go)"] != 1 || lanes["feedback (frontend)"] != 1) {
+			if r.Status == "completed" && (admitted != len(usefulLanes) || !completeLanes(usefulLanes)) {
 				return nil, errors.New("missing or duplicated useful feedback lane")
 			}
 			return &r, nil
@@ -925,7 +1031,7 @@ func (q *queueController) snapshotQueue(live *queueData, head string) (queueSnap
 
 func (q *queueController) group(ctx context.Context, hint run) error {
 	if q.repo.ID == 0 {
-		if err := q.init(ctx); err != nil {
+		if err := q.initRepository(ctx); err != nil {
 			return err
 		}
 	}

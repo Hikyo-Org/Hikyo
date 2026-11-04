@@ -537,6 +537,13 @@ h1 span {
   color: var(--text-dim);
 }
 
+.subtrust a,
+.final-cta p a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .surface,
 .frame,
 .specs {

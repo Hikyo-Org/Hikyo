@@ -52,6 +52,7 @@ cat >"$fixture/bin/go" <<'SH'
 set -eu
 printf 'go %s\n' "$*" >>"$FIXTURE_LOG"
 case "$*" in
+  *' run -p 2 ./scripts/ci/source-proof --repository owner/repo --mode main --commit '*) exit 0 ;;
   'run ./scripts/release/stable policy '*)
     for output; do :; done
     printf '{"schema":"test-policy"}\n' >"$output" ;;

@@ -2764,6 +2764,71 @@ fieldset.field > legend {
   flex: 1 1 120px;
 }
 
+/* JSON Schema builder (routes/JsonSchemaBuilder). A field row wraps at phone
+   width; each nesting level indents behind a rule so depth reads at a glance. */
+.schema-builder,
+.schema-builder__nested,
+.schema-builder__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.schema-builder__nested {
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line);
+}
+
+.schema-builder__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.schema-builder__row > .field:not(.chk) {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+/* The infer button sits in the first-value field's column. */
+.matrix-key-create__infer {
+  align-self: flex-start;
+}
+
+/* Add field and the closing tick share a line, and wrap apart at phone width. */
+.schema-builder__object-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* String rules: the two lengths share a line where there is room; the pattern,
+   with its hint, takes a line of its own. */
+.schema-builder__rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.schema-builder__rules > .field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.schema-builder__rules > .schema-builder__pattern {
+  flex-basis: 100%;
+}
+
+/* Reserved so a note appearing under the infer button moves nothing below it;
+   the longest note takes two lines at phone width. */
+.matrix-key-create__infer-note {
+  min-height: 2lh;
+}
+
 /* Presence axis (required / forbidden). The mode radios sit inline; the explicit
    set reuses the matrix-editor__copy grid only when 'these' is chosen. */
 .matrix-key-create__presence {
@@ -7237,6 +7302,7 @@ label.chk:has(input:disabled) {
 .disclosure__toggle {
   display: inline-flex;
   align-self: flex-start;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: var(--space-1);
   min-height: var(--control);

@@ -59,6 +59,24 @@ cp "$repo_root/docs/site/src/content/docs/docs/meta.json" \
 # Prove the complete synthetic fixture passes before interpreting refusals.
 "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site"
 
+for page in index.html docs/installation/index.html; do
+	sed 's#https://github.com/Hikyo-Org/Hikyo/releases/tag/v1.0.0#https://example.invalid/unpublished#g' \
+		"$repo_root/docs/site/dist/$page" >"$fixture_dir/site/$page"
+	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/release-refusal.log" 2>&1; then
+		printf 'OSS policy fixture failed: missing stable release link on %s was accepted\n' "$page" >&2
+		exit 1
+	fi
+	grep -F 'releases/tag/v1.0.0' "$fixture_dir/release-refusal.log" >/dev/null
+	cp "$repo_root/docs/site/dist/$page" "$fixture_dir/site/$page"
+	printf '\nHikyo has no published stable release yet\n' >>"$fixture_dir/site/$page"
+	if "$repo_root/scripts/ci/check-oss-policy.sh" "$fixture_dir" "$fixture_dir/site" >"$fixture_dir/release-refusal.log" 2>&1; then
+		printf 'OSS policy fixture failed: stale release status on %s was accepted\n' "$page" >&2
+		exit 1
+	fi
+	grep -F 'contains forbidden generated text: has no published stable release yet' "$fixture_dir/release-refusal.log" >/dev/null
+	cp "$repo_root/docs/site/dist/$page" "$fixture_dir/site/$page"
+done
+
 for page in docs security support governance implementation-status trademark contributing license; do
 	sed "s#https://hikyo.app/$page/#https://example.invalid/$page/#g" \
 		"$repo_root/docs/site/dist/$page/index.html" >"$fixture_dir/site/$page/index.html"

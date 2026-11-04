@@ -14,6 +14,8 @@ const DEMO_MATRIX_PATH = `/orgs/${DEMO_IDS.org}/projects/${DEMO_IDS.project}/mat
 // Real browser network requests must only load static files. The demo's API
 // calls are handled before they reach the browser network stack.
 test.beforeEach(async ({ page }) => {
+  // The hosted build asks for replay consent. A declined visit must stay local.
+  await page.addInitScript(() => localStorage.setItem('hikyo.demo.replay.consent', 'denied'));
   page.on('pageerror', (error) => { throw error; });
   page.on('console', (message) => {
     if (message.type() === 'error') throw new Error(`Browser console error: ${message.text()}`);
@@ -25,6 +27,13 @@ test.beforeEach(async ({ page }) => {
     expect(url.pathname).not.toContain('/api/');
   });
   page.on('response', (response) => { expect(response.status()).toBeLessThan(400); });
+});
+
+test('the replay control appears only in a build with analytics', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByRole('combobox', { name: 'Try as' })).toBeVisible();
+  const configured = await page.locator('meta[data-posthog-host]').count();
+  await expect(page.getByRole('button', { name: 'Allow session recording', exact: true })).toHaveCount(configured);
 });
 
 test('matrix key names preview on the first phone tap and open on the second', async ({ page, isMobile }) => {

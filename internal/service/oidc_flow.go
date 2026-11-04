@@ -339,6 +339,10 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		refused = nil
 		now := s.now()
+		caller, e := resolveCallbackCaller(ctx, az, presented, now)
+		if e != nil {
+			return e
+		}
 		epoch, e := az.CredentialEpoch(ctx)
 		if e != nil {
 			return e
@@ -386,7 +390,7 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 			cause = causeIDPError
 		}
 		if cause == "" {
-			cause = s.checkBinding(ctx, az, t, bindingCookie, presented, now)
+			cause = checkBinding(t, bindingCookie, caller)
 		}
 		// A resolved transaction is spent by this callback, whatever the outcome:
 		// single-use, no replay.
@@ -457,9 +461,9 @@ func (s *Auth) OIDCCallback(ctx context.Context, slug, code, stateValue, issPara
 
 // checkBinding enforces the transaction binding (A2). A browser-cookie tx
 // requires the ob cookie whose hash was recorded; a session tx requires the
-// presented session to still be the initiating one. No default branch trusts an
-// unknown binding.
-func (s *Auth) checkBinding(ctx context.Context, az *authz.TxAuthorizer, t authz.OIDCTransaction, bindingCookie, presented string, now time.Time) string {
+// presented credential to resolve to the initiating session. No default branch
+// trusts an unknown binding.
+func checkBinding(t authz.OIDCTransaction, bindingCookie string, caller authz.Identity) string {
 	switch t.BindingKind {
 	case bindingBrowserCookie:
 		// Constant-time: the browser-binding cookie is a bearer secret, and
@@ -470,14 +474,37 @@ func (s *Auth) checkBinding(ctx context.Context, az *authz.TxAuthorizer, t authz
 		}
 		return ""
 	case bindingSession:
-		id, err := az.Authenticate(ctx, presented, now)
-		if err != nil || id.SessionID != t.InitiatingSessionID {
+		if caller.SessionID == "" || caller.SessionID != t.InitiatingSessionID {
 			return causeBinding
 		}
 		return ""
 	default:
 		return causeBinding
 	}
+}
+
+// resolveCallbackCaller resolves the presented credential before the callback
+// reads its state, so the request's admission charge and refusal cannot depend
+// on what the state names. Charging at the binding check instead would answer
+// an over-limit caller 429 for a live session-bound state and 401 for any other,
+// and that would let a stolen state be probed for its purpose and lifecycle. A
+// refused credential is the zero Identity, for the binding check to judge; an
+// error is an overload or a fault, and returning it from the transaction leaves
+// the ceremony unspent. The credential is incidental to a browser-cookie
+// transaction, so its refusal here is not the request's authentication outcome;
+// a session-bound refusal is recorded by the binding refusal's own audit event.
+func resolveCallbackCaller(ctx context.Context, az *authz.TxAuthorizer, presented string, now time.Time) (authz.Identity, error) {
+	caller, err := az.Authenticate(audit.WithRefusalArtifactProbe(ctx), presented, now)
+	if credentialRefused(err) {
+		return authz.Identity{}, nil
+	}
+	return caller, err
+}
+
+// credentialRefused separates what a credential's resolution decided from an
+// overload or a fault. ErrNotFound is the uniform class-admission refusal.
+func credentialRefused(err error) bool {
+	return errors.Is(err, domain.ErrUnauthenticated) || errors.Is(err, domain.ErrNotFound)
 }
 
 // exchangeAndVerify opens the client secret, exchanges the code at the recorded
@@ -832,6 +859,9 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 		// downgrade: a reauth may not re-authorize a session established with a
 		// stronger (phishing-resistant) credential than this federated evidence.
 		id, e := az.Authenticate(ctx, presented, now)
+		if e != nil && !credentialRefused(e) {
+			return e
+		}
 		if e != nil || id.SessionID != txn.InitiatingSessionID {
 			return reject(causeBinding)
 		}

@@ -4,6 +4,7 @@ updates:
   # Dependabot proposes module updates, including indirect networking fixes.
   - package-ecosystem: gomod
     directory: /
+    target-branch: dev
     schedule:
       interval: daily
     open-pull-requests-limit: 2
