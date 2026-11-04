@@ -37,7 +37,7 @@ signer. **The claim stays HOLD.** Do not publish wording that says otherwise.
 
 | Role | Algorithm set | Held by | Signs | Cannot sign |
 | --- | --- | --- | --- | --- |
-| Recovery set | P-256 recovery key (existing) **and** an ML-DSA-65 recovery key, both required | Owner, offline. ML-DSA custody **not named: HOLD** | The PQ keyset, the stable policy, nightly policies, every bridge, and the root generation | Releases |
+| Recovery set | P-256 recovery key (existing) **and** an ML-DSA-65 recovery key, both required | Owner, offline. ML-DSA custody **not named: HOLD** | The PQ keyset, the stable policy, nightly policies and every bridge; each is signed once and stays valid across releases. On the recovery-signed legacy track it also signs metadata and catalog. It does **not** sign a root: the root generation is whatever the operator installs, and `NewPQPin` verifies no signature on it | Routine releases |
 | Release set | One ML-DSA-65 release key, valid for a declared release-sequence range | A named maintainer, at the local publish step | Stable manifest, optionally individual artifacts, and metadata and catalog under a keyless delegation | The keyset, any policy, any bridge, any root |
 | Delegated CI | Sigstore keyless identity for the pinned workflow (existing) | GitHub Actions | Unchanged classical evidence only | Anything PQ. CI never holds a PQ key and gains no root, keyset or bridge authority from the new algorithm |
 
@@ -110,8 +110,10 @@ per required algorithm and nothing else.
    manifest. Publish the signature set as an extra file beside the release; it is
    deliberately **not** listed in the manifest, because the shipped installers
    refuse an unknown manifest artifact kind.
-3. Verify the set with the verifier fixture path on a different host before
-   publication, and keep the exact digests as evidence.
+3. Verify the set on a different host before publication with the verifier code
+   in `internal/releasetrust`. A production verification tool does not exist yet
+   (the stable verifier has no PQ input), so this step cannot be performed today.
+   Keep the exact digests as evidence.
 4. Never sign in CI and never sign a document the keyless run produced without
    reading its bytes first.
 
@@ -127,8 +129,13 @@ that tool and is not part of this ticket.
   range, publish the new keyset. Exactly one non-revoked key may cover a release
   sequence; two covering keys are refused.
 - Revocation: mark the key revoked in a new keyset sequence. A revoked key
-  cannot sign even for sequences it once covered. Do not re-publish an older
-  keyset: the persisted floor refuses it, and a revoked key is never revived.
+  cannot sign even for sequences it once covered. A host that has verified the
+  revoking keyset remembers its sequence, even if it refused that update, so an
+  older keyset is refused as a rollback. This holds only where the PQ floor is
+  persisted, which no host does yet (NOT BUILT, E-17), and the floor is a local
+  claim. The verifier does not remember revoked key identities: a later keyset
+  signed by the full recovery set could list a revoked key again. Never do so;
+  replace the key instead. This is a rule, not a control.
 - After a revocation no PQ verification succeeds until a keyset names a new key.
   Classical verification is unchanged, because PQ is not required on any path
   today.
@@ -143,11 +150,22 @@ transition, and the claim it supports is limited accordingly (E-11, E-18).
 1. Generate a new ML-DSA recovery key under the custody rules above.
 2. Issue a new PQ root with the next generation and the same P-256 recovery key.
 3. Publish a keyset at the next sequence signed by the new full recovery set.
-4. The operator installs the new root on each host from the independent source.
-   Hosts keep their sequence floors; a host presented with the old root after the
+4. Signatures bind the pin digest and generation, so a new generation invalidates
+   **every** existing set, not only the keyset. Sign again under the new pin, with
+   the new full recovery set and the release key: the keyset, metadata, catalog,
+   stable policy, nightly policies, every bridge still in force, the manifest of
+   each release that must stay verifiable, and any per-artifact sets. Until a host
+   has the new root, it fails against these sidecars, because each document has
+   one sidecar name. Old releases' sidecars stop verifying under the new pin.
+5. The operator installs the new root on each host from the independent source.
+   Hosts keep their sequence floors, but each stage must verify again under the
+   new pin before any claim is made. A host presented with the old root after the
    new one is refused as a rollback below the generation floor.
-5. Treat all evidence signed by the lost key as unverifiable for new decisions,
+6. Treat all evidence signed by the lost key as unverifiable for new decisions,
    and record the loss.
+7. This departs from the migration policy, which asks that any trust change need
+   every required algorithm of the current pinned set. A lost key makes that
+   impossible; the departure is registered in the handoff for the owner.
 
 ## Rollback
 
@@ -172,5 +190,6 @@ and runtime acceptance are separate evidence classes and are reported separately
 3. Decide how the PQ pin reaches a binary (a second stamped value is the only
    shape that leaves the v1 root digest unchanged).
 4. Decide whether the nightly track gets a PQ signer (E-15).
-5. Approve the signing granularity: manifest only, or manifest plus every artifact
+5. Set the DEC-17 latency, CPU and memory thresholds from the measured baseline.
+6. Approve the signing granularity: manifest only, or manifest plus every artifact
    (a measured size difference is in the handoff).

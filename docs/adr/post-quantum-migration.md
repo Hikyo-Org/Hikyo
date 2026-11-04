@@ -170,7 +170,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Signed upgrade compatibility and stable workflow signing
 
-Landed as the 2026-11-02 banners on [signed-upgrade-compatibility](./signed-upgrade-compatibility.md#release-identity-and-trust), [stable-workflow-signing](./stable-workflow-signing.md), [system-architecture](./system-architecture.md) and [oss-mechanics](./oss-mechanics.md), which are the only copies; operative when #1132 merges, and none activates a signer or root.
+Landed as the 2026-11-02 banners on [signed-upgrade-compatibility](./signed-upgrade-compatibility.md#release-identity-and-trust), [stable-workflow-signing](./stable-workflow-signing.md), [system-architecture](./system-architecture.md) and [oss-mechanics](./oss-mechanics.md), with the proposal text verbatim and operative only when #1132 merges. The proposal block as it stood is in this file at commit `4bad16b59`.
 
 ## Locked constraints preserved
 

@@ -22,10 +22,11 @@ required; cross-provider review is SKIPPED by explicit owner instruction
 | Item | Value |
 | --- | --- |
 | Base | `origin/dunky13/pqc-1126-hybrid-backups` at `4bad16b59` (PR #1158) |
-| Code candidate | `24d827709` (verifier, fixtures, tests). Later commits are documentation only and touch no Go file |
+| Code candidate | `fb915616b` (verifier, fixtures, tests; round one was `24d827709`, repaired after independent review). Later commits are documentation only and touch no Go file |
 | Toolchain | Go 1.27.3 darwin/arm64, `crypto/mldsa` from the standard library, no new module |
-| Files | `internal/releasetrust/pq.go`, `pq_root.go`, `pq_verify.go`, `testfixture/pq.go`, four `pq_*_test.go`, `internal/selfupdate/pq_coexistence_test.go` |
+| Files | `internal/releasetrust/pq.go`, `pq_root.go`, `pq_verify.go`, `testfixture/pq.go`, `pq_*_test.go` (including fuzz targets), `internal/selfupdate/pq_coexistence_test.go` |
 | Not touched | `parsePinnedKey`, `Snapshot.Digest()`, `SnapshotFloor`, every v1 schema and decoder, `release/trust/`, the installers, `scripts/release/`, `internal/lint/testdata/reviewed_pins.json`, macOS signing |
+| Base | The base branch has moved since this was opened; it was not merged because this diff does not need it |
 | Other owner | PR #1140 (`release/sync-trust-1.0.0`) edits `release/trust/{catalog,metadata}*` and `scripts/release/nightly/`. This change touches none of those, so there is nothing to overwrite or merge there |
 
 ## What was built
@@ -39,10 +40,10 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
 | Signature set, `hikyo.dev/pq-signature-set/v1` | Sidecar of `{algorithm, key_id, signature}`. Closed algorithms `ecdsa-p256-sha256` and `mldsa65`; at most 4 entries, 64 KiB, exact ML-DSA length; one entry per required algorithm. Missing, duplicate, extra, unknown, wrong-key-id or invalid entries refuse the object |
 | Signed bytes | One input for all algorithms: length-prefixed label, profile, pin digest, generation, ordered `(algorithm, key id)` suite, then kind, channel, version, subject, source commit, sequence, policy digest and the SHA-256 of the exact bytes. The ML-DSA context is the label (`hikyo/release-trust/<kind>/v1`). A signature under suite {A,B} does not verify as {A}. `PQSigningInput` exposes the input so a future signer cannot drift |
 | Key identity | `<algorithm>:` plus SHA-256 over length-prefixed domain, algorithm and canonical SPKI |
-| Roles | **Recovery set** (P-256 and ML-DSA, both required): PQ keyset, stable policy, nightly policy, bridges, and metadata and catalog on the recovery-signed track. **Release set** (one maintainer-held ML-DSA key from the keyset): stable manifest, artifacts, and metadata and catalog under a keyless delegation. Each role is refused in the other's place. CI holds neither |
+| Roles | **Recovery set** (P-256 and ML-DSA, both required): PQ keyset, stable policy, nightly policy, bridges, and metadata and catalog on the recovery-signed track. **Release set** (one maintainer-held ML-DSA key from the keyset): stable manifest, artifacts, and metadata and catalog under a keyless delegation. Each role is refused in the other's place. CI holds neither. The role for metadata and catalog is chosen from the authenticated metadata's signer field, a document claim: it can only move the requirement between two sets that both need an ML-DSA signature, and the delegated branch also needs the recovery-signed policy |
 | Keyset, `hikyo.dev/pq-release-keys/v1` | Recovery-signed, sequence-only list of release keys with release-sequence ranges and a revoked flag. Exactly one non-revoked key may cover a release sequence; a revoked key cannot sign for sequences it once covered. Rotation and revocation are new sequences, each needing the full recovery set |
 | Verifiers | `VerifyPQKeyset`, `VerifyPQSnapshot` (runs after the unchanged `VerifySnapshot`), `VerifyPQRelease`, `VerifyPQArtifact` (exact bytes, name, version, channel, sequence, source, policy), `VerifyPQBridge` (after the unchanged `VerifyBridge`). Historical keyed releases and nightlies are refused as having no PQ signer (E-12, E-15) |
-| PQ floor, `PQFloor` | A separate record: format, profile, generation, pin digest, and sequence plus digest for keyset, metadata and catalog, plus the highest PQ-verified release sequence. Sequence-only; refuses rollback, equivocation, a lower generation, the same generation with different pin bytes and a newer format than the reader knows. `AuthenticityClaim` is true only for a floor that records keyset, metadata, catalog and release verification under exactly this pin |
+| PQ floor, `PQFloor` | A separate record: format, profile, generation, pin digest, and for keyset, metadata and catalog a sequence, a digest and the pin it was verified under, plus the highest PQ-verified release sequence and its pin. Sequence-only; refuses rollback, equivocation, a lower generation, the same generation with different pin bytes and a newer format than the reader knows; an empty record is refused on decode. `AuthenticityClaim` reports true only for a record that says keyset, metadata, catalog and a release each verified under exactly this pin, so a generation change needs every stage again. It does not authenticate the record: a hand-written or restored file can state anything (E-17). A refusal that follows an authenticated keyset (for example a revocation of every key covering the release) returns the keyset-advanced floor beside the error, and a caller persists it so an older keyset cannot be replayed |
 | Closed errors | `ErrPQUnsupported`, `Malformed`, `Bound`, `Scope`, `Signature`, `Missing`, `Rollback`. No key, signature or payload bytes in any message |
 
 ### Departures and additions beyond the proposal (flagged for the reviewer)
@@ -59,13 +60,29 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
   (`PQFloorPath` names `release-trust-pq.json` beside the classical file) and
   **persisting it on a real host is NOT BUILT** (E-17). Tests persist it in a
   disposable directory only.
-- Binding sequence: for the stable policy the sequence field is its
-  `MinimumReleaseSequence` and for the nightly policy the catalog sequence. These
-  are bindings, not document sequence floors. Only keyset, metadata, catalog and
-  release carry floors.
-- A higher PQ generation passes the floor check with no signature. That is an
-  operator-installed root and exactly the E-11 limit; it is not an authenticated
-  transition and is not described as one.
+- Policy bindings use only the policy's own fields: the stable policy binds its
+  `MinimumReleaseSequence` and the nightly policy the constant sequence 1, both
+  with no version, source commit or catalog sequence. Recovery keys therefore sign
+  a policy once, not every release (tested with a second release). These are
+  bindings, not document sequence floors. Only keyset, metadata, catalog and
+  release carry floors. Metadata and catalog sets do bind version and source and
+  are signed per release by the release role (the recovery set on the legacy
+  track, as the recovery key signs those documents today).
+- **Departure from migration.md ("Any trust change ... requires every required
+  algorithm of the current pinned set").** A higher PQ generation passes the floor
+  check with no signature, and `NewPQPin` verifies none: the root is whatever the
+  operator installs. That is exactly the E-11 limit and not an authenticated
+  transition. Because signatures bind the pin digest and generation, a new
+  generation invalidates every existing set, not only the keyset: after a recovery
+  replacement the keyset, metadata, catalog, policies, bridges, the manifest and
+  every artifact set must be signed again under the new pin, and hosts still on
+  the old pin fail against the same sidecar names (one name per document). Old
+  releases' sidecars stop verifying under the new pin. The fixture's `Resign`
+  hides this cost. Registered here for the owner.
+- A revocation is remembered by the keyset floor, but revoked key identities are
+  not: a later keyset signed by the full recovery set can list a revoked key
+  again. "Never re-enable a revoked key" is a runbook rule, not something the
+  verifier enforces. Registered gap.
 - The P-256 recovery key now signs two inputs: the raw JSON of the legacy bundle
   and the PQ input. Domain separation is structural: every PQ input begins with a
   4-byte length prefix and a `hikyo/release-trust/` label, and a JSON document
@@ -73,7 +90,7 @@ below is new schema or new code; a v1 reader refuses it instead of ignoring it.
 - **Expiry is not implemented.** `releasetrust` has no clock and the migration
   policy proposes no cutoff, so "expired" is "superseded by sequence". A host
   that is served stale-but-current evidence indefinitely (a freeze) is not
-  detected. Registered, not closed.
+  detected. Registered as R-13 in the exception record, not closed.
 
 ## Inventory (ticket item 1)
 
@@ -88,7 +105,7 @@ exists in `internal/releasetrust`; **no row below calls it**.
 | Pinned root `release/trust/root.json`, 373 bytes, hash pinned in `install/install.sh.in` and stamped into binaries (`cmd/hikyo/main.go`, `internal/buildcompat/trust.go`) | v1 schema; `ValidateRoot` | Reader: v2 root and `NewPQPin`. Not stamped anywhere. v1 readers refuse v2 | HTTPS carries the script that carries the hash (E-11) |
 | Recovery key `recovery-1.pub` (P-256) | Signs root-level documents: metadata and catalog on the legacy track, stable policy, bridges. Also checked with `openssl` in the first-use bridge script (hash pinned there) | Reader: recovery set = this key plus an ML-DSA key | ML-DSA custody **HOLD** (DEC-14, E-18) |
 | Bootstrap primary `primary-1.pub` (P-256) | Signs historical keyed stable releases; the chart keeps `primary.pub` for keyed admission policy | None. Historical verification only (E-12) | None |
-| Operator keys | Per-instance P-256 attestation key in the custody vault (`operator.age`); pinned by `backupreceipt.PinOperator`; rotation is verified against the current P-256 pin (`backupreceipt/operator.go`) | None. Operator attestation stays classical (E-16). The signature-set envelope is generic but unwired here | Operator host custody |
+| Operator keys | Per-instance P-256 attestation key in the custody vault (`operator.age`); the vault signs attestations in `internal/upgradecustody/vault.go` (`Sign`, around line 295) and checks them against the pin; pinned by `backupreceipt.PinOperator`; rotation is verified against the current P-256 pin (`backupreceipt/operator.go`) | None. Operator attestation stays classical (E-16). The signature-set envelope is generic but unwired here | Operator host custody |
 | Stable workflow delegation `stable-policy.json` + `stable-trusted-root.json` (6,787 bytes) | Recovery-signed; pins workflow, repository, ref, SCT, the primary-key digest, and must equal the catalog's nightly and bridge inventories | Reader: recovery set must sign the policy; CI gains no authority over it | Sigstore Fulcio/Rekor (E-03) |
 | Nightly policy `nightly/policy.json` + trusted root | Recovery-authorized by digest in the catalog | Reader: recovery set signs the policy. No PQ signer for nightlies themselves (E-15) | Sigstore |
 | Bridges `release/trust/bridges/*`, `BRIDGES.md` | Recovery-signed, digest-listed in the catalog | Reader: `VerifyPQBridge` after `VerifyBridge`; release role refused | None |
@@ -109,6 +126,9 @@ exists in `internal/releasetrust`; **no row below calls it**.
 | `internal/updater` and `install/updater/*` | Remote apply disabled; the host adapters are five-line scripts that refuse every phase | Closed by retirement. No trust decision is made there |
 | Homebrew cask, OS packages, OCI image, Helm chart, Kyverno policy | SHA-256 in the cask; packages only through the bundle; cosign on OCI payloads; keyed or keyless Kyverno | Classical exceptions R-04 to R-06 |
 | Apple signing and notarization | `docs/release/apple-signing.md` policy | **Not touched** (R-07) |
+| Offline ceremony `scripts/release/ceremony.sh` and `stable-ceremony.sh` | Legacy offline signing ceremony and the stable ceremony that fronts it; hold or produce the recovery and primary signatures | Unchanged. No ceremony produces a PQ signature; the runbook is the plan (not executable) |
+| `scripts/release/nightly`, `scripts/release/assemble-upgrade`, `scripts/release/compatibility` | Prepare and verify public nightly evidence, assemble the offline layout the runtime gate reads, and build compatibility declarations; none signs | Unchanged; they consume `releasetrust` v1 only |
+| `install/compose/server.yaml`, `server-unattended.yaml` | The image is `HIKYO_SERVER_IMAGE`, a verified `repository@sha256` digest the operator supplies; the compose file performs no signature check itself | Unchanged. The operator's verification of that digest is the only authenticity step, and it is classical |
 
 ### Signed receipt and preflight consumers
 
@@ -140,9 +160,8 @@ claim, so the claim stays HOLD.**
 
 1. *What is reachable.* A shipped version already accepts a new binary through
    its classical path. That binary can carry a PQ pin. Doing so by **replacing**
-   the v1 root bytes is refused: the gates compare the root digest to the
-   persisted release root, and every bridge `TargetPolicySHA256` is the root
-   hash. Carrying the pin as an **additional** stamped value leaves the v1 root
+   the v1 root bytes is refused: the gate compares the root digest to the
+   persisted release root (`upgradegate/gate.go`, `app/upgrade_gate.go`). Carrying the pin as an **additional** stamped value leaves the v1 root
    digest unchanged, but no such slot exists (`buildcompat` and
    `selfupdate.Config` hold two values), so it needs a build and config change
    that is not built here.
@@ -207,7 +226,8 @@ Local (this host, Go 1.27.3):
 | `go test -p 2 -parallel 2 ./internal/releasetrust/... ./internal/selfupdate/... ./scripts/release/stable/... ./internal/backupreceipt/...` | pass |
 | `go test -p 2 ./internal/boundary/...` | pass |
 | `install/upgrade-nightly_test.sh`, `scripts/release/render-installer_test.sh`, `verify-bundle-stable_test.sh`, `create-upgrade-catalog_test.sh` | pass, unchanged (frozen-legacy byte compatibility) |
-| `go test -p 2 ./internal/lint/...` with `-timeout 40m`, `scripts/ci/fast-feedback.sh`, signature and DCO scripts, `check-doc-status.mjs` | see "Final checks" below |
+| `go test -fuzz` on `FuzzNewPQPin`, `FuzzDecodePQFloor`, `FuzzVerifyPQKeyset`, 15 s each | no failure; a short local run only, CI fuzzes every target |
+| Other checks | see "Final checks" below |
 
 Hosted CI, real-provider checks, runtime acceptance, deployment: **NOTRUN or not
 yet read**; the PR description states what was readable when it was opened.
@@ -225,41 +245,59 @@ covering one sequence; a v1 reader refusing the v2 root; the pinned-key parser
 and operator key id refusing ML-DSA; a classical-only snapshot that every v1 check
 accepts failing the PQ requirement.
 
-Lifecycle in a disposable directory (`pq_lifecycle_test.go`, real files, real
-verification lock, atomic writes): legacy update with no PQ state; bridge to the
-first PQ claim; a subsequent update at a higher sequence; a crash before and
-between the two floor writes, each converging on retry; a torn PQ floor refusing
-instead of resetting; bad ML-DSA signature, stripped sidecars and random bytes
-each leaving both state files byte-identical; rollback refused by both floors;
-release-key rotation; replay of the older keyset refused; revocation stopping PQ
-verification while the classical-only path still works; offline recovery through a
-higher-generation root, after which the retired pin is refused.
+Lifecycle in a disposable directory (`pq_lifecycle_test.go`). **This is a
+test-local sequencer, not the product**: `host.apply` in the test file calls the
+exported verifiers in a plausible order and persists two files with the shipping
+lock and atomic-rename pattern. It is a test double for the installer, so it
+proves what the verifiers do when sequenced that way, not what any installer
+does. The "bridge" is modeled by passing the pin as an argument; no real
+delivery of a pin exists. The fixtures are generated per run with nonproduction
+keys; they are **not frozen metadata**. Frozen legacy metadata and real-path
+tampering of an installer are **NOTRUN**. Cases: legacy update with no PQ state;
+the first PQ claim; a subsequent update at a higher sequence; a crash before and
+between the two floor writes, each converging on retry; a torn (half-written)
+PQ floor refusing, which proves a truncated file is refused and not that every
+damaged or missing file is (a missing file is a zero floor by design, and a
+restored file can state anything, E-17); bad ML-DSA signature, stripped sidecars
+and random bytes each leaving both state files byte-identical, with the error
+class asserted; rollback refused by both floors; release-key rotation; replay of
+the older keyset refused; a revocation that is remembered, so replaying the
+older keyset with fresh metadata the revoked key signed is refused (without the
+returned floor the same replay is accepted, which a control assertion shows);
+offline recovery by replacing the release key (never un-revoking it) and
+installing a higher-generation root, after which the retired pin is refused.
 
-The real shipped stable installer state machine (`selfupdate.Installer`) runs
-against the frozen delegated legacy fixture with PQ sidecars published beside it:
-it succeeds, writes only the classical floor and leaves a sentinel PQ floor
-untouched; stamped with the PQ root it refuses and leaves no state.
+What the shipped code does run: `selfupdate.Installer.verifyStable` against the
+delegated legacy fixture, with PQ sidecars published beside the release. It
+ignores them, writes only the classical floor and leaves a sentinel PQ floor
+untouched. A build stamped with a v2 root refuses before writing state, but the
+root is stamped at build time, so no shipped client is ever handed a v2 root:
+that case describes a build that does not exist. Real old clients keep accepting
+classical-only releases (R-11). The shell installer suites run unchanged and
+**prove nothing about PQ**: those scripts never see a sidecar or a v2 root. They
+show only that nothing legacy moved.
 
 NOTRUN: systemd and root install of `upgrade-nightly.sh`; Docker, Helm and
 Kubernetes install targets; Homebrew; OS packages; macOS; any real publication;
-a second release in the lifecycle (the fixture signs one release, so subsequent
-updates reissue metadata and catalog at a higher sequence); a fuzz run of the new
-parsers.
+frozen legacy metadata and real-path tampering of any installer or updater; a
+second signed manifest and artifact set (the lifecycle reissues metadata and
+catalog at a higher sequence; one test publishes metadata for a later release but
+signs no second manifest); a long fuzz campaign.
 
 ## Acceptance checklist
 
 | # | Criterion | Status | Why |
 | --- | --- | --- | --- |
-| 1 | Inventory, externally dependent items | DONE | Above, plus [release trust exceptions](../security/pqc/release-trust-exceptions.md) |
+| 1 | Inventory, externally dependent items | PARTIAL | Above, plus [release trust exceptions](../security/pqc/release-trust-exceptions.md). Independent review found omissions that were then added; completeness has not been independently confirmed |
 | 2 | Security review before enabling a signer | PARTIAL | Design and adversarial tests by the implementer only. No signer is enabled. Maintainer security approval **not given**; independent review follows |
-| 3 | Readers and verifiers before requiring; reviewed minimum-version bridge; legacy guarantees stated; unsupported clients fail with a recovery path | PARTIAL | Readers DONE (unwired). Guarantees stated. Bridge **HOLD**: not closable (E-11, E-15). Unsupported-client refusal DONE for the stable installer. No minimum version can be named yet |
+| 3 | Readers and verifiers before requiring; reviewed minimum-version bridge; legacy guarantees stated; unsupported clients fail with a recovery path | PARTIAL | Readers DONE (unwired). Guarantees stated. Bridge **HOLD**: not closable (E-11, E-15). Unsupported-client refusal is **NOT ACHIEVABLE for shipped clients**: the root is stamped at build time, so they are never handed a v2 root and keep accepting classical-only releases (R-11). Only a hypothetical build is shown to refuse. No minimum version can be named yet |
 | 4 | Independent authority for primary/recovery versus CI; unknown roots and schemas fail closed | DONE in the verifier | Role split and closed schemas tested. CI gains no keyset, policy, bridge or root authority |
 | 5 | Verify PQ artifact signatures on every official in-scope path | NOT BUILT / HOLD | `VerifyPQArtifact` exists; no official path calls it, by direction. Paths listed in the inventory |
 | 6 | Algorithm-aware encodings and evidence schemas, no mislabelled history | DONE for release trust; HOLD for receipts | New identifiers only; `backup-receipt/v1` and `v2` and operator attestation untouched (E-16, E-19) |
-| 7 | Reject stripped, substituted, stale, expired or revoked, mixed channels, partial downloads, rollback below the format floor | PARTIAL | All tested except **expiry** (sequence-only; no clock) and rollback on a binary built before the floor, which cannot refuse (E-17) |
-| 8 | Lifecycle across supported installation targets in disposable fixtures | PARTIAL | Go state machines and the real stable installer DONE; shell suites run unchanged; every other target NOTRUN |
+| 7 | Reject stripped, substituted, stale, expired or revoked, mixed channels, partial downloads, rollback below the format floor | PARTIAL | Tested, including a remembered revocation that blocks keyset replay. Not done: **expiry** (sequence-only; no clock; R-13), revoked key ids being remembered across a later recovery-signed keyset, and rollback on a binary built before the floor, which cannot refuse (E-17) |
+| 8 | Lifecycle across supported installation targets in disposable fixtures | PARTIAL | A test-local sequencer over the verifiers, plus the real stable installer's verification step ignoring sidecars. Not frozen metadata, not real-path tampering, no other target. Shell suites prove only that legacy is unchanged. Everything else NOTRUN |
 | 9 | Measure sizes and latency; update tests and signing workflow fixtures; secrets in custody | PARTIAL | Measured. No signing workflow was changed because no signer exists. No secret was created; fixture keys live in test memory |
-| 10 | External limitations as exceptions with owners; macOS gate | DONE | R-01 to R-12; macOS not touched |
+| 10 | External limitations as exceptions with owners; macOS gate | PARTIAL | R-01 to R-13 drafted with owner, trigger and ticket, but the record is "drafted for review, not operative" until the owner fills peer, version, expiry and trigger. macOS not touched |
 | 11 | Maintainer-reviewed runbook and exact artifact verification evidence | PARTIAL | [Runbook](../operations/pqc-release-signing-runbook.md) drafted, marked not executable, not yet maintainer-reviewed. No release artifact was verified |
 
 Amendment banners landed on `signed-upgrade-compatibility` (release identity and
@@ -268,7 +306,21 @@ trust only; backup custody keeps its #1155 banner), `stable-workflow-signing`
 PR #714, so the banner cites the originating PR), `system-architecture` and
 `oss-mechanics`. Each says it becomes operative only when this implementation
 merges and that it activates no signer or root. Tickets #638, #22 and #33 are
-open for these. The proposal block in the migration ADR is now a pointer.
+open for these. The banners now carry the proposal text verbatim (784
+characters), with the implementation's design choices in a separate note marked
+not owner-locked. The proposal has no text specific to `system-architecture` or
+`oss-mechanics`, so the shared text is used there unchanged; the owner may want
+different wording. The proposal block in the migration ADR is a pointer that
+cites the commit where the text stood.
+
+## Final checks
+
+| Check | Result |
+| --- | --- |
+| `go test` of `internal/releasetrust`, `internal/selfupdate` at `fb915616b` | pass |
+| `internal/lint` locally | **not run again** by instruction. The round-one local run timed out at 40 minutes under host load at `TestArtifactDisposableDatabaseProtocolsRejectDrift` and is not a pass |
+| Hosted `repository invariants (boundary, lint, CI policy)` | read for the new head and recorded in the PR description |
+| `go test -p 2 ./internal/boundary/...`, `fast-feedback.sh` (base `dunky13/pqc-1126-hybrid-backups`, Node from `.nvmrc`), `check-commit-signatures.sh`, `check-dco.sh`, `check-doc-status.mjs --check` | rerun for the new head; results in the PR description |
 
 ## Key retention and rollback
 
@@ -282,6 +334,8 @@ re-enable a revoked key or destroy a retained key; see the runbook.
 1. Maintainer security review of this verifier; owner answers on release key
    versus recovery key and on signing granularity.
 2. Owner names ML-DSA recovery custody (blocks the runbook).
+2a. Owner sets DEC-17 latency, CPU and memory thresholds from the baseline above
+   before #1132 is accepted; none is proposed here.
 3. A reviewed `--pq` input for `scripts/release/stable`, which also needs the
    unlisted-sidecar rule changed.
 4. A second stamped PQ pin slot and a persisted PQ floor on real hosts (both
