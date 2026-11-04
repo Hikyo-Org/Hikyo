@@ -282,8 +282,8 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 	// amendment lets the contract name mldsa65, so the request now passes
 	// validation and the refusal is the service: the MLDSAEnabled gate (false in
 	// production), or checkRotationAlgorithm for a rotation, which would hold with
-	// the gate open. The wire hides the reason, so the rows below and
-	// TestMLDSA65OverHTTP carry the proof. The server must keep refusing mldsa65
+	// the gate open. A contract refusal would name its field in parentheses, so
+	// the loop below asserts that none does. The server must keep refusing mldsa65
 	// and create nothing. The import path takes its algorithm
 	// from the key rather than from an enum, so it is exercised with a real
 	// ML-DSA key.
@@ -376,8 +376,8 @@ func runPKICLI(t *testing.T, engine store.Engine) {
 		stderr := refusedCLI(c.args...)
 		stateDir = humanState
 		t.Logf("%s refused: %.160s", c.name, strings.TrimSpace(stderr))
-		if !strings.Contains(stderr, c.reason) {
-			t.Errorf("%s: refusal reason = %q, want it to contain %q", c.name, strings.TrimSpace(stderr), c.reason)
+		if !strings.Contains(stderr, c.reason) || strings.Contains(stderr, c.reason+" (") {
+			t.Errorf("%s: refusal reason = %q, want the service's %q with no contract field", c.name, strings.TrimSpace(stderr), c.reason)
 		}
 		if strings.Contains(stderr, "mint ceremony") || strings.Contains(stderr, "PRIVATE KEY") {
 			t.Errorf("%s: refused for the wrong reason or leaked key text: %s", c.name, stderr)

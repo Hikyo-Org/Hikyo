@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,9 +79,10 @@ func TestMLDSA65IsRefusedByTheService(t *testing.T) {
 	})
 }
 
-// The same line over the real server: the contract lets each request through,
-// and a request naming mldsa65 never succeeds with a classical key, which would
-// read as the algorithm the caller asked for.
+// The same line over the real server: the contract lets each mldsa65 request
+// through, shown by the refusal detail (a contract refusal names its field, and
+// the PKI service gives none), and a request naming mldsa65 never succeeds with a
+// classical key, which would read as the algorithm the caller asked for.
 func TestMLDSA65OverHTTP(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		admin := bootstrapAdmin(t, db, adminOpts{username: "factor-admin", displayName: "A", password: "correct horse battery staple mldsa65"})
@@ -130,13 +132,13 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 		defer srv.Close()
 		admin.auth.ExternalOrigin = srv.URL
 
-		post := func(path string, body map[string]any, want int) string {
+		send := func(method, path string, body map[string]any, want int) string {
 			t.Helper()
 			raw, err := json.Marshal(body)
 			if err != nil {
 				t.Fatal(err)
 			}
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path, bytes.NewReader(raw))
+			req, err := http.NewRequestWithContext(t.Context(), method, srv.URL+path, bytes.NewReader(raw))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,9 +155,33 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 				t.Fatal(err)
 			}
 			if res.StatusCode != want {
-				t.Fatalf("POST %s = %d, want %d: %.300s", path, res.StatusCode, want, out)
+				t.Fatalf("%s %s = %d, want %d: %.300s", method, path, res.StatusCode, want, out)
 			}
 			return string(out)
+		}
+		post := func(path string, body map[string]any, want int) string {
+			t.Helper()
+			return send(http.MethodPost, path, body, want)
+		}
+		detail := func(body string) string {
+			t.Helper()
+			var problem struct {
+				Error struct {
+					Code   string `json:"code"`
+					Detail string `json:"detail"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal([]byte(body), &problem); err != nil || problem.Error.Code != "bad_request" {
+				t.Fatalf("refusal body %.300s is not a bad_request: %v", body, err)
+			}
+			return problem.Error.Detail
+		}
+		// serviceRefused sends a request the contract admits and the PKI service refuses.
+		serviceRefused := func(method, path string, body map[string]any) {
+			t.Helper()
+			if got := detail(send(method, path, body, http.StatusBadRequest)); got != "" {
+				t.Errorf("%s %s: refusal detail %q, want the service's empty detail, not a contract field", method, path, got)
+			}
 		}
 		classicalCA := func(prefix string) map[string]any {
 			t.Helper()
@@ -196,27 +222,33 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 		envPath := "/api/v1/orgs/" + org.ID + "/projects/" + project.ID + "/environments/" + env.ID
 		rows := func(table string) int64 { return queryInt(t, db, `SELECT COUNT(*) FROM `+table) }
 
-		post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa65", "allowed_operations": []string{"sign", "verify"}}, http.StatusBadRequest)
+		if got := detail(post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa65", "allowed_operations": []string{"sign", "verify"}}, http.StatusBadRequest)); !strings.HasPrefix(got, "algorithm must be one of") {
+			t.Errorf("transit mldsa65 refusal detail %q, want the service's", got)
+		}
 		if n := rows("transit_keys"); n != 0 {
 			t.Errorf("a refused transit key left %d rows", n)
 		}
 		// The contract itself still refuses any other value.
-		post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa44"}, http.StatusBadRequest)
+		if got := detail(post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa44"}, http.StatusBadRequest)); got != "algorithm" {
+			t.Errorf("transit mldsa44 refusal detail %q, want the contract's field", got)
+		}
 
 		post(instance+"/issuers", map[string]any{"mode": "root", "name": "web-root", "common_name": "Web Root"}, http.StatusCreated)
-		post(instance+"/issuers", map[string]any{"mode": "root", "name": "pq-root", "common_name": "x", "key_algorithm": "mldsa65"}, http.StatusBadRequest)
-		post(instance+"/issuers/web-root/rotate", map[string]any{"key_algorithm": "mldsa65"}, http.StatusBadRequest)
+		serviceRefused(http.MethodPost, instance+"/issuers", map[string]any{"mode": "root", "name": "pq-root", "common_name": "x", "key_algorithm": "mldsa65"})
+		serviceRefused(http.MethodPost, instance+"/issuers", map[string]any{"mode": "intermediate", "name": "pq-int", "common_name": "x", "parent": "web-root", "key_algorithm": "mldsa65"})
+		serviceRefused(http.MethodPost, instance+"/issuers/web-root/rotate", map[string]any{"key_algorithm": "mldsa65"})
 
-		// Each named case has a control: the same request without the name works.
+		// Import, imported rotation and CSR issue each have a control: the same
+		// request without the name works.
 		ca := classicalCA("named")
-		post(instance+"/issuers", with(ca, map[string]any{"mode": "import", "name": "named", "key_algorithm": "mldsa65"}), http.StatusBadRequest)
+		serviceRefused(http.MethodPost, instance+"/issuers", with(ca, map[string]any{"mode": "import", "name": "named", "key_algorithm": "mldsa65"}))
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name='named'`); n != 0 {
 			t.Errorf("import naming mldsa65 with a classical key stored %d issuers", n)
 		}
 		post(instance+"/issuers", with(ca, map[string]any{"mode": "import", "name": "named"}), http.StatusCreated)
 
 		next := classicalCA("next")
-		post(instance+"/issuers/named/rotate", with(next, map[string]any{"key_algorithm": "mldsa65"}), http.StatusBadRequest)
+		serviceRefused(http.MethodPost, instance+"/issuers/named/rotate", with(next, map[string]any{"key_algorithm": "mldsa65"}))
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE name='named'`); n != 1 {
 			t.Errorf("rotation naming mldsa65 with a classical key left %d versions", n)
 		}
@@ -230,16 +262,19 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 		post(instance+"/profiles", map[string]any{"name": "web", "policy": policy}, http.StatusCreated)
 		post(instance+"/profiles/web/bindings", map[string]any{"org_id": org.ID, "project_id": project.ID}, http.StatusOK)
 		pqPolicy := with(policy, map[string]any{"key_algorithms": []string{"mldsa65"}})
-		post(instance+"/profiles", map[string]any{"name": "pq-web", "policy": pqPolicy}, http.StatusBadRequest)
+		mixedPolicy := with(policy, map[string]any{"key_algorithms": []string{"ecdsa-p256", "mldsa65"}})
+		serviceRefused(http.MethodPost, instance+"/profiles", map[string]any{"name": "pq-web", "policy": pqPolicy})
+		serviceRefused(http.MethodPost, instance+"/profiles", map[string]any{"name": "pq-web", "policy": mixedPolicy})
+		serviceRefused(http.MethodPut, instance+"/profiles/web", map[string]any{"policy": pqPolicy})
 
 		csr, _ := pkiCSR(t)
 		issue := map[string]any{"profile": "web", "csr_pem": csr, "dns_names": []string{"a.svc.example.com"}}
-		post(envPath+"/certificates", with(issue, map[string]any{"key_algorithm": "mldsa65"}), http.StatusBadRequest)
+		serviceRefused(http.MethodPost, envPath+"/certificates", with(issue, map[string]any{"key_algorithm": "mldsa65"}))
 		if n := rows("pki_certificates"); n != 0 {
 			t.Errorf("issue naming mldsa65 with a classical CSR left %d certificates", n)
 		}
 		post(envPath+"/certificates", issue, http.StatusOK)
-		post(envPath+"/certificates", map[string]any{"profile": "web", "generate_key": true, "key_algorithm": "mldsa65", "dns_names": []string{"b.svc.example.com"}}, http.StatusBadRequest)
+		serviceRefused(http.MethodPost, envPath+"/certificates", map[string]any{"profile": "web", "generate_key": true, "key_algorithm": "mldsa65", "dns_names": []string{"b.svc.example.com"}})
 		if n := queryInt(t, db, `SELECT COUNT(*) FROM pki_issuers WHERE key_algorithm='mldsa65'`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_certificates WHERE key_algorithm='mldsa65'`) + queryInt(t, db, `SELECT COUNT(*) FROM pki_profiles WHERE name='pq-web'`); n != 0 {
 			t.Errorf("the real server stored %d ML-DSA rows", n)
 		}
