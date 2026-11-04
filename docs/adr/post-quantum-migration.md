@@ -145,15 +145,7 @@ Landed as the 2026-11-02 banner on [remote-instance-pairing](./remote-instance-p
 
 ### Private PKI
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** D5's closed key set
-> gains `mldsa65` for issuers and leaves only if the #1133 relying-party
-> matrix passes; adding an algorithm is widening and uses a new bound
-> profile. D2: issuer keys stay sealed seed-only PKCS#8. D3: a PQ chain needs an
-> offline PQ root (DEC-19); a classical root over an ML-DSA intermediate is not a
-> PQ-authenticated chain. D7: CRLs signed by the issuer algorithm. D9
-> (Surfaces): the closed API enum gains the algorithm; PEM and request caps are
-> OpenAPI and server constants outside the ADR and suffice at ML-DSA-65 sizes
-> [estimate].
+Carried word for word (checked against the proposal at `e5539c280`) as the locked-amendment banner on [pki](./pki.md), which is the only copy and is operative only when the #1133 implementation merges. What the implementation added is in a second banner there, not locked, with five choices awaiting the owner's confirmation.
 
 ### Signed upgrade compatibility and stable workflow signing
 
