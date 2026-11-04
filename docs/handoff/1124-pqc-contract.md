@@ -31,7 +31,10 @@ Owner decisions of 2026-11-02 and the amendment route are recorded once, in the
 
 **Update 2026-11-04.** The owner superseded the "draft, not merge-ready" hold: merge
 to `dev` is authorized once required checks are green, bottom-up, and publication in
-the next nightly is accepted. Nothing becomes operative by merging. Decisions still
+the next nightly is accepted. That instruction is the security approval for each PR's final
+reviewed head, except #1172, which is held. Merging this PR makes nothing operative; a banner
+whose trigger is the #1126 or #1127 implementation becomes operative when #1158 or #1156
+merges, although those tickets stay open. Decisions still
 open are listed in the ADR row for #1148.
 
 ## What the maintainer approval covered
@@ -44,8 +47,9 @@ data-flow and exception matrix" that #1124's validation section asks for, given 
 the one person who is both owner and maintainer, so it is not independent human
 review. It did not cover any implementation, key, provider action, release or
 locked-ADR edit. Later edits to the contract files change status wording only,
-except the 2026-11-04 recheck notes (README source pin, inventory rows I27 and I31,
-the `scripts/ci` census class and one line reference in migration), which record
+except the 2026-11-04 recheck notes (README source pin, inventory rows I27 and I31 and
+the I31 introduction, the `scripts/ci` census class, one line reference and one Helm chart
+sentence in migration), which record
 changes on `dev` and alter no parameter, decision or exception.
 
 ## Acceptance criteria map
