@@ -9,8 +9,10 @@ as recommended and gave maintainer security approval on 2026-11-02. This package
 operative ADRs and runtime behavior remain authoritative. Source exploration and
 bounded planning may proceed in dependent tickets; implementation needs the ADR
 amendments it depends on and its own security approval before it can merge.
-The owner authorized merge to `dev` on 2026-11-04 once required checks are green;
-that does not make anything here operative.
+On 2026-11-04 the owner authorized merge to `dev` once required checks are green, except
+#1172, and that instruction is the security approval for each final reviewed head. Merging
+this contract makes nothing here operative. A banner whose trigger is the #1126 or #1127
+implementation becomes operative when #1158 or #1156 merges, although those tickets stay open.
 
 ## Read this package
 
@@ -62,8 +64,9 @@ child must recheck these rows before reuse:
 - **Process documents**: `CONTRIBUTING.md` and `docs/development/ci.md` describe a
   dev-based flow now; `docs/adr/threat-model.md` also changed on `dev`.
 
-Rows are rewritten only where they were stale: I27, I31 and the census class for
-`scripts/ci`. The other rows are unchanged and still need the child's recheck.
+Rows are rewritten only where they were stale: I27, I31, the inventory's I31 introduction,
+the census class for `scripts/ci`, and one sentence on the nightly Helm chart in the migration
+policy. The other rows are unchanged and still need the child's recheck.
 
 ## Approval and claim rules
 
