@@ -53,7 +53,7 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval only as the 2026-11-04 merge authorization, none for #1172 |
 | 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; two runs with throwaway input (`--print-authority-ids`, OpenSSL key generation) and one `backup keygen` run that established its datastore requirement. Every real-environment step NOTRUN |
 | 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement) | Packet. E-22 carries all four fields; no other row does (peers, versions and expiry are the owner's) |
-| 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met; pairing narrowing text unaccepted |
+| 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met. The pairing narrowing is accepted (2026-11-04) with #1130 as the residual gap; the mandatory work and real evidence are not complete |
 | 12 | Record what can be released and what is blocked, plus remaining human and environment actions | DONE | Packet, "Release and blocked", lists only, no recommendation |
 
 ## Findings for the owning children (no code changed)

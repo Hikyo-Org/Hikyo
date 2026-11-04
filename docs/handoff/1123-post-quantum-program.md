@@ -101,11 +101,11 @@ evidence for this tree.
 | #1127 transport | #1156 | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, repairs re-reviewed |
 | #1128 webhooks | #1188 | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; declared-amendment route accepted | 2026-11-04, repairs re-reviewed |
 | #1129 Transit | #1172 | `mldsa65` below the API | Held from merge by the owner until the v1 freeze is decided; public surface HOLD; restore-hold and takeover NOTRUN | 2026-11-04, repairs re-reviewed |
-| #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 not yet effective | 2026-11-04, repairs re-reviewed |
+| #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 effective since 2026-11-04 (expiry 2027-05-03) | 2026-11-04, repairs re-reviewed |
 | #1131 rollout | #1186 | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, repairs re-reviewed |
 | #1132 release | #1192 | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, repairs re-reviewed |
 | #1133 PKI | #1141 | ML-DSA lifecycle below the API, gated off in production | Public surface HOLD on the v1 freeze; G1 to G7 | 2026-11-04, repairs re-reviewed |
-| #1134 external | #1171 | 24-route register, local qualification | No route verified; strict-route refusal HOLD (#1183) | 2026-11-04, repairs re-reviewed |
+| #1134 external | #1171 | 24-route register, local qualification | No route verified; strict-route refusal narrowed under DEC-06 (#1183), no strict claim on external routes | 2026-11-04, repairs re-reviewed |
 | #1135 qualification | #1197 | Packet, runbook marked not executable, integrated run | HOLD by construction: no real environment was authorized | 2026-11-04, repairs re-reviewed |
 
 The candidate `68b2673de` passed one integrated run on SQLite and PostgreSQL (11 top-level
@@ -127,17 +127,37 @@ Decided on 2026-11-04, as recommended:
 6. The non-ADR specs (#1188, #1186) use the declared-amendment banner.
 7. #1141, #1192 and #1190 merge as built, with their choices below still open.
 
+Decided on 2026-11-04, when the owner said "All open points as recommended":
+
+8. #1130 pairing: option A, HOLD under E-01. The E-01 fields are accepted (expiry 2027-05-03, every
+   release to date, recorder case included) and the DEC-13 wording is applied. #1135 qualifies I20 at its
+   classical profile only, and #1130 no longer blocks it. #1130 stays open as the tracked residual gap.
+9. #1183 (F-09): narrowed under DEC-06. Strict stays on the listener and owned clients, with no strict
+   claim on any external route and no per-route selector.
+10. #1175 (F-01): strict does not disable the GitHub Actions secret route, because the provider has no PQ
+    alternative and strict does not govern it. It stays exception E-06, now effective (expiry 2027-05-03).
+11. #1178 (F-04): `ssh-mldsa44-ed25519` is not adopted, because DEC-02 excludes ML-DSA-44 and DEC-03
+    selected no composite.
+12. #1179 (F-05): the relying party offers no ML-DSA credential parameters and stays on classical
+    credentials under E-05, with no enrollment or recovery work.
+13. The register's dispositions for F-01 to F-11 are accepted; their issues stay open as tracked work,
+    except the four above.
+
 Still open. None blocks merging what is listed above, and each blocks use or closure:
 
 1. The `/api/v1` freeze: ML-DSA stays unreachable for Transit and PKI, and #1172 stays out, until it is decided.
 2. Transit signed bytes: cheap to change only until the first key signs.
-3. ML-DSA recovery key custody: no release signer until it is named (DEC-14).
-4. Per-route strict selection (#1183), and the F-nn decisions #1175, #1178 and #1179.
-5. DEC-17 budget thresholds, from the baselines each child recorded.
-6. #1126 profile selector and vault generation path, #1127 proxy-leg confirmation, and packet C-10's step 2 abort wording.
-7. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked condition, and whether #1133 keeps the `VerifyConnection` walk and platform verifiers.
-8. #1132's key-role shape, sidecar floor, shared banner wording, signing granularity and pin delivery. No signer can exist until these and custody are settled.
-9. #1130's options A to D, E-01 fields, DEC-13 wording and the narrowing text #1135 needs.
+3. ML-DSA recovery key custody: no release signer until it is named (DEC-14). Deferred by the owner
+   until a signer exists.
+4. DEC-17 budget thresholds, from the baselines each child recorded. Deferred by the owner until an
+   amd64 baseline exists.
+5. #1126 profile selector and vault generation path, #1127 proxy-leg confirmation, and packet C-10's step 2 abort wording.
+6. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked condition.
+   Deferred by the owner until ML-DSA is enabled for PKI. Whether #1133 keeps the `VerifyConnection` walk
+   and platform verifiers is not deferred and stays open (packet C-05).
+7. #1132's key roles, sidecar floor, shared banner wording and pin delivery. Deferred by the owner until a
+   signer exists, as is recovery custody (item 3). Signing granularity is not deferred and stays open. No
+   signer can exist until these and custody are settled.
 
 ### Tickets and issues touched
 

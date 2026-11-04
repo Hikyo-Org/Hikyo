@@ -1,8 +1,9 @@
 # External compatibility and residual-risk register, v2 (2026-11-03)
 
 Status: **not an operative capability claim. Owner authorized merge of this
-documentation on 2026-11-04 (maintainer security approval for this PR only); owner
-dispositions for F-01 to F-11 are proposed, not recorded, and F-09 is open.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
+documentation on 2026-11-04 (maintainer security approval for this PR only). The owner
+recorded the dispositions for F-01 to F-11 on 2026-11-04 (see Follow-ups); F-01, F-04,
+F-05 and F-09 are decided, and the other follow-ups stay open as tracked work.** Tracking [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134),
 under [#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123). Stacked on the
 transport policy (PR #1156; the register was written and tested on its head
 `f5d5491829d6`; the base has since moved and the sweep was not rerun on it;
@@ -178,15 +179,15 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 
 | ID | Class | Evidence (read 2026-11-03) | Recheck trigger | Consumer impact | Follow-up | Exception |
 | --- | --- | --- | --- | --- | --- | --- |
-| X01 | compatibility-only | source: GitHub docs, libsodium doc; local: wire-shape test, libsodium 1.0.22 interop both ways; provider NOTRUN | GitHub docs name a different algorithm or PQ, or a new `key_id` scheme | A strict policy can only disable the route; no PQ alternative may replace the envelope | F-01 (HOLD) | E-06 |
+| X01 | compatibility-only | source: GitHub docs, libsodium doc; local: wire-shape test, libsodium 1.0.22 interop both ways; provider NOTRUN | GitHub docs name a different algorithm or PQ, or a new `key_id` scheme | Strict does not govern this route and does not disable it; no PQ alternative may replace the envelope | F-01 (decided 2026-11-04: stays exception E-06) | E-06 |
 | X02 | unknown | source: Go docs; no GitHub HTTPS evidence read; provider NOTRUN | GitHub states a PQ TLS group, or a capture is authorized | Unknown | F-02 | E-07, E-08 |
 | X03 | unknown | none beyond source | A peer's build is named | Unknown | F-02 | E-07, E-08 |
 | X04 | unknown | none beyond source | Peer build named | Unknown | F-02 | E-07, E-08 |
 | X05 | compatibility-only | source: AWS blog and doc; negotiated group NOTRUN; AWS limits the claim to non-FIPS endpoints | Authorized capture; AWS states FIPS endpoint support | Strict could work only where a non-FIPS endpoint negotiates the group | F-02 | E-07, E-08 |
 | X06 | unknown | source: Cloudflare doc does not name `api.cloudflare.com` | Capture or doc names the host | Unknown | F-02 | E-07, E-08 |
 | X07 | out of profile | local: OpenSSH 10.3p1 negotiated `mlkem768x25519-sha256`; classical-only client accepted by default sshd; refused with `KexAlgorithms mlkem768x25519-sha256`; github.com handshake (fact 5) | **Fired:** OpenSSH 10.6 offers a PQ signature by default; remaining: an operator names a fleet | The control is sshd `KexAlgorithms` (fixture). `WarnWeakCrypto` only logs a weak client and is not a control. Hikyo carries no SSH session | F-03: runbook line for sshd operators (#1135) | E-02 limits only the signatures |
-| X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04: owner decision on the composite (ML-DSA-44, outside DEC-02, DEC-03 did not select composites) before any code | E-02 |
-| X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; owner decides credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 | E-05 |
+| X08 | blocked | source: closed set refuses ML-DSA keys; local: Ed25519, ECDSA and RSA CA certificates accepted by real sshd, CA family read with `ssh-keygen -L`; 10.6 composite NOTRUN | `x/crypto` adds the OpenSSH composite; the composite draft becomes an RFC; OpenSSH or the draft adds ML-DSA-65; owner revisits DEC-02 or DEC-03 | Existing classical CAs unchanged; no strict possible | F-04 (decided 2026-11-04): the composite is not adopted (ML-DSA-44 is outside DEC-02, DEC-03 did not select composites) | E-02 |
+| X09 | unknown | source: IANA, W3C, go-webauthn; no primary authenticator or platform statement read | A primary authenticator statement; owner decides credential parameters | RP creates classical credentials only; offering library PQC parameters would include ML-DSA-44 (excluded by DEC-02) | F-05 (decided 2026-11-04): classical credentials only | E-05 |
 | X10 | blocked | source: RFC 9964 and Hikyo allowlists; `go-jose` has no ML-DSA | `go-jose` adds ML-DSA; an IdP issues one | A PQ-only IdP fails at verify (closed allowlist) | F-06: #1130/#1132 note | E-04 |
 | X11 | unknown | source only, including the SAML metadata proxy leg | As X02 | Unknown | F-02 | E-04, E-08 |
 | X12 | blocked | source: allowlist; no XML-DSig ML-DSA identifier found by search | A standards body defines the identifier; `goxmldsig` supports it | As X10 | F-06 | E-04 |
@@ -206,19 +207,22 @@ policy is demanded, concrete follow-up, and the exception. Owner for every row i
 ### Follow-ups
 
 Each line is a title and a one-sentence body, filed as the linked issue. All
-are owned by Marc Went. Rows served are in Table B.
+are owned by Marc Went. Rows served are in Table B. On 2026-11-04 the owner accepted
+the dispositions proposed for F-01 to F-11. F-01, F-04, F-05 and F-09 are decided
+in their bodies below; F-02, F-03, F-06, F-07, F-08, F-10 and F-11 stay open as
+tracked work.
 
 | ID | Title | Body | Rows |
 | --- | --- | --- | --- |
-| [F-01](https://github.com/Hikyo-Org/Hikyo/issues/1175) | Decide what strict means for the GitHub sealed-box submission | Decide whether strict policy disables the GitHub Actions secret route (the provider requires a libsodium sealed box, so there is no PQ alternative and no second wrapper) or leaves it an exception, and record E-06 with that outcome. HOLD | X01 |
+| [F-01](https://github.com/Hikyo-Org/Hikyo/issues/1175) | Decide what strict means for the GitHub sealed-box submission | Decided 2026-11-04: strict does not disable the GitHub Actions secret route, because the provider requires a libsodium sealed box (no PQ alternative, no second wrapper) and strict does not govern that route (F-09). It stays exception E-06, recorded in the migration register | X01 |
 | [F-02](https://github.com/Hikyo-Org/Hikyo/issues/1176) | Authorized read-only capture of the negotiated TLS group on external hops | In a named environment, capture the negotiated TLS group and certificate key type for each external hop, record peer and version, and update the matching exception row; no provider write. | X02 to X06, X11, X17, X19, X20, X22, X23, X24 |
 | [F-03](https://github.com/Hikyo-Org/Hikyo/issues/1177) | Add an sshd operator runbook line for hybrid-only key exchange | Document `KexAlgorithms mlkem768x25519-sha256` as the operator control (not `WarnWeakCrypto`, which only logs) in the #1135 runbook. | X07 |
-| [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decide whether Hikyo adopts `ssh-mldsa44-ed25519` for SSH CA keys given DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites, before any code. | X08 |
-| [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decide whether the relying party offers ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes) and how enrollment and recovery work. | X09 |
+| [F-04](https://github.com/Hikyo-Org/Hikyo/issues/1178) | Decide whether to track OpenSSH's composite SSH signature | Decided 2026-11-04: Hikyo does not adopt `ssh-mldsa44-ed25519`, because DEC-02 excludes ML-DSA-44 and DEC-03 did not select composites. Recheck if OpenSSH ships a composite without ML-DSA-44 or `x/crypto` adds one. | X08 |
+| [F-05](https://github.com/Hikyo-Org/Hikyo/issues/1179) | Decide WebAuthn credential parameters and recovery for ML-DSA | Decided 2026-11-04: the relying party does not offer ML-DSA credential parameters (the library list includes ML-DSA-44, which DEC-02 excludes). It stays on classical credentials under E-05, with no enrollment or recovery work. Recheck on a primary authenticator statement. | X09 |
 | [F-06](https://github.com/Hikyo-Org/Hikyo/issues/1180) | Track ML-DSA support in `go-jose` and `goxmldsig` for federation | Record a recheck of `go-jose` and `goxmldsig` ML-DSA support and any XML-DSig identifier against #1130 and #1132, since RFC 9964 now registers JOSE `ML-DSA-65`. | X10, X12 |
 | [F-07](https://github.com/Hikyo-Org/Hikyo/issues/1181) | Build a disposable hybrid-capable PostgreSQL fixture | Provide a disposable PostgreSQL 18 with an OpenSSL build that has a hybrid group and `ssl_groups` set, and capture the group Hikyo's client negotiates. HOLD until a server build is named | X13 |
 | [F-08](https://github.com/Hikyo-Org/Hikyo/issues/1182) | State "no PQ claim" in the import capability record | Make the SOPS, kubeconfig and OpenBao import capability record say no PQ claim covers source key services (#1135). | X15 |
-| [F-09](https://github.com/Hikyo-Org/Hikyo/issues/1183) | Decide per-route strict selection for external hops | The owner narrows it under DEC-06 (strict stays on the listener and owned clients) or moves it to a named ticket; see [strict-route refusal](#strict-route-refusal). HOLD | all |
+| [F-09](https://github.com/Hikyo-Org/Hikyo/issues/1183) | Decide per-route strict selection for external hops | Decided 2026-11-04: narrowed under DEC-06. Strict stays on the listener and owned clients, with no strict claim on any external route, and no per-route selector is built; see [strict-route refusal](#strict-route-refusal) | all |
 | [F-10](https://github.com/Hikyo-Org/Hikyo/issues/1184) | Re-read third-party trust-service PQ statements | Re-read Sigstore, Kyverno, Apple, OS package, commit signing and Go checksum database statements on PQ issuance and signing and update X16 and E-03. | X16 |
 | [F-11](https://github.com/Hikyo-Org/Hikyo/issues/1185) | Run the AWS ambient credential sources in an authorized environment | In a named AWS environment, run IMDS, ECS and IRSA credential discovery and record the transport each uses and whether it can negotiate a hybrid group. | X23 |
 
@@ -260,7 +264,8 @@ route in this register:
   capability.
 - X01: the value is sealed to the provider's X25519 key with a libsodium
   sealed box. Confidentiality of that payload rests on X25519 and is classical.
-  The route is not replaced or wrapped. Provider storage and TLS are unknown.
+  The route is not replaced or wrapped, and strict does not disable it (F-01).
+  Provider storage and TLS are unknown.
 - X07/X08: Hikyo issues only classical SSH CA certificates (Ed25519, ECDSA
   P-256, RSA 3072). A PQ session key exchange protects traffic only where the
   operator's sshd negotiates it (observed locally with OpenSSH 10.3p1). Hikyo
@@ -270,7 +275,7 @@ route in this register:
   requested (WebAuthn). No PQ authenticity claim.
 - Authentication by the peer is separate from key exchange everywhere.
 - **Unresolved first-party gaps keep the parent claim (#1123) blocked**: this
-  document closes none, and adds a HOLD (below).
+  document closes none, and records the F-09 narrowing (below).
 
 ## Strict-route refusal
 
@@ -288,30 +293,26 @@ algorithm set (`ErrUnsupportedKey`), the OIDC and SAML signature allowlists,
 `verify-full` for non-local PostgreSQL. An unknown algorithm is refused before
 it is accepted.
 
-**HOLD F-09 (not built, no code): per-route strict selection** for adapters,
-federation, mail, SAML metadata, PostgreSQL, update, pairing and SDK hops, and
-runtime exception naming.
+**Decided 2026-11-04 (F-09, [#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)):
+narrowed under DEC-06.** Strict stays on the listener and owned clients. No
+per-route selector is built, and no strict claim is made on any external route:
+adapters, federation, mail, SAML metadata, PostgreSQL, update, pairing and SDK hops.
 
-- Why held: it needs (a) a per-hop selector, because wiring `HIKYO_TLS_PROFILE`
-  into those transports extends DEC-06's scope (strict only on the listener and
-  owned clients) and would let a strict listener break unrelated routes; (b) a
-  peer-evidence row per hop (E-08); (c) a decision whether "strict" for a
-  provider-required envelope (X01) means the route is disabled. All are design
-  decisions.
-- Owner: Marc Went. Owning ticket: [#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)
-  (F-09); the nearest related work is #1127's hop table (E-08).
+- Why: a per-hop selector would extend DEC-06's scope (strict only on the listener
+  and owned clients) and would let a strict listener break unrelated routes. A
+  provider-required envelope (X01) is not disabled by strict because strict does
+  not govern it (F-01); it stays exception E-06.
+- Owner: Marc Went. The nearest related work is #1127's hop table (E-08).
 - Recheck trigger: the owner decides to extend DEC-06 scope, or a route gains a
   peer-evidence row showing it can negotiate the strict group.
 - Residual risk: every external route stays at compat; strict neither protects
-  nor refuses any of them; operators name an exception today only by `Xnn` and
-  `E-nn`, not by a runtime control. Unrelated routes are unaffected by
-  `HIKYO_TLS_PROFILE=strict` today, and so are the unsafe ones.
+  nor refuses any of them; operators name an exception by `Xnn` and `E-nn`, not
+  by a runtime control. Unrelated routes are unaffected by
+  `HIKYO_TLS_PROFILE=strict`, and so are the unsafe ones.
 - Claim limit: no external route may be called strict, hybrid-enforced or
   PQ-protected (the same limit as E-07, E-08).
-- **Closure condition:** #1134 can close only after the owner records a
-  disposition for F-09: either narrowing it under DEC-06 (strict stays on the
-  listener and owned clients; external hops are an explicit non-claim) or moving
-  it to a named ticket with an owner.
+- The F-09 disposition #1134 needed to close is recorded. #1134 still has the
+  other open follow-ups and unverified routes listed above.
 
 Added instead, as executable evidence of existing fail-closed behavior:
 `TestParsePublicKeyRefusesAnMLDSAKey` (`internal/sshca`) and
@@ -331,15 +332,18 @@ handshake to github.com that offered no key (fact 5).
 | `ssh -vv` to github.com without credentials | `mlkem768x25519-sha256`, host key matches the published Ed25519 fingerprint (fact 5) |
 | Any real-provider API call, OpenSSH 10.6, PostgreSQL with a hybrid group, federation or mail peer | **NOTRUN**: no authorization or fixture |
 
-## Exception terms (proposed, none effective)
+## Exception terms (proposed; only E-06 is effective)
 
 DEC-10 makes an exception effective only with an exact peer and version, an
-expiry and a recheck trigger. **None of these rows is effective**, and recording
-this table does not make one effective: each stays ineffective until the owner
-names its peer and version. A date of 180 days from 2026-11-03 would be
-**2027-05-02**, at most two renewals; the clock starts when the peer is named.
-Owner: Marc Went. Rows owned by other tickets (E-01, E-08, E-11, E-15, E-20) are
-not repeated. These terms are pointed to from the
+expiry and a recheck trigger. **E-06 is effective** since the owner's decision on
+2026-11-04 (peer GitHub Actions secrets API, version libsodium sealed box as
+documented today, expiry 2027-05-03, recheck trigger GitHub documenting a PQ option
+or a different algorithm); its row is in the migration register. **None of the other
+rows is effective**, and recording this table does not make one effective: each
+stays ineffective until the owner names its peer and version. A date of 180 days from
+2026-11-03 would be **2027-05-02**, at most two renewals; the clock starts when the
+peer is named. Owner: Marc Went. Rows owned by other tickets (E-01, E-08, E-11,
+E-15, E-20) are not repeated. These terms are pointed to from the
 [migration register](migration.md#exception-terms-1134).
 
 | ID | Routes (same as Table B) | Peer and version known | Why ineffective | Recheck trigger |
@@ -348,7 +352,7 @@ not repeated. These terms are pointed to from the
 | E-03 | X16 (includes I31: Kyverno and chart policy) | None named | Peers unnamed, no versions | A service states PQ issuance |
 | E-04 | X10, X11, X12 | Libraries: `go-oidc` v3.21.0, `go-jose` v4.1.6, `gosaml2` v0.12.0, `goxmldsig` v1.6.1; no IdP | IdP unnamed | `go-jose` ML-DSA; XML-DSig identifier; an IdP issues PQ |
 | E-05 | X09 | `go-webauthn` v0.18.2; no authenticator | Authenticator unnamed | Primary authenticator statement; DEC-02 decision on parameters |
-| E-06 | X01 | github.com REST; API version not read | Version not read | GitHub docs change algorithm |
+| E-06 | X01 | Effective 2026-11-04: GitHub Actions secrets API; libsodium sealed box as documented today; expires 2027-05-03 | None | GitHub documents a PQ option or a different algorithm |
 | E-07 | X02 to X06, X17, X19, X23 | Go 1.27.3 client; no peer | Peers unnamed | A peer is named and captured |
 | E-13 | X15 | `sops` v3.13.3, `client-go` v0.37.1, `openbao/api/v2` v2.7.1; no source | Sources unnamed | Source key policy named |
 
