@@ -67,11 +67,15 @@ type custody struct {
 	rootStore   string // holds the root key, and nothing else
 }
 
-func newCustody(t *testing.T) custody {
+func newCustody(t *testing.T) custody { return newCustodyWith(t, backup.GenerateIdentity) }
+
+// newCustodyWith mints the backup identity with the given generator, so the same
+// drill runs for X25519 and for hybrid custody.
+func newCustodyWith(t *testing.T, generate func() (string, string, error)) custody {
 	t.Helper()
 	c := custody{backupStore: t.TempDir(), rootStore: t.TempDir()}
 
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,6 +449,18 @@ func TestBackupRestoreDrillSQLite(t *testing.T) {
 
 func TestBackupRestoreDrillPostgres(t *testing.T) {
 	c := newCustody(t)
+	runBackupRestoreDrill(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+// The same full drill with a hybrid post-quantum backup identity: export,
+// destroy, restore through the real verbs, and every restore rule above.
+func TestBackupRestoreDrillHybridSQLite(t *testing.T) {
+	c := newCustodyWith(t, backup.GenerateHybridIdentity)
+	runBackupRestoreDrill(t, sqliteTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func TestBackupRestoreDrillHybridPostgres(t *testing.T) {
+	c := newCustodyWith(t, backup.GenerateHybridIdentity)
 	runBackupRestoreDrill(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
 }
 
@@ -1321,6 +1337,16 @@ func TestRestoreDrillVerbSQLite(t *testing.T) {
 
 func TestRestoreDrillVerbPostgres(t *testing.T) {
 	c := newCustody(t)
+	runRestoreDrillVerb(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func TestRestoreDrillVerbHybridSQLite(t *testing.T) {
+	c := newCustodyWith(t, backup.GenerateHybridIdentity)
+	runRestoreDrillVerb(t, sqliteTarget(t, t.TempDir(), c.recipient(t)), c)
+}
+
+func TestRestoreDrillVerbHybridPostgres(t *testing.T) {
+	c := newCustodyWith(t, backup.GenerateHybridIdentity)
 	runRestoreDrillVerb(t, postgresTarget(t, t.TempDir(), c.recipient(t)), c)
 }
 

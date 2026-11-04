@@ -129,6 +129,7 @@ type harness struct {
 	recip    string
 	endpoint *Endpoint
 	module   *Module
+	k        *v2Keys // protocol 2 material; nil for the version 1 harness
 	mu       sync.Mutex
 	log      []recorded
 	override http.Handler
@@ -171,6 +172,16 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.startServer()
+	h.endpoint = h.newEndpoint(1, h.signer)
+	h.module = h.newModule(h.endpoint, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, staticResolver{netip.MustParseAddr("127.0.0.1")})
+	return h
+}
+
+// startServer serves h.receiver (or h.override) over TLS and records every
+// request and response in request order.
+func (h *harness) startServer() {
+	t := h.t
 	h.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		r.Body = io.NopCloser(bytes.NewReader(body))
@@ -196,9 +207,6 @@ func newHarness(t *testing.T) *harness {
 	u, _ := url.Parse(h.server.URL)
 	_, port, _ := net.SplitHostPort(u.Host)
 	h.origin = "https://example.com:" + port
-	h.endpoint = h.newEndpoint(1, h.signer)
-	h.module = h.newModule(h.endpoint, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}, staticResolver{netip.MustParseAddr("127.0.0.1")})
-	return h
 }
 
 func (h *harness) newEndpoint(generation int64, signer *sealedhook.Signer) *Endpoint {
@@ -229,7 +237,7 @@ func (h *harness) newModule(e *Endpoint, allowed []netip.Prefix, resolver static
 
 func (h *harness) target() adapter.Target {
 	return adapter.Target{ID: "tgt_1", Generation: 1, Destination: adapter.Destination{
-		Kind: adapter.Organization, Owner: namespace, NumericID: sealedhook.DestinationID(h.endpoint.Fingerprint(), namespace),
+		Kind: adapter.Organization, Owner: namespace, NumericID: h.endpoint.DestinationID(namespace),
 	}}
 }
 
@@ -286,13 +294,12 @@ func TestProviderSurfaceIsDeliverOnly(t *testing.T) {
 	if !slices.Equal(got, []string{"Deliver"}) {
 		t.Fatalf("API = %v, want exactly Deliver", got)
 	}
-	if len(operationRegistry) != 1 {
-		t.Fatalf("route table = %v, want one route", operationRegistry)
+	want := map[string]operation{
+		"deliver":    {Method: http.MethodPost, Path: sealedhook.SyncPath},
+		"deliver.v2": {Method: http.MethodPost, Path: sealedhook.SyncPathV2},
 	}
-	for name, op := range operationRegistry {
-		if op.Method != http.MethodPost || op.Path != sealedhook.SyncPath {
-			t.Fatalf("route %s = %+v, want only POST %s", name, op, sealedhook.SyncPath)
-		}
+	if !reflect.DeepEqual(operationRegistry, want) {
+		t.Fatalf("route table = %v, want exactly %v", operationRegistry, want)
 	}
 }
 

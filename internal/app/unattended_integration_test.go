@@ -16,6 +16,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
@@ -231,11 +232,72 @@ func TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential(t *testing
 			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("preflight refusal created upgrade journal: %v", err)
 			}
+			// A hybrid MANAGED backup policy with the X25519 custody identity must
+			// refuse before the journal fence, the scratch and any export. The
+			// config comes from LoadBootstrap, which moves owner settings into
+			// ManagedInputs and leaves BackupRecipients empty, as in production.
+			// The same child, started with nothing pending, must still boot.
+			_, hybridRecipient, genErr := backup.GenerateHybridIdentity()
+			if genErr != nil {
+				t.Fatal(genErr)
+			}
+			hybridValues := map[string]string{"HIKYO_BACKUP_RECIPIENTS": hybridRecipient, "HIKYO_BACKUP_DIR": t.TempDir()}
+			for key, value := range values {
+				hybridValues[key] = value
+			}
+			hybridConfig, _, loadErr := config.LoadBootstrap("server", nil, func(key string) string { return hybridValues[key] }, nil)
+			if loadErr != nil {
+				t.Fatal(loadErr)
+			}
+			if len(hybridConfig.BackupRecipients) != 0 || hybridConfig.ManagedInputs["HIKYO_BACKUP_RECIPIENTS"] != hybridRecipient {
+				t.Fatal("fixture is not the production LoadBootstrap shape")
+			}
+			plain := fixture.Config
+			fixture.Config = *hybridConfig
+			policyRefusal := runChild(1)
+			fixture.Config = plain
+			if policyRefusal == nil || !strings.Contains(policyRefusal.Error(), "refusing before any backup") {
+				t.Fatalf("hybrid policy with X25519 custody did not refuse the upgrade: %v", policyRefusal)
+			}
+			// The refusal precedes every write: no journal pins the target image,
+			// so nothing is left behind.
+			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("policy refusal left an upgrade journal: %v", err)
+			}
+			if exports, _ := filepath.Glob(filepath.Join(directory, "backup-*")); len(exports) != 0 {
+				t.Fatalf("policy refusal exported a backup: %v", exports)
+			}
+			if after, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN}); err != nil || after.Applied.Release != identities[0] || after.Pending.Phase != upgrade.Healthy || after.Maintenance {
+				t.Fatalf("policy refusal changed the healthy source: %v", err)
+			}
+			// A refused host still starts on its CURRENT image, under the hybrid
+			// policy and under the plain one, because nothing was written.
+			fixture.Config = *hybridConfig
+			currentHybrid := runChild(0)
+			fixture.Config = plain
+			if currentHybrid != nil {
+				t.Fatalf("refused host did not start on its current image under the hybrid policy: %v", currentHybrid)
+			}
+			if err := runChild(0); err != nil {
+				t.Fatalf("refused host did not start on its current image: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(directory, "operation.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("starting the current image created an upgrade journal: %v", err)
+			}
+			// Reverting the policy (the plain config) lets the upgrade proceed.
 			if err := runChild(1); err != nil {
 				t.Fatalf("image replacement: %v", err)
 			}
 			if err := runChild(1); err != nil {
 				t.Fatalf("upgraded restart: %v", err)
+			}
+			// With nothing pending, a hybrid policy must not stop the container
+			// from starting: the refusal applies only where an export would run.
+			fixture.Config = *hybridConfig
+			hybridRestart := runChild(1)
+			fixture.Config = plain
+			if hybridRestart != nil {
+				t.Fatalf("hybrid policy blocked a start with no upgrade pending: %v", hybridRestart)
 			}
 			state, err := upgrade.InspectControl(t.Context(), upgrade.Config{Engine: releaseidentity.Engine(engine), Path: live.Path, DSN: live.DSN})
 			if err != nil || state.Applied.Release != identities[1] || state.Maintenance {

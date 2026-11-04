@@ -1,0 +1,207 @@
+# #1128: versioned hybrid-encrypted, PQ-signed sealed webhook delivery (protocol 2), handoff
+
+Status: **owner authorized merge on 2026-11-04** (the maintainer security approval for this PR) and
+accepted the declared-amendment revision route for the spec. Protocol 2 is usable after merge when a
+target is explicitly configured; protocol 1 is the default and unchanged. The registered limits
+(R-1128-A, R-1128-B, X19) and the open items below are not closed by that approval.
+Owner and maintainer are one person, so independent adversarial review compensates;
+cross-provider review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
+Refs [#1128](https://github.com/Hikyo-Org/Hikyo/issues/1128); the PR does not close it.
+Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Operator text:
+[receiver and sender migration](../operations/sealed-webhook-v2-migration.md). Protocol text:
+[spec section 11](../spec/sealed-webhook.md#11-protocol-version-2).
+
+## Decisions applied, nothing newly selected
+
+DEC-01 (age `mlkem768x25519`), DEC-02 (ML-DSA-65 only), DEC-03 (all required signatures verify,
+required set from the verifier's pinned state, suite-bound bytes), DEC-07 (algorithm-bearing
+identifiers, new labels), DEC-08 (webhook v2 field bounds), DEC-09 (closed error classes),
+receiver-first order from the migration policy. Age and `crypto/mldsa` are used as shipped; no
+primitive or composition was added.
+
+## What was built
+
+| Area | Change |
+| --- | --- |
+| Spec | Section 11 of `docs/spec/sealed-webhook.md`, a declared amendment operative at merge; sections 1 to 10 (v1) untouched |
+| Crypto (`internal/crypto/sealedhook/v2.go`) | New file beside v1. Dual suite `ed25519+mldsa65` (both required), hybrid recipient, version-separated path, media types and labels, `ed25519-sha256:` / `mldsa65-sha256:` / `mlkem768x25519-sha256:` ids, `swh2-...` fingerprint, `ciphertext_digest`, exact-length fields checked before base64 decoding, one-stanza age header allowlist with a 4096-byte header bound (copy of the #1126 scan: this leaf package may not import `crypto/backup`), an exact-case unique member set and the names bound checked on the token stream before any struct decode, canonical base64. v1 code only gained shared validators (`validateScope`, `validateWindow`, `validateStatus`, `destinationID`, `idempotencyKey`) |
+| Sender (`internal/adapter/sealedwebhook`) | `Endpoint`, `Client`, `Module` select the protocol per target; route table has `deliver` and `deliver.v2`; a protocol 2 client verifies both ack signatures and never emits a v1 request. `Client.RootCAs` test wiring added (same pattern as awssm; `Endpoint.ClientConfig` never sets it) |
+| Registry (`internal/config`, `internal/app`) | Per-target `protocol` (absent = 1), `ack_key_mldsa65`, top-level `signing_key_file_mldsa65` (same `0600` check). Mixed, missing or unused ML-DSA material refuses boot |
+| Reference receiver (`internal/sealedreceiver`, `cmd/hikyo-receiver-example`) | Serves v1 and v2 under separate recipient identities, sender pins and acknowledgement signers (the Ed25519 keys may be shared); PQ-required receiver omits v1 and answers 404 there; Content-Length bound; tool gains `keygen -protocol 2`, `sender-keygen`, `pubkey`, `fingerprint -protocol 2` |
+| Vectors | `internal/crypto/sealedhook/testdata/sealed-webhook-v2-vectors.json` (positive, signed bytes, derived ids, negatives) |
+| Docs | Migration guide; site registry notes |
+
+## Freeze, migration and consumer checks
+
+- **API freeze:** the target configuration is the operator file registry, not an API object. No
+  registry field exists in `api/openapi.yaml`; `AdapterProvider` is `x-extensible-enum` and its
+  values are unchanged. This branch changes nothing under `api/`, `clients/`, `web/` or
+  `internal/store` (`git diff origin/dunky13/pqc-1127-transport-policy -- api clients web internal/store` is empty), so the guard has nothing to refuse. No allowlist entry, no second
+  encoding, no HOLD from the freeze.
+- **Database migration: none.** Destination ids derive from the fingerprint, and the v2 fingerprint
+  and destination labels are new, so v1-bound targets fail closed. No migration number is
+  reserved (00083 is taken by #1172 and #1129; #1141 may take the next). `internal/buildcompat/development.json` is untouched.
+- **Audit:** `adapter.test` payload `version` is an open string; `sealed-webhook/v2` needs no
+  catalogue change. INTENT and OUTCOME behavior is the unchanged Journal path.
+- **Redaction:** no list matches age keys except the vendored scanner rule, which does not match
+  `AGE-SECRET-KEY-PQ-1`; that is a #1126 requirement and is not edited here.
+
+## Review repair
+
+An independent review of `9de6a536b` found no forgery, stripping or downgrade-on-error break and
+eight defects plus lows; each was verified before it was changed. Verified true: the 4,096-byte
+example bound refused every real ack; the single generation and single signer made the documented
+transition and rollback impossible; the "concurrent" rotation never overlapped (the receiver was
+swapped after all deliveries); `encoding/json` matched `SIG_ED25519` and `V` case-insensitively and
+a body of empty name objects allocated 99 MB per parse; and the other documentation claims. The
+repairs are in the commits after `9de6a536b`.
+
+## Second review repair (re-review of `8bad510a5`)
+
+Eight remaining defects, each verified first. Item 1 was reproduced with the built binary against a
+live v1 receiver: `keygen -dir` does not create the directory, and a receiver with the hybrid
+members and an empty `senders_v2` exits with `at least one pinned sender pair is required`, taking
+v1 down; the guide now creates the directory, generates keys first, and adds the hybrid members
+only together with a pinned pair (walked through again with the built binary: both paths answered,
+the fingerprint printed; the walkthrough also showed the fingerprint must use the existing
+`ack_key`, now stated). Item 2: rollback text qualified. Item 3: the "before allocation" claim is
+scoped to the body, names and member set, and the two-pass string cost is measured (49 MiB for one
+1.5 MB invalid-UTF-8 string, 41 MiB for 256 large names) and registered; the reviewer's v1
+comparison was not reproduced. Item 4: stray-bits cases and two vector negatives; removing
+`.Strict()` from either decode now fails. Item 5: real classical identities in the receiver test;
+removing the ack-signer check now fails. Item 6: scope fields at maximum, 1,478,120 bytes. Item 7:
+this file. Item 8: the parent directory is synced after the rename; the sync order is testable
+through two hooks and removing either sync fails; "after an error" added to the site and registry
+comment. The reference tool's directory sync is Unix-only.
+
+## Acceptance
+
+Legend: DONE, PARTIAL, HOLD, NOTRUN.
+
+| Criterion | Status | Notes |
+| --- | --- | --- |
+| Specify a new protocol version with authenticated identifiers, scope, times, replay context, ciphertext digest, ack binding; refuse unknown versions and cross-version reinterpretation | DONE (text), second review NOTRUN | Spec 11.1 to 11.4, 11.10. Replay context is the idempotency key (no separate nonce, deliberately). A first independent review ran against `9de6a536b`; its findings are repaired here and need re-review |
+| Approved hybrid recipient and signatures; validate pinned identities and key ownership before enabling | **PARTIAL** | Fingerprint confirmation, key parsing and pair pinning DONE. The `adapter test` probe proves the responder holds both acknowledgement keys, **not** the hybrid identity: an acknowledgement carries nothing derived from the plaintext, so recipient ownership is not proven. Proving it needs a plaintext-derived ack field, a new mechanism, not built |
+| Protected key generation and import, algorithm-aware fingerprints; target configuration, API, CLI, UI and reference tooling | PARTIAL | Registry, fingerprints and reference tooling DONE (`sender-keygen` now mints only the ML-DSA key and leaves the instance's Ed25519 key alone; `pubkey` prints one prefixed form). No API, CLI or UI consumes the registry. **No product-binary generator**: the tool is unshipped. Keys are `0600` files (the v1 custody model), not sealed under the instance hierarchy |
+| Reject classical-only encryption, stripping, wrong key, other algorithm/target/version, mixed unlock paths; dual signatures all-required | DONE | Crypto, adapter and vector negatives; mutations (skip ML-DSA on envelopes, on acks, the not_after check) each fail tests. "Never downgrades" means no error path falls back; it does not stop an administrator restoring the v1 entry (R-1128-B) |
+| Bounds for hybrid and ML-DSA sizes; malformed, overlarge, truncated, expired, future, tampered refused without unsafe allocation | DONE | Member names are exact-case, unique and bounded (256 names) on the token stream before any struct decode (the 1.5 MB empty-names body now allocates under 4 MiB, was 99 MB); canonical base64; a protocol 2 response bound below 5,120 is refused at activation; largest legal envelope **1,478,120** of 1,529,176 bytes (256 names of 256 characters, every identifier and integer at its maximum, ciphertext at the 1 MiB limit), largest legal ack 5,038 bytes |
+| Preserve authN/Z, egress, destination pinning, INTENT/OUTCOME audit, fences, retry, duplicate suppression, ambiguity | DONE | Journal path unchanged; exercised on both engines |
+| Exercise encrypt, send, receiver verify/decrypt, signed ack, reconcile; retry/restart, duplicate delivery, concurrent key rotation, multi-node takeover | DONE (local) | `TestAdapterSealedWebhookProtocolTwoEndToEnd` on SQLite and PostgreSQL: rotation now holds the first revision 3 request at the receiver while the pins change, asserts the 400 and the same-key retry under the new pair; the takeover stalls node 1 after the apply and before the ack, asserts the superseded fence, `already_applied` and at most one `applied` per key; failing phases assert attempts happened and the outbox state |
+| Keep v1 targets; PQ-required targets never downgrade on error; v1 data only under its policy | DONE | v1 tests and KAT unchanged and passing; skew matrix; no v1 request after any v2 error |
+| Skew, reader-first, key overlap and retirement, rollback to a v2-capable reader, restore of custody without reviving authority | DONE (local), with limits | `TestV2TransitionAndRollbackAgainstOneReceiver` runs the sequence against one receiver with one generation, one Ed25519 key and one shared store (and found the sentinel and per-route ownership limits now documented); pair retirement is exercised with a real `not_after` |
+| Publish vectors, receiver migration instructions, exact candidate evidence; no live push or production key change | PARTIAL (instructions) | Vectors DONE (18 negatives incl. case variants, stray trailing bits in the ciphertext and signature base64, nested duplicates, a line break in the ciphertext). The guide was corrected (bound, generation, key, ownership, rollback, probe, tool warning) and its commands are covered by tool tests, but it was not followed hands-on on a clean host. No live target was contacted and no production key was made |
+
+## Evidence
+
+Local on Apple M2 Pro (arm64), Go 1.27.3, host load 10 to 12 from other jobs.
+
+| Class | Result |
+| --- | --- |
+| Unit and adapter | `go test ./internal/crypto/sealedhook ./internal/adapter/sealedwebhook ./internal/sealedreceiver ./internal/config ./cmd/hikyo-receiver-example` and `go test -run SealedWebhook ./internal/app`: pass (the whole `internal/app` package is not claimed: see Final checks) |
+| Both engines | `TestAdapterSealedWebhookProtocolTwoEndToEnd` (SQLite, PostgreSQL 18) via `agent-heavy`: pass |
+| Cross-implementation | ML-DSA-65 signatures and context verified with OpenSSL 3.5.9; ciphertext decrypts with the `age` CLI v1.3.2 (same upstream as the library, so not independent for age) |
+| Lint, pins, fast-feedback, signatures, DCO, doc status | see "Final checks" |
+| Hosted CI | see Final checks (results read per head) |
+| Real receiver, live push, deployment | NOTRUN |
+
+Measured baseline (DEC-17; no threshold proposed): one-value envelope 7,873 bytes, ack 4,961
+bytes; seal 0.86 ms and open 0.50 ms per operation (includes both signatures, age hybrid wrap and
+unwrap), `go test -bench V2SealOpen`, three runs, loaded host. amd64 NOTRUN.
+
+## Findings worth a reviewer's time
+
+1. A manual resync bumps the target generation, which is an input of the idempotency key, so its
+   effects carry new keys and are re-applied (idempotent content). Retries inside one job reuse the
+   key. This is existing v1 behavior and is not changed.
+2. A protocol 2 acknowledgement missing a signature or with a downgraded suite is malformed, so it
+   is "no acknowledgement" (unknown, retried), not "forged" (terminal). It is never a success.
+3. The server cannot prove the receiver stripped nothing on the TLS hop (X19, below).
+4. The reference receiver records a conflict outcome per idempotency key, so after a name is
+   released the same revision replays the conflict; publish a new revision. A namespace has one
+   sentinel, so two routes cannot share a namespace. Both are existing protocol-1 behavior and are
+   now in the guide.
+5. The idempotency key does not include the namespace; a route is bound to one namespace, so this
+   is harmless inside Hikyo, but it is why the transition test uses distinct route ids.
+
+## Registered limits and HOLDs
+
+- **R-1128-A (classical write path while both versions are served):** an actor with the pinned
+  Ed25519 sender key and the namespace binding credential (a thief needs it separately; a future
+  Ed25519 forger reads it from recorded v1 traffic) can rewrite or prune values a route owns
+  through the v1 path, including values delivered under v2. The route, generation and revision
+  checks do not bound that actor, who chooses the revision and idempotency key and whose lookup runs
+  before the route checks. Measured on the reference receiver: a forged v1 write at revision
+  MaxInt64 makes a genuine v2 write at a lower revision answer `rejected/stale_revision` and the
+  stored value stays forged; a forged v1 write with a future v2 idempotency key makes the genuine
+  delivery answer `already_applied` with no write, which the sender maps to success. The v2
+  authenticity claim holds only for state written after v1 is retired and the shared store has been
+  reset, then resynchronized; inspection is not enough because entries record no protocol version, and retirement does not repair existing entries. Operator step added to the guide
+  and spec 11.8 step 6. No mechanism added. Owning tickets: #1128, #1135 (closure).
+- **R-1128-B (no rollback floor):** the registry is an operator file; an administrator can restore
+  the v1 entry and retained targets resume classical delivery. DEC-11's floor does not exist for
+  this surface, and the migration policy forbids rollback by stripping PQ verification. Owning
+  tickets: #1128, #1135. "Never downgrades" is true for errors only.
+- **Recipient ownership is not proven by the probe** (see acceptance).
+- **Reference tool is not production software:** plaintext state file, whole-file rewrite (now
+  fsynced), unbounded idempotency map; documented in the guide.
+- **Directory fsync failure in the reference tool:** if the directory sync fails after the rename,
+  the new state is on disk but the apply rolls memory back and answers 503, so memory trails the file
+  until restart. Where that sync always fails (Windows, some network filesystems) a v1 receiver that
+  worked before now answers 503 on every apply. Code kept; effect stated in the guide and in the
+  `persistState` and `apply` comments.
+- **Test coverage of the reference receiver:** `internal/sealedreceiver` now has its own small
+  package test; its protocol behavior is covered by the adapter and isolation tests.
+
+- **X19:** strict `tlspolicy` does not reach this hop (PR #1171, `dunky13/pqc-1134-external-compat`).
+  The client keeps `MinVersion` TLS 1.2 and system roots. No PQ transport or authenticity claim.
+  No per-hop selector was built.
+- **Suite:** only the dual suite exists. PQ-only (the DEC-03 end state) is a later suite and trust
+  generation: not built.
+- **Revision route (accepted 2026-11-04):** DEC-18 states none for this owner. The owner accepted a
+  declared-amendment banner on `docs/adr/deployment-adapter.md`, the route #163 used, carrying
+  section 11; it is added in this PR and is operative when the PR merges.
+- **Threat model:** the "future quantum forger" attacker class named for the authenticity children
+  is the parent's call; not landed.
+- **Receiver reach (E-17):** third-party receivers cannot be observed, so the reader-first gate for
+  them is an operator attestation.
+- **Key custody:** sender keys are `0600` files; the reference receiver's state file is plaintext.
+  Hybrid age file keys are 16 bytes (DEC-04 floor). Imported keys are accepted by path; the
+  "maintained tool only" entropy rule of DEC-12 is not enforced by code.
+- **Vectors:** ML-DSA signing is hedged and age is randomized, so the vector file is one frozen
+  generated sample plus negatives (regenerate with `HIKYO_UPDATE_VECTORS=1`); Wycheproof vectors
+  (DEC-09) are NOTRUN. The vector file contains one test-only age identity.
+- **Scanner:** `AGE-SECRET-KEY-PQ-1` is not matched by the vendored rule (#1126).
+
+## Key retention and rollback
+
+Do not destroy the receiver's old identity while retained ciphertext needs it. Sender rollback is
+the v1 registry entry (its fingerprint and generation) plus removing `signing_key_file_mldsa65`;
+receiver rollback only to a build that reads v2. Never restore a retired pair: the receiver refuses
+it after `not_after` and a changed generation fails closed on the sender. Retiring v1 on a receiver
+is a separate recorded decision.
+
+## Next authorized step
+
+Merge is authorized (2026-11-04). Moving any target to protocol 2, a push to a receiver, and
+retiring protocol 1 on a receiver each remain separate, explicitly authorized operator actions
+following the migration guide.
+
+## Final checks
+
+Candidate: PR head `d97dd9500` (code and documentation; base `f5d549182`, PR #1156; the moved base was
+not merged). Hosted results read at 2026-11-04T01:03Z. The handoff and PR body were then updated in
+a documentation-only commit whose own hosted checks were not yet available when this was written.
+
+| Check | Result |
+| --- | --- |
+| `go test` of `internal/boundary`, `internal/crypto/sealedhook`, `internal/adapter/sealedwebhook`, `internal/sealedreceiver`, `internal/config`, `cmd/hikyo-receiver-example`, and `go test -run SealedWebhook ./internal/app`, through `agent-heavy`, at `d97dd9500` | pass |
+| `scripts/ci/fast-feedback.sh` with `FAST_FEEDBACK_BASE=f5d549182`, pinned Node 26.12.1, through `agent-heavy`, at `d97dd9500` | pass |
+| Mutations that now fail: ciphertext decode without `Strict()`, signature decode without `Strict()`, receiver without the v1 ack-signer check, state persist without the file sync, without the directory sync, the not_after check, ML-DSA verification on envelopes and on acks | each fails at least one test |
+| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh`, `f5d549182..HEAD` | pass (10 commits) |
+| Isolation `TestAdapterSealedWebhookProtocolTwoEndToEnd` (SQLite, PostgreSQL 18) | last run at `bde65e00c`: pass. Not rerun after this round: no code it exercises changed (`internal/sealedreceiver/receiver.go`, the sender and the crypto package are unchanged since) except the stricter parsing, which the focused tests cover |
+| Whole `internal/app` package locally | not claimed: it hit the default 10 minute timeout on an unrelated heavy test under host load at `bde65e00c`. Hosted `feedback (go)` passes |
+| `internal/lint` locally | not run (by instruction). Hosted `repository invariants (boundary, lint, CI policy)` at `d97dd9500`: **pass** (6m46s, run 41749212142) |
+| Hosted `feedback (go/tooling/frontend)`, `ops-floor (amd64, arm64)` at `d97dd9500` | pass |
+| Hosted `ci-queue-required` | fail: "Only the protected default branch can enter this merge queue." (stacked PR on a non-default base) |
+| `scripts/ci/check-doc-status.mjs` | NOTRUN: the docs site dependencies are not installed on this host (fast-feedback's docs check passed) |
+| amd64 benchmark, real receiver, live push, deployment | NOTRUN |

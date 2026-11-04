@@ -3,15 +3,11 @@ package app
 import (
 	"bytes"
 	"context"
-	stdcrypto "crypto"
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"io"
 	"os"
@@ -45,7 +41,7 @@ type bootstrapDeployment struct {
 	keyring                              *crypto.Keyring
 	cfg                                  *config.Config
 	enrollment                           configrollout.Enrollment
-	signer                               stdcrypto.Signer
+	signers                              configrollout.Signers
 	mailbox                              *configrollout.Mailbox
 	identity                             service.DeploymentIdentity
 	installed                            config.ManagedBootstrapSources
@@ -99,9 +95,15 @@ func configureBootstrapDeployment(ctx context.Context, cfg *config.Config, db *s
 	if nodeID != enrollment.Target.StableNodeID && !slices.Contains(enrollment.Target.TopologyNodeIDs, nodeID) {
 		return nil, configrollout.ErrConflict
 	}
-	signer, err := readDeploymentSigner(cfg.ConfigRolloutSigningKey)
+	signers, err := readDeploymentSigners(cfg.ConfigRolloutSigningKey)
 	if err != nil {
 		return nil, configrollout.ErrUnavailable
+	}
+	// The held keys must be exactly the enrolled ones. A wrong or stale key is
+	// refused here, at the provider that was configured, not as a command the
+	// controller would later refuse.
+	if err := configrollout.CheckKeys(enrollment, signers.Public()); err != nil {
+		return nil, configrollout.ErrConflict
 	}
 	clientConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -117,7 +119,7 @@ func configureBootstrapDeployment(ctx context.Context, cfg *config.Config, db *s
 	}
 	copy := *cfg
 	provider := &bootstrapDeployment{
-		db: db, keyring: kr, cfg: &copy, enrollment: enrollment, signer: signer, mailbox: mailbox,
+		db: db, keyring: kr, cfg: &copy, enrollment: enrollment, signers: signers, mailbox: mailbox,
 		sourcesDirectory: deploymentSourcesDirectory, selectionDirectory: deploymentSelectionDirectory,
 		proofs:   make(map[string]deploymentSourceProof),
 		identity: service.DeploymentIdentity{EnrollmentID: enrollment.ID, OwnerInstanceID: owner, Incarnation: incarnation, DeploymentUID: string(enrollment.Target.DeploymentUID)},
@@ -442,7 +444,7 @@ func (d *bootstrapDeployment) sign(ctx context.Context, command configrollout.Co
 	if err != nil || json.Unmarshal(raw, &detached) != nil {
 		return configrollout.SignedCommand{}, configrollout.ErrInvalid
 	}
-	signed, err := configrollout.SignCommand(ctx, d.signer, detached)
+	signed, err := configrollout.SignCommandFor(ctx, d.enrollment, d.signers, detached)
 	if err != nil || !d.validSigned(signed) {
 		return configrollout.SignedCommand{}, configrollout.ErrInvalid
 	}
@@ -450,8 +452,7 @@ func (d *bootstrapDeployment) sign(ctx context.Context, command configrollout.Co
 }
 
 func (d *bootstrapDeployment) validSigned(signed configrollout.SignedCommand) bool {
-	public, ok := d.signer.Public().(ed25519.PublicKey)
-	return ok && configrollout.VerifySignedCommand(signed, d.enrollment, public)
+	return configrollout.VerifySignedCommandKeys(signed, d.enrollment, d.signers.Public())
 }
 
 func (d *bootstrapDeployment) rememberProof(digest string, proof deploymentSourceProof) {
@@ -615,26 +616,20 @@ func (d *bootstrapDeployment) readSelection() (config.ManagedBootstrapSources, s
 	return selected, values["stamp"], nil
 }
 
-func readDeploymentSigner(path string) (stdcrypto.Signer, error) {
+// readDeploymentSigners reads the protected signer file: one Ed25519 key
+// (compatibility profile) or the Ed25519 and seed-only ML-DSA-65 keys the strict
+// profile enrolls, as consecutive PKCS#8 blocks.
+func readDeploymentSigners(path string) (configrollout.Signers, error) {
 	raw, err := readDeploymentFile(path, true)
 	if err != nil {
-		return nil, configrollout.ErrUnavailable
+		return configrollout.Signers{}, configrollout.ErrUnavailable
 	}
 	defer crypto.Zero(raw)
-	block, trailing := pem.Decode(raw)
-	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("-----BEGIN PRIVATE KEY-----")) || block == nil || block.Type != "PRIVATE KEY" || len(bytes.TrimSpace(trailing)) != 0 || len(block.Headers) != 0 {
-		return nil, configrollout.ErrUnavailable
-	}
-	defer crypto.Zero(block.Bytes)
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	signers, err := configrollout.ParseSigners(raw)
 	if err != nil {
-		return nil, configrollout.ErrUnavailable
+		return configrollout.Signers{}, configrollout.ErrUnavailable
 	}
-	private, ok := key.(ed25519.PrivateKey)
-	if !ok || len(private) != ed25519.PrivateKeySize {
-		return nil, configrollout.ErrUnavailable
-	}
-	return private, nil
+	return signers, nil
 }
 
 func readDeploymentFile(path string, private bool) ([]byte, error) {

@@ -521,6 +521,14 @@
     "referencedContentSecret": true
   },
   {
+    "key": "HIKYO_TLS_PROFILE",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
     "key": "HIKYO_TOKEN",
     "audience": "client",
     "scope": "node",

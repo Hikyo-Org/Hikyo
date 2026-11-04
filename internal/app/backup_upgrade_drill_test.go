@@ -111,6 +111,12 @@ type upgradeDrillFixture struct {
 }
 
 func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy bool, prepare ...func(*store.DB)) upgradeDrillFixture {
+	return newUpgradeDrillFixtureWith(t, engine, secret, hierarchy, backup.GenerateIdentity, prepare...)
+}
+
+// newUpgradeDrillFixtureWith mints the operator backup identity with generate,
+// so every drill consumer can run for X25519 and for hybrid custody.
+func newUpgradeDrillFixtureWith(t *testing.T, engine store.Engine, secret, hierarchy bool, generate func() (string, string, error), prepare ...func(*store.DB)) upgradeDrillFixture {
 	t.Helper()
 	cfg := upgradeDrillDatabase(t, engine)
 	root, err := crypto.GenerateRootKey()
@@ -192,7 +198,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity, recipient, err := backup.GenerateIdentity()
+	identity, recipient, err := generate()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1083,4 +1089,76 @@ func exportDrillPreparation(t *testing.T, cfg store.Config, options backup.Optio
 		t.Fatal(err)
 	}
 	return out
+}
+
+// The same actual recovery on both engines with a hybrid operator identity: the
+// v2 receipt, the hybrid fingerprint, the held-identity lookup, the scratch
+// restore, and the public gate over the signed attestation.
+func TestUpgradeDrillHybridBothEngineRecovery(t *testing.T) {
+	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
+		for _, secret := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/secret=%t", engine, secret), func(t *testing.T) {
+				f := newUpgradeDrillFixtureWith(t, engine, secret, true, backup.GenerateHybridIdentity)
+				receipt, err := backupreceipt.ParseReceipt(f.request.Receipt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				fingerprints := receipt.Snapshot.RecipientFingerprints
+				if receipt.Format != backupreceipt.HybridReceiptFormat || len(fingerprints) != 1 || !strings.HasPrefix(fingerprints[0], backup.FingerprintPrefixHybrid) {
+					t.Fatalf("hybrid export wrote receipt %q with %v", receipt.Format, fingerprints)
+				}
+				result, err := DrillUpgrade(t.Context(), f.request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !result.HierarchyReadable || !bytes.Equal(f.request.RootKey, make([]byte, crypto.KeySize)) {
+					t.Fatal("root escrow not proved and consumed")
+				}
+				material := backupreceipt.EvidenceMaterial{Receipt: f.request.Receipt, Attestation: result.Attestation, Signature: trustfixture.Sign(t, f.signer.PrimarySigner, result.Attestation)}
+				evidence, err := backupreceipt.VerifyLegacyEvidence(t.Context(), f.request.Operator, f.request.Plan, f.request.Ciphertext, material, backupreceipt.LegacyInspection{InstanceID: f.source.InstanceID, Engine: releaseidentity.Engine(engine), SchemaSHA256: f.source.SchemaDigest, MigrationSHA256: f.source.MigrationDigest, RestoreEpoch: f.source.RestoreEpoch}, f.proposal, time.Now())
+				if err != nil || !evidence.Valid() {
+					t.Fatal("hybrid drill attestation failed public gate", err)
+				}
+			})
+		}
+	}
+}
+
+// A custody mismatch stays a refusal for hybrid: an identity of the other
+// algorithm, a different hybrid identity, and a substituted receipt inventory
+// each fail before any attestation exists.
+func TestUpgradeDrillHybridRefusesCustodyMismatch(t *testing.T) {
+	for _, name := range []string{"other hybrid identity", "x25519 identity", "classical fingerprint swapped in", "mixed inventory"} {
+		t.Run(name, func(t *testing.T) {
+			f := newUpgradeDrillFixtureWith(t, store.EngineSQLite, false, true, backup.GenerateHybridIdentity)
+			switch name {
+			case "other hybrid identity", "x25519 identity":
+				generate := backup.GenerateHybridIdentity
+				if name == "x25519 identity" {
+					generate = backup.GenerateIdentity
+				}
+				identity, _, err := generate()
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.request.Unlock = backup.Unlock{Identity: identity}
+			case "classical fingerprint swapped in", "mixed inventory":
+				r, err := backupreceipt.ParseReceipt(f.request.Receipt)
+				if err != nil {
+					t.Fatal(err)
+				}
+				classical := backup.FingerprintPrefixX25519 + strings.Repeat("4", 64)
+				if name == "mixed inventory" {
+					r.Snapshot.RecipientFingerprints = append(r.Snapshot.RecipientFingerprints, classical)
+				} else {
+					r.Snapshot.RecipientFingerprints = []string{classical}
+				}
+				f.request.Receipt = trustfixture.JSON(t, r)
+			}
+			result, err := DrillUpgrade(t.Context(), f.request)
+			if err == nil || len(result.Attestation) != 0 || result.HierarchyReadable {
+				t.Fatal("custody mismatch produced an attestation")
+			}
+		})
+	}
 }

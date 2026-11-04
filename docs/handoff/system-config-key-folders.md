@@ -2,7 +2,7 @@
 
 ## Result
 
-The Hikyo system project's Environment matrix now shows its 32 keys in folders
+The Hikyo system project's Environment matrix now shows its 33 keys in folders
 instead of one "No folder" group.
 
 | Folder | Keys |
@@ -14,7 +14,7 @@ instead of one "No folder" group.
 | Deployment | `HIKYO_BOOTSTRAP_SOURCES`, `HIKYO_NODE_OVERRIDES` |
 | Mail | `HIKYO_MAIL_*` |
 | MCP | `HIKYO_MCP_*` |
-| Network | `HIKYO_DIRECTORY_PROXY`, `HIKYO_EXTERNAL_ORIGIN`, `HIKYO_PAIRING_SPKI_PIN` |
+| Network | `HIKYO_DIRECTORY_PROXY`, `HIKYO_EXTERNAL_ORIGIN`, `HIKYO_PAIRING_SPKI_PIN`, `HIKYO_TLS_PROFILE` |
 | Updates | `HIKYO_UPDATE_CHANNEL` |
 
 ## Decisions

@@ -250,6 +250,9 @@ type leafPlan struct {
 }
 
 func (s *PKI) reserveLeaf(ctx context.Context, r store.Repos, proof authz.Proof, caller authz.Identity, profile store.PKIProfile, policy pki.Policy, resolved pki.Resolved, publicKey crypto.PublicKey, requestedIssuer, keySource, renewedFrom, kind string, now time.Time) (leafPlan, error) {
+	if err := s.algorithmEnabled(resolved.KeyAlgorithm); err != nil {
+		return leafPlan{}, err
+	}
 	issuer, err := selectIssuer(ctx, r, proof, policy, requestedIssuer)
 	if err != nil {
 		return leafPlan{}, err
@@ -482,6 +485,9 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 			}
 		}
 		if err := s.authorizeTenant(ctx, actor, authz.OpCertificateIssue, scope); err != nil {
+			return CertificateIssueResult{}, err
+		}
+		if err := s.algorithmEnabled(algorithm); err != nil {
 			return CertificateIssueResult{}, err
 		}
 		if generatedKey, err = pki.GenerateKey(algorithm); err != nil {

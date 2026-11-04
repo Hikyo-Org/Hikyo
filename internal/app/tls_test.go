@@ -10,27 +10,28 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 	"github.com/Hikyo-Org/hikyo/internal/tlstest"
 )
 
 func TestManagedCertificateValidatesPairAndRetainsImmutableCertificate(t *testing.T) {
 	firstCert, firstKey, firstLeaf := tlstest.MintServerCert(t, "127.0.0.1")
-	first, err := newManagedCertificate(string(firstCert), string(firstKey))
+	first, err := newManagedCertificate(string(firstCert), string(firstKey), tlspolicy.ProfileCompat)
 	if err != nil {
 		t.Fatal(err)
 	}
 	secondCert, secondKey, secondLeaf := tlstest.MintServerCert(t, "127.0.0.1")
-	second, err := newManagedCertificate(string(secondCert), string(secondKey))
+	second, err := newManagedCertificate(string(secondCert), string(secondKey), tlspolicy.ProfileCompat)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.pair.Leaf.SerialNumber.Cmp(firstLeaf.SerialNumber) != 0 || second.pair.Leaf.SerialNumber.Cmp(secondLeaf.SerialNumber) != 0 {
 		t.Fatal("candidate construction mutated another certificate")
 	}
-	if _, err := newManagedCertificate(string(secondCert), string(firstKey)); err == nil {
+	if _, err := newManagedCertificate(string(secondCert), string(firstKey), tlspolicy.ProfileCompat); err == nil {
 		t.Fatal("mismatched pair accepted")
 	}
-	if _, err := newManagedCertificate("truncated", string(secondKey)); err == nil {
+	if _, err := newManagedCertificate("truncated", string(secondKey), tlspolicy.ProfileCompat); err == nil {
 		t.Fatal("malformed certificate accepted")
 	}
 	if first.pair.Leaf.SerialNumber.Cmp(firstLeaf.SerialNumber) != 0 {
@@ -41,7 +42,7 @@ func TestManagedCertificateValidatesPairAndRetainsImmutableCertificate(t *testin
 func TestManagedCertificateExpiryMetricsAndExpiredPairRefusal(t *testing.T) {
 	now := time.Now()
 	cert, key, leaf := tlstest.MintServerCertWithValidity(t, now.Add(-time.Hour), now.Add(7*24*time.Hour), "localhost")
-	certificate, err := newManagedCertificate(string(cert), string(key))
+	certificate, err := newManagedCertificate(string(cert), string(key), tlspolicy.ProfileCompat)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestManagedCertificateExpiryMetricsAndExpiredPairRefusal(t *testing.T) {
 		t.Fatal("applied certificate metrics differ")
 	}
 	expired, expiredKey, _ := tlstest.MintServerCertWithValidity(t, now.Add(-48*time.Hour), now.Add(-time.Hour), "localhost")
-	if _, err := newManagedCertificate(string(expired), string(expiredKey)); err == nil {
+	if _, err := newManagedCertificate(string(expired), string(expiredKey), tlspolicy.ProfileCompat); err == nil {
 		t.Fatal("expired certificate accepted")
 	}
 }
