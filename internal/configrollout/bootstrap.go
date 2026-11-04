@@ -256,6 +256,10 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 
 // cloneEnrollment detaches installation maps from caller mutation.
 func cloneEnrollment(e Enrollment) Enrollment {
+	if e.Authority != nil {
+		authority := cloneAuthority(*e.Authority)
+		e.Authority = &authority
+	}
 	e.Target.TopologyNodeIDs = append([]string(nil), e.Target.TopologyNodeIDs...)
 	e.Target.DatabaseSources = maps.Clone(e.Target.DatabaseSources)
 	e.Target.RootSources = maps.Clone(e.Target.RootSources)

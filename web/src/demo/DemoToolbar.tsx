@@ -1,5 +1,6 @@
 import { Button } from '../ui/Button.tsx';
 import { DEMO_ACCOUNTS, DEMO_MATRIX_PATH, demoRole } from './config.ts';
+import { ReplayConsentControl } from './ReplayConsent.tsx';
 import './demo.css';
 
 export function DemoToolbar() {
@@ -29,6 +30,7 @@ export function DemoToolbar() {
         <span className="demo-toolbar__note">Sample data only. Changes reset on reload.</span>
       </div>
       <p id="demo-role">{account?.description}</p>
+      <ReplayConsentControl />
     </aside>
   );
 }

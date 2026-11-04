@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -772,9 +773,19 @@ func (s *Keys) Get(ctx context.Context, actor Actor, scope domain.Scope, id stri
 			return err
 		}
 		out, err = keyOf(row, rows)
+		out = systemKeyView(p, out)
 		return err
 	})
 	return out, err
+}
+
+// systemKeyView shows a system project key in its release-owned folder. Only
+// these reads change: authorization and the fences keep the flat stored row.
+func systemKeyView(p authz.Proof, key Key) Key {
+	if authz.IsSelfConfig(p) {
+		key.FolderPath = runtimeconfig.Folder(key.Name)
+	}
+	return key
 }
 
 // List returns the project's key catalogue and the revision it is at. The
@@ -807,7 +818,7 @@ func (s *Keys) List(ctx context.Context, actor Actor, scope domain.Scope) ([]Key
 			if err != nil {
 				return err
 			}
-			out = append(out, key)
+			out = append(out, systemKeyView(p, key))
 		}
 		return nil
 	})

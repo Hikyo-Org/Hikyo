@@ -86,3 +86,63 @@ func TestSigningKeyFileRefusesLooseModes(t *testing.T) {
 		t.Fatalf("0600 key refused: %v", err)
 	}
 }
+
+const sealedWebhookJSONV2 = `{
+  "instance_id": "hikyo-prod",
+  "signing_key_file": "signing.pem",
+  "signing_key_file_mldsa65": "signing-mldsa65.pem",
+  "targets": [{
+    "id": "payments", "origin": "https://recv.example", "protocol": 2, "recipient_key": "age1pq1x", "ack_key": "ed25519:y",
+    "ack_key_mldsa65": "mldsa65:z", "generation": 2, "timeout_seconds": 5, "max_response_bytes": 4096, "confirmed_fingerprint": "swh2-x"
+  }]
+}`
+
+func TestParseSealedWebhookConfigProtocolTwo(t *testing.T) {
+	var asked []string
+	cfg, err := parseSealedWebhookConfig([]byte(sealedWebhookJSONV2), "/etc/hikyo", func(p string) ([]byte, error) {
+		asked = append(asked, p)
+		return []byte("PEM:" + filepath.Base(p)), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Targets[0]; got.Protocol != 2 || got.AckKeyMLDSA65 != "mldsa65:z" || string(cfg.SigningKeyMLDSA65PEM) != "PEM:signing-mldsa65.pem" {
+		t.Fatalf("cfg = %+v", cfg)
+	}
+	if len(asked) != 2 || asked[1] != "/etc/hikyo/signing-mldsa65.pem" {
+		t.Fatalf("key files read = %v", asked)
+	}
+	// A version 1 file without any v2 member parses as protocol 1 and never
+	// reads a second key file.
+	v1, err := parseSealedWebhookConfig([]byte(sealedWebhookJSON), "/", func(p string) ([]byte, error) { return []byte("PEM"), nil })
+	if err != nil || v1.Targets[0].Protocol != 1 || v1.SigningKeyMLDSA65PEM != nil {
+		t.Fatalf("v1 file = %+v, %v", v1, err)
+	}
+}
+
+func TestParseSealedWebhookConfigProtocolTwoFailsClosed(t *testing.T) {
+	key := func(string) ([]byte, error) { return []byte("PEM"), nil }
+	cases := map[string]string{
+		"protocol 3":                        strings.Replace(sealedWebhookJSONV2, `"protocol": 2`, `"protocol": 3`, 1),
+		"protocol 0":                        strings.Replace(sealedWebhookJSONV2, `"protocol": 2`, `"protocol": 0`, 1),
+		"v2 without the ml-dsa ack key":     strings.Replace(sealedWebhookJSONV2, `"ack_key_mldsa65": "mldsa65:z", `, ``, 1),
+		"v2 without the ml-dsa signing key": strings.Replace(sealedWebhookJSONV2, `"signing_key_file_mldsa65": "signing-mldsa65.pem",`, ``, 1),
+		"ml-dsa signing key, no v2 target":  strings.Replace(strings.Replace(sealedWebhookJSONV2, `"protocol": 2, `, ``, 1), `"ack_key_mldsa65": "mldsa65:z", `, ``, 1),
+		"v1 target with an ml-dsa ack key":  strings.Replace(sealedWebhookJSONV2, `"protocol": 2, `, ``, 1),
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseSealedWebhookConfig([]byte(raw), "/", key); err == nil {
+				t.Fatal("accepted")
+			}
+		})
+	}
+	if _, err := parseSealedWebhookConfig([]byte(sealedWebhookJSONV2), "/", func(p string) ([]byte, error) {
+		if strings.Contains(p, "mldsa65") {
+			return nil, errors.New("gone")
+		}
+		return []byte("PEM"), nil
+	}); err == nil {
+		t.Fatal("unreadable ML-DSA key accepted")
+	}
+}

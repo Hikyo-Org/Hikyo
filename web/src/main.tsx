@@ -30,11 +30,14 @@ if (host === null) {
 
 // Keep this condition local so Vite removes the import itself in normal builds.
 if (import.meta.env.MODE === 'demo') {
-  const [{ installDemo }, { demoRole }] = await Promise.all([
+  const [{ installDemo }, { demoRole }, { keepOnlyDemoQuery, replayOrigins, watchTypedValues }] = await Promise.all([
     import('./demo/api.ts'),
     import('./demo/config.ts'),
+    import('./demo/replay.ts'),
   ]);
-  installDemo(demoRole());
+  keepOnlyDemoQuery();
+  installDemo(demoRole(), replayOrigins());
+  watchTypedValues();
 }
 
 createRoot(host).render(

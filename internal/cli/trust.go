@@ -10,10 +10,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -59,6 +63,25 @@ func (m *TLSMode) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
+// TLSProfile is the key-exchange policy name a trust entry or bundle records. As
+// with TLSMode, an explicit JSON value must be "compat" or "strict": an empty
+// string or null is refused instead of reading as the compat default, which only
+// an omitted field means.
+type TLSProfile string
+
+func (p *TLSProfile) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("TLS profile must be compat or strict: %w", err)
+	}
+	parsed, err := tlspolicy.ParseProfile(value)
+	if err != nil {
+		return err
+	}
+	*p = TLSProfile(parsed)
+	return nil
+}
+
 const (
 	TLSModeSPKI     = "spki"
 	TLSModeSystemCA = "system-ca"
@@ -83,6 +106,13 @@ type TrustEntry struct {
 	// identity-free TCP listener. Its directory and socket are euid-owned 0700
 	// and 0600, and both peers verify the other's kernel-reported UID.
 	CLISocket string `json:"cli_socket,omitempty"`
+	// TLSProfile selects the key-exchange policy for this HTTPS origin (#1127):
+	// omitted or "compat" is today's behavior; "strict" requires TLS 1.3 and the
+	// hybrid X25519MLKEM768 group and fails before the bearer leaves the process.
+	// It protects handshake confidentiality only. Authentication stays whatever
+	// TLSMode says, which is classical; an SPKI pin gives no authenticity claim.
+	// An established entry's profile changes only by deliberate re-establishment.
+	TLSProfile TLSProfile `json:"tls_profile,omitempty"`
 }
 
 // TrustBundle is the provisioned-establishment file: the CI path's import
@@ -94,6 +124,8 @@ type TrustBundle struct {
 	SPKIPin   string  `json:"spki_pin,omitempty"`
 	TLSMode   TLSMode `json:"tls_mode,omitempty"`
 	CLISocket string  `json:"cli_socket,omitempty"`
+	// TLSProfile is carried into the entry unchanged; see TrustEntry.TLSProfile.
+	TLSProfile TLSProfile `json:"tls_profile,omitempty"`
 }
 
 // ErrUntrusted reports an instance reference that is not in the local store.
@@ -110,7 +142,12 @@ type TrustStore struct {
 func (s *TrustStore) path() string { return filepath.Join(s.dir, "trust.json") }
 
 // Load reads the store, returning an empty one when it does not exist yet.
-func (s *TrustStore) Load() (map[string]TrustEntry, error) {
+func (s *TrustStore) Load() (map[string]TrustEntry, error) { return s.load(true) }
+
+// load validates every entry. checkConflicts additionally refuses equivalent
+// origins with different profiles; only Delete skips it, so the step that
+// refusal tells the user to run can repair the store it refuses to load.
+func (s *TrustStore) load(checkConflicts bool) (map[string]TrustEntry, error) {
 	raw, err := readTrustFile(s.dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]TrustEntry{}, nil
@@ -130,8 +167,61 @@ func (s *TrustStore) Load() (map[string]TrustEntry, error) {
 			return nil, fmt.Errorf("trust store at %s contains an invalid entry %q: %w", s.path(), name, err)
 		}
 	}
+	if checkConflicts {
+		if err := refuseConflictingProfiles(entries); err != nil {
+			return nil, fmt.Errorf("trust store at %s: %w", s.path(), err)
+		}
+	}
 	return entries, nil
 }
+
+// refuseConflictingProfiles keeps a store written before Put enforced this from
+// resolving an origin to whichever of two entries a caller reaches first. A
+// store whose entries all share one effective profile (every store without a
+// strict entry) loads exactly as before.
+func refuseConflictingProfiles(entries map[string]TrustEntry) error {
+	for _, a := range slices.Sorted(maps.Keys(entries)) {
+		for _, b := range slices.Sorted(maps.Keys(entries)) {
+			if a < b && sameOrigin(entries[a].Origin, entries[b].Origin) && effectiveTLSProfile(entries[a]) != effectiveTLSProfile(entries[b]) {
+				return fmt.Errorf("entries %q and %q name the same origin with different TLS profiles; delete one with `hikyo context delete --instance <name>` and establish the intended profile again", a, b)
+			}
+		}
+	}
+	return nil
+}
+
+// originKey is the comparison form of a canonical origin: names the same
+// server when only spelling differs. The scheme's default port, a trailing host
+// dot, leading zeros in the port and the textual form of an IP literal do not
+// name a different server. CanonicalOrigin itself is unchanged because stored
+// entries keep their exact spelling.
+func originKey(origin string) string {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return origin
+	}
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if addr, err := netip.ParseAddr(host); err == nil {
+		host = addr.Unmap().String()
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if n, err := strconv.ParseUint(port, 10, 16); err == nil {
+		port = strconv.FormatUint(n, 10)
+	}
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	if port != "" {
+		host += ":" + port
+	}
+	return scheme + "://" + host
+}
+
+func sameOrigin(a, b string) bool { return originKey(a) == originKey(b) }
 
 func validateTrustEntry(name string, entry TrustEntry) error {
 	if name == "" || entry.Name != name || strings.IndexFunc(name, unicode.IsControl) >= 0 {
@@ -171,6 +261,19 @@ func validateTrustEntry(name string, entry TrustEntry) error {
 	return nil
 }
 
+// samePolicy reports whether two entries verify an origin identically.
+func samePolicy(a, b TrustEntry) bool {
+	return effectiveTLSMode(a) == effectiveTLSMode(b) && a.SPKIPin == b.SPKIPin && a.CLISocket == b.CLISocket && effectiveTLSProfile(a) == effectiveTLSProfile(b)
+}
+
+// effectiveTLSProfile makes an omitted profile and an explicit compat equivalent.
+func effectiveTLSProfile(entry TrustEntry) string {
+	if entry.TLSProfile == "" {
+		return string(tlspolicy.ProfileCompat)
+	}
+	return string(entry.TLSProfile)
+}
+
 // effectiveTLSMode makes omitted legacy SPKI and explicit SPKI equivalent.
 func effectiveTLSMode(entry TrustEntry) TLSMode {
 	if strings.HasPrefix(entry.Origin, "https://") && entry.TLSMode == "" {
@@ -180,6 +283,14 @@ func effectiveTLSMode(entry TrustEntry) TLSMode {
 }
 
 func validateTLSMode(entry TrustEntry) error {
+	if entry.TLSProfile != "" {
+		if _, err := tlspolicy.ParseProfile(string(entry.TLSProfile)); err != nil {
+			return err
+		}
+		if entry.TLSProfile == TLSProfile(tlspolicy.ProfileStrict) && !strings.HasPrefix(entry.Origin, "https://") {
+			return errors.New("the strict TLS profile requires an https origin; a local CLI socket is not a TLS connection")
+		}
+	}
 	if entry.TLSMode != "" && entry.TLSMode != TLSModeSPKI && entry.TLSMode != TLSModeSystemCA {
 		return fmt.Errorf("unknown TLS verification mode %q", entry.TLSMode)
 	}
@@ -256,13 +367,22 @@ func (s *TrustStore) Put(e TrustEntry) error {
 	if err != nil {
 		return err
 	}
+	// The profile binds to a name, so a second name for the same origin with a
+	// different profile would leave the choice between them to chance.
+	for name, other := range entries {
+		if name != e.Name && sameOrigin(other.Origin, e.Origin) && effectiveTLSProfile(other) != effectiveTLSProfile(e) {
+			return failf(ExitRefused,
+				"origin %s is already established as %q with a different TLS profile; remove that entry deliberately before establishing %q",
+				e.Origin, name, e.Name)
+		}
+	}
 	if prior, ok := entries[e.Name]; ok {
-		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket {
+		if prior.Origin != e.Origin || effectiveTLSMode(prior) != effectiveTLSMode(e) || prior.SPKIPin != e.SPKIPin || prior.CLISocket != e.CLISocket || effectiveTLSProfile(prior) != effectiveTLSProfile(e) {
 			return failf(ExitRefused,
 				"instance %q is already established with a different identity\n"+
 					"  recorded: %s (mode %s, pin %s)\n"+
 					"  offered:  %s (mode %s, pin %s)\n"+
-					"A changed origin, mode or identity requires deliberate re-establishment. If the change is legitimate, "+
+					"A changed origin, mode, TLS profile or identity requires deliberate re-establishment. If the change is legitimate, "+
 					"remove the entry deliberately with `hikyo context delete --instance %s` and establish it again.",
 				e.Name, prior.Origin, effectiveTLSMode(prior), shortPin(prior.SPKIPin), e.Origin, effectiveTLSMode(e), shortPin(e.SPKIPin), e.Name)
 		}
@@ -279,7 +399,7 @@ func (s *TrustStore) Delete(name string) error {
 		return err
 	}
 	defer unlock()
-	entries, err := s.Load()
+	entries, err := s.load(false)
 	if err != nil {
 		return err
 	}

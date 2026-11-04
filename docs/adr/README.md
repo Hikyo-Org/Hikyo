@@ -64,6 +64,7 @@ for its ripple register.
 | signed-upgrade-compatibility ADR | [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md) |
 | system-architecture ADR | [system-architecture.md](./system-architecture.md) |
 | generated-boundaries ADR (proposed) | [generated-boundaries.md](./generated-boundaries.md) |
+| post-quantum-migration ADR (proposed) | [post-quantum-migration.md](./post-quantum-migration.md) |
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
 | workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |

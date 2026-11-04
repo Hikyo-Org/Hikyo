@@ -1,0 +1,13 @@
+# Prepopulate with the authenticated public bundle and independent operator.pub.
+# This is a separate claim from private installation custody and database storage.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hikyo-upgrade-public
+  namespace: hikyo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

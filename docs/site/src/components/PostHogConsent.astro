@@ -16,7 +16,7 @@ interface Props {
 const { apiKey, apiHost } = Astro.props;
 ---
 
-<aside
+<section
   class="analytics-consent"
   data-posthog-consent
   data-posthog-host={apiHost}
@@ -33,7 +33,7 @@ const { apiKey, apiHost } = Astro.props;
     <button type="button" data-posthog-accept>Allow analytics</button>
     <button type="button" data-posthog-reject>No thanks</button>
   </div>
-</aside>
+</section>
 <div class="analytics-settings-footer">
   <button class="analytics-settings" type="button" data-posthog-settings>Analytics settings</button>
 </div>
@@ -100,6 +100,7 @@ const { apiKey, apiHost } = Astro.props;
           // promises anonymous pageviews + named link clicks only, so keep an
           // explicit minimal set and drop everything else by omission.
           // $current_url is rebuilt to origin + pathname (no query, no hash);
+          // $host and $pathname repeat its parts for the Web Analytics page views;
           // $geoip_disable stops the server-side geo lookup.
           // The SDK silently drops any event whose token was removed here, the
           // capture API requires distinct_id, and without $process_person_profile
@@ -110,6 +111,8 @@ const { apiKey, apiHost } = Astro.props;
             const src = event.properties;
             const kept: Record<string, unknown> = {
               $current_url: location.origin + location.pathname,
+              $host: location.host,
+              $pathname: location.pathname,
               $geoip_disable: true,
             };
             for (const key of ['token', 'distinct_id', '$process_person_profile']) {
@@ -190,8 +193,7 @@ const { apiKey, apiHost } = Astro.props;
     flex-wrap: wrap;
   }
 
-  .analytics-consent button,
-  .analytics-settings {
+  .analytics-consent button {
     min-height: 2.75rem;
     padding: 0.55rem 0.8rem;
     border: 1px solid #78898f;
@@ -207,16 +209,24 @@ const { apiKey, apiHost } = Astro.props;
     background: #8dd6c2;
   }
 
-  /* Keep settings in page flow so it cannot cover navigation or reading content. */
+  /* In page flow, so it cannot cover navigation or reading content. It reads as
+     footer text, but stays visibly a control: it is how a visitor withdraws consent. */
   .analytics-settings-footer {
     display: flex;
     justify-content: center;
-    padding: 1rem;
   }
 
   .analytics-settings {
-    padding: 0.25rem 0.5rem;
-    font: 0.875rem/1.2 system-ui, sans-serif;
+    min-height: 2.75rem;
+    padding: 0;
+    border: 0;
+    color: var(--color-fd-muted-foreground, var(--text-dim, inherit));
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
   }
 
   [data-posthog-consent][hidden] {

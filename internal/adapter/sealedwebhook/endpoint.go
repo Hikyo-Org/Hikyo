@@ -21,7 +21,19 @@ type EndpointConfig struct {
 	Timeout              time.Duration
 	MaxResponseBytes     int64
 	ConfirmedFingerprint string
-	Signer               *sealedhook.Signer
+	// Signer is the Ed25519 envelope signing key. Protocol 2 also requires
+	// SignerPQ (ML-DSA-65) and AckKeyMLDSA65; both signatures are always
+	// required and there is no single-algorithm version 2 target.
+	Signer        *sealedhook.Signer
+	SignerPQ      *sealedhook.MLDSASigner
+	AckKeyMLDSA65 string
+	// Protocol is 0 or 1 for the version 1 protocol, or 2.
+	Protocol int
+}
+
+// sealer is the version-specific half of an endpoint.
+type sealer interface {
+	Seal(sealedhook.Draft) (sealedhook.Sealed, error)
 }
 
 // Endpoint is an activated receiver: its origin, keys, and generation were
@@ -36,7 +48,9 @@ type Endpoint struct {
 	timeout     time.Duration
 	maxResponse int64
 	fingerprint string
-	sealer      *sealedhook.Sealer
+	sealer      sealer
+	protocol    int
+	ackPQ       sealedhook.MLDSAPublicKey
 }
 
 // ErrFingerprintUnconfirmed refuses activation without an exact match.
@@ -46,6 +60,13 @@ var ErrFingerprintUnconfirmed = errors.New("sealed-webhook: endpoint fingerprint
 func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 	if !sealedhook.ValidID(cfg.ID) || !sealedhook.ValidID(cfg.InstanceID) {
 		return nil, errors.New("sealed-webhook: endpoint and instance ids must match [a-z0-9][a-z0-9._-]{0,62}")
+	}
+	protocol := cfg.Protocol
+	if protocol == 0 {
+		protocol = 1
+	}
+	if protocol != 1 && protocol != 2 {
+		return nil, fmt.Errorf("sealed-webhook: endpoint %s: unsupported protocol %d", cfg.ID, protocol)
 	}
 	origin, err := CanonicalOrigin(cfg.Origin)
 	if err != nil {
@@ -64,24 +85,76 @@ func NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 	if cfg.MaxResponseBytes <= 0 || cfg.MaxResponseBytes > MaxResponseBytes {
 		return nil, fmt.Errorf("sealed-webhook: endpoint %s: max response bytes must be in (0, %d]", cfg.ID, MaxResponseBytes)
 	}
-	fingerprint, err := sealedhook.Fingerprint(origin, cfg.RecipientKey, ackKey.String(), cfg.Generation)
-	if err != nil {
-		return nil, fmt.Errorf("endpoint %s: %w", cfg.ID, err)
-	}
-	if strings.TrimSpace(cfg.ConfirmedFingerprint) != fingerprint {
-		return nil, fmt.Errorf("%w (endpoint %s)", ErrFingerprintUnconfirmed, cfg.ID)
-	}
 	if cfg.Signer == nil {
 		return nil, errors.New("sealed-webhook: an instance signing key is required")
 	}
-	sealer, err := sealedhook.NewSealer(cfg.RecipientKey, cfg.Signer)
+	e := &Endpoint{
+		id: cfg.ID, instanceID: cfg.InstanceID, origin: origin, ackKey: ackKey, generation: cfg.Generation,
+		timeout: cfg.Timeout, maxResponse: cfg.MaxResponseBytes, protocol: protocol,
+	}
+	switch protocol {
+	case 1:
+		// Version 2 material on a version 1 target would be silently ignored:
+		// refuse instead, so a typo cannot leave a target classical.
+		if cfg.SignerPQ != nil || cfg.AckKeyMLDSA65 != "" {
+			return nil, fmt.Errorf("sealed-webhook: endpoint %s: ML-DSA material needs protocol 2", cfg.ID)
+		}
+		if e.fingerprint, err = sealedhook.Fingerprint(origin, cfg.RecipientKey, ackKey.String(), cfg.Generation); err != nil {
+			return nil, fmt.Errorf("endpoint %s: %w", cfg.ID, err)
+		}
+	case 2:
+		if cfg.MaxResponseBytes < sealedhook.MinResponseBytesV2 {
+			return nil, fmt.Errorf("sealed-webhook: endpoint %s: a protocol 2 acknowledgement is about 5 KB, so max response bytes must be at least %d", cfg.ID, sealedhook.MinResponseBytesV2)
+		}
+		if e.ackPQ, err = sealedhook.ParseMLDSAPublicKey(cfg.AckKeyMLDSA65); err != nil {
+			return nil, fmt.Errorf("endpoint %s: ack key (ML-DSA-65): %w", cfg.ID, err)
+		}
+		if e.fingerprint, err = sealedhook.FingerprintV2(origin, cfg.RecipientKey, ackKey, e.ackPQ, cfg.Generation); err != nil {
+			return nil, fmt.Errorf("endpoint %s: %w", cfg.ID, err)
+		}
+	}
+	if strings.TrimSpace(cfg.ConfirmedFingerprint) != e.fingerprint {
+		return nil, fmt.Errorf("%w (endpoint %s)", ErrFingerprintUnconfirmed, cfg.ID)
+	}
+	if protocol == 1 {
+		e.sealer, err = sealedhook.NewSealer(cfg.RecipientKey, cfg.Signer)
+	} else {
+		var signer *sealedhook.SignerV2
+		if signer, err = sealedhook.NewSignerV2(cfg.Signer, cfg.SignerPQ); err == nil {
+			e.sealer, err = sealedhook.NewSealerV2(cfg.RecipientKey, signer)
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &Endpoint{
-		id: cfg.ID, instanceID: cfg.InstanceID, origin: origin, ackKey: ackKey, generation: cfg.Generation,
-		timeout: cfg.Timeout, maxResponse: cfg.MaxResponseBytes, fingerprint: fingerprint, sealer: sealer,
-	}, nil
+	return e, nil
+}
+
+// Protocol is the wire protocol version this endpoint speaks, 1 or 2.
+func (e *Endpoint) Protocol() int { return e.protocol }
+
+// ConnectionVersion is reported by TestConnection for this endpoint.
+func (e *Endpoint) ConnectionVersion() string {
+	if e.protocol == 2 {
+		return "sealed-webhook/v2"
+	}
+	return ConnectionVersion
+}
+
+// DestinationID is the ledger destination identity of a namespace under this
+// endpoint's fingerprint and protocol.
+func (e *Endpoint) DestinationID(namespace string) int64 {
+	if e.protocol == 2 {
+		return sealedhook.DestinationIDV2(e.fingerprint, namespace)
+	}
+	return sealedhook.DestinationID(e.fingerprint, namespace)
+}
+
+func (e *Endpoint) idempotencyKey(p sealedhook.IdempotencyParts) string {
+	if e.protocol == 2 {
+		return sealedhook.IdempotencyKeyV2(p)
+	}
+	return sealedhook.IdempotencyKey(p)
 }
 
 // Origin is the canonical configured origin.
@@ -95,5 +168,5 @@ func (e *Endpoint) Fingerprint() string { return e.fingerprint }
 
 // ClientConfig derives the transport configuration.
 func (e *Endpoint) ClientConfig() ClientConfig {
-	return ClientConfig{Origin: e.origin, AckKey: e.ackKey, Timeout: e.timeout, MaxResponseBytes: e.maxResponse}
+	return ClientConfig{Origin: e.origin, AckKey: e.ackKey, AckKeyMLDSA65: e.ackPQ, Protocol: e.protocol, Timeout: e.timeout, MaxResponseBytes: e.maxResponse}
 }

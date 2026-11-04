@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/ed25519"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/json"
@@ -53,7 +54,7 @@ func deploymentAdapterFixture(t *testing.T, postgres bool) (*bootstrapDeployment
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := &bootstrapDeployment{db: srv.db, keyring: srv.keyring, cfg: cfg, enrollment: enrollment, signer: private, sourcesDirectory: t.TempDir(), selectionDirectory: t.TempDir(), proofs: make(map[string]deploymentSourceProof), installed: config.ManagedBootstrapSources{Version: 1, RootSource: "root-primary"}, identity: service.DeploymentIdentity{EnrollmentID: enrollment.ID, OwnerInstanceID: owner, Incarnation: incarnation, DeploymentUID: string(enrollment.Target.DeploymentUID)}}
+	provider := &bootstrapDeployment{db: srv.db, keyring: srv.keyring, cfg: cfg, enrollment: enrollment, signers: configrollout.Signers{Ed25519: private}, sourcesDirectory: t.TempDir(), selectionDirectory: t.TempDir(), proofs: make(map[string]deploymentSourceProof), installed: config.ManagedBootstrapSources{Version: 1, RootSource: "root-primary"}, identity: service.DeploymentIdentity{EnrollmentID: enrollment.ID, OwnerInstanceID: owner, Incarnation: incarnation, DeploymentUID: string(enrollment.Target.DeploymentUID)}}
 	root, err := provider.currentRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -257,21 +258,21 @@ func TestBootstrapDeploymentSignerUsesStrictInstalledPEM(t *testing.T) {
 	raw := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 	path := filepath.Join(t.TempDir(), "authority.key")
 	writeDeploymentFixture(t, path, string(raw), 0600)
-	signer, err := readDeploymentSigner(path)
-	if err != nil || !signer.Public().(ed25519.PublicKey).Equal(private.Public()) {
+	signers, err := readDeploymentSigners(path)
+	if err != nil || signers.MLDSA65 != nil || !signers.Ed25519.Public().(ed25519.PublicKey).Equal(private.Public()) {
 		t.Fatalf("PKCS8 signer: %v", err)
 	}
 	if err := os.Chmod(path, 0440); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readDeploymentSigner(path); err == nil {
+	if _, err := readDeploymentSigners(path); err == nil {
 		t.Fatal("group-readable signer accepted")
 	}
 	if err := os.Chmod(path, 0600); err != nil {
 		t.Fatal(err)
 	}
 	writeDeploymentFixture(t, path, "unexpected prelude\n"+string(raw), 0600)
-	if _, err := readDeploymentSigner(path); err == nil {
+	if _, err := readDeploymentSigners(path); err == nil {
 		t.Fatal("private-key prelude accepted")
 	}
 }
@@ -386,5 +387,210 @@ func TestBootstrapDeploymentEnrollmentPinsStandaloneNode(t *testing.T) {
 	cfg.ConfigRolloutSigningKey = "/must-not-read/authority.key"
 	if _, err := configureBootstrapDeployment(t.Context(), &cfg, srv.db, srv.keyring); !errors.Is(err, configrollout.ErrConflict) {
 		t.Fatalf("unbound node admitted: %v", err)
+	}
+}
+
+func strictDeploymentKeys(t *testing.T) (configrollout.Signers, configrollout.PublicKeys, *configrollout.Authority) {
+	t.Helper()
+	_, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pq, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		t.Fatal(err)
+	}
+	signers := configrollout.Signers{Ed25519: private, MLDSA65: pq}
+	keys := signers.Public()
+	ids := keys.KeyIDs()
+	return signers, keys, &configrollout.Authority{Profile: "pqc-auth/1", Generation: 3, Required: []string{configrollout.AlgEd25519, configrollout.AlgMLDSA65}, KeyIDs: []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}}
+}
+
+func TestBootstrapDeploymentStrictProfileSignsEveryDecisionAndRefusesOldRegime(t *testing.T) {
+	d, _, client := deploymentAdapterFixture(t, false)
+	signers, _, authority := strictDeploymentKeys(t)
+	d.enrollment.Authority = authority
+	d.signers = signers
+	mailbox, err := configrollout.NewMailbox(client, d.enrollment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mailbox = mailbox
+	sources := d.installed
+	sources.RootSource = "root-next"
+	prepared, err := d.PrepareCommand(t.Context(), deploymentIntent(d), deploymentBundle(t, sources), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Command.Authority == nil || len(prepared.Signatures) != 2 || !d.validSigned(prepared) {
+		t.Fatalf("strict preparation is not a verified strict envelope: %+v", prepared)
+	}
+	submit, err := d.DecisionCommand(t.Context(), prepared, configrollout.ActionSubmit, 2, strings.Repeat("a", 64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if submit.Command.Authority == nil || submit.Command.Authority.Generation != 3 || len(submit.Signatures) != 2 || len(submit.Signature) != 0 || !d.validSigned(submit) {
+		t.Fatalf("strict decision is not a verified strict envelope: %+v", submit)
+	}
+	renewed, err := d.RenewCommand(t.Context(), submit, 3)
+	if err != nil || !d.validSigned(renewed) || renewed.Command.Authority.Generation != 3 {
+		t.Fatalf("renewal under the same regime: %v", err)
+	}
+	if err := d.Send(t.Context(), renewed); err != nil {
+		t.Fatalf("mailbox refused a strict command: %v", err)
+	}
+
+	// A command signed before the trust rollover is not renewed under the new
+	// regime: no authority is resurrected, a fresh decision is required.
+	newer := *authority
+	newer.Generation = 4
+	d.enrollment.Authority = &newer
+	if _, err := d.RenewCommand(t.Context(), submit, 4); err == nil {
+		t.Fatal("pre-rollover command renewed under a newer trust generation")
+	}
+	if d.validSigned(submit) {
+		t.Fatal("pre-rollover command verified under a newer trust generation")
+	}
+}
+
+func TestBootstrapDeploymentRefusesSignerThatIsNotTheEnrolledKey(t *testing.T) {
+	d, srv, _ := deploymentAdapterFixture(t, false)
+	_, _, authority := strictDeploymentKeys(t)
+	enrollment := d.enrollment
+	enrollment.Authority = authority
+	raw, err := json.Marshal(enrollment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	enrollmentPath := filepath.Join(dir, "enrollment.json")
+	writeDeploymentFixture(t, enrollmentPath, string(raw), 0444)
+	cfg := *d.cfg
+	cfg.ConfigRolloutEnrollment = enrollmentPath
+
+	// Compatibility-profile signer under a strict enrollment, and a different
+	// key pair with the same shape: both refused before any cluster contact.
+	other, _, _ := strictDeploymentKeys(t)
+	for name, signers := range map[string]configrollout.Signers{
+		"ed25519 only":   {Ed25519: d.signers.Ed25519},
+		"other key pair": other,
+		"ml-dsa only":    {MLDSA65: other.MLDSA65},
+	} {
+		var blocks []byte
+		if signers.Ed25519 != nil {
+			der, _ := x509.MarshalPKCS8PrivateKey(signers.Ed25519)
+			blocks = append(blocks, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})...)
+		}
+		if signers.MLDSA65 != nil {
+			der, _ := x509.MarshalPKCS8PrivateKey(signers.MLDSA65)
+			blocks = append(blocks, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})...)
+		}
+		keyPath := filepath.Join(dir, strings.ReplaceAll(name, " ", "-")+".key")
+		writeDeploymentFixture(t, keyPath, string(blocks), 0400)
+		cfg.ConfigRolloutSigningKey = keyPath
+		if _, err := configureBootstrapDeployment(t.Context(), &cfg, srv.db, srv.keyring); !errors.Is(err, configrollout.ErrConflict) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+
+	// A compatibility enrollment refuses a strict signer file.
+	plain, _ := json.Marshal(d.enrollment)
+	writeDeploymentFixture(t, enrollmentPath, string(plain), 0444)
+	cfg.ConfigRolloutSigningKey = filepath.Join(dir, "other-key-pair.key")
+	if _, err := configureBootstrapDeployment(t.Context(), &cfg, srv.db, srv.keyring); !errors.Is(err, configrollout.ErrConflict) {
+		t.Fatalf("strict signer file under a compatibility enrollment: %v", err)
+	}
+}
+
+func TestBootstrapDeploymentSignerFileIsClosedSet(t *testing.T) {
+	signers, _, _ := strictDeploymentKeys(t)
+	edDER, _ := x509.MarshalPKCS8PrivateKey(signers.Ed25519)
+	pqDER, _ := x509.MarshalPKCS8PrivateKey(signers.MLDSA65)
+	edPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: edDER})
+	pqPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pqDER})
+	path := filepath.Join(t.TempDir(), "authority.key")
+	for name, tc := range map[string]struct {
+		raw string
+		ok  bool
+	}{
+		"dual":      {string(edPEM) + string(pqPEM), true},
+		"pq only":   {string(pqPEM), true},
+		"duplicate": {string(edPEM) + string(edPEM), false},
+		"prelude":   {"junk\n" + string(edPEM) + string(pqPEM), false},
+		"trailing":  {string(edPEM) + string(pqPEM) + "junk", false},
+		"third key": {string(edPEM) + string(pqPEM) + string(pqPEM), false},
+	} {
+		writeDeploymentFixture(t, path, tc.raw, 0400)
+		got, err := readDeploymentSigners(path)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err=%v", name, err)
+		}
+		if err == nil && got.MLDSA65 == nil {
+			t.Errorf("%s: ML-DSA key not loaded", name)
+		}
+	}
+}
+
+// A command persisted before a re-enrollment is a row the new provider cannot
+// verify. Every operation the service performs on that row is refused with the
+// same closed error, which is what makes an open job unrecoverable across the
+// switch (registered gap G-2).
+func TestBootstrapDeploymentRefusesEveryOperationOnAPreRolloverRow(t *testing.T) {
+	for _, from := range []string{"compatibility", "earlier strict generation"} {
+		t.Run(from, func(t *testing.T) {
+			d, _, client := deploymentAdapterFixture(t, false)
+			sources := d.installed
+			sources.RootSource = "root-next"
+			var prepared, submit configrollout.SignedCommand
+			var err error
+			signers, _, authority := strictDeploymentKeys(t)
+			if from == "earlier strict generation" {
+				d.enrollment.Authority = authority
+				d.signers = signers
+			}
+			prepared, err = d.PrepareCommand(t.Context(), deploymentIntent(d), deploymentBundle(t, sources), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			submit, err = d.DecisionCommand(t.Context(), prepared, configrollout.ActionSubmit, 2, strings.Repeat("a", 64), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Re-enroll: the provider now holds the next strict generation.
+			next := *authority
+			next.Generation = 9
+			if from == "compatibility" {
+				d.enrollment.Authority = &next
+				d.signers = signers
+				ids := signers.Public().KeyIDs()
+				next.KeyIDs = []string{ids[configrollout.AlgEd25519], ids[configrollout.AlgMLDSA65]}
+			} else {
+				d.enrollment.Authority = &next
+			}
+			mailbox, err := configrollout.NewMailbox(client, d.enrollment)
+			if err != nil {
+				t.Fatal(err)
+			}
+			d.mailbox = mailbox
+			client.ClearActions()
+			if d.validSigned(submit) {
+				t.Fatal("pre-rollover row verified under the new regime")
+			}
+			if _, err := d.DecisionCommand(t.Context(), submit, configrollout.ActionRestore, 3, submit.Command.PlanDigest, nil); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("restore decision on a pre-rollover row: %v", err)
+			}
+			if _, err := d.RenewCommand(t.Context(), submit, 3); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("renewal of a pre-rollover row: %v", err)
+			}
+			if err := d.Send(t.Context(), submit); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("send of a pre-rollover row: %v", err)
+			}
+			if _, err := d.Response(t.Context(), submit); !errors.Is(err, configrollout.ErrInvalid) {
+				t.Fatalf("response for a pre-rollover row: %v", err)
+			}
+			if got := client.Actions(); len(got) != 0 {
+				t.Fatalf("a refused operation reached the cluster: %d calls", len(got))
+			}
+		})
 	}
 }

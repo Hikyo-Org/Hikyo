@@ -48,7 +48,7 @@ func (l *Limiter) InheritCounters(previous *Limiter) error {
 	if previous.waiting != 0 || l.waiting != 0 || len(previous.slots) != previous.concurrency || len(l.slots) != l.concurrency {
 		return ErrNotQuiescent
 	}
-	if len(l.ipHits) != 0 || len(l.metaHits) != 0 || len(l.issuerRefreshes) != 0 || len(l.accounts) != 0 {
+	if len(l.ipHits) != 0 || len(l.metaHits) != 0 || len(l.issuerRefreshes) != 0 || len(l.accounts) != 0 || len(l.liveSessions) != 0 {
 		return ErrCountersNotEmpty
 	}
 	if l.shared != nil && (!reflect.TypeOf(l.shared).Comparable() || l.shared != previous.shared) {
@@ -58,6 +58,7 @@ func (l *Limiter) InheritCounters(previous *Limiter) error {
 	l.metaHits = cloneWindows(previous.metaHits)
 	l.issuerRefreshes = cloneWindows(previous.issuerRefreshes)
 	l.accounts = maps.Clone(previous.accounts)
+	l.liveSessions = maps.Clone(previous.liveSessions)
 	l.shared = previous.shared
 	if l.log == nil {
 		l.log = previous.log

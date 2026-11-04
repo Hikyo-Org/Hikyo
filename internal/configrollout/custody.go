@@ -132,6 +132,9 @@ func (c *Controller) Run(ctx context.Context, podUID types.UID) error {
 	}
 	c.client = guarded
 	c.executor = executor
+	if err := c.reconcileTrust(ctx); err != nil {
+		return err
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {

@@ -1042,10 +1042,12 @@
       "reason": "Authenticated backup snapshot uses READ ONLY transaction protocol and COPY TO STDOUT over structurally discovered archive tables, which can differ from the current runtime schema.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
+        "internal/backupreceipt/artifacts.go:Snapshot.RecipientAlgorithm",
         "internal/backupreceipt/artifacts.go:Snapshot.Validate",
         "internal/backupreceipt/artifacts.go:canonicalTime",
         "internal/backupreceipt/artifacts.go:validGeneration",
         "internal/backupreceipt/operator.go:LegacyProposal.Validate",
+        "internal/crypto/backup/recipients.go:ParseFingerprint",
         "internal/releaseidentity/identity.go:Digest.Validate",
         "internal/releaseidentity/identity.go:Engine.Validate",
         "internal/releaseidentity/identity.go:Hash",
@@ -1094,10 +1096,12 @@
       "reason": "SQLite VACUUM INTO is the engine snapshot protocol used to publish a consistent owned backup file; no ordinary runtime table query.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
+        "internal/backupreceipt/artifacts.go:Snapshot.RecipientAlgorithm",
         "internal/backupreceipt/artifacts.go:Snapshot.Validate",
         "internal/backupreceipt/artifacts.go:canonicalTime",
         "internal/backupreceipt/artifacts.go:validGeneration",
         "internal/backupreceipt/operator.go:LegacyProposal.Validate",
+        "internal/crypto/backup/recipients.go:ParseFingerprint",
         "internal/releaseidentity/identity.go:Digest.Validate",
         "internal/releaseidentity/identity.go:Engine.Validate",
         "internal/releaseidentity/identity.go:Hash",
@@ -1167,9 +1171,11 @@
       "reason": "Authenticated archive restore dynamically truncates checked historical tables, imports COPY members and resets named sequence positions; runtime generated table statements cannot represent arbitrary accepted archive schemas.",
       "dependencies": [
         "internal/backupreceipt/artifacts.go:Nonce.Validate",
+        "internal/backupreceipt/artifacts.go:Snapshot.RecipientAlgorithm",
         "internal/backupreceipt/artifacts.go:Snapshot.Validate",
         "internal/backupreceipt/artifacts.go:canonicalTime",
         "internal/backupreceipt/artifacts.go:validGeneration",
+        "internal/crypto/backup/recipients.go:ParseFingerprint",
         "internal/definitions/jsonstrict.go:DecodeStrict",
         "internal/definitions/jsonstrict.go:foldJSONMember",
         "internal/definitions/jsonstrict.go:jsonMemberType",
@@ -1622,7 +1628,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.MigrateConfiguration": {
-      "hash": "dc501a6c98b9e5923a3adacbbf55fbace46eba6f1b399d839c7d1e71bde09d64",
+      "hash": "1cd247977a256cf9b46b27dd6a5fd2b5adf0d698e6be9cccb6282ba22e267f01",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/audit/audit.go:NewEventID",
@@ -1744,7 +1750,7 @@
       }
     },
     "internal/store/upgrade/configuration_migrate.go:Session.configurationVersionCAS": {
-      "hash": "020b2f411b1a7205da260cbad2a7d8bb6dbd9ae9a2d7a7cfae2ef0a497ac230f",
+      "hash": "e58ff54a72af28045a49e744a85b97f6bd509116574d56cf994547c3c32f0cfa",
       "reason": "Managed configuration schema migration is the explicitly confined pre-runtime writer: exact schema-applied candidate, existing owner/project keys, atomic binding/version/generation CAS and immutable source snapshots under migration exclusion. It is a migration protocol, not ordinary runtime access.",
       "dependencies": [
         "internal/store/upgrade/configuration_migrate.go:configurationOneRow"
@@ -2815,7 +2821,8 @@
     "internal/backupreceipt/archive.go:AuthenticatedArchive.Snapshot": "4e097ffc6a21d914ffbe9c81ed691a8091f71f2d76a4527eb03e552e269b5883",
     "internal/backupreceipt/archive.go:AuthenticatedArchive.Valid": "af92c7c60d258070651f96a7e754520dccc3a68183c479c31b75805e7328d452",
     "internal/backupreceipt/artifacts.go:Nonce.Validate": "cea9b41ccf95bcc96442ff2762ca65824a61b831e8cbff429f2ce27cda6ac83f",
-    "internal/backupreceipt/artifacts.go:Snapshot.Validate": "81806e67c35bcabe614f8e43743207cbd1d5700e109734026f5d743d82639684",
+    "internal/backupreceipt/artifacts.go:Snapshot.RecipientAlgorithm": "370ae304989d9eabe7bafbde58846a1ebbca7fefd370ad87a9a58a52d662ceb2",
+    "internal/backupreceipt/artifacts.go:Snapshot.Validate": "6904579abaa9300d4b31460c0ea0c8acf5d099b4230d8e018a3baae8ca72848d",
     "internal/backupreceipt/artifacts.go:canonicalTime": "248c8b4488d10f364ae4a219d361b099d590d66a0d58444c82dc454fe902484b",
     "internal/backupreceipt/artifacts.go:validGeneration": "c21b29892c1caaf76f4273bd1eee640602a914699e506d0b2995175a292d1505",
     "internal/backupreceipt/operator.go:LegacyProposal.Validate": "77ed3b36a6554fd2ee2b426b4796e206ac67e67cf3995c7056613d6bccd755eb",
@@ -2824,6 +2831,7 @@
     "internal/crypto/aad.go:appendAAD": "411bc106bd7d8f14565105d6722ee97f7e3816b16ad3f8d2348e6128120eefe0",
     "internal/crypto/aad.go:appendLP": "6263230e492d8f96bc08b30737a984c9c2f8d03945bbddfb21e6b6b0a0035a32",
     "internal/crypto/aad.go:be32": "7f4a4e545e5d4d3dd5d4e1b263ce3cf4ecc3f7edef1c40906d0301a331098a4b",
+    "internal/crypto/backup/recipients.go:ParseFingerprint": "5407caf33cff8bc3a99859f786e30b42fe829f3a2c04a58c57a3dab86a685232",
     "internal/crypto/crypto.go:Zero": "c5657ac84f4f0e582a98b55723b6f85d1ce57ddc6ccf92c274c8f1f3b57394ae",
     "internal/crypto/envelope.go:appendHeader": "4ed1341dfab132f2173eec62f4f3bf6c625ed88eb69811e731a0851613d438c6",
     "internal/crypto/envelope.go:open": "ee47a038fad4afd591445fa0598203a865146e3d1f1874a85591be99ae8220a8",
@@ -2893,8 +2901,8 @@
     "internal/releaseidentity/identity.go:ValidateTarget": "43a03a0e2bd8d405d876e735f94c8d07c332a3df439becfdc16ad7741665d360",
     "internal/releasetrust/release.go:VerifiedRelease.Identity": "19cbd759e2711523af924639524842ab67c2b2e0157c2e0e44ff25efe9c3ac4f",
     "internal/releasetrust/release.go:VerifiedRelease.Valid": "a8d77d22c174df82b168e113855acb99ace2110eecb8ecc7be9cf3947ead4c66",
-    "internal/runtimeconfig/catalogue.go:Catalogue": "cbd385933b9dc884f7fbf5366ba60d892c83545e90252e23f93bb7a45c192857",
-    "internal/runtimeconfig/migrations.go:Migrations": "9bf5c9ee50894956c32c65aeb080fb769a4c5739bd754977f85becf62136bdbb",
+    "internal/runtimeconfig/catalogue.go:Catalogue": "5d06d181e02ec3b8a82c6c6d6506926a0f330063e0c891ee08b4f6bc105f3979",
+    "internal/runtimeconfig/migrations.go:Migrations": "44ceade46c82864efa5237336ea18e6b4cdee7a1cc61227e607b2ecc62a6e78f",
     "internal/schema/classification.go:checkDeclarationClassification": "b8b13609049eb9aa5d5405af74cc68bdad1cba7433d15c7d7988f08441668be0",
     "internal/schema/classification.go:valueLiteralKeyword": "f56c5cd43145ac755965fc51625be15877f7afb31db54d05f020af6e67138e9b",
     "internal/schema/declare.go:CompileClassified": "57dfbfeec95d5e83910b312aae3f90c9e94a9ada8e454068c3fb74260ccb0aa4",
@@ -3000,7 +3008,7 @@
     "internal/store/upgrade/configuration_migrate.go:configurationID": "de8c3eacfbd8e674bd079ac773feaad59d96ede8ff7c83809f324bc345ef0f51",
     "internal/store/upgrade/configuration_migrate.go:configurationOneRow": "deab83c007cbea3468ddd4ce45d31ce18e8119e01d1966db7404afcdee096e50",
     "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrations": "04042a7e2c360acbaae2197943e3b9aef61de5fe5c4c8143be624a00bc3e79ff",
-    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "24ca33f4d4c1a631f1d1d44078dc4736c4e8014493d0e589c23d37fd70a31f8c",
+    "internal/store/upgrade/configuration_migrations.go:planConfigurationMigrationsWith": "58f2772839f99bf7835f7117f2d3902ccadc8bf8a5aa1a358766f51462fee5f5",
     "internal/store/upgrade/control_schema.go:splitControl": "c2fb5c0cce961a880c6072a76103e2cf4f8b883179b8b29703753f29348b6dc6",
     "internal/store/upgrade/control_schema.go:withoutControl": "1c91f78f18dfe6c6f541ce247cd03ab4981730cadde3c660baa39944677e4153",
     "internal/store/upgrade/domain_catalog.go:Session.DomainCatalog": "54c65dad84f1501de0ea728cb372d39f491ccdd237b9a66aaadd4f6092aeeaf4",

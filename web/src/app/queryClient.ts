@@ -1,6 +1,10 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { isThrottled } from '../api/client.ts';
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
+
+const MAX_THROTTLED_RETRIES = 2;
+const THROTTLED_RETRY_MS = 5_000;
 
 /**
  * makeQueryClient builds the app's TanStack client with ONE set of defaults.
@@ -18,8 +22,10 @@ import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
  *     the server's chokepoint and never cached there. A long client cache
  *     would not be an authorization cache, the server still decides, but it
  *     would show a revoked reader stale data, so the window stays small.
- *   - `retry: false` because a refused request is an answer, not a blip: a 403
- *     retried three times is three denials in the audit trail for one act.
+ *   - `retry` only a 429, because a refused request is an answer, not a blip: a
+ *     403 retried three times is three denials in the audit trail for one act.
+ *     A throttled read was never decided, and most queries have no poll to
+ *     recover it, so it waits as told and tries again.
  *   - `refetchOnWindowFocus: false` because a focus event is not new
  *     information; the poller and explicit invalidations own freshness.
  */
@@ -29,7 +35,8 @@ export function makeQueryClient(): QueryClient {
       queries: {
         staleTime: 5_000,
         refetchOnWindowFocus: false,
-        retry: false,
+        retry: (failures, error) => failures < MAX_THROTTLED_RETRIES && isThrottled(error),
+        retryDelay: (_failures, error) => (isThrottled(error) ? error.retryAfterMs : undefined) ?? THROTTLED_RETRY_MS,
       },
     },
   });

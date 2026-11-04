@@ -37,7 +37,10 @@ func TestExportConsentUsesSnapshotMetadata(t *testing.T) {
 				// Names can have been renamed or reused in the current catalogue.
 				// Consent must bind the snapshot's IDs, without a catalogue lookup.
 				_ = json.NewEncoder(w).Encode(apigen.RevisionDetail{Revision: 7, Keys: []apigen.SnapshotKey{
-					{KeyId: "key_historical", Name: "OLD_NAME", Classification: apigen.KeyClassificationSecret},
+					{KeyId: "key_historical", Name: "OLD_NAME", Classification: apigen.KeyClassificationSecret, Sensitive: true},
+					// A later declassification leaves this occurrence sticky-secret,
+					// and the server's reveal gate still counts it.
+					{KeyId: "key_sticky", Name: "DECLASSIFIED", Classification: apigen.KeyClassificationConfig, Sensitive: true},
 					{KeyId: "key_config", Name: "CONFIG", Classification: apigen.KeyClassificationConfig},
 				}})
 			}))
@@ -48,7 +51,7 @@ func TestExportConsentUsesSnapshotMetadata(t *testing.T) {
 				if err == nil || len(keys) != 0 {
 					t.Fatalf("collected revision consent = %v, %v", keys, err)
 				}
-			} else if err != nil || !slices.Equal(keys, []string{"key_historical"}) {
+			} else if err != nil || !slices.Equal(keys, []string{"key_historical", "key_sticky"}) {
 				t.Fatalf("consent keys = %v, %v", keys, err)
 			}
 			if requests != 1 {
