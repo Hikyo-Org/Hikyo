@@ -175,6 +175,8 @@ test.describe('instance administration', () => {
     await page.getByRole('link', { name: 'Edit configuration project', exact: true }).click();
     await expect(page.getByText('Hikyo system configuration', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Declare key', exact: true })).toHaveCount(0);
+    await expect(page.locator('.matrix__group-row').first()).toContainText('Authentication');
+    await expect(page.getByText('No folder', { exact: true })).toHaveCount(0);
     // The expanded catalogue virtualizes rows; scroll to the channel at the end.
     await page.locator('.matrix__scroll').evaluate((element) => { element.scrollTop = element.scrollHeight; });
     await page.getByRole('button', { name: /^HIKYO_UPDATE_CHANNEL in Production:/ }).click();
