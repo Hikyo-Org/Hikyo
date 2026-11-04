@@ -383,9 +383,9 @@ func renderAcknowledged(cfg *compose.Config) []string {
 	return out
 }
 
-func fetchDelivery(ctx context.Context, client *Client, org, project, env string, configOnly bool, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
+func (s *composeStack) fetchDelivery(ctx context.Context, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
 	q := url.Values{}
-	if configOnly {
+	if s.configOnly {
 		// The wire term is `projection=config-only` (#64's server param); the CLI
 		// flag stays `--config-only`. `full` is the default and is left implicit.
 		q.Set("projection", "config-only")
@@ -400,19 +400,15 @@ func fetchDelivery(ctx context.Context, client *Client, org, project, env string
 	if cursor != "" {
 		q.Set("cursor", cursor)
 	}
-	path := deliveryPath(org, project, env)
+	path := deliveryPath(s.org, s.project, s.env)
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
 	var resp apigen.DeliveryResponse
-	if err := client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
+	if err := s.client.Do(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return apigen.DeliveryResponse{}, err
 	}
 	return resp, nil
-}
-
-func (s *composeStack) fetchDelivery(ctx context.Context, acknowledged []string, cursor string) (apigen.DeliveryResponse, error) {
-	return fetchDelivery(ctx, s.client, s.org, s.project, s.env, s.configOnly, acknowledged, cursor)
 }
 
 // flushOffline reconciles buffered offline records before a fetch (ops-spec § 6

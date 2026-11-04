@@ -3,6 +3,7 @@ package operation
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 )
@@ -13,6 +14,8 @@ type requestAdmission struct {
 	once   sync.Once
 	charge func(string) error
 	err    error
+	// budgeted is the first verifier that spent this request's budget charge.
+	budgeted atomic.Pointer[[]byte]
 }
 
 // WithRequestAdmission attaches accounting, not identity or authorization,

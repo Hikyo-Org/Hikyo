@@ -41,7 +41,9 @@ func (s *queueReconciliation) completeAdmission(ctx context.Context, p pull, b b
 	if err != nil {
 		return err
 	}
-	return s.publishVerified(ctx, p, b, newestQueueCheck(own), result)
+	write, stop := s.q.verdictWriteContext(ctx)
+	defer stop()
+	return s.publishVerified(write, p, b, newestQueueCheck(own), result)
 }
 
 func (s *queueReconciliation) completeGroup(ctx context.Context, p pull, b binding, result outcome) error {

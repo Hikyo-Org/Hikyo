@@ -59,6 +59,42 @@ func TestSessionPresentationSpendsOneLimit(t *testing.T) {
 	}
 }
 
+func TestSessionLostMidRequestDoesNotChargeASecondLimit(t *testing.T) {
+	source, budget := 0, 0
+	sessions := liveSessionsStub{"verifier": "ses_a"}
+	ctx := WithPreauthenticationAdmission(WithLiveSessions(t.Context(), sessions), func() error { source++; return nil })
+	ctx = WithRequestAdmission(ctx, func(string) error { budget++; return nil })
+	if err := AdmitSessionPresentation(ctx, []byte("verifier")); err != nil {
+		t.Fatal(err)
+	}
+	ForgetSession(ctx, []byte("verifier"))
+	if err := AdmitSessionPresentation(ctx, []byte("verifier")); err != nil || source != 0 || budget != 1 {
+		t.Fatalf("same presentation: err=%v source=%d budget=%d", err, source, budget)
+	}
+	if err := AdmitSessionPresentation(ctx, []byte("another")); err != nil || source != 1 {
+		t.Fatalf("another artifact: err=%v source=%d", err, source)
+	}
+}
+
+func TestOnlyTheVerifierThatPaidIsRemembered(t *testing.T) {
+	source := 0
+	sessions := liveSessionsStub{"first": "ses_a", "second": "ses_b"}
+	ctx := WithPreauthenticationAdmission(WithLiveSessions(t.Context(), sessions), func() error { source++; return nil })
+	ctx = WithRequestAdmission(ctx, func(string) error { return nil })
+	for _, verifier := range []string{"first", "second"} {
+		if err := AdmitSessionPresentation(ctx, []byte(verifier)); err != nil {
+			t.Fatal(err)
+		}
+		ForgetSession(ctx, []byte(verifier))
+	}
+	if err := AdmitSessionPresentation(ctx, []byte("first")); err != nil || source != 0 {
+		t.Fatalf("verifier that paid: err=%v source=%d", err, source)
+	}
+	if err := AdmitSessionPresentation(ctx, []byte("second")); err != nil || source != 1 {
+		t.Fatalf("verifier that rode the charge: err=%v source=%d", err, source)
+	}
+}
+
 func TestKnownSessionOverBudgetIsRefusedBeforeItsRead(t *testing.T) {
 	refusal := errors.New("over budget")
 	sessions := liveSessionsStub{"verifier": "ses_a"}
