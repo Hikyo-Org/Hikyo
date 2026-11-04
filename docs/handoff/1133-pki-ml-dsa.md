@@ -58,7 +58,9 @@ Note the issuer and certificate **response** `key_algorithm` fields are plain
 strings, not enums, so an ML-DSA issuer or certificate would already serialize;
 the closed parts are the request enums and the profile `key_algorithms`.
 
-**Decision needed from the owner.** This handoff makes no recommendation; the
+**Decided on 2026-11-04: option 1.** The owner amended [api-cli-surface](../adr/api-cli-surface.md) so these enums grow once, for `mldsa65` only (see the banner there and the guard exception in `api/freeze.go`). The options below are kept as the record of what was weighed; `MLDSAEnabled` stays false, so nothing is reachable yet.
+
+**The decision was needed from the owner.** This handoff made no recommendation; the
 facts for each option, verified against this tree and `v1.0.0`:
 
 1. **Let these closed enums grow, by amending [api-cli-surface](../adr/api-cli-surface.md) (#25).**

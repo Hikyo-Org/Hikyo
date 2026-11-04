@@ -69,8 +69,9 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
 ### Merged on 2026-11-04
 
 Ten child and contract PRs and this ledger landed on `dev` with merge commits. #1172 is held
-until the `/api/v1` freeze is decided, PR #1195 was evidence only and closed unmerged, and #1197
-lands last with its documents only. Each head below is the head that merged.
+(the owner decided the `/api/v1` freeze on 2026-11-04, but its merge waits for the owner's window),
+PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
+followed with a test repair. Each head below is the head that merged.
 
 | PR | Merged head | Merge commit |
 | --- | --- | --- |
@@ -85,6 +86,8 @@ lands last with its documents only. Each head below is the head that merged.
 | #1171 | `57f1c327e` | `7042dbe4d` |
 | #1188 | `d61ae5e2d` | `8cbd32446` |
 | #1190 | `a91256980` | `455b94655` |
+| #1197 | `8eb0c0194` | `9e2ed7ad7` |
+| #1206 | `c3090a6b1` | `933d28a07` |
 
 Review coverage is not identical to these heads. The independent review, re-review and final
 check each read earlier heads. After the final check came merges of `dev`, including two
@@ -100,11 +103,11 @@ evidence for this tree.
 | #1126 backups | #1158 | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | 2026-11-04, repairs re-reviewed |
 | #1127 transport | #1156 | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, repairs re-reviewed |
 | #1128 webhooks | #1188 | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; declared-amendment route accepted | 2026-11-04, repairs re-reviewed |
-| #1129 Transit | #1172 | `mldsa65` below the API | Held from merge by the owner until the v1 freeze is decided; public surface HOLD; restore-hold and takeover NOTRUN | 2026-11-04, repairs re-reviewed |
+| #1129 Transit | #1172 | `mldsa65` below the API | Held from merge: the freeze is decided (option A) and the contract amendment is its own pull request; public surface and the CLI and WebUI lists wait for this PR to merge; restore-hold and takeover NOTRUN | 2026-11-04, repairs re-reviewed |
 | #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 not yet effective | 2026-11-04, repairs re-reviewed |
 | #1131 rollout | #1186 | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, repairs re-reviewed |
 | #1132 release | #1192 | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, repairs re-reviewed |
-| #1133 PKI | #1141 | ML-DSA lifecycle below the API, gated off in production | Public surface HOLD on the v1 freeze; G1 to G7 | 2026-11-04, repairs re-reviewed |
+| #1133 PKI | #1141 | ML-DSA lifecycle below the API, gated off in production | Contract accepts `mldsa65` once the freeze amendment merges, while `MLDSAEnabled` stays false; G1 to G7 | 2026-11-04, repairs re-reviewed |
 | #1134 external | #1171 | 24-route register, local qualification | No route verified; strict-route refusal HOLD (#1183) | 2026-11-04, repairs re-reviewed |
 | #1135 qualification | #1197 | Packet, runbook marked not executable, integrated run | HOLD by construction: no real environment was authorized | 2026-11-04, repairs re-reviewed |
 
@@ -127,17 +130,20 @@ Decided on 2026-11-04, as recommended:
 6. The non-ADR specs (#1188, #1186) use the declared-amendment banner.
 7. #1141, #1192 and #1190 merge as built, with their choices below still open.
 
+Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
+
+8. **The `/api/v1` freeze: option A.** [api-cli-surface](../adr/api-cli-surface.md) (#25) is amended so the closed Transit and PKI enums grow once, for `mldsa65` only. It sets no precedent. The skew break (a `v1.0.0` Zod consumer fails a whole list holding one `mldsa65` value, once an operator creates such a key) is accepted and stated in the banner. Cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN. The amendment enables nothing: Transit has no mechanism on `dev` (it is on #1172) and PKI stays behind `MLDSAEnabled`, false in production. Merge waits for the owner's window.
+9. Confirmed as built: the #1126 profile selector and vault generation path, the #1127 proxy leg, #1132 signing granularity, and #1133 keeping the `VerifyConnection` walk and platform verifiers. Packet C-10's step 2 abort is "restore the pre-upgrade backup".
+10. Transit signed bytes: the departure described in the [#1129 handoff](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
+
 Still open. None blocks merging what is listed above, and each blocks use or closure:
 
-1. The `/api/v1` freeze: ML-DSA stays unreachable for Transit and PKI, and #1172 stays out, until it is decided.
-2. Transit signed bytes: cheap to change only until the first key signs.
-3. ML-DSA recovery key custody: no release signer until it is named (DEC-14).
-4. Per-route strict selection (#1183), and the F-nn decisions #1175, #1178 and #1179.
-5. DEC-17 budget thresholds, from the baselines each child recorded.
-6. #1126 profile selector and vault generation path, #1127 proxy-leg confirmation, and packet C-10's step 2 abort wording.
-7. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked condition, and whether #1133 keeps the `VerifyConnection` walk and platform verifiers.
-8. #1132's key-role shape, sidecar floor, shared banner wording, signing granularity and pin delivery. No signer can exist until these and custody are settled.
-9. #1130's options A to D, E-01 fields, DEC-13 wording and the narrowing text #1135 needs.
+1. ML-DSA recovery key custody: no release signer until it is named (DEC-14).
+2. Per-route strict selection (#1183), and the F-nn decisions #1175, #1178 and #1179.
+3. DEC-17 budget thresholds, from the baselines each child recorded.
+4. #1133's five unconfirmed choices, one of them unconditional ML-DSA leaves against the locked condition.
+5. #1132's key-role shape, sidecar floor, shared banner wording and pin delivery. No signer can exist until these and custody are settled.
+6. #1130's options A to D, E-01 fields, DEC-13 wording and the narrowing text #1135 needs.
 
 ### Tickets and issues touched
 
