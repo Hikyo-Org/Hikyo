@@ -258,7 +258,11 @@ func (s *Backup) writeArchive(ctx context.Context, f *os.File, work string, upgr
 		if err != nil {
 			return ExportResult{}, err
 		}
-		result.Receipt = &backupreceipt.Receipt{Format: backupreceipt.ReceiptFormat, CiphertextSHA256: releaseidentity.Digest(hex.EncodeToString(hash.Sum(nil))), CiphertextBytes: position, ManifestSHA256: digest, Snapshot: manifest.Upgrade.Clone()}
+		algorithm, err := manifest.Upgrade.RecipientAlgorithm()
+		if err != nil {
+			return ExportResult{}, err
+		}
+		result.Receipt = &backupreceipt.Receipt{Format: backupreceipt.FormatFor(algorithm), CiphertextSHA256: releaseidentity.Digest(hex.EncodeToString(hash.Sum(nil))), CiphertextBytes: position, ManifestSHA256: digest, Snapshot: manifest.Upgrade.Clone()}
 		if err := result.Receipt.Validate(); err != nil {
 			return ExportResult{}, err
 		}

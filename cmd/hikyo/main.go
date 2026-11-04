@@ -654,7 +654,7 @@ local host authority (server host only; --dev directly after the group):
   hikyo admin [--dev] privacy export|restrict|erase|release|correct|reapply
   hikyo admin [--dev] config status|recover
   hikyo backup [--dev] export [--out DIR] [--recipient R]... [--passphrase-file PATH]
-  hikyo backup [--dev] keygen
+  hikyo backup [--dev] keygen [--hybrid]
   hikyo backup [--dev] upgrade-export|upgrade-drill
   hikyo escrow [--dev] verify --root-key-file FILE --assert-separate-custody
   hikyo restore [--dev] run --from ARCHIVE (--identity-file PATH | --passphrase-file PATH)

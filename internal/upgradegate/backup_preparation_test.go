@@ -72,6 +72,31 @@ func TestAuthenticatedBackupPreparationPinsFinalTargetAndRefusesMissingProof(t *
 					unchanged = seedOldManagedPreview(t, cfg, booted, request.RootKey)
 					request.CheckConfiguration = assertManagedPreview(t)
 				}
+				// The stored configuration of a healthy and of a frozen source is read
+				// through CheckSourceConfiguration, read-only. A reader that always
+				// reports "nothing stored" (the shape of an earlier bug) fails here.
+				readSource := func(when string) {
+					t.Helper()
+					probed := false
+					check := func(ctx context.Context, projection *upgrade.CandidateConfiguration, values map[string]string) error {
+						probed = true
+						if managed {
+							return assertManagedPreview(t)(ctx, projection, values)
+						}
+						if projection != nil {
+							return errors.New("unexpected stored configuration")
+						}
+						return nil
+					}
+					checked, err := CheckSourceConfiguration(t.Context(), cfg, bytes.Clone(request.RootKey), check)
+					if err != nil || !checked || !probed {
+						t.Fatalf("%s: stored configuration was not read: checked=%t probed=%t err=%v", when, checked, probed, err)
+					}
+					if managed {
+						unchanged()
+					}
+				}
+				readSource("healthy source")
 				request.Mode = PrepareBackup
 				wrong := request
 				wrong.Target = fixture.Identities[1]
@@ -92,6 +117,7 @@ func TestAuthenticatedBackupPreparationPinsFinalTargetAndRefusesMissingProof(t *
 				if _, err := invoke(request, 1); err == nil {
 					t.Fatal("another signed target replaced pinned route")
 				}
+				readSource("frozen source")
 				if managed {
 					unchanged()
 				}
