@@ -99,7 +99,7 @@ func (s *State) developerCredentialFor(origin, org, project, environment string,
 	var found DeveloperCredentialArtifact
 	expired := false
 	for _, c := range all {
-		if c.Origin != origin || c.Org != org || c.Project != project || c.Environment != environment {
+		if !sameOrigin(c.Origin, origin) || c.Org != org || c.Project != project || c.Environment != environment {
 			continue
 		}
 		if !now.Before(c.ExpiresAt) {

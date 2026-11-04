@@ -1,0 +1,17 @@
+# Optional operator-owned L4 exposure for the native-TLS example.
+# Requires a working LoadBalancer implementation and an operator-approved address.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hikyo-public
+  namespace: hikyo
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: hikyo
+    app.kubernetes.io/instance: hikyo
+  ports:
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: http

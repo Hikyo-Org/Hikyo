@@ -14,7 +14,13 @@ repo=${DCO_REPOSITORY:-.}
 marker='<!-- hikyo-dco-report -->'
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
 
-if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+# Same exemption as the queue gate: promotions and backmerges carry Dependabot
+# commits, and only write access reaches these canonical heads.
+promotion=false
+if [ "${PR_HEAD_REPOSITORY:-}" = "$GH_REPO" ]; then
+	case "${PR_HEAD_REF:-}" in release/* | main) promotion=true ;; esac
+fi
+if [ "$PR_AUTHOR" = "dependabot[bot]" ] || [ "$promotion" = true ]; then
 	export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
 fi
 

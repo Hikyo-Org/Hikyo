@@ -63,6 +63,25 @@ func (m *TLSMode) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
+// TLSProfile is the key-exchange policy name a trust entry or bundle records. As
+// with TLSMode, an explicit JSON value must be "compat" or "strict": an empty
+// string or null is refused instead of reading as the compat default, which only
+// an omitted field means.
+type TLSProfile string
+
+func (p *TLSProfile) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("TLS profile must be compat or strict: %w", err)
+	}
+	parsed, err := tlspolicy.ParseProfile(value)
+	if err != nil {
+		return err
+	}
+	*p = TLSProfile(parsed)
+	return nil
+}
+
 const (
 	TLSModeSPKI     = "spki"
 	TLSModeSystemCA = "system-ca"
@@ -93,7 +112,7 @@ type TrustEntry struct {
 	// It protects handshake confidentiality only. Authentication stays whatever
 	// TLSMode says, which is classical; an SPKI pin gives no authenticity claim.
 	// An established entry's profile changes only by deliberate re-establishment.
-	TLSProfile string `json:"tls_profile,omitempty"`
+	TLSProfile TLSProfile `json:"tls_profile,omitempty"`
 }
 
 // TrustBundle is the provisioned-establishment file: the CI path's import
@@ -106,7 +125,7 @@ type TrustBundle struct {
 	TLSMode   TLSMode `json:"tls_mode,omitempty"`
 	CLISocket string  `json:"cli_socket,omitempty"`
 	// TLSProfile is carried into the entry unchanged; see TrustEntry.TLSProfile.
-	TLSProfile string `json:"tls_profile,omitempty"`
+	TLSProfile TLSProfile `json:"tls_profile,omitempty"`
 }
 
 // ErrUntrusted reports an instance reference that is not in the local store.
@@ -252,7 +271,7 @@ func effectiveTLSProfile(entry TrustEntry) string {
 	if entry.TLSProfile == "" {
 		return string(tlspolicy.ProfileCompat)
 	}
-	return entry.TLSProfile
+	return string(entry.TLSProfile)
 }
 
 // effectiveTLSMode makes omitted legacy SPKI and explicit SPKI equivalent.
@@ -265,10 +284,10 @@ func effectiveTLSMode(entry TrustEntry) TLSMode {
 
 func validateTLSMode(entry TrustEntry) error {
 	if entry.TLSProfile != "" {
-		if _, err := tlspolicy.ParseProfile(entry.TLSProfile); err != nil {
+		if _, err := tlspolicy.ParseProfile(string(entry.TLSProfile)); err != nil {
 			return err
 		}
-		if entry.TLSProfile == string(tlspolicy.ProfileStrict) && !strings.HasPrefix(entry.Origin, "https://") {
+		if entry.TLSProfile == TLSProfile(tlspolicy.ProfileStrict) && !strings.HasPrefix(entry.Origin, "https://") {
 			return errors.New("the strict TLS profile requires an https origin; a local CLI socket is not a TLS connection")
 		}
 	}
