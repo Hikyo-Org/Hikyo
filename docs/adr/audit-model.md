@@ -229,7 +229,7 @@ invalidation and all audit records commit atomically with environment deletion.
 
 The instance trail is addressed by `GET /api/v1/instance/audit` and
 `GET /api/v1/instance/audit/export`, `hikyo audit query|export --instance-scope`,
-and Instance settings → Audit. These expose the existing instance `audit-read`
+and Instance settings → Operations. These expose the existing instance `audit-read`
 proof to human sessions with the MFA floor, without an additional reveal
 ceremony or a new machine artifact class. Login failures remain instance-trail
 events and are absent from tenant-only views. Event details include actor and

@@ -1059,7 +1059,7 @@ test.describe('sign-up door', () => {
       try {
         const operatorPage = await adminView.newPage();
         await operatorPage.goto('/instance');
-        await operatorPage.getByRole('tab', { name: 'Organisations' }).click();
+        await operatorPage.getByRole('tab', { name: 'Organisations & members', exact: true }).click();
         const orgs = operatorPage.locator('#instance-orgs');
         await orgs.getByLabel('Show').selectOption('registration');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toBeVisible();

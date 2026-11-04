@@ -15,14 +15,14 @@ import { TabPanel, Tabs } from '../ui/Tabs.tsx';
  * (#60, locked prototype app-chrome iteration 15).
  *
  * A sectioned surface is tabs: one `ui/Tabs` row, the selected section in `?tab=` like
- * machine access, and an old `#section` link opening the tab that holds it.
+ * machine access, and an old `#section` or `?tab=` link opening the tab that holds it.
  */
 
 type TabSection = {
-  /** The panel's element id, e.g. `project-identity`; the tab is the id without the page prefix. */
+  /** The section's id, usually its panel's element id, e.g. `project-identity`; the tab is the id without the page prefix. */
   readonly id: string;
   readonly label: string;
-  /** Element ids inside this section that older `#fragment` links point at. */
+  /** Element ids inside this section that older `#fragment` or `?tab=` links point at. */
   readonly anchors?: readonly string[];
   readonly content: ReactNode;
 };
@@ -40,11 +40,11 @@ function safeDecode(fragment: string): string | undefined {
 /**
  * useTabParam keeps the selected tab in `?tab=` so a reload or a shared link
  * keeps it. The first tab is the default and leaves no param; an unknown value
- * is the first tab; `fromHash` maps an older `#fragment` link to its tab.
+ * is the first tab; `fromOldLink` maps an older `#fragment` or `?tab=` link to its tab.
  */
 export function useTabParam<Id extends string>(
   ids: readonly Id[],
-  fromHash?: (hash: string) => Id | undefined,
+  fromOldLink?: (name: string) => Id | undefined,
 ): [Id, (next: Id) => void] {
   const [search, setSearch] = useSearchParams();
   const { hash } = useLocation();
@@ -53,7 +53,8 @@ export function useTabParam<Id extends string>(
   const fragment = safeDecode(hash.slice(1));
   const tab =
     ids.find((id) => id === requested) ??
-    (fragment === undefined ? undefined : fromHash?.(fragment)) ??
+    (requested === null ? undefined : fromOldLink?.(requested)) ??
+    (fragment === undefined ? undefined : fromOldLink?.(fragment)) ??
     first;
   const setTab = (next: Id) =>
     setSearch(
@@ -88,17 +89,23 @@ export function SectionTabs({
   const key = (id: string) => (id.startsWith(`${idPrefix}-`) ? id.slice(idPrefix.length + 1) : id);
   const [tab, setTab] = useTabParam(
     shown.map((section) => key(section.id)),
-    (hash) => {
-      const owner = shown.find((section) => section.id === hash || section.anchors?.includes(hash));
+    (link) => {
+      // A `?tab=` link names a section without the page prefix (`oidc` for `instance-oidc`).
+      const names = [link, `${idPrefix}-${link}`];
+      const owner = shown.find((section) => names.some((name) => section.id === name || section.anchors?.includes(name)));
       return owner === undefined ? undefined : key(owner.id);
     },
   );
   const { hash } = useLocation();
+  const [search] = useSearchParams();
+  const oldTab = `${idPrefix}-${search.get('tab')}`;
+  const retired = shown.some((section) => section.anchors?.includes(oldTab)) ? oldTab : undefined;
   // The browser's own fragment scroll ran before the tab was shown; redo it.
+  // A retired `?tab=` link gets no browser scroll at all, and its panel may now sit below others.
   useEffect(() => {
-    const fragment = safeDecode(hash.slice(1));
-    if (fragment !== undefined) document.getElementById(fragment)?.scrollIntoView({ block: 'start' });
-  }, [hash]);
+    const target = safeDecode(hash.slice(1)) ?? retired;
+    if (target !== undefined) document.getElementById(target)?.scrollIntoView({ block: 'start' });
+  }, [hash, retired]);
 
   if (shown.length < 2) return <>{shown[0]?.content}</>;
   return (

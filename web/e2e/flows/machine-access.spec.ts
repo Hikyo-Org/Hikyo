@@ -1797,7 +1797,7 @@ test.describe('browser-only lifecycle', () => {
       await establishSession(page);
       await page.goto('/instance');
       await expect(page.getByRole('heading', { name: 'Instance settings', level: 1 })).toBeVisible();
-      await page.getByRole('tab', { name: 'Organisations' }).click();
+      await page.getByRole('tab', { name: 'Organisations & members', exact: true }).click();
       await page.getByRole('button', { name: 'Open create organisation form' }).click();
       await page.getByLabel('New organisation name').fill(orgName);
       const org = await captureCreated(page, '/api/v1/orgs', zOrg, async () => {

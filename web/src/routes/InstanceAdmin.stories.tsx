@@ -101,29 +101,27 @@ type Story = StoryObj<typeof meta>;
 // Every read resolved: the directory rows, the policy ceiling and the prune status.
 export const Populated: Story = {
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await expect(await canvas.findByRole('link', { name: 'Acme' })).toBeVisible();
     await expect(canvas.getByText('inactive')).toBeVisible();
-    await openTab(canvas, 'Policy');
+    await openTab(canvas, 'Credentials');
     await expect(canvas.getByText('90 days')).toBeVisible();
-    await openTab(canvas, 'Retention health');
+    await openTab(canvas, 'Operations');
     await expect(canvas.getByText(/payload pruning last succeeded/i)).toBeVisible();
     // The stale threshold is spelled out, never "N hours" from a division.
     await expect(canvas.getByText(/A run is stale after \d+ (hour|day|minute|second)s?\./)).toBeVisible();
   },
 };
 
-// The sections are tabs: related panels share one tab (SAML,
-// Certificates), and an old `#fragment` link to a panel inside one opens it.
+// The sections are grouped tabs: related panels share one tab, and an old
+// `#fragment` link to a panel inside one opens it.
 export const SectionTabs: Story = {
   parameters: { app: { ...app(populated), path: '/instance#instance-pki-profiles', routePath: '/instance' } },
   play: async ({ canvas }) => {
     await expect((await canvas.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([
-      'Hikyo configuration', 'Mailer', 'Organisations', 'Members', 'Policy', 'Audit', 'Developer credentials',
-      'Identity providers', 'GitHub sign-in', 'SAML', 'Federation', 'Certificates',
-      'Retention health', 'Keys & crypto',
+      'General', 'Organisations & members', 'Sign-in', 'Credentials', 'Keys & certificates', 'Operations',
     ]);
-    await expect(canvas.getByRole('tab', { name: 'Certificates' })).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('tab', { name: 'Keys & certificates' })).toHaveAttribute('aria-selected', 'true');
     await expect(canvas.getAllByRole('tab', { selected: true })).toHaveLength(1);
   },
 };
@@ -143,11 +141,11 @@ export const RootKeyActionRow: Story = {
 export const NotDisclosed: Story = {
   parameters: { app: app(uniformly({ status: 404 })) },
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await expect(await canvas.findByText(/organisation directory is not disclosed/i)).toBeVisible();
-    await openTab(canvas, 'Policy');
+    await openTab(canvas, 'Credentials');
     await expect(canvas.getByText(/credential policy is not disclosed/i)).toBeVisible();
-    await openTab(canvas, 'Retention health');
+    await openTab(canvas, 'Operations');
     await expect(canvas.getByText(/retention health is not disclosed/i)).toBeVisible();
   },
 };
@@ -156,11 +154,11 @@ export const NotDisclosed: Story = {
 export const Loading: Story = {
   parameters: { app: app(uniformly({ pending: true })) },
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await waitFor(() => expect(canvas.getByText(/loading organisations/i)).toBeVisible());
-    await openTab(canvas, 'Policy');
+    await openTab(canvas, 'Credentials');
     await expect(canvas.getByText(/loading credential policy/i)).toBeVisible();
-    await openTab(canvas, 'Retention health');
+    await openTab(canvas, 'Operations');
     await expect(canvas.getByText(/loading retention health/i)).toBeVisible();
   },
 };
@@ -169,9 +167,9 @@ export const Loading: Story = {
 export const SecondFactorRequired: Story = {
   parameters: { app: app(uniformly({ status: 403, body: { code: 'forbidden' } })) },
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await expect(await canvas.findByText(/listing every organisation.*needs a second factor/i)).toBeVisible();
-    await openTab(canvas, 'Policy');
+    await openTab(canvas, 'Credentials');
     await expect(canvas.getByText(/credential policy requires a second factor/i)).toBeVisible();
   },
 };
@@ -188,7 +186,7 @@ export const Failed: Story = {
 // The credential policy in edit mode: fields seeded from the fetched ceiling.
 export const EditingCredentialPolicy: Story = {
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Policy');
+    await openTab(canvas, 'Credentials');
     await userEvent.click(await canvas.findByRole('button', { name: 'edit' }));
     await expect(canvas.getByLabelText('Maximum finite lifetime (seconds)')).toHaveValue('7776000');
     await expect(canvas.getByLabelText('Maximum live credentials per service account')).toHaveValue('5');
@@ -201,7 +199,7 @@ export const EditingCredentialPolicy: Story = {
 // Create organisation opens its form in the side panel, primary action first.
 export const CreatingOrganisation: Story = {
   play: async ({ canvas }) => {
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await userEvent.click(await canvas.findByRole('button', { name: 'Open create organisation form' }));
     const panel = within(canvas.getByRole('complementary', { name: 'Create organisation' }));
     await expect(panel.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual(['Close', 'Create organisation', 'Cancel']);
@@ -214,9 +212,9 @@ export const RotateDekConfirm: Story = {
   play: async ({ canvas }) => {
     // Let the signed-in tree settle first: the rotate button exists before
     // whoami answers, and a click on that first tree is lost when it swaps.
-    await openTab(canvas, 'Organisations');
+    await openTab(canvas, 'Organisations & members');
     await expect(await canvas.findByRole('link', { name: 'Acme' })).toBeVisible();
-    await openTab(canvas, 'Keys & crypto');
+    await openTab(canvas, 'Keys & certificates');
     await userEvent.click(canvas.getByRole('button', { name: 'Rotate the instance DEK' }));
     const dialog = await canvas.findByRole('dialog');
     await expect(dialog).toBeVisible();

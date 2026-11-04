@@ -891,7 +891,7 @@ test.describe('developer credential administration', () => {
     await expect(projectPanel).toContainText('not disclosed to this session');
     await expect(projectPanel.getByRole('table')).toHaveCount(0);
     await expect(projectPanel.getByRole('button', { name: /^Revoke / })).toHaveCount(0);
-    await page.goto('/instance?tab=developer-credentials');
+    await page.goto('/instance?tab=credentials');
     const policyPanel = page.locator('#instance-developer-credentials');
     await expect(policyPanel).toContainText('This session lacks the required permission or second-factor assurance.');
     await expect(policyPanel.getByRole('button', { name: 'Edit developer credential policy', exact: true })).toHaveCount(0);
@@ -936,7 +936,7 @@ test.describe('developer credential administration', () => {
       await row.scrollIntoViewIfNeeded();
       await page.screenshot({ path: testInfo.outputPath('developer-credentials-project.png'), fullPage: true });
 
-      await page.goto('/instance?tab=developer-credentials');
+      await page.goto('/instance?tab=credentials');
       await page.getByRole('button', { name: 'Edit developer credential policy', exact: true }).click();
       const input = page.getByLabel('Maximum developer credential lifetime (seconds)', { exact: true });
       await expect(input).toHaveValue(String(lifetime));

@@ -29,7 +29,8 @@ spends one recovery code for a new password.
 
 ## The lifecycle
 
-1. **Organisation.** Instance administration → *Create organisation*. Creation
+1. **Organisation.** Instance settings → Organisations & members → *Create
+   organisation*. Creation
    grants you organisation admin and ends the session; sign in again.
 2. **Project.** Projects → *New project*. The active organisation is the one
    selected in the rail, or the one a deep link named.
@@ -73,15 +74,16 @@ rarely:
 
 | Surface | Where | What it administers |
 | --- | --- | --- |
-| Identity providers | Instance administration | OIDC providers, SAML providers and SP keys, federation issuers |
+| Identity providers | Instance settings → Sign-in | OIDC and GitHub providers, SAML providers and SP keys |
+| Federation issuers | Instance settings → Credentials | External issuers trusted for machine federation |
 | Provisioning | Organisation → SCIM | Bindings, mappings, provisioning credentials, directory views |
 | Remotes | Organisation → Remotes | Directory-tier remotes, connection credentials, workspace sessions |
 | Dynamic secrets | Machine access → Providers and Leases | Providers, write-only credentials, mint/renew/revoke/settle leases |
-| Certificates | Instance administration, Machine access → SSH and Certificates | SSH CAs/profiles, private-PKI issuers/profiles, issuance and revocation |
+| Certificates | Instance settings → Keys & certificates, Machine access → SSH and Certificates | SSH CAs/profiles, private-PKI issuers/profiles, issuance and revocation |
 | Adapters | Project → Deployment adapters | Create, targets, pause/resume/resync, plan, test, credential custody, origin moves, deletion |
 | Audit | Organisation → Audit, Project → Project audit | Query, inspect and export the organisation trail, or a project's trail narrowed to one environment |
-| Instance audit | Instance settings → Audit | Query authentication and instance security events, inspect actor/source metadata, and export after completion verification; human instance audit-read and a second factor required |
-| Remote crypto | Instance administration, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
+| Instance audit | Instance settings → Operations | Query authentication and instance security events, inspect actor/source metadata, and export after completion verification; human instance audit-read and a second factor required |
+| Remote crypto | Instance settings → Keys & certificates, Project settings | DEK/master/root/token/scanning-key rotation and resumable re-encryption |
 | Transit | Project → Transit keys | Key lifecycle, caller policy, encryption, signing and MAC operations under explicit crypto grants |
 
 ## What stays outside the browser
