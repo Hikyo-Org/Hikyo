@@ -7,7 +7,7 @@ packet exists; the qualification it describes does not. The PR does not close
 merge authorization applies to each PR that merges under it, #1172 (Transit,
 migration 00083) excepted because it is held; nothing wider. Independent
 adversarial review is required; cross-provider review is SKIPPED by explicit owner instruction
-(2026-11-02) and is not CLEAN. These documents have no independent review.
+(2026-11-02) and is not CLEAN. These documents had independent reviews on 2026-11-04, recorded below, with their findings repaired.
 
 Deliverables: [packet](../security/pqc/qualification-packet.md) (requirement and
 exception maps, per-child table, ladder, rollback, budgets, contradictions,
@@ -52,7 +52,7 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | 7 | amd64 and arm64 sizes, latency, CPU, memory, concurrency against approved budgets | HOLD | Recorded child numbers (M2 Pro arm64 only, loaded host). DEC-17 thresholds unset; amd64 NOTRUN; no measurement taken here |
 | 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval only as the 2026-11-04 merge authorization, none for #1172 |
 | 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; two runs with throwaway input (`--print-authority-ids`, OpenSSL key generation) and one `backup keygen` run that established its datastore requirement. Every real-environment step NOTRUN |
-| 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement), no row effective | Packet. No exception is effective (peers, versions and expiry are the owner's) |
+| 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement) | Packet. E-22 carries all four fields; no other row does (peers, versions and expiry are the owner's) |
 | 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met; pairing narrowing text unaccepted |
 | 12 | Record what can be released and what is blocked, plus remaining human and environment actions | DONE | Packet, "Release and blocked", lists only, no recommendation |
 
