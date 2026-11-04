@@ -37,6 +37,10 @@ import (
 // same serialization obligation binds it.
 // The member access rule tables join them (member-access-rules ADR): a rule is
 // standing authority read by authorize(), so its writers serialize the same way.
+// The footprint read (ListPrincipalFootprintOrgs) also covers access_grants,
+// scim_users, developer_credentials and service_accounts; those writers are not
+// grant writers here, and their consistency with it rests on serializable
+// isolation, not on this row lock.
 var grantTables = map[string]bool{"grants": true, "grant_origins": true, "rules": true, "rule_items": true}
 
 // lockName is the lock taken before a grant write.

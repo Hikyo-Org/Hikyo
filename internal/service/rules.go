@@ -245,6 +245,13 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 			return rule, caller, proof, unheld, err
 		}
 	}
+	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
+	if err != nil {
+		return rule, caller, proof, unheld, err
+	}
+	if err := checkTargetFootprint(ctx, az, grantorGrants, caller.Principal, spec.Target, spec.Org); err != nil {
+		return rule, caller, proof, unheld, err
+	}
 	if err := az.LockTargetPrincipal(ctx, spec.Target); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return rule, caller, proof, unheld, ErrUnknownPrincipal
@@ -266,10 +273,6 @@ func prepareRuleCreate(ctx context.Context, az *authz.TxAuthorizer, actor Actor,
 	}
 	// Management and capability reach are independent. Only existing org-
 	// and instance-scope managers retain the grant-unheld exception.
-	grantorGrants, err := az.GrantRowsForPrincipal(ctx, caller.Principal)
-	if err != nil {
-		return rule, caller, proof, unheld, err
-	}
 	unheld = false
 	for _, project := range spec.Where.Projects {
 		scope := domain.Scope{Org: spec.Org, Project: project}
