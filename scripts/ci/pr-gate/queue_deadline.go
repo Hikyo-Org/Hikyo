@@ -13,9 +13,9 @@ import (
 const admissionSeconds = 60
 const admissionReserve = 15 * time.Second
 
-// How far a verdict's write may run past the work clock. The rest of the reserve
-// stays for the refusal if that write truly fails.
-const admissionWriteGrace = 7 * time.Second
+// How far a verdict's write may run past the work clock. The fail-safe and the refusal
+// share the rest of the reserve, and together took about six seconds on a live run.
+const admissionWriteGrace = 3 * time.Second
 
 // A failed targeted run is rerun by ci-queue-retry.yml while its run attempt is
 // below this. Each attempt is a new job with its own sixty-second budget; the

@@ -257,3 +257,29 @@ func TestVerdictWriteOutlivesTheWorkClock(t *testing.T) {
 		t.Fatalf("the pass was replaced: %+v", latest)
 	}
 }
+
+func TestVerdictWriteGraceIsBounded(t *testing.T) {
+	deadline := time.Now().Add(time.Minute)
+	live, cancel := context.WithDeadline(context.Background(), deadline.Add(-admissionReserve))
+	defer cancel()
+	expired, cancelExpired := context.WithCancel(context.Background())
+	cancelExpired()
+	q := &queueController{controller: &controller{queueDeadline: deadline}, targeted: true}
+
+	write, stop := q.verdictWriteContext(live)
+	defer stop()
+	if got, ok := write.Deadline(); !ok || !got.Equal(deadline.Add(-12*time.Second)) {
+		t.Fatalf("the write must stop twelve seconds before the limit: %v, %v", got, ok)
+	}
+	// A pass that reached publication after the clock must not get a new deadline.
+	if got, stop := q.verdictWriteContext(expired); got != expired {
+		stop()
+		t.Fatal("an expired pass gained a new write deadline")
+	}
+	// Only a budgeted run has a reserve to spend.
+	q.targeted = false
+	if got, stop := q.verdictWriteContext(live); got != live {
+		stop()
+		t.Fatal("an unbudgeted run was detached from its context")
+	}
+}
