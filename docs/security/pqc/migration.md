@@ -236,6 +236,13 @@ signing algorithms are RSA and ECDSA, controlled by the IdP (E-04). The WebAuthn
 library verifies ML-DSA keys on go1.27; authenticator support is unchecked (E-05).
 GitHub requires libsodium sealed boxes: no replacement, no second wrapper (E-06).
 
+Update 2026-11-03 (#1134, [external compatibility](external-compatibility.md#facts-that-differ-from-the-register)):
+OpenSSH 10.6 (2026-10-06) enables a composite PQ signature `ssh-mldsa44-ed25519`,
+so "no PQ signatures" above is stale. E-02 stands: the scheme is ML-DSA-44
+(excluded by DEC-02) and `x/crypto/ssh` v0.58.0 cannot produce it. RFC 9964
+registers the JOSE and COSE ML-DSA identifiers; `go-jose` v4.1.6 still lacks
+them. The decision text is the owner's and is not edited here.
+
 ### Rollout authority (I23) and PKI root (I24)
 
 #1131 says to bootstrap PQ trust "through the existing authenticated authority".
@@ -288,3 +295,15 @@ requires. Owner: Marc Went. Expiry and renewal: [profiles](profiles.md#configura
 | E-19 | Archive provenance without a signed receipt (I07, I08) | No provenance claim for such a restore; receipts are unsigned and only upgrade exports write one today | #1126 | DEC-11 |
 | E-20 | Pin-based owned clients on strict hops (`internal/cli/client.go:151`; I11) | The pin replaces chain verification, so strict gives confidentiality with no authenticity claim | #1127 | DEC-06 |
 | E-21 | Host-authority recovery of configuration (`internal/service/self_config_recovery.go:55`, repair boot in `internal/app/app.go:369`; every strict surface, starting with I09, I11) | Can select a published revision below strict without the MFA-bound plan, and a repair boot runs the previous policy; host access is already operator-equivalent | #1127 | DEC-10 |
+
+### Exception terms (#1134)
+
+The terms for E-02 to E-07 and E-13 (known peer and version, expiry,
+recheck trigger) are in
+[external compatibility](external-compatibility.md#exception-terms-proposed-none-effective).
+**None is effective**: DEC-10 needs an exact peer and version, and the peers are
+unnamed, so these rows stay accepted in principle only until the owner names
+them. The same document adds E-03 (X16, which includes I31, Kyverno and chart policy) and records that no external hop is
+refused or protected by `HIKYO_TLS_PROFILE=strict` today. Per-route strict
+selection (F-09) is HOLD, owner Marc Went; #1134 closes only after the owner
+records a disposition for it.
