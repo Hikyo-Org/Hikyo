@@ -13,7 +13,7 @@ What does take effect when the pull request carrying this note merges is the
 E-01 banner on the pairing ADR. The register says a decision takes effect only
 after its amendment and the implementing change, "which needs its own security
 approval" ([register](../../adr/post-quantum-migration.md#decision-register)).
-The owner gave that maintainer security approval on 2026-11-04 by authorizing this merge. The owner's DEC-13 choice and the E-01 fields stay open. The E-01 row is also not yet
+The owner gave that maintainer security approval on 2026-11-04 by authorizing this merge. The register records DEC-13 (a); options A to D, the DEC-13 wording and the E-01 fields stay open. The E-01 row is also not yet
 effective as an exception; see [E-01 as registered](#e-01-as-registered-and-a-proposed-row).
 
 Source read at `f5d549182` (PR #1156 head). The four named files, and

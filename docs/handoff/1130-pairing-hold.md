@@ -8,11 +8,10 @@ Security approval: given by the owner on 2026-11-04, by authorizing merge as bui
 requires an amendment to have the maintainer's security approval before it takes
 effect ([register](../adr/post-quantum-migration.md#decision-register)), so the
 pairing ADR banner becomes operative when this PR merges.
-Independent adversarial review is required; cross-provider review is SKIPPED by
+Independent adversarial review ran (see Evidence below); cross-provider review is SKIPPED by
 explicit owner instruction (2026-11-02) and is not CLEAN.
 
-Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`). Draft PR
-base: that branch.
+Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`) until that merges.
 
 ## What this delivers
 
@@ -57,7 +56,8 @@ amended; this change is an input to the owner's recheck.
 | Local tests | `go test -p 2 -count=1 ./internal/pairing/ ./internal/remotefetch/` PASS on 2026-11-03 (go1.27.3 darwin/arm64). The three `rg` commands in the note run as described |
 | External documents | Registry data (RFC 9964 level and date, draft revisions, dates, streams, expiry) fetched directly. Raw text of `draft-vos-cfrg-pqpake-03`, `draft-tschofenig-emu-pqpake-00` and `draft-irtf-cfrg-kemeleon-02` fetched from the IETF archive and read for the sections the note cites. RFC 9964 contents, RFC 9807, RFC 9449, the NIST page, the nginx page and the CFRG list were read through a page-summarizing tool: wording unverified. Library searches: none found, not "none exist". Not read: RFC 9964 after its first 100,000 characters |
 | Measurements (scratch module, not in the repository) | bcrypt cost 10 at 72.1 ms per hash on one core (Apple arm64, Go 1.27.3), and real ML-DSA-44/65/87 DPoP proofs built with `go-jose` v4.1.8: compact 5929, 8252 and 11147 bytes. Single runs, no budget implied |
-| Hosted CI, real-provider, runtime, deployment | NOTRUN. No pairing was run between two instances and no handshake group was observed |
+| Hosted CI | Documentation lanes ran. No hosted check exercises pairing |
+| Real-provider, runtime, deployment | NOTRUN. No pairing was run between two instances and no handshake group was observed |
 | Review | Two independent adversarial reviews ran, with 13 and 7 findings, all repaired. Cross-provider: SKIPPED by explicit owner instruction, not CLEAN |
 | Heavy checks | Not run: no code changed |
 
