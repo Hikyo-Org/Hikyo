@@ -235,7 +235,9 @@ permission. Workers have no workflow-dispatch permission.
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
 uses 45 seconds and reserves the remaining absolute budget for a fresh blocking
-publication. Feedback retains its four-minute job limit; maintenance
+publication. A verdict whose checks finished before the 45 seconds may spend three
+more seconds on its write, because a write cut off after GitHub applied it would make
+the run replace its own pass with a barrier. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
@@ -282,6 +284,25 @@ not the cron, settles it. The record stays pending (blocking) until the next eve
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
 never fails, if the PR, its base, the rules or the feedback attempt moves during
 attempt 3, or if setup fails on attempt 3, which publishes nothing.
+
+The pending and refusal records say only that the publisher did not finish (it
+failed or ran out of its budget) and that merging stays blocked. They name no
+cause, because every error reaches them, and the refusal says to fix an error that
+persists. A rerun is promised only while attempts remain; the records name what
+reassesses the head: a new push to this PR, a
+feedback result, a push to `main`, the schedule, or `gh workflow run gate-dev -f
+pr_number=N` (`gate-queue` for queue admission). A push to `dev` is not named: it
+reassesses nothing unless it changed the dev publisher. A trace whose feedback or
+protection read never returned has nothing to compare there, so that is not movement
+and attempt 3 publishes the refusal. A protection read that returned disabled, or a
+queue that is off in the reserve, is a different case and is judged as before. A dev
+PR that reaches the queue gate gets no budget refusal from here: its pending record is retired by the
+next pass, and retirement skips completed records. The last attempt can still leave a
+pending record when the budget ends before a trace exists, when the reserve can
+neither read nor write, or when the tuple truly moved. That record keeps the text of
+the last write that reached it, so it can be the plain fail-safe text, which names
+nothing that reassesses the head. #1194 narrows the case of a verdict whose
+write lands after the work clock.
 
 Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
 when `dev` moves: the check is not strict about the base, and GitHub itself refuses

@@ -229,7 +229,7 @@ func (s *queueReconciliation) reconcile(ctx context.Context, work func(context.C
 	// Cancellation may have interrupted mutable authority or an uncertain write.
 	// A separate short reserve is bounded by the invocation's original deadline.
 	// A looping invocation derives a longer one from its parent, never from the
-	// fenced pass context: the terminal refusal takes about nine sequential calls.
+	// fenced pass context: the terminal refusal takes about sixteen sequential steps.
 	var reserve context.Context
 	var stop context.CancelFunc
 	if rereads != nil {
