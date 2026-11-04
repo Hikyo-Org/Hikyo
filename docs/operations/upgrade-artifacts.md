@@ -69,9 +69,12 @@ PostgreSQL catalogs. Changed SQL, missing migrations or catalog drift fail.
 
 Installation configuration pins `root.json` and the recovery public key. A
 downloaded artifact cannot choose its own root. `VerifySnapshot` authenticates
-stable metadata with that key, validates active primary keys, and verifies an
-additional recovery-signed `hikyo.dev/upgrade-trust/v1` catalog. The catalog binds
-the exact current metadata digest, authorized nightly policy digests and recovery
+stable metadata and a `hikyo.dev/upgrade-trust/v1` catalog in one of two shapes.
+Legacy snapshots are signed directly by the recovery key. Otherwise the recovery
+key delegates through the recovery-signed `stable-policy.json`, and metadata and
+catalog signed by the stable release workflow are authenticated through that
+delegation. Either way it validates active primary keys. The catalog binds the
+exact current metadata digest, authorized nightly policy digests and recovery
 bridge digests. Missing, withdrawn or substituted evidence fails closed.
 
 Generate a review artifact after updating the stable metadata:

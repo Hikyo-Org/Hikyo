@@ -132,6 +132,13 @@ grep -F 'confirmation did not match; nothing changed' "$fixture_dir/refusal.err"
 
 printf 'release ceremony fixture: destructive bootstrap confirmation is fail-closed\n'
 
+# The offline candidate step re-signs current metadata with the recovery key.
+# The verifier refuses recovery-signed metadata that keeps the workflow's
+# delegated identity (snapshot.go: "legacy metadata carries delegated identity").
+# The interactive step cannot run here, so pin that its jq drops the fields.
+grep -F 'del(.source_commit, .release_tag)' "$script_dir/ceremony.sh" >/dev/null
+printf 'release ceremony fixture: recovery candidate metadata drops delegated workflow identity\n'
+
 printf 'existing public root\n' >"$fixture_dir/repo/release/trust/root.json"
 if printf '1\n1.0.0-alpha.0\n' | env \
 	PATH="$fixture_dir/bin:$PATH" \

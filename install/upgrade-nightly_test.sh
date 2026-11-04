@@ -10,6 +10,7 @@ import json
 import os
 import pathlib
 import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -221,6 +222,112 @@ class BootstrapBoundaries(unittest.TestCase):
         (self.state / 'bootstrap-trust.json').symlink_to(self.verifier)
         self.run_verify('authorize', self.root, manifest, self.state, success=False)
 
+    def test_legacy_metadata_carrying_delegated_identity_refuses(self):
+        manifest = self.authorization_fixture()
+        self.metadata['source_commit'] = 'a' * 40
+        self.sign_authorization()
+        self.run_verify('authorize', self.root, manifest, self.state, success=False)
+
+    # The committed trust is workflow-signed under the recovery-signed stable
+    # policy. The recovery pin, policy signature (OpenSSL), policy validation,
+    # delegation checks and certificate claims run for real; only Cosign is a
+    # recording stand-in unless real Cosign is on PATH (see the last test).
+    stable_commit = '2ac7bb36633d3ae0a99d7724968ca8c3cbf18334'
+
+    def stable_fixture(self, cosign_status=0):
+        trust = pathlib.Path(sys.argv[1]).parent.parent / 'release/trust'
+        for name in ('recovery-1.pub', 'metadata.json', 'metadata.sigstore.json', 'catalog.json', 'catalog.sigstore.json', 'stable-policy.json', 'stable-policy.sigstore.json', 'stable-trusted-root.json'):
+            shutil.copy(trust / name, self.root / name)
+        shutil.copy(trust / 'nightly/policy.json', self.root / 'policy.json')
+        self.state = self.root / 'state'
+        self.state.mkdir(mode=0o700)
+        self.cosign = self.root / 'cosign'
+        self.cosign.write_text('#!/bin/sh\nprintf "%s\\n" "$@" >>"$0.argv"\nprintf -- "--\\n" >>"$0.argv"\nexit ' + str(cosign_status) + '\n')
+        self.cosign.chmod(0o700)
+        return self.manifest()
+
+    def edit(self, name, change):
+        path = self.root / name
+        value = json.loads(path.read_text())
+        change(value)
+        path.write_text(json.dumps(value, indent=2) + '\n')
+
+    def refuse(self, manifest, message):
+        result = subprocess.run([sys.executable, str(self.verifier), 'authorize', str(self.root), str(manifest), str(self.state), str(self.cosign)], capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(message, result.stderr)
+
+    def test_workflow_signed_committed_trust_authorizes_with_exact_cosign_argv(self):
+        manifest = self.stable_fixture()
+        self.run_verify('authorize', self.root, manifest, self.state, self.cosign)
+        identity = 'https://github.com/Hikyo-Org/Hikyo/.github/workflows/release.yml@refs/tags/v1.0.0'
+        expected = []
+        for name in ('metadata', 'catalog'):
+            expected += ['verify-blob', '--bundle', str(self.root / (name + '.sigstore.json')), '--trusted-root', str(self.root / 'stable-trusted-root.json'),
+                '--certificate-identity', identity, '--certificate-oidc-issuer', 'https://token.actions.githubusercontent.com',
+                '--certificate-github-workflow-repository', 'Hikyo-Org/Hikyo', '--certificate-github-workflow-ref', 'refs/tags/v1.0.0',
+                '--certificate-github-workflow-sha', self.stable_commit, str(self.root / (name + '.json')), '--']
+        self.assertEqual((self.root / 'cosign.argv').read_text().splitlines(), expected)
+        floor = json.loads((self.state / 'bootstrap-trust.json').read_text())
+        self.assertEqual((floor['metadata_sequence'], floor['catalog_sequence']), (2, 4))
+
+    def test_workflow_path_refuses_failed_cosign_without_state(self):
+        manifest = self.stable_fixture(cosign_status=1)
+        self.refuse(manifest, 'stable workflow signature verification failed: metadata')
+        self.assertFalse((self.state / 'bootstrap-trust.json').exists())
+
+    def test_workflow_path_requires_cosign(self):
+        manifest = self.stable_fixture()
+        self.run_verify('authorize', self.root, manifest, self.state, success=False)
+
+    def test_workflow_path_refuses_bad_policy_signature_before_cosign(self):
+        manifest = self.stable_fixture()
+        def flip(value):
+            raw = bytearray(base64.b64decode(value['base64Signature']))
+            raw[-1] ^= 1
+            value['base64Signature'] = base64.b64encode(bytes(raw)).decode()
+        self.edit('stable-policy.sigstore.json', flip)
+        self.refuse(manifest, 'CalledProcessError')
+        self.assertFalse((self.root / 'cosign.argv').exists())
+
+    def test_workflow_path_refuses_altered_metadata_digest(self):
+        manifest = self.stable_fixture()
+        self.edit('metadata.json', lambda value: value.update(sequence=3))
+        self.refuse(manifest, 'catalog does not bind the authenticated metadata')
+
+    def test_workflow_path_refuses_policy_digest_and_inventory_mismatches(self):
+        for change, message in (
+            (lambda value: value.update(stable_policy_sha256='a' * 64), 'catalog does not bind exact stable delegation'),
+            (lambda value: value.pop('stable_policy_sha256'), 'catalog does not bind exact stable delegation'),
+            (lambda value: value.update(bridges=value['bridges'][:1]), 'stable workflow changed nightly or bridge authority'),
+            (lambda value: value.update(nightly_policies=value['nightly_policies'] + ['b' * 64]), 'stable workflow changed nightly or bridge authority'),
+        ):
+            with self.subTest(message=message):
+                self.setUp()
+                manifest = self.stable_fixture()
+                self.edit('catalog.json', change)
+                self.refuse(manifest, message)
+
+    def test_workflow_path_refuses_unknown_signer_and_substituted_root(self):
+        manifest = self.stable_fixture()
+        self.edit('metadata.json', lambda value: value['event'].update(signed_by='recovery-2'))
+        self.refuse(manifest, 'invalid trust metadata identity')
+        self.assertFalse((self.root / 'cosign.argv').exists())
+        self.setUp()
+        manifest = self.stable_fixture()
+        (self.root / 'stable-trusted-root.json').write_text('{}\n')
+        self.refuse(manifest, 'stable Sigstore root missing or substituted')
+
+    @unittest.skipUnless(shutil.which('cosign'), 'real cosign not installed; the Cosign argv above is checked with a stand-in only')
+    def test_workflow_path_with_real_cosign(self):
+        manifest = self.stable_fixture()
+        self.cosign = pathlib.Path(shutil.which('cosign'))
+        self.run_verify('authorize', self.root, manifest, self.state, self.cosign)
+        self.edit('metadata.json', lambda value: value.update(sequence=3))
+        self.state = self.root / 'state2'
+        self.state.mkdir(mode=0o700)
+        self.refuse(manifest, 'stable workflow signature verification failed: metadata')
+
     def test_recovery_refusal_prevents_first_candidate_execution(self):
         manifest = self.authorization_fixture()
         self.policy['revoked_manifests'] = [hashlib.sha256(manifest.read_bytes()).hexdigest()]
@@ -231,7 +338,7 @@ class BootstrapBoundaries(unittest.TestCase):
         candidate.chmod(0o700)
         # Exercise the production order, substituting only fixture paths and
         # already-downloaded inputs; no executable is reached on refusal.
-        authorization = 'python3 "$scratch/verify.py" authorize "$scratch" "$scratch/manifest.json" /var/lib/hikyo-upgrader'
+        authorization = 'python3 "$scratch/verify.py" authorize "$scratch" "$scratch/manifest.json" /var/lib/hikyo-upgrader "$scratch/cosign"'
         self.assertLess(script.index(authorization), script.index('"$scratch/hikyo" upgrade --help'))
         shell = 'set -eu\nscratch=' + shlex.quote(str(self.root)) + '\n' + authorization.replace('/var/lib/hikyo-upgrader', shlex.quote(str(self.state))) + '\n"$scratch/hikyo" upgrade --help\n'
         result = subprocess.run(['sh', '-c', shell], capture_output=True, text=True)

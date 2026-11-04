@@ -252,6 +252,13 @@ func TestNightlyPreflightWithWorkflowSignedStableSnapshot(t *testing.T) {
 				if err := run(t.Context(), []string{"preflight", "--trust", trust}, &output); err == nil || output.Len() != 0 {
 					t.Fatalf("unauthenticated delegation accepted: err=%v, output=%q", err, output.String())
 				}
+				// A directory must surface the read error itself. If loadTrust
+				// swallowed it, the later stable-policy refusal would hide that.
+				if change == "directory" {
+					if _, _, err := loadTrust(trust); err == nil || !strings.Contains(err.Error(), "expected bounded regular public document") {
+						t.Fatalf("unreadable delegation member error was not surfaced: %v", err)
+					}
+				}
 			})
 		}
 	}
