@@ -1,5 +1,7 @@
 # Hikyo transit: versioned cryptographic operations (ADR, decision locked 2026-09-26)
 
+> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** automatic rotation and key custody, for Sealed orgs. See its supersession register.
+
 > **Scoped amendment closeout preparation (2026-10-29):** The owner requested
 > completion of #156 under the updated independent Standards/Spec review
 > policy. The [source-bound closeout](../handoff/156-transit-amendment-closeout.md)

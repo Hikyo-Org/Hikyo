@@ -1,5 +1,7 @@
 # Hikyo MCP write capability (ADR, decision locked 2026-09-14)
 
+> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the need for a service-account token with a slot, for Sealed orgs. See its supersession register.
+
 > **Status: decision locked; operative upon the governance PR merging.** The
 > owner locked this decision on 2026-09-14 via grilling
 > ([#742](https://github.com/Hikyo-Org/Hikyo/issues/742)). On 2026-09-17 the

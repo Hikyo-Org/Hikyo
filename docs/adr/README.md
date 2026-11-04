@@ -41,6 +41,7 @@ for its ripple register.
 | flat-model ADR | [flat-model.md](./flat-model.md) |
 | github-adapter ADR | [github-adapter.md](./github-adapter.md) |
 | gitlab-adapter ADR | [gitlab-adapter.md](./gitlab-adapter.md) |
+| hosted-service ADR (proposed) | [hosted-service.md](./hosted-service.md) |
 | human-auth ADR | [human-auth.md](./human-auth.md) |
 | import-paths ADR | [import-paths.md](./import-paths.md) |
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |

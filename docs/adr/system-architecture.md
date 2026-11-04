@@ -1,5 +1,7 @@
 # Hikyo system architecture & stack (ADR, locked 2026-08-02)
 
+> **Proposed partial supersession by the [hosted-service ADR](./hosted-service.md) (2026-11-04; not operative until that ADR is locked and the matching implementation PR merges):** the 1 to 3 orgs, 25 users, 10,000 entries envelope, for hosted installations. See its supersession register.
+
 > **Declared stable-signing amendment (2026-09-08):** The owner selected online keyless stable signing with reviewed draft publication. [Stable workflow signing](stable-workflow-signing.md) supersedes the historical offline stable ceremony after implementation merge and explicit recovery-signed policy activation. The existing root remains; activation and 1.0 publication are pending.
 
 > **Declared amendment (2026-09-05, [#638](https://github.com/Hikyo-Org/Hikyo/issues/638), operative upon this governance and retirement PR merging):** Upgrade compatibility is a signed directed exact-release graph, bound into release manifests and independently enforced by the target binary. A durable applied-release ledger, pending migration state and generation fencing cover SQLite and PostgreSQL. Version ordering alone confers no compatibility. The normative contract is [signed-upgrade-compatibility.md](./signed-upgrade-compatibility.md). Native Codex high-effort review concluded SOUND in three rounds; see [the review handoff](../handoff/638-signed-upgrade-governance.md). Historical text below is preserved.
