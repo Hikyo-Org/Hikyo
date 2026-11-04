@@ -7,8 +7,10 @@ candidate, not a live status board. The governing decisions are the
 [post-quantum migration register](../adr/post-quantum-migration.md#decision-register)
 (DEC-01, 04, 05, 07, 08, 11, 12), the
 [profiles](../security/pqc/profiles.md) and the
-[encryption model banner](../adr/encryption-model.md). **This needs maintainer
-security approval before merge.** Nothing here is a claim of strict backup
+[encryption model banner](../adr/encryption-model.md). The owner authorized merge to
+`dev` on 2026-11-04 once required checks and reviews are green, and accepted
+publication in the next nightly; that is the maintainer security approval for
+this PR. Open owner decisions are listed under remaining work. Nothing here is a claim of strict backup
 restore, PQ signatures or release trust.
 
 ## Result
@@ -45,8 +47,8 @@ docs/                     operator guide section, manual-upgrade note, this hand
 | Receipts | X25519 inventories keep `backup-receipt/v1`. Hybrid inventories use `backup-receipt/v2`. `Receipt.Validate` binds the schema to the algorithm: v1 never carries a hybrid fingerprint, v2 never a classical one, a mixed inventory is refused, a hybrid inventory is capped at 32. The upgrade attestation format is unchanged |
 | Keygen | `hikyo backup keygen [--hybrid]`. Same disclosure path, same file mode, destination reserved before the key exists |
 | Which guards are real | The hybrid recipient policy is validated by `runtimeconfig.Prepare` wherever a managed bundle is prepared (adoption seed, apply, boot, the gate's candidate check) and by `Options.Validate` at every export, before any file exists. A `config.Load`-time or startup validator was tried and removed: `internal/config` is a leaf package, and after `LoadBootstrap` the owner policy lives in `ManagedInputs` with `BackupRecipients` empty, so any check on that field (including `main.go` calls) was a no-op in the server process. `TestBootstrapBlanksOwnerPolicyAndEffectivePolicyRecoversIt` pins both facts, and shows a mixed managed policy refused where the bundle is prepared. An env-only mixed or oversized hybrid list that is never adopted is not refused at startup; it is refused at export |
-| Automatic and unattended upgrades | Both export to the custody vault's own recipient, which enrollment always mints as X25519, and keep the full-data archive. With a hybrid **effective managed** `HIKYO_BACKUP_RECIPIENTS` and an X25519 vault identity they **refuse before any state is written** (`ErrHybridPolicyClassicalCustody`). The policy compared is the effective one, not `Config.BackupRecipients`. Unattended: `requireUnattendedCustodyMatchesPolicy` runs before the journal, scratch and fence, through `upgradegate.CheckSourceConfiguration` and `resolveCandidateConfiguration`, and only on runs that would export (state healthy and not in maintenance, or already backup-preparing; with no journal, a `complete` one, or a `preparing` one); the gate's own `PrepareBackup` configuration check repeats the comparison before it fences. `sudo hikyo upgrade`: the same reader (stored managed value through `runtimeconfig.Prepare`; the environment seed only for an instance with nothing stored or no upgrade ledger), before the journal, public evidence and service stop. A stale hybrid environment line does not refuse an X25519 stored policy. A start with nothing pending still boots. X25519 or empty policy behaves as before. Hybrid vault generation is not built |
-| Recovery after a refusal | A refusal on a healthy source changes no state: no journal pins the target image, so the current image starts exactly as before (packaged unattended test: no `operation.json`, the previous image starts under both the hybrid and the plain config, then the upgrade proceeds once the policy is X25519). Way out: set the managed policy back to X25519 through owner configuration, or use the manual route. **No recovery is documented or verified for a source already frozen for backup (`backup-preparing`) whose managed policy then became hybrid.** `upgradegate/gate.go:260` returns `ErrNextBinary` for Boot and Migrate on a frozen source, and `hikyo admin config recover` opens the datastore through that boot gate (`adminAuth` → `openKeyed`), so neither is a working exit (read in code, not run). Only the target image's `PrepareBackup`/`PrepareRoute` proceeds on a frozen source, and that is the path that refuses. The operator guide says so and tells operators not to flip the policy to hybrid while an upgrade is in progress. A gate-level test shows the refusal leaves a frozen source's phase, fence, intent and generation unchanged; it is not a recovery |
+| Automatic and unattended upgrades | Both export to the custody vault's own recipient, which enrollment always mints as X25519, and keep the full-data archive. With a hybrid **effective managed** `HIKYO_BACKUP_RECIPIENTS` and an X25519 vault identity they **refuse before the archive, the journal and the service stop** (`ErrHybridPolicyClassicalCustody`). `sudo hikyo upgrade` is not write-free: `openAutomaticCustody` (`automatic_upgrade.go:281`) runs before the policy check (`:291`), so a host with no `operator.age` gets a new vault and root escrow (`upgradecustody.Create`, `:361`) and a passphrase-era vault is rewrapped (`:382`) before the refusal. The unattended path checks before any such write. The policy compared is the effective one, not `Config.BackupRecipients`. Unattended: `requireUnattendedCustodyMatchesPolicy` runs before the journal, scratch and fence, through `upgradegate.CheckSourceConfiguration` and `resolveCandidateConfiguration`, and only on runs that would export (state healthy and not in maintenance, or already backup-preparing; with no journal, a `complete` one, or a `preparing` one); the gate's own `PrepareBackup` configuration check repeats the comparison before it fences. `sudo hikyo upgrade`: the same reader (stored managed value through `runtimeconfig.Prepare`; the environment seed only for an instance with nothing stored or no upgrade ledger), before the journal, public evidence and service stop. A stale hybrid environment line does not refuse an X25519 stored policy. A start with nothing pending still boots. X25519 or empty policy behaves as before. Hybrid vault generation is not built |
+| Recovery after a refusal | A refusal on a healthy source writes no journal, archive or fence (custody files may be created or rewrapped on the `sudo hikyo upgrade` route, above): no journal pins the target image, so the current image starts exactly as before (packaged unattended test: no `operation.json`, the previous image starts under both the hybrid and the plain config, then the upgrade proceeds once the policy is X25519). Way out: set the managed policy back to X25519 through owner configuration, or use the manual route. **No recovery is documented or verified for a source already frozen for backup (`backup-preparing`) whose managed policy then became hybrid.** `upgradegate/gate.go:260` returns `ErrNextBinary` for Boot and Migrate on a frozen source, and `hikyo admin config recover` opens the datastore through that boot gate (`adminAuth` → `openKeyed`), so neither is a working exit (read in code, not run). Only the target image's `PrepareBackup`/`PrepareRoute` proceeds on a frozen source, and that is the path that refuses. The operator guide says so and tells operators not to flip the policy to hybrid while an upgrade is in progress. A gate-level test shows the refusal leaves a frozen source's phase, fence, intent and generation unchanged; it is not a recovery |
 | Custody | `RecipientOf` accepts either identity, so a vault record holding a hybrid identity opens, rewraps, exports to its recipient and recovers. The vault still generates X25519 (see remaining work) |
 
 ### Measured bounds
@@ -61,10 +63,13 @@ docs/                     operator guide section, manual-upgrade note, this hand
 
 ## Evidence
 
-Candidate: see the PR head. Base: `26f112bde` (stacked ADR amendment branch).
+Candidate: see the PR head. The stacked base is the ADR amendment branch.
 
-Validated code revision: `1cbb662c2` (later commits on the branch are
-documentation only). Every Go run used `go test -p 2 -parallel 2` through the
+The Go runs below were taken at `1cbb662c2`. Later commits `4c406c6e4`,
+`afa77ac03` and `4bad16b59` changed 18, 8 and 4 Go files (the repair round
+below was validated at the PR head of that round). The merge commits after
+`4bad16b59` bring in the base branches. A rerun at the merge head is hosted CI's
+job; this file names no other exact revision. Every Go run used `go test -p 2 -parallel 2` through the
 shared job queue. PostgreSQL was a task-owned PostgreSQL 18.6 cluster on a
 private port with `fsync=on` (Hikyo refuses to boot on `fsync=off`; an earlier
 run used `fsync=off` and failed every PostgreSQL leg at boot, which was a fixture
@@ -118,7 +123,7 @@ Acceptance criteria, in the issue's order:
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| 1 | Hybrid generation, validation, canonicalization, lookup, export, restore, protected input | PASS for CLI, service, receipt and drill paths; PARTIAL for the vault (reads, does not generate) |
+| 1 | Hybrid generation, validation, canonicalization, lookup, export, restore, protected input | PASS for the CLI **given explicit `--recipient`**, and for service, receipt and drill paths. On an adopted install the CLI does not read the stored managed policy (`LoadBootstrap` blanks it into `ManagedInputs`), so a no-flag `hikyo backup export` fails with "export needs at least one age recipient"; the stored policy is set through managed configuration. The CLI, diagnostics and drill tests (`backup_hybrid_test.go`, `backup_diagnostics_test.go`, `backup_drill_e2e_test.go`) set `BackupRecipients` by hand, so they do not exercise an adopted install. PARTIAL for the vault (reads, does not generate) |
 | 2 | Algorithm-aware versioned fingerprints and receipt schemas; consumers updated | PASS for fingerprints, receipt v2, the gate's legacy and ledger verifiers, `CheckEvidenceArtifacts`, the production evidence loader, CLI `upgrade-export` and `upgrade-drill` (all now exercised with a v2 receipt); PARTIAL for documented offline tooling (none exists in the tree) and for the packaged nightly release path, which a hybrid policy refuses by design |
 | 3 | PQ-profile backups contain only hybrid recipients; reject classical, mixed, duplicate, malformed | PARTIAL: mixed, duplicate, malformed and unsupported are refused and labels are preserved; there is no selectable profile, so a classical-only set is still accepted by design (DEC-05) |
 | 4 | Zero-recipient, exclusivity, scrypt bound, header and stanza counts, final-chunk authentication, safe file creation | PASS (existing tests unchanged and passing, plus new ones) |
@@ -127,7 +132,7 @@ Acceptance criteria, in the issue's order:
 | 7 | Round trip, wrong key, corruption, truncation, unknown algorithm or schema, mixed, bounds, interrupted export, restart, custody mismatch | PASS except restart: interrupted publication and retry are tested, a process restart is not |
 | 8 | Complete backup/restore and upgrade-custody drills on SQLite and PostgreSQL | PASS for the ordinary drill, the manual-route upgrade drill and the gate with a hybrid identity on both engines. PARTIAL for automatic upgrade custody: it stays X25519 and a hybrid policy refuses it, so no hybrid vault drill exists |
 | 9 | Document wrapper scope, passphrase entropy, rewrap limits | PASS |
-| 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: procedure and fresh receipts are covered; the rollback is documented, not demonstrated end to end |
+| 10 | Non-destructive migration, fresh hybrid receipts, rollback demonstration, docs, exact-revision evidence | PARTIAL: the procedure is documented. Receipts are written only for upgrade exports (`internal/service/backup.go:249`); `hikyo backup export` and scheduled exports write none (E-19, below). The rollback is documented, not demonstrated end to end |
 | | Strict backup restore provenance | HOLD (E-19) |
 
 ## Compatibility
@@ -171,6 +176,9 @@ Acceptance criteria, in the issue's order:
 | --- | --- | --- |
 | Strict profile: refuse classical recipients where a PQ profile is selected | NOT BUILT | No profile selector exists in this branch. Hybrid-only is reached by configuring hybrid recipients, and a mix is refused. A selected-profile switch belongs with the profile work |
 | Strict backup restore provenance (signed record, receipt signer, pin, quarantine, hold release) | HOLD (E-19) | Not designed here. No integrity claim for an archive restored without a signed receipt |
+| Receipt for every export path (migration policy and qualification row #1126) | NOT BUILT (E-19) | Only upgrade exports write a receipt. `hikyo backup export` and scheduled exports write none |
+| `restore run` and `restore drill` accept a receipt | NOT BUILT (E-19) | Neither command takes a receipt input; restore trust is the identity alone |
+| Migration step 4 for adopted installs | DOCUMENTED | Policy changes through managed configuration; the CLI needs `--recipient`; the effective policy is shown by drilling a scheduled archive with the hybrid identity |
 | PQ signatures on receipts and attestation | HOLD (#1132) | P-256 stays |
 | Hybrid identity generation inside the custody vault | NOT BUILT | `create` and enrollment have no selection input. A vault record holding a hybrid identity works; nothing creates one |
 | Vault holds one `backup_identity` | NOT BUILT | Keeping an old identity beside a new one needs its own escrow or a vault format change |
@@ -188,8 +196,17 @@ Acceptance criteria, in the issue's order:
 | Independent second age implementation | NOTRUN | Only the upstream CLI was run |
 | Locked ADR text naming `backup-receipt/v1` | NOT EDITED | `signed-upgrade-compatibility.md` names v1 in its body; its 2026-11-02 banner promises an algorithm-bearing namespace, not a schema bump. Hybrid receipts use `backup-receipt/v2` (the issue asks for versioned schemas). Confirm through the amendment route |
 
-## Next authorized step
+### Changes to upgrade behavior to review
 
-Maintainer security review of this draft, then the owner decides the profile
-selector and the vault generation path. Merge, release and deployment are not
-authorized by this PR.
+* The upgrade pre-check reads and decrypts the stored managed configuration
+  under the migration lock before any journal exists. On SQLite it briefly takes
+  the exclusive lock.
+* Recipient error text changed: errors name the position, not the value, and the
+  X25519 recipient error no longer echoes the value.
+
+## Next step
+
+The owner authorized merge to `dev` on 2026-11-04 when required checks and
+reviews are green, with publication in the next nightly accepted. Still open and
+not decided: the #1126 profile selector and the vault generation path, and the
+E-19 provenance work. Release and deployment are not authorized by this PR.
