@@ -199,10 +199,15 @@ func TestRecipientListByteBoundNamesItself(t *testing.T) {
 func TestMalformedRecipientsAndIdentitiesRefused(t *testing.T) {
 	identity, recipient := hybridIdentity(t)
 	_, classical := mustIdentity(t)
+	// A key ends in any bech32 character, so the replacement must differ from it.
+	lastChar := "q"
+	if strings.HasSuffix(recipient, lastChar) {
+		lastChar = "p"
+	}
 	bad := map[string]string{
 		"truncated":        recipient[:len(recipient)-1],
-		"bad checksum":     recipient[:len(recipient)-1] + "q",
-		"mixed case":       recipient[:20] + strings.ToUpper(recipient[20:30]) + recipient[30:],
+		"bad checksum":     recipient[:len(recipient)-1] + lastChar,
+		"mixed case":       recipient[:20] + strings.ToUpper(recipient[20:]),
 		"wrong hrp":        "age1pq2" + recipient[7:],
 		"identity as key":  identity,
 		"classical prefix": "age1pq1" + classical[4:],
