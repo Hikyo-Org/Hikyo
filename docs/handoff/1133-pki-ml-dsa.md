@@ -11,9 +11,9 @@ open and can still change; the open decisions listed under "Next authorized step
 are undecided. **One behavior reaches production without the opt-in:** the
 chain-path checks (`VerifyCA` for import and install; `SignIntermediate` in
 `internal/pki/sign.go` for create-intermediate with `--parent`) do not consult the gate, so an operator who never
-enabled ML-DSA now gets a refusal ("the path mixes classical and post-quantum keys
-or signatures") when importing, rotating or installing a classical issuer under an
-ML-DSA root; before this change that was accepted. A classical chain under a
+enabled ML-DSA now gets a refusal when importing, rotating or installing a classical
+issuer under an ML-DSA root (`VerifyCA` says "the path mixes classical and post-quantum
+keys or signatures", and `SignIntermediate` has its own message); before this change that was accepted. A classical chain under a
 classical root is unaffected. Owner and maintainer are one person, so independent
 adversarial review compensates; cross-provider review is SKIPPED by explicit
 owner instruction (2026-11-02) and is not CLEAN. Operator-facing text:
