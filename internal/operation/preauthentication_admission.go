@@ -1,6 +1,7 @@
 package operation
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -54,13 +55,26 @@ func WithLiveSessions(ctx context.Context, sessions LiveSessions) context.Contex
 }
 
 // AdmitSessionPresentation bounds a session artifact's reads. A session known live
-// spends its request budget; anything else spends the source allowance. Either is
-// spent before the first read. A session that died while known keeps spending its
-// budget until one resolution finds it dead and forgets it.
+// spends its request budget; anything else spends the source allowance, unless
+// this request already paid for that verifier. Either is spent before the first
+// read. A session that died while known keeps spending its budget until one
+// resolution finds it dead and forgets it.
 func AdmitSessionPresentation(ctx context.Context, verifier []byte) error {
+	r, _ := ctx.Value(requestAdmissionKey{}).(*requestAdmission)
 	if sessions, _ := ctx.Value(liveSessionsKey{}).(LiveSessions); sessions != nil {
 		if sessionID, known := sessions.KnownLiveSession(verifier); known {
-			return AdmitRequest(ctx, sessionID)
+			err := AdmitRequest(ctx, sessionID)
+			if err == nil && r != nil {
+				r.budgeted.CompareAndSwap(nil, &verifier)
+			}
+			return err
+		}
+	}
+	// The memory can lose a session during a request. That presentation has paid,
+	// and a later refusal could arrive after the request's effects are committed.
+	if r != nil {
+		if paid := r.budgeted.Load(); paid != nil && bytes.Equal(*paid, verifier) {
+			return nil
 		}
 	}
 	return AdmitPreauthentication(ctx)
