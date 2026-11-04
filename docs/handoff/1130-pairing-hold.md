@@ -1,9 +1,9 @@
 # #1130: pairing post-quantum feasibility HOLD, handoff
 
-Status: **documents only. HOLD. Not merge-ready as a feature, not operative.**
+Status: **documents only. HOLD. No PQ pairing exists.**
 Refs [#1130](https://github.com/Hikyo-Org/Hikyo/issues/1130); the PR does not close
-it and no PR may, because the ticket says a feasibility note alone does not
-establish PQ pairing. No Go code, schema, configuration or behavior changed.
+it, because the ticket says a feasibility note alone does not establish PQ
+pairing. No Go code, schema, configuration or behavior changed.
 Security approval: given by the owner on 2026-11-04, by authorizing merge as built with the choices below still open. No cryptographic change is made, but the register
 requires an amendment to have the maintainer's security approval before it takes
 effect ([register](../adr/post-quantum-migration.md#decision-register)), so the
@@ -85,7 +85,7 @@ amended; this change is an input to the owner's recheck.
 As listed in the feasibility note: a PQ PAKE adopted by CFRG or published as an
 RFC, or an independent analysis of OQUAKE not already cited by
 `draft-vos-cfrg-pqpake-03`; a maintained Go implementation
-with vectors; a `go-jose` or Go minor release touching ML-DSA or DPoP; an IETF
+with vectors; a `go-jose` release touching ML-DSA or DPoP, or a Go minor release; an IETF
 draft or registry entry for ML-DSA in DPoP; owner decisions on the DPoP bound, the
 context rule and the DEC-03 form; header qualification; NIST action on PAKEs; a
 practical attack on SRP-2048 or ML-DSA. A trigger starts a recheck, not a build.
@@ -129,7 +129,6 @@ Actions only the owner can take, none done here:
    the DPoP blocker, but ML-DSA-65 DPoP is 8252 bytes against the 8192 cap and the
    2048-byte JWK and header bounds, and enrollment would stay classical. #1135 is
    blocked by #1130 ..." and the rest of the existing sentence.
-5. Give the maintainer security approval the banner needs, or decline it.
 
 ## Beyond the ticket, and for the reviewer
 
