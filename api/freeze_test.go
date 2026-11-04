@@ -3,6 +3,7 @@ package api_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -158,6 +159,23 @@ func TestFreezeAllowsOnlyTheMLDSA65Amendment(t *testing.T) {
 	if n := len(api.MLDSA65EnumGrowth); n != 20 {
 		t.Fatalf("the exception lists %d findings, the amendment names 20", n)
 	}
+
+	// Each entry covers exactly one finding, so dropping it surfaces that
+	// finding alone. A match that ignored the path, operation or id would let
+	// a sibling entry absorb it.
+	all := api.MLDSA65EnumGrowth
+	t.Cleanup(func() { api.MLDSA65EnumGrowth = all })
+	for i, want := range all {
+		api.MLDSA65EnumGrowth = slices.Delete(slices.Clone(all), i, i+1)
+		got, err := api.CheckFreeze([]byte(base), []byte(revised))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].ID != want.ID || got[0].Operation != want.Operation || got[0].Path != want.Path {
+			t.Errorf("without %+v the guard reported:\n%s", want, render(got))
+		}
+	}
+	api.MLDSA65EnumGrowth = all
 
 	// Each near miss is the amendment plus one more enum edit, and must fail.
 	transit := "enum: [xchacha20-poly1305, ed25519, hmac-sha256, mldsa65]"
