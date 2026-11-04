@@ -1,24 +1,21 @@
-# Hikyo desktop app (ADR, proposed 2026-11-04)
+# Hikyo desktop app ([#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215), locked 2026-11-04)
 
-Status: **proposed, not operative.** Nothing here binds code or overrides a locked
-ADR. It becomes operative only when all three of these are recorded in this section:
+Status: **owner-locked on 2026-11-04; operative when [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
+Each amendment banner has its own [trigger](#amendments). Nothing here is implemented,
+and locking this ADR authorizes no implementation, merge, release, `Hikyo-Org/hikyo-app`
+repository or signing identity.
 
-1. The owner accepts the decisions below.
-2. The adversarial cross-model review that [oss-mechanics.md](./oss-mechanics.md)
-   § Governance requires has completed against a named commit, or the owner has recorded
-   a waiver for this decision. Neither has happened. Past waivers were per-decision and
-   owner-stated.
-3. The owning tickets are reopened ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22),
-   [#25](https://github.com/Hikyo-Org/Hikyo/issues/25),
-   [#16](https://github.com/Hikyo-Org/Hikyo/issues/16),
-   [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) and
-   [#33](https://github.com/Hikyo-Org/Hikyo/issues/33)) and a tracking ticket exists.
-   #25 is open for other reasons. The others are closed, and no tracking ticket exists.
-
-No locked ADR changes until then. Once this ADR is operative, the
-[amendment text](#proposed-amendment-text) below becomes a banner in each ADR it names.
-
-Review record: see [Review record](#review-record).
+1. **Owner acceptance.** Offered the three [decisions below](#owner-decisions) and told
+   that choosing the waiver and accepting the design would lead to the banners and reopened
+   tickets, the owner replied "a", "as recommended" and "yes" on 2026-11-04. The reply did
+   not separately name D1 to D15. Their acceptance is inferred from it, since it raised no
+   objection.
+2. **Review.** Cross-provider review is SKIPPED by explicit owner instruction (2026-11-04)
+   and is not CLEAN. The waiver covers this decision only and is not a general policy
+   change. See the [review record](#review-record).
+3. **Tickets.** [#22](https://github.com/Hikyo-Org/Hikyo/issues/22), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16), [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) and [#33](https://github.com/Hikyo-Org/Hikyo/issues/33) are reopened for
+   this amendment only, [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was already open, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the
+   work. Each reopened ticket closes again when its banner is operative.
 
 Evidence: the [decoupling report](../reports/server-webapp-decoupling-2026-11-04.md)
 and the [Wails shell spike](../reports/wails-shell-spike-2026-11-04.md). The
@@ -199,7 +196,7 @@ browser session. The reasons differ:
 - The instance advertises a new `protocol_capabilities` token, `desktop-app/1`, meaning
   its SPA implements the shell handoff protocol. An instance built without the SPA doesn't
   advertise it. The enum is open, so this isn't a freeze problem, but the locked meta
-  clause limits this list to authentication flows. The amendment text below supersedes
+  clause limits this list to authentication flows. The api-cli-surface banner supersedes
   that clause for this token. [#683](https://github.com/Hikyo-Org/Hikyo/issues/683) is a
   loose precedent.
 - The shell reads it from `/api/v1/meta` before signing in. On an instance without it,
@@ -296,38 +293,18 @@ This has not been built or run.
 - The app connects only to configured instances. It sends no crash reports and no
   telemetry. Logs never carry tokens or response bodies.
 
-## Proposed amendment text
+## Amendments
 
-Not operative. Once this ADR is operative, each paragraph becomes a banner in the ADR it
-names.
+Each amendment is a banner at the top of the ADR it names, and takes effect only when the
+pull request that makes it true merges. No banner claims behaviour that doesn't exist yet.
 
-- **[system-architecture.md](./system-architecture.md):** `hikyo` stays one artifact with
-  one version string. A desktop app is a separately versioned client beside it, with its
-  source in a nested Go module so that Wails and cgo never enter the root `go.mod`, and
-  with no background process, so "no resident client-side agent" still holds.
-- **[api-cli-surface.md](./api-cli-surface.md):** `protocol_capabilities` gains
-  `desktop-app/1`, meaning the instance's SPA implements the shell handoff protocol. This
-  supersedes the meta clause's limit to authentication flows for this token only. The app
-  holds an ordinary `cli` session, so no closed enum grows, no endpoint is added and no
-  operation's authorization changes. A GUI meets the #966 first-contact clause through the
-  native confirmation in D5 in place of a controlling terminal. "The SPA ships in the same
-  artifact" stays true, because the app loads each instance's own SPA.
-- **[human-auth.md](./human-auth.md):** a `cli` session may also be held by a desktop app,
-  in the OS keychain instead of the CLI's state file. It keeps the `cli` class, clocks and
-  revocation. The two are told apart only by the session's recorded user-agent, which the
-  client asserts.
-- **[threat-model.md](./threat-model.md):** a new client class: a native shell holding a
-  durable session per connection in the OS keychain on a user's laptop and rendering
-  remote code from each instance. By design, script in a renderer can't read the token or
-  reach another connection. A compromised instance receives the token with each request
-  and can use it until it expires or is revoked, including after the window closes. The
-  app adds no update check, crash report or telemetry, and connects only to configured
-  instances.
-- **[oss-mechanics.md](./oss-mechanics.md):** "one tag = one ceremony" stays true for
-  `hikyo`. A desktop app has a second release lane in a separate repository,
-  `Hikyo-Org/hikyo-app`, outside the signed `hikyo` manifest. That repository holds
-  binaries, build logic, signing and its own version authority, so it is a second declared
-  exception beside the metadata-only ecosystem repositories.
+| ADR | Operative when |
+|---|---|
+| [api-cli-surface.md](./api-cli-surface.md) | Plan PR 1 merges (capability). Its first-contact clause waits for plan PR 3 |
+| [system-architecture.md](./system-architecture.md) | Plan PR 3 merges (shell) |
+| [human-auth.md](./human-auth.md) | Plan PR 3 merges |
+| [threat-model.md](./threat-model.md) | Plan PR 3 merges |
+| [oss-mechanics.md](./oss-mechanics.md) | Plan PR 5 merges (release lane), together with its "sole exception" sentence and policy check |
 
 **Deliberately not amended:**
 
@@ -424,23 +401,26 @@ None of these has been observed yet. Each must be observed by hand on a signed b
     `developer-credential` and a local login as another account.
 15. A sign-in returning a different principal asks for confirmation.
 
-## Open owner decisions
+## Owner decisions
 
-1. **Review route** for these amendments (see Status).
-2. **D3:** keep the `cli` session class. The alternative is a freeze exception for an
-   `app` class, which has a real benefit only if a server-enforced difference is wanted.
-3. **D7:** which browser fallbacks are acceptable in v1, especially `mint` and `access`.
+Settled on 2026-11-04:
+
+1. **Review route:** a per-decision waiver of cross-provider review, accepting the
+   same-provider rounds below.
+2. **D3:** keep the `cli` session class. No freeze exception for an `app` class.
+3. **D7:** the browser fallbacks are acceptable in v1, including `mint` and `access`.
 
 ## Review record
 
-- **Cross-model review:** not run. Not waived.
+- **Cross-model review:** not run. SKIPPED by explicit owner instruction (2026-11-04), for
+  this decision only, and not CLEAN.
 - **Independent same-provider review:** three rounds by separate fresh Claude Opus 5.5
   agents, each on an earlier draft, reading source without running anything. The first
   reversed the session class decision in D3 and reshaped D4, D9 and D13. The second found
   no blocker and three high findings in D4 and D9. The third was limited to those repairs
-  and found one more high finding, in D4's rotation check. All are repaired in this text,
-  and the repairs after the third round have not had a further review.
-- **Owner statements so far (2026-11-04):** asked for a Wails spike of the recommended
-  design; said the app should open the native browser for passkeys, like the CLI; asked
-  whether Hikyo should be a monorepo with separate build paths; approved writing ADR
-  amendments and an app-mode plan. Acceptance of the decisions as written is pending.
+  and found one more high finding, in D4's rotation check. All are repaired in this text.
+- **Final same-provider review:** REVIEW_PENDING
+- **Owner statements (2026-11-04):** asked for a Wails spike of the recommended design; said
+  the app should open the native browser for passkeys, like the CLI; asked whether Hikyo
+  should be a monorepo with separate build paths; approved writing ADR amendments and an
+  app-mode plan; settled the decisions above.

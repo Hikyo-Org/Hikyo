@@ -1,6 +1,6 @@
 # Desktop app plan
 
-Implements the proposed [desktop-app ADR](../../adr/desktop-app.md). Evidence is in the
+Implements the [desktop-app ADR](../../adr/desktop-app.md). Evidence is in the
 [decoupling report](../../reports/server-webapp-decoupling-2026-11-04.md) and the
 [spike report](../../reports/wails-shell-spike-2026-11-04.md). Sizes are rough and
 low-confidence. The spike code is
@@ -9,13 +9,17 @@ and never merges.
 
 ## Gate 0: before any implementation
 
-1. The owner accepts the ADR's decisions and settles its
-   [open decisions](../../adr/desktop-app.md#open-owner-decisions).
-2. The cross-model review has completed against a named commit, or the owner has recorded
-   a waiver for this decision.
-3. The owning tickets are reopened, and a tracking ticket exists.
-4. The [amendment text](../../adr/desktop-app.md#proposed-amendment-text) is applied as
-   banners.
+Done on 2026-11-04, except where noted. The ADR's status section has the record.
+
+1. The owner settled the open decisions.
+2. The owner waived cross-provider review for this decision. It is SKIPPED, not CLEAN.
+3. The owning tickets are reopened, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the work.
+4. The amendment text is applied as banners, each with [its own
+   trigger](../../adr/desktop-app.md#amendments).
+
+Still needed: [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges, and the owner
+authorizes each implementation PR. When a PR makes a banner operative, close that banner's
+reopened ticket.
 
 ## PR 1: server and SPA app mode
 
