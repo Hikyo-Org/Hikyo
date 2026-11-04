@@ -172,17 +172,20 @@ non-production receiver using the migration guide.
 
 ## Final checks
 
-Repair candidate: PR head `bde65e00c` (base `f5d549182`, PR #1156). Read at 2026-11-03T23:30Z.
+Candidate: PR head `d97dd9500` (code and documentation; base `f5d549182`, PR #1156; the moved base was
+not merged). Hosted results read at 2026-11-04T01:03Z. The handoff and PR body were then updated in
+a documentation-only commit whose own hosted checks were not yet available when this was written.
 
 | Check | Result |
 | --- | --- |
-| Isolation `TestAdapterSealedWebhookProtocolTwoEndToEnd`, SQLite and PostgreSQL 18, through `agent-heavy`, on the final code | pass (31.7 s) |
-| `go test` of `internal/boundary`, `internal/crypto/sealedhook`, `internal/adapter/sealedwebhook`, `internal/sealedreceiver`, `internal/config`, `cmd/hikyo-receiver-example` | pass |
-| `go test -run SealedWebhook ./internal/app ./internal/config` | pass. The whole `internal/app` package hit the default 10 minute test timeout locally on an unrelated heavy test (`TestUnattendedPackagedEnrollmentUpgradeAndIntermediateCredential`, 3m42s under host load); it was not rerun locally. Hosted `feedback (go)` passed on the head |
-| `scripts/ci/fast-feedback.sh` against base `f5d549182`, queue, pinned Node 26.12.1 | pass (Go format, package tests, docs) |
-| `scripts/ci/check-commit-signatures.sh`, `scripts/ci/check-dco.sh` against the PR base | pass |
-| `internal/lint` locally | not run (by instruction). Hosted `repository invariants (boundary, lint, CI policy)` on `bde65e00c`: **pass** (7m3s, run 41736052591) |
-| Hosted `feedback (go/tooling/frontend)`, `ops-floor (amd64, arm64)` on `bde65e00c` | pass |
-| Hosted `ci-queue-required` | fail: "Only the protected default branch can enter this merge queue." (stacked PR on a non-default base; not a code finding) |
+| `go test` of `internal/boundary`, `internal/crypto/sealedhook`, `internal/adapter/sealedwebhook`, `internal/sealedreceiver`, `internal/config`, `cmd/hikyo-receiver-example`, and `go test -run SealedWebhook ./internal/app`, through `agent-heavy`, at `d97dd9500` | pass |
+| `scripts/ci/fast-feedback.sh` with `FAST_FEEDBACK_BASE=f5d549182`, pinned Node 26.12.1, through `agent-heavy`, at `d97dd9500` | pass |
+| Mutations that now fail: ciphertext decode without `Strict()`, signature decode without `Strict()`, receiver without the v1 ack-signer check, state persist without the file sync, without the directory sync, the not_after check, ML-DSA verification on envelopes and on acks | each fails at least one test |
+| `scripts/ci/check-commit-signatures.sh` and `scripts/ci/check-dco.sh`, `f5d549182..HEAD` | pass (10 commits) |
+| Isolation `TestAdapterSealedWebhookProtocolTwoEndToEnd` (SQLite, PostgreSQL 18) | last run at `bde65e00c`: pass. Not rerun after this round: no code it exercises changed (`internal/sealedreceiver/receiver.go`, the sender and the crypto package are unchanged since) except the stricter parsing, which the focused tests cover |
+| Whole `internal/app` package locally | not claimed: it hit the default 10 minute timeout on an unrelated heavy test under host load at `bde65e00c`. Hosted `feedback (go)` passes |
+| `internal/lint` locally | not run (by instruction). Hosted `repository invariants (boundary, lint, CI policy)` at `d97dd9500`: **pass** (6m46s, run 41749212142) |
+| Hosted `feedback (go/tooling/frontend)`, `ops-floor (amd64, arm64)` at `d97dd9500` | pass |
+| Hosted `ci-queue-required` | fail: "Only the protected default branch can enter this merge queue." (stacked PR on a non-default base) |
 | `scripts/ci/check-doc-status.mjs` | NOTRUN: the docs site dependencies are not installed on this host (fast-feedback's docs check passed) |
 | amd64 benchmark, real receiver, live push, deployment | NOTRUN |
