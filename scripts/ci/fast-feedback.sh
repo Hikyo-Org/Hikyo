@@ -154,6 +154,10 @@ if [ "$working_tree" = true ]; then
 		[ "$status" -le 1 ] || fail "cannot check untracked file $path"
 	done <"$work/untracked"
 else
+	# In a blobless checkout --check fetches each old blob alone, about 0.6 s a file.
+	# --numstat fetches them in one batch first. A failed fetch is reported by the check.
+	git diff --no-renames --numstat "$comparison" "$head" >/dev/null 2>&1 ||
+		git diff --no-renames --numstat "$comparison" "$head" >/dev/null 2>&1 || :
 	run git diff --check "$comparison" "$head"
 fi
 

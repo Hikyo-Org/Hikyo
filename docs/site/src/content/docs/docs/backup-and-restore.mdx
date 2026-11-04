@@ -84,14 +84,35 @@ X25519 identity: archives already written for it stay readable only with it.
 2. `hikyo backup keygen --hybrid --output-file ...` on the custody host. Store it
    apart from the root key and apart from the old X25519 identity.
 3. Keep the old identity. Existing archives are not rewritten and need it.
-4. Set `HIKYO_BACKUP_RECIPIENTS` to the hybrid recipient (alone), then run
-   `hikyo backup export` for a fresh recovery point.
-5. Prove it: `hikyo restore drill --from ARCHIVE --identity-file ...` with the
-   hybrid identity, against an empty scratch target. For an upgrade, run
-   `upgrade-export --recipient <hybrid recipient>` and the operator
+4. Change the policy, then take a fresh recovery point. On an adopted
+   (managed) install the stored policy decides scheduled exports and
+   `sudo hikyo upgrade`; the environment seeds it only before adoption and
+   cannot replace an adopted value. Edit the backup recipients in the managed
+   configuration to the hybrid recipient (alone), then Publish and Apply (see
+   [managed configuration](/docs/managed-configuration/)). On an install that
+   was never adopted, set `HIKYO_BACKUP_RECIPIENTS`. The `hikyo backup export`
+   CLI reads neither the stored policy nor those environment values on any
+   install: pass both, with
+   `hikyo backup export --recipient <hybrid recipient> --out "$HIKYO_BACKUP_DIR"`.
+   Without them it fails with "export needs at least one age recipient" or
+   "no destination: pass --out DIR or set HIKYO_BACKUP_DIR".
+5. Prove the effective policy changed and the archive restores. A CLI export
+   with `--recipient` proves only that flag, not the policy, and it delays the
+   next scheduled export by a full interval (24 hours by default), which cannot
+   be started on demand. After Apply, wait for a scheduled export. Archive names
+   do not show the trigger, so identify it by its `backup.exported` audit event
+   with `trigger` set to `scheduled`, and drill that archive:
+   `hikyo restore drill --from ARCHIVE --identity-file ...` with the hybrid
+   identity, against an empty scratch target. An archive still written to the
+   X25519 recipient fails the drill, which shows the stored policy has not
+   changed. For an
+   upgrade, run `upgrade-export --recipient <hybrid recipient>` and the operator
    `upgrade-drill` with the hybrid identity; the receipt is `backup-receipt/v2`
-   and its fingerprint begins `age-hybrid-mlkem768x25519-sha256:`.
-6. To roll back, set the recipient back to the X25519 recipient. Hybrid archives
+   and its fingerprint begins `age-hybrid-mlkem768x25519-sha256:`. Neither
+   `backup export` nor a scheduled export writes a receipt; only upgrade exports
+   do.
+6. To roll back, set the recipient back to the X25519 recipient (managed policy
+   on an adopted install). Hybrid archives
    already written remain readable with the hybrid identity, so keep it.
 
 The `age-x25519-sha256:` fingerprint namespace and `backup-receipt/v1` keep their
@@ -116,8 +137,12 @@ change validate unchanged.
   `HIKYO_BACKUP_RECIPIENTS` (the effective managed value, not a stale
   environment line) they therefore **refuse before any backup** and before the
   service is stopped, rather than leave a classical archive of data you asked to
-  protect. The refusal happens before anything is written: the host keeps its
-  current image and source and starts normally. To proceed, set the managed
+  protect. The refusal happens before the archive, the upgrade journal and the
+  service stop, so the host keeps its current image and source and starts
+  normally. It is not free of writes: `sudo hikyo upgrade` opens upgrade custody
+  first, so a host with no `operator.age` gets a new custody vault and root
+  escrow, and a passphrase-era vault is rewrapped to root-key wrapping, before
+  the refusal. Both are the same state a refusal-free first run would create. To proceed, set the managed
   policy back to X25519 recipients through the normal owner configuration, or
   take the manual upgrade route with a hybrid recipient and a separately held
   hybrid identity (see the manual upgrade runbook). An install with X25519
@@ -287,18 +312,19 @@ compliance; do not suppress its health signal.
 ## 3. Run a manual export
 
 ```bash
-hikyo backup export
+hikyo backup export --recipient <recipient> --out "$HIKYO_BACKUP_DIR"
 ```
 
-The command refuses to write an unencrypted archive. You may override the
-destination with `--out` and repeat `--recipient` for a complete replacement
-recipient set.
+The command refuses to write an unencrypted archive. It reads neither the
+recipients nor the destination from the environment or the stored policy, so
+both are required, except that `--passphrase-file` can stand in for `--recipient`.
+Repeat `--recipient` for a complete replacement recipient set.
 
 An export with `--out OTHER_DIR` can replace the recorded recovery point while
 placing the archive outside `HIKYO_BACKUP_DIR`. Scheduled pruning then reports
 `recovery_uncertain` and preserves candidates because it cannot verify that
-recovery point in the managed directory. Run `hikyo backup export` without
-`--out` to record a fresh recovery point there, then rerun pruning. Independently
+recovery point in the managed directory. Run `hikyo backup export` with `--recipient` and
+with `--out` set to `HIKYO_BACKUP_DIR` to record a fresh recovery point there, then rerun pruning. Independently
 managed copies outside that directory need their own retention controls.
 
 Verify the reported path, byte count, engine, and schema version. Move a copy to

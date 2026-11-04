@@ -235,17 +235,36 @@ permission. Workers have no workflow-dispatch permission.
 Targeted publisher execution is limited to one minute from the authenticated
 current job start, including checkout, setup and compilation. Controller work
 uses 45 seconds and reserves the remaining absolute budget for a fresh blocking
-publication. Feedback retains its four-minute job limit; maintenance
+publication. A verdict whose checks finished before the 45 seconds may spend three
+more seconds on its write, because a write cut off after GitHub applied it would make
+the run replace its own pass with a barrier. Feedback retains its four-minute job limit; maintenance
 and full-group jobs retain ten minutes. These active execution limits do not
 guarantee push-to-eligibility wall time when GitHub queues or APIs are delayed.
 Startup or terminal transport failure remains a failure, never a green fallback.
 The initial job lookup tolerates GitHub briefly reporting that same executing
 job as pending, queued or in progress. One complete bounded Jobs API read must
-match its run, attempt, source head, unique job ID and original start timestamp.
-The absolute deadline is retained without polling or another execution budget.
+match its run, attempt, source head, unique job ID and original start timestamp,
+and that read gets one retry. The absolute deadline is retained without polling or
+another execution budget.
 
-Setup, checkout and compilation take 24 seconds at the median and up to 42 on
-hosted runners, so a pass can run out of its 45 seconds on a healthy head. That
+The budget pays for setup first, so setup stays small. The publishers check
+out only `scripts/ci` and root files: a full tree costs 8 to 30 seconds or more. `pr-gate`
+must not import `net/http`, which adds 86 packages to its cold compile on Linux. A test
+pins that, the sparse checkout, its packages and the scripts it runs by name; it cannot
+see a direct file read outside the tree.
+
+A changed `ci-dev-gate.yml` lands on `main` first, and the publisher contract then refuses
+every open dev PR until `main` is merged back into `dev` and `dev` into each PR. That is a
+verdict, not a failed run: the record says what to merge, and another attempt would find
+the same bytes.
+
+`ci-feedback.yml` needs history for its merge base, so it keeps a full-depth fetch but
+leaves old blobs behind, under the same one-minute step limit. `fast-feedback.sh` fetches
+the blobs its whitespace check needs in one batch, anonymously. That relies on this
+repository being public, and a lane fails if GitHub refuses anonymous fetches at that moment.
+
+Setup, checkout and compilation can still take most of the 45 seconds on a slow
+runner, so a pass can run out of them on a healthy head. That
 is a flake, not a verdict. While the run attempt (`GITHUB_RUN_ATTEMPT`) is below
 three, the reserve publishes a blocking, non-terminal "PR validation pending"
 record in place of the terminal refusal, and the run still fails.
@@ -254,7 +273,8 @@ so a new sixty-second budget) when a publisher job's reconcile step failed,
 including a job its one-minute timeout then cancelled. Worker group jobs share
 the publisher's name and get the same reruns, and so does a failed setup, because
 reconcile always runs. The run attempt is the only loop bound: attempt 3 publishes
-the terminal refusal and is never rerun, the retry workflow does not follow
+the terminal refusal, unless the PR, its base, the rules or the feedback attempt
+moved during it, and is never rerun, the retry workflow does not follow
 itself, and it holds only `actions: write`, checks nothing out and runs no
 repository code. It follows only the three publisher workflows by path, and only
 their real triggers on `main` or `dev`, or `pull_request_target`, which runs the
@@ -262,11 +282,73 @@ base branch's file. A pass that already published its verdict keeps it when the
 work clock ends a moment later. A pending record blocks like any other; the rerun,
 not the cron, settles it. The record stays pending (blocking) until the next event
 or discovery run if the retry workflow is disabled, if a runner is lost so reconcile
-never fails, or if setup fails on attempt 3, which publishes nothing.
+never fails, if the PR, its base, the rules or the feedback attempt moves during
+attempt 3, or if setup fails on attempt 3, which publishes nothing.
+
+The pending and refusal records say only that the publisher did not finish (it
+failed or ran out of its budget) and that merging stays blocked. They name no
+cause, because every error reaches them, and the refusal says to fix an error that
+persists. A rerun is promised only while attempts remain; the records name what
+reassesses the head: a new push to this PR, a
+feedback result, a push to `main`, the schedule, or `gh workflow run gate-dev -f
+pr_number=N` (`gate-queue` for queue admission). A push to `dev` is not named: it
+reassesses nothing unless it changed the dev publisher. A trace whose feedback or
+protection read never returned has nothing to compare there, so that is not movement
+and attempt 3 publishes the refusal. A protection read that returned disabled, or a
+queue that is off in the reserve, is a different case and is judged as before. A dev
+PR that reaches the queue gate gets no budget refusal from here: its pending record is retired by the
+next pass, and retirement skips completed records. The last attempt can still leave a
+pending record when the budget ends before a trace exists, when the reserve can
+neither read nor write, or when the tuple truly moved. That record keeps the text of
+the last write that reached it, so it can be the plain fail-safe text, which names
+nothing that reassesses the head. #1194 narrows the case of a verdict whose
+write lands after the work clock.
+
+Discovery on a push to `dev` selects no PR. A green `ci-dev-required` stays valid
+when `dev` moves: the check is not strict about the base, and GitHub itself refuses
+a merge that now conflicts. It reassesses every open PR only when the push changed
+`.github/workflows/ci-dev-gate.yml`, since the publisher contract compares the
+base's copy against main's and a backmerge that repairs it must release PRs
+refused earlier. The push's `before` and `after` are compared through the compare
+API. A zero or missing `before`, a force push, an invalid SHA, a failed compare, a
+range that is neither ahead nor identical, an ahead range with no listed files or a
+file list at GitHub's 300-file limit all reassess every PR. A push to `main`, the schedule, feedback callbacks, manual
+dispatch and PR events are unchanged. An empty selection leaves the run green and
+skips the publisher job.
+
+A dev publisher whose final checks see `dev`, the rules, the feedback attempt, the
+fork vouch or the verifier result change publishes its pending barrier and fails, so
+the retry reassesses that head within minutes. A moved head instead leaves the job
+green, since the new head's own event reassesses it. When only the verifier or vouch
+changed, the reserve replaces the barrier with its pending record, and on attempt 3
+with the terminal refusal. Any other pending record, or a refusal that a later dev
+commit would clear, including one from a transient verifier failure on the first pass,
+waits for the next PR event, feedback callback, `main` push, scheduled run or dispatch. GitHub throttles
+the schedule to hours, so dispatch when it matters:
+`gh workflow run ci-dev-gate.yml --ref main -f pr_number=N`.
 
 The final authority reads of an admission (policy verifier, fork vouching, DCO,
 feedback) run at once and are judged in their former order; the final role
 inventory is still read last. None of them is skipped or reused.
+
+The first pass overlaps its independent reads the same way. Once the policy is
+live, feedback, the role inventory, the main route check and the dev publisher
+contract run together and are judged in their former order; the policy verifier
+still starts only after the feedback and role inventory are judged, so a failed
+read, a stale head or a group collision spends no verifier run. A read the serial
+order would have skipped can still hang until the work deadline and replace a
+refusal with the budget message, which blocks just the same. Dev reads main's tip
+and publisher bytes beside the ruleset discovery, reads the three publisher copies
+together and runs its CI-definition check beside DCO (DCO is judged first). Both
+gates read the final PR beside the final policy (a failed or closed PR is judged
+first). Dev admission starts from the PR
+its routing already read; the final phase re-reads the PR and compares it with
+that observation, so the proof is unchanged. Measured locally in dry-run, a dev
+admission took about 25 s before and 17 s after on an 83-file PR with workflow
+edits, and about 22 s before and 13 s after on small PRs. Runners read faster, so
+the hosted saving is smaller, and a slow setup can still overrun and rely on the
+rerun. The policy verifier (2.0 s, or 3.6 s when the PR edits workflows) runs twice
+and is now the largest remaining cost. Its repeated PR reads are deliberate re-proofs and stay.
 
 Queue publishers retry GitHub reads that fail with HTTP 429, 500, 502, 503 or
 504, or with a `gh` failure that reports no status (except authentication and

@@ -115,6 +115,9 @@ func (a *API) Oauth2Callback(ctx context.Context, req apigen.Oauth2CallbackReque
 			if policy.code == apigen.ErrorCodeInternal {
 				a.fault(ctx, "oauth2 callback", err)
 			}
+			if errors.Is(err, admission.ErrOverloaded) {
+				a.recordPendingRefusal(ctx)
+			}
 		}
 		return oauth2BrowserResponse{oidcBrowserCallbackResponse(result, errorCode)}, nil
 	}

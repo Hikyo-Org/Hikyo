@@ -20,6 +20,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/diagnostics"
 	"github.com/Hikyo-Org/hikyo/internal/localsocket"
+	"github.com/Hikyo-Org/hikyo/internal/tlspolicy"
 )
 
 // Client is the origin-bound HTTP client.
@@ -208,11 +209,19 @@ func NewClient(entry TrustEntry, bearer string) (*Client, error) {
 		}
 	}
 
+	// Applied last and only to a TLS client config, so the CA or SPKI-pin checks
+	// above stay exactly as the trust mode defines them. With HTTPS_PROXY naming
+	// an https proxy, the proxy leg shares this config: strict then also refuses a
+	// classical-only proxy, and an http proxy only tunnels the origin handshake.
+	if transport.TLSClientConfig != nil {
+		tlspolicy.Profile(entry.TLSProfile).Apply(transport.TLSClientConfig)
+	}
+
 	return &Client{
 		Entry:  entry,
 		Bearer: bearer,
 		HTTP: &http.Client{
-			Transport: diagnostics.Transport{Base: transport},
+			Transport: diagnostics.Transport{Base: transport, Hop: tlspolicy.HopCLIClient, Profile: tlspolicy.Profile(entry.TLSProfile)},
 			Timeout:   30 * time.Second,
 			CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 				return failf(ExitRefused,
