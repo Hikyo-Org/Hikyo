@@ -23,10 +23,10 @@ it.each(['#%', '#%E0%A4%A'])('opens the first tab for the malformed fragment %s 
   }
 });
 
-it.each(['sessions', 'demo-sessions'])('opens and scrolls to the tab that now holds a section an older ?tab=%s link names', async (link) => {
+it('opens and scrolls to the tab that now holds a section an older ?tab= link names', async () => {
   const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   const { container, unmount } = await renderForm(
-    <MemoryRouter initialEntries={[`/?tab=${link}`]}>
+    <MemoryRouter initialEntries={['/?tab=sessions']}>
       <SectionTabs
         label="Demo sections"
         idPrefix="demo"
@@ -42,6 +42,26 @@ it.each(['sessions', 'demo-sessions'])('opens and scrolls to the tab that now ho
     expect(scroll.mock.contexts).toEqual([container.querySelector('#demo-sessions')]);
   } finally {
     scroll.mockRestore();
+    await unmount();
+  }
+});
+
+it.each(['/?tab=demo-sessions', '/#sessions'])('treats %s, a form no link ever had, as unknown', async (entry) => {
+  const { container, unmount } = await renderForm(
+    <MemoryRouter initialEntries={[entry]}>
+      <SectionTabs
+        label="Demo sections"
+        idPrefix="demo"
+        sections={[
+          { id: 'demo-profile', label: 'Profile', content: <p>Profile body</p> },
+          { id: 'demo-access', label: 'Access', anchors: ['demo-sessions'], content: <p id="demo-sessions">Sessions body</p> },
+        ]}
+      />
+    </MemoryRouter>,
+  );
+  try {
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('Profile');
+  } finally {
     await unmount();
   }
 });

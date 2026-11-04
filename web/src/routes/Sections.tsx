@@ -40,11 +40,12 @@ function safeDecode(fragment: string): string | undefined {
 /**
  * useTabParam keeps the selected tab in `?tab=` so a reload or a shared link
  * keeps it. The first tab is the default and leaves no param; an unknown value
- * is the first tab; `fromOldLink` maps an older `#fragment` or `?tab=` link to its tab.
+ * is the first tab; `fromHash` and `fromOldTab` map an older `#fragment` or `?tab=` link to its tab.
  */
 export function useTabParam<Id extends string>(
   ids: readonly Id[],
-  fromOldLink?: (name: string) => Id | undefined,
+  fromHash?: (hash: string) => Id | undefined,
+  fromOldTab?: (tab: string) => Id | undefined,
 ): [Id, (next: Id) => void] {
   const [search, setSearch] = useSearchParams();
   const { hash } = useLocation();
@@ -53,8 +54,8 @@ export function useTabParam<Id extends string>(
   const fragment = safeDecode(hash.slice(1));
   const tab =
     ids.find((id) => id === requested) ??
-    (fragment === undefined ? undefined : fromOldLink?.(fragment)) ??
-    (requested === null ? undefined : fromOldLink?.(requested)) ??
+    (fragment === undefined ? undefined : fromHash?.(fragment)) ??
+    (requested === null ? undefined : fromOldTab?.(requested)) ??
     first;
   const setTab = (next: Id) =>
     setSearch(
@@ -87,18 +88,20 @@ export function SectionTabs({
 }) {
   const shown = sections.filter((section): section is TabSection => Boolean(section));
   const key = (id: string) => (id.startsWith(`${idPrefix}-`) ? id.slice(idPrefix.length + 1) : id);
+  const owning = (name: string) => {
+    const owner = shown.find((section) => section.id === name || section.anchors?.includes(name));
+    return owner === undefined ? undefined : key(owner.id);
+  };
   // A `?tab=` link names a section without the page prefix (`oidc` for `instance-oidc`).
-  const linkNames = (link: string) => [link, `${idPrefix}-${link}`];
   const [tab, setTab] = useTabParam(
     shown.map((section) => key(section.id)),
-    (link) => {
-      const owner = shown.find((section) => linkNames(link).some((name) => section.id === name || section.anchors?.includes(name)));
-      return owner === undefined ? undefined : key(owner.id);
-    },
+    owning,
+    (old) => owning(`${idPrefix}-${old}`),
   );
   const { hash } = useLocation();
   const [search] = useSearchParams();
-  const retired = linkNames(search.get('tab') ?? '').find((name) => shown.some((section) => section.anchors?.includes(name)));
+  const oldTab = `${idPrefix}-${search.get('tab')}`;
+  const retired = shown.some((section) => section.anchors?.includes(oldTab)) ? oldTab : undefined;
   // The browser's own fragment scroll ran before the tab was shown; redo it.
   // A retired `?tab=` link gets no browser scroll at all, and its panel may now sit below others.
   useEffect(() => {
