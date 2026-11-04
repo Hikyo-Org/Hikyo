@@ -2,7 +2,7 @@
 
 Investigation report, 2026-11-04, against commit `7a5fa5f7a`. Read-only: no product
 code changed. Paths are repository-relative. Section 13 separates what was run
-from what was only read. Follow-up: the proposed [desktop-app ADR](../adr/desktop-app.md)
+from what was only read. Follow-up: the [desktop-app ADR](../adr/desktop-app.md)
 and [plan](../superpowers/plans/2026-11-04-desktop-app.md).
 
 ## 1. Summary
@@ -341,7 +341,7 @@ is an additive server change, gated by `x-hikyo-min-revision`.
 **Later reversal.** Review of the proposed ADR found that a new artifact is not additive:
 the session list's `artifact` is a closed enum, and migrations and an audit enum would have
 to change. Any label would also be asserted by the client. The
-[proposed ADR](../adr/desktop-app.md) therefore keeps the `cli` artifact.
+[ADR](../adr/desktop-app.md) therefore keeps the `cli` artifact.
 
 ## 9. Client-only CLI and server without UI
 

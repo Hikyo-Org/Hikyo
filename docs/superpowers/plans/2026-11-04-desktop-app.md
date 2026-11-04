@@ -19,7 +19,7 @@ Done on 2026-11-04, except where noted. The ADR's status section has the record.
 
 Still needed: [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges, and the owner
 authorizes each implementation PR. When a PR makes a banner operative, close that banner's
-reopened ticket.
+reopened ticket, except #25, which stays open for its other reasons.
 
 ## PR 1: server and SPA app mode
 
@@ -86,8 +86,8 @@ page need these changes, with no server change:
   `login` token from the same response. This is plausible, but not traced.
 - `key_ids` allows 500 on the handoff, against 10000 elsewhere. This affects every
   key-bound purpose. Decide what a larger unit does before calling the API impact complete.
-- A `cli` session confined until enrolment: trace whether browser enrolment releases it or
-  the app must sign in again.
+- Browser enrolment and identity linking delete the app's session, including one confined
+  until enrolment, so the app signs in again. Test that the app recovers cleanly.
 
 **Tests:**
 
@@ -111,7 +111,7 @@ Port from the spike, and fix these as you go:
 |---|---|---|
 | Connection origin | `conn-N` | Random, stored, never reused |
 | Sessions | `sessions.json` from `hikyo login` | Own handoff, keychain restricted to the signed app |
-| Rotation | Any non-GET JSON response, in memory | The ADR's named routes, token grammar and session id match, keychain first, one at a time |
+| Rotation and reissue | Any non-GET JSON response, in memory | The ADR's named routes, token grammar, session id match on rotate and principal match on reissue, keychain first, one at a time |
 | Page requests to the D4 refused routes | Allowed | Refused. Build the login part of the list from the contract, so a new route fails closed |
 | Session id and principal | Not stored | Stored, with confirmation when a sign-in changes the principal |
 | `/__shell/reauth` | Needs `key_ids`, no `self_config`, no `adapter`, ceremony tied to the page's request | All D7 purposes, refusing `developer-credential`, with its own lifetime and a rate limit |
@@ -147,8 +147,8 @@ Size: 1 to 2 weeks. The owner creates `Hikyo-Org/hikyo-app` and its signing iden
   `scripts/release/sign-apple-artifacts.sh` doesn't cover.
 - Tags and releases live only in that repository. No updater and no update check.
 - `scripts/ci/check-oss-policy.sh` pins "Metadata-only ecosystem repositories are the sole
-  exception." When the second exception becomes operative, change that sentence and the
-  check together.
+  exception." When the second exception becomes operative, change both copies of that
+  sentence in `docs/adr/oss-mechanics.md` and the check together.
 
 ## PR 6: public docs
 

@@ -1,18 +1,20 @@
-# Hikyo desktop app ([#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215), locked 2026-11-04)
+# Hikyo desktop app ([#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215), 2026-11-04)
 
-Status: **owner-locked on 2026-11-04; operative when [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
+Status: **derived from the owner's decisions of 2026-11-04 and not owner-locked; operative
+when [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
 Each amendment banner has its own [trigger](#amendments). Nothing here is implemented,
-and locking this ADR authorizes no implementation, merge, release, `Hikyo-Org/hikyo-app`
+and this ADR authorizes no implementation, merge, release, `Hikyo-Org/hikyo-app`
 repository or signing identity.
 
 1. **Owner acceptance.** Offered the three [decisions below](#owner-decisions) and told
    that choosing the waiver and accepting the design would lead to the banners and reopened
    tickets, the owner replied "a", "as recommended" and "yes" on 2026-11-04. The reply did
-   not separately name D1 to D15. Their acceptance is inferred from it, since it raised no
-   objection.
+   not separately name D1 to D15, so they are not owner-locked. Their acceptance is inferred
+   only from the absence of an objection. An explicit acceptance would replace this label.
 2. **Review.** Cross-provider review is SKIPPED by explicit owner instruction (2026-11-04)
    and is not CLEAN. The waiver covers this decision only and is not a general policy
-   change. See the [review record](#review-record).
+   change. [GOVERNANCE.md](../../GOVERNANCE.md#amendment-procedure) has no waiver clause, so
+   this departs from its procedure, as earlier owner-stated waivers did. See the [review record](#review-record).
 3. **Tickets.** [#22](https://github.com/Hikyo-Org/Hikyo/issues/22), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16), [#8](https://github.com/Hikyo-Org/Hikyo/issues/8) and [#33](https://github.com/Hikyo-Org/Hikyo/issues/33) are reopened for
    this amendment only, [#25](https://github.com/Hikyo-Org/Hikyo/issues/25) was already open, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the
    work. Each reopened ticket closes again when its banner is operative.
@@ -82,8 +84,9 @@ Sign-in and passkey ceremonies: system browser -> instance's real origin
   (`ActiveSession.artifact`), a database check and handoff column to change, and a
   token type and audit enum to change. It would still be asserted by the client, since
   login handoffs start unauthenticated.
-- The shell stores the session's id and principal with the connection. A sign-in that
-  returns a different principal needs a native confirmation before the connection uses it.
+- The shell stores the session's id and principal with the connection, and updates the id
+  when the session is reissued (D4). A sign-in that returns a different principal needs a
+  native confirmation before the connection uses it.
 - The session keeps the `cli` clocks: idle 30 d, absolute 90 d. They are the same clocks
   a laptop's CLI has today, with better custody.
 - The shell sets `User-Agent: Hikyo-Desktop/<version>`. Session rows record it, and the
@@ -112,30 +115,39 @@ Sign-in and passkey ceremonies: system browser -> instance's real origin
     and any `POST /api/v1/auth/reauth/totp` whose `purpose` is `developer-credential`. The
     body check decodes the JSON and fails closed on a parse error or duplicate key. Mint
     stays a terminal action under [#807](https://github.com/Hikyo-Org/Hikyo/issues/807).
-  - Every other route that returns a `session_token` and isn't on the rotation list below.
+  - Every other route that returns a `session_token` and isn't on the rotation and reissue list below.
     This covers the login routes, so a page can't sign the connection in as another
     account, and the passkey finish routes, which can't run in the window.
 
-**Rotation.** CLI sessions rotate on step-up, and the new token arrives in the JSON body.
+**Rotation and reissue.** A CLI session receives a new token in the JSON body on step-up and
+on account-security changes.
 
-- The shell takes a rotated token only from these routes under `/api/v1/auth/`:
-  `PUT password`, `POST totp/enrol/confirm`, `POST totp/step-up`, `DELETE totp`,
-  `POST reauth/totp`, `POST recovery-codes/regenerate`, `DELETE identities/{id}`,
-  `DELETE webauthn/credentials/{id}`.
-- The token must parse as a CLI token, and the response's session id must match the
-  connection's. Rotation keeps the id and refuses an account that doesn't own the session,
-  so a match implies the same principal. `ReauthResult` has no principal field, so the id
-  is the check that works on every route. The shell applies the same rule to its own
-  reauth redeem.
+- The shell takes a new token only from these routes under `/api/v1/auth/`:
+  - **Rotate, keeping the session id:** `POST totp/step-up`, `POST reauth/totp`.
+  - **Reissue, deleting every session of the principal and creating a new one with a new
+    id:** `PUT password`, `POST totp/enrol/confirm`, `DELETE totp`,
+    `POST recovery-codes/regenerate`, `DELETE identities/{id}`,
+    `DELETE webauthn/credentials/{id}`.
+- The token must parse as a CLI token. The other check depends on the route:
+  - A rotate response's `session_id` or `session.id` must match the connection's stored id.
+    `ReauthResult` has no principal field, so the id is the check there. Rotation refuses an
+    account that doesn't own the session, so a match implies the same principal. The shell
+    applies this rule to its own reauth redeem.
+  - A reissue response's `principal.id` or `login.principal.id` must match the connection's
+    stored principal. The shell then replaces the stored session id with `session.id` or
+    `login.session.id`.
 - It reads the top level and `login`, and leaves nested keys alone, because one could be a
   secret's name. The token is removed from the response, so it never reaches the page. A
   `session_token` on any other response is removed and treated as an error.
+- A failed check stops the connection with a visible error and asks for a new sign-in. It
+  still releases the response body without the token, because recovery codes in it can't be
+  fetched again, and a reissue has already deleted the old session.
 - It writes the token to the keychain, then swaps it in, then releases the response.
-- One rotation runs at a time. A rotation is only known after its response arrives, so
+- One runs at a time. A new token is only known after its response arrives, so
   requests already in flight can get a 401. Idempotent ones are retried once with the
   new token, and the rest surface the error. Open event streams reconnect.
 - If the keychain write fails, the connection stops with a visible error and asks for a
-  new sign-in, and the shell tries to revoke the rotated session. It still releases the
+  new sign-in, and the shell tries to revoke the new session. It still releases the
   response body without the token, because recovery codes in it can't be fetched again.
 
 ### D5. Trust
@@ -160,9 +172,9 @@ the app can only suggest that as a possible cause.
 Sign-in always runs in the system browser on the instance's real origin, using the
 existing loopback handoff with PKCE, with the device flow as a fallback. The SPA's login
 form never runs in the app. When a session dies, the SPA signals the shell, which confirms
-it and starts a new handoff (D9). A session confined until enrolment that the browser
-can't release also needs a new sign-in. Whether browser enrolment releases it is not yet
-traced.
+it and starts a new handoff (D9). Browser passkey enrolment and identity linking delete
+every session of the principal, including the app's, so the app signs in again after them.
+This also applies to a session confined until enrolment.
 
 ### D7. Ceremonies
 
@@ -224,11 +236,15 @@ reach no other connection.
 | `POST clipboard` | Nothing | Arms clearing only after a pasteboard change the shell observed. See D12 |
 | `GET origin` | Nothing | Returns the instance's real origin, for links the SPA builds |
 
-The handoff and approval pages are `/login/cli`, `/reauth/cli` and `/workspace/approve`. The
-SPA's router ignores case and trailing slashes, so comparison percent-decodes, lowercases
-and strips trailing slashes first, as `web/src/app/loginReturn.ts` does. A `returnTo` that
-normalizes to one of these is refused too, because `/login?returnTo=...` sends a signed-in
-user straight there.
+The handoff and approval pages are `/login/cli`, `/reauth/cli` and `/workspace/approve`.
+Before comparing, the shell refuses non-canonical input: dot segments, raw or encoded;
+backslashes; control characters or whitespace; a leading `//`; a query that fails strict
+decoding; and more than one `returnTo`. It then checks that the parsed origin is the
+connection's. The SPA's router ignores case and trailing slashes, so the comparison
+percent-decodes, lowercases and strips trailing slashes, as `web/src/app/loginReturn.ts`
+does after parsing the URL. A `returnTo` that normalizes to one of these pages is refused
+too, because `/login?returnTo=...` and `/signup?returnTo=...` send a signed-in user straight
+there.
 
 The page cannot reach Wails' own runtime routes under `/wails/`.
 
@@ -290,13 +306,14 @@ This has not been built or run.
 ### D15. Platforms and egress
 
 - macOS first. Windows and Linux need their own spike.
-- The app connects only to configured instances. It sends no crash reports and no
-  telemetry. Logs never carry tokens or response bodies.
+- The shell connects only to configured instances. It sends no crash reports and no
+  telemetry. Logs never carry tokens or response bodies. A page's own subresource requests
+  depend on that instance's CSP, so a compromised instance can send them elsewhere.
 
 ## Amendments
 
 Each amendment is a banner at the top of the ADR it names, and takes effect only when the
-pull request that makes it true merges. No banner claims behaviour that doesn't exist yet.
+pull request that makes it true merges. No banner is operative before its trigger.
 
 | ADR | Operative when |
 |---|---|
@@ -304,7 +321,7 @@ pull request that makes it true merges. No banner claims behaviour that doesn't 
 | [system-architecture.md](./system-architecture.md) | Plan PR 3 merges (shell) |
 | [human-auth.md](./human-auth.md) | Plan PR 3 merges |
 | [threat-model.md](./threat-model.md) | Plan PR 3 merges |
-| [oss-mechanics.md](./oss-mechanics.md) | Plan PR 5 merges (release lane), together with its "sole exception" sentence and policy check |
+| [oss-mechanics.md](./oss-mechanics.md) | Plan PR 5 merges (release lane), together with both copies of its "sole exception" sentence and their policy check |
 
 **Deliberately not amended:**
 
@@ -372,6 +389,7 @@ so error semantics don't either.
   profile.
 - **Operators can't reliably tell the app from the CLI.** The label is client-asserted.
 - **Some work stays in the browser** in v1 (D7), so app users keep a browser session too.
+  Passkey enrolment and identity linking there sign the app out (D6).
 - **The app works only with upgraded servers** (D8).
 - **The native handlers depend on Wails internals** (D14).
 
@@ -386,8 +404,9 @@ None of these has been observed yet. Each must be observed by hand on a signed b
    `self-config`.
 5. Save panel, filename and quarantine attribute on a real download.
 6. Clipboard auto-clear, including when the user has copied something else since.
-7. Rotation under concurrent requests, a keychain write failure, and a relaunch: the
-   session survives or stops visibly, and the page never holds a token.
+7. Rotation under concurrent requests, a reissue such as a password change, recovery-code
+   regeneration, a keychain write failure, and a relaunch: the session survives or stops
+   visibly, recovery codes are shown, and the page never holds a token.
 8. A refused connection to an instance without `desktop-app/1`.
 9. Removing and re-adding a connection: the session is revoked on the server and no
    browser storage remains.
@@ -418,8 +437,13 @@ Settled on 2026-11-04:
   agents, each on an earlier draft, reading source without running anything. The first
   reversed the session class decision in D3 and reshaped D4, D9 and D13. The second found
   no blocker and three high findings in D4 and D9. The third was limited to those repairs
-  and found one more high finding, in D4's rotation check. All are repaired in this text.
-- **Final same-provider review:** REVIEW_PENDING
+  and found one more high finding, in D4's rotation check. Its repair was itself wrong, as
+  the next round found.
+- **Fourth same-provider review, at `7ef5235882895f4af667d69ac4fe072f1b068bce`:** limited to
+  D4, D9, D10, the banners and the status text. It found no blocker, one high finding (six
+  of the eight rotation routes reissue the session, so the id check failed on them), two
+  medium (path normalization and the `owner-locked` label) and six low. All are repaired in
+  this text. REVIEW_PENDING
 - **Owner statements (2026-11-04):** asked for a Wails spike of the recommended design; said
   the app should open the native browser for passkeys, like the CLI; asked whether Hikyo
   should be a monorepo with separate build paths; approved writing ADR amendments and an
