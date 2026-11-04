@@ -4,10 +4,10 @@ Status: **documents only. HOLD. Not merge-ready as a feature, not operative.**
 Refs [#1130](https://github.com/Hikyo-Org/Hikyo/issues/1130); the PR does not close
 it and no PR may, because the ticket says a feasibility note alone does not
 establish PQ pairing. No Go code, schema, configuration or behavior changed.
-Security approval: **not given**. No cryptographic change is made, but the register
+Security approval: given by the owner on 2026-11-04, by authorizing merge as built with the choices below still open. No cryptographic change is made, but the register
 requires an amendment to have the maintainer's security approval before it takes
 effect ([register](../adr/post-quantum-migration.md#decision-register)), so the
-pairing ADR banner is not operative until that approval is given.
+pairing ADR banner becomes operative when this PR merges.
 Independent adversarial review is required; cross-provider review is SKIPPED by
 explicit owner instruction (2026-11-02) and is not CLEAN.
 
@@ -159,6 +159,7 @@ reading public documents and downloading a module into a scratch directory.
 
 ## Next authorized step
 
-Independent Standards and Spec review of these documents, then the owner's decision
-on options A to D in the feasibility note and on the #1135 narrowing text. Merge,
-issue edits, release and deployment are not authorized.
+The owner's decision on options A to D in the feasibility note, on the E-01 fields, on
+DEC-13's wording and on the #1135 narrowing text. The owner authorized merge to `dev` on
+2026-11-04 and accepted publication in the next nightly. This PR changes no code, so it
+changes no operator behavior.
