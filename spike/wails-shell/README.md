@@ -49,7 +49,7 @@ Results are in the spike report's third round. Both platforms need a local, giti
   `-tags production,ios`, then link for the simulator. Add `probe` to the tags for the debug
   server.
 - **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
-  unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host has never run.
+  unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host runs on the emulator.
 
 ## Tests and probes
 

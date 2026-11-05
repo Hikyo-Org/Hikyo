@@ -15,8 +15,9 @@ added from our own code give Wails navigation policy, popups and downloads. A pa
 reveal now completes through the system browser, on a protected environment, using a
 virtual authenticator. See [Second round](#second-round-handlers-and-passkey-hop).
 
-**Update, 2026-11-05: iOS and Android.** iOS mostly carries over on the simulator. Android is
-unproven, and needs its own host. See [Third round](#third-round-ios-and-android).
+**Update, 2026-11-05: iOS and Android.** iOS mostly carries over on the simulator. Android
+needs its own host, which now runs the real UI on the emulator past sign-in, with three
+things still to build. See [Third round](#third-round-ios-and-android).
 
 What remains before a product:
 
@@ -194,8 +195,9 @@ Run it only against instances you trust.
 ## Third round: iOS and Android
 
 Date: 2026-11-05. Wails v3.1.0 calls both platforms experimental. The aim was to see
-whether the desktop design carries over. **iOS mostly does on the simulator. Android is
-unproven: the stock host fails on a redirect, and the patched host has never run.**
+whether the desktop design carries over. **iOS mostly does on the simulator. On Android the
+stock host fails on a redirect, and a patched host works on the emulator, with more changes
+still needed.**
 
 No real device was used, and no real passkey was attempted. The instance was disposable,
 on `127.0.0.1`, with a prebuilt SPA from another worktree behind a small local front,
@@ -245,16 +247,100 @@ new owner decision.
 
 ### Android
 
-**The Pixel emulator never completed a device test.** Its framework restarted about every
-74 s (`system_server` watchdog) while the host was overloaded, at load 15 to 21. The device
-tools then failed (`Could not communicate with device support`), so testing stopped.
+**The patched host runs on the emulator, and the real UI works past sign-in.** Three things
+need code before a product: a response-header fix, a streaming workaround, and window
+confinement. The app is also frozen while it waits in the background.
+
+The first attempt never completed a device test, because the emulator's framework kept
+restarting at load 15 to 21. The rerun was on `Pixel_9_API_36`, Android 16, WebView 133, at
+load 8 to 14, and `system_server` kept the same pid throughout. The image has no Chrome, so
+there are no Custom Tabs and no passkeys.
 
 | Question | Result | Evidence |
 |---|---|---|
-| Stock host with the proxy | **Fails on the first redirect** | Observed: `GET /index.html -> 301`, then `asset server error: status 301`. Other stock behaviour is from source only, below |
-| Patched host: method, query, headers, status, streaming | **Built, never run** | APK 16.5 MB, `libwails.so` 12.0 MB |
-| Request bodies through a script and bridge | **Built, never run** | `android-host/assets/spike-shim.js`. By design it misses `sendBeacon`, form POSTs and WebSocket |
-| Per-connection origin, browser hop, real sign-in, `Android.SecureSet`, downloads, back button, phone-width SPA | **Not tested** | Blocked by the emulator |
+| Stock host with the proxy | **Fails on the first redirect** | `GET /index.html -> 301`, then `asset server error: status 301` |
+| Patched host renders the SPA | **Pass after a fix** | On `https://conn-0.wails.localhost`, secure context. See the `Content-Length` finding |
+| Request bodies through the script and bridge | **Pass** | SHA-256 matched for PUT 3 B, PATCH 1 KB, DELETE 16 B, POST 256 KB, PUT 3 MB and POST 20 MB (839 ms). Multipart, urlencoded, Blob and XHR PUT arrived with the right length and type |
+| Query and headers | **Pass** | `?q=a%20b&x=%E2%9C%93` and custom headers arrived intact. The bearer was added, no cookie was sent |
+| Status codes | **Pass, except redirects** | 200, 400, 401, 404 and 429 reached the page. `WebResourceResponse` rejects 3xx, so the bridge returns 502 with `X-Spike-Redirect` (from code) |
+| Response length | **Fails without a fix** | See below |
+| Streaming | **Fails without a fix** | See below |
+| Real sign-in, the app's half | **Pass** | Callback to redeemed session took 59 ms with the app in the background. `whoami` then returned 200, artifact `cli`, factors password and TOTP |
+| Enrolment gate in the UI | **Fails, same as iOS** | See [the finding below](#a-finding-that-also-affects-macos). Cleared through the API to go further |
+| SPA at phone width, past the gate | **Observed, needs layout work** | 412 CSS px, no horizontal overflow. The header runs under the status bar, and the breadcrumb overlaps itself |
+| Per-connection origin | **Pass for storage, gap for requests** | `localStorage` is separate on `conn-0` and `conn-1`. See the isolation finding |
+| `Android.SecureSet` | **Pass** | Set, read, wrong value, relaunch and delete. `EncryptedSharedPreferences`, per Wails' source |
+| Downloads | **Pass, with limits** | Correct bytes saved and the page stayed put. The file goes to the app's own folder, not the user's Downloads. One click produced two GETs in the log |
+| External links | **Pass** | A plain link and a tapped `target=_blank` open the browser and keep the app's page. A scripted `target=_blank` click with no gesture does nothing |
+| Back button | **Pass** | Walks WebView history, and the app stays open. Leaving from the first page was not tested |
+| Size | **Measured** | APK 16.6 MB, `libwails.so` 12.0 MB |
+
+**`Content-Length`.** With no such header, the WebView reports `content-length: 0` to the
+page while delivering the whole body (an 8 MB response read as `0`). The SDK client treats
+`0` as empty, so `whoami` failed its schema, the app showed "Reconnecting to Hikyo", and it
+polled until the server answered 429. Passing the real length through makes the header read
+`0, 207`. The SDK accepts that only because it isn't exactly `0`, and
+`declaredResponseLength` in `web/src/api/workspace.ts` rejects it as invalid, so the fix in
+`SpikeBridge.java` isn't enough. A `fetch` wrapper that corrects the header, injected into
+the page through devtools, gave a correct header and a complete 8 MB body, and streaming
+still worked. It is not built into the shim. It covers `fetch` only, and it loses
+`response.url`.
+
+**Streaming.** The WebView holds small chunks back, although the bridge returns each one as
+it arrives (from code). Five events, 800 ms apart, read through `fetch`:
+
+| Padding per event | Arrival, ms after the first read began |
+|---|---|
+| None | 4008, 4009, 4009, 4009, 4009 (only when the stream ended) |
+| 1 KB | 802, 803, 2407, 2407, 4010 |
+| 4 KB to 128 KB | 0, 800, 1602, 2404, 3206 |
+
+So a live event can wait indefinitely on a quiet stream. Padding each event with an SSE
+comment of about 4 KB fixes the timing, and the cost stays inside the app. The proxy would
+have to add it at event boundaries, which isn't built. The route was a test one, because the
+real `/events` returned 404 from v1.0.0 to this newer SPA.
+
+**Connection isolation.** Android requests carry no window identity, so the macOS window
+check passes automatically here (`native_android.go` documents this as a shortcut). A request
+that sends another connection's `Origin` is refused, and so is an unknown host. Two things
+get through:
+
+- A `no-cors` GET or an `<img>` from `conn-1` to `conn-0` sends no `Origin`, and the log shows
+  it answered through `conn-0`'s proxy, which adds that connection's bearer. The page can't
+  read the response. The test front sends no CSP, and a hostile instance controls its own
+  CSP anyway.
+- Script on `conn-0` can navigate the window to `conn-1`.
+
+This breaks the guarantee that connections can't spend each other's sessions. A fix might be
+one WebView per connection, or refusing a request whose page belongs to another host. Neither
+is built or tested.
+
+**The browser hop and the app freezer.** Android stopped running the backgrounded app about
+72 s after the hop (Go ticks ended at 10:16:04, and `isFrozen=true`). A callback sent before
+that was accepted at once. One sent while frozen waited for the user to come back:
+
+| Case | Browser opened or loaded the callback | App accepted |
+|---|---|---|
+| Immediate | 10:14:52 | 10:14:54 |
+| Frozen | 10:18:59 | 10:19:23, on returning to the app |
+
+This is the same class of problem as Safari on iOS, with a longer grace period. Foreground
+services and Custom Tabs are untested. Reading `dumpsys` appears to thaw the app, so these
+timings may be disturbed.
+
+**What the test setup could not show:**
+
+- **Browser half of sign-in.** The instance's `__Host-` cookies are `Secure`, and the test
+  browser's cookie jar stayed empty on plain `http://127.0.0.1`, although TOTP returned 200.
+  So password, TOTP and approval ran from the host, and only the callback ran in the emulator
+  browser. A consent screen over HTTPS, Custom Tabs and passkeys are untested.
+- **The environment matrix error in the UI.** `/projects/{id}/matrix` returned 404 and other
+  calls 429. The first is this newer SPA against v1.0.0, and the second is the rate limit
+  below. Neither points at the host, but the matrix screen itself was never seen working.
+- **The test routes** for echo, streaming and download live in a scratch front, not on this
+  branch.
+- **The probe's `/nav`** answered but did not navigate on the sign-in page. I navigated through
+  devtools instead and did not look into why.
 
 From source only, in Wails' stock host:
 
@@ -264,9 +350,9 @@ From source only, in Wails' stock host:
 - `application_android.go` says the WebView can't deliver `fetch()` POST bodies to
   `shouldInterceptRequest`. This is an Android limit, so any proxy needs a script that moves
   bodies over a bridge. That means the page gets an extra native path, which conflicts
-  with D10's "no native capability beyond D9" unless the ADR lists it.
-- The origin is fixed at `https://wails.localhost`. The Java host is generated into the
-  project, so it can be changed, but D2's per-connection origin is unproven here.
+  with D10's "no native capability beyond D9" unless the ADR lists it. The shim misses
+  `sendBeacon`, form POSTs and WebSocket, and `web/src` uses no `sendBeacon` or `FormData`
+  outside tests.
 
 ### A finding that also affects macOS
 
@@ -274,8 +360,9 @@ From source only, in Wails' stock host:
 SPA.** `useRecoveryCodeHandoff` (`web/src/api/account.ts`) calls `acceptAccountSession`,
 which returns false unless the session's artifact is `browser`
 (`web/src/app/AuthProvider.tsx`). The screen then throws "The account session changed
-before its recovery codes could be displayed." This matches what iOS showed: a 200
-response and no progress at "Step 2 of 4".
+before its recovery codes could be displayed." This matches what iOS and Android showed: a 200
+response and no progress at "Step 2 of 4". On Android the password field also cleared, and
+no codes appeared. The thrown error was not captured there.
 
 The cause is from source, and was not reproduced in a plain browser. Since the server has
 already replaced the codes when the response arrives, the app may replace them without
@@ -285,8 +372,9 @@ showing the new ones. App mode must handle this, on every platform.
 
 - **iOS** looks feasible with `ASWebAuthenticationSession`, but the `http` deprecation makes
   the loopback handoff a dated choice there.
-- **Android** needs its own Java host and a body bridge. It is not "the same shell". It
-  remains unproven until that host runs.
+- **Android** needs its own Java host, a body bridge, a response-header fix, an SSE
+  workaround and a way to confine a window to its connection. It is not "the same shell". The
+  core path works on an emulator, but no real device, Chrome or passkey has been tried.
 - **Neither** should change the desktop plan yet. The ADR's D15 already requires a separate
   spike per platform.
 - **Not tested, worth comparing:** the instance's own web app in the phone's browser already
@@ -295,7 +383,7 @@ showing the new ones. App mode must handle this, on every platform.
 **Review:** an automated security review flagged the debug server, and the fix is in: it
 compiles only under the `probe` tag, needs a per-launch secret and never returns stored
 values. Its absence from a normal build was checked by searching the Android library's
-strings, not on a device. No independent review of this round has run.
+strings, not on a device. No independent review of this round has run, including the Android rerun.
 
 ## Rate limit: already fixed, not in v1.0.0
 

@@ -26,5 +26,5 @@ else
   mkdir -p $app/src/main/assets && cp android-host/assets/spike-shim.js $app/src/main/assets/
   sed -i.bak 's/androidx.webkit:webkit:1.9.0/androidx.webkit:webkit:1.12.1/' $app/build.gradle
 fi
-(cd build/android && ./gradlew --no-daemon -q assembleDebug)
+(cd build/android && sh ./gradlew --no-daemon -q assembleDebug)
 ls -l build/android/app/build/outputs/apk/debug/*.apk build/android/app/src/main/jniLibs/arm64-v8a/libwails.so

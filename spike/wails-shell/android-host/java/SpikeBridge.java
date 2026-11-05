@@ -87,7 +87,8 @@ final class SpikeBridge {
             for (int i = 0; i < hs.length(); i++) {
                 String k = hs.getJSONArray(i).getString(0), v = hs.getJSONArray(i).getString(1);
                 if (k.equalsIgnoreCase("Content-Type")) ctype = v;
-                else if (!k.equalsIgnoreCase("Content-Length") && !k.equalsIgnoreCase("Transfer-Encoding")) out.merge(k, v, (a, b) -> a + ", " + b);
+                // Keep Content-Length: without it the WebView reports 0 to the page, and the SDK client then discards the body.
+                else if (!k.equalsIgnoreCase("Transfer-Encoding")) out.merge(k, v, (a, b) -> a + ", " + b);
             }
             if (status >= 300 && status < 400) {
                 // WebResourceResponse rejects 3xx, so a redirect cannot be passed on.
