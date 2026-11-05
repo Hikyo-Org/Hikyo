@@ -24,8 +24,8 @@ recover a finding that the checker never emits.
    values, responses (including `default` and wildcards), response links and
    media-type encodings. Traversal covers request bodies, parameters, response
    bodies and headers, including nested schemas, modified composed branches and
-   resolved references. A declared schema stays declared, so deleting even an
-   empty one is refused.
+   resolved references. Deleting a schema from a keyword holding exactly one,
+   such as `items` or `additionalProperties`, is refused even when it is empty.
 2. Every upstream checker finding still passes through the existing addition
    allowlist. New upstream IDs remain forbidden until explicitly reviewed. The
    stability threshold is set to `draft`, because a `x-stability-level` of

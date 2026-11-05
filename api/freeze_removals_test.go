@@ -280,6 +280,7 @@ func TestFreezeRejectsRemovalsUpstreamChecksOmit(t *testing.T) {
 		{"empty-items", list(`,"items":{}`), list(``), "hikyo-schema-removed"},
 		{"empty-map-values", values(`,"additionalProperties":{}`), values(``), "hikyo-schema-removed"},
 		{"empty-map-values-to-false", values(`,"additionalProperties":{}`), values(`,"additionalProperties":false`), "hikyo-schema-removed"},
+		{"empty-map-values-to-true", values(`,"additionalProperties":{}`), values(`,"additionalProperties":true`), "hikyo-schema-removed"},
 		{
 			"request-items",
 			`"requestBody":{"content":{"application/json":{"schema":{"type":"array","items":` + object + `}}}},"responses":{` + ok + `}`,
