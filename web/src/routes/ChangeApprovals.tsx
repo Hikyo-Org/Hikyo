@@ -22,6 +22,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
@@ -522,7 +523,7 @@ function ApprovalRequestRow({
         </div>
         <div>
           <dt>Requester</dt>
-          <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
+          <dd><NamedId id={request.requester} name={request.requester_name} tail /></dd>
         </div>
         {/* Free text from the requester, so it never stands unlabelled as the heading. */}
         {request.purpose === '' ? null : (
@@ -546,7 +547,7 @@ function ApprovalRequestRow({
       </dl>
       {request.votes.length > 0 ? <ul aria-label="Recorded votes">
         {request.votes.map((entry) => <li key={entry.principal_id}>
-          <span title={entry.principal_id}>{entry.principal_name ?? entry.principal_id}</span>: {entry.decision}
+          <NamedId id={entry.principal_id} name={entry.principal_name} tail />: {entry.decision}
         </li>)}
       </ul> : null}
       {active ? (

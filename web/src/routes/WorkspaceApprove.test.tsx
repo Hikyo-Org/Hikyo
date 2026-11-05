@@ -128,7 +128,7 @@ describe('workspace consent names', () => {
     const rows = [...(scope?.querySelectorAll('li') ?? [])];
     expect(rows.map((row) => row.getAttribute('title'))).toEqual([consentIds.secretKey, consentIds.configKey, consentIds.missingKey]);
     expect(rows[0]?.textContent).toContain('secret DATABASE_URL');
-    expect(rows[1]?.textContent).toBe('LOG_LEVEL');
+    expect(rows[1]?.textContent).toBe('LOG_LEVEL …000002');
     // A key the catalogue lacks is still listed, by its ID.
     expect(rows[2]?.textContent).toBe(consentIds.missingKey);
   });

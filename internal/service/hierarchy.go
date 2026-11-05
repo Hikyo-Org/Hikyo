@@ -87,11 +87,14 @@ func checkName(what, name string) error {
 	return nil
 }
 
-// hasDirectionControl finds the characters that make displayed text read in a
-// different order than it is stored. A name is what a person approves against,
-// so its letters must appear as written.
+// hasDirectionControl finds the embedding, override and isolate characters that
+// make displayed text read in a different order than it is stored. A name is what
+// a person approves against, so its letters must appear as written. The LRM, RLM
+// and ALM marks are allowed: right-to-left names legitimately carry them.
 func hasDirectionControl(s string) bool {
-	return strings.ContainsFunc(s, func(r rune) bool { return unicode.Is(unicode.Bidi_Control, r) })
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
+	})
 }
 
 // checkFolderPath is the folder namespace grammar. A folder is display

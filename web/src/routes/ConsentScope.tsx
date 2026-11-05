@@ -41,7 +41,8 @@ export function useConsentNames(org: string, project: string, wantKeys: boolean)
 
 /**
  * The enumerated key set a consent decision binds, led by its count and listed
- * by name like the in-app ceremony. Every ID stays listed, with the ID on hover;
+ * by name like the in-app ceremony. Every key stays listed, with its ID's end beside
+ * the name and the whole ID on hover;
  * the focusable region keeps a long list reachable by keyboard.
  */
 export function ConsentKeys({
@@ -69,6 +70,7 @@ export function ConsentKeys({
               </>
             ) : null}
             {key.name}
+            {key.name === key.id ? null : <> <span>…{key.id.slice(-6)}</span></>}
           </li>
         ))}
       </ul>

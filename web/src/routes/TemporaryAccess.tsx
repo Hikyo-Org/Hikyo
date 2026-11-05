@@ -24,6 +24,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
@@ -667,7 +668,7 @@ function AccessRequestRow({
   return (
     <li className="temporary-access__request">
       <div className="temporary-access__request-head">
-        <span title={request.requester}>{request.requester_name ?? request.requester}</span>
+        <NamedId id={request.requester} name={request.requester_name} />
         <span className="temporary-access__request-state">
           {state}
           {request.state === 'open' ? <><Sep />{`${request.approvals}/${request.min_approvals} approvals`}</> : null}
@@ -680,7 +681,7 @@ function AccessRequestRow({
         </div>
         <div>
           <dt>Requester</dt>
-          <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
+          <dd><NamedId id={request.requester} name={request.requester_name} tail /></dd>
         </div>
         <div>
           <dt>Capabilities</dt>

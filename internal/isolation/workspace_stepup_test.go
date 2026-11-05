@@ -501,10 +501,6 @@ func TestStepUpBindingIsConsumed(t *testing.T) {
 	forEngines(t, runStepUpBindingIsConsumed)
 }
 
-// The approve page reads the transaction purpose and any step-up binding back
-// from the SERVER-bound transaction by state, rather than trusting them from its
-// URL. This proves the read answers both variants, preserves step-up ownership,
-// refuses without a session, and refuses an unknown state.
 // The owner ids are disclosed only when the environment listing would show the
 // caller this environment: a rule confined to another environment of the project
 // does not reveal the project, and a missing environment reads like a hidden one.
@@ -520,7 +516,11 @@ func TestShowHandoffFollowsEnvironmentNavigation(t *testing.T) {
 		f.create(t, orgAdmin, service.RuleSpec{Target: carol, Capability: domain.CapRead, Org: orgA, Where: whereIn(mode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: f.dbKeyID})})
 		session := seedSessionFactors(t, db, carol, `["password","totp"]`)
 		established := establishWorkspace(t, ws, session)
-		denialsBefore := queryString(t, db, "SELECT count(*) FROM audit_tenant_events WHERE type = 'grant.denied'")
+		denials := func() string {
+			return queryString(t, db, "SELECT count(*) FROM audit_tenant_events WHERE type = 'grant.denied'") + "/" +
+				queryString(t, db, "SELECT count(*) FROM audit_instance_events WHERE type = 'grant.denied'")
+		}
+		denialsBefore := denials()
 		_, challenge := pkcePair("show-handoff-navigation")
 		for _, tc := range []struct {
 			env    domain.EnvID
@@ -543,12 +543,16 @@ func TestShowHandoffFollowsEnvironmentNavigation(t *testing.T) {
 				t.Errorf("%s: owners = %q/%q, want disclosed = %v", tc.env, view.OrgID, view.ProjectID, tc.owners)
 			}
 		}
-		if got := queryString(t, db, "SELECT count(*) FROM audit_tenant_events WHERE type = 'grant.denied'"); got != denialsBefore {
-			t.Errorf("grant.denied rows = %s, want still %s after cosmetic probes", got, denialsBefore)
+		if got := denials(); got != denialsBefore {
+			t.Errorf("grant.denied rows (tenant/instance) = %s, want still %s after cosmetic probes", got, denialsBefore)
 		}
 	})
 }
 
+// The approve page reads the transaction purpose and any step-up binding back
+// from the SERVER-bound transaction by state, rather than trusting them from its
+// URL. This proves the read answers both variants, preserves step-up ownership,
+// refuses without a session, and refuses an unknown state.
 func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	ws := stepUpWorkspace(t, db)

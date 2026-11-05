@@ -159,7 +159,13 @@ func validateFinalDefinitions(cur definitions.CurrentState, res definitions.Reso
 	if len(environments) > MaxEnvironmentsPerProject {
 		return definitionLimit("final definitions contain %d environments; a project holds at most %d", len(environments), MaxEnvironmentsPerProject)
 	}
-	for _, name := range environments {
+	// Only names this plan writes: a stored name that predates a grammar rule must
+	// not block every plan for the project.
+	written := slices.Clone(res.EnvCreates)
+	for _, renamed := range res.EnvRenames {
+		written = append(written, renamed.To)
+	}
+	for _, name := range written {
 		if err := checkName("environment name", name); err != nil {
 			return definitionInvalid("environment %q has an invalid name: %v", name, err)
 		}

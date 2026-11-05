@@ -65,7 +65,7 @@ var (
 	// ErrServiceAccountName refuses a name outside the grammar. It is
 	// ErrInvalid, decided before any tenant resolution, so it discloses
 	// nothing about what exists.
-	ErrServiceAccountName = fmt.Errorf("%w: service: a service-account name must be 1-64 characters", domain.ErrInvalid)
+	ErrServiceAccountName = fmt.Errorf("%w: service: a service-account name must be 1-64 characters without text direction controls", domain.ErrInvalid)
 	// ErrServiceAccountKind refuses a kind outside the closed set. Kind is
 	// immutable after creation, so this is the only gate there is.
 	ErrServiceAccountKind = fmt.Errorf("%w: service: a service account is `workload` or `automation`", domain.ErrInvalid)
@@ -202,7 +202,7 @@ func (s *Identities) CreateServiceAccount(ctx context.Context, actor Actor, scop
 }
 
 func (s *Identities) createServiceAccount(ctx context.Context, write func(context.Context, tx.WriteFn) error, actor Actor, scope domain.Scope, name string, kind domain.PrincipalClass) (ServiceAccountView, error) {
-	if name == "" || len(name) > 64 {
+	if name == "" || len(name) > 64 || hasDirectionControl(name) {
 		return ServiceAccountView{}, ErrServiceAccountName
 	}
 	if !domain.IsServiceAccountKind(kind) {

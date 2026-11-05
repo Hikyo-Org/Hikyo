@@ -417,7 +417,9 @@ func (s *SCIM) mutateUser(
 			if desired.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
 			}
-			if hasDirectionControl(desired.UserName) {
+			// Only a new value: a stored name must not stop an identity provider
+			// deactivating the user who holds it.
+			if desired.UserName != row.UserName && hasDirectionControl(desired.UserName) {
 				return nil, ErrSCIMUserNameDirection
 			}
 			if err := checkSCIMAttributeNames(desired.Attributes, 0); err != nil {

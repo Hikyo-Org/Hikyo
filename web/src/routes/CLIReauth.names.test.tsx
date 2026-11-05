@@ -83,7 +83,7 @@ describe('CLI authorization names', () => {
       const rows = [...container.querySelectorAll('.ceremony__keys li')];
       expect(rows.map((row) => row.getAttribute('title'))).toEqual(keyIds);
       expect(rows[0]?.textContent).toContain('secret DATABASE_URL');
-      expect(rows[1]?.textContent).toBe('LOG_LEVEL');
+      expect(rows[1]?.textContent).toBe('LOG_LEVEL …000002');
       // Absent from the catalogue, so listed by its ID.
       expect(rows[2]?.textContent).toBe(consentIds.missingKey);
       expect(container.querySelector('.ceremony__keys')?.getAttribute('tabindex')).toBe('0');

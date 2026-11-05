@@ -130,3 +130,33 @@ func TestInviteRefusesDirectionControlInDisplayName(t *testing.T) {
 		}
 	})
 }
+
+// A name stored before the rule existed must not stop an identity provider
+// deactivating the user who holds it.
+func TestSCIMDeactivatesAUserWithAStoredDirectionControl(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		binding, credential := newSCIMBinding(t, db, "stored-direction-scim")
+		actor := service.SCIMCredentialActor(credential, binding)
+		user, err := scimSvc(db).CreateUser(t.Context(), actor, orgA, binding, service.DesiredUser{Active: true, UserName: "stored", ExternalID: "stored", SubjectRaw: "stored"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "UPDATE scim_users SET user_name = 'ops\u202eadmin' WHERE id = '"+user.ID+"'")
+		if _, err := scimSvc(db).PatchUser(t.Context(), actor, orgA, binding, user.ID, []service.UserPatchCommand{service.UserPatchSetActive{Active: false}}); err != nil {
+			t.Fatalf("deactivate = %v", err)
+		}
+	})
+}
+
+// A plan checks the names it writes, so a stored name that predates a grammar
+// rule does not block every plan for the project.
+func TestDefinitionsPlanAcceptsAStoredDirectionControl(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		f := seedDefinitionsProject(t, db, "stored-direction", true)
+		svc := definitionsService(t, db)
+		execRaw(t, db, "UPDATE environments SET name = 'prod\u202eadmin' WHERE project_id = '"+string(f.project)+"'")
+		if _, err := svc.Plan(t.Context(), service.LocalPrincipal(alice), f.scope(), exportDefinitions(t, svc, f), nil); err != nil {
+			t.Fatalf("no-op plan = %v", err)
+		}
+	})
+}

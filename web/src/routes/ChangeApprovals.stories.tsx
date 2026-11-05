@@ -291,7 +291,7 @@ export const RequestNamedByRequester: Story = {
   parameters: queue([queueRequest]),
   play: async ({ canvas }) => {
     await openQueue(canvas);
-    await expect((await canvas.findByText('Dana Jacobs', { selector: 'bdi' })).parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
+    await expect((await canvas.findAllByText('Dana Jacobs', { selector: 'bdi' }))[0]?.parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
     await expect(canvas.getByText(queueRequest.id)).toHaveClass('mono');
     await expect(canvas.getByText('Request ID')).toBeVisible();
     await expect(await canvas.findByText('3 keys')).toBeVisible();
@@ -308,6 +308,6 @@ export const PurposeStaysLabelled: Story = {
     await openQueue(canvas);
     const purpose = await canvas.findByText('Change request by Alice Admin');
     await expect(purpose.closest('div')).toHaveTextContent(/^Purpose/);
-    await expect(canvas.getByText('Dana Jacobs', { selector: 'bdi' }).parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
+    await expect(canvas.getAllByText('Dana Jacobs', { selector: 'bdi' })[0]?.parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
   },
 };

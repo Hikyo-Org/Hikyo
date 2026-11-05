@@ -270,7 +270,7 @@ export function WorkspaceApprove() {
         <p className="login__lede">
           {isStepUp ? (
             <>
-              Signed in as <span className="mono">{name}</span>. A workspace you have open elsewhere
+              Signed in as <bdi className="mono">{name}</bdi>. A workspace you have open elsewhere
               is asking to <strong>{stepUpTransaction.operation}</strong> over{' '}
               {stepUpTransaction.key_ids.length === 0
                 ? 'this environment'
@@ -280,7 +280,7 @@ export function WorkspaceApprove() {
             </>
           ) : (
             <>
-              Signed in as <span className="mono">{name}</span>. Approving lets the requesting
+              Signed in as <bdi className="mono">{name}</bdi>. Approving lets the requesting
               origin shown above operate this instance <strong>as you</strong>, for as long as the
               session lives or until it is revoked. Everything it does will appear in this
               instance&apos;s audit trail under your name.
