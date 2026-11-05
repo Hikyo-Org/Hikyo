@@ -18,15 +18,16 @@ const meta = {
     app: { responses: [], path: `${base}/matrix` },
   },
   args: {
-    org: 'acme',
-    orgName: 'Acme',
-    projectName: 'Payments',
-    orgRole: 'admin',
-    links: [
-      { id: 'matrix', label: 'Environment matrix', to: `${base}/matrix`, disabledReason: null },
-      { id: 'machine-access', label: 'Machine access', to: `${base}/machine-access`, disabledReason: null },
-      { id: 'project-settings', label: 'Project settings', to: `${base}/settings`, disabledReason: null },
-    ],
+    block: {
+      kind: 'project',
+      title: 'Project',
+      qualifiers: ['Payments'],
+      links: [
+        { id: 'matrix', label: 'Environment matrix', to: `${base}/matrix`, disabledReason: null },
+        { id: 'machine-access', label: 'Machine access', to: `${base}/machine-access`, disabledReason: null },
+        { id: 'project-settings', label: 'Project settings', to: `${base}/settings`, disabledReason: null },
+      ],
+    },
     state: {
       groups: [
         { id: 'app', name: 'app', keyCount: 3, problemCount: 0, hidden: false },

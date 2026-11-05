@@ -1180,6 +1180,7 @@ export const zUnheldGrantReach = z.object({
  */
 export const zPrincipalCapabilities = z.object({
     instance_audit_read: z.boolean().optional(),
+    instance_directory: z.boolean().optional(),
     instance_operator: z.boolean(),
     delivery_report_grant: zUnheldGrantReach
 });

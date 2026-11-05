@@ -9396,10 +9396,13 @@ type PrincipalCapabilities struct {
 	// DeliveryReportGrant Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
 	DeliveryReportGrant UnheldGrantReach `json:"delivery_report_grant"`
 
-	// InstanceAuditRead True when the caller holds instance audit-read. This navigation hint does not imply instance-config or replace per-request authority and MFA checks. Absent on older servers.
+	// InstanceAuditRead True when the caller's session can exercise instance audit-read: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
 	InstanceAuditRead *bool `json:"instance_audit_read,omitempty"`
 
-	// InstanceOperator True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
+	// InstanceDirectory True when the caller's session can exercise instance-directory, which the remote-instance directory read requires: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
+	InstanceDirectory *bool `json:"instance_directory,omitempty"`
+
+	// InstanceOperator True when the caller's session can exercise instance-config, which the retention-health and update-status reads require: the grant, and the second factor it requires, so a password-only session reads false. The instance administration chrome and those background polls gate on it.
 	InstanceOperator bool `json:"instance_operator"`
 }
 
