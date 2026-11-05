@@ -741,13 +741,16 @@ func (s *SSH) writeProfile(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return SSHProfileView{}, err
 		}
-		for _, requester := range write.Requesters {
-			if _, err := az.PrincipalClass(ctx, domain.PrincipalID(requester)); err != nil {
-				if errors.Is(err, domain.ErrNotFound) {
-					return SSHProfileView{}, fmt.Errorf("%w: requester %s is not a principal", domain.ErrInvalid, requester)
-				}
+		var kept []string
+		if mutation == "update" {
+			current, err := r.SSH().GetProfile(ctx, proof, profileID)
+			if err != nil {
 				return SSHProfileView{}, err
 			}
+			kept = current.Requesters
+		}
+		if err := checkNamedPrincipals(ctx, az, caller.Principal, scope.Org, write.Requesters, kept); err != nil {
+			return SSHProfileView{}, err
 		}
 		if _, err := r.SSH().GetCA(ctx, proof, write.CAID); err != nil {
 			return SSHProfileView{}, err

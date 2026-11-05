@@ -3,7 +3,8 @@ import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { renderForm, settleTask } from '../testkit/renderForm.tsx';
+import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
+import { TransitCreateKey } from './TransitKeyManagement.tsx';
 import { TransitKeys } from './TransitKeys.tsx';
 
 vi.mock('../app/AuthProvider.tsx', () => ({
@@ -24,7 +25,7 @@ const key = {
 function Harness({ env = environment }: { env?: string }) {
   return <MemoryRouter initialEntries={[`/orgs/${org}/projects/${project}/transit-keys?env=${env}&key=app-key`]}><Routes><Route path="/orgs/:org/projects/:project/transit-keys" element={<TransitKeys />} /></Routes></MemoryRouter>;
 }
-function installFetch() {
+function installFetch(shown: Record<string, unknown> = key) {
   const state = { refused: '', removed: false };
   const calls: string[] = [];
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
@@ -35,7 +36,7 @@ function installFetch() {
     const kind = path === base ? 'environment' : path.endsWith('/transit-keys') ? 'list' : 'detail';
     if (state.refused === kind) return Promise.resolve(Response.json({ error: { code: 'forbidden', message: 'NO_RAW_DETAIL' } }, { status: 403 }));
     if (kind === 'environment') return Promise.resolve(Response.json({ items: state.removed ? [] : [{ id: environment, org_id: org, project_id: project, name: 'production', display_order: 0, created_at: at }], count: state.removed ? 0 : 1 }));
-    return Promise.resolve(Response.json(kind === 'list' ? { items: [key] } : key));
+    return Promise.resolve(Response.json(kind === 'list' ? { items: [shown] } : shown));
   }));
   return { state, calls };
 }
@@ -88,5 +89,62 @@ it('does not request keys for a missing selected environment', async () => {
     await settleTask(); await settleTask();
     expect(calls.filter((path) => path.includes('/transit-keys'))).toHaveLength(0);
     expect(view.container.textContent).toContain('The selected environment is no longer available.');
+  } finally { await view.unmount(); }
+});
+
+// Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
+// bytes, 2632 base64 characters); the key bytes are filler.
+const spki = `MIIHsjALBglghkgBZQMEAxIDggehAA${'Q'.repeat(2602)}`;
+const pqKey = {
+  ...key, id: 'trk_00000000-0000-7000-8000-000000000002', name: 'pq-key', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'],
+  versions: [{ version: 1, material: 'sealed', created_at: at, public_key: spki }],
+};
+it('parses a list and a key holding mldsa65 and shows its whole published public key', async () => {
+  installFetch(pqKey);
+  const view = await renderForm(<MemoryRouter initialEntries={[`/orgs/${org}/projects/${project}/transit-keys?env=${environment}&key=pq-key`]}><Routes><Route path="/orgs/:org/projects/:project/transit-keys" element={<TransitKeys />} /></Routes></MemoryRouter>);
+  try {
+    await settleTask(); await settleTask();
+    const row = [...view.container.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes('pq-key'));
+    expect(row?.textContent).toContain('mldsa65');
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[readonly]');
+    expect(textarea?.value).toBe(spki);
+    expect(view.container.textContent).toContain('base64 SubjectPublicKeyInfo');
+  } finally { await view.unmount(); }
+});
+it('does not describe an Ed25519 public key as an SPKI', async () => {
+  installFetch({ ...pqKey, name: 'app-key', algorithm: 'ed25519', versions: [{ version: 1, material: 'sealed', created_at: at, public_key: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }] });
+  const view = await renderForm(<Harness />);
+  try {
+    await settleTask(); await settleTask();
+    expect(view.container.querySelector('textarea[readonly]')).not.toBeNull();
+    expect(view.container.textContent).not.toContain('base64 SubjectPublicKeyInfo');
+  } finally { await view.unmount(); }
+});
+it('offers ML-DSA-65 as a signing algorithm and creates the key with sign and verify only', async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const request = input instanceof Request ? input : new Request(input);
+    bodies.push(JSON.parse(await request.text()) as Record<string, unknown>);
+    return Response.json({ ...pqKey }, { status: 201 });
+  }));
+  const onClose = vi.fn();
+  const view = await renderForm(<TransitCreateKey env={{ org, project, environment }} onClose={onClose} />);
+  try {
+    const select = view.container.querySelector('select');
+    expect([...(select?.options ?? [])].map((option) => option.value)).toContain('mldsa65');
+    await act(async () => {
+      if (select === null) throw new Error('no algorithm select');
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, 'mldsa65');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const labels = [...view.container.querySelectorAll('fieldset label')].map((label) => label.textContent);
+    expect(labels).toEqual(['Allow sign', 'Allow verify']);
+    const name = view.container.querySelector<HTMLInputElement>('input[pattern]');
+    if (name === null) throw new Error('no name input');
+    await act(async () => { typeInto(name, 'pq-key'); });
+    await act(async () => { view.container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    await settleTask();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ name: 'pq-key', algorithm: 'mldsa65', custody: 'software', exportable: false, allowed_operations: ['sign', 'verify'] });
   } finally { await view.unmount(); }
 });

@@ -213,6 +213,7 @@
   "PinGeneration": "func(ctx context.Context, p domain.PrincipalID, env domain.EnvID) (int64, error)",
   "PollCLILogin": "func(ctx context.Context, id string, at time.Time, interval int64) error",
   "PrincipalClass": "func(ctx context.Context, p domain.PrincipalID) (domain.PrincipalClass, error)",
+  "PrincipalFootprintOrgs": "func(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error)",
   "PrincipalGeneration": "func(ctx context.Context, p domain.PrincipalID) (int64, error)",
   "PrivacyAccount": "func(ctx context.Context, p string) (PrivacyAccountView, error)",
   "PrivacyActivity": "func(ctx context.Context, p string) ([]PrivacyActivity, error)",

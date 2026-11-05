@@ -885,6 +885,11 @@ func (a *TxAuthorizer) PrincipalClass(ctx context.Context, p domain.PrincipalID)
 	return a.r.PrincipalClass(ctx, p)
 }
 
+// PrincipalFootprintOrgs lists every org holding any row about a principal.
+func (a *TxAuthorizer) PrincipalFootprintOrgs(ctx context.Context, p domain.PrincipalID) ([]domain.OrgID, error) {
+	return a.r.PrincipalFootprintOrgs(ctx, p)
+}
+
 // PrincipalGeneration reads the principal's current session generation, so a
 // freshly minted session records the generation it was born under.
 func (a *TxAuthorizer) PrincipalGeneration(ctx context.Context, p domain.PrincipalID) (int64, error) {

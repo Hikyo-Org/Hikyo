@@ -69,9 +69,12 @@ PostgreSQL catalogs. Changed SQL, missing migrations or catalog drift fail.
 
 Installation configuration pins `root.json` and the recovery public key. A
 downloaded artifact cannot choose its own root. `VerifySnapshot` authenticates
-stable metadata with that key, validates active primary keys, and verifies an
-additional recovery-signed `hikyo.dev/upgrade-trust/v1` catalog. The catalog binds
-the exact current metadata digest, authorized nightly policy digests and recovery
+stable metadata and a `hikyo.dev/upgrade-trust/v1` catalog in one of two shapes.
+Legacy snapshots are signed directly by the recovery key. Otherwise the recovery
+key delegates through the recovery-signed `stable-policy.json`, and metadata and
+catalog signed by the stable release workflow are authenticated through that
+delegation. Either way it validates active primary keys. The catalog binds the
+exact current metadata digest, authorized nightly policy digests and recovery
 bridge digests. Missing, withdrawn or substituted evidence fails closed.
 
 Generate a review artifact after updating the stable metadata:
@@ -83,14 +86,20 @@ scripts/release/create-upgrade-catalog.sh metadata.json 2 \
 
 The policy and bridge directories contain only reviewed JSON statements and
 optional corresponding `.sigstore.json` signatures. Catalog creation does not
-authorize its output. During the existing offline recovery-key ceremony, sign
-the exact catalog using the same key-based Cosign profile as trust metadata:
+authorize its output. While the stable metadata is recovery-signed, sign the
+exact catalog during the existing offline recovery-key ceremony using the same
+key-based Cosign profile as trust metadata:
 
 ```sh
 cosign sign-blob --yes --new-bundle-format=false --tlog-upload=false \
   --use-signing-config=false --key /offline/recovery.key \
   --bundle upgrade-catalog.sigstore.json upgrade-catalog.json
 ```
+
+Once the stable workflow has signed the metadata, a recovery-signed catalog over it
+is refused. Follow
+[Re-authorize trust over workflow-signed metadata](signed-nightlies.md#re-authorize-trust-over-workflow-signed-metadata)
+instead.
 
 Distribute the catalog and signature alongside the current metadata and keys.
 No key or catalog was created for production by this implementation. The

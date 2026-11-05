@@ -3,13 +3,16 @@ package isolation
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -35,8 +38,9 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		})
 		// Transit and PKI for the frozen client to read. Everything is seeded
 		// before the first login so no later grant change stales a session.
-		// Ed25519 only: the mldsa65 list case lands with #1172, which brings the
-		// Transit mechanism; PKI ML-DSA stays behind service.PKI.MLDSAEnabled.
+		// The environment holds one mldsa65 key: the closed v1.0.0 Zod enum must
+		// reject the whole list (the one-time skew break of the 2026-11-04
+		// api-cli-surface amendment). PKI ML-DSA stays behind service.PKI.MLDSAEnabled.
 		// A real hierarchy, because the fixture's hand-written ids (org_a) do not
 		// satisfy the Id grammar the frozen Zod schemas enforce.
 		operator := service.LocalPrincipal(root)
@@ -56,11 +60,16 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		}
 		envScope := domain.Scope{Org: projectScope.Org, Project: projectScope.Project, Env: domain.EnvID(env.ID)}
 		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_admin_read','`+string(admin.boot.PrincipalID)+`','read','`+org.ID+`','`+project.ID+`','`+env.ID+`',`+ts+`)`)
+		// crypto-use and crypto-manage let the frozen SDK run the mldsa65
+		// lifecycle (create, sign, verify, rotate) against this server.
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_admin_manage','`+string(admin.boot.PrincipalID)+`','crypto-manage','`+org.ID+`','`+project.ID+`',NULL,`+ts+`)`)
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_admin_use','`+string(admin.boot.PrincipalID)+`','crypto-use','`+org.ID+`','`+project.ID+`','`+env.ID+`',`+ts+`)`)
 		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_root_crypto','`+string(root)+`','crypto-manage','`+org.ID+`','`+project.ID+`',NULL,`+ts+`)`)
 		transitSvc := &service.Transit{DB: db, Keyring: keyring, Custody: transit.NewRegistry(&transit.Software{Keyring: keyring})}
 		for _, req := range []service.CreateTransitKeyRequest{
 			{Name: "skew-signing", Algorithm: "ed25519", AllowedOperations: []string{"sign", "verify"}},
 			{Name: "skew-sealing", Algorithm: "xchacha20-poly1305", AllowedOperations: []string{"encrypt", "decrypt"}},
+			{Name: "skew-pq", Algorithm: "mldsa65", AllowedOperations: []string{"sign", "verify"}},
 		} {
 			if _, err := transitSvc.CreateKey(t.Context(), operator, envScope, req); err != nil {
 				t.Fatal(err)
@@ -118,6 +127,26 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		}, nil))
 		defer httpServer.Close()
 		admin.auth.ExternalOrigin = httpServer.URL
+		// The current Go side decodes the same list: the generated enum type is a
+		// plain string, so mldsa65 is not a decode failure for the CLI either.
+		listReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, httpServer.URL+"/api/v1/orgs/"+org.ID+"/projects/"+project.ID+"/environments/"+env.ID+"/transit-keys", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listReq.Header.Set("Authorization", "Bearer "+elevated.SessionToken)
+		listRes, err := http.DefaultClient.Do(listReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var goList apigen.TransitKeyList
+		decodeErr := json.NewDecoder(listRes.Body).Decode(&goList)
+		_ = listRes.Body.Close()
+		if listRes.StatusCode != http.StatusOK || decodeErr != nil || len(goList.Items) != 3 {
+			t.Fatalf("go decode of the transit list: status %d, %d items, err %v", listRes.StatusCode, len(goList.Items), decodeErr)
+		}
+		if !slices.ContainsFunc(goList.Items, func(k apigen.TransitKey) bool { return k.Algorithm == apigen.TransitAlgorithm("mldsa65") }) {
+			t.Fatalf("go decode lost the mldsa65 key: %+v", goList.Items)
+		}
 		input, err := json.Marshal(map[string]any{
 			"origin": httpServer.URL, "username": "factor-admin", "password": admin.password,
 			"elevated": elevated.SessionToken, "principal": string(admin.boot.PrincipalID),

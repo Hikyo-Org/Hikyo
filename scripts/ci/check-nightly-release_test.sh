@@ -168,4 +168,25 @@ python3 -I -B -m unittest discover -s "$repo_root/scripts/release" -p test_night
 "$repo_root/scripts/release/require-green-main_test.sh"
 "$repo_root/scripts/release/nightly-changelog_test.sh"
 "$repo_root/scripts/release/nightly-promote_test.sh"
+# The committed, workflow-signed trust must reach the Go assembler with its
+# recovery-signed delegation; otherwise the snapshot is refused at assembly.
+assembly_fixture=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-nightly-assembly-fixture.XXXXXX")
+trap 'rm -rf "$assembly_fixture"' EXIT HUP INT TERM
+mkdir "$assembly_fixture/bin" "$assembly_fixture/nightly"
+cat >"$assembly_fixture/bin/go" <<'GO'
+#!/bin/sh
+# Records the snapshot directory handed to the assembler instead of running it.
+while [ "$#" -gt 0 ]; do
+	[ "$1" != --snapshot ] || { ls "$2" >"$RECORD"; exit 0; }
+	shift
+done
+exit 1
+GO
+chmod +x "$assembly_fixture/bin/go"
+RECORD="$assembly_fixture/snapshot-files" PATH="$assembly_fixture/bin:$PATH" \
+	"$repo_root/scripts/release/assemble-nightly.sh" "$repo_root/release/trust" "$assembly_fixture/out" "$assembly_fixture/nightly" ||
+	fail 'nightly assembly rejected the committed trust'
+for name in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json stable-policy.json stable-policy.sigstore.json stable-trusted-root.json; do
+	grep -Fx "$name" "$assembly_fixture/snapshot-files" >/dev/null || fail "nightly assembly omits $name from the trust snapshot"
+done
 printf 'nightly release fixture: notarized archives and disk images, packages and retryable images preserve nightly trust\n'

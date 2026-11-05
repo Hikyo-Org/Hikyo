@@ -39,7 +39,7 @@ predecessor requirement.
 Complete the existing [offline trust bootstrap](../release/signing.md#one-time-trust-bootstrap)
 for the project recovery and primary keys. Use its protected removable-media
 and offline signing procedure. Nightlies do not require a stable release to
-exist, but they do require the recovery-signed metadata and primary public key
+exist, but they do require the authenticated trust metadata and primary public key
 inventory. Keep stable release counters unchanged when publishing a nightly.
 
 While online and before mounting private key media, use the pinned Cosign
@@ -69,7 +69,10 @@ scripts/release/create-upgrade-catalog.sh release/trust/metadata.json 1 \
 ```
 
 Use the next sequence if a catalog already exists. Offline, recovery-sign the
-exact catalog with the [catalog ceremony](upgrade-artifacts.md#offline-trust-snapshot).
+exact catalog with the [catalog ceremony](upgrade-artifacts.md#offline-trust-snapshot),
+unless the current metadata is workflow-signed. Then a recovery-signed catalog is
+refused and you must follow
+[Re-authorize trust over workflow-signed metadata](#re-authorize-trust-over-workflow-signed-metadata).
 Publish only public files at these paths, preserving their signed bytes:
 
 ```text
@@ -239,11 +242,17 @@ release preflight) therefore also fetch the currently published
 `revoked_manifests`, even when the release's own bundled policy is clean.
 
 To revoke a nightly, add its `release-manifest.json` SHA-256 to
-`revoked_manifests` in the reviewed policy, regenerate the catalog with the next
-sequence while keeping the earlier policy digest listed, and recovery-sign the
-catalog. Keeping the earlier digest lets other nightlies from that policy period
-keep verifying; dropping it refuses all of them at once. Publish the policy and
-catalog together. Note the limit of keeping the earlier digest: the verifier
+`revoked_manifests` in the reviewed policy and regenerate the catalog with the
+next sequence while keeping the earlier policy digest listed. Keeping the earlier
+digest lets other nightlies from that policy period keep verifying; dropping it
+refuses all of them at once. Publish the policy and catalog together.
+
+Who signs depends on the current stable metadata (see
+[Re-authorize trust over workflow-signed metadata](#re-authorize-trust-over-workflow-signed-metadata)).
+While metadata is recovery-signed, recovery-sign the catalog. Once the stable
+workflow has signed metadata, the verifier requires the catalog to carry the same
+workflow signature and to list exactly the stable policy's inventories, so a
+recovery-signed catalog over that metadata is refused. Note the limit of keeping the earlier digest: the verifier
 accepts any catalog-listed policy as current, so a party able to substitute the
 published trust files could serve the earlier clean policy and re-enable the
 revoked nightly. That holds the revocation against accidental selection, not
@@ -251,6 +260,62 @@ against an adversary; when it must hold adversarially, drop the earlier digest
 and accept refusing that policy period. The offline server boot gate keeps using the bundled policy;
 a revoked release that is already installed remains inspectable and is never
 selected again as an upgrade target.
+
+## Re-authorize trust over workflow-signed metadata
+
+Once the stable release workflow has signed `metadata.json`, `VerifySnapshot`
+accepts a catalog only if it carries the workflow signature and its
+`nightly_policies` and `bridges` equal the inventories in the recovery-signed
+`stable-policy.json` (`stable workflow changed nightly or bridge authority`
+otherwise). A nightly revocation or a new bridge changes those inventories, so
+recovery re-authorizes the snapshot in the legacy shape.
+`TestRecoveryReauthorizationOverWorkflowSignedTrust` covers which shapes
+`VerifySnapshot` accepts or refuses. It does not run these steps end to end.
+
+1. Write new `metadata.json` with `sequence` plus one,
+   `event.signed_by` set to `recovery-1`, and `source_commit` and `release_tag`
+   removed. Keeping either is refused (`legacy metadata carries delegated
+   identity`). Keep every other field. Use an `event.type` the verifier accepts.
+2. Copy the new `nightly_policies` and `bridges` into `stable-policy.json` and
+   recovery-sign it (step 4) in the same change, so the policy and the catalog
+   agree before the next stable release.
+3. Write the new `catalog.json` with `sequence` plus one, the new
+   `stable_metadata_sha256` and the changed inventories. Set
+   `stable_policy_sha256` to the digest of the `stable-policy.json` committed in
+   the same change. `scripts/release/create-upgrade-catalog.sh` omits this field,
+   so add it before signing. The old digest next to a changed policy is refused by
+   every verifier (`catalog does not bind exact stable delegation`).
+4. Recovery-sign `metadata.json`, `catalog.json` and, when it changed,
+   `stable-policy.json`, each with the key-based form used for bridge statements:
+
+   ```sh
+   cosign sign-blob --yes --new-bundle-format=false --tlog-upload=false \
+     --use-signing-config=false --key /offline/recovery.key \
+     --bundle /review/NAME.sigstore.json /review/NAME.json
+   ```
+
+   Commit the signed files with the policy and bridge files, keeping
+   `stable-trusted-root.json` in place. An old `stable-policy.sigstore.json` next
+   to a changed policy is refused (`stable policy: signature verification failed`),
+   so keep it only when the policy did not change. No tool
+   re-signs an existing policy: `scripts/release/stable` refuses one that exists
+   ("policy rotation requires explicit review"), so this is a manual, reviewed
+   recovery-key step. The next workflow-signed catalog must list exactly the
+   policy's inventories, and its `stable_policy_sha256` must be the digest of that
+   file. With the old policy the workflow release is refused.
+
+Sequences only increase and the verification floor never moves back, so each step
+needs a higher sequence than the last published metadata and catalog.
+
+Warning: plan a stable release alongside any re-authorization. The latest stable
+release's assets embed the trust sequences current when it was built (v1.0.0
+carries metadata 2 and catalog 4). Once main moves past them, `install.sh` runs
+`stable verify --latest` against that older embedded state and refuses every new
+stable install with `metadata: trust rollback refused` until the next stable
+release is published with newer trust. Historical verification keeps passing.
+`TestRecoveryReauthorizationOverWorkflowSignedTrust` covers only `VerifySnapshot`
+acceptance and refusal; it does not exercise `install.sh`, `--latest` or the
+bootstrap script.
 
 ## Bridge existing unsigned installations once
 
@@ -280,8 +345,10 @@ cosign sign-blob --yes --new-bundle-format=false --tlog-upload=false \
 
 Place the statement and signature at
 `release/trust/bridges/STATEMENT_SHA256/statement.json` and
-`statement.sigstore.json`. Add every approved statement digest to a new,
-recovery-signed catalog. Include its exact signed target release in the manual
+`statement.sigstore.json`. Add every approved statement digest to a new catalog
+signed as described in
+[Re-authorize trust over workflow-signed metadata](#re-authorize-trust-over-workflow-signed-metadata).
+Include its exact signed target release in the manual
 runtime bundle. This is a second offline authorization after the target manifest
 exists; subsequent nightlies under the same policy need no project-key ceremony.
 Never reuse a signature after reformatting or changing the statement.

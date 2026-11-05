@@ -96,7 +96,7 @@ var reencryptExemptBlobs = map[string]string{
 	// Chrome identity avatars: plaintext PNG/JPEG/WebP bytes served to any reader of the org or project, not secret.
 	"orgs.identity_image":     "public avatar image bytes (not secret, not enveloped)",
 	"projects.identity_image": "public avatar image bytes (not secret, not enveloped)",
-	// Transit (#156): an Ed25519 public key is public metadata, never sealed.
+	// Transit (#156, #1129): an Ed25519 or ML-DSA-65 public key is public metadata, never sealed.
 	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
 	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,
 	// never by reencrypt (which moves ciphertext, not keys).

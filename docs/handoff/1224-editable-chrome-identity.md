@@ -28,7 +28,7 @@ org and project.
 
 ## Storage
 
-Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check), `identity_mark`, `identity_image`, `identity_image_type`, `identity_image_version` to `orgs` and `projects`. Get and list queries never select the bytes; a dedicated query reads them. Deleting the org or project deletes the row, and the image with it.
+Migration 00085 (both dialects) adds `identity_hue` (default 195, 0..359 check), `identity_mark`, `identity_image`, `identity_image_type`, `identity_image_version` to `orgs` and `projects`. Get and list queries never select the bytes; a dedicated query reads them. Deleting the org or project deletes the row, and the image with it.
 
 ## SVG and CSP (decision with evidence)
 
@@ -49,7 +49,7 @@ Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check),
 
 ## Remaining and follow-ups
 
-- Migration 00083 is the next free number on `dev`; renumber it, and regenerate `internal/buildcompat/development.json`, if another change claims it first.
+- Migration 00085 is the next free number on `dev` (00083 and 00084 were taken upstream); renumber it, and regenerate `internal/buildcompat/development.json` with `go run ./scripts/release/compatibility -development`, if another change claims it first.
 - A sole org's badge appears only in settings, because the rail and mobile switcher need at least two orgs. The owner chose this over adding a shell badge in #1224.
 - Firefox SVG conversion is untested.
 - A save still settling when the page moves to another org reports its result on the new page, because page feedback is shared, as it is for rename.

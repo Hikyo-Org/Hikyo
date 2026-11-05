@@ -90,7 +90,7 @@ facts for each option, verified against this tree and `v1.0.0`:
 3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` says v1 explicitly plans none.
 
 (Same shape as the corrected wording in
-[1129-transit-mldsa.md](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md).)
+[1129-transit-mldsa.md](./1129-transit-mldsa.md).)
 
 Until then the mechanism is complete below the API and the real server refuses
 it. **One hole the enum does not close, found here and closed here:** the

@@ -9,6 +9,13 @@ mkdir "$scratch/snapshot" "$scratch/keys"
 for name in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
  cp "$trust/$name" "$scratch/snapshot/$name"
 done
+# Workflow-signed metadata is authenticated only through the recovery-signed
+# delegation; without it the Go verifier refuses the snapshot (fail closed).
+if [ -e "$trust/stable-policy.json" ]; then
+ for name in stable-policy.json stable-policy.sigstore.json stable-trusted-root.json; do
+  cp "$trust/$name" "$scratch/snapshot/$name"
+ done
+fi
 jq -r '.primary_keys[].public_key' "$trust/metadata.json" >"$scratch/key-names"
 while IFS= read -r name; do
  case "$name" in '' | *..* | */* | *\\*) printf 'unsafe key name\n' >&2; exit 1 ;; esac

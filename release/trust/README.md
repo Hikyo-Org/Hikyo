@@ -1,9 +1,15 @@
 # Production trust bootstrap
 
 This directory holds the committed public trust material: `root.json`,
-`recovery-1.pub`, `primary-1.pub`, recovery-signed `metadata.json`
-(`metadata.sigstore.json`) and the nightly `catalog.json`. The `*.example`
-files are the fixture shapes used by `scripts/release/test-fixtures.sh`.
+`recovery-1.pub`, `primary-1.pub`, `metadata.json` (`metadata.sigstore.json`),
+the upgrade `catalog.json` (`catalog.sigstore.json`) and the recovery-signed
+`stable-policy.json` delegation with its Sigstore root. The recovery key signs
+the stable policy; the stable release workflow then signs metadata and
+catalog, and verifiers authenticate those through that delegation. Changing the
+policy's inventories is a reviewed recovery re-signing (see
+[signed nightlies](../../docs/operations/signed-nightlies.md#re-authorize-trust-over-workflow-signed-metadata)). Legacy
+recovery-signed snapshots stay accepted. The `*.example` files are the fixture
+shapes used by `scripts/release/test-fixtures.sh`.
 
 The keys behind this root were generated on 2026-09-06 for nightly activation
 under the custody exception recorded in [BOOTSTRAP.md](BOOTSTRAP.md): on a

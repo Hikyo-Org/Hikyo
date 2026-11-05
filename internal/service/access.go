@@ -209,6 +209,10 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := validatePolicyEnvironment(ctx, az, scope, input.EnvironmentID); err != nil {
 			return err
 		}
+		named, kept := policyRosterPrincipals(input.Approvers, input.Bypassers, nil, nil)
+		if err := checkNamedPrincipals(ctx, az, caller.Principal, scope.Org, named, kept); err != nil {
+			return err
+		}
 		if input.Enabled && len(input.Bypassers) > 0 {
 			if err := requireEmergencyGrantBound(ctx, az, caller.Principal, scope, input.EnvironmentID, caps); err != nil {
 				return err
@@ -260,13 +264,23 @@ func (s *Access) UpdatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if input.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: an access policy's environment cannot be changed; create a replacement policy", domain.ErrInvalid)
 		}
+		// Entries already stored are kept without re-checking; only new names
+		// are confined to the actor's orgs.
+		approvers, err := r.Access().ListApprovers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		bypassers, err := r.Access().ListBypassers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		named, kept := policyRosterPrincipals(input.Approvers, input.Bypassers, approvers, bypassers)
+		if err := checkNamedPrincipals(ctx, az, caller.Principal, scope.Org, named, kept); err != nil {
+			return err
+		}
 		// An emergency allowlist is a standing delegation. Creating or widening
 		// it obeys the same permanent grantor bound as a direct grant.
 		if input.Enabled && len(input.Bypassers) > 0 {
-			bypassers, err := r.Access().ListBypassers(ctx, p, id)
-			if err != nil {
-				return err
-			}
 			widening := !current.Enabled || input.MaxDurationSeconds > current.MaxDurationSeconds
 			for _, capability := range caps {
 				widening = widening || !slices.Contains(current.Capabilities, capability)

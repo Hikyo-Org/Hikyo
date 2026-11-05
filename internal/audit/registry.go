@@ -4183,7 +4183,7 @@ func Types() []EventType {
 // the service and the audit schemas both import, so an enum in a payload and
 // the service's own vocabulary cannot drift apart.
 var (
-	TransitAlgorithmValues = []string{"xchacha20-poly1305", "ed25519", "hmac-sha256"}
+	TransitAlgorithmValues = []string{"xchacha20-poly1305", "ed25519", "hmac-sha256", "mldsa65"}
 	TransitOperationValues = []string{
 		"encrypt", "decrypt", "rewrap", "datakey", "datakey-plaintext",
 		"sign", "verify", "hmac", "hmac-verify",
