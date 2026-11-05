@@ -88,8 +88,8 @@ export function ChromeIdentityControls({
       );
   const mark = chromeIdentityMark(identity, name);
 
-  // Only a draft the server now holds clears: another field saving must not
-  // discard a slider still being dragged or text still being typed.
+  // A refetch can arrive before a save settles. Only a draft the server now holds
+  // clears: another field saving must not discard a drag or half-typed text.
   useResetOnChange(`${String(serverHue)}\u0000${serverMark}`, () => {
     if (draftHue === serverHue) setDraftHue(null);
     if (draftMark !== null && limitMark(draftMark) === serverMark) setDraftMark(null);
@@ -120,10 +120,12 @@ export function ChromeIdentityControls({
       try {
         await queued.actions.setIdentity(queued.next);
       } catch {
-        // Revert what this save carried; an edit made since then stays.
-        setDraftHue((draft) => (draft === queued.next.hue ? null : draft));
-        setDraftMark((draft) => (draft !== null && limitMark(draft) === (queued.next.mark ?? '') ? null : draft));
+        // The page's feedback already reported it.
       }
+      // Settled, and the reads have refreshed: the server's value now shows. A
+      // draft from an edit made since then is different, so it stays.
+      setDraftHue((draft) => (draft === queued.next.hue ? null : draft));
+      setDraftMark((draft) => (draft !== null && limitMark(draft) === (queued.next.mark ?? '') ? null : draft));
     }
     identitySaving.current = false;
   };

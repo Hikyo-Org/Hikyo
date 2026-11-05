@@ -1049,7 +1049,7 @@ type GetOrgIdentityImageRow struct {
 
 // The org chrome image is read for the navigation rail, so it rides the same
 // proof-free path as GetOrgIdentity: the caller proves visibility by finding
-// the org in OrgsForPrincipal, never by an authz formula. Same chain shape.
+// the org in OrgsForPrincipal or by holding org.get. Same chain shape.
 func (q *Queries) GetOrgIdentityImage(ctx context.Context, id string) (GetOrgIdentityImageRow, error) {
 	row := q.db.QueryRow(ctx, getOrgIdentityImage, id)
 	var i GetOrgIdentityImageRow

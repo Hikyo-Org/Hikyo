@@ -160,13 +160,37 @@ describe('ChromeIdentityControls saving', () => {
   }
 
   it('keeps showing a choice until the server holds it', async () => {
-    const setIdentity = vi.fn(() => Promise.resolve());
+    const first = deferred();
+    const setIdentity = vi.fn<(next: Saved) => Promise<void>>(() => first.promise);
     const redraw = mount({ hue: 195 }, setIdentity);
     await act(async () => preset(280).click());
     expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 280, mark: null });
     expect(pressedHue()).toBe('Hue 280');
     redraw({ hue: 280 });
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
     expect(pressedHue()).toBe('Hue 280');
+  });
+
+  it('leaves no draft behind when a failed save is followed by the server value', async () => {
+    const first = deferred();
+    const setIdentity = vi
+      .fn<(next: Saved) => Promise<void>>()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValue(undefined);
+    const redraw = mount({ hue: 195 }, setIdentity);
+    await act(async () => preset(280).click());
+    await act(async () => preset(195).click());
+    await act(async () => {
+      first.reject(new Error('refused'));
+      await first.promise.catch(() => undefined);
+    });
+    expect(setIdentity).toHaveBeenCalledTimes(2);
+    // Another admin's change must show: no stale 195 draft may mask it.
+    redraw({ hue: 60 });
+    expect(pressedHue()).toBe('Hue 60');
   });
 
   it('reverts to the server state when the save fails', async () => {
@@ -208,7 +232,7 @@ describe('ChromeIdentityControls saving', () => {
       await first.promise;
     });
     expect(setIdentity).toHaveBeenLastCalledWith({ hue: 280, mark: 'AB' });
-    redraw({ hue: 195, mark: 'AB' });
+    redraw({ hue: 280, mark: 'AB' });
     expect(pressedHue()).toBe('Hue 280');
     expect(markInput().value).toBe('AB');
   });

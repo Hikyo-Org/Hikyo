@@ -87,14 +87,21 @@ async function exerciseBadge(
       const response = await fetch(path);
       return `${String(response.status)} ${response.headers.get('Content-Type') ?? ''}`;
     }, imagePath);
-  const saved = (text: string) => expect(page.locator('.notice').filter({ hasText: text }).last()).toBeVisible();
+  // Wait for the response, not the notice: an earlier save's notice is still shown.
+  const saving = () =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname.endsWith('/identity') && response.request().method() === 'PUT' && response.ok();
+    });
 
   await page.goto(route);
+  let save = saving();
   await page.getByRole('button', { name: 'Hue 280', exact: true }).click();
-  await saved('Identity saved.');
+  await save;
+  save = saving();
   await page.getByLabel(/^Content/).fill('🚀');
   await page.getByLabel(/^Content/).press('Tab');
-  await saved('Identity saved.');
+  await save;
   await page.goto(route);
   await expect(page.getByRole('button', { name: 'Hue 280', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(preview).toHaveText('🚀');
@@ -110,8 +117,9 @@ async function exerciseBadge(
   }
 
   // A hue change re-applies only the colour; the image must survive it.
+  save = saving();
   await page.getByRole('button', { name: 'Hue 60', exact: true }).click();
-  await saved('Identity saved.');
+  await save;
   await expect(page.getByRole('button', { name: 'Hue 60', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(preview).toHaveCSS('background-image', /identity\/image\?v=/);
 

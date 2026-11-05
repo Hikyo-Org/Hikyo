@@ -40,7 +40,7 @@ func TestChromeIdentityOrg(t *testing.T) { forEngines(t, runChromeIdentityOrg) }
 
 // runChromeIdentityOrg drives the org identity through the real services on
 // both engines: who may write, who may read the image (the listMyOrgs
-// audience, not a formula), what is refused, what the trail records, and that
+// audience plus org.get holders), what is refused, what the trail records, and that
 // deleting the org takes the image with it.
 func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	orgs := &service.Orgs{DB: db}
@@ -113,6 +113,11 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	}
 	if _, err := orgs.SetIdentityImage(ctx, service.LocalPrincipal(reader), orgA, "image/png", good); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("read-only member uploaded: %v", err)
+	}
+	// Authorization comes first, so an unauthorized caller never reaches the
+	// expensive decode: bad bytes are the uniform refusal, not a validation error.
+	if _, err := orgs.SetIdentityImage(ctx, service.LocalPrincipal(reader), orgA, "image/png", []byte("not an image")); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("read-only member with bad bytes: %v, want the uniform refusal", err)
 	}
 	webp, err := base64.StdEncoding.DecodeString("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")
 	if err != nil {
@@ -227,6 +232,9 @@ func runChromeIdentityProject(t *testing.T, db *store.DB) {
 	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(alice), scope, 400, &mark); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("bad hue: %v", err)
 	}
+	if _, err := projects.SetIdentityImage(ctx, service.LocalPrincipal(reader), scope, "image/png", []byte("not an image")); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("read-only member with bad bytes: %v, want the uniform refusal", err)
+	}
 	if _, err := projects.SetIdentityImage(ctx, service.LocalPrincipal(alice), scope, "image/svg+xml", []byte("<svg/>")); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("svg upload: %v", err)
 	}
@@ -327,8 +335,8 @@ func runChromeIdentityWire(t *testing.T, db *store.DB) {
 	if resp, _ := raw(http.MethodGet, orgImage, "", "", nil); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anonymous org image read = %d, want 401", resp.StatusCode)
 	}
-	// Same setup as the artifact admission test: a real machine credential, with
-	// real read on the environment, is still refused this human-session route.
+	// Same setup as the artifact admission test: a real machine credential is
+	// refused this human-session route, and just as a missing org is.
 	projectScope := domain.Scope{Org: domain.OrgID(e.org), Project: domain.ProjectID(e.project)}
 	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES (`+
 		`'g_chrome_admin', '`+string(e.admin)+`', 'manage-identities', '`+e.org+`', '`+e.project+`', NULL, '2026-01-01T00:00:00Z')`)
@@ -343,7 +351,9 @@ func runChromeIdentityWire(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatalf("mint machine credential: %v", err)
 	}
-	if resp, body := raw(http.MethodGet, orgImage, minted.Value, "", nil); resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("machine org image read = %d %s, want the uniform 404", resp.StatusCode, body)
+	resp, body := raw(http.MethodGet, orgImage, minted.Value, "", nil)
+	_, missing := raw(http.MethodGet, api.PathPrefix+"/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fab/identity/image", minted.Value, "", nil)
+	if resp.StatusCode != http.StatusNotFound || !bytes.Equal(body, missing) {
+		t.Fatalf("machine org image read = %d %s, want the uniform 404 %s", resp.StatusCode, body, missing)
 	}
 }
