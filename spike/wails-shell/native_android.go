@@ -52,7 +52,7 @@ func (s *nativeStream) WriteHeader(code int) {
 }
 func (s *nativeStream) Write(p []byte) (int, error) {
 	s.WriteHeader(http.StatusOK)
-	if pad := ssePad.Load(); pad > 0 && strings.HasPrefix(s.header.Get("Content-Type"), "text/event-stream") {
+	if pad := ssePad.Load(); pad > 0 && strings.HasPrefix(strings.ToLower(s.header.Get("Content-Type")), "text/event-stream") {
 		return s.writeSSE(p, int(pad))
 	}
 	return s.pw.Write(p)

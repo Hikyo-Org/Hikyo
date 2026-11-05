@@ -386,10 +386,13 @@ reads exactly that length. A chunked body over the cap, where `available()` is 0
 `SpikeBridge.java` now drops Go's `Content-Length` and `Transfer-Encoding` and buffers
 non-streaming bodies up to 8 MiB (the SDK's own data ceiling), then serves them from a
 `ByteArrayInputStream`, so the length is exact. Above the cap it streams the rest. A declared
-length still reaches `available()`. With no declared length the header reads `0` and the body
+length still reaches `available()`. A buffered body that ends short of a declared length fails
+with 502, since the bridge reports every Go read error as end of stream (a chunked body cannot
+be checked this way). With no declared length the header reads `0` and the body
 is complete. `text/event-stream` is never buffered. Downloads take their own path.
 A non-event streaming body (NDJSON, long polling) now waits for the whole body or 8 MiB before
-the page sees anything. I did not check whether `web/` has one.
+the page sees anything. A search of `web/src` found none: the only stream reader is the bounded body reader in
+`workspace.ts`, and the one NDJSON mention builds a Blob in `audit.ts`.
 
 | Case (through `fetch`, nothing injected) | Header seen | Body |
 |---|---|---|
@@ -437,8 +440,10 @@ accept line, with no `dumpsys` polling.
 The service is Wails' own, switched to `shortService` and started just before the hop while the
 app was visible, which the system allowed. What the user sees: with notification permission
 granted, a silent "Signing in / Waiting for the browser" notification. With it denied, the
-service still ran and held off the freeze, and the shade showed nothing. The host never
-asked for the permission, and no prompt appeared in the screenshots I took.
+service still ran and held off the freeze, and the shade showed nothing. Wails' stock host
+requests the permission each time the service starts, so a prompt is expected. None appeared in the
+screenshots I took, and I did not find out whether it opened behind the browser or was
+suppressed by my earlier denial.
 Not measured: what the system does if `onTimeout` does not stop the service.
 
 Verdict on the service: it covers a hop of up to three minutes with no server change. Past that,

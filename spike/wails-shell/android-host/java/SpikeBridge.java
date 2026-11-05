@@ -104,7 +104,7 @@ final class SpikeBridge {
             String charset = null;
             for (String p : ctype.split(";")) if (p.trim().toLowerCase().startsWith("charset=")) charset = p.trim().substring(8);
             InputStream stream = new GoStream(id);
-            if (!mime.equalsIgnoreCase("text/event-stream")) stream = sized(stream, declared);
+            if (!mime.equalsIgnoreCase("text/event-stream")) stream = sized(stream, "HEAD".equals(method) ? -1 : declared);
             return new WebResourceResponse(mime, charset, status, status < 400 ? "OK" : "Error", out, stream);
         } catch (Exception e) {
             Log.e(TAG, "fetch failed", e);
@@ -120,13 +120,21 @@ final class SpikeBridge {
      * The WebView reports available() as the response's Content-Length, and GoStream cannot know it. A body that ends within
      * MAX_BUFFERED is read whole, so the page sees its exact length. A longer one streams on, reporting the length Go declared
      * (or 0 when it sent none, i.e. chunked), so its length is only as good as the instance's. Never used for event streams.
+     * A body that ends short of the length Go declared was cut off (nativeRead reports every error as end of stream), so it fails
+     * rather than reaching the page with a length that matches the cut. A chunked body cannot be checked this way.
+     * shortcut: the buffer grows by doubling and is copied once, so a response near the cap can briefly hold about three times it
+     * in memory; stream into a presized array when Go declares the length, if this ever runs outside a spike.
      */
     private static InputStream sized(InputStream in, long declared) throws IOException {
         java.io.ByteArrayOutputStream head = new java.io.ByteArrayOutputStream();
         byte[] buf = new byte[65536];
         for (int n; head.size() <= MAX_BUFFERED && (n = in.read(buf, 0, buf.length)) >= 0; ) head.write(buf, 0, n);
         byte[] prefix = head.toByteArray();
-        if (prefix.length <= MAX_BUFFERED) { in.close(); return new java.io.ByteArrayInputStream(prefix); }
+        if (prefix.length <= MAX_BUFFERED) {
+            in.close();
+            if (declared >= 0 && prefix.length != declared) throw new IOException("response ended after " + prefix.length + " of " + declared + " bytes");
+            return new java.io.ByteArrayInputStream(prefix);
+        }
         return new Prefixed(prefix, in, declared);
     }
 
