@@ -50,3 +50,26 @@ func TestNameAndFolderPathGrammar(t *testing.T) {
 		t.Errorf("message %q does not read naturally", got)
 	}
 }
+
+// These writers refuse before touching storage, so they need no database.
+func TestNameWritersRefuseDirectionControls(t *testing.T) {
+	const override = "ops\u202eadmin"
+	ctx := t.Context()
+	refused := []struct {
+		name string
+		call func() error
+	}{
+		{"bootstrap username", func() error { _, err := (&Auth{}).BootstrapAdmin(ctx, override, "Ops", "response"); return err }},
+		{"bootstrap display name", func() error { _, err := (&Auth{}).BootstrapAdmin(ctx, "ops", override, "response"); return err }},
+		{"privacy username", func() error { _, err := (&Auth{}).CorrectPrivacySubject(ctx, "prn_1", override, "Ops"); return err }},
+		{"privacy display name", func() error { _, err := (&Auth{}).CorrectPrivacySubject(ctx, "prn_1", "ops", override); return err }},
+	}
+	for _, tc := range refused {
+		if err := tc.call(); err == nil || !strings.Contains(err.Error(), "text direction controls") {
+			t.Errorf("%s = %v, want a direction control refusal", tc.name, err)
+		}
+	}
+	if _, err := (&Identities{}).CreateServiceAccount(ctx, Actor{}, domain.Scope{}, override, domain.PrincipalClass("")); !errors.Is(err, ErrServiceAccountName) {
+		t.Errorf("service account = %v, want ErrServiceAccountName", err)
+	}
+}
