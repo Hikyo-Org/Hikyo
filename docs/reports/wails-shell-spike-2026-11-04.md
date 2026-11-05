@@ -388,7 +388,9 @@ non-streaming bodies up to 8 MiB (the SDK's own data ceiling), then serves them 
 `ByteArrayInputStream`, so the length is exact. Above the cap it streams the rest. A declared
 length still reaches `available()`. A buffered body that ends short of a declared length fails
 with 502, since the bridge reports every Go read error as end of stream (a chunked body cannot
-be checked this way). With no declared length the header reads `0` and the body
+be checked this way). That check, the service's version guards and tap-to-open intent came from
+review after the device runs. They compile, and the emulator was already shut down, so they
+were not run. With no declared length the header reads `0` and the body
 is complete. `text/event-stream` is never buffered. Downloads take their own path.
 A non-event streaming body (NDJSON, long polling) now waits for the whole body or 8 MiB before
 the page sees anything. A search of `web/src` found none: the only stream reader is the bounded body reader in
