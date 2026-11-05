@@ -291,7 +291,7 @@ schemas; `internal/service/reencrypt.go` (`pki_issuers` is registered with the
 versioned re-sealer and is algorithm-blind); `HoldRestoredPKIIssuers`;
 `internal/app/generation.go` (the one construction of `service.PKI`, leaves
 `MLDSAEnabled` false); `internal/server/pki.go` (maps strings); `api/openapi.yaml`
-and the generated Go and TypeScript clients (unchanged, HOLD); `internal/cli/pki.go`
+and the generated Go and TypeScript clients (follow the freeze amendment, #1212); `internal/cli/pki.go`
 help at line 175 and the `--key-algorithm` flag for `cert issue` (unchanged);
 `web/src/api/pki.ts`, `PkiIssuersPanel.tsx`, `CertificatesTab.tsx` algorithm lists
 (unchanged, mirror OpenAPI); the published `private-pki.mdx` (unchanged, no PQ
