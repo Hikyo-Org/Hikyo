@@ -50,7 +50,7 @@ Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check),
 ## Remaining and follow-ups
 
 - Migration 00083 is the next free number on `dev`; renumber it, and regenerate `internal/buildcompat/development.json`, if another change claims it first.
-- Owner decision: a sole org's badge appears only in settings, because the rail and mobile switcher need at least two orgs.
+- A sole org's badge appears only in settings, because the rail and mobile switcher need at least two orgs. The owner chose this over adding a shell badge in #1224.
 - Firefox SVG conversion is untested.
 - A save still settling when the page moves to another org reports its result on the new page, because page feedback is shared, as it is for rename.
 - `web/e2e/flows/workspace.spec.ts`'s tripwire records every local `/api/v1/orgs/**` request. The shell's org image is same-origin and harmless, but that test would flag it if a local org kept an image.
