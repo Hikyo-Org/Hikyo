@@ -38,11 +38,69 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 	handler(policy);
 }
 
-void spikeReplacePolicy(void) {
+// Returns 1 once the policy is in place. The isonopolicy build leaves Wails' allow-everything method alone, to show what
+// stops a navigation without it.
+int spikeReplacePolicy(void) {
+#ifdef ISO_NOPOLICY
+	return 1;
+#endif
 	Class c = objc_getClass("WailsViewController");
+	if (c == nil) return 0;
 	Method m = class_getInstanceMethod(c, @selector(webView:decidePolicyForNavigationAction:decisionHandler:));
+	if (m == nil) return 0;
 	class_replaceMethod(c, @selector(webView:decidePolicyForNavigationAction:decisionHandler:), (IMP)decideAction, method_getTypeEncoding(m));
 	note(@"navigation policy replaced on %s", class_getName(c));
+	return 1;
+}
+
+// One segment per connection, in the order the windows were made. Choosing one makes that connection's view controller
+// the root; the others stay alive off screen, so their pages keep their state.
+@interface SpikeSwitcher : NSObject
+- (void)pick:(UISegmentedControl *)control;
+@end
+@implementation SpikeSwitcher
+- (void)pick:(UISegmentedControl *)control {
+	id delegate = UIApplication.sharedApplication.delegate;
+	NSArray *controllers = [delegate valueForKey:@"viewControllers"];
+	UIWindow *window = [delegate valueForKey:@"window"];
+	NSInteger i = control.selectedSegmentIndex;
+	if (i < 0 || (NSUInteger)i >= controllers.count) return;
+	window.rootViewController = controllers[i];
+	[window bringSubviewToFront:control];
+	note(@"switched to connection %ld", (long)i);
+}
+@end
+
+static SpikeSwitcher *switcher;
+
+void spikeInstallSwitcher(const char *const *labels, int n) {
+	NSMutableArray<NSString *> *titles = [NSMutableArray array];
+	for (int i = 0; i < n; i++) [titles addObject:[NSString stringWithUTF8String:labels[i]]];
+	if (n < 2) return;
+	__block int tries = 0;
+	__block void (^attempt)(void) = ^{
+		id delegate = UIApplication.sharedApplication.delegate;
+		NSArray *controllers = [delegate valueForKey:@"viewControllers"];
+		UIWindow *window = [delegate valueForKey:@"window"];
+		if (window == nil || controllers.count < titles.count) {
+			// The views are made after launch, so wait for them.
+			if (tries++ < 100) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), attempt);
+			else note(@"switcher: views never appeared");
+			return;
+		}
+		switcher = [SpikeSwitcher new];
+		UISegmentedControl *control = [[UISegmentedControl alloc] initWithItems:titles];
+		control.selectedSegmentIndex = 0;
+		control.accessibilityLabel = @"Connections";
+		CGRect b = window.bounds;
+		control.frame = CGRectMake(16, b.size.height - window.safeAreaInsets.bottom - 44, b.size.width - 32, 32);
+		control.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+		[control addTarget:switcher action:@selector(pick:) forControlEvents:UIControlEventValueChanged];
+		[window addSubview:control];
+		note(@"switcher installed for %lu connections", (unsigned long)titles.count);
+		attempt = nil;
+	};
+	dispatch_async(dispatch_get_main_queue(), attempt);
 }
 
 @interface SpikeAnchor : NSObject <ASWebAuthenticationPresentationContextProviding>

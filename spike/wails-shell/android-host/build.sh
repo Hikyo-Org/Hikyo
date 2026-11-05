@@ -15,14 +15,16 @@ time CC=$cc CGO_ENABLED=1 GOOS=android GOARCH=arm64 go build -p 2 -buildmode=c-s
 app=build/android/app; java=$app/src/main/java/com/wails/app
 if [ "${1:-}" = stock ]; then
   [ -f $java/MainActivity.java.orig ] && cp $java/MainActivity.java.orig $java/MainActivity.java
-  rm -f $java/SpikeBridge.java $java/IsoRig.java $app/src/main/assets/spike-shim.js
+  rm -f $java/SpikeBridge.java $java/Connections.java $java/Rig.java $app/src/main/assets/spike-shim.js
 else
   app=build/android/app; java=$app/src/main/java/com/wails/app
   # idempotent: start from the generated MainActivity, then patch
   [ -f $java/MainActivity.java.orig ] || cp $java/MainActivity.java $java/MainActivity.java.orig
   cp $java/MainActivity.java.orig $java/MainActivity.java
   patch -s -p1 -d $java < android-host/MainActivity.patch
-  cp android-host/java/SpikeBridge.java android-host/java/IsoRig.java $java/
+  cp android-host/java/SpikeBridge.java android-host/java/Connections.java $java/
+  # the rig hooks are empty unless the rig is built in
+  case ",$tags," in *,isorig,*) cp android-host/rig/Rig.java $java/ ;; *) cp android-host/java/Rig.java $java/ ;; esac
   mkdir -p $app/src/main/assets && cp android-host/assets/spike-shim.js $app/src/main/assets/
   sed -i.bak 's/androidx.webkit:webkit:1.9.0/androidx.webkit:webkit:1.12.1/' $app/build.gradle
 fi

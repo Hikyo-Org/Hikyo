@@ -6,4 +6,6 @@ import "net/http"
 
 var rigCSP = false
 
+func hostFor(session) string { return newHost() }
+
 func logSignals(*http.Request) {}

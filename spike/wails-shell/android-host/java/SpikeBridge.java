@@ -12,7 +12,9 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -29,35 +31,49 @@ final class SpikeBridge {
 
     private static native long nativeBegin(String method, String url, String headersJson, byte[] body, String owner);
     static native void nativeRig(String flags);
+    private static native String nativeHosts();
     private static native String nativeHead(long id);
     private static native int nativeRead(long id, byte[] buf);
     private static native void nativeClose(long id);
 
     private static final class Stashed {
-        final String origin;
+        final String owner;
         final byte[] body;
-        Stashed(String origin, byte[] body) { this.origin = origin; this.body = body; }
+        Stashed(String owner, byte[] body) { this.owner = owner; this.body = body; }
     }
 
     private static final Map<String, Stashed> stashed = new ConcurrentHashMap<>();
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static long stashedBytes = 0;
 
-    /** Called by the WebMessageListener: the first 36 bytes are the id, the rest is the body. Returns the id when kept. */
-    static synchronized String stash(String sourceOrigin, byte[] msg) {
-        if (msg.length < 36 || msg.length - 36 > MAX_BODY || stashedBytes + msg.length > MAX_STASHED) return null;
+    /** The hosts of the connections, in order, from the Go shell. Empty when the shell is not up, which leaves no connection to show. */
+    static List<String> hosts() {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(nativeHosts());
+            for (int i = 0; i < a.length(); i++) out.add(a.getString(i));
+        } catch (Exception e) {
+            Log.e(TAG, "no connection list", e);
+        }
+        return out;
+    }
+
+    /** Called by the WebMessageListener of the view that owns the connection: the first 36 bytes are the id, the rest is the body. Returns the id when kept. */
+    static synchronized String stash(String owner, byte[] msg) {
+        if (owner.isEmpty() || msg.length < 36 || msg.length - 36 > MAX_BODY || stashedBytes + msg.length > MAX_STASHED) return null;
         final String id = new String(msg, 0, 36, java.nio.charset.StandardCharsets.US_ASCII);
         byte[] body = new byte[msg.length - 36];
         System.arraycopy(msg, 36, body, 0, body.length);
-        stashed.put(id, new Stashed(sourceOrigin, body));
+        stashed.put(id, new Stashed(owner, body));
         stashedBytes += body.length;
         main.postDelayed(() -> take(id, null), TTL_MS);
         return id;
     }
 
-    private static synchronized Stashed take(String id, String origin) {
+    /** A body is only handed to a request from the view that stashed it. owner null is the expiry sweep. */
+    private static synchronized Stashed take(String id, String owner) {
         Stashed s = stashed.get(id);
-        if (s == null || (origin != null && !s.origin.equals(origin))) return null;
+        if (s == null || (owner != null && !s.owner.equals(owner))) return null;
         stashed.remove(id);
         stashedBytes -= s.body.length;
         return s;
@@ -72,7 +88,7 @@ final class SpikeBridge {
             byte[] body = null;
             for (Map.Entry<String, String> h : in.entrySet()) {
                 if (h.getKey().equalsIgnoreCase("X-Spike-Body")) {
-                    Stashed s = take(h.getValue(), in.get("Origin"));
+                    Stashed s = take(h.getValue(), owner);
                     if (s == null) return error(400, "unknown or foreign body id");
                     body = s.body;
                 } else {

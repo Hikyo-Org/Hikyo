@@ -47,48 +47,75 @@ Results are in the spike report's third round. Both platforms need a local, giti
 
 - **iOS:** build with `GOOS=ios`, `-buildmode=c-archive`, the Wails overlay and
   `-tags production,ios`, then link for the simulator. Add `probe` to the tags for the debug
-  server.
+  server. Link `-framework AuthenticationServices`. Wails 3.1.0 has no UIScene lifecycle, so an app that records the
+  iOS 27 SDK aborts at launch (`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`). Record SDK 26 with
+  `vtool -set-build-version iossim 15.0 26.0 -replace -output X.new X`, then sign again.
 - **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
   unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host runs on the emulator.
 
+## Connection isolation
+
+Each connection gets its own renderer and a random host (D2), and a request's connection comes from the renderer that
+sent it, never from the page. The Go shell refuses a request whose window does not own the host, one with no window,
+a foreign `Origin`, and an unknown host, in that order. Results are in
+[the isolation report](../../docs/reports/wails-connection-isolation-2026-11-05.md).
+
+- **macOS:** one window each, the Go window check, and the native navigation policy in `webview_darwin.m`.
+- **iOS:** the same policy, installed at start-up by `native_ios.go`, and a segmented control over the root view
+  (`spikeInstallSwitcher`) that swaps which connection's view controller is in front. The views stay alive.
+- **Android:** `android-host/java/Connections.java`. One `WebView` and one `Profile` per connection, the owner taken
+  from the `view` argument, no `ServiceWorkerClient`, a body channel and download listener per view, and a second
+  connection refused when `MULTI_PROFILE` is missing. `MainActivity.patch` only calls it. The patched host also refuses
+  `/wails/*` and `/__capture__/*` and has no `wails` JavaScript interface, so instance code gets no native runtime.
+  Removing a connection destroys its view and tries `ProfileStore.deleteProfile`. A profile still loaded in the process
+  is deleted at the next launch.
+
+The spike has no connection store, so hosts are new at every launch. A product keeps a connection's host with the
+connection, which also keeps its page storage between launches.
+
 ## Isolation rig
 
-Results are in [the isolation report](../../docs/reports/wails-connection-isolation-2026-11-05.md).
-Two scratch fronts play the instances, with fake tokens, and `conn-0`'s front attacks `conn-1`.
-The victim front's log is the result.
+Two scratch fronts with fake tokens play the instances, and `conn-0`'s front attacks `conn-1`. The victim front's log
+is the result. The ports are 18500 to 18599.
 
 ```sh
 go build -o /tmp/front ./isolation/front
-/tmp/front -addr 127.0.0.1:18200 -name conn0-front -attack -victim https://conn-1.wails.localhost \
-  -rig '{"run":"r1","thennav":"1"}' -control 127.0.0.1:18202 -tls 127.0.0.1:18203 -log r1/attacker.jsonl &
-/tmp/front -addr 127.0.0.1:18201 -name conn1-front -log r1/victim.jsonl &
+A=c00000000000000000000000000000001; V=c00000000000000000000000000000002   # the rig names the hosts
+/tmp/front -addr 127.0.0.1:18500 -name conn0-front -attack -victim wails://$V \
+  -rig '{"run":"r1","thennav":"1","vh":"'$V'"}' -control 127.0.0.1:18502 -tls 127.0.0.1:18503 -log r1/attacker.jsonl &
+/tmp/front -addr 127.0.0.1:18501 -name conn1-front -log r1/victim.jsonl &
 python3 isolation/summarize.py r1 r1/attacker.jsonl r1/victim.jsonl r1/shell.log
 ```
 
-`mobile-dev-config.json` points `conn-0` and `conn-1` at the two fronts. Use `-victim wails://conn-1`
-on macOS and iOS. Rig keys: `run`, `thennav`, `only`, `skip`, `phase` (`sub`, `nav`, `race`), `n`, `vh`, `direct`, `wait`.
+Without the rig's `host` field, a connection's host is random, so the victim is only known after launch. With
+`-tags isorig`, `mobile-dev-config.json` (and a CLI `sessions.json`) may carry `"host": "..."` per entry to fix it:
+`{"conn0": {"origin": "http://127.0.0.1:18500", "token": "conn0-fake", "host": "<A>"}, ...}`. On Android the host is
+`<A>.wails.localhost`. Rig keys: `run`, `thennav`, `only`, `skip`, `phase` (`sub`, `nav`, `race`), `n`, `vh`, `direct`, `wait`.
 
-**macOS and iOS builds:** the `isocontrol` tag turns the Go window check off, and `isonopolicy` turns the
-native policy off on macOS. On iOS the policy stays off until `POST 127.0.0.1:18099/policy` with the `probe` tag.
+**macOS and iOS builds:** `isocontrol` turns the Go window check off, and `isonopolicy` turns the native policy off, on
+both. These are controls: they show what each layer stops.
 
-**Android:** build with `ISO_TAGS=isorig android-host/build.sh`, `adb reverse` ports 18200 to 18203, then set the
-mode before launching. URL-encode it, because `+` would decode to a space:
+**Android:** build with `ISO_TAGS=isorig android-host/build.sh`, which swaps the empty `Rig.java` for `android-host/rig/Rig.java`.
+`adb reverse` ports 18500 to 18503, then set the flags before launching:
 
 ```sh
-curl -G --data-urlencode 'set=perview-profile' http://127.0.0.1:18202/ctl/mode
-curl -G --data-urlencode 'cmd=switch conn-1.wails.localhost' http://127.0.0.1:18202/ctl/push
-adb logcat -v time IsoRig:I IsoGo:I AndroidRuntime:E '*:S' > r1/shell.log
+curl -G --data-urlencode 'set=swprofile' http://127.0.0.1:18502/ctl/mode      # or: none
+curl -G --data-urlencode 'cmd=switch 1' http://127.0.0.1:18502/ctl/push
+adb logcat -v time IsoRig:I IsoGo:I Connections:I AndroidRuntime:E '*:S' > r1/shell.log
 ```
 
-Modes are `none`, `perview`, `perview-profile`, `pinned` and `pinned-drain`. Flags go after `+`: `sw`, `swdeny`, `blocknet`,
-`csp` and `tlsok`. Commands are `load <url>`, `switch <host>`, `back`, `mem <label>`, `gc` and `recreate delete|keep`.
+Flags, joined by `+`: `sw` (one `ServiceWorkerClient` for every profile, the gap), `swdeny`, `swprofile` (one client per
+profile), `blocknet`, `csp` and `tlsok`. Commands: `load <url>`, `switch <host|index>`, `back`, `mem <label>`, `gc`,
+`profiles`, `add <name>` and `remove <host|index>`. The old comparison modes (a shared view, a pinned connection) were
+removed with the product code; commit c842958c9 has them.
 
 A refused top-level navigation replaces the attacker's page and stops the chain, so run later vectors with `phase=nav` and `n=K`.
 
 ## Tests and probes
 
-`go test -tags production .` covers the proxy's refusals and token rotation, the reauth
-handoff, URL validation and download paths.
+`go test -race -tags production .` covers the proxy's refusals, a request with no owner, a page-supplied window id,
+connections added and removed while serving, random hosts, token rotation, the reauth handoff, URL validation and
+download paths.
 
 `-probe FILE` runs JavaScript after each navigation and enables `/__spike/report`
 and `/__spike/sleep`. The files in `probes/` produced the report's evidence. Replace

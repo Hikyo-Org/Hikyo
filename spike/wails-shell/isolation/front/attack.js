@@ -1,5 +1,5 @@
 // Attack page, served by the attacker connection's own front with no CSP, as a hostile instance would.
-// It works unchanged on wails://conn-N and https://conn-N.wails.localhost. Attacker conn-0 and victim conn-1 unless window.RIG says otherwise.
+// It works unchanged on wails://<host> and https://<host>.wails.localhost. The victim is the other of the two connections (conn-0/conn-1 names), or window.RIG.vh, which random hosts need.
 (async () => {
   const q = new URLSearchParams(location.search);
   for (const [k, v] of Object.entries(window.RIG || {})) if (!q.has(k)) q.set(k, v);
@@ -7,7 +7,7 @@
   const swapped = location.host.replace(/conn-(\d+)/, (_, n) => 'conn-' + (n === '0' ? '1' : '0'));
   const victimHost = q.get('vh') || swapped;
   const victim = location.protocol + '//' + victimHost;
-  const direct = q.get('direct') || 'http://127.0.0.1:18200'; // attacker front reached without the proxy
+  const direct = q.get('direct') || 'http://127.0.0.1:18500'; // attacker front reached without the proxy
   const run = q.get('run') || ('r' + Date.now());
   const phase = q.get('phase') || 'sub';
   const report = (v, r) => { out.append(`${v}: ${r}\n`); return fetch(`/report?run=${run}&v=${encodeURIComponent(v)}&r=${encodeURIComponent(r)}`).catch(() => {}); };
@@ -41,6 +41,10 @@
     'fetch-cors': () => fetch(V('fetch-cors', 'img')).then((r) => report('fetch-cors', 'resolved-' + r.status), (e) => report('fetch-cors', 'rejected ' + e)),
     'fetch-post-no-cors': () => fetch(V('fetch-post-no-cors', 'img'), { method: 'POST', mode: 'no-cors', body: 'x=1' }).then((r) => report('fetch-post-no-cors', 'resolved-' + r.type), (e) => report('fetch-post-no-cors', 'rejected ' + e)),
     'xhr': () => { const x = new XMLHttpRequest(); x.open('GET', V('xhr', 'img')); x.onload = () => report('xhr', 'onload ' + x.status); x.onerror = () => report('xhr', 'onerror'); x.send(); },
+    // Not requests to the victim: whether instance code can reach the host's native runtime on its own origin.
+    'wails-runtime': () => fetch('/wails/runtime', { method: 'POST', body: '{}' }).then((r) => report('wails-runtime', 'status-' + r.status), (e) => report('wails-runtime', 'rejected ' + e)),
+    'wails-capture': () => fetch('/__capture__/x').then((r) => report('wails-capture', 'status-' + r.status), (e) => report('wails-capture', 'rejected ' + e)),
+    'wails-js': () => report('wails-js', 'typeof window.wails=' + typeof window.wails),
     'beacon': () => report('beacon', 'queued=' + navigator.sendBeacon(V('beacon', 'img'), 'x=1')),
     'eventsource': () => { const s = new EventSource(V('eventsource', 'img')); s.onopen = () => { report('eventsource', 'open'); s.close(); }; s.onerror = () => { report('eventsource', 'error'); s.close(); }; },
     'import-dynamic': () => import(V('import-dynamic', 'js')).then(() => report('import-dynamic', 'loaded'), (e) => report('import-dynamic', 'rejected ' + e)),
@@ -56,7 +60,7 @@
     'embed': () => el('embed', { src: V('embed', 'doc') }),
     'svg-image': () => { document.body.insertAdjacentHTML('beforeend', `<svg width=1 height=1><image href="${V('svg-image', 'img')}"/></svg>`); },
     'input-image': () => el('input', { type: 'image', src: V('input-image', 'img') }),
-    'guess-unknown-host': () => watch('guess-unknown-host', el('img', { src: `${location.protocol}//${victimHost.replace(/conn-\d+/, 'conn-7')}/v/guess-unknown-host?kind=img&run=${run}` })),
+    'guess-unknown-host': () => watch('guess-unknown-host', el('img', { src: `${location.protocol}//${victimHost.replace(/^[^.]+/, 'c' + '0'.repeat(32))}/v/guess-unknown-host?kind=img&run=${run}` })),
     'iframe-attach': () => el('iframe', { src: V('iframe-attach', 'attach'), style: 'display:none' }),
     'iframe': () => watch('iframe', el('iframe', { src: V('iframe', 'doc') })),
     'iframe-sandbox': () => { const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.src = V('iframe-sandbox', 'doc'); document.body.append(watch('iframe-sandbox', f)); },
@@ -71,9 +75,9 @@
     'redir-own-proxy': () => watch('redir-own-proxy', el('img', { src: '/redir?to=' + encodeURIComponent(V('redir-own-proxy', 'img')) })),
     'redir-direct': () => watch('redir-direct', el('img', { src: direct + '/redir?to=' + encodeURIComponent(V('redir-direct', 'img')) })),
     'redir-direct-iframe': () => watch('redir-direct-iframe', el('iframe', { src: direct + '/redir?to=' + encodeURIComponent(V('redir-direct-iframe', 'doc')) })),
-    'redir-tls-img': () => watch('redir-tls-img', el('img', { src: 'https://127.0.0.1:18203/redir?to=' + encodeURIComponent(V('redir-tls-img', 'img')) })),
-    'redir-tls-fetch': () => fetch('https://127.0.0.1:18203/redir?to=' + encodeURIComponent(V('redir-tls-fetch', 'img')), { mode: 'no-cors' }).then((r) => report('redir-tls-fetch', 'resolved-' + r.type), (e) => report('redir-tls-fetch', 'rejected ' + e)),
-    'direct-tls-img': () => watch('direct-tls-img', el('img', { src: `https://127.0.0.1:18203/v/direct-tls-img?kind=img&run=${run}` })),
+    'redir-tls-img': () => watch('redir-tls-img', el('img', { src: 'https://127.0.0.1:18503/redir?to=' + encodeURIComponent(V('redir-tls-img', 'img')) })),
+    'redir-tls-fetch': () => fetch('https://127.0.0.1:18503/redir?to=' + encodeURIComponent(V('redir-tls-fetch', 'img')), { mode: 'no-cors' }).then((r) => report('redir-tls-fetch', 'resolved-' + r.type), (e) => report('redir-tls-fetch', 'rejected ' + e)),
+    'direct-tls-img': () => watch('direct-tls-img', el('img', { src: `https://127.0.0.1:18503/v/direct-tls-img?kind=img&run=${run}` })),
     'direct-img': () => watch('direct-img', el('img', { src: direct + '/v/direct-img?kind=img&run=' + run })),
     'direct-fetch': () => fetch(direct + `/v/direct-fetch?kind=img&run=${run}`, { mode: 'no-cors' }).then((r) => report('direct-fetch', 'resolved-' + r.type), (e) => report('direct-fetch', 'rejected ' + e)),
     'oracle-img-200': () => watch('oracle-img-200', el('img', { src: V('oracle-img-200', 'img') })),

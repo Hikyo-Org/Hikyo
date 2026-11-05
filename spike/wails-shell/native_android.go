@@ -67,10 +67,14 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 
 //export Java_com_wails_app_SpikeBridge_nativeBegin
 func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jmethod, jurl, jheaders C.jstring, jbody C.jbyteArray, jowner C.jstring) C.jlong {
+	handler := nativeHandler
 	select {
 	case <-nativeReady:
 	case <-time.After(10 * time.Second):
-		log.Print("native: shell not ready, serving anyway")
+		log.Print("native: shell not ready, refusing")
+		handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, "shell not ready", http.StatusServiceUnavailable)
+		})
 	}
 	method, rawURL, rawHeaders, owner := goString(env, jmethod), goString(env, jurl), goString(env, jheaders), goString(env, jowner)
 	var body []byte
@@ -87,7 +91,9 @@ func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jme
 	ctx, cancel := context.WithCancel(context.Background())
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		log.Printf("native: bad url %q", rawURL)
+		log.Printf("native: bad url")
+		u = &url.URL{}
+		handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "bad url", http.StatusBadRequest) })
 	}
 	req, _ := http.NewRequestWithContext(ctx, method, rawURL, bytes.NewReader(body))
 	if len(body) == 0 {
@@ -98,14 +104,7 @@ func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jme
 	}
 	req.Header.Del("Accept-Encoding") // the proxy's transport asks for gzip itself and decodes it; a gzip body would reach the page undecoded
 	req.Host, req.RemoteAddr, req.RequestURI = u.Host, "127.0.0.1:0", u.RequestURI()
-	// The host names the connection that owns this request. With no match no id is set, and the shell's window check fails closed.
-	// A page can send this header itself, so it goes first.
-	req.Header.Del("x-wails-window-id")
-	for id, host := range nativeWindows {
-		if host == owner {
-			req.Header.Set("x-wails-window-id", id)
-		}
-	}
+	bindOwner(req, owner, connections)
 	pr, pw := io.Pipe()
 	s := &nativeStream{headReady: make(chan struct{}), header: http.Header{}, pr: pr, pw: pw, cancel: cancel}
 	id := streamID.Add(1)
@@ -118,7 +117,7 @@ func Java_com_wails_app_SpikeBridge_nativeBegin(env *C.JNIEnv, cls C.jclass, jme
 				s.WriteHeader(http.StatusBadGateway)
 			}
 		}()
-		nativeHandler.ServeHTTP(s, req)
+		handler.ServeHTTP(s, req)
 		s.WriteHeader(http.StatusOK)
 	}()
 	return C.jlong(id)
@@ -130,6 +129,23 @@ func lookup(id C.jlong) *nativeStream {
 		return nil
 	}
 	return v.(*nativeStream)
+}
+
+// nativeHosts lists the hosts of the connections, in order, as a JSON array. The Java host makes one WebView for each.
+//
+//export Java_com_wails_app_SpikeBridge_nativeHosts
+func Java_com_wails_app_SpikeBridge_nativeHosts(env *C.JNIEnv, cls C.jclass) C.jstring {
+	hosts := []string{}
+	select {
+	case <-nativeReady:
+		hosts = connections.hosts()
+	case <-time.After(10 * time.Second):
+		log.Print("native: shell not ready, no connections")
+	}
+	out, _ := json.Marshal(hosts)
+	c := C.CString(string(out))
+	defer C.free(unsafe.Pointer(c))
+	return C.jnew(env, c)
 }
 
 //export Java_com_wails_app_SpikeBridge_nativeHead

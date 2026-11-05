@@ -12,6 +12,14 @@ import (
 
 var rigCSP = os.Getenv("HIKYO_SPIKE_CSP") != ""
 
+// hostFor lets the rig name a connection's host before the attack page loads, so the victim is known to the front.
+func hostFor(s session) string {
+	if s.Host != "" {
+		return s.Host
+	}
+	return newHost()
+}
+
 // logSignals records what the shell can see about a request, before any check, for the isolation rig.
 func logSignals(r *http.Request) {
 	var keys []string

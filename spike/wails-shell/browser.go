@@ -81,17 +81,20 @@ func downloadPath(suggested string) (string, error) {
 }
 
 // connections lets a native callback find the connection a wails:// URL belongs to; main sets it.
-var connections map[string]*conn
+var connections *registry
 
 // saveThroughProxy fetches a same-connection wails:// URL with the connection's bearer and saves
 // it. WKDownload cannot load that scheme, so this is the fallback for <a download> to an API URL.
 // shortcut: no progress or cancel, a fixed directory, and the name is Content-Disposition or the last path segment because the policy callback never sees the download attribute; a product streams to a save panel and takes the name from the click.
 func saveThroughProxy(raw string) (string, int64, error) {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "wails" || connections[u.Host] == nil {
+	var c *conn
+	if err == nil && u.Scheme == "wails" {
+		c = connections.conn(u.Host)
+	}
+	if c == nil {
 		return "", 0, errors.New("not a URL of a known connection")
 	}
-	c := connections[u.Host]
 	target := c.origin.ResolveReference(&url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery})
 	req, err := http.NewRequest(http.MethodGet, target.String(), nil)
 	if err != nil {

@@ -31,7 +31,7 @@ func stamp() string { return time.Now().Format("15:04:05.000") }
 
 var ticking atomic.Bool
 
-const probeAddr = "127.0.0.1:18099"
+const probeAddr = "127.0.0.1:18598"
 
 // guard rejects any Host but the exact probe address (blocks browsers and DNS rebinding), non-POST for actions, and a wrong secret.
 func guard(secret string, post bool, h http.HandlerFunc) http.HandlerFunc {
@@ -87,7 +87,7 @@ func probeServer() {
 	handle("/nav", true, func(w http.ResponseWriter, r *http.Request) {
 		host := r.URL.Query().Get("host")
 		if host == "" {
-			host = connHost(0)
+			host = connections.hosts()[0]
 		}
 		// SetURL is a no-op on Android, so navigate from script.
 		target, _ := json.Marshal(pageScheme + "://" + host + r.URL.Query().Get("path"))
@@ -111,7 +111,7 @@ func probeServer() {
 	handle("/login", true, func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 		go func() {
-			if err := cliLogin(connections[connHost(0)], mode); err != nil {
+			if err := cliLogin(connections.conn(connections.hosts()[0]), mode); err != nil {
 				log.Printf("LOGIN-FAILED %s %v", stamp(), err)
 			}
 		}()

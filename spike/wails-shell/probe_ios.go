@@ -38,5 +38,4 @@ func probeRoutes(handle func(string, bool, http.HandlerFunc)) {
 		fmt.Fprintln(w, "started")
 	})
 	handle("/ases/cancel", true, func(w http.ResponseWriter, r *http.Request) { asesCancel(); fmt.Fprintln(w, "cancelled") })
-	handle("/policy", true, func(w http.ResponseWriter, r *http.Request) { replaceNavigationPolicy(); fmt.Fprintln(w, "replaced") })
 }

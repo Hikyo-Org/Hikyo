@@ -28,7 +28,7 @@ var attackJS []byte
 const attackHTML = `<!doctype html><meta charset=utf-8><title>attack</title><body><pre id=o></pre><script>window.RIG=%s</script><script src=/attack.js></script>`
 
 // The benign page reports what storage it can see, and whether it came back from the back/forward cache.
-const benignHTML = `<!doctype html><meta charset=utf-8><title>benign</title><body><p>benign page of %s</p><script>
+const benignHTML = `<!doctype html><meta charset=utf-8><title>benign</title><body style="background:#fff;color:#000;font:28px sans-serif"><p>benign page of %s</p><script>
 const seen=localStorage.getItem('who');localStorage.setItem('who',location.host);
 addEventListener('pageshow',e=>fetch('/report?run=benign&v=pageshow&r='+encodeURIComponent('persisted='+e.persisted+' seen='+seen+' host='+location.host)).catch(()=>{}));
 </script>`
@@ -55,7 +55,7 @@ type entry struct {
 }
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:18200", "listen address")
+	addr := flag.String("addr", "127.0.0.1:18500", "listen address")
 	name := flag.String("name", "front", "name in the log")
 	logPath := flag.String("log", "", "JSONL log")
 	attack := flag.Bool("attack", false, "serve the attack page at /")
