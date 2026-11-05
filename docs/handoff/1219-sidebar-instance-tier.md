@@ -1,6 +1,7 @@
 # Sidebar: instance tier at the foot
 
 Issue: none, owner request
+PR: #1219
 
 ## Result
 
