@@ -221,7 +221,7 @@ export const PhoneRevealedValueStaysReadable: Story = {
     const room = editor.getBoundingClientRect();
     await expect(room.width).toBeGreaterThanOrEqual(wrapper.clientWidth - 2 * fontSize(editor));
     await expect(room.right).toBeLessThanOrEqual(edge);
-    // The input itself takes the row (it sat at 170px in a 336px row), so a placeholder reads whole.
+    // The input itself takes the row (it sat at 170px in a 336px row), so a placeholder gets the row's width (a long write-only one still clips at 320).
     await expect(canvas.getByLabelText(/^New value for DATABASE_URL/).getBoundingClientRect().width).toBeGreaterThanOrEqual(wrapper.clientWidth - 4 * fontSize(editor));
     const save = canvas.getByRole('button', { name: 'Save draft' }).getBoundingClientRect();
     await expect(save.left).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left);
@@ -253,6 +253,13 @@ export const PhoneLongKeyKeepsValueWide: Story = {
     await expect(getComputedStyle(long).textAlign).toBe('left');
     // ... and its text lines up with the value's, not 9px in from it (the button's padding and border).
     await expect(ownText(long).left).toBeCloseTo(text.left, 0);
+    // The key's focus ring, pulled out with it, is not cut off by the wrapper's clip.
+    long.focus();
+    const ring = getComputedStyle(long);
+    await expect(ring.outlineStyle).not.toBe('none');
+    const reach = Number.parseFloat(ring.outlineWidth) + Number.parseFloat(ring.outlineOffset);
+    await expect(long.getBoundingClientRect().left - reach).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left);
+    await expect(long.getBoundingClientRect().right + reach).toBeLessThanOrEqual(wrapper.getBoundingClientRect().right);
     // The column headings stay for assistive technology and are not drawn: they
     // name three columns that the card layout no longer has.
     // Found without `hidden: true`, so a removed (display: none) header fails.

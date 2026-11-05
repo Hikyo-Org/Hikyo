@@ -3425,9 +3425,22 @@ fieldset.field > legend {
   }
 
   /* The key's text lines up with the value's: the button's own padding and
-     border are pulled back out, its hit area unchanged. */
+     border are pulled back out, its hit area unchanged. That puts its edge,
+     and the focus ring outside it, past the wrapper's clip, so the wrapper
+     grows by the same amount and gives it back as a negative margin (as the
+     crumb row does for its ring): the layout is unchanged, the ring and the
+     hover border are whole. */
+  .values {
+    --key-pull: calc(var(--space-2) + 1px);
+  }
+
+  .values .table-scroll:has(> .values__table) {
+    margin-inline: calc(-1 * var(--key-pull));
+    padding-inline: var(--key-pull);
+  }
+
   .values .values__table .values__keyname {
-    margin-inline-start: calc(-1 * (var(--space-2) + 1px));
+    margin-inline-start: calc(-1 * var(--key-pull));
     text-align: left;
   }
 
