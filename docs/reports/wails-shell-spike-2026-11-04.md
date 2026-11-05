@@ -16,8 +16,8 @@ reveal now completes through the system browser, on a protected environment, usi
 virtual authenticator. See [Second round](#second-round-handlers-and-passkey-hop).
 
 **Update, 2026-11-05: iOS and Android.** iOS mostly carries over on the simulator. Android
-needs its own host, which now runs the real UI on the emulator past sign-in, with three
-things still to build. See [Third round](#third-round-ios-and-android).
+needs its own host, which reaches the real UI on the emulator past sign-in. Screens with
+large responses fail until a header fix is built, and two other things still need code. See [Third round](#third-round-ios-and-android).
 
 What remains before a product:
 
@@ -247,9 +247,10 @@ new owner decision.
 
 ### Android
 
-**The patched host runs on the emulator, and the real UI works past sign-in.** Three things
-need code before a product: a response-header fix, a streaming workaround, and window
-confinement. The app is also frozen while it waits in the background.
+**The patched host runs on the emulator and reaches the real UI past sign-in, but any large
+API response breaks the screen that needs it.** Three things need code before a product: a
+response-header fix, a streaming workaround and window confinement. The app is also frozen
+while it waits in the background.
 
 The first attempt never completed a device test, because the emulator's framework kept
 restarting at load 15 to 21. The rerun was on `Pixel_9_API_36`, Android 16, WebView 133, at
@@ -259,32 +260,45 @@ there are no Custom Tabs and no passkeys.
 | Question | Result | Evidence |
 |---|---|---|
 | Stock host with the proxy | **Fails on the first redirect** | `GET /index.html -> 301`, then `asset server error: status 301` |
-| Patched host renders the SPA | **Pass after a fix** | On `https://conn-0.wails.localhost`, secure context. See the `Content-Length` finding |
+| Patched host renders the SPA | **Pass for small responses only** | On `https://conn-0.wails.localhost`, secure context. See the `Content-Length` finding |
 | Request bodies through the script and bridge | **Pass** | SHA-256 matched for PUT 3 B, PATCH 1 KB, DELETE 16 B, POST 256 KB, PUT 3 MB and POST 20 MB (839 ms). Multipart, urlencoded, Blob and XHR PUT arrived with the right length and type |
 | Query and headers | **Pass** | `?q=a%20b&x=%E2%9C%93` and custom headers arrived intact. The bearer was added, no cookie was sent |
 | Status codes | **Pass, except redirects** | 200, 400, 401, 404 and 429 reached the page. `WebResourceResponse` rejects 3xx, so the bridge returns 502 with `X-Spike-Redirect` (from code) |
-| Response length | **Fails without a fix** | See below |
+| Response length | **Fails on large responses** | The Values screen failed until the header was corrected. See below |
 | Streaming | **Fails without a fix** | See below |
 | Real sign-in, the app's half | **Pass** | Callback to redeemed session took 59 ms with the app in the background. `whoami` then returned 200, artifact `cli`, factors password and TOTP |
 | Enrolment gate in the UI | **Fails, same as iOS** | See [the finding below](#a-finding-that-also-affects-macos). Cleared through the API to go further |
-| SPA at phone width, past the gate | **Observed, needs layout work** | 412 CSS px, no horizontal overflow. The header runs under the status bar, and the breadcrumb overlaps itself |
+| SPA at phone width, past the gate | **Observed, needs layout work** | 412 CSS px, no page-level horizontal overflow. The header runs under the status bar, the breadcrumb overlaps itself, the Values table's action column is cut off at the right, and content runs under the navigation bar |
 | Per-connection origin | **Pass for storage, gap for requests** | `localStorage` is separate on `conn-0` and `conn-1`. See the isolation finding |
 | `Android.SecureSet` | **Pass** | Set, read, wrong value, relaunch and delete. `EncryptedSharedPreferences`, per Wails' source |
 | Downloads | **Pass, with limits** | Correct bytes saved and the page stayed put. The file goes to the app's own folder, not the user's Downloads. One click produced two GETs in the log |
-| External links | **Pass** | A plain link and a tapped `target=_blank` open the browser and keep the app's page. A scripted `target=_blank` click with no gesture does nothing |
+| External links | **Pass** | A plain link and a tapped `target=_blank` open the browser, and the app's page was unchanged on return. A scripted `target=_blank` click with no gesture does nothing |
 | Back button | **Pass** | Walks WebView history, and the app stays open. Leaving from the first page was not tested |
 | Size | **Measured** | APK 16.6 MB, `libwails.so` 12.0 MB |
 
 **`Content-Length`.** With no such header, the WebView reports `content-length: 0` to the
-page while delivering the whole body (an 8 MB response read as `0`). The SDK client treats
-`0` as empty, so `whoami` failed its schema, the app showed "Reconnecting to Hikyo", and it
-polled until the server answered 429. Passing the real length through makes the header read
-`0, 207`. The SDK accepts that only because it isn't exactly `0`, and
-`declaredResponseLength` in `web/src/api/workspace.ts` rejects it as invalid, so the fix in
-`SpikeBridge.java` isn't enough. A `fetch` wrapper that corrects the header, injected into
-the page through devtools, gave a correct header and a complete 8 MB body, and streaming
-still worked. It is not built into the shim. It covers `fetch` only, and it loses
-`response.url`.
+page while delivering the whole body. The SDK client treats `0` as empty. That broke `whoami`
+first: it failed its schema, the app showed "Reconnecting to Hikyo", and it polled until the
+server answered 429.
+
+Passing the real length through (`SpikeBridge.java`) fixes small responses only, and the
+header then reads `0, 207`. The SDK accepts that only because it isn't exactly `0`. From
+source, `declaredResponseLength` in `web/src/api/workspace.ts` would reject it as invalid.
+
+Large responses have no length to pass on. Real responses of 4,819 B (`signals`) and
+17,794 B (`keys`) reported exactly `0`, while the largest one seen with a length was 1,610 B.
+This fits Go's server switching to chunked after about 2 KB. On the real Values screen, each
+run waited 65 s first, made 13 API requests and got no 429s:
+
+| Run | `values` response | Screen |
+|---|---|---|
+| No fix | 200, `content-length: 0` | "The values could not be loaded." |
+| `fetch` wrapper that corrects the header, injected through devtools | 200, `content-length: 0` before the wrapper | Lists the keys |
+
+The wrapper also kept streaming working, and returned a complete 8 MB body. It is not built
+into the shim. It covers `fetch` only and loses `response.url`. Buffering non-streaming bodies
+in the bridge is the other option, and is untested. Either way, **the host needs this before
+the UI is usable on Android.**
 
 **Streaming.** The WebView holds small chunks back, although the bridge returns each one as
 it arrives (from code). Five events, 800 ms apart, read through `fetch`:
@@ -316,7 +330,7 @@ one WebView per connection, or refusing a request whose page belongs to another 
 is built or tested.
 
 **The browser hop and the app freezer.** Android stopped running the backgrounded app about
-72 s after the hop (Go ticks ended at 10:16:04, and `isFrozen=true`). A callback sent before
+72 s after the hop (Go ticks ended at 10:16:04 UTC, and `isFrozen=true`). A callback sent before
 that was accepted at once. One sent while frozen waited for the user to come back:
 
 | Case | Browser opened or loaded the callback | App accepted |
@@ -351,8 +365,9 @@ From source only, in Wails' stock host:
   `shouldInterceptRequest`. This is an Android limit, so any proxy needs a script that moves
   bodies over a bridge. That means the page gets an extra native path, which conflicts
   with D10's "no native capability beyond D9" unless the ADR lists it. The shim misses
-  `sendBeacon`, form POSTs and WebSocket, and `web/src` uses no `sendBeacon` or `FormData`
-  outside tests.
+  `sendBeacon`, native form POSTs and WebSocket. `FormData` through `fetch` passed above. A search of
+  `web/src` found no `sendBeacon` or `new WebSocket`, and its one `<form method="post">` has a script
+  submit handler (`TransitOperations.tsx`).
 
 ### A finding that also affects macOS
 
@@ -374,7 +389,8 @@ showing the new ones. App mode must handle this, on every platform.
   the loopback handoff a dated choice there.
 - **Android** needs its own Java host, a body bridge, a response-header fix, an SSE
   workaround and a way to confine a window to its connection. It is not "the same shell". The
-  core path works on an emulator, but no real device, Chrome or passkey has been tried.
+  screens that load large lists fail until the header fix is in. The rest of the core path
+  works on an emulator, but no real device, Chrome or passkey has been tried.
 - **Neither** should change the desktop plan yet. The ADR's D15 already requires a separate
   spike per platform.
 - **Not tested, worth comparing:** the instance's own web app in the phone's browser already
