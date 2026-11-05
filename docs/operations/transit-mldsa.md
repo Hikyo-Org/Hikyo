@@ -21,7 +21,7 @@ are registered in the [handoff](../handoff/1129-transit-mldsa.md#remaining-work-
 | Public key, published | ML-DSA-65: the standard SubjectPublicKeyInfo DER (1974 bytes, OID 2.16.840.1.101.3.4.3.18) in the same base64 field, as DEC-07 specifies. Ed25519 stays the raw 32 bytes. A consumer therefore reads the field by the key's `algorithm`. The conversion is in `crypto.ExposeTransitPublicKey` and the response builder, so create, show, list, rotate and the lifecycle responses all publish it that way. The field is about 2632 base64 characters, which the WebUI shows whole in a read-only text area |
 | Signature | `hikyo:v<N>:` followed by unpadded base64url of a 3311-byte payload: the two-byte big-endian algorithm identifier `0x0905` (the TLS code point for ML-DSA-65), then the 3309-byte signature. 4415 characters after the prefix, 4424 in all |
 | Context | The ML-DSA context string is the Transit label `hikyo/transit/sign/v1` (21 bytes, limit 255). Signing is hedged, so two signatures of one message differ |
-| Signed bytes | The caller's message, unchanged, exactly as for Ed25519 (see [Departure](#departure-from-the-pqc-profiles-for-the-owner-to-accept)) |
+| Signed bytes | The caller's message, unchanged, exactly as for Ed25519 (see [Departure](#departure-from-the-pqc-profiles)) |
 | Bounds | Unchanged: message 64 KiB, wire value 128 KiB |
 
 Ed25519 keys, signatures and wire values are byte for byte unchanged.
@@ -39,16 +39,22 @@ Hikyo:
 
 Frozen vectors and a test that does exactly this with the Go standard library
 alone are in `internal/crypto/transit_mldsa_vectors_test.go` and
-`internal/crypto/testdata/transit_mldsa65_vectors.json`. A non-Go check was run
-locally (not in CI), OpenSSL 4.0.3 on the frozen SPKI, public key and signature:
+`internal/crypto/testdata/transit_mldsa65_vectors.json`.
 
-`pub.pem` is the `public_key` field, which is base64 DER, wrapped as PEM. Read the
-field from `hikyo transit key show <key> -o json`, at `.items[0].versions[n].public_key`
-(the default table has no public-key column):
+A stock tool needs the `public_key` field, which is base64 DER, wrapped as PEM. The
+default `hikyo transit key show` table has no public-key column, so read it from the
+JSON output. `n` is a zero-based index into `versions`, not a version number:
 
 ```sh
+PUBLIC_KEY=$(hikyo transit key show <key> -o json | jq -r '.items[0].versions[n].public_key')
 { echo '-----BEGIN PUBLIC KEY-----'; printf '%s\n' "$PUBLIC_KEY" | fold -w 64
   echo '-----END PUBLIC KEY-----'; } > pub.pem
+```
+
+A non-Go check was run locally (not in CI), OpenSSL 4.0.3 on the frozen SPKI, public
+key and signature:
+
+```sh
 openssl pkeyutl -verify -pubin -inkey pub.pem -in msg.bin -sigfile sig.bin \
   -pkeyopt context-string:hikyo/transit/sign/v1     # Signature Verified Successfully
 # the same without the option, with another context string, or with a tampered
@@ -143,8 +149,10 @@ unpaginated and returns every version's public key. An ML-DSA-65 version costs a
 inside the limits of 256 keys and 1,024 versions per key. Four keys at 1,024 versions,
 or four hourly-rotating keys left untrimmed for about 32 days, reach it. The CLI then
 exits with an internal error ("the server's response did not match the contract").
-`hikyo transit key show` still works, since one key tops out at about 2.8 MiB, as do
-the API and clients without that cap. Trimming old versions avoids it. Open under #1129.
+`hikyo transit key show` still works, since one key tops out at about 2.7 MiB, as do
+the API and clients without that cap. Raising a key's floors and then running `trim` avoids it, at a cost: Hikyo then
+refuses verification below the floor, and those versions' published public keys are
+gone. A key in pending deletion stays listed and refuses `trim`. Open under #1129.
 
 ## Departure from the PQC profiles
 

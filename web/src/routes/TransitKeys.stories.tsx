@@ -69,7 +69,7 @@ export const ReadRefused: Story = { parameters: { app: { responses: [environment
 } };
 // Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
 // bytes, 2632 base64 characters); the key bytes are filler.
-const spki = `MIIHsjALBglghkgBZQMEAxIDggehA${'Q'.repeat(2603)}`;
+const spki = `MIIHsjALBglghkgBZQMEAxIDggehAA${'Q'.repeat(2602)}`;
 const postQuantum = {
   ...key, id: 'trk_00000000-0000-7000-8000-000000000002', name: 'attestations', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'],
   rotation_period_seconds: 0, rotation_due: false,

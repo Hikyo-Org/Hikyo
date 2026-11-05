@@ -43,7 +43,7 @@ func testTransitMLDSA65Migration(t *testing.T, cfg store.Config) {
 		key + `('tk_ed','org_t','prj_t','env_t','signer','ed25519','software','sign,verify','active',2,1,1,1,'usr_t','2026-09-01T00:00:00Z','2026-09-02T00:00:00Z')`,
 		`INSERT INTO transit_key_versions (id,org_id,project_id,environment_id,key_id,version,material_ciphertext,public_key,created_at) VALUES ('tkv_1','org_t','prj_t','env_t','tk_ed',1,` + blob("00112233445566778899aabbccddeeff") + `,` + blob("a1a2a3a4a5a6a7a8") + `,'2026-09-01T00:00:00Z')`,
 		`INSERT INTO transit_key_versions (id,org_id,project_id,environment_id,key_id,version,material_ciphertext,public_key,created_at) VALUES ('tkv_2','org_t','prj_t','env_t','tk_ed',2,` + blob("ffeeddccbbaa99887766554433221100") + `,` + blob("b1b2b3b4b5b6b7b8") + `,'2026-09-02T00:00:00Z')`,
-		`INSERT INTO transit_keys (id,org_id,project_id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,purge_started,deletion_after,created_by,created_at,updated_at) VALUES ('tk_wide','org_t','prj_t','env_t','wide','ed25519','software','sign','pending-deletion',3,3,3,2,0,3600,1,'2026-10-01T00:00:00Z','usr_t','2026-09-01T00:00:00Z','2026-09-02T00:00:00Z')`,
+		`INSERT INTO transit_keys (id,org_id,project_id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,purge_started,deletion_after,created_by,created_at,updated_at) VALUES ('tk_wide','org_t','prj_t','env_t','wide','ed25519','software','sign','pending-deletion',5,4,3,2,1,3600,1,'2026-10-01T00:00:00Z','usr_t','2026-09-01T00:00:00Z','2026-09-02T00:00:00Z')`,
 		`INSERT INTO transit_key_callers (org_id,project_id,environment_id,key_id,principal_id,operations) VALUES ('org_t','prj_t','env_t','tk_ed','usr_t','sign')`,
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
@@ -61,8 +61,8 @@ func testTransitMLDSA65Migration(t *testing.T, cfg store.Config) {
 	if n := countUpgrade(t, cfg, `SELECT COUNT(*) FROM transit_keys WHERE id='tk_ed' AND algorithm='ed25519' AND custody='software' AND state='active' AND latest_version=2 AND min_encrypt_version=1 AND min_decrypt_version=1 AND compromised_through_version=1 AND name='signer'`); n != 1 {
 		t.Fatalf("rebuilt transit_keys lost row state: %d", n)
 	}
-	if n := countUpgrade(t, cfg, `SELECT COUNT(*) FROM transit_keys WHERE id='tk_wide' AND state='pending-deletion' AND allowed_operations='sign' AND min_available_version=2 AND rotation_period_seconds=3600 AND purge_started=1 AND deletion_after='2026-10-01T00:00:00Z'`); n != 1 {
-		t.Fatalf("rebuilt transit_keys lost trim, rotation or deletion state: %d", n)
+	if n := countUpgrade(t, cfg, `SELECT COUNT(*) FROM transit_keys WHERE id='tk_wide' AND org_id='org_t' AND project_id='prj_t' AND environment_id='env_t' AND name='wide' AND algorithm='ed25519' AND custody='software' AND allowed_operations='sign' AND exportable=0 AND state='pending-deletion' AND latest_version=5 AND min_encrypt_version=4 AND min_decrypt_version=3 AND min_available_version=2 AND compromised_through_version=1 AND rotation_period_seconds=3600 AND purge_started=1 AND deletion_after='2026-10-01T00:00:00Z' AND created_by='usr_t' AND created_at='2026-09-01T00:00:00Z' AND updated_at='2026-09-02T00:00:00Z'`); n != 1 {
+		t.Fatalf("rebuilt transit_keys changed a copied column: %d", n)
 	}
 	if n := countUpgrade(t, cfg, `SELECT COUNT(*) FROM transit_key_versions WHERE key_id='tk_ed' AND (
 		(version=1 AND material_ciphertext=`+blob("00112233445566778899aabbccddeeff")+` AND public_key=`+blob("a1a2a3a4a5a6a7a8")+` AND created_at IS NOT NULL) OR
