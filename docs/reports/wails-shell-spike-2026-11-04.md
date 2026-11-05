@@ -15,6 +15,9 @@ added from our own code give Wails navigation policy, popups and downloads. A pa
 reveal now completes through the system browser, on a protected environment, using a
 virtual authenticator. See [Second round](#second-round-handlers-and-passkey-hop).
 
+**Update, 2026-11-05: iOS and Android.** iOS mostly carries over on the simulator. Android is
+unproven, and needs its own host. See [Third round](#third-round-ios-and-android).
+
 What remains before a product:
 
 1. **Downloads need a real design**: a save panel, the filename from the click, and the
@@ -187,6 +190,110 @@ the native download gate was compiled but not rerun in a live window.
 
 While the spike runs, a connected instance's code can drop files into `~/Downloads`.
 Run it only against instances you trust.
+
+## Third round: iOS and Android
+
+Date: 2026-11-05. Wails v3.1.0 calls both platforms experimental. The aim was to see
+whether the desktop design carries over. **iOS mostly does on the simulator. Android is
+unproven: the stock host fails on a redirect, and the patched host has never run.**
+
+No real device was used, and no real passkey was attempted. The instance was disposable,
+on `127.0.0.1`, with a prebuilt SPA from another worktree behind a small local front,
+because the installed binary has no embedded SPA. That SPA may not match the server exactly.
+
+### iOS, on the iOS 27.1 simulator
+
+| Question | Result | Evidence |
+|---|---|---|
+| Proxy compiles and renders the SPA on `wails://conn-0/` | **Pass** | Page, assets, `runtime/status` and `whoami` all returned 200 through the proxy. A host other than `localhost` works |
+| POST body, status and rotation through the proxy | **Partial** | A JSON POST got 401 and 200, and the rotation was intercepted. PUT, response headers and SSE not tested |
+| Only the enrolment screens were reached | **Limit** | The secrets pages were never seen on iOS |
+| Safari hop with the app in the background | **Works only after returning to the app** | See the table below |
+| `ASWebAuthenticationSession` hop | **Pass for the redirect** | App stayed foreground, and the redirect reached the listener in 0.7 s. It needs native code to dismiss the sheet |
+| Real sign-in and redeem | **Blocked** | Reached `cli-login/start` and the consent alert. The alert then stopped responding to `agent-device` (`main thread execution timed out`) |
+| Keychain through `IOS.SecureSet` | **Blocked** | `OSStatus -34018`, a missing entitlement. Ad-hoc signing with the entitlement stopped the app launching. It needs an iOS signing identity |
+| External links | **Fixed with native code** | Wails' allow-all policy replaced the app's page with no way back, and `target=_blank` did nothing. Replacing the policy method keeps the page and opens Safari |
+| Download links | **Fail, not fixed** | The link replaced the page, which went black. It needs a `WKDownloadDelegate`. Wails' save dialog returns an error on iOS |
+| SPA at phone width | **Observed** | Legible, but the keyboard overlaps the form, focus zoom shifts the layout, and the window didn't fill the Duo's screen |
+| Size and build time | **Measured** | `.app` about 12 MB. First archive build 1m17s, incremental 6 to 7 s |
+
+Safari hop, on a 127.0.0.1 listener in the app. The app was suspended 6 to 12 s after
+Safari opened, and the kernel held the connection until the app returned:
+
+| Delay before the callback | Safari sent | App accepted |
+|---|---|---|
+| Immediate | 23:38:24 | 23:39:07 |
+| 30 s | 23:44:39 | 23:45:25 |
+| 2 min | 23:55:12 | 23:55:43 |
+
+Simulator suspension may differ from a real device, so this needs a device run before it
+is relied on. On the first run a link-preview scraper also requested the URL at the same
+moment, and a scraper could spend a one-shot code.
+
+**Wails on the iOS 27 SDK:** v3.1.0 crashes at launch ("UIScene life cycle is required").
+Linking with `-Wl,-platform_version,ios-simulator,15.0,26.0` avoids it, by declaring an
+older SDK. That is a workaround, not a fix.
+
+**The hop's real problem:** the server accepts only a loopback redirect
+(`internal/service/cli_login.go`, `internal/service/cli_reauth.go`). On iOS,
+`ASWebAuthenticationSession` shows a consent alert naming "127.0.0.1", and logs that `http`
+support is deprecated and will be removed. A custom-scheme or universal-link callback needs
+a new server operation, because closed enums never grow under the freeze. That would be a
+new owner decision.
+
+### Android
+
+**The Pixel emulator never completed a device test.** Its framework restarted about every
+74 s (`system_server` watchdog) while the host was overloaded, at load 15 to 21. The device
+tools then failed (`Could not communicate with device support`), so testing stopped.
+
+| Question | Result | Evidence |
+|---|---|---|
+| Stock host with the proxy | **Fails on the first redirect** | Observed: `GET /index.html -> 301`, then `asset server error: status 301`. Other stock behaviour is from source only, below |
+| Patched host: method, query, headers, status, streaming | **Built, never run** | APK 16.5 MB, `libwails.so` 12.0 MB |
+| Request bodies through a script and bridge | **Built, never run** | `android-host/assets/spike-shim.js`. By design it misses `sendBeacon`, form POSTs and WebSocket |
+| Per-connection origin, browser hop, real sign-in, `Android.SecureSet`, downloads, back button, phone-width SPA | **Not tested** | Blocked by the emulator |
+
+From source only, in Wails' stock host:
+
+- `WailsPathHandler.handle` always sends `GET`, and `WebViewAssetLoader` strips the query.
+- `serveAssetForAndroid` uses a nil body and a recorder, so nothing streams and SSE can't
+  work. Any status but 200 becomes an error.
+- `application_android.go` says the WebView can't deliver `fetch()` POST bodies to
+  `shouldInterceptRequest`. This is an Android limit, so any proxy needs a script that moves
+  bodies over a bridge. That means the page gets an extra native path, which conflicts
+  with D10's "no native capability beyond D9" unless the ADR lists it.
+- The origin is fixed at `https://wails.localhost`. The Java host is generated into the
+  project, so it can be changed, but D2's per-connection origin is unproven here.
+
+### A finding that also affects macOS
+
+**A `cli` session can't finish recovery-code regeneration or the enrolment gate in the
+SPA.** `useRecoveryCodeHandoff` (`web/src/api/account.ts`) calls `acceptAccountSession`,
+which returns false unless the session's artifact is `browser`
+(`web/src/app/AuthProvider.tsx`). The screen then throws "The account session changed
+before its recovery codes could be displayed." This matches what iOS showed: a 200
+response and no progress at "Step 2 of 4".
+
+The cause is from source, and was not reproduced in a plain browser. Since the server has
+already replaced the codes when the response arrives, the app may replace them without
+showing the new ones. App mode must handle this, on every platform.
+
+### What this means
+
+- **iOS** looks feasible with `ASWebAuthenticationSession`, but the `http` deprecation makes
+  the loopback handoff a dated choice there.
+- **Android** needs its own Java host and a body bridge. It is not "the same shell". It
+  remains unproven until that host runs.
+- **Neither** should change the desktop plan yet. The ADR's D15 already requires a separate
+  spike per platform.
+- **Not tested, worth comparing:** the instance's own web app in the phone's browser already
+  runs passkeys on the real origin, with no proxy, bridge or second release lane.
+
+**Review:** an automated security review flagged the debug server, and the fix is in: it
+compiles only under the `probe` tag, needs a per-launch secret and never returns stored
+values. Its absence from a normal build was checked by searching the Android library's
+strings, not on a device. No independent review of this round has run.
 
 ## Rate limit: already fixed, not in v1.0.0
 

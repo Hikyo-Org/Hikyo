@@ -40,6 +40,17 @@ does the CLI's loopback handoff.
 The passkey path needs that SPA change on the instance, because the SPA comes from the
 instance. On a released instance, "Use a passkey" still fails in the window. TOTP works.
 
+## Mobile
+
+Results are in the spike report's third round. Both platforms need a local, gitignored
+`mobile-dev-config.json` with a disposable instance's origin and token.
+
+- **iOS:** build with `GOOS=ios`, `-buildmode=c-archive`, the Wails overlay and
+  `-tags production,ios`, then link for the simulator. Add `probe` to the tags for the debug
+  server.
+- **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
+  unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host has never run.
+
 ## Tests and probes
 
 `go test -tags production .` covers the proxy's refusals and token rotation, the reauth
