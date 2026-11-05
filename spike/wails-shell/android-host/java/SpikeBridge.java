@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 final class SpikeBridge {
     private static final String TAG = "SpikeBridge";
     private static final int MAX_BODY = 64 << 20;
+    private static final int MAX_BUFFERED = 8 << 20; // the SDK's own ceiling for a data response
     private static final long MAX_STASHED = 128L << 20;
     private static final long TTL_MS = 60_000;
 
@@ -120,11 +121,13 @@ final class SpikeBridge {
             int status = head.getInt("status");
             Map<String, String> out = new HashMap<>();
             String ctype = "application/octet-stream";
+            long declared = -1;
             JSONArray hs = head.getJSONArray("headers");
             for (int i = 0; i < hs.length(); i++) {
                 String k = hs.getJSONArray(i).getString(0), v = hs.getJSONArray(i).getString(1);
                 if (k.equalsIgnoreCase("Content-Type")) ctype = v;
-                // Keep Content-Length: without it the WebView reports 0 to the page, and the SDK client then discards the body.
+                // The WebView derives Content-Length from the stream's available() and adds it itself; a copy of Go's would make it read "0, 207".
+                else if (k.equalsIgnoreCase("Content-Length")) declared = parseLength(v);
                 else if (!k.equalsIgnoreCase("Transfer-Encoding")) out.merge(k, v, (a, b) -> a + ", " + b);
             }
             if (status >= 300 && status < 400) {
@@ -137,11 +140,58 @@ final class SpikeBridge {
             String mime = ctype.split(";")[0].trim();
             String charset = null;
             for (String p : ctype.split(";")) if (p.trim().toLowerCase().startsWith("charset=")) charset = p.trim().substring(8);
-            return new WebResourceResponse(mime, charset, status, status < 400 ? "OK" : "Error", out, new GoStream(id));
+            InputStream stream = new GoStream(id);
+            if (!mime.equalsIgnoreCase("text/event-stream")) stream = sized(stream, "HEAD".equals(method) ? -1 : declared);
+            return new WebResourceResponse(mime, charset, status, status < 400 ? "OK" : "Error", out, stream);
         } catch (Exception e) {
             Log.e(TAG, "fetch failed", e);
             return error(502, e.toString());
         }
+    }
+
+    private static long parseLength(String v) {
+        try { return Long.parseLong(v.trim()); } catch (NumberFormatException e) { return -1; }
+    }
+
+    /**
+     * The WebView reports available() as the response's Content-Length, and GoStream cannot know it. A body that ends within
+     * MAX_BUFFERED is read whole, so the page sees its exact length. A longer one streams on, reporting the length Go declared
+     * (or 0 when it sent none, i.e. chunked), so its length is only as good as the instance's. Never used for event streams.
+     * A body that ends short of the length Go declared was cut off (nativeRead reports every error as end of stream), so it fails
+     * rather than reaching the page with a length that matches the cut. A chunked body cannot be checked this way.
+     * shortcut: the buffer grows by doubling and is copied once, so a response near the cap can briefly hold about three times it
+     * in memory; stream into a presized array when Go declares the length, if this ever runs outside a spike.
+     */
+    private static InputStream sized(InputStream in, long declared) throws IOException {
+        java.io.ByteArrayOutputStream head = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[65536];
+        for (int n; head.size() <= MAX_BUFFERED && (n = in.read(buf, 0, buf.length)) >= 0; ) head.write(buf, 0, n);
+        byte[] prefix = head.toByteArray();
+        if (prefix.length <= MAX_BUFFERED) {
+            in.close();
+            if (declared >= 0 && prefix.length != declared) throw new IOException("response ended after " + prefix.length + " of " + declared + " bytes");
+            return new java.io.ByteArrayInputStream(prefix);
+        }
+        return new Prefixed(prefix, in, declared);
+    }
+
+    /** A buffered prefix followed by the rest of a stream. */
+    private static final class Prefixed extends InputStream {
+        private final InputStream prefix, rest;
+        private final long declared;
+        private long served;
+        Prefixed(byte[] prefix, InputStream rest, long declared) {
+            this.prefix = new java.io.ByteArrayInputStream(prefix); this.rest = rest; this.declared = declared;
+        }
+        @Override public int read() throws IOException { byte[] one = new byte[1]; return read(one, 0, 1) < 0 ? -1 : one[0] & 0xff; }
+        @Override public int read(byte[] b, int off, int len) throws IOException {
+            int n = prefix.read(b, off, len);
+            if (n < 0) n = rest.read(b, off, len);
+            if (n > 0) served += n;
+            return n;
+        }
+        @Override public int available() { return declared < 0 ? 0 : (int) Math.min(Integer.MAX_VALUE, Math.max(0, declared - served)); }
+        @Override public void close() throws IOException { rest.close(); }
     }
 
     /** Saves a GET of a wails URL to a file through the proxy and returns its size. */

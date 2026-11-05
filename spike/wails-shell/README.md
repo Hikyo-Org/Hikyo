@@ -52,6 +52,9 @@ Results are in the spike report's third round. Both platforms need a local, giti
   `vtool -set-build-version iossim 15.0 26.0 -replace -output X.new X`, then sign again.
 - **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
   unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host runs on the emulator.
+  The patched host buffers non-streaming responses to report their length, pads event streams by
+  2 KB per event, pads for the system bars, and starts a `shortService` foreground service for the
+  browser hop (`/open?mode=fgs` in the probe). `/sse-pad?n=` and `/fgs` in the probe tune them.
 
 ## Connection isolation
 
@@ -116,6 +119,9 @@ A refused top-level navigation replaces the attacker's page and stops the chain,
 `go test -race -tags production .` covers the proxy's refusals, a request with no owner, a page-supplied window id,
 connections added and removed while serving, random hosts, token rotation, the reauth handoff, URL validation and
 download paths.
+
+`probes/front` is a small front for the mobile rig: `go run ./probes/front -listen 127.0.0.1:18110 -instance http://127.0.0.1:18100`
+serves `/__t/sized`, `echo`, `status`, `sse` and `download` test routes and proxies the rest to the instance.
 
 `-probe FILE` runs JavaScript after each navigation and enables `/__spike/report`
 and `/__spike/sleep`. The files in `probes/` produced the report's evidence. Replace

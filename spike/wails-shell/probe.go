@@ -62,6 +62,7 @@ func probeServer() {
 	})
 	// The hop listener is separate and answers only /cb, so the browser needs no secret and gets no controls.
 	handle("/listen", true, func(w http.ResponseWriter, r *http.Request) {
+		mode := r.URL.Query().Get("mode")
 		l, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -71,6 +72,7 @@ func probeServer() {
 			hop := http.NewServeMux()
 			hop.HandleFunc("/cb", func(w http.ResponseWriter, r *http.Request) {
 				log.Printf("HOP-ACCEPT %s %s %s ua=%q", stamp(), l.Addr(), r.URL.RequestURI(), r.UserAgent())
+				hopDone(mode)
 				fmt.Fprintln(w, "accepted by the app at", stamp())
 			})
 			srv := &http.Server{Handler: hop}
@@ -82,7 +84,7 @@ func probeServer() {
 	})
 	handle("/open", true, func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("OPEN %s %s", stamp(), r.URL.Query().Get("url"))
-		fmt.Fprintln(w, openURL(r.URL.Query().Get("url")))
+		fmt.Fprintln(w, hopOpen(r.URL.Query().Get("mode"), r.URL.Query().Get("url")))
 	})
 	handle("/nav", true, func(w http.ResponseWriter, r *http.Request) {
 		host := r.URL.Query().Get("host")
