@@ -126,7 +126,8 @@ assert.ok(signing.versions[0].public_key, 'an ed25519 key publishes its public k
 const pkiProfiles = z.zPkiProfileList.parse((await call('listPkiProfiles')).data);
 assert.deepEqual(pkiProfiles.profiles.map(profile => profile.name), ['skew-web']);
 assert.ok(pkiProfiles.profiles[0].policy.key_algorithms.includes('ed25519'));
-z.zPkiIssuerList.parse((await call('listPkiIssuers')).data);
+const pkiIssuers = z.zPkiIssuerList.parse((await call('listPkiIssuers')).data);
+assert.ok(pkiIssuers.issuers.some(issuer => issuer.name === 'skew-root'), 'the seeded skew-root issuer is listed');
 client.setConfig({ headers: { Authorization: null } });
 const weak = z.zLoginResult.parse((await call('localLogin', {
   body: { username: fixture.weak_username, password: fixture.password, artifact: 'cli' },
