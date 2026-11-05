@@ -1,7 +1,9 @@
 # #1133: ML-DSA-65 private certificate lifecycle, handoff
 
-Status: **implementation of the mechanism, below the API. The public API, CLI and
-WebUI surface is HOLD on the owner's API-freeze decision.** The owner authorized
+Status: **implementation of the mechanism, below the API. The owner decided the
+API freeze on 2026-11-04 and the enum amendment lets the contract name `mldsa65`,
+but the capability stays disabled: the public API, CLI and WebUI surface refuses it
+while `service.PKI.MLDSAEnabled` is false.** The owner authorized
 the merge to `dev` on 2026-11-04, accepted publication in the next nightly, and
 that instruction is the maintainer security approval for this PR. What merging
 means: `MLDSAEnabled` stays false in production, so the product creates, imports
@@ -58,7 +60,9 @@ Note the issuer and certificate **response** `key_algorithm` fields are plain
 strings, not enums, so an ML-DSA issuer or certificate would already serialize;
 the closed parts are the request enums and the profile `key_algorithms`.
 
-**Decision needed from the owner.** This handoff makes no recommendation; the
+**Decided on 2026-11-04: option 1.** The owner amended [api-cli-surface](../adr/api-cli-surface.md) so these enums grow once, for `mldsa65` only (see the banner there and the guard exception in `api/freeze.go`). The options below are kept as the record of what was weighed; `MLDSAEnabled` stays false, so nothing is reachable yet.
+
+**The decision was needed from the owner.** This handoff made no recommendation; the
 facts for each option, verified against this tree and `v1.0.0`:
 
 1. **Let these closed enums grow, by amending [api-cli-surface](../adr/api-cli-surface.md) (#25).**
@@ -84,7 +88,7 @@ facts for each option, verified against this tree and `v1.0.0`:
    with its own schemas. The existing profile list and show routes must then not
    return ML-DSA profiles, so they become incomplete views; the CLI and SPA read both
    families; a new surface to freeze.
-3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` (line 146) says v1 explicitly plans none.
+3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` says v1 explicitly plans none.
 
 (Same shape as the corrected wording in
 [1129-transit-mldsa.md](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md).)

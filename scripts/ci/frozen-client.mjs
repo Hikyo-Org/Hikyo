@@ -114,6 +114,20 @@ assert.equal(z.zOrg.parse((await call('getOrg', { path: { org: org.id } })).data
 assert.equal((await call('listOrgs')).response.status, 200, 'verified login assurance crosses the handoff');
 const list = z.zMyOrgList.parse((await call('listMyOrgs')).data);
 assert.ok(list.items.some(item => item.id === org.id));
+// Transit and PKI as the v1.0.0 consumer sees them. The lists hold Ed25519 and
+// classical keys only: the mldsa65 list case (where the closed v1.0.0 Zod enum
+// rejects the whole list, the one-time skew break of the 2026-11-04
+// api-cli-surface amendment) lands with #1172, which brings the Transit
+// mechanism. PKI cannot mint mldsa65 here while service.PKI.MLDSAEnabled is false.
+const transitKeys = z.zTransitKeyList.parse((await call('listTransitKeys', { path: fixture.scope })).data);
+assert.deepEqual(transitKeys.items.map(key => key.algorithm).sort(), ['ed25519', 'xchacha20-poly1305']);
+const signing = transitKeys.items.find(key => key.algorithm === 'ed25519');
+assert.ok(signing.versions[0].public_key, 'an ed25519 key publishes its public key');
+const pkiProfiles = z.zPkiProfileList.parse((await call('listPkiProfiles')).data);
+assert.deepEqual(pkiProfiles.profiles.map(profile => profile.name), ['skew-web']);
+assert.ok(pkiProfiles.profiles[0].policy.key_algorithms.includes('ed25519'));
+const pkiIssuers = z.zPkiIssuerList.parse((await call('listPkiIssuers')).data);
+assert.ok(pkiIssuers.issuers.some(issuer => issuer.name === 'skew-root'), 'the seeded skew-root issuer is listed');
 client.setConfig({ headers: { Authorization: null } });
 const weak = z.zLoginResult.parse((await call('localLogin', {
   body: { username: fixture.weak_username, password: fixture.password, artifact: 'cli' },
@@ -125,4 +139,4 @@ const allOrgs = await call('listOrgs', { throwOnError: false });
 assert.equal(allOrgs.response.status, 403, 'instance-wide listing requires MFA');
 assert.equal(z.zError.parse(allOrgs.error).error.code, 'forbidden');
 await call('logout');
-console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list passed');
+console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit key list, pki profile and issuer lists passed');

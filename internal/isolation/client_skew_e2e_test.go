@@ -14,6 +14,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/server"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/transit"
 )
 
 // The client source comes from the immutable freeze tag, never regeneration
@@ -32,6 +33,49 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			username: "factor-admin", displayName: "Skew Admin",
 			password: "correct horse battery staple client skew",
 		})
+		// Transit and PKI for the frozen client to read. Everything is seeded
+		// before the first login so no later grant change stales a session.
+		// Ed25519 only: the mldsa65 list case lands with #1172, which brings the
+		// Transit mechanism; PKI ML-DSA stays behind service.PKI.MLDSAEnabled.
+		// A real hierarchy, because the fixture's hand-written ids (org_a) do not
+		// satisfy the Id grammar the frozen Zod schemas enforce.
+		operator := service.LocalPrincipal(root)
+		keyring := probeKeyring(t, db)
+		org, err := (&service.Orgs{DB: db}).Create(t.Context(), operator, "skew-transit-org", true, json.RawMessage(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		project, err := (&service.Projects{DB: db}).Create(t.Context(), operator, domain.OrgID(org.ID), "skew-project")
+		if err != nil {
+			t.Fatal(err)
+		}
+		projectScope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
+		env, err := (&service.Environments{DB: db, Keyring: keyring}).Create(t.Context(), operator, projectScope, "skew-env", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		envScope := domain.Scope{Org: projectScope.Org, Project: projectScope.Project, Env: domain.EnvID(env.ID)}
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_admin_read','`+string(admin.boot.PrincipalID)+`','read','`+org.ID+`','`+project.ID+`','`+env.ID+`',`+ts+`)`)
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_skew_root_crypto','`+string(root)+`','crypto-manage','`+org.ID+`','`+project.ID+`',NULL,`+ts+`)`)
+		transitSvc := &service.Transit{DB: db, Keyring: keyring, Custody: transit.NewRegistry(&transit.Software{Keyring: keyring})}
+		for _, req := range []service.CreateTransitKeyRequest{
+			{Name: "skew-signing", Algorithm: "ed25519", AllowedOperations: []string{"sign", "verify"}},
+			{Name: "skew-sealing", Algorithm: "xchacha20-poly1305", AllowedOperations: []string{"encrypt", "decrypt"}},
+		} {
+			if _, err := transitSvc.CreateKey(t.Context(), operator, envScope, req); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pkiClk := &pkiClock{now: time.Now().UTC().Truncate(time.Second)}
+		pkiService := pkiSvc(t, db, pkiClk)
+		if _, err := pkiService.CreateIssuer(t.Context(), service.LocalPrincipal(root), service.PKIIssuerRequest{Mode: "root", Name: "skew-root", CommonName: "Skew Root"}); err != nil {
+			t.Fatal(err)
+		}
+		policy := pkiWebPolicy()
+		policy.AllowedIssuers = []string{"skew-root"}
+		if _, err := pkiService.CreateProfile(t.Context(), service.LocalPrincipal(root), "skew-web", policy); err != nil {
+			t.Fatal(err)
+		}
 		base := time.Now().UTC()
 		clk := base
 		admin.auth.Now = func() time.Time { return clk }
@@ -70,6 +114,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 		// The clock stops changing before HTTP workers start.
 		httpServer := httptest.NewServer(server.New(&server.API{
 			Auth: admin.auth, Orgs: &service.Orgs{DB: db}, Version: "current-server-skew-fixture",
+			Transit: transitSvc, PKI: pkiService,
 		}, nil))
 		defer httpServer.Close()
 		admin.auth.ExternalOrigin = httpServer.URL
@@ -78,6 +123,7 @@ func TestFrozenGeneratedClientAgainstCurrentServer(t *testing.T) {
 			"elevated": elevated.SessionToken, "principal": string(admin.boot.PrincipalID),
 			"codes":         []string{totpCode(t, uri, clk), totpCode(t, uri, clk.Add(30*time.Second))},
 			"weak_username": "skew-unenrolled",
+			"scope":         map[string]string{"org": org.ID, "project": project.ID, "environment": env.ID},
 		})
 		if err != nil {
 			t.Fatal(err)

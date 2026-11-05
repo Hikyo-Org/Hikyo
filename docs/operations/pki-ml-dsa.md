@@ -11,14 +11,15 @@ status.
 
 ## The HOLD you must know first
 
-`/api/v1` is frozen at `v1.0.0` and the PKI `key_algorithm` and `key_algorithms`
-enums are closed, so a real server, the `hikyo` CLI and the WebUI **refuse
-`mldsa65` today** and create nothing. That includes `pki issuer import`: its
-algorithm comes from the key, so the service refuses an ML-DSA key unless the
-instance has enabled the algorithm, and production wiring never does. The Hikyo
-side of the procedure below therefore runs only in the test harness
-(`TestPKIMLDSALifecycle`, both engines) until the owner decides how the enums may
-grow. The OpenSSL side is real and was run (`TestMLDSAOpenSSLInterop`).
+The [`/api/v1` contract](../adr/api-cli-surface.md) has named `mldsa65` in the PKI
+`key_algorithm` and `key_algorithms` enums since the owner's amendment of
+2026-11-04, but a real server, the `hikyo` CLI and the WebUI **refuse `mldsa65`
+today** and create nothing. That includes `pki issuer import`: its algorithm comes
+from the key, so the service refuses an ML-DSA key unless the instance has enabled
+the algorithm, and production wiring never does. A request naming `mldsa65` with a
+classical key or CSR is refused too. The Hikyo side of the procedure below therefore
+runs only in the test harness (`TestPKIMLDSALifecycle`, both engines) until
+`MLDSAEnabled` is enabled. The OpenSSL side is real and was run (`TestMLDSAOpenSSLInterop`).
 
 ## What exists
 
@@ -264,7 +265,7 @@ owner and need amd64 numbers that were not measured.
    pending ML-DSA version; a classical leaf is still newly issued and renewed, with
    an ML-DSA signature, by an existing ML-DSA issuer that a classical profile names;
    a classical profile may be created naming an existing ML-DSA issuer; and a stored
-   `mldsa65` profile is returned as is, a value outside the frozen response enum.
+   `mldsa65` profile is returned as is, a value the `v1.0.0` generated Zod schemas refuse.
    These need rows that already exist (a restore is one way). They are registered as
    known limits in the handoff.
 6. **Roll back by stopping, not by deleting.** Revoke or let expire the ML-DSA

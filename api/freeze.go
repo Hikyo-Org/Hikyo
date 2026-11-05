@@ -74,6 +74,9 @@ var PermittedChanges = map[string]bool{
 	// growth of the CLOSED ones, which never grow. oasdiff cannot tell the
 	// two apart; leaving the ids off the list is what makes the distinction
 	// hold.
+	//
+	// There is exactly one exception, and it is not in this map: see
+	// MLDSA65EnumGrowth, the one-time amendment of 2026-11-04.
 
 	// Documentation-only movement. It changes no wire behaviour, and refusing
 	// it would make improving a description a breaking change.
@@ -84,6 +87,71 @@ var PermittedChanges = map[string]bool{
 	"description-changed":                   true,
 	"request-property-description-changed":  true,
 	"response-property-description-changed": true,
+}
+
+// MLDSA65EnumGrowth is the single, one-time exception to the closed-enum rule
+// above, declared by the api-cli-surface amendment of 2026-11-04 (ticket #25,
+// "One-time growth of closed enums for mldsa65"): the Transit algorithm enum
+// and the PKI key-algorithm enums grow once, by the value `mldsa65`, and by
+// nothing else. It sets no precedent; closed enums otherwise never grow.
+//
+// The exception is a closed list of exact findings, not an allowlisted change
+// id, so anything outside it still fails: `mldsa44` on the same path,
+// `mldsa65` on any other enum or operation that oasdiff reports, and a future
+// `mldsa87`. oasdiff has no finding for enum growth in a response header, so
+// the guard does not see that (#1217). Adding to this list is an ADR amendment,
+// not a code edit.
+const (
+	requestEnumAdded  = "request-property-enum-value-added"
+	responseEnumAdded = "response-property-enum-value-added"
+	mldsa65           = "mldsa65"
+	environmentPath   = "/api/v1/orgs/{org}/projects/{project}/environments/{environment}"
+)
+
+// EnumGrowth names one permitted enum-value addition: the oasdiff change id,
+// the operation, the path and the property oasdiff reports. The added value
+// is always mldsa65 and is checked separately.
+type EnumGrowth struct {
+	ID, Operation, Path, Property string
+}
+
+var MLDSA65EnumGrowth = []EnumGrowth{
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/issuers", "key_algorithm"},
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/issuers/{issuer}/rotate", "key_algorithm"},
+	{requestEnumAdded, "POST", "/api/v1/instance/pki/profiles", "policy/key_algorithms/items/"},
+	{requestEnumAdded, "PUT", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{requestEnumAdded, "POST", environmentPath + "/certificates", "key_algorithm"},
+	{requestEnumAdded, "POST", environmentPath + "/transit-keys", "algorithm"},
+	{responseEnumAdded, "GET", "/api/v1/instance/pki/profiles", "profiles/items/policy/key_algorithms/items/"},
+	{responseEnumAdded, "POST", "/api/v1/instance/pki/profiles", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "PUT", "/api/v1/instance/pki/profiles/{profile}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "POST", "/api/v1/instance/pki/profiles/{profile}/bindings", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "DELETE", "/api/v1/instance/pki/profiles/{profile}/bindings/{binding}", "policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", environmentPath + "/certificate-profiles", "profiles/items/policy/key_algorithms/items/"},
+	{responseEnumAdded, "GET", environmentPath + "/transit-keys", "items/items/algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys", "algorithm"},
+	{responseEnumAdded, "GET", environmentPath + "/transit-keys/{transit_key}", "algorithm"},
+	{responseEnumAdded, "PATCH", environmentPath + "/transit-keys/{transit_key}", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/lifecycle", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/rotate", "algorithm"},
+	{responseEnumAdded, "POST", environmentPath + "/transit-keys/{transit_key}/trim", "key/algorithm"},
+}
+
+// permittedEnumGrowth reports whether change is one of MLDSA65EnumGrowth.
+// oasdiff's arguments for both change ids are (value, property, ...).
+func permittedEnumGrowth(change checker.Change) bool {
+	args := change.GetArgs()
+	if len(args) < 2 || fmt.Sprint(args[0]) != mldsa65 {
+		return false
+	}
+	got := EnumGrowth{change.GetId(), change.GetOperation(), change.GetPath(), fmt.Sprint(args[1])}
+	for _, want := range MLDSA65EnumGrowth {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Violation is one refused change.
@@ -146,7 +214,7 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 	violations := freezeRemovals(report)
 	for _, change := range changes {
 		id := change.GetId()
-		if PermittedChanges[id] {
+		if PermittedChanges[id] || permittedEnumGrowth(change) {
 			continue
 		}
 		violations = append(violations, Violation{

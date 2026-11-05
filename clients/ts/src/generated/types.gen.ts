@@ -203,7 +203,7 @@ export type PkiIssuerCreateRequest = {
     name: PkiName;
     common_name?: string;
     organization?: string;
-    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096';
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096' | 'mldsa65';
     ttl_seconds?: number;
     parent?: PkiName;
     crl_distribution_url?: string;
@@ -216,7 +216,7 @@ export type PkiIssuerCreateRequest = {
 };
 
 export type PkiIssuerRotateRequest = {
-    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096';
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'rsa-3072' | 'rsa-4096' | 'mldsa65';
     ttl_seconds?: number;
     crl_distribution_url?: string;
     /**
@@ -251,7 +251,7 @@ export type PkiPolicy = {
     ip_ranges: Array<string>;
     uri_patterns: Array<string>;
     allow_wildcard_names: boolean;
-    key_algorithms: Array<'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'>;
+    key_algorithms: Array<'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096' | 'mldsa65'>;
     key_usages: Array<'digital-signature' | 'key-encipherment' | 'key-agreement'>;
     ext_key_usages: Array<'server-auth' | 'client-auth'>;
     max_ttl_seconds: number;
@@ -361,7 +361,7 @@ export type CertificateIssueRequest = {
     issuer?: PkiName;
     csr_pem?: string;
     generate_key?: boolean;
-    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096';
+    key_algorithm?: 'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096' | 'mldsa65';
     common_name?: string;
     dns_names?: Array<string>;
     ip_addresses?: Array<string>;
@@ -6295,7 +6295,7 @@ export type ScimCapabilityOrigin = {
 
 export type TransitKeyName = string;
 
-export type TransitAlgorithm = 'xchacha20-poly1305' | 'ed25519' | 'hmac-sha256';
+export type TransitAlgorithm = 'xchacha20-poly1305' | 'ed25519' | 'hmac-sha256' | 'mldsa65';
 
 export type TransitCustody = 'software' | 'external';
 
@@ -6315,7 +6315,7 @@ export type TransitKeyVersion = {
      */
     material: 'sealed' | 'external' | 'erased';
     /**
-     * The Ed25519 public key (standard base64) for signing keys; public metadata.
+     * The public key (standard base64) for signing keys; public metadata. The encoding depends on the key's algorithm: ed25519 is the raw 32-byte key, mldsa65 is the DER SubjectPublicKeyInfo.
      */
     public_key?: string | null;
     created_at: Timestamp;
