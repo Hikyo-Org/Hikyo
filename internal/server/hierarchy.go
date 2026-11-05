@@ -43,6 +43,10 @@ type ProjectService interface {
 	Get(ctx context.Context, actor service.Actor, scope domain.Scope) (service.Project, error)
 	List(ctx context.Context, actor service.Actor, org domain.OrgID) ([]service.Project, error)
 	Rename(ctx context.Context, actor service.Actor, scope domain.Scope, name string) (service.Project, error)
+	SetIdentity(ctx context.Context, actor service.Actor, scope domain.Scope, hue int, mark *string) (service.Project, error)
+	SetIdentityImage(ctx context.Context, actor service.Actor, scope domain.Scope, contentType string, body []byte) (service.Project, error)
+	ClearIdentityImage(ctx context.Context, actor service.Actor, scope domain.Scope) (service.Project, error)
+	IdentityImage(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ChromeImage, error)
 	Delete(ctx context.Context, actor service.Actor, scope domain.Scope) error
 }
 

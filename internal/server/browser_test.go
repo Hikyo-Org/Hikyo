@@ -460,7 +460,8 @@ func TestListMyOrgsIsASelfProjection(t *testing.T) {
 	t.Run("returns the caller's orgs", func(t *testing.T) {
 		srv := newTestServer(t, stubAuth{identity: liveIdentityFn}, stubOrgs{
 			mine: func(context.Context, service.Actor) ([]service.MyOrg, error) {
-				return []service.MyOrg{{ID: testOrgID, Name: "acme"}}, nil
+				version := "abababababababababababababababababababababababababababababababab"
+				return []service.MyOrg{{ID: testOrgID, Name: "acme", Identity: service.ChromeIdentity{Hue: 280, Mark: new("PO"), ImageVersion: &version}}}, nil
 			},
 		})
 		resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/me/orgs", "hik_1_cli_x", nil)
@@ -473,6 +474,12 @@ func TestListMyOrgsIsASelfProjection(t *testing.T) {
 		}
 		if got.Count != 1 || len(got.Items) != 1 || got.Items[0].Name != "acme" {
 			t.Fatalf("body = %s", payload)
+		}
+		// The chrome identity rides along: hue, mark and the image version, never bytes.
+		identity := got.Items[0].Identity
+		if identity == nil || identity.Hue != 280 || identity.Mark == nil || *identity.Mark != "PO" ||
+			identity.ImageVersion == nil || *identity.ImageVersion != "abababababababababababababababababababababababababababababababab" {
+			t.Fatalf("identity = %+v in %s", identity, payload)
 		}
 		// Identity only: metadata and the active flag are operator-set state
 		// and belong to getOrg, which authorizes. If they ever appear here the

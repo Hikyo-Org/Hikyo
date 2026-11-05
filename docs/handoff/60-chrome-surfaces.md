@@ -35,12 +35,14 @@ checked capabilities and every project × environment in the organisation plus
 the "any project created later" line, with *back, change scope* preserving the
 composition. Post-action feedback is persistent `role=status` text.
 
-**Org settings** (`web/src/routes/OrgSettings.tsx`): identity (rename, plus the
+**Org settings** (`web/src/routes/OrgSettings.tsx`): identity (editable hue,
+content and image, rename, plus the
 stated consequence that renaming is instance-operator work), the org retention
 cap in the API's real two dimensions, a members entry card, and a danger zone
 whose delete is gated on the typed organisation name, inline.
 
-**Project settings** (`web/src/routes/ProjectSettings.tsx`): identity (rename),
+**Project settings** (`web/src/routes/ProjectSettings.tsx`): identity (editable
+hue, content and image, rename),
 per-environment policy (protected flag + reveal reauthentication window, with
 the window fixed at 0 and *stated* while protected), the project retention
 override with the cap refusal named per dimension before the request, an access
@@ -157,10 +159,10 @@ on this branch backs it. None is stubbed.
   persist: a guard that appears set and is not is worse than a missing one.
 - **Project metadata** (description). The `Project` contract carries id, org,
   name and creation time. Nothing to write, nothing to write it with.
-- **Organisation and project avatars** — preset hues, the custom-hue slider,
-  glyphs, image upload. No operation stores any of them. `Org.metadata` exists
-  but is only settable at create, and freighting a display preference into
-  operator metadata would be inventing a schema.
+- **Organisation and project avatars** — superseded by
+  [editable-chrome-identity.md](editable-chrome-identity.md): hue, content and
+  an uploaded image are now stored server-side for orgs and projects, and the
+  Identity panels edit them. Prototype mode keeps its browser-local version.
 - **Profile editing** (display name, email). No update-principal operation
   exists. The fields are rendered as read-only facts.
 - **Password change** (the prototype's Profile "change password" control). There

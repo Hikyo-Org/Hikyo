@@ -81,6 +81,8 @@ import {
   changeEnvironmentParameter,
   changeTransitKeyState,
   checkDefinitions,
+  clearOrgIdentityImage,
+  clearProjectIdentityImage,
   clearValue,
   cloneEnvironment,
   compromiseRetireSamlSpKey,
@@ -179,11 +181,13 @@ import {
   getOauth2Provider,
   getOidcProvider,
   getOrg,
+  getOrgIdentityImage,
   getOrgRegistrationPolicy,
   getOrgRetention,
   getPkiIssuerCrl,
   getProject,
   getProjectCapacity,
+  getProjectIdentityImage,
   getProjectRetention,
   getRetentionHealth,
   getRevealWindow,
@@ -396,9 +400,13 @@ import {
   setEnvironmentSettings,
   setKeyGroup,
   setMachineReveal,
+  setOrgIdentity,
+  setOrgIdentityImage,
   setOrgRetention,
   setPassword,
   setProjectCapacity,
+  setProjectIdentity,
+  setProjectIdentityImage,
   setProjectRetention,
   settleLease,
   setValue,
@@ -485,6 +493,8 @@ import type {
   ChangeEnvironmentParameterData,
   ChangeTransitKeyStateData,
   CheckDefinitionsData,
+  ClearOrgIdentityImageData,
+  ClearProjectIdentityImageData,
   ClearValueData,
   CloneEnvironmentData,
   CompromiseRetireSamlSpKeyData,
@@ -583,11 +593,13 @@ import type {
   GetOauth2ProviderData,
   GetOidcProviderData,
   GetOrgData,
+  GetOrgIdentityImageData,
   GetOrgRegistrationPolicyData,
   GetOrgRetentionData,
   GetPkiIssuerCrlData,
   GetProjectCapacityData,
   GetProjectData,
+  GetProjectIdentityImageData,
   GetProjectRetentionData,
   GetRetentionHealthData,
   GetRevealWindowData,
@@ -800,9 +812,13 @@ import type {
   SetEnvironmentSettingsData,
   SetKeyGroupData,
   SetMachineRevealData,
+  SetOrgIdentityData,
+  SetOrgIdentityImageData,
   SetOrgRetentionData,
   SetPasswordData,
   SetProjectCapacityData,
+  SetProjectIdentityData,
+  SetProjectIdentityImageData,
   SetProjectRetentionData,
   SettleLeaseData,
   SetValueData,
@@ -888,6 +904,8 @@ import {
   zCancelAdapterMoveResponse,
   zChangeTransitKeyStateResponse,
   zCheckDefinitionsResponse,
+  zClearOrgIdentityImageResponse,
+  zClearProjectIdentityImageResponse,
   zClearValueResponse,
   zCloneEnvironmentResponse,
   zCompromiseRetireSamlSpKeyResponse,
@@ -965,11 +983,13 @@ import {
   zGetMyProfileResponse,
   zGetOauth2ProviderResponse,
   zGetOidcProviderResponse,
+  zGetOrgIdentityImageResponse,
   zGetOrgRegistrationPolicyResponse,
   zGetOrgResponse,
   zGetOrgRetentionResponse,
   zGetPkiIssuerCrlResponse,
   zGetProjectCapacityResponse,
+  zGetProjectIdentityImageResponse,
   zGetProjectResponse,
   zGetProjectRetentionResponse,
   zGetRetentionHealthResponse,
@@ -1159,9 +1179,13 @@ import {
   zSetEnvironmentSettingsResponse,
   zSetKeyGroupResponse,
   zSetMachineRevealResponse,
+  zSetOrgIdentityImageResponse,
+  zSetOrgIdentityResponse,
   zSetOrgRetentionResponse,
   zSetPasswordResponse,
   zSetProjectCapacityResponse,
+  zSetProjectIdentityImageResponse,
+  zSetProjectIdentityResponse,
   zSetProjectRetentionResponse,
   zSettleLeaseResponse,
   zSetValueResponse,
@@ -1243,6 +1267,8 @@ export const cancelAccessRequestOp: BodyOperation<CancelAccessRequestData, typeo
 export const cancelAdapterMoveOp: BodyOperation<CancelAdapterMoveData, typeof zCancelAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cancelAdapterMove, [202], zCancelAdapterMoveResponse);
 export const changeTransitKeyStateOp: BodyOperation<ChangeTransitKeyStateData, typeof zChangeTransitKeyStateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(changeTransitKeyState, [200], zChangeTransitKeyStateResponse);
 export const checkDefinitionsOp: BodyOperation<CheckDefinitionsData, typeof zCheckDefinitionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(checkDefinitions, [200], zCheckDefinitionsResponse);
+export const clearOrgIdentityImageOp: BodyOperation<ClearOrgIdentityImageData, typeof zClearOrgIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearOrgIdentityImage, [200], zClearOrgIdentityImageResponse);
+export const clearProjectIdentityImageOp: BodyOperation<ClearProjectIdentityImageData, typeof zClearProjectIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearProjectIdentityImage, [200], zClearProjectIdentityImageResponse);
 export const clearValueOp: BodyOperation<ClearValueData, typeof zClearValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearValue, [200], zClearValueResponse);
 export const cloneEnvironmentOp: BodyOperation<CloneEnvironmentData, typeof zCloneEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cloneEnvironment, [201], zCloneEnvironmentResponse);
 export const compromiseRetireSamlSpKeyOp: BodyOperation<CompromiseRetireSamlSpKeyData, typeof zCompromiseRetireSamlSpKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(compromiseRetireSamlSpKey, [200], zCompromiseRetireSamlSpKeyResponse);
@@ -1321,11 +1347,13 @@ export const getMyProfileOp: BodyOperation<GetMyProfileData, typeof zGetMyProfil
 export const getOauth2ProviderOp: BodyOperation<GetOauth2ProviderData, typeof zGetOauth2ProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOauth2Provider, [200], zGetOauth2ProviderResponse);
 export const getOidcProviderOp: BodyOperation<GetOidcProviderData, typeof zGetOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOidcProvider, [200], zGetOidcProviderResponse);
 export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrg, [200], zGetOrgResponse);
+export const getOrgIdentityImageOp: BodyOperation<GetOrgIdentityImageData, typeof zGetOrgIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgIdentityImage, [200], zGetOrgIdentityImageResponse);
 export const getOrgRegistrationPolicyOp: BodyOperation<GetOrgRegistrationPolicyData, typeof zGetOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRegistrationPolicy, [200], zGetOrgRegistrationPolicyResponse);
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
 export const getPkiIssuerCrlOp: BodyOperation<GetPkiIssuerCrlData, typeof zGetPkiIssuerCrlResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getPkiIssuerCrl, [200], zGetPkiIssuerCrlResponse);
 export const getProjectOp: BodyOperation<GetProjectData, typeof zGetProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProject, [200], zGetProjectResponse);
 export const getProjectCapacityOp: BodyOperation<GetProjectCapacityData, typeof zGetProjectCapacityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectCapacity, [200], zGetProjectCapacityResponse);
+export const getProjectIdentityImageOp: BodyOperation<GetProjectIdentityImageData, typeof zGetProjectIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectIdentityImage, [200], zGetProjectIdentityImageResponse);
 export const getProjectRetentionOp: BodyOperation<GetProjectRetentionData, typeof zGetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectRetention, [200], zGetProjectRetentionResponse);
 export const getRetentionHealthOp: BodyOperation<GetRetentionHealthData, typeof zGetRetentionHealthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRetentionHealth, [200], zGetRetentionHealthResponse);
 export const getRevealWindowOp: BodyOperation<GetRevealWindowData, typeof zGetRevealWindowResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRevealWindow, [200], zGetRevealWindowResponse);
@@ -1514,9 +1542,13 @@ export const setDeveloperCredentialPolicyOp: BodyOperation<SetDeveloperCredentia
 export const setEnvironmentSettingsOp: BodyOperation<SetEnvironmentSettingsData, typeof zSetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setEnvironmentSettings, [200], zSetEnvironmentSettingsResponse);
 export const setKeyGroupOp: BodyOperation<SetKeyGroupData, typeof zSetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setKeyGroup, [200], zSetKeyGroupResponse);
 export const setMachineRevealOp: BodyOperation<SetMachineRevealData, typeof zSetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setMachineReveal, [200], zSetMachineRevealResponse);
+export const setOrgIdentityOp: BodyOperation<SetOrgIdentityData, typeof zSetOrgIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgIdentity, [200], zSetOrgIdentityResponse);
+export const setOrgIdentityImageOp: BodyOperation<SetOrgIdentityImageData, typeof zSetOrgIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgIdentityImage, [200], zSetOrgIdentityImageResponse);
 export const setOrgRetentionOp: BodyOperation<SetOrgRetentionData, typeof zSetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setOrgRetention, [200], zSetOrgRetentionResponse);
 export const setPasswordOp: BodyOperation<SetPasswordData, typeof zSetPasswordResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setPassword, [200], zSetPasswordResponse);
 export const setProjectCapacityOp: BodyOperation<SetProjectCapacityData, typeof zSetProjectCapacityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectCapacity, [200], zSetProjectCapacityResponse);
+export const setProjectIdentityOp: BodyOperation<SetProjectIdentityData, typeof zSetProjectIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectIdentity, [200], zSetProjectIdentityResponse);
+export const setProjectIdentityImageOp: BodyOperation<SetProjectIdentityImageData, typeof zSetProjectIdentityImageResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectIdentityImage, [200], zSetProjectIdentityImageResponse);
 export const setProjectRetentionOp: BodyOperation<SetProjectRetentionData, typeof zSetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setProjectRetention, [200], zSetProjectRetentionResponse);
 export const settleLeaseOp: BodyOperation<SettleLeaseData, typeof zSettleLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(settleLease, [200], zSettleLeaseResponse);
 export const setValueOp: BodyOperation<SetValueData, typeof zSetValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(setValue, [200], zSetValueResponse);

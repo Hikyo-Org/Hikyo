@@ -121,16 +121,16 @@ func automaticDrillProject(ctx context.Context, projects store.ProjectReader, az
 	if err != nil {
 		return domain.Scope{}, false, err
 	}
-	rows, err := projects.List(ctx, proof)
+	ids, err := projects.ListIDs(ctx, proof)
 	if err != nil {
 		return domain.Scope{}, false, err
 	}
-	if len(rows) > 4096 {
+	if len(ids) > 4096 {
 		return domain.Scope{}, false, errors.New("scratch project inventory exceeds automatic proof bound")
 	}
-	slices.SortFunc(rows, func(a, b store.Project) int { return strings.Compare(a.ID, b.ID) })
-	for _, project := range rows {
-		candidate := domain.Scope{Org: scope.Org, Project: domain.ProjectID(project.ID)}
+	slices.Sort(ids)
+	for _, id := range ids {
+		candidate := domain.Scope{Org: scope.Org, Project: domain.ProjectID(id)}
 		held, err := az.CallerHolds(ctx, caller, authz.OpServiceAccountCreate, candidate)
 		if err != nil {
 			return domain.Scope{}, false, err

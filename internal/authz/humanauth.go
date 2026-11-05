@@ -147,6 +147,18 @@ func (a *TxAuthorizer) OrgsForPrincipal(ctx context.Context, caller Identity) ([
 	return a.r.OrgsForPrincipal(ctx, caller.Principal, selfConfigSessionEligible(caller))
 }
 
+// OrgImage re-exports the navigation avatar record for the same boundary reason.
+type OrgImage = authn.OrgImage
+
+// OrgImageVisibleTo reads an org's uploaded avatar for the caller iff the org
+// is in the caller's OrgsForPrincipal projection, so the rail's avatar bytes
+// follow exactly the visibility of the rail itself (a project-scoped member
+// holds no read@org yet sees the org). It authorizes nothing else and mints no
+// proof. domain.ErrNotFound when not visible or no image is stored.
+func (a *TxAuthorizer) OrgImageVisibleTo(ctx context.Context, caller Identity, org domain.OrgID) (OrgImage, error) {
+	return a.r.OrgImageVisibleTo(ctx, caller.Principal, selfConfigSessionEligible(caller), org)
+}
+
 // EnvironmentChain is a resolved (org, project, env) chain.
 type EnvironmentChain = authn.EnvironmentChain
 

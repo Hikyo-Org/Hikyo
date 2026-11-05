@@ -244,3 +244,18 @@ the owner-locked ops-spec amendment admits these values with the implementation.
 
 Lowering the ceiling durably clamps existing expiry in the serialized policy
 transaction. Raising it never restores expiry or revives an expired bearer.
+
+## Chrome identity (org and project avatars)
+
+| Entry | Bound | Scope |
+| --- | --- | --- |
+| Stored image formats | PNG, JPEG, WebP; never SVG | fixed |
+| Image body | 256 KiB, magic bytes must match the declared type | fixed |
+| Image dimensions | at most 1024 x 1024, header decode only | fixed |
+| Content (mark) | 1 to 2 grapheme clusters, no control characters, no surrounding whitespace; absent means the name monogram | fixed |
+| Hue | integer 0 to 359 | fixed |
+| Browser SVG conversion | source at most 1 MiB, drawn contained on a 512 x 512 transparent canvas, result at most 256 KiB | client, fixed |
+
+The converted PNG is what is uploaded; the server never accepts SVG. The
+conversion loads the SVG from a `blob:` URL, which is why the CSP admits
+`img-src 'self' blob:` and never `data:`.

@@ -995,6 +995,11 @@ type Org struct {
 	RetentionRevisionCount int64
 	Origin                 string
 	RegistrationPolicyID   sql.NullString
+	IdentityHue            int64
+	IdentityMark           sql.NullString
+	IdentityImage          []byte
+	IdentityImageType      sql.NullString
+	IdentityImageVersion   sql.NullString
 }
 
 type PasswordCredential struct {
@@ -1138,6 +1143,11 @@ type Project struct {
 	MachineRevealGeneration int64
 	KeyLimitOverride        sql.NullInt64
 	KeyLimitRevision        int64
+	IdentityHue             int64
+	IdentityMark            sql.NullString
+	IdentityImage           []byte
+	IdentityImageType       sql.NullString
+	IdentityImageVersion    sql.NullString
 }
 
 type ProjectSchemaRevision struct {

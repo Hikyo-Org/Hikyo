@@ -6151,6 +6151,16 @@ type ChangedKey struct {
 // ChangedKeyChange defines model for ChangedKey.Change.
 type ChangedKeyChange string
 
+// ChromeIdentity The editable avatar of an organisation or project. `mark` is null when
+// the monogram is derived from the name; `image_version` is a lowercase
+// hex content hash of the uploaded image, null when there is none, and is
+// what the image URL's `v` query parameter carries.
+type ChromeIdentity struct {
+	Hue          int     `json:"hue"`
+	ImageVersion *string `json:"image_version"`
+	Mark         *string `json:"mark"`
+}
+
 // CloneEnvironmentRequest defines model for CloneEnvironmentRequest.
 type CloneEnvironmentRequest struct {
 	// Acknowledgements Secret-scanning acknowledgement tokens (#74). On a value write, a
@@ -7888,6 +7898,16 @@ type IdentityList struct {
 // IdentityProviderKind OPEN protocol discriminator in the byte-exact external-identity key.
 type IdentityProviderKind = string
 
+// IdentityRequest defines model for IdentityRequest.
+type IdentityRequest struct {
+	Hue int `json:"hue"`
+
+	// Mark At most two grapheme clusters; no control characters and no
+	// surrounding whitespace. Null or absent selects the name-derived
+	// monogram.
+	Mark *string `json:"mark,omitempty"`
+}
+
 // IdentityUnlinkRequest defines model for IdentityUnlinkRequest.
 type IdentityUnlinkRequest struct {
 	Proof string `json:"proof"`
@@ -8791,13 +8811,19 @@ type MintedInstanceConnection struct {
 }
 
 // MyOrg An organisation as a navigation destination: what the caller needs to
-// show it and route to it, and nothing else. Deliberately narrower than
+// show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
 // `Org` — `metadata` and `active` are operator-set state that belongs to
 // `getOrg`, which authorizes; a member listing does not.
 type MyOrg struct {
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id   ID     `json:"id"`
-	Name string `json:"name"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Name     string          `json:"name"`
 }
 
 // MyOrgList defines model for MyOrgList.
@@ -9000,7 +9026,13 @@ type Org struct {
 	CreatedAt Timestamp `json:"created_at"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id       ID                      `json:"id"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity         `json:"identity,omitempty"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 	Name     string                  `json:"name"`
 
@@ -9403,8 +9435,14 @@ type Project struct {
 	CreatedAt Timestamp `json:"created_at"`
 
 	// Id A prefixed UUIDv7, e.g. `org_0198…`.
-	Id   ID     `json:"id"`
-	Name string `json:"name"`
+	Id ID `json:"id"`
+
+	// Identity The editable avatar of an organisation or project. `mark` is null when
+	// the monogram is derived from the name; `image_version` is a lowercase
+	// hex content hash of the uploaded image, null when there is none, and is
+	// what the image URL's `v` query parameter carries.
+	Identity *ChromeIdentity `json:"identity,omitempty"`
+	Name     string          `json:"name"`
 
 	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
 	OrgId ID `json:"org_id"`
@@ -12458,6 +12496,9 @@ type GrantPrincipal = ID
 // IdentityID A prefixed UUIDv7, e.g. `org_0198…`.
 type IdentityID = ID
 
+// IdentityImageVersion defines model for IdentityImageVersion.
+type IdentityImageVersion = string
+
 // InstanceUpdateJobID A prefixed UUIDv7, e.g. `org_0198…`.
 type InstanceUpdateJobID = ID
 
@@ -12906,6 +12947,12 @@ type RevokeOrgGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// GetOrgIdentityImageParams defines parameters for GetOrgIdentityImage.
+type GetOrgIdentityImageParams struct {
+	// V The `identity.image_version` being rendered; a cache-busting hint only.
+	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+}
+
 // RemoveAdapterTargetParams defines parameters for RemoveAdapterTarget.
 type RemoveAdapterTargetParams struct {
 	KeepRemote *bool `form:"keep_remote,omitempty" json:"keep_remote,omitempty"`
@@ -13270,6 +13317,12 @@ type RevokeProjectGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// GetProjectIdentityImageParams defines parameters for GetProjectIdentityImage.
+type GetProjectIdentityImageParams struct {
+	// V The `identity.image_version` being rendered; a cache-busting hint only.
+	V *IdentityImageVersion `form:"v,omitempty" json:"v,omitempty"`
+}
+
 // DiffValuesParams defines parameters for DiffValues.
 type DiffValuesParams struct {
 	// Left The left environment.
@@ -13613,6 +13666,9 @@ type CreateOrgGrantJSONRequestBody = CreateGrantRequest
 // ApplyOrgTemplateJSONRequestBody defines body for ApplyOrgTemplate for application/json ContentType.
 type ApplyOrgTemplateJSONRequestBody = ApplyTemplateRequest
 
+// SetOrgIdentityJSONRequestBody defines body for SetOrgIdentity for application/json ContentType.
+type SetOrgIdentityJSONRequestBody = IdentityRequest
+
 // InviteOrgMemberJSONRequestBody defines body for InviteOrgMember for application/json ContentType.
 type InviteOrgMemberJSONRequestBody = InviteMemberRequest
 
@@ -13834,6 +13890,9 @@ type CreateProjectGrantJSONRequestBody = CreateGrantRequest
 
 // ApplyProjectTemplateJSONRequestBody defines body for ApplyProjectTemplate for application/json ContentType.
 type ApplyProjectTemplateJSONRequestBody = ApplyTemplateRequest
+
+// SetProjectIdentityJSONRequestBody defines body for SetProjectIdentity for application/json ContentType.
+type SetProjectIdentityJSONRequestBody = IdentityRequest
 
 // CreateKeyGroupJSONRequestBody defines body for CreateKeyGroup for application/json ContentType.
 type CreateKeyGroupJSONRequestBody = CreateKeyGroupRequest
@@ -15422,6 +15481,18 @@ type ServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID)
+	// SetOrgIdentity Set the organisation's hue and mark.
+	// (PUT /api/v1/orgs/{org}/identity)
+	SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID)
+	// ClearOrgIdentityImage Remove the organisation's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/identity/image)
+	ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID)
+	// GetOrgIdentityImage Read the organisation's uploaded image.
+	// (GET /api/v1/orgs/{org}/identity/image)
+	GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams)
+	// SetOrgIdentityImage Upload the organisation's image.
+	// (PUT /api/v1/orgs/{org}/identity/image)
+	SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID)
 	// InviteOrgMember Invite a human into this organisation with a local credential.
 	// (POST /api/v1/orgs/{org}/invitations)
 	InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -15926,6 +15997,18 @@ type ServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// SetProjectIdentity Set the project's hue and mark.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+	SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ClearProjectIdentityImage Remove the project's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+	ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// GetProjectIdentityImage Read the project's uploaded image.
+	// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+	GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams)
+	// SetProjectIdentityImage Upload the project's image.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+	SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// ListKeyGroups List the project's key groups.
 	// (GET /api/v1/orgs/{org}/projects/{project}/key-groups)
 	ListKeyGroups(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -17138,6 +17221,30 @@ func (_ Unimplemented) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// SetOrgIdentity Set the organisation's hue and mark.
+// (PUT /api/v1/orgs/{org}/identity)
+func (_ Unimplemented) SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClearOrgIdentityImage Remove the organisation's uploaded image.
+// (DELETE /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrgIdentityImage Read the organisation's uploaded image.
+// (GET /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetOrgIdentityImage Upload the organisation's image.
+// (PUT /api/v1/orgs/{org}/identity/image)
+func (_ Unimplemented) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // InviteOrgMember Invite a human into this organisation with a local credential.
 // (POST /api/v1/orgs/{org}/invitations)
 func (_ Unimplemented) InviteOrgMember(w http.ResponseWriter, r *http.Request, org OrgID) {
@@ -18143,6 +18250,30 @@ func (_ Unimplemented) CreateProjectGrant(w http.ResponseWriter, r *http.Request
 // ApplyProjectTemplate Apply a role template at project scope.
 // (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 func (_ Unimplemented) ApplyProjectTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetProjectIdentity Set the project's hue and mark.
+// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+func (_ Unimplemented) SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ClearProjectIdentityImage Remove the project's uploaded image.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetProjectIdentityImage Read the project's uploaded image.
+// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetProjectIdentityImage Upload the project's image.
+// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+func (_ Unimplemented) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -22526,6 +22657,126 @@ func (siw *ServerInterfaceWrapper) ApplyOrgTemplate(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApplyOrgTemplate(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrgIdentity operation middleware
+func (siw *ServerInterfaceWrapper) SetOrgIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrgIdentity(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearOrgIdentityImage(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOrgIdentityImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrgIdentityImage(w, r, org, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetOrgIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetOrgIdentityImage(w, r, org)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -30893,6 +31144,162 @@ func (siw *ServerInterfaceWrapper) ApplyProjectTemplate(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// SetProjectIdentity operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectIdentity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectIdentity(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearProjectIdentityImage(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectIdentityImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectIdentityImage(w, r, org, project, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectIdentityImage operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectIdentityImage(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListKeyGroups operation middleware
 func (siw *ServerInterfaceWrapper) ListKeyGroups(w http.ResponseWriter, r *http.Request) {
 
@@ -34038,6 +34445,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/api/v1/orgs/{org}/retention", wrapper.SetOrgRetention)
 	})
 	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity", wrapper.SetOrgIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.ClearOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.GetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/identity/image", wrapper.SetOrgIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.DeleteProject)
 	})
 	r.Group(func(r chi.Router) {
@@ -34045,6 +34464,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}", wrapper.RenameProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity", wrapper.SetProjectIdentity)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.ClearProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.GetProjectIdentityImage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/identity/image", wrapper.SetProjectIdentityImage)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments", wrapper.ListEnvironments)
@@ -54374,6 +54805,463 @@ func (response ApplyOrgTemplate503JSONResponse) VisitApplyOrgTemplateResponse(w 
 	return err
 }
 
+type SetOrgIdentityRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *SetOrgIdentityJSONRequestBody
+}
+
+type SetOrgIdentityResponseObject interface {
+	VisitSetOrgIdentityResponse(w http.ResponseWriter) error
+}
+
+type SetOrgIdentity200JSONResponse Org
+
+func (response SetOrgIdentity200JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetOrgIdentity400JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetOrgIdentity401JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetOrgIdentity403JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetOrgIdentity404JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetOrgIdentity429JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetOrgIdentity500JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetOrgIdentity503JSONResponse) VisitSetOrgIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImageRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type ClearOrgIdentityImageResponseObject interface {
+	VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type ClearOrgIdentityImage200JSONResponse Org
+
+func (response ClearOrgIdentityImage200JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ClearOrgIdentityImage401JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ClearOrgIdentityImage403JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClearOrgIdentityImage404JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ClearOrgIdentityImage429JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response ClearOrgIdentityImage500JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ClearOrgIdentityImage503JSONResponse) VisitClearOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImageRequestObject struct {
+	Org    OrgID `json:"org"`
+	Params GetOrgIdentityImageParams
+}
+
+type GetOrgIdentityImageResponseObject interface {
+	VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type GetOrgIdentityImage200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetOrgIdentityImage200ImageResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetOrgIdentityImage401JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetOrgIdentityImage404JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetOrgIdentityImage429JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetOrgIdentityImage500JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrgIdentityImage503JSONResponse) VisitGetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImageRequestObject struct {
+	Org         OrgID `json:"org"`
+	ContentType string
+	Body        io.Reader
+}
+
+type SetOrgIdentityImageResponseObject interface {
+	VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type SetOrgIdentityImage200JSONResponse Org
+
+func (response SetOrgIdentityImage200JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetOrgIdentityImage400JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetOrgIdentityImage401JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetOrgIdentityImage403JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetOrgIdentityImage404JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetOrgIdentityImage429JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetOrgIdentityImage500JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetOrgIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetOrgIdentityImage503JSONResponse) VisitSetOrgIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type InviteOrgMemberRequestObject struct {
 	Org  OrgID `json:"org"`
 	Body *InviteOrgMemberJSONRequestBody
@@ -72882,6 +73770,425 @@ func (response ApplyProjectTemplate503JSONResponse) VisitApplyProjectTemplateRes
 	return err
 }
 
+type SetProjectIdentityRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *SetProjectIdentityJSONRequestBody
+}
+
+type SetProjectIdentityResponseObject interface {
+	VisitSetProjectIdentityResponse(w http.ResponseWriter) error
+}
+
+type SetProjectIdentity200JSONResponse Project
+
+func (response SetProjectIdentity200JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectIdentity400JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetProjectIdentity401JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProjectIdentity404JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetProjectIdentity429JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetProjectIdentity500JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectIdentity503JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImageRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ClearProjectIdentityImageResponseObject interface {
+	VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type ClearProjectIdentityImage200JSONResponse Project
+
+func (response ClearProjectIdentityImage200JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ClearProjectIdentityImage401JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ClearProjectIdentityImage404JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ClearProjectIdentityImage429JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response ClearProjectIdentityImage500JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ClearProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ClearProjectIdentityImage503JSONResponse) VisitClearProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImageRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Params  GetProjectIdentityImageParams
+}
+
+type GetProjectIdentityImageResponseObject interface {
+	VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type GetProjectIdentityImage200ImageResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetProjectIdentityImage200ImageResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetProjectIdentityImage401JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProjectIdentityImage404JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetProjectIdentityImage429JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetProjectIdentityImage500JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetProjectIdentityImage503JSONResponse) VisitGetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImageRequestObject struct {
+	Org         OrgID     `json:"org"`
+	Project     ProjectID `json:"project"`
+	ContentType string
+	Body        io.Reader
+}
+
+type SetProjectIdentityImageResponseObject interface {
+	VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error
+}
+
+type SetProjectIdentityImage200JSONResponse Project
+
+func (response SetProjectIdentityImage200JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectIdentityImage400JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response SetProjectIdentityImage401JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetProjectIdentityImage404JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response SetProjectIdentityImage429JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage500JSONResponse struct{ InternalJSONResponse }
+
+func (response SetProjectIdentityImage500JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentityImage503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response SetProjectIdentityImage503JSONResponse) VisitSetProjectIdentityImageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListKeyGroupsRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -81796,6 +83103,18 @@ type StrictServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(ctx context.Context, request ApplyOrgTemplateRequestObject) (ApplyOrgTemplateResponseObject, error)
+	// SetOrgIdentity Set the organisation's hue and mark.
+	// (PUT /api/v1/orgs/{org}/identity)
+	SetOrgIdentity(ctx context.Context, request SetOrgIdentityRequestObject) (SetOrgIdentityResponseObject, error)
+	// ClearOrgIdentityImage Remove the organisation's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/identity/image)
+	ClearOrgIdentityImage(ctx context.Context, request ClearOrgIdentityImageRequestObject) (ClearOrgIdentityImageResponseObject, error)
+	// GetOrgIdentityImage Read the organisation's uploaded image.
+	// (GET /api/v1/orgs/{org}/identity/image)
+	GetOrgIdentityImage(ctx context.Context, request GetOrgIdentityImageRequestObject) (GetOrgIdentityImageResponseObject, error)
+	// SetOrgIdentityImage Upload the organisation's image.
+	// (PUT /api/v1/orgs/{org}/identity/image)
+	SetOrgIdentityImage(ctx context.Context, request SetOrgIdentityImageRequestObject) (SetOrgIdentityImageResponseObject, error)
 	// InviteOrgMember Invite a human into this organisation with a local credential.
 	// (POST /api/v1/orgs/{org}/invitations)
 	InviteOrgMember(ctx context.Context, request InviteOrgMemberRequestObject) (InviteOrgMemberResponseObject, error)
@@ -82300,6 +83619,18 @@ type StrictServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(ctx context.Context, request ApplyProjectTemplateRequestObject) (ApplyProjectTemplateResponseObject, error)
+	// SetProjectIdentity Set the project's hue and mark.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
+	SetProjectIdentity(ctx context.Context, request SetProjectIdentityRequestObject) (SetProjectIdentityResponseObject, error)
+	// ClearProjectIdentityImage Remove the project's uploaded image.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/identity/image)
+	ClearProjectIdentityImage(ctx context.Context, request ClearProjectIdentityImageRequestObject) (ClearProjectIdentityImageResponseObject, error)
+	// GetProjectIdentityImage Read the project's uploaded image.
+	// (GET /api/v1/orgs/{org}/projects/{project}/identity/image)
+	GetProjectIdentityImage(ctx context.Context, request GetProjectIdentityImageRequestObject) (GetProjectIdentityImageResponseObject, error)
+	// SetProjectIdentityImage Upload the project's image.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/identity/image)
+	SetProjectIdentityImage(ctx context.Context, request SetProjectIdentityImageRequestObject) (SetProjectIdentityImageResponseObject, error)
 	// ListKeyGroups List the project's key groups.
 	// (GET /api/v1/orgs/{org}/projects/{project}/key-groups)
 	ListKeyGroups(ctx context.Context, request ListKeyGroupsRequestObject) (ListKeyGroupsResponseObject, error)
@@ -87211,6 +88542,121 @@ func (sh *strictHandler) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApplyOrgTemplateResponseObject); ok {
 		if err := validResponse.VisitApplyOrgTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrgIdentity operation middleware
+func (sh *strictHandler) SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request SetOrgIdentityRequestObject
+
+	request.Org = org
+
+	var body SetOrgIdentityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrgIdentity(ctx, request.(SetOrgIdentityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrgIdentity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrgIdentityResponseObject); ok {
+		if err := validResponse.VisitSetOrgIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearOrgIdentityImage operation middleware
+func (sh *strictHandler) ClearOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request ClearOrgIdentityImageRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearOrgIdentityImage(ctx, request.(ClearOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitClearOrgIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrgIdentityImage operation middleware
+func (sh *strictHandler) GetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, params GetOrgIdentityImageParams) {
+	var request GetOrgIdentityImageRequestObject
+
+	request.Org = org
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrgIdentityImage(ctx, request.(GetOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitGetOrgIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetOrgIdentityImage operation middleware
+func (sh *strictHandler) SetOrgIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request SetOrgIdentityImageRequestObject
+
+	request.Org = org
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetOrgIdentityImage(ctx, request.(SetOrgIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetOrgIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetOrgIdentityImageResponseObject); ok {
+		if err := validResponse.VisitSetOrgIdentityImageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -92464,6 +93910,125 @@ func (sh *strictHandler) ApplyProjectTemplate(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApplyProjectTemplateResponseObject); ok {
 		if err := validResponse.VisitApplyProjectTemplateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectIdentity operation middleware
+func (sh *strictHandler) SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request SetProjectIdentityRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body SetProjectIdentityJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectIdentity(ctx, request.(SetProjectIdentityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectIdentity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectIdentityResponseObject); ok {
+		if err := validResponse.VisitSetProjectIdentityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClearProjectIdentityImage operation middleware
+func (sh *strictHandler) ClearProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ClearProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClearProjectIdentityImage(ctx, request.(ClearProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClearProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClearProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitClearProjectIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectIdentityImage operation middleware
+func (sh *strictHandler) GetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, params GetProjectIdentityImageParams) {
+	var request GetProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectIdentityImage(ctx, request.(GetProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitGetProjectIdentityImageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectIdentityImage operation middleware
+func (sh *strictHandler) SetProjectIdentityImage(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request SetProjectIdentityImageRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.ContentType = r.Header.Get("Content-Type")
+
+	request.Body = r.Body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectIdentityImage(ctx, request.(SetProjectIdentityImageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectIdentityImage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectIdentityImageResponseObject); ok {
+		if err := validResponse.VisitSetProjectIdentityImageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -71,7 +71,30 @@ type Org struct {
 	// foreign key; empty for a manual org.
 	Origin               string
 	RegistrationPolicyID string
+	// Identity is the chrome identity (hue, short mark, image version). The
+	// image bytes are never part of the row: they are read by GetIdentityImage
+	// only, so lists stay small.
+	Identity ChromeIdentity
 }
+
+// ChromeIdentity is the editable avatar of an org or project. Mark nil means
+// "derive the monogram from the name"; ImageVersion nil means no uploaded image.
+type ChromeIdentity struct {
+	Hue          int
+	Mark         *string
+	ImageVersion *string
+}
+
+// ChromeImage is an uploaded avatar: the stored bytes with the exact content
+// type they were validated under and their content-hash version.
+type ChromeImage struct {
+	Bytes       []byte
+	ContentType string
+	Version     string
+}
+
+// DefaultChromeHue is the hue every row carries until someone edits it.
+const DefaultChromeHue = 195
 
 // Project is a tenant-owned aggregate (chain: org). OrgID appears on reads
 // only; writes bind it from the proof.
@@ -89,6 +112,8 @@ type Project struct {
 	// `reveal` here and no machine fetch delivers secret plaintext, whatever
 	// grant rows exist.
 	MachineReveal bool
+	// Identity is the chrome identity, as on Org.
+	Identity ChromeIdentity
 }
 
 // RetentionPolicy is the stored keep-if-either payload policy. Unlimited is
@@ -180,6 +205,10 @@ type OrgRepo interface {
 	// touches the mutable name only — identity is the immutable id, so a
 	// rename never breaks a reference.
 	Rename(ctx context.Context, p authz.Proof, name string) error
+	// SetIdentity replaces the hue and mark; SetIdentityImage replaces the
+	// uploaded image, or clears it when img is nil.
+	SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error
+	SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error
 	Lock(ctx context.Context, p authz.Proof) error
 	SetRetention(ctx context.Context, p authz.Proof, policy RetentionPolicy) error
 	Delete(ctx context.Context, p authz.Proof) error
@@ -191,8 +220,15 @@ type ProjectReader interface {
 	GetCapacity(ctx context.Context, p authz.Proof) (ProjectCapacity, error)
 	// Get returns the project addressed by the proof's resolved chain.
 	Get(ctx context.Context, p authz.Proof) (Project, error)
+	// GetIdentityImage reads the uploaded avatar bytes; ErrNotFound when the
+	// project has none.
+	GetIdentityImage(ctx context.Context, p authz.Proof) (ChromeImage, error)
 	// List returns every project in the org the proof addresses.
 	List(ctx context.Context, p authz.Proof) ([]Project, error)
+	// ListIDs returns only the project ids of the org the proof addresses. It
+	// selects no later-added columns, so it stays readable on a restored
+	// scratch database that predates them (the upgrade drill).
+	ListIDs(ctx context.Context, p authz.Proof) ([]string, error)
 	// ListAll returns (org id, name) for every project on the instance,
 	// under an instance-scope proof addressing no tenant. It exists for the
 	// multi-instance directory (#71), whose served listing is org/project
@@ -225,6 +261,9 @@ type ProjectRepo interface {
 	SetCapacity(ctx context.Context, p authz.Proof, override *int, expectedRevision int64) error
 	Create(ctx context.Context, p authz.Proof, proj NewProject) error
 	Rename(ctx context.Context, p authz.Proof, name string) error
+	// SetIdentity and SetIdentityImage are the org methods' project twins.
+	SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error
+	SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error
 	SetRetention(ctx context.Context, p authz.Proof, policy *RetentionPolicy) error
 	// SetDefinitionsSource writes the git/db definitions mode (#70). It is a
 	// project-settings write, off the definitions-edit path.

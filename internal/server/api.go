@@ -143,6 +143,10 @@ type OrgService interface {
 	List(ctx context.Context, actor service.Actor) ([]service.Org, error)
 	ListMine(ctx context.Context, actor service.Actor) ([]service.MyOrg, error)
 	Rename(ctx context.Context, actor service.Actor, org domain.OrgID, name string) (service.Org, error)
+	SetIdentity(ctx context.Context, actor service.Actor, org domain.OrgID, hue int, mark *string) (service.Org, error)
+	SetIdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID, contentType string, body []byte) (service.Org, error)
+	ClearIdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID) (service.Org, error)
+	IdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID) (service.ChromeImage, error)
 	Delete(ctx context.Context, actor service.Actor, org domain.OrgID) error
 }
 
@@ -603,7 +607,7 @@ func (a *API) ListMyOrgs(ctx context.Context, _ apigen.ListMyOrgsRequestObject) 
 	}
 	items := make([]apigen.MyOrg, 0, len(orgs))
 	for _, o := range orgs {
-		items = append(items, apigen.MyOrg{Id: o.ID, Name: o.Name})
+		items = append(items, apigen.MyOrg{Id: o.ID, Name: o.Name, Identity: wireIdentity(o.Identity)})
 	}
 	return apigen.ListMyOrgs200JSONResponse{Items: items, Count: len(items)}, nil
 }
@@ -926,7 +930,14 @@ func (a *API) validateAgainstContractWith(
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		} else if r.Body != nil {
-			r.Body = http.MaxBytesReader(rootResponseWriter(w), r.Body, MaxRequestBytes)
+			limit := int64(MaxRequestBytes)
+			if chromeImageUpload[operation.ID] {
+				// An avatar is capped per route, far under the global bound.
+				// The validator's read of an over-cap body fails and answers
+				// the uniform 400.
+				limit = service.MaxChromeImageBytes
+			}
+			r.Body = http.MaxBytesReader(rootResponseWriter(w), r.Body, limit)
 		}
 		if operation.ID == "startCLIDevice" || operation.ID == "pollCLIDevice" {
 			if err := validateCLIDeviceForm(r); err != nil {

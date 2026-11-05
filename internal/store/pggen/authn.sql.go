@@ -1004,12 +1004,15 @@ func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier [
 }
 
 const getOrgIdentity = `-- name: GetOrgIdentity :one
-SELECT id, name FROM orgs WHERE id = $1
+SELECT id, name, identity_hue, identity_mark, identity_image_version FROM orgs WHERE id = $1
 `
 
 type GetOrgIdentityRow struct {
-	ID   string
-	Name string
+	ID                   string
+	Name                 string
+	IdentityHue          int32
+	IdentityMark         pgtype.Text
+	IdentityImageVersion pgtype.Text
 }
 
 // The org rail's identity lookup (#56). The caller's own org set is projected
@@ -1024,7 +1027,33 @@ type GetOrgIdentityRow struct {
 func (q *Queries) GetOrgIdentity(ctx context.Context, id string) (GetOrgIdentityRow, error) {
 	row := q.db.QueryRow(ctx, getOrgIdentity, id)
 	var i GetOrgIdentityRow
-	err := row.Scan(&i.ID, &i.Name)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.IdentityHue,
+		&i.IdentityMark,
+		&i.IdentityImageVersion,
+	)
+	return i, err
+}
+
+const getOrgIdentityImage = `-- name: GetOrgIdentityImage :one
+SELECT identity_image, identity_image_type, identity_image_version FROM orgs WHERE id = $1
+`
+
+type GetOrgIdentityImageRow struct {
+	IdentityImage        []byte
+	IdentityImageType    pgtype.Text
+	IdentityImageVersion pgtype.Text
+}
+
+// The org chrome image is read for the navigation rail, so it rides the same
+// proof-free path as GetOrgIdentity: the caller proves visibility by finding
+// the org in OrgsForPrincipal, never by an authz formula. Same chain shape.
+func (q *Queries) GetOrgIdentityImage(ctx context.Context, id string) (GetOrgIdentityImageRow, error) {
+	row := q.db.QueryRow(ctx, getOrgIdentityImage, id)
+	var i GetOrgIdentityImageRow
+	err := row.Scan(&i.IdentityImage, &i.IdentityImageType, &i.IdentityImageVersion)
 	return i, err
 }
 

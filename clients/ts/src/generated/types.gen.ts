@@ -1914,6 +1914,31 @@ export type Org = {
      *
      */
     registration_policy_id?: string | null;
+    identity?: ChromeIdentity;
+};
+
+/**
+ * The editable avatar of an organisation or project. `mark` is null when
+ * the monogram is derived from the name; `image_version` is a lowercase
+ * hex content hash of the uploaded image, null when there is none, and is
+ * what the image URL's `v` query parameter carries.
+ *
+ */
+export type ChromeIdentity = {
+    hue: number;
+    mark: string | null;
+    image_version: string | null;
+};
+
+export type IdentityRequest = {
+    hue: number;
+    /**
+     * At most two grapheme clusters; no control characters and no
+     * surrounding whitespace. Null or absent selects the name-derived
+     * monogram.
+     *
+     */
+    mark?: string | null;
 };
 
 export type OrgList = {
@@ -1926,7 +1951,7 @@ export type OrgList = {
 
 /**
  * An organisation as a navigation destination: what the caller needs to
- * show it and route to it, and nothing else. Deliberately narrower than
+ * show it and route to it (name and chrome identity), and nothing else. Deliberately narrower than
  * `Org` — `metadata` and `active` are operator-set state that belongs to
  * `getOrg`, which authorizes; a member listing does not.
  *
@@ -1934,6 +1959,7 @@ export type OrgList = {
 export type MyOrg = {
     id: Id;
     name: string;
+    identity?: ChromeIdentity;
 };
 
 export type MyOrgList = {
@@ -1986,6 +2012,7 @@ export type Project = {
     org_id: Id;
     name: string;
     created_at: Timestamp;
+    identity?: ChromeIdentity;
 };
 
 export type ProjectList = {
@@ -6586,6 +6613,11 @@ export type OrgId = Id;
 export type ProjectId = Id;
 
 /**
+ * The `identity.image_version` being rendered; a cache-busting hint only.
+ */
+export type IdentityImageVersion = string;
+
+/**
  * Environment identifier.
  */
 export type EnvironmentId = Id;
@@ -9192,6 +9224,288 @@ export type SetOrgRetentionResponses = {
 
 export type SetOrgRetentionResponse = SetOrgRetentionResponses[keyof SetOrgRetentionResponses];
 
+export type SetOrgIdentityData = {
+    body: IdentityRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/identity';
+};
+
+export type SetOrgIdentityErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetOrgIdentityError = SetOrgIdentityErrors[keyof SetOrgIdentityErrors];
+
+export type SetOrgIdentityResponses = {
+    /**
+     * The organisation with its updated identity.
+     */
+    200: Org;
+};
+
+export type SetOrgIdentityResponse = SetOrgIdentityResponses[keyof SetOrgIdentityResponses];
+
+export type ClearOrgIdentityImageData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/identity/image';
+};
+
+export type ClearOrgIdentityImageErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ClearOrgIdentityImageError = ClearOrgIdentityImageErrors[keyof ClearOrgIdentityImageErrors];
+
+export type ClearOrgIdentityImageResponses = {
+    /**
+     * The organisation without an uploaded image.
+     */
+    200: Org;
+};
+
+export type ClearOrgIdentityImageResponse = ClearOrgIdentityImageResponses[keyof ClearOrgIdentityImageResponses];
+
+export type GetOrgIdentityImageData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: {
+        /**
+         * The `identity.image_version` being rendered; a cache-busting hint only.
+         */
+        v?: string;
+    };
+    url: '/api/v1/orgs/{org}/identity/image';
+};
+
+export type GetOrgIdentityImageErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetOrgIdentityImageError = GetOrgIdentityImageErrors[keyof GetOrgIdentityImageErrors];
+
+export type GetOrgIdentityImageResponses = {
+    /**
+     * The stored image bytes with their exact content type.
+     */
+    200: Blob | File;
+};
+
+export type GetOrgIdentityImageResponse = GetOrgIdentityImageResponses[keyof GetOrgIdentityImageResponses];
+
+export type SetOrgIdentityImageData = {
+    body: Blob | File;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/identity/image';
+};
+
+export type SetOrgIdentityImageErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetOrgIdentityImageError = SetOrgIdentityImageErrors[keyof SetOrgIdentityImageErrors];
+
+export type SetOrgIdentityImageResponses = {
+    /**
+     * The organisation with its updated identity.
+     */
+    200: Org;
+};
+
+export type SetOrgIdentityImageResponse = SetOrgIdentityImageResponses[keyof SetOrgIdentityImageResponses];
+
 export type DeleteProjectData = {
     body?: never;
     path: {
@@ -9387,6 +9701,253 @@ export type RenameProjectResponses = {
 };
 
 export type RenameProjectResponse = RenameProjectResponses[keyof RenameProjectResponses];
+
+export type SetProjectIdentityData = {
+    body: IdentityRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/identity';
+};
+
+export type SetProjectIdentityErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetProjectIdentityError = SetProjectIdentityErrors[keyof SetProjectIdentityErrors];
+
+export type SetProjectIdentityResponses = {
+    /**
+     * The project with its updated identity.
+     */
+    200: Project;
+};
+
+export type SetProjectIdentityResponse = SetProjectIdentityResponses[keyof SetProjectIdentityResponses];
+
+export type ClearProjectIdentityImageData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/identity/image';
+};
+
+export type ClearProjectIdentityImageErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ClearProjectIdentityImageError = ClearProjectIdentityImageErrors[keyof ClearProjectIdentityImageErrors];
+
+export type ClearProjectIdentityImageResponses = {
+    /**
+     * The project without an uploaded image.
+     */
+    200: Project;
+};
+
+export type ClearProjectIdentityImageResponse = ClearProjectIdentityImageResponses[keyof ClearProjectIdentityImageResponses];
+
+export type GetProjectIdentityImageData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: {
+        /**
+         * The `identity.image_version` being rendered; a cache-busting hint only.
+         */
+        v?: string;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/identity/image';
+};
+
+export type GetProjectIdentityImageErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetProjectIdentityImageError = GetProjectIdentityImageErrors[keyof GetProjectIdentityImageErrors];
+
+export type GetProjectIdentityImageResponses = {
+    /**
+     * The stored image bytes with their exact content type.
+     */
+    200: Blob | File;
+};
+
+export type GetProjectIdentityImageResponse = GetProjectIdentityImageResponses[keyof GetProjectIdentityImageResponses];
+
+export type SetProjectIdentityImageData = {
+    body: Blob | File;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/identity/image';
+};
+
+export type SetProjectIdentityImageErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy; it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it: indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type SetProjectIdentityImageError = SetProjectIdentityImageErrors[keyof SetProjectIdentityImageErrors];
+
+export type SetProjectIdentityImageResponses = {
+    /**
+     * The project with its updated identity.
+     */
+    200: Project;
+};
+
+export type SetProjectIdentityImageResponse = SetProjectIdentityImageResponses[keyof SetProjectIdentityImageResponses];
 
 export type ListEnvironmentsData = {
     body?: never;

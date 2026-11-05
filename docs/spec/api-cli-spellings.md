@@ -419,7 +419,7 @@ The rotation families are `rotate-token-key`, `rotate-scanning-key`, `rotate-dek
 **Source inventory, 2026-10-23, including instance audit query and export;
 final freeze baseline pending.** The earlier revision-2 inventory is historical.
 `api/spec.go` advertises **API revision 13** and `api/openapi.yaml` contains
-406 operations:
+414 operations:
 
 | Minimum revision | Operation count |
 | --- | ---: |
@@ -435,7 +435,7 @@ final freeze baseline pending.** The earlier revision-2 inventory is historical.
 | 10 | 8 |
 | 11 | 3 |
 | 12 | 7 |
-| 13 | 2 |
+| 13 | 10 |
 
 Revision 12 introduces only the seven manual pairing operations: authenticated
 request preparation, invitation creation/list/revocation, local completion,
@@ -443,8 +443,11 @@ and the two capability-gated PAKE redemption endpoints. Existing operations
 keep their original minimum revisions. New clients refuse these pairing
 operations against a server advertising an earlier API revision.
 
-Revision 13 introduces only `queryInstanceAudit` and `exportInstanceAudit`,
-the instance audit trail routes.
+Revision 13 introduces `queryInstanceAudit` and `exportInstanceAudit`, the
+instance audit trail routes, and the eight chrome identity operations:
+`setOrgIdentity`, `getOrgIdentityImage`, `setOrgIdentityImage`,
+`clearOrgIdentityImage` and their four project twins. They are additive; the
+optional `identity` member on `Org`, `MyOrg` and `Project` is likewise additive.
 
 These are source counts, not a candidate test result. Refresh them after
 outstanding API changes, including #805, land. Retain published minima rather

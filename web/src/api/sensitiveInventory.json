@@ -25,7 +25,7 @@
     "api/selfConfig.ts": "f0c0eb55b52a947dd08746d8902be3fda67307e44a14fa30799c380f538b1cd5",
     "api/sensitiveMutation.ts": "35e37cd6f77f2af83e25b9851b230bee52cae6c5ce1d6f490423328c65c71430",
     "api/session.ts": "a9e6b60c3824c832d9f895ce5948853c0416692ed2e211bd59cc181286441389",
-    "api/settings.ts": "dabc69f6c1f80ff48012e58fcfbad8f69344d53b92f4ae8aae165882e5f3842a",
+    "api/settings.ts": "9ffbda6329d971d527790f57fff37964f18c5074f013cce2447da9c5a412d9db",
     "api/ssh.ts": "b43605e31255f91ac063640d7db4a76ab857dc40fb41ad8dc165bd30d1fee48c",
     "api/stepup.ts": "bc1eac6117a8aaa3a9b64b3c3e358a843bd2ca8b82af1dbeb5fc7d4a26c7976a",
     "api/temporaryAccess.ts": "ee2fe95ed30c6430fc15b730448d48d9543b1b41daecae11a1cbdabdfa7e2379",

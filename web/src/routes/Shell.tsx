@@ -42,9 +42,14 @@ import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
   chromeIdentityStyle,
+  chromeIdentityFromApi,
   chromeMonogram,
   chromeRailIdentityStyle,
+  orgIdentityImageUrl,
+  projectIdentityImageUrl,
   readChromeIdentity,
+  type ApiChromeIdentity,
+  type ChromeIdentity,
 } from './chrome-identity.ts';
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { isDemo } from '../demo/config.ts';
@@ -264,6 +269,20 @@ export function Shell({ session }: { session: WhoAmI }) {
   // owns its illustrative admin copy.
   const isPrototype = import.meta.env.MODE === 'prototype';
   const activeOrgRole = isPrototype ? 'org admin' : null;
+  // Outside prototype mode identity comes from the API. A remote workspace
+  // cannot fetch the image same-origin, so it keeps mark plus hue.
+  const imagesAllowed = remote === '';
+  const orgIdentityOf = (org: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
+    isPrototype
+      ? readChromeIdentity('org', org.id, true)
+      : chromeIdentityFromApi(org.identity, imagesAllowed ? (version) => orgIdentityImageUrl(org.id, version) : null);
+  const projectIdentityOf = (project: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
+    isPrototype
+      ? readChromeIdentity('project', project.id, true)
+      : chromeIdentityFromApi(
+          project.identity,
+          imagesAllowed ? (version) => projectIdentityImageUrl(activeOrgId, project.id, version) : null,
+        );
   const visibleRetentionHealth = retentionHealth.data?.health;
   const showInstanceAdministration = isInstanceOperator || canReadInstanceAudit;
   const instanceEntry = surfaceById(isInstanceOperator ? 'instance-admin' : 'instance-audit');
@@ -416,7 +435,7 @@ export function Shell({ session }: { session: WhoAmI }) {
         {items.length < 2 ? null : (
           <ul className="rail__orgs">
             {items.map((org) => {
-              const identity = readChromeIdentity('org', org.id, isPrototype);
+              const identity = orgIdentityOf(org);
               return <li key={org.id}>
                 <button
                   type="button"
@@ -438,7 +457,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             {items.length < 2 ? null : <span className="rail__divider" aria-hidden="true" />}
             <ul className="rail__projects" aria-label="Projects">
               {projectItems.map((project) => {
-                const identity = readChromeIdentity('project', project.id, isPrototype);
+                const identity = projectIdentityOf(project);
                 return <li key={project.id}>
                   <button
                     type="button"
@@ -499,7 +518,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             <h2 id="mobile-organisations-title">Organisations</h2>
             <ul className="sidebar__items">
               {items.map((org) => {
-                const identity = readChromeIdentity('org', org.id, isPrototype);
+                const identity = orgIdentityOf(org);
                 return <li key={org.id}>
                   <button
                     type="button"
@@ -565,6 +584,10 @@ export function Shell({ session }: { session: WhoAmI }) {
             orgName={activeOrgName}
             projectName={rememberedProject?.name ?? activeProjectName}
             orgRole={activeOrgRole}
+            orgIdentity={(() => {
+              const active = items.find((org) => org.id === activeOrgId);
+              return active === undefined ? undefined : orgIdentityOf(active);
+            })()}
             links={model.context.links}
             state={projectSidebar}
             onNavigate={onSidebarNavigate}
@@ -616,7 +639,7 @@ export function Shell({ session }: { session: WhoAmI }) {
             />
             <ul className="sidebar__items">
               {projectItems.map((project) => {
-                const identity = readChromeIdentity('project', project.id, isPrototype);
+                const identity = projectIdentityOf(project);
                 return <li key={project.id}>
                   <button
                     type="button"
@@ -860,6 +883,7 @@ export function ProjectContext({
   orgName,
   projectName,
   orgRole,
+  orgIdentity: suppliedIdentity,
   links,
   state,
   onNavigate,
@@ -868,11 +892,13 @@ export function ProjectContext({
   orgName: string;
   projectName: string;
   orgRole: string | null;
+  orgIdentity?: ChromeIdentity | undefined;
   links: readonly SidebarLink[];
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
-  const orgIdentity = readChromeIdentity('org', org, import.meta.env.MODE === 'prototype');
+  const orgIdentity =
+    suppliedIdentity ?? readChromeIdentity('org', org, import.meta.env.MODE === 'prototype');
   const matrix = links.find((link) => link.id === 'matrix');
   const rest = links.filter((link) => link.id !== 'matrix');
   return (

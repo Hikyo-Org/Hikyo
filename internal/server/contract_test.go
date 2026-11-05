@@ -338,6 +338,26 @@ type stubOrgs struct {
 	mine   func(ctx context.Context, a service.Actor) ([]service.MyOrg, error)
 	rename func(ctx context.Context, a service.Actor, org domain.OrgID, name string) (service.Org, error)
 	del    func(ctx context.Context, a service.Actor, org domain.OrgID) error
+	image  func(ctx context.Context, a service.Actor, org domain.OrgID) (service.ChromeImage, error)
+}
+
+func (s stubOrgs) SetIdentity(context.Context, service.Actor, domain.OrgID, int, *string) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) SetIdentityImage(context.Context, service.Actor, domain.OrgID, string, []byte) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) ClearIdentityImage(context.Context, service.Actor, domain.OrgID) (service.Org, error) {
+	return service.Org{}, domain.ErrNotFound
+}
+
+func (s stubOrgs) IdentityImage(ctx context.Context, a service.Actor, org domain.OrgID) (service.ChromeImage, error) {
+	if s.image == nil {
+		return service.ChromeImage{}, domain.ErrNotFound
+	}
+	return s.image(ctx, a, org)
 }
 
 func (s stubOrgs) ListMine(ctx context.Context, a service.Actor) ([]service.MyOrg, error) {
@@ -1468,6 +1488,22 @@ func (s stubHierarchy) List(context.Context, service.Actor, domain.OrgID) ([]ser
 
 func (s stubHierarchy) Rename(context.Context, service.Actor, domain.Scope, string) (service.Project, error) {
 	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) SetIdentity(context.Context, service.Actor, domain.Scope, int, *string) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) SetIdentityImage(context.Context, service.Actor, domain.Scope, string, []byte) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) ClearIdentityImage(context.Context, service.Actor, domain.Scope) (service.Project, error) {
+	return service.Project{}, s.outcome()
+}
+
+func (s stubHierarchy) IdentityImage(context.Context, service.Actor, domain.Scope) (service.ChromeImage, error) {
+	return service.ChromeImage{}, s.outcome()
 }
 
 func (s stubHierarchy) Delete(context.Context, service.Actor, domain.Scope) error {

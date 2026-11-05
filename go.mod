@@ -39,6 +39,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/prometheus/client_golang v1.25.0
+	github.com/rivo/uniseg v0.4.7
 	github.com/russellhaering/gosaml2 v0.12.0
 	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/russross/blackfriday/v2 v2.1.0
@@ -53,6 +54,7 @@ require (
 	github.com/transparency-dev/merkle v0.0.2
 	github.com/wneessen/go-mail v0.8.1
 	golang.org/x/crypto v0.58.0
+	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sys v0.49.0

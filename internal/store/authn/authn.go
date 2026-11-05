@@ -26,6 +26,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -343,6 +344,19 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 type OrgIdentity struct {
 	ID   domain.OrgID
 	Name string
+	// Chrome identity: hue, optional short mark and the content-hash version of
+	// the uploaded image (nil when there is none). Never the image bytes.
+	Hue          int
+	Mark         *string
+	ImageVersion *string
+}
+
+// OrgImage is an org's uploaded avatar bytes with the exact validated content
+// type and its content-hash version.
+type OrgImage struct {
+	Bytes       []byte
+	ContentType string
+	Version     string
 }
 
 // OrgsForPrincipal projects the principal's own grant rows onto the set of
@@ -366,6 +380,36 @@ type OrgIdentity struct {
 // authorizer's includeSelfConfig flag can only narrow the protected org's
 // grant-based visibility; it never substitutes for its instance-config grant.
 func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool) ([]OrgIdentity, error) {
+	ids, err := r.visibleOrgIDs(ctx, p, includeSelfConfig)
+	if err != nil {
+		return nil, err
+	}
+	// ponytail: one read per org. A human belongs to a handful; if machine
+	// principals ever need this, batch it with an IN-list query.
+	out := make([]OrgIdentity, 0, len(ids))
+	for _, id := range ids {
+		row, err := r.orgIdentity(ctx, id)
+		if errors.Is(err, domain.ErrNotFound) {
+			// A grant whose org has been deleted names nothing to navigate to.
+			// The grant row is #55's to reap; the rail simply does not show a
+			// destination that is not there.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	slices.SortFunc(out, func(a, b OrgIdentity) int { return cmp.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+// visibleOrgIDs is the set OrgsForPrincipal projects, before the per-org
+// identity reads: every org the principal's own grants and valid live rules
+// name, minus the self-config org unless includeSelfConfig and an
+// instance-config grant allow it. The image read shares it so the rail and the
+// avatar bytes can never disagree about visibility.
+func (r *Resolver) visibleOrgIDs(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool) ([]domain.OrgID, error) {
 	grants, err := r.Grants(ctx, p)
 	if err != nil {
 		return nil, err
@@ -397,24 +441,21 @@ func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID, i
 		seen[rule.Org] = true
 		ids = append(ids, rule.Org)
 	}
-	// ponytail: one read per org. A human belongs to a handful; if machine
-	// principals ever need this, batch it with an IN-list query.
-	out := make([]OrgIdentity, 0, len(ids))
-	for _, id := range ids {
-		row, err := r.orgIdentity(ctx, id)
-		if errors.Is(err, domain.ErrNotFound) {
-			// A grant whose org has been deleted names nothing to navigate to.
-			// The grant row is #55's to reap; the rail simply does not show a
-			// destination that is not there.
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, row)
+	return ids, nil
+}
+
+// OrgImageVisibleTo reads an org's avatar only if the org is in the principal's
+// navigation projection (the same set listMyOrgs returns); otherwise, and when
+// there is no image, domain.ErrNotFound.
+func (r *Resolver) OrgImageVisibleTo(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool, org domain.OrgID) (OrgImage, error) {
+	ids, err := r.visibleOrgIDs(ctx, p, includeSelfConfig)
+	if err != nil {
+		return OrgImage{}, err
 	}
-	slices.SortFunc(out, func(a, b OrgIdentity) int { return cmp.Compare(a.Name, b.Name) })
-	return out, nil
+	if !slices.Contains(ids, org) {
+		return OrgImage{}, domain.ErrNotFound
+	}
+	return r.orgImage(ctx, org)
 }
 
 func (r *Resolver) orgIdentity(ctx context.Context, id domain.OrgID) (OrgIdentity, error) {
@@ -423,13 +464,57 @@ func (r *Resolver) orgIdentity(ctx context.Context, id domain.OrgID) (OrgIdentit
 		if err != nil {
 			return OrgIdentity{}, notFoundOr(err)
 		}
-		return OrgIdentity{ID: domain.OrgID(row.ID), Name: row.Name}, nil
+		return OrgIdentity{
+			ID: domain.OrgID(row.ID), Name: row.Name, Hue: int(row.IdentityHue),
+			Mark: nullText(row.IdentityMark), ImageVersion: nullText(row.IdentityImageVersion),
+		}, nil
 	}
 	row, err := r.pg.GetOrgIdentity(ctx, string(id))
 	if err != nil {
 		return OrgIdentity{}, notFoundOr(err)
 	}
-	return OrgIdentity{ID: domain.OrgID(row.ID), Name: row.Name}, nil
+	return OrgIdentity{
+		ID: domain.OrgID(row.ID), Name: row.Name, Hue: int(row.IdentityHue),
+		Mark: pgNullText(row.IdentityMark), ImageVersion: pgNullText(row.IdentityImageVersion),
+	}, nil
+}
+
+// orgImage reads an org's uploaded avatar; the caller has already proven
+// visibility. domain.ErrNotFound when the org has no image.
+func (r *Resolver) orgImage(ctx context.Context, id domain.OrgID) (OrgImage, error) {
+	var data []byte
+	var contentType, version *string
+	if r.sq != nil {
+		row, err := r.sq.GetOrgIdentityImage(ctx, string(id))
+		if err != nil {
+			return OrgImage{}, notFoundOr(err)
+		}
+		data, contentType, version = row.IdentityImage, nullText(row.IdentityImageType), nullText(row.IdentityImageVersion)
+	} else {
+		row, err := r.pg.GetOrgIdentityImage(ctx, string(id))
+		if err != nil {
+			return OrgImage{}, notFoundOr(err)
+		}
+		data, contentType, version = row.IdentityImage, pgNullText(row.IdentityImageType), pgNullText(row.IdentityImageVersion)
+	}
+	if len(data) == 0 || contentType == nil || version == nil {
+		return OrgImage{}, domain.ErrNotFound
+	}
+	return OrgImage{Bytes: data, ContentType: *contentType, Version: *version}, nil
+}
+
+func nullText(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
+}
+
+func pgNullText(v pgtype.Text) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
 }
 
 // grantFrom parses a grant row, re-validating the no-gaps chain rule the

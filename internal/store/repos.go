@@ -312,7 +312,7 @@ func (o sqliteOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromSQLite(row)
+		org, err := orgFromSQLite(sqlitegen.GetOrgRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -339,6 +339,30 @@ func (o sqliteOrgs) Rename(ctx context.Context, p authz.Proof, name string) erro
 	}))
 }
 
+func (o sqliteOrgs) SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error {
+	chain, err := authz.Verify(p, authz.StoreOrgsSetIdentity, o.tok)
+	if err != nil {
+		return err
+	}
+	return affected(o.q.SetOrgIdentity(ctx, sqlitegen.SetOrgIdentityParams{
+		IdentityHue: int64(hue), IdentityMark: idNullSQL(mark), ID: string(chain.Org),
+	}))
+}
+
+func (o sqliteOrgs) SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error {
+	chain, err := authz.Verify(p, authz.StoreOrgsSetIdentityImage, o.tok)
+	if err != nil {
+		return err
+	}
+	params := sqlitegen.SetOrgIdentityImageParams{ID: string(chain.Org)}
+	if img != nil {
+		params.IdentityImage = img.Bytes
+		params.IdentityImageType = sql.NullString{String: img.ContentType, Valid: true}
+		params.IdentityImageVersion = sql.NullString{String: img.Version, Valid: true}
+	}
+	return affected(o.q.SetOrgIdentityImage(ctx, params))
+}
+
 func (o sqliteOrgs) SetRetention(ctx context.Context, p authz.Proof, policy RetentionPolicy) error {
 	chain, err := authz.Verify(p, authz.StoreOrgsSetRetention, o.tok)
 	if err != nil {
@@ -363,7 +387,7 @@ func (o sqliteOrgs) Delete(ctx context.Context, p authz.Proof) error {
 }
 
 // orgFromSQLite converts a queried organization into the shared store model.
-func orgFromSQLite(row sqlitegen.Org) (Org, error) {
+func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 	created, err := parseTime("org", row.ID, row.CreatedAt)
 	if err != nil {
 		return Org{}, err
@@ -389,6 +413,9 @@ func orgFromSQLite(row sqlitegen.Org) (Org, error) {
 		CreatedAt: created,
 		Retention: retention,
 		Origin:    row.Origin, RegistrationPolicyID: row.RegistrationPolicyID.String,
+		Identity: ChromeIdentity{
+			Hue: int(row.IdentityHue), Mark: idString(row.IdentityMark), ImageVersion: idString(row.IdentityImageVersion),
+		},
 	}, nil
 }
 
@@ -459,6 +486,14 @@ func (r sqliteProjects) List(ctx context.Context, p authz.Proof) ([]Project, err
 	return out, nil
 }
 
+func (r sqliteProjects) ListIDs(ctx context.Context, p authz.Proof) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreProjectsList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	return r.q.ListProjectIDs(ctx, string(chain.Org))
+}
+
 func (r sqliteProjects) ListAll(ctx context.Context, p authz.Proof) ([]ProjectName, error) {
 	// No chain: the proof is instance-scope and addresses no tenant, which is
 	// why the statement carries no conjunct and is annotated instance-scoped.
@@ -501,6 +536,45 @@ func (r sqliteProjects) Rename(ctx context.Context, p authz.Proof, name string) 
 		OrgID: string(chain.Org),
 		ID:    string(chain.Project),
 	}))
+}
+
+func (r sqliteProjects) SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error {
+	chain, err := authz.Verify(p, authz.StoreProjectsSetIdentity, r.tok)
+	if err != nil {
+		return err
+	}
+	return affected(r.q.SetProjectIdentity(ctx, sqlitegen.SetProjectIdentityParams{
+		IdentityHue: int64(hue), IdentityMark: idNullSQL(mark), OrgID: string(chain.Org), ID: string(chain.Project),
+	}))
+}
+
+func (r sqliteProjects) SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error {
+	chain, err := authz.Verify(p, authz.StoreProjectsSetIdentityImage, r.tok)
+	if err != nil {
+		return err
+	}
+	params := sqlitegen.SetProjectIdentityImageParams{OrgID: string(chain.Org), ID: string(chain.Project)}
+	if img != nil {
+		params.IdentityImage = img.Bytes
+		params.IdentityImageType = sql.NullString{String: img.ContentType, Valid: true}
+		params.IdentityImageVersion = sql.NullString{String: img.Version, Valid: true}
+	}
+	return affected(r.q.SetProjectIdentityImage(ctx, params))
+}
+
+func (r sqliteProjects) GetIdentityImage(ctx context.Context, p authz.Proof) (ChromeImage, error) {
+	chain, err := authz.Verify(p, authz.StoreProjectsGetIdentityImage, r.tok)
+	if err != nil {
+		return ChromeImage{}, err
+	}
+	row, err := r.q.GetProjectIdentityImage(ctx, sqlitegen.GetProjectIdentityImageParams{OrgID: string(chain.Org), ID: string(chain.Project)})
+	if errors.Is(err, sql.ErrNoRows) {
+		return ChromeImage{}, ErrNotFound
+	}
+	if err != nil {
+		return ChromeImage{}, err
+	}
+	return chromeImage(row.IdentityImage, idString(row.IdentityImageType), idString(row.IdentityImageVersion))
 }
 
 func (r sqliteProjects) SetRetention(ctx context.Context, p authz.Proof, policy *RetentionPolicy) error {
@@ -577,7 +651,8 @@ func projectFromSQLite(row sqlitegen.GetProjectRow) (Project, error) {
 	if err != nil {
 		return Project{}, err
 	}
-	project := Project{ID: row.ID, OrgID: row.OrgID, Name: row.Name, CreatedAt: created, DefinitionsSource: row.DefinitionsSource, MachineReveal: row.MachineReveal == 1}
+	project := Project{ID: row.ID, OrgID: row.OrgID, Name: row.Name, CreatedAt: created, DefinitionsSource: row.DefinitionsSource, MachineReveal: row.MachineReveal == 1,
+		Identity: ChromeIdentity{Hue: int(row.IdentityHue), Mark: idString(row.IdentityMark), ImageVersion: idString(row.IdentityImageVersion)}}
 	if row.RetentionAgeSeconds.Valid != row.RetentionRevisionCount.Valid {
 		return Project{}, fmt.Errorf("store: project %s: partial retention override", row.ID)
 	}
@@ -995,7 +1070,7 @@ func (o pgOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromPG(row)
+		org, err := orgFromPG(pggen.GetOrgRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -1022,6 +1097,30 @@ func (o pgOrgs) Rename(ctx context.Context, p authz.Proof, name string) error {
 	}))
 }
 
+func (o pgOrgs) SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error {
+	chain, err := authz.Verify(p, authz.StoreOrgsSetIdentity, o.tok)
+	if err != nil {
+		return err
+	}
+	return affected(o.q.SetOrgIdentity(ctx, pggen.SetOrgIdentityParams{
+		IdentityHue: int32(hue), IdentityMark: idNullPG(mark), ChainOrgID: string(chain.Org),
+	}))
+}
+
+func (o pgOrgs) SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error {
+	chain, err := authz.Verify(p, authz.StoreOrgsSetIdentityImage, o.tok)
+	if err != nil {
+		return err
+	}
+	params := pggen.SetOrgIdentityImageParams{ChainOrgID: string(chain.Org)}
+	if img != nil {
+		params.IdentityImage = img.Bytes
+		params.IdentityImageType = pgtype.Text{String: img.ContentType, Valid: true}
+		params.IdentityImageVersion = pgtype.Text{String: img.Version, Valid: true}
+	}
+	return affected(o.q.SetOrgIdentityImage(ctx, params))
+}
+
 func (o pgOrgs) SetRetention(ctx context.Context, p authz.Proof, policy RetentionPolicy) error {
 	chain, err := authz.Verify(p, authz.StoreOrgsSetRetention, o.tok)
 	if err != nil {
@@ -1046,7 +1145,7 @@ func (o pgOrgs) Delete(ctx context.Context, p authz.Proof) error {
 }
 
 // orgFromPG converts a queried organization into the shared store model.
-func orgFromPG(row pggen.Org) (Org, error) {
+func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)
 	}
@@ -1066,6 +1165,9 @@ func orgFromPG(row pggen.Org) (Org, error) {
 		CreatedAt: row.CreatedAt.Time.UTC(),
 		Retention: retention,
 		Origin:    row.Origin, RegistrationPolicyID: row.RegistrationPolicyID.String,
+		Identity: ChromeIdentity{
+			Hue: int(row.IdentityHue), Mark: idPGString(row.IdentityMark), ImageVersion: idPGString(row.IdentityImageVersion),
+		},
 	}, nil
 }
 
@@ -1143,6 +1245,14 @@ func (r pgProjects) List(ctx context.Context, p authz.Proof) ([]Project, error) 
 	return out, nil
 }
 
+func (r pgProjects) ListIDs(ctx context.Context, p authz.Proof) ([]string, error) {
+	chain, err := authz.Verify(p, authz.StoreProjectsList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	return r.q.ListProjectIDs(ctx, string(chain.Org))
+}
+
 func (r pgProjects) ListAll(ctx context.Context, p authz.Proof) ([]ProjectName, error) {
 	// No chain: the proof is instance-scope and addresses no tenant, which is
 	// why the statement carries no conjunct and is annotated instance-scoped.
@@ -1185,6 +1295,45 @@ func (r pgProjects) Rename(ctx context.Context, p authz.Proof, name string) erro
 		ChainOrgID:     string(chain.Org),
 		ChainProjectID: string(chain.Project),
 	}))
+}
+
+func (r pgProjects) SetIdentity(ctx context.Context, p authz.Proof, hue int, mark *string) error {
+	chain, err := authz.Verify(p, authz.StoreProjectsSetIdentity, r.tok)
+	if err != nil {
+		return err
+	}
+	return affected(r.q.SetProjectIdentity(ctx, pggen.SetProjectIdentityParams{
+		IdentityHue: int32(hue), IdentityMark: idNullPG(mark), ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
+	}))
+}
+
+func (r pgProjects) SetIdentityImage(ctx context.Context, p authz.Proof, img *ChromeImage) error {
+	chain, err := authz.Verify(p, authz.StoreProjectsSetIdentityImage, r.tok)
+	if err != nil {
+		return err
+	}
+	params := pggen.SetProjectIdentityImageParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)}
+	if img != nil {
+		params.IdentityImage = img.Bytes
+		params.IdentityImageType = pgtype.Text{String: img.ContentType, Valid: true}
+		params.IdentityImageVersion = pgtype.Text{String: img.Version, Valid: true}
+	}
+	return affected(r.q.SetProjectIdentityImage(ctx, params))
+}
+
+func (r pgProjects) GetIdentityImage(ctx context.Context, p authz.Proof) (ChromeImage, error) {
+	chain, err := authz.Verify(p, authz.StoreProjectsGetIdentityImage, r.tok)
+	if err != nil {
+		return ChromeImage{}, err
+	}
+	row, err := r.q.GetProjectIdentityImage(ctx, pggen.GetProjectIdentityImageParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ChromeImage{}, ErrNotFound
+	}
+	if err != nil {
+		return ChromeImage{}, err
+	}
+	return chromeImage(row.IdentityImage, idPGString(row.IdentityImageType), idPGString(row.IdentityImageVersion))
 }
 
 func (r pgProjects) SetRetention(ctx context.Context, p authz.Proof, policy *RetentionPolicy) error {
@@ -1253,7 +1402,8 @@ func projectFromPG(row pggen.GetProjectRow) (Project, error) {
 	if !row.CreatedAt.Valid {
 		return Project{}, fmt.Errorf("store: project %s: null created_at", row.ID)
 	}
-	project := Project{ID: row.ID, OrgID: row.OrgID, Name: row.Name, CreatedAt: row.CreatedAt.Time.UTC(), DefinitionsSource: row.DefinitionsSource, MachineReveal: row.MachineReveal}
+	project := Project{ID: row.ID, OrgID: row.OrgID, Name: row.Name, CreatedAt: row.CreatedAt.Time.UTC(), DefinitionsSource: row.DefinitionsSource, MachineReveal: row.MachineReveal,
+		Identity: ChromeIdentity{Hue: int(row.IdentityHue), Mark: idPGString(row.IdentityMark), ImageVersion: idPGString(row.IdentityImageVersion)}}
 	if row.RetentionAgeSeconds.Valid != row.RetentionRevisionCount.Valid {
 		return Project{}, fmt.Errorf("store: project %s: partial retention override", row.ID)
 	}
@@ -1586,4 +1736,41 @@ func (r sqliteRepos) SelfConfig() SelfConfigRepo {
 }
 func (r pgRepos) SelfConfig() SelfConfigRepo {
 	return selfConfigRepo{q: pgSelfConfigStorage{q: pggen.New(r.db)}, tok: r.tok}
+}
+
+// chromeImage assembles a stored avatar, refusing a half-written row: bytes,
+// type and version are written together or not at all.
+func chromeImage(data []byte, contentType, version *string) (ChromeImage, error) {
+	if len(data) == 0 || contentType == nil || version == nil {
+		return ChromeImage{}, ErrNotFound
+	}
+	return ChromeImage{Bytes: data, ContentType: *contentType, Version: *version}, nil
+}
+
+func idString(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
+}
+
+func idPGString(v pgtype.Text) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
+}
+
+func idNullSQL(v *string) sql.NullString {
+	if v == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: *v, Valid: true}
+}
+
+func idNullPG(v *string) pgtype.Text {
+	if v == nil {
+		return pgtype.Text{}
+	}
+	return pgtype.Text{String: *v, Valid: true}
 }

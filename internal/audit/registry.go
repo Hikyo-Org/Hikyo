@@ -176,7 +176,12 @@ const (
 	// instance-scoped org enumeration below.
 	EventOrgCreated EventType = "settings.org_created"
 	EventOrgRenamed EventType = "settings.org_renamed"
-	EventOrgDeleted EventType = "settings.org_deleted"
+	// settings.*_identity_changed records one edit of the chrome identity (hue,
+	// mark, uploaded image). Previous and new hue, mark and image content-hash
+	// version; NEVER image bytes.
+	EventOrgIdentityChanged     EventType = "settings.org_identity_changed"
+	EventProjectIdentityChanged EventType = "settings.project_identity_changed"
+	EventOrgDeleted             EventType = "settings.org_deleted"
 	// settings.org_read covers the instance-scoped org enumeration. The ADR's
 	// default-deny rule refuses `audited: none` to instance-class
 	// operations, and that is an operator read of cross-tenant metadata —
@@ -1581,10 +1586,12 @@ var registry = map[EventType]TypeSpec{
 	//
 	// A rename carries BOTH names: "renamed to prod" without the previous name
 	// makes the trail unable to answer what the operator actually changed.
-	EventOrgRenamed:     hierarchyEvent(renameSchema("name")),
-	EventOrgDeleted:     hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
-	EventProjectRenamed: hierarchyEvent(renameSchema("name")),
-	EventProjectDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventOrgRenamed:             hierarchyEvent(renameSchema("name")),
+	EventOrgIdentityChanged:     hierarchyEvent(identitySchema()),
+	EventProjectIdentityChanged: hierarchyEvent(identitySchema()),
+	EventOrgDeleted:             hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventProjectRenamed:         hierarchyEvent(renameSchema("name")),
+	EventProjectDeleted:         hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
 	EventEnvParameterChanged: hierarchyEvent(Schema{
 		"name":    {Kind: KindFreeText, Required: true},
 		"pattern": {Kind: KindFreeText},
@@ -4128,6 +4135,20 @@ func renameSchema(field string) Schema {
 	return Schema{
 		"previous_" + field: {Kind: KindFreeText, Required: true},
 		field:               {Kind: KindFreeText, Required: true},
+	}
+}
+
+// identitySchema is the chrome-identity transition: hue and mark as free text
+// (the mark is caller text), the image only as its content-hash version. The
+// image bytes are never a payload field.
+func identitySchema() Schema {
+	return Schema{
+		"previous_hue":           {Kind: KindInt, Required: true, NonNegative: true},
+		"hue":                    {Kind: KindInt, Required: true, NonNegative: true},
+		"previous_mark":          {Kind: KindFreeText},
+		"mark":                   {Kind: KindFreeText},
+		"previous_image_version": {Kind: KindString, MaxBytes: sha256HexLen},
+		"image_version":          {Kind: KindString, MaxBytes: sha256HexLen},
 	}
 }
 
