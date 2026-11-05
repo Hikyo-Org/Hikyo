@@ -475,6 +475,9 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 			return CertificateIssueResult{}, pkiInvalid(err)
 		}
 		publicKey = csr.PublicKey
+		if err := refuseUnmatchedMLDSA(req.KeyAlgorithm, publicKey); err != nil {
+			return CertificateIssueResult{}, err
+		}
 	}
 	var generatedKey crypto.Signer
 	if req.GenerateKey {

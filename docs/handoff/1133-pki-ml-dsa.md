@@ -1,14 +1,15 @@
 # #1133: ML-DSA-65 private certificate lifecycle, handoff
 
 Status: **implementation of the mechanism, below the API. The public API, CLI and
-WebUI surface is HOLD on the owner's API-freeze decision.** The owner authorized
+WebUI surface stays refused: the owner decided the API freeze on 2026-11-04 and the service
+gate still holds.** The owner authorized
 the merge to `dev` on 2026-11-04, accepted publication in the next nightly, and
 that instruction is the maintainer security approval for this PR. What merging
 means: `MLDSAEnabled` stays false in production, so the product creates, imports
 and rotates no ML-DSA key; the locked relying-party matrix condition is unmet
-(choice 4 below, criterion 9 PARTIAL); the five implementation choices below stay
-open and can still change; the open decisions listed under "Next authorized step"
-are undecided. **One behavior reaches production without the opt-in:** the
+(choice 4 below, criterion 9 PARTIAL); the five implementation choices below are
+deferred by the owner until ML-DSA is enabled for PKI and can still change; the rest of
+"Next authorized step" says what stays open. **One behavior reaches production without the opt-in:** the
 chain-path checks (`VerifyCA` for import and install; `SignIntermediate` in
 `internal/pki/sign.go` for create-intermediate with `--parent`) do not consult the gate, so an operator who never
 enabled ML-DSA now gets a refusal when importing, rotating or installing a classical
@@ -58,7 +59,9 @@ Note the issuer and certificate **response** `key_algorithm` fields are plain
 strings, not enums, so an ML-DSA issuer or certificate would already serialize;
 the closed parts are the request enums and the profile `key_algorithms`.
 
-**Decision needed from the owner.** This handoff makes no recommendation; the
+**Decided on 2026-11-04: option 1.** The owner amended [api-cli-surface](../adr/api-cli-surface.md) so these enums grow once, for `mldsa65` only (see the banner there and the guard exception in `api/freeze.go`). The options below are kept as the record of what was weighed; `MLDSAEnabled` stays false, so nothing is reachable yet.
+
+**The decision was needed from the owner.** This handoff made no recommendation; the
 facts for each option, verified against this tree and `v1.0.0`:
 
 1. **Let these closed enums grow, by amending [api-cli-surface](../adr/api-cli-surface.md) (#25).**
@@ -84,7 +87,7 @@ facts for each option, verified against this tree and `v1.0.0`:
    with its own schemas. The existing profile list and show routes must then not
    return ML-DSA profiles, so they become incomplete views; the CLI and SPA read both
    families; a new surface to freeze.
-3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` (line 146) says v1 explicitly plans none.
+3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` says v1 explicitly plans none.
 
 (Same shape as the corrected wording in
 [1129-transit-mldsa.md](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md).)
@@ -163,7 +166,7 @@ Legend: DONE, PARTIAL, HOLD (blocked by a decision outside the register), NOTRUN
 | --- | --- | --- |
 | 1. Land the scoped PKI amendment | PARTIAL, pending owner confirmation | The locked-amendment banner on `pki.md` is the proposal word for word (script-checked) with the required sentence; a second banner holds the implementation's additions and five choices the owner has not confirmed (path and anchor rule, rotation rule, `sha256:` fingerprints as a DEC-07 (a) departure, unconditional ML-DSA leaves, mixed key and issuer combinations). The pointer in the migration ADR says the text is carried there and operative on merge. The proposal file is deleted |
 | 2. Issuer generation and import, protected PKCS#8 custody, evaluation root, intermediate CSR and install, activation, leaf issuance and renewal | DONE at service level on both engines; **HOLD through the API, CLI and WebUI** | `TestPKIMLDSALifecycle`: ML-DSA evaluation root, Hikyo-signed intermediate, offline-signed intermediate through CSR and `InstallIssuerCertificate`, import, CSR and generated-key leaves, renewal. Refusals through the service on both engines: wrong key, classical root over the PQ CSR, truncated chain, damaged anchor (with an intact-root control), ML-DSA-44 and -87, and a seed-plus-expanded PKCS#8 built from the seed of a key that matches the certificate (rerun on SQLite only after its last change; refused as an unparseable private key; fails if the seed-only rule is lost, shown by a local mutation). The seed-only rule is `crypto/x509`'s PKCS#8 parser, which Hikyo calls; the expanded-only and short-seed forms are covered at parser level by `internal/pki` (`mldsa_test.go`), not through the service |
-| 3. Closed enums, constraints, generated types, clients, fingerprints, size limits | PARTIAL | DONE: service vocabulary, audit enum, schemas (no constraint exists), queries (raw strings), fingerprints (spelling unchanged, see DEC-07 above), **request** caps measured (12% and 9% of the cap). **Not covered: response and list sizes** (registered gap G1). **HOLD: OpenAPI enums, generated Go and TypeScript clients, CLI help, WebUI lists** (freeze) |
+| 3. Closed enums, constraints, generated types, clients, fingerprints, size limits | PARTIAL | DONE: service vocabulary, audit enum, schemas (no constraint exists), queries (raw strings), fingerprints (spelling unchanged, see DEC-07 above), **request** caps measured (12% and 9% of the cap). **Not covered: response and list sizes** (registered gap G1). **OpenAPI enums and generated Go and TypeScript clients follow the freeze amendment. HOLD: CLI help, WebUI lists** |
 | 4. Preserve managed policy, environment authorization, SAN/EKU/TTL/name rules, no export, display-once | DONE (service level) | Lifecycle test: reader refused, name outside profile refused, algorithm mismatch refused both ways, adding `mldsa65` to a classical profile is `domain.ErrConflict` (widening), generated key not in any row or audit payload, a later read returns no key. Existing classical suites unchanged. The gate-off limits G2 are the exception |
 | 5. Certificate and CRL validation, issuance, renewal, revocation, overlap and retirement, unsupported relying-party refusal; reject unknown or mismatched algorithms, invalid chains and CSRs, wrong keys, tampered signatures | DONE after the review repairs (P1, S2, S6) | Independent validation by `crypto/x509`, `crypto/mldsa` directly and OpenSSL 4.0.3. Tampered leaf, CRL, CSR and root self-signature, swapped CSR key, unrelated root, truncated chains, mixed chains all refused. Overlap: version 2 issues, version 1 keeps signing its CRL; retirement now runs: leaves expire, the old version retires, its key is destroyed and its last CRL stays readable. A real classical anchor is accepted by `crypto/x509` and refused only by a `VerifyConnection` walk (test harness) |
 | 6. Actual TLS with a Go client and server, chain and key exchange proved separately | PARTIAL: the Go client and server evidence is DONE for Go 1.27.3 only; the product `VerifyConnection` walk is not built (G3) | Mutual TLS on loopback with service-issued chains and `tlspolicy` strict. Group: `CurveID == X25519MLKEM768` on both ends. Authentication: client offered `MLDSA65`, ML-DSA-65 leaf keys, every certificate of both verified chains signed ML-DSA-65. The same chain over `X25519` works, a classical-group client is refused by a strict server. Refusals: a root that did not sign the path (UnknownAuthority only), a `VerifyConnection` walk against a classical chain and against a real classical anchor (test harness; no product hop performs it), and a client built with `GOFIPS140=v1.0.0`. Browsers, OpenSSH and other stacks: **not inferred, unqualified** |
@@ -203,10 +206,10 @@ and aggregates. The owner may move any of them.
   is used by `VerifyCA` for installs; the `VerifyConnection` walk that refuses a real
   classical anchor exists only in tests, and no Hikyo hop enforces PQ authentication
   (pin-based clients are E-20). *Residual risk:* a strict hop negotiates the hybrid group
-  but accepts a classical or mixed chain. *Owner:* #1133, unless the owner moves it:
-  `docs/handoff/1127-transport-policy.md` (line 184, "`VerifyConnection` ML-DSA
+  but accepts a classical or mixed chain. *Owner:* #1133, confirmed by the owner on 2026-11-04:
+  `docs/handoff/1127-transport-policy.md` ("`VerifyConnection` ML-DSA
   authentication on strict-marked clients: #1133") and `profiles.md` line 160
-  ("#1127, #1133") place it there, and #1127's profile is group-only. Criterion 6 is
+  place it there, and #1127's profile is group-only. Criterion 6 is
   PARTIAL because of it.
 - **G4, platform-verifier and browser qualification.** *Limited claim:* the matrix covers
   Go 1.27.3 and OpenSSL 4.0.3 only; nothing is claimed for browsers, OpenSSH, Java, NSS,
@@ -214,9 +217,8 @@ and aggregates. The owner may move any of them.
   could assume support that was never tested (E-18 for the single listener pair).
   *Owner:* #1133. `qualification.md` line 57 assigns the PKI relying-party matrix "incl.
   platform verifiers" to #1133, which stays open; #1134's text mentions neither PKI,
-  browsers nor platform verifiers. Proposed owner change, for the owner: either add them
-  to #1134's scope, or record in `qualification.md` that #1133 qualifies Go and OpenSSL
-  only.
+  browsers nor platform verifiers. The owner confirmed on 2026-11-04 that #1133 keeps
+  them.
 - **G5, zeroization.** *Limited claim:* PKCS#8 buffers are zeroed after use
   (`wencrypto.Zero`); parsed `*mldsa.PrivateKey` and other key objects are not, as for
   classical keys, so PKI ADR D2's "zeroed after" holds for the buffers only and the
@@ -232,7 +234,7 @@ and aggregates. The owner may move any of them.
   which is inference from the code, not an observation). *Residual risk:* a restore of
   an ML-DSA issuer could surface behavior (G2, a stale CRL, a held issuer) nobody has
   seen. *Owner:* #1133: `qualification.md` line 57 requires both-engine restore there;
-  #1135 verifies. It is blocked on the freeze for (a) and (c) through the public path.
+  #1135 verifies. It is blocked on the service gate for (a) and (c) through the public path.
 - **G7, multi-node, corruption and downgrade rehearsals: NOTRUN.** *Limited claim:*
   the evidence is a single-process harness over one database. Not exercised: (a) true
   multi-node takeover with ML-DSA issuer state (criterion 7), (b) instance-wide
@@ -289,10 +291,10 @@ schemas; `internal/service/reencrypt.go` (`pki_issuers` is registered with the
 versioned re-sealer and is algorithm-blind); `HoldRestoredPKIIssuers`;
 `internal/app/generation.go` (the one construction of `service.PKI`, leaves
 `MLDSAEnabled` false); `internal/server/pki.go` (maps strings); `api/openapi.yaml`
-and the generated Go and TypeScript clients (unchanged, HOLD); `internal/cli/pki.go`
+and the generated Go and TypeScript clients (follow the freeze amendment, #1212); `internal/cli/pki.go`
 help at line 175 and the `--key-algorithm` flag for `cert issue` (unchanged);
 `web/src/api/pki.ts`, `PkiIssuersPanel.tsx`, `CertificatesTab.tsx` algorithm lists
-(unchanged, mirror OpenAPI); the published `private-pki.mdx` (unchanged, no PQ
+(unchanged, HOLD); the published `private-pki.mdx` (unchanged, no PQ
 claim).
 
 ## Key retention and rollback
@@ -306,16 +308,16 @@ environment, custody and a separate authorization; this ticket authorizes none.
 
 ## Next authorized step
 
-1. The owner decides the freeze question above. Then a follow-up lands the
-   contract change, regenerates the clients, extends the CLI and WebUI lists and
+1. The owner decided the freeze question above, and the contract change is its own
+   pull request. A follow-up, with its own authorization, extends the CLI and WebUI lists and
    flips `MLDSAEnabled` in `internal/app/generation.go` (the one wiring point).
 2. Merge to `dev` is authorized (2026-11-04) once required CI and the independent
    reviews are green; merge order is bottom-up in the stack. Merging does not
    authorize release or deployment and does not close #1133.
-3. The owner confirms or moves the owners named in G1 to G7, in particular who
-   qualifies platform verifiers and browsers for the PKI (G4); #1135 aggregates qualification and needs the thresholds from the owner's
-   reading of the baseline. The owner also confirms or changes the five
-   implementation choices and decides G1 to G3, G6 and G7.
+3. The owner confirmed on 2026-11-04 that #1133 keeps the `VerifyConnection` walk (G3) and
+   platform verifiers and browsers (G4), and can still move the other owners named in G1 to G7; #1135 aggregates qualification and needs the thresholds from the owner's
+   reading of the baseline. The five implementation choices are deferred until ML-DSA is
+   enabled for PKI, and G1, G2, G6 and G7 stay the owner's to decide.
 
 ## Final checks
 

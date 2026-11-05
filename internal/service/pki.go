@@ -37,11 +37,10 @@ type PKI struct {
 	IssuingDeadline time.Duration
 	Now             func() time.Time
 	// MLDSAEnabled lets this service create ML-DSA-65 issuers, profiles and
-	// leaves (#1133). It is false in production wiring: the public API enums
-	// are closed and /api/v1 is frozen, so the owner must decide how that
-	// surface may grow before any instance can mint one. The zero value
-	// refuses, including on the import path, whose algorithm comes from the
-	// key and not from an enum.
+	// leaves (#1133). It is false in production wiring: the api-cli-surface
+	// amendment lets the /api/v1 contract name mldsa65, and this gate is what
+	// keeps any instance from minting one. The zero value refuses, including on
+	// the import path, whose algorithm comes from the key and not from an enum.
 	MLDSAEnabled bool
 }
 
@@ -69,6 +68,24 @@ func checkRotationAlgorithm(previous string, next pki.KeyAlgorithm) error {
 	}
 	if pki.IsPQ(was) != pki.IsPQ(next) {
 		return fmt.Errorf("%w: rotation cannot move an issuer between classical and post-quantum keys; create a new issuer and a new profile", domain.ErrInvalid)
+	}
+	return nil
+}
+
+// refuseUnmatchedMLDSA stops a request naming mldsa65 from succeeding with a
+// classical key it supplied, which would read as the algorithm the caller asked
+// for. The import, imported-rotation and CSR paths otherwise never read the
+// field. Other mismatches stay accepted, as they are in v1.
+func refuseUnmatchedMLDSA(named string, key crypto.PublicKey) error {
+	if named != string(pki.MLDSA65) {
+		return nil
+	}
+	algorithm, err := pki.AlgorithmOf(key)
+	if err != nil {
+		return pkiInvalid(err)
+	}
+	if algorithm != pki.MLDSA65 {
+		return fmt.Errorf("%w: key_algorithm mldsa65 does not match the supplied %s key", domain.ErrInvalid, algorithm)
 	}
 	return nil
 }
@@ -445,6 +462,9 @@ func (s *PKI) prepareIssuerKey(req PKIIssuerRequest, imported bool) (pkiKeyMater
 		algorithm, err := pki.AlgorithmOf(key.Public())
 		if err != nil {
 			return pkiKeyMaterial{}, pkiInvalid(err)
+		}
+		if err := refuseUnmatchedMLDSA(req.KeyAlgorithm, key.Public()); err != nil {
+			return pkiKeyMaterial{}, err
 		}
 		if err := pki.CheckCAAlgorithm(algorithm); err != nil {
 			return pkiKeyMaterial{}, pkiInvalid(err)

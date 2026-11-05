@@ -114,7 +114,8 @@ export const zPkiIssuerCreateRequest = z.object({
         'ecdsa-p256',
         'ecdsa-p384',
         'rsa-3072',
-        'rsa-4096'
+        'rsa-4096',
+        'mldsa65'
     ]).optional(),
     ttl_seconds: z.coerce.bigint().gte(BigInt(86400)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     parent: zPkiName.optional(),
@@ -129,7 +130,8 @@ export const zPkiIssuerRotateRequest = z.object({
         'ecdsa-p256',
         'ecdsa-p384',
         'rsa-3072',
-        'rsa-4096'
+        'rsa-4096',
+        'mldsa65'
     ]).optional(),
     ttl_seconds: z.coerce.bigint().gte(BigInt(86400)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     crl_distribution_url: z.string().max(2048).optional(),
@@ -165,7 +167,8 @@ export const zPkiPolicy = z.object({
         'ed25519',
         'rsa-2048',
         'rsa-3072',
-        'rsa-4096'
+        'rsa-4096',
+        'mldsa65'
     ])),
     key_usages: z.array(z.enum([
         'digital-signature',
@@ -218,7 +221,8 @@ export const zCertificateIssueRequest = z.object({
         'ed25519',
         'rsa-2048',
         'rsa-3072',
-        'rsa-4096'
+        'rsa-4096',
+        'mldsa65'
     ]).optional(),
     common_name: z.string().max(255).optional(),
     dns_names: z.array(z.string().max(255)).max(100).optional(),
@@ -4782,7 +4786,8 @@ export const zTransitKeyName = z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9
 export const zTransitAlgorithm = z.enum([
     'xchacha20-poly1305',
     'ed25519',
-    'hmac-sha256'
+    'hmac-sha256',
+    'mldsa65'
 ]);
 
 export const zTransitCustody = z.enum(['software', 'external']);

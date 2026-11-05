@@ -4,7 +4,7 @@ Status: **documents only. HOLD. No PQ pairing exists.**
 Refs [#1130](https://github.com/Hikyo-Org/Hikyo/issues/1130); the PR does not close
 it, because the ticket says a feasibility note alone does not establish PQ
 pairing. No Go code, schema, configuration or behavior changed.
-Security approval: given by the owner on 2026-11-04, by authorizing merge as built with the choices below still open. No cryptographic change is made, but the register
+Security approval: given by the owner on 2026-11-04, by authorizing merge as built. The same day the owner decided the choices below: option A (HOLD under E-01), the E-01 fields, the DEC-13 wording and the #1135 narrowing text. No cryptographic change is made, but the register
 requires an amendment to have the maintainer's security approval before it takes
 effect ([register](../adr/post-quantum-migration.md#decision-register)), so the
 pairing ADR banner becomes operative when this PR merges.
@@ -25,13 +25,13 @@ Stacked on PR #1156 (`dunky13/pqc-1127-transport-policy`) until that merges.
 
 No standardized, maintained, reviewed post-quantum PAKE was found, so the PAKE half
 of #1130 stays on HOLD under DEC-13 (a) and E-01. **One DEC-13 premise has
-changed:** the register says `go-jose` lacks ML-DSA, but v4.1.8 (2026-11-02) adds
+changed:** the register said `go-jose` lacks ML-DSA (corrected in the DEC-13 row), but v4.1.8 (2026-11-02) adds
 it for Go 1.27 and RFC 9964 (May 2026) defines the JOSE identifiers. The proof
 signature is separable and no longer library-blocked, but ML-DSA-65 does not fit
 the code's closed bounds (JWK 2048, header 2048, proof 8192; measured 2655, 2698,
 8252 bytes) or its empty-context rule, and a PQ proof alone leaves enrollment
-classical. The register was not
-amended; this change is an input to the owner's recheck.
+classical. The owner
+applied the DEC-13 wording on 2026-11-04 (see the decisions below).
 
 ## Acceptance checklist
 
@@ -41,7 +41,7 @@ amended; this change is an input to the owner's recheck.
 | 2 | Approve standards-backed implementation and composition with independent security review; else HOLD and name the blocker | HOLD | The ticket's own allowed outcome. Blocking decision: DEC-13 (a), no acceptable PQ PAKE. Blocking dependency: a standard or reviewed profile plus a maintained Go implementation with vectors (below) |
 | 3 | Versioned protocol, encodings, domain separation, algorithms, binding, replay, expiry, reviewed bounds | HOLD | Needs criterion 2. The size arithmetic for a proof signature is recorded as input |
 | 4 | Full lifecycle through server, CLI, API, client and durable state | HOLD | Needs criterion 2: the accepted PQ lifecycle does not exist |
-| 5 | PQ-required pairing cannot negotiate classical; compatibility stays explicitly classical with a retirement plan | HOLD | No PQ-required mode exists, no retirement plan is written, and invitations and credentials are not marked classical as artifacts (the bundle carries only `Version: 1`; the audit credential kind is `dpop`). The ADR banner and the proposed E-01 row are input to this item, not progress on it |
+| 5 | PQ-required pairing cannot negotiate classical; compatibility stays explicitly classical with a retirement plan | HOLD | No PQ-required mode exists, no retirement plan is written, and invitations and credentials are not marked classical as artifacts (the bundle carries only `Version: 1`; the audit credential kind is `dpop`). The ADR banner and the E-01 row are input to this item, not progress on it |
 | 6 | Preserve approval, single use, tenant and scope limits, expiry, reauthentication, pin trust, audit; refuse before side effects | PARTIAL | For the current classical profile only: nothing was changed, so nothing was weakened. Only `internal/pairing` and `internal/remotefetch` tests were run (pass). Not re-verified: service, authz, server. For an accepted PQ profile this item is HOLD with criterion 4 |
 | 7 | Tests: substitution, wrong origin, relay, reuse, ordering, malformed input, downgrade, DoS bounds, crash and restart | HOLD | Applies to a new protocol. Existing tests were not reassessed |
 | 8 | Simultaneous pairing, multiple nodes, failover replay, revocation, restore holds, both engines | HOLD | Needs criterion 4. No engine was run |
@@ -90,12 +90,28 @@ draft or registry entry for ML-DSA in DPoP; owner decisions on the DPoP bound, t
 context rule and the DEC-03 form; header qualification; NIST action on PAKEs; a
 practical attack on SRP-2048 or ML-DSA. A trigger starts a recheck, not a build.
 
-## Scope-narrowing text for #1135 (a proposal; the owner must accept it)
+## Owner decisions of 2026-11-04
 
-DEC-13 records that #1135 is blocked by #1130 and that the owner decided to narrow
-scope with #1130 as linked residual work. The text below is what would make that
-usable. It is a proposal and has not been posted or applied; editing issues and
-their dependency links is outside this task.
+The owner said "All open points as recommended" on 2026-11-04. For #1130 that decides:
+
+1. **Option A** in the [feasibility note](../security/pqc/pairing-feasibility.md#options-for-the-owner):
+   stay on HOLD under E-01. #1130 stays open as the tracked residual gap. Options B to D
+   are not chosen.
+2. **E-01 fields.** The fields proposed in the note are accepted, with expiry 2027-05-03
+   and the first release named as every release to date. They are on the E-01 row in
+   [migration](../security/pqc/migration.md#exception-register), recorder case included.
+   The exception is effective from that date.
+3. **DEC-13 wording.** The proposed wording is applied to the DEC-13 row in the
+   [register](../adr/post-quantum-migration.md#decision-register), with its last sentence
+   updated to say the narrowing is done.
+4. **#1135 narrowing.** The text below is accepted. The
+   [qualification matrix](../security/pqc/qualification.md) pairing row and the
+   [packet](../security/pqc/qualification-packet.md) (C-08) now say it. The pairing and revocation drill it requires is NOTRUN.
+
+### Scope-narrowing text for #1135 (accepted 2026-11-04)
+
+DEC-13 records that #1135 was blocked by #1130 and that the owner narrowed scope
+with #1130 as linked residual work. The text below makes that usable.
 
 > #1135 qualifies instance pairing (I20) at its current classical profile only.
 > The pairing and revocation drill runs against the existing SRP-2048 and Ed25519
@@ -109,26 +125,9 @@ their dependency links is outside this task.
 > closure uses the "owner-approved scope reduction with linked residual issues"
 > route for pairing and proof authority, recorded in the closure note.
 
-Actions only the owner can take, none done here:
-
-1. Accept or edit the text above; remove #1130 from #1135's "Blocked by" (or
-   confirm that "narrowed with linked residual work" is the intended reading); note
-   the same narrowing on #1123's pairing acceptance line.
-2. **Make E-01 effective.** Its row in `migration.md` lacks the peer, version,
-   expiry and recheck trigger that the same file and DEC-10 require, and its
-   limitation names only the active forger, not the recorder case. The feasibility
-   note ends with proposed fields and a recorder clause, using its recheck triggers.
-   Until the owner accepts them, the banner's "recorded exception" is not an
-   effective exception, and the #1135 text that cites E-01 rests on it.
-3. **Edit the qualification row.** `qualification.md` (pairing row) says evidence
-   "None until a protocol is decided". The proposed drill runs the classical flow
-   and so needs evidence; the row needs the same narrowing.
-4. **Refresh DEC-13's consequence column.** Proposed wording, not applied: "(b)
-   excluded by the issue; no standardized PQ PAKE found (see pairing feasibility);
-   `go-jose` v4.1.8 (2026-11-02) supports ML-DSA on Go 1.27, so the library is not
-   the DPoP blocker, but ML-DSA-65 DPoP is 8252 bytes against the 8192 cap and the
-   2048-byte JWK and header bounds, and enrollment would stay classical. #1135 is
-   blocked by #1130 ..." and the rest of the existing sentence.
+Left to the parent, not done in this change: removing #1130 from #1135's "Blocked by"
+list and noting the same narrowing on #1123's pairing acceptance line. Issues are not edited
+here.
 
 ## Beyond the ticket, and for the reviewer
 
@@ -147,8 +146,8 @@ Actions only the owner can take, none done here:
   profile" and "Limits of the guarantee" were not edited in body.
 - **Dependency pin.** Hikyo pins `go-jose` v4.1.6 while v4.1.7 and v4.1.8 exist.
   Updating it is a dependency change outside this task; it is tracked in #1191.
-- **DEC-13 text.** The register's "`go-jose` lacks ML-DSA" is now stale. Not
-  edited: the register is the owner's; replacement wording is proposed above.
+- **DEC-13 text.** The register's "`go-jose` lacks ML-DSA" was stale. The owner
+  accepted replacement wording on 2026-11-04 and it is applied.
 
 ## Rollback and key retention
 
@@ -158,7 +157,8 @@ reading public documents and downloading a module into a scratch directory.
 
 ## Next authorized step
 
-The owner's decision on options A to D in the feasibility note, on the E-01 fields, on
-DEC-13's wording and on the #1135 narrowing text. The owner authorized merge to `dev` on
-2026-11-04 and accepted publication in the next nightly. This PR changes no code, so it
-changes no operator behavior.
+Nothing is open for the owner on #1130 except the recheck triggers. The owner authorized
+merge to `dev` on 2026-11-04, accepted publication in the next nightly, and decided
+option A, the E-01 fields, the DEC-13 wording and the #1135 narrowing the same day.
+This PR changes no code, so it changes no operator behavior. E-01 expires on 2027-05-03
+unless renewed (DEC-10: at most two renewals, then an ADR-recorded decision).

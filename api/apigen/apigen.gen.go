@@ -1273,6 +1273,7 @@ const (
 	CertificateIssueRequestKeyAlgorithmEcdsaP256 CertificateIssueRequestKeyAlgorithm = "ecdsa-p256"
 	CertificateIssueRequestKeyAlgorithmEcdsaP384 CertificateIssueRequestKeyAlgorithm = "ecdsa-p384"
 	CertificateIssueRequestKeyAlgorithmEd25519   CertificateIssueRequestKeyAlgorithm = "ed25519"
+	CertificateIssueRequestKeyAlgorithmMldsa65   CertificateIssueRequestKeyAlgorithm = "mldsa65"
 	CertificateIssueRequestKeyAlgorithmRsa2048   CertificateIssueRequestKeyAlgorithm = "rsa-2048"
 	CertificateIssueRequestKeyAlgorithmRsa3072   CertificateIssueRequestKeyAlgorithm = "rsa-3072"
 	CertificateIssueRequestKeyAlgorithmRsa4096   CertificateIssueRequestKeyAlgorithm = "rsa-4096"
@@ -1286,6 +1287,8 @@ func (e CertificateIssueRequestKeyAlgorithm) Valid() bool {
 	case CertificateIssueRequestKeyAlgorithmEcdsaP384:
 		return true
 	case CertificateIssueRequestKeyAlgorithmEd25519:
+		return true
+	case CertificateIssueRequestKeyAlgorithmMldsa65:
 		return true
 	case CertificateIssueRequestKeyAlgorithmRsa2048:
 		return true
@@ -2427,6 +2430,7 @@ func (e PkiIssuerState) Valid() bool {
 const (
 	PkiIssuerCreateRequestKeyAlgorithmEcdsaP256 PkiIssuerCreateRequestKeyAlgorithm = "ecdsa-p256"
 	PkiIssuerCreateRequestKeyAlgorithmEcdsaP384 PkiIssuerCreateRequestKeyAlgorithm = "ecdsa-p384"
+	PkiIssuerCreateRequestKeyAlgorithmMldsa65   PkiIssuerCreateRequestKeyAlgorithm = "mldsa65"
 	PkiIssuerCreateRequestKeyAlgorithmRsa3072   PkiIssuerCreateRequestKeyAlgorithm = "rsa-3072"
 	PkiIssuerCreateRequestKeyAlgorithmRsa4096   PkiIssuerCreateRequestKeyAlgorithm = "rsa-4096"
 )
@@ -2437,6 +2441,8 @@ func (e PkiIssuerCreateRequestKeyAlgorithm) Valid() bool {
 	case PkiIssuerCreateRequestKeyAlgorithmEcdsaP256:
 		return true
 	case PkiIssuerCreateRequestKeyAlgorithmEcdsaP384:
+		return true
+	case PkiIssuerCreateRequestKeyAlgorithmMldsa65:
 		return true
 	case PkiIssuerCreateRequestKeyAlgorithmRsa3072:
 		return true
@@ -2472,6 +2478,7 @@ func (e PkiIssuerCreateRequestMode) Valid() bool {
 const (
 	PkiIssuerRotateRequestKeyAlgorithmEcdsaP256 PkiIssuerRotateRequestKeyAlgorithm = "ecdsa-p256"
 	PkiIssuerRotateRequestKeyAlgorithmEcdsaP384 PkiIssuerRotateRequestKeyAlgorithm = "ecdsa-p384"
+	PkiIssuerRotateRequestKeyAlgorithmMldsa65   PkiIssuerRotateRequestKeyAlgorithm = "mldsa65"
 	PkiIssuerRotateRequestKeyAlgorithmRsa3072   PkiIssuerRotateRequestKeyAlgorithm = "rsa-3072"
 	PkiIssuerRotateRequestKeyAlgorithmRsa4096   PkiIssuerRotateRequestKeyAlgorithm = "rsa-4096"
 )
@@ -2482,6 +2489,8 @@ func (e PkiIssuerRotateRequestKeyAlgorithm) Valid() bool {
 	case PkiIssuerRotateRequestKeyAlgorithmEcdsaP256:
 		return true
 	case PkiIssuerRotateRequestKeyAlgorithmEcdsaP384:
+		return true
+	case PkiIssuerRotateRequestKeyAlgorithmMldsa65:
 		return true
 	case PkiIssuerRotateRequestKeyAlgorithmRsa3072:
 		return true
@@ -2515,6 +2524,7 @@ const (
 	PkiPolicyKeyAlgorithmsEcdsaP256 PkiPolicyKeyAlgorithms = "ecdsa-p256"
 	PkiPolicyKeyAlgorithmsEcdsaP384 PkiPolicyKeyAlgorithms = "ecdsa-p384"
 	PkiPolicyKeyAlgorithmsEd25519   PkiPolicyKeyAlgorithms = "ed25519"
+	PkiPolicyKeyAlgorithmsMldsa65   PkiPolicyKeyAlgorithms = "mldsa65"
 	PkiPolicyKeyAlgorithmsRsa2048   PkiPolicyKeyAlgorithms = "rsa-2048"
 	PkiPolicyKeyAlgorithmsRsa3072   PkiPolicyKeyAlgorithms = "rsa-3072"
 	PkiPolicyKeyAlgorithmsRsa4096   PkiPolicyKeyAlgorithms = "rsa-4096"
@@ -2528,6 +2538,8 @@ func (e PkiPolicyKeyAlgorithms) Valid() bool {
 	case PkiPolicyKeyAlgorithmsEcdsaP384:
 		return true
 	case PkiPolicyKeyAlgorithmsEd25519:
+		return true
+	case PkiPolicyKeyAlgorithmsMldsa65:
 		return true
 	case PkiPolicyKeyAlgorithmsRsa2048:
 		return true
@@ -3654,6 +3666,7 @@ func (e TotpSelfConfigReauthRequestPurpose) Valid() bool {
 const (
 	TransitAlgorithmEd25519           TransitAlgorithm = "ed25519"
 	TransitAlgorithmHmacSha256        TransitAlgorithm = "hmac-sha256"
+	TransitAlgorithmMldsa65           TransitAlgorithm = "mldsa65"
 	TransitAlgorithmXchacha20Poly1305 TransitAlgorithm = "xchacha20-poly1305"
 )
 
@@ -3663,6 +3676,8 @@ func (e TransitAlgorithm) Valid() bool {
 	case TransitAlgorithmEd25519:
 		return true
 	case TransitAlgorithmHmacSha256:
+		return true
+	case TransitAlgorithmMldsa65:
 		return true
 	case TransitAlgorithmXchacha20Poly1305:
 		return true
@@ -11717,7 +11732,7 @@ type TransitKeyVersion struct {
 	// Material Where the version's material lives. The material itself is never returned.
 	Material TransitKeyVersionMaterial `json:"material"`
 
-	// PublicKey The Ed25519 public key (standard base64) for signing keys; public metadata.
+	// PublicKey The public key (standard base64) for signing keys; public metadata. The encoding depends on the key's algorithm: ed25519 is the raw 32-byte key, mldsa65 is the DER SubjectPublicKeyInfo.
 	PublicKey *string `json:"public_key,omitempty"`
 	Version   int64   `json:"version"`
 }
