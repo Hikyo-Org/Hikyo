@@ -237,6 +237,15 @@ func loadTrust(directory string) (releasetrust.Snapshot, []byte, error) {
 			return snapshot, nil, err
 		}
 	}
+	for name, destination := range map[string]*[]byte{
+		"stable-policy.json": &material.StablePolicy, "stable-policy.sigstore.json": &material.StablePolicySignature,
+		"stable-trusted-root.json": &material.StableTrustedRoot,
+	} {
+		*destination, err = member(name)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return snapshot, nil, err
+		}
+	}
 	policyRaw, err := read(filepath.Join(directory, "nightly", "policy.json"))
 	if err != nil {
 		return snapshot, nil, err

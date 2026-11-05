@@ -48,13 +48,13 @@ with the same encrypted local recovery key under the approved nightly custody
 exception. They require separate installation backup/drill evidence and a full
 writer stop; signing these public documents does not upgrade a running server.
 
-## Stable workflow migration prepared, not activated
+## Stable workflow activation
 
 On 2026-09-08 the owner selected SOPS-style keyless stable signing with
 OpenBao-style review before publication, keeping the laptop online and avoiding
 USB custody. The implementation and [operator guide](../../docs/release/online-signing.md)
-prepare a one-time recovery-authorized stable policy. No stable policy, recovery
-signature or new root has been installed by this implementation. Existing signed
-trust bytes and key custody are unchanged. The 1.0 release remains paused for
-design work. Activation requires the explicit setup command and a reviewed
-public trust PR. The existing root remains online-generated.
+prepare the recovery-authorized stable policy. Its first activation is the one-time
+step; later inventory changes are a reviewed recovery re-signing (see
+[signed nightlies](../../docs/operations/signed-nightlies.md#re-authorize-trust-over-workflow-signed-metadata)).
+A reviewed public trust change activated the policy on 2026-10-29, and v1.0.0 was
+published under it on 2026-11-01. The existing root remains online-generated.

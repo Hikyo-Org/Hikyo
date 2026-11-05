@@ -5,7 +5,7 @@ merges, the API, the CLI (`hikyo transit key create --algorithm mldsa65`) and th
 WebUI create dialog all offer `mldsa65`, under the declared one-time contract
 growth in the [api-cli-surface](../adr/api-cli-surface.md) ADR. The merge does not
 create a key, enable a signer or activate any trust, and nothing here authorizes
-production key creation. Migration 00083 reaches every instance that upgrades
+production key creation. Migration 00084 reaches every instance that upgrades
 (see [Rollback floor and retention](#rollback-floor-and-retention)). Open items
 are registered in the [handoff](../handoff/1129-transit-mldsa.md#remaining-work-and-next-authorized-step).
 
@@ -105,15 +105,15 @@ custody provider refuses it.
 
 ## Rollback floor and retention
 
-- Migration 00083 is roll-forward only and applies to **every** instance that
+- Migration 00084 is roll-forward only and applies to **every** instance that
   upgrades to a binary containing it, whether or not an `mldsa65` key is ever
   created, because it rebuilds the `transit_keys` table. Merging this change
   therefore moves the rollback floor for everyone: the downgrade path is
-  restoring an archive taken **before migration 83** with a compatible binary
+  restoring an archive taken **before migration 84** with a compatible binary
   (see [Upgrades](../site/src/content/docs/docs/upgrades.mdx), which requires a
   pre-upgrade archive), not running a down migration.
 - Whether a release binary older than this change refuses a database already at
-  migration 83 is not established. `migrate.Check` would refuse it but has no
+  migration 84 is not established. `migrate.Check` would refuse it but has no
   production caller, and the base `app.Boot` refusal observed in development was
   for custody reasons, not schema: NOTRUN.
 - Backups contain sealed `mldsa65` material like any transit material. Trimming

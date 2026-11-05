@@ -626,7 +626,7 @@ func runConcurrentApprovalVotes(t *testing.T, db *store.DB) {
 	kr := probeKeyring(t, db)
 	auth := authService(t, db)
 	projectScope := domain.Scope{Org: orgA, Project: prjA1}
-	if _, err := (&service.Grants{DB: db}).Create(ctx, service.LocalPrincipal(orgAdmin), service.GrantSpec{
+	if _, err := (&service.Grants{DB: db}).Create(ctx, service.LocalPrincipal(root), service.GrantSpec{
 		Target: bob, Capability: domain.CapPublish, Scope: domain.Scope{Org: orgA},
 	}); err != nil {
 		t.Fatalf("grant second approver publish: %v", err)

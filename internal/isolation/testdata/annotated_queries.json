@@ -2068,6 +2068,13 @@
   },
   {
     "engine": "postgres",
+    "name": "ListPrincipalFootprintOrgs",
+    "annotation": "authn-resolution",
+    "hash": "883b2951000091fea39a1bc5ac7455cebfbcaa3dcedf4dc038c082ff69c5cadf",
+    "reason": "Authorized grant and rule writers read only the distinct org ids in which the target principal already holds any row, to refuse a target outside the actor's administered orgs with the nonexistent-principal answer; it returns no tenant identifiers beyond those org ids and writes nothing. Network credential-reset classification reads the same set to count the target's orgs."
+  },
+  {
+    "engine": "postgres",
     "name": "ListRecoveryCodesForReencrypt",
     "annotation": "authn-resolution",
     "hash": "a7a14fc8bea73a38860b072af45c62beec749bd54ffd9783ba20fcaf5ab790c5"
@@ -5526,6 +5533,13 @@
     "name": "ListPkiIssuersForReencrypt",
     "annotation": "instance-scoped",
     "hash": "c3d6608b2550a202d688d7060eb764ad5bcda0fa8d78df316f78b4e8ee69c626"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPrincipalFootprintOrgs",
+    "annotation": "authn-resolution",
+    "hash": "883b2951000091fea39a1bc5ac7455cebfbcaa3dcedf4dc038c082ff69c5cadf",
+    "reason": "Authorized grant and rule writers read only the distinct org ids in which the target principal already holds any row, to refuse a target outside the actor's administered orgs with the nonexistent-principal answer; it returns no tenant identifiers beyond those org ids and writes nothing. Network credential-reset classification reads the same set to count the target's orgs."
   },
   {
     "engine": "sqlite",
