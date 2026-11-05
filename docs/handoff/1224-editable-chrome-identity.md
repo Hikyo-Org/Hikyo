@@ -55,4 +55,4 @@ Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check),
 - A save still settling when the page moves to another org reports its result on the new page, because page feedback is shared, as it is for rename.
 - `web/e2e/flows/workspace.spec.ts`'s tripwire records every local `/api/v1/orgs/**` request. The shell's org image is same-origin and harmless, but that test would flag it if a local org kept an image.
 - `Intl.Segmenter` and `rivo/uniseg` v0.4.7 count some Indic conjuncts differently: the input can accept a mark the server refuses with a visible error, after which it reverts.
-- Maintainer security review: the `api/settings.ts` inventory pin and the `blob:` CSP change.
+- Maintainer security review: the `api/settings.ts` inventory pin. The owner chose `img-src 'self' blob:` in #1224 over a JavaScript SVG renderer or dropping SVG.
