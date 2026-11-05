@@ -96,59 +96,149 @@ def digest(path):
 tag_pattern = re.compile(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.[0-9]{8}\.([1-9][0-9]*)\.g[0-9a-f]{8}')
 sha_pattern = re.compile(r'[0-9a-f]{64}')
 
-def recovery_authorization(directory, manifest_path, state_directory):
+identity_policy = {
+    'trusted_root_sha256': '6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66',
+    'issuer': 'https://token.actions.githubusercontent.com',
+    'repository_uri': 'https://github.com/Hikyo-Org/Hikyo',
+    'repository_id': '1316165429', 'repository_owner_uri': 'https://github.com/Hikyo-Org',
+    'repository_owner_id': '316726515', 'runner_environment': 'github-hosted', 'require_sct': True,
+    'rekor_log_id': 'c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d',
+    'checkpoint_origin': 'rekor.sigstore.dev - 1193050959916656506',
+}
+stable_tag_pattern = re.compile(r'v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?')
+key_name_pattern = re.compile(r'[A-Za-z0-9._-]+')
+
+def digest_inventory(value, limit):
+    return isinstance(value, list) and len(value) <= limit and all(isinstance(item, str) and sha_pattern.fullmatch(item) for item in value) and len(set(value)) == len(value)
+
+def recovery_signature(directory, name):
+    # OpenSSL verifies the existing key-based Cosign envelope. The envelope
+    # cannot supply a key; only the independently pinned recovery key is used.
+    envelope = document(directory / (name + '.sigstore.json'))
+    if not isinstance(envelope, dict) or not set(envelope) <= {'base64Signature', 'cert', 'rekorBundle'}:
+        fail('invalid recovery signature envelope')
+    signature = base64.b64decode(envelope['base64Signature'], validate=True)
+    if not 1 <= len(signature) <= 16384:
+        fail('invalid recovery signature size')
+    signature_path = directory / (name + '.signature')
+    signature_path.write_bytes(signature)
+    subprocess.run(['openssl', 'dgst', '-sha256', '-verify', str(directory / 'recovery-1.pub'), '-signature', str(signature_path), str(directory / (name + '.json'))], check=True, capture_output=True, timeout=10)
+
+def stable_policy(directory):
+    # Only a recovery-signed policy delegates routine stable signing. This
+    # mirrors the Go verifier's verifyStablePolicy and StablePolicy.Validate.
+    recovery_signature(directory, 'stable-policy')
+    policy = document(directory / 'stable-policy.json')
+    expected = dict(identity_policy, schema='hikyo.dev/stable-policy/v1', workflow_path='.github/workflows/release.yml', protected_ref='refs/tags/v*')
+    if not isinstance(policy, dict) or set(policy) != set(expected) | {'revoked_manifests', 'minimum_release_sequence', 'primary_keys_sha256', 'nightly_policies', 'bridges'} or any(type(policy[key]) is not type(value) or policy[key] != value for key, value in expected.items()):
+        fail('stable policy differs from this bootstrap verifier')
+    if type(policy['minimum_release_sequence']) is not int or policy['minimum_release_sequence'] < 1 or not isinstance(policy['primary_keys_sha256'], str) or not sha_pattern.fullmatch(policy['primary_keys_sha256']) or not digest_inventory(policy['revoked_manifests'], 256) or not digest_inventory(policy['nightly_policies'], 256) or not digest_inventory(policy['bridges'], 1024):
+        fail('invalid stable delegation')
+    root = directory / 'stable-trusted-root.json'
+    if not 0 < root.stat().st_size <= 4 * 1024 * 1024 or digest(root) != policy['trusted_root_sha256']:
+        fail('stable Sigstore root missing or substituted')
+    return policy
+
+def primary_keys_digest(keys):
+    # Go's json.Marshal of []Primary: fixed field order, pending omitted when null.
+    names = ('id', 'public_key', 'sha256', 'valid_from_release_sequence', 'valid_through_release_sequence', 'revoked')
+    if not isinstance(keys, list) or not keys:
+        fail('invalid primary key inventory')
+    ordered = []
+    for key in keys:
+        if not isinstance(key, dict) or not set(names) <= set(key) <= set(names) | {'pending'} or not all(isinstance(key[name], str) and key_name_pattern.fullmatch(key[name]) for name in ('id', 'public_key', 'sha256')):
+            fail('invalid primary key entry')
+        entry = {name: key[name] for name in names}
+        if key.get('pending') is not None:
+            entry['pending'] = key['pending']
+        ordered.append(entry)
+    return hashlib.sha256(json.dumps(ordered, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+
+def delegated_metadata(metadata, policy):
+    # Mirrors validateDelegatedMetadata and StablePolicy.verify's tag check.
+    highest, sequence = metadata.get('highest_release'), metadata.get('highest_release_sequence')
+    tag, commit = metadata.get('release_tag'), metadata.get('source_commit')
+    if metadata['event'].get('type') != 'release' or metadata.get('pending_release') is not None or not isinstance(highest, str) or type(sequence) is not int or sequence < policy['minimum_release_sequence'] or tag != 'v' + str(highest) or not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit) or primary_keys_digest(metadata.get('primary_keys')) != policy['primary_keys_sha256']:
+        fail('stable workflow metadata exceeds delegated authority')
+    releases = metadata.get('releases')
+    if not isinstance(releases, list) or not all(isinstance(release, dict) and type(release.get('sequence')) is int for release in releases):
+        fail('invalid stable release inventory')
+    if any(release['sequence'] > sequence for release in releases) or not any(release['sequence'] == sequence and release.get('version') == highest for release in releases):
+        fail('stable metadata highest release is absent or exceeded')
+    prerelease = tag.partition('-')[2]
+    if len(tag) > 256 or not stable_tag_pattern.fullmatch(tag) or prerelease == 'nightly' or prerelease.startswith('nightly.'):
+        fail('stable signature requires exact stable tag and commit')
+    return tag, commit
+
+def stable_workflow_signature(cosign, directory, name, policy, tag, commit):
+    # Cosign owns bundle, certificate chain, SCT and transparency-log checks
+    # (all on by default); identity comes only from the authenticated policy and
+    # metadata. Argv list, no shell: document fields never reach a shell.
+    ref = 'refs/tags/' + tag
+    bundle = directory / (name + '.sigstore.json')
+    argv = [str(cosign), 'verify-blob', '--bundle', str(bundle), '--trusted-root', str(directory / 'stable-trusted-root.json'),
+        '--certificate-identity', policy['repository_uri'] + '/' + policy['workflow_path'] + '@' + ref,
+        '--certificate-oidc-issuer', policy['issuer'],
+        '--certificate-github-workflow-repository', policy['repository_uri'][len('https://github.com/'):],
+        '--certificate-github-workflow-ref', ref, '--certificate-github-workflow-sha', commit, str(directory / (name + '.json'))]
+    result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=120)
+    if result.returncode != 0:
+        fail('stable workflow signature verification failed: ' + name)
+    certificate_policy(bundle, commit, ref, policy['workflow_path'])
+
+def recovery_authorization(directory, manifest_path, state_directory, cosign=None):
     directory, state_directory = pathlib.Path(directory), pathlib.Path(state_directory)
     recovery_hash = '1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229'
     if digest(directory / 'recovery-1.pub') != recovery_hash:
         fail('recovery public key differs from bootstrap pin')
-    # OpenSSL verifies the existing key-based Cosign envelope. The envelope
-    # cannot supply a key; only the independently pinned recovery key is used.
-    for name in ('metadata', 'catalog'):
-        envelope = document(directory / (name + '.sigstore.json'))
-        if not isinstance(envelope, dict) or not set(envelope) <= {'base64Signature', 'cert', 'rekorBundle'}:
-            fail('invalid recovery signature envelope')
-        signature = base64.b64decode(envelope['base64Signature'], validate=True)
-        if not 1 <= len(signature) <= 16384:
-            fail('invalid recovery signature size')
-        signature_path = directory / (name + '.signature')
-        signature_path.write_bytes(signature)
-        subprocess.run(['openssl', 'dgst', '-sha256', '-verify', str(directory / 'recovery-1.pub'), '-signature', str(signature_path), str(directory / (name + '.json'))], check=True, capture_output=True, timeout=10)
+    # The signer field is unauthenticated: it only selects which verification
+    # must succeed. Unknown signers and any failed verification are refused.
     metadata, catalog, policy = (document(directory / name) for name in ('metadata.json', 'catalog.json', 'policy.json'))
-    if metadata.get('schema') != 'hikyo.dev/trust-metadata/v1' or metadata.get('recovery') != {'id': 'recovery-1', 'sha256': recovery_hash} or metadata.get('event', {}).get('signed_by') != 'recovery-1':
-        fail('invalid recovery-authorized metadata identity')
-    if set(catalog) != {'schema', 'sequence', 'stable_metadata_sha256', 'nightly_policies', 'bridges'} or catalog['schema'] != 'hikyo.dev/upgrade-trust/v1' or catalog['stable_metadata_sha256'] != digest(directory / 'metadata.json'):
+    if not isinstance(metadata, dict) or not isinstance(catalog, dict):
+        fail('invalid trust documents')
+    signer = metadata.get('event', {}).get('signed_by')
+    workflow = signer == 'github-actions-stable'
+    if metadata.get('schema') != 'hikyo.dev/trust-metadata/v1' or metadata.get('recovery') != {'id': 'recovery-1', 'sha256': recovery_hash} or signer not in ('recovery-1', 'github-actions-stable'):
+        fail('invalid trust metadata identity')
+    delegation = workflow or 'stable_policy_sha256' in catalog
+    stable = stable_policy(directory) if delegation else None
+    if workflow:
+        if cosign is None:
+            fail('stable workflow metadata requires the pinned Cosign verifier')
+        tag, commit = delegated_metadata(metadata, stable)
+        for name in ('metadata', 'catalog'):
+            stable_workflow_signature(cosign, directory, name, stable, tag, commit)
+    else:
+        if 'source_commit' in metadata or 'release_tag' in metadata:
+            fail('legacy metadata carries delegated identity')
+        for name in ('metadata', 'catalog'):
+            recovery_signature(directory, name)
+    if not {'schema', 'sequence', 'stable_metadata_sha256', 'nightly_policies', 'bridges'} <= set(catalog) <= {'schema', 'sequence', 'stable_metadata_sha256', 'nightly_policies', 'bridges', 'stable_policy_sha256'} or catalog['schema'] != 'hikyo.dev/upgrade-trust/v1' or catalog['stable_metadata_sha256'] != digest(directory / 'metadata.json'):
         fail('catalog does not bind the authenticated metadata')
+    if delegation and catalog.get('stable_policy_sha256') != digest(directory / 'stable-policy.json'):
+        fail('catalog does not bind exact stable delegation')
     for name, limit in (('nightly_policies', 256), ('bridges', 1024)):
-        inventory = catalog[name]
-        if not isinstance(inventory, list) or len(inventory) > limit or not all(isinstance(value, str) and sha_pattern.fullmatch(value) for value in inventory) or len(set(inventory)) != len(inventory):
+        if not digest_inventory(catalog[name], limit):
             fail('invalid authorized digest inventory')
+    if workflow and (catalog['nightly_policies'] != stable['nightly_policies'] or catalog['bridges'] != stable['bridges']):
+        fail('stable workflow changed nightly or bridge authority')
     if digest(directory / 'policy.json') not in catalog['nightly_policies']:
-        fail('nightly policy is not currently recovery-authorized')
-    expected_policy = {
-        'schema': 'hikyo.dev/nightly-policy/v1',
-        'trusted_root_sha256': '6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66',
-        'issuer': 'https://token.actions.githubusercontent.com',
-        'repository_uri': 'https://github.com/Hikyo-Org/Hikyo',
-        'repository_id': '1316165429', 'repository_owner_uri': 'https://github.com/Hikyo-Org',
-        'repository_owner_id': '316726515', 'workflow_path': '.github/workflows/nightly.yml',
-        'protected_ref': 'refs/heads/main', 'runner_environment': 'github-hosted', 'require_sct': True,
-        'rekor_log_id': 'c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d',
-        'checkpoint_origin': 'rekor.sigstore.dev - 1193050959916656506',
-    }
+        fail('nightly policy is not currently authorized by the trust catalog')
+    expected_policy = dict(identity_policy, schema='hikyo.dev/nightly-policy/v1', workflow_path='.github/workflows/nightly.yml', protected_ref='refs/heads/main')
     if not isinstance(policy, dict) or set(policy) != set(expected_policy) | {'revoked_manifests'} or any(type(policy[key]) is not type(value) or policy[key] != value for key, value in expected_policy.items()):
         fail('authorized nightly policy differs from this bootstrap verifier')
     revoked = policy['revoked_manifests']
     if not isinstance(revoked, list) or len(revoked) > 256 or not all(isinstance(value, str) and sha_pattern.fullmatch(value) for value in revoked) or len(set(revoked)) != len(revoked):
         fail('invalid revoked manifest inventory')
     floor = {'metadata_sequence': metadata['sequence'], 'metadata_sha256': digest(directory / 'metadata.json'), 'catalog_sequence': catalog['sequence'], 'catalog_sha256': digest(directory / 'catalog.json')}
-    minimum = {'metadata_sequence': 1, 'metadata_sha256': 'cc7470eb6d2aac727bdaff9f5bb30c5c1fbbbaa3de9d2e8a0b5a9bb77a4c8d09', 'catalog_sequence': 2, 'catalog_sha256': 'd688b21bbaee7f5dfc789e7f03b544853e90b40b5004e6203155dfce3df99262'}
+    minimum = {'metadata_sequence': 2, 'metadata_sha256': '1f3344ee9ac4e219a9abbbf910f4e1fa139277b529128d8a730ee585ec1c9aab', 'catalog_sequence': 4, 'catalog_sha256': '0fd39210208fbd21cde71fd74743686560609beac88e6a237ff3d845f2f89ff9'}
     def check_floor(known):
         for name in ('metadata', 'catalog'):
             sequence, checksum = name + '_sequence', name + '_sha256'
             if type(floor[sequence]) is not int or type(known[sequence]) is not int or known[sequence] < 1 or not isinstance(known[checksum], str) or not sha_pattern.fullmatch(known[checksum]):
                 fail('invalid trust floor')
             if floor[sequence] < known[sequence] or floor[sequence] == known[sequence] and floor[checksum] != known[checksum]:
-                fail('recovery trust rollback or equivocation refused')
+                fail('trust rollback or equivocation refused')
     def private_open(path, flags):
         descriptor = os.open(path, flags | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
         info = os.fstat(descriptor)
@@ -188,9 +278,9 @@ def recovery_authorization(directory, manifest_path, state_directory):
             if os.path.exists(temporary):
                 os.unlink(temporary)
     if digest(manifest_path) in revoked:
-        fail('nightly manifest revoked by current recovery-authorized policy')
+        fail('nightly manifest revoked by current authorized nightly policy')
 
-def certificate_policy(bundle_path, commit):
+def certificate_policy(bundle_path, commit, ref='refs/heads/main', workflow_path='.github/workflows/nightly.yml'):
     # Cosign has already authenticated this bundle's exact leaf certificate.
     # OpenSSL owns X.509/ASN.1 decoding; this code only compares decoded policy
     # claims. Never use this operation in place of signature verification.
@@ -222,7 +312,7 @@ def certificate_policy(bundle_path, commit):
 
     openssl('x509', '-inform', 'DER', '-noout')
     lines = openssl('asn1parse', '-inform', 'DER').splitlines()
-    workflow = 'https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main'
+    workflow = 'https://github.com/Hikyo-Org/Hikyo/' + workflow_path + '@' + ref
     expected = {
         8: 'https://token.actions.githubusercontent.com',
         9: workflow,
@@ -230,7 +320,7 @@ def certificate_policy(bundle_path, commit):
         11: 'github-hosted',
         12: 'https://github.com/Hikyo-Org/Hikyo',
         13: commit,
-        14: 'refs/heads/main',
+        14: ref,
         15: '1316165429',
         16: 'https://github.com/Hikyo-Org',
         17: '316726515',
@@ -388,14 +478,16 @@ python3 "$scratch/verify.py" hash "$scratch/trusted-root.json" "$trusted_root_sh
 	--certificate-github-workflow-sha "$commit" "$scratch/manifest.json"
 python3 "$scratch/verify.py" certificate-policy "$scratch/manifest.sigstore.json" "$commit"
 
-# The signing workflow alone is insufficient: authenticate current recovery
-# authorization and revocations before even asking a candidate for --help.
+# The signing workflow alone is insufficient: authenticate the current trust
+# catalog (recovery-signed, or workflow-signed under a recovery-signed stable
+# policy) and revocations before even asking a candidate for --help.
 trust_url="https://raw.githubusercontent.com/$repository/refs/heads/main/release/trust"
-for trust_file in recovery-1.pub metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
+for trust_file in recovery-1.pub metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json \
+	stable-policy.json stable-policy.sigstore.json stable-trusted-root.json; do
 	download "$trust_url/$trust_file" "$scratch/$trust_file" 4194304
 done
 download "$trust_url/nightly/policy.json" "$scratch/policy.json" 4194304
-python3 "$scratch/verify.py" authorize "$scratch" "$scratch/manifest.json" /var/lib/hikyo-upgrader
+python3 "$scratch/verify.py" authorize "$scratch" "$scratch/manifest.json" /var/lib/hikyo-upgrader "$scratch/cosign"
 
 # Only after Cosign authenticates the exact manifest may its inventory choose
 # executable bytes. Neither a GitHub asset checksum nor an unsigned checksums

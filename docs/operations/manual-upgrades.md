@@ -128,7 +128,7 @@ the existing `SnapshotFloor` JSON to reject an older or conflicting snapshot;
 assembly does not update that floor. Runtime always enforces the installation's
 own persisted floor and actual datastore state.
 
-The command verifies the recovery-signed snapshot, authorized primary keys,
+The command verifies the authenticated trust snapshot, authorized primary keys,
 stable release signatures and bound compatibility documents. It then runs the
 production bundle loader over the exact staged bytes, including bridge proofs.
 It publishes a new output directory atomically and refuses an existing path,
