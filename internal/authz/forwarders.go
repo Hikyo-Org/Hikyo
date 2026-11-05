@@ -584,6 +584,11 @@ type txForwarded interface {
 	// ServiceAccountByPrincipal resolves the service account a machine principal
 	// is, for the grant surface's subtree confinement.
 	ServiceAccountByPrincipal(ctx context.Context, p domain.PrincipalID) (ServiceAccount, error)
+
+	// ServiceAccountByID resolves a service account from an id already
+	// disclosed on a row the caller may read, to name it for display. The id
+	// must never come from a request.
+	ServiceAccountByID(ctx context.Context, id string) (ServiceAccount, error)
 	ServiceAccountsIn(ctx context.Context, scope domain.Scope) ([]ServiceAccount, error)
 
 	// SessionsForPrincipal and RevokeSessionForPrincipal are the self-scoped

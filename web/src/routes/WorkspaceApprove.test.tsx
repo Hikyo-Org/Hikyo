@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { WorkspaceHandoffTransaction } from '@hikyo/client';
 import { act } from 'react';
+import { consentIds, consentLookup, type ConsentLookupFailures } from '../testkit/consentNames.ts';
 import { renderForm } from '../testkit/renderForm.tsx';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -95,6 +96,69 @@ function methods() {
     return input.method;
   });
 }
+
+/** A step-up handoff that carries the server-supplied org and project, with the lookups routed. */
+function routeNamedStepUp(failures: ConsentLookupFailures = {}, keys?: () => Promise<void>) {
+  const summary = {
+    ...fresh(), purpose: 'step-up', operation: 'reveal', environment: consentIds.environment,
+    org_id: consentIds.org, project_id: consentIds.project,
+    key_ids: [consentIds.secretKey, consentIds.configKey, consentIds.missingKey],
+  };
+  fetcher.mockImplementation(async (input) => {
+    if (!(input instanceof Request)) throw new Error('expected SDK Request');
+    const path = new URL(input.url).pathname;
+    if (path.includes('/auth/workspace/transactions/')) return response(summary);
+    const lookup = consentLookup(path, failures, keys);
+    if (lookup === undefined) throw new Error(`unexpected ${path}`);
+    return lookup;
+  });
+}
+
+describe('workspace consent names', () => {
+  it('names org, project, environment and keys, keeping every key and its ID', async () => {
+    routeNamedStepUp();
+    const container = await render();
+    await settle();
+    const scope = container.querySelector('.workspace-consent__scope');
+    expect(scope?.textContent).toContain('Acme');
+    expect(scope?.textContent).toContain('Billing');
+    expect(scope?.textContent).toContain('production');
+    expect(scope?.textContent).not.toContain(consentIds.environment);
+    expect(scope?.textContent).toContain('3 keys');
+    const rows = [...(scope?.querySelectorAll('li') ?? [])];
+    expect(rows.map((row) => row.getAttribute('title'))).toEqual([consentIds.secretKey, consentIds.configKey, consentIds.missingKey]);
+    expect(rows[0]?.textContent).toContain('secret DATABASE_URL');
+    expect(rows[1]?.textContent).toBe('LOG_LEVEL');
+    // A key the catalogue lacks is still listed, by its ID.
+    expect(rows[2]?.textContent).toBe(consentIds.missingKey);
+  });
+  it('falls back to the IDs when the lookups fail, without blocking approval', async () => {
+    routeNamedStepUp({ keys: true, environments: true, org: true, project: true });
+    const container = await render();
+    await settle();
+    const scope = container.querySelector('.workspace-consent__scope');
+    expect(scope?.textContent).toContain(consentIds.org);
+    expect(scope?.textContent).toContain(consentIds.environment);
+    expect(scope?.textContent).toContain(consentIds.secretKey);
+    expect(button(container, 'Use a passkey').disabled).toBe(false);
+  });
+  it('holds the reauthentication buttons until the names have settled', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    routeNamedStepUp({}, () => gate);
+    const container = await render();
+    expect(button(container, 'Use a passkey').disabled).toBe(true);
+    await act(async () => release());
+    await settle();
+    expect(button(container, 'Use a passkey').disabled).toBe(false);
+  });
+  it('shows the environment ID and makes no lookup when the server sent no org and project', async () => {
+    fetcher.mockResolvedValue(response({ ...fresh(), purpose: 'step-up', operation: 'reveal', environment: consentIds.environment, key_ids: [consentIds.secretKey] }));
+    const container = await render();
+    expect(container.querySelector('.workspace-consent__scope')?.textContent).toContain(consentIds.environment);
+    expect(methods()).toEqual(['GET']);
+  });
+});
 
 describe('workspace consent summary', () => {
   it.each([

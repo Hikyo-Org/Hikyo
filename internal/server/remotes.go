@@ -244,10 +244,15 @@ func (a *API) ShowWorkspaceHandoff(ctx context.Context, req apigen.ShowWorkspace
 		if !op.Valid() || view.EnvID == "" {
 			return nil, fmt.Errorf("show workspace handoff: step-up carries an invalid binding")
 		}
-		err = transaction.FromWorkspaceHandoffStepUp(apigen.WorkspaceHandoffStepUp{
+		stepUp := apigen.WorkspaceHandoffStepUp{
 			State: req.State, Purpose: apigen.WorkspaceHandoffStepUpPurposeStepUp, RequestingOrigin: view.RequestingOrigin,
 			Operation: op, Environment: apigen.ID(view.EnvID), KeyIds: keyIDs, ExpiresAt: view.ExpiresAt,
-		})
+		}
+		if view.OrgID != "" && view.ProjectID != "" {
+			org, project := apigen.ID(view.OrgID), apigen.ID(view.ProjectID)
+			stepUp.OrgId, stepUp.ProjectId = &org, &project
+		}
+		err = transaction.FromWorkspaceHandoffStepUp(stepUp)
 	default:
 		return nil, fmt.Errorf("show workspace handoff: unknown purpose %q", view.Purpose)
 	}

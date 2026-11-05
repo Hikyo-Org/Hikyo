@@ -895,6 +895,9 @@ type HandoffView struct {
 	Purpose          HandoffPurpose
 	Operation        string
 	EnvID            string
+	// OrgID and ProjectID name the environment's owners for display, and are
+	// set only when the caller may list that environment.
+	OrgID, ProjectID string
 	KeySet           []string
 	ExpiresAt        time.Time
 }
@@ -975,6 +978,24 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 			}
 			if h.KeySet != "" {
 				out.KeySet = splitKeySet(h.KeySet)
+			}
+			// Owning the handoff does not prove access to its environment, so
+			// the org and project ids are disclosed only to a caller who may
+			// list it; otherwise they are omitted and the read still succeeds.
+			chain, err := az.EnvironmentChainByID(ctx, h.EnvID)
+			if err != nil && !errors.Is(err, domain.ErrNotFound) {
+				return err
+			}
+			if err == nil {
+				scope := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project)}
+				az.SetClock(now)
+				may, err := az.CallerMay(ctx, caller, authz.OpEnvList, scope)
+				if err != nil {
+					return err
+				}
+				if may {
+					out.OrgID, out.ProjectID = chain.Org, chain.Project
+				}
 			}
 		default:
 			return ErrHandoffInvalid

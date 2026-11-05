@@ -33,6 +33,7 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
+import { ConsentName } from './ConsentScope.tsx';
 import { InstanceMailPanel } from './InstanceMailPanel.tsx';
 import { DeveloperCredentialPolicy } from './DeveloperCredentialPolicy.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
@@ -298,7 +299,7 @@ function CredentialPolicyPanel({ query, editing, setEditing, notices, onDone, on
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
         <Checkbox label="Allow credentials with no expiry" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} />
-        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
+        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} title={credential.id}><ConsentName id={credential.service_account_id} name={credential.service_account_name} />: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
         <div className="actions"><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button><Button type="button" onClick={() => setEditing(false)}>Cancel</Button></div>
       </SidePanel>
     ) : null}

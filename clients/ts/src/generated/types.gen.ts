@@ -129,6 +129,14 @@ export type DeveloperCredential = {
     expires_at: string;
     revoked_at?: string;
     prefix_hint: string;
+    /**
+     * Display name of the credential's principal, when it has one. Omitted otherwise.
+     */
+    principal_name?: string;
+    /**
+     * Display name of the human who delegated the credential. Omitted when unnamed.
+     */
+    authority_principal_name?: string;
 };
 
 export type DeveloperCredentialList = {
@@ -1691,7 +1699,12 @@ export type CliReauthApproved = {
     redirect_uri: string;
 };
 
+/**
+ * Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
+ */
 export type CliReauthEnvironmentPolicy = {
+    org_id: Id;
+    project_id: Id;
     environment_id: Id;
     effective_window_seconds: number;
     requires_webauthn: boolean;
@@ -4110,6 +4123,10 @@ export type SetCredentialPolicyRequest = {
 export type AffectedCredential = {
     id: Id;
     service_account_id: Id;
+    /**
+     * Display name of the service account, omitted when it no longer resolves.
+     */
+    service_account_name?: string;
     expires_at?: Timestamp;
     reason: 'clamped' | 'indefinite-withdrawn';
 };
@@ -6126,6 +6143,14 @@ export type WorkspaceHandoffStepUp = {
      * The environment the elevation covers.
      */
     environment: Id;
+    /**
+     * Owning organisation of the environment, for display. Present only when the caller may list that environment.
+     */
+    org_id?: Id;
+    /**
+     * Owning project of the environment, for display. Present only when the caller may list that environment.
+     */
+    project_id?: Id;
     /**
      * The enumerated unit the elevation binds.
      */
@@ -8288,7 +8313,7 @@ export type ShowCliReauthTransactionError = ShowCliReauthTransactionErrors[keyof
 
 export type ShowCliReauthTransactionResponses = {
     /**
-     * Live transaction metadata without ids, bearers, or verifiers.
+     * Live transaction metadata without bearers or verifiers.
      */
     200: CliReauthTransaction;
 };

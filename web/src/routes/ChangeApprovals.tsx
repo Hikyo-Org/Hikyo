@@ -15,6 +15,8 @@ import {
   type PolicyDraft,
 } from '../api/approvals.ts';
 import { ApiError } from '../api/client.ts';
+import { useKeyCatalogue } from '../api/identities.ts';
+import { querySettled } from '../api/scopeNames.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -24,6 +26,7 @@ import { Sep } from '../ui/Sep.tsx';
 import { SidePanel } from '../ui/SidePanel.tsx';
 import { CapabilityTag } from './capabilityTags.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
+import { ConsentKeys, consentKeys, type ConsentKey } from './ConsentScope.tsx';
 import { Panel, SectionTabs } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 import { duration } from '../app/duration.ts';
@@ -98,6 +101,11 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
   const ref = { org, project };
 
   const environments = useEnvironments(org, project);
+  // Names are display only: the ceremony still binds the IDs, and a key the
+  // catalogue cannot name stays listed by its ID.
+  const catalogue = useKeyCatalogue(ref);
+  // Votes wait for it to settle, because the ceremony copies this list when it opens.
+  const keysOf = (ids: readonly string[]) => consentKeys(catalogue.data?.items, ids);
   const policies = useApprovalPolicies(ref);
   const [selectedEnv, setSelectedEnv] = useState('');
   const requests = useApprovalRequests(ref, selectedEnv);
@@ -187,7 +195,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
         {
           environmentId: request.environment_id,
           environmentName: environment?.name ?? request.environment_id,
-          keys: request.key_ids.map((id) => ({ id, name: id })),
+          keys: keysOf(request.key_ids),
           purpose,
           approvalRequestId: request.id,
         },
@@ -428,6 +436,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                     <ApprovalRequestRow
                       key={request.id}
                       request={request}
+                      keys={keysOf(request.key_ids)}
                       bypassReason={bypassReasons[request.id] ?? ''}
                       onBypassReasonChange={(value) =>
                         setBypassReasons((current) => ({ ...current, [request.id]: value }))
@@ -456,7 +465,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
                           ),
                         )
                       }
-                      busy={vote.isPending || resolve.isPending}
+                      busy={vote.isPending || resolve.isPending || !querySettled(catalogue)}
                     />
                   ))}
                 </ul>
@@ -479,6 +488,7 @@ function ScopedChangeApprovals({ org, project }: { org: string; project: string 
 
 function ApprovalRequestRow({
   request,
+  keys,
   bypassReason,
   onBypassReasonChange,
   onVote,
@@ -487,6 +497,7 @@ function ApprovalRequestRow({
   busy,
 }: {
   readonly request: ApprovalRequest;
+  readonly keys: readonly ConsentKey[];
   readonly bypassReason: string;
   readonly onBypassReasonChange: (value: string) => void;
   readonly onVote: (decision: 'approve' | 'reject') => void;
@@ -499,12 +510,16 @@ function ApprovalRequestRow({
   return (
     <li className="change-approvals__request">
       <div className="change-approvals__request-head">
-        <span className="mono">{request.id}</span>
+        <span>{request.purpose === '' ? `Change request by ${request.requester_name ?? request.requester}` : request.purpose}</span>
         <span className="change-approvals__request-state">
           {request.state}<Sep />{request.approvals}/{request.min_approvals} approvals
         </span>
       </div>
       <dl className="change-approvals__request-meta">
+        <div>
+          <dt>Request ID</dt>
+          <dd className="mono">{request.id}</dd>
+        </div>
         <div>
           <dt>Requester</dt>
           <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
@@ -512,6 +527,10 @@ function ApprovalRequestRow({
         <div>
           <dt>Changes</dt>
           <dd>{request.change_count}</dd>
+        </div>
+        <div>
+          <dt>Keys</dt>
+          <dd><ConsentKeys keys={keys} /></dd>
         </div>
         <div>
           <dt>Expires</dt>

@@ -293,7 +293,9 @@ export const zDeveloperCredential = z.object({
     created_at: z.iso.datetime(),
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
-    prefix_hint: z.string()
+    prefix_hint: z.string(),
+    principal_name: z.string().min(1).optional(),
+    authority_principal_name: z.string().min(1).optional()
 });
 
 export const zDeveloperCredentialList = z.object({
@@ -1363,7 +1365,12 @@ export const zCliReauthApproved = z.object({
     redirect_uri: z.url()
 });
 
+/**
+ * Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
+ */
 export const zCliReauthEnvironmentPolicy = z.object({
+    org_id: zId,
+    project_id: zId,
     environment_id: zId,
     effective_window_seconds: z.int().gte(0),
     requires_webauthn: z.boolean()
@@ -2688,6 +2695,7 @@ export const zSetCredentialPolicyRequest = z.object({
 export const zAffectedCredential = z.object({
     id: zId,
     service_account_id: zId,
+    service_account_name: z.string().min(1).optional(),
     expires_at: zTimestamp.optional(),
     reason: z.enum(['clamped', 'indefinite-withdrawn'])
 });
@@ -4533,6 +4541,8 @@ export const zWorkspaceHandoffStepUp = z.object({
         'bypass'
     ]),
     environment: zId,
+    org_id: zId.optional(),
+    project_id: zId.optional(),
     key_ids: z.array(zId),
     expires_at: zTimestamp
 });
@@ -5597,7 +5607,7 @@ export const zShowCliReauthTransactionPath = z.object({
 });
 
 /**
- * Live transaction metadata without ids, bearers, or verifiers.
+ * Live transaction metadata without bearers or verifiers.
  */
 export const zShowCliReauthTransactionResponse = zCliReauthTransaction;
 

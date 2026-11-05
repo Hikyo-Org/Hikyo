@@ -729,6 +729,8 @@ test.describe('multi-instance', () => {
                 key_ids: [],
                 environments: [
                   {
+                    org_id: 'org_00000000-0000-4000-8000-000000000001',
+                    project_id: 'prj_00000000-0000-4000-8000-000000000001',
                     environment_id: 'env_00000000-0000-4000-8000-000000000001',
                     effective_window_seconds: 300,
                     requires_webauthn: false,

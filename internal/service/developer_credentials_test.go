@@ -99,6 +99,24 @@ func TestDeveloperCredentialMintCapAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+func TestDeveloperCredentialListNamesTheDelegator(t *testing.T) {
+	s, actor, _, scope := developerLifecycleFixture(t)
+	openDeveloperMintWindow(t, s, scope, time.Hour)
+	if _, err := s.Mint(t.Context(), actor, scope, MintDeveloperCredentialRequest{Lifetime: time.Hour, ConsentCurrentAndFuture: true}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.List(t.Context(), actor, domain.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The delegator is a named account; the developer principal is not, so its name stays empty.
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].AuthorityPrincipalName != "Developer" || rows[0].PrincipalName != "" {
+		t.Fatalf("names = %q / %q, want Developer / empty", rows[0].AuthorityPrincipalName, rows[0].PrincipalName)
+	}
+}
 func TestDeveloperCredentialLowerCeilingDoesNotReviveOnRaise(t *testing.T) {
 	s, actor, _, scope := developerLifecycleFixture(t)
 	openDeveloperMintWindow(t, s, scope, 8*time.Hour)

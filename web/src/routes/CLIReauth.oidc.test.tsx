@@ -39,6 +39,20 @@ vi.mock('../app/AuthProvider.tsx', () => ({
   }),
 }));
 
+// Name lookups are exercised in CLIReauth.names.test.tsx; here they are settled and empty.
+vi.mock('../api/scopeNames.ts', async (original) => ({
+  ...(await original<typeof import('../api/scopeNames.ts')>()),
+  useScopeNames: () => ({ settled: true, org: 'org_x', project: 'prj_x', environment: '' }),
+}));
+vi.mock('../api/adapters.ts', async (original) => ({
+  ...(await original<typeof import('../api/adapters.ts')>()),
+  useProjectEnvironments: () => ({ data: undefined, isPending: true, fetchStatus: 'idle' }),
+}));
+vi.mock('../api/identities.ts', async (original) => ({
+  ...(await original<typeof import('../api/identities.ts')>()),
+  useKeyCatalogue: () => ({ data: undefined, isPending: true, fetchStatus: 'idle' }),
+}));
+
 vi.mock('../api/values.ts', () => ({
   runDeveloperCredentialPasskeyCeremony: vi.fn(),
   runDeveloperCredentialTOTPCeremony: vi.fn(),
@@ -60,7 +74,7 @@ async function renderTransaction(environments: Array<{
     developer_credential: mocks.developerCredential ? { lifetime_seconds: 28800n, consent_current_and_future: true } : undefined,
     self_config: mocks.selfConfigPlan === '' ? undefined : { action: 'apply', owner_instance_id: 'instance_local', revision: 3, expected_generation: 7, schema_version: 1, to: '', preview_token: '', confirm_restored_credentials: false, plan_digest: mocks.selfConfigPlan },
     operation: 'value.reveal',
-    environments,
+    environments: environments.map((environment) => ({ org_id: 'org_x', project_id: 'prj_x', ...environment })),
     key_ids: ['key-production'],
     redirect_uri: 'http://127.0.0.1:40126/callback',
     expires_at: '2099-08-23T12:00:00Z',
@@ -136,7 +150,8 @@ describe('CLI OIDC disclosure handoff', () => {
     ]);
     try {
       expect(view.container.textContent).toContain('8 hours (28800 seconds)');
-      expect(view.container.textContent).toContain('all current and future published keys until expiry');
+      expect(view.container.textContent).toContain('1 key exists now');
+      expect(view.container.textContent).toContain('also covers every key published to this environment later, until expiry');
       expect(view.container.textContent).toContain('survives ordinary logout');
       expect(view.container.textContent).not.toContain('Re-authenticate with Corporate IdP');
       expect(view.container.querySelector('input#cli-reauth-totp')).not.toBeNull();

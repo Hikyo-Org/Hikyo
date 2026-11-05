@@ -15,6 +15,13 @@ import (
 )
 
 type DeveloperCredential = authz.DeveloperCredential
+
+// NamedDeveloperCredential adds display names to a credential row the caller
+// may already read. A name is empty when the principal has no account name.
+type NamedDeveloperCredential struct {
+	DeveloperCredential
+	PrincipalName, AuthorityPrincipalName string
+}
 type MintDeveloperCredentialRequest struct {
 	Lifetime                time.Duration
 	ConsentCurrentAndFuture bool
@@ -155,8 +162,8 @@ func (s *DeveloperCredentials) Mint(ctx context.Context, actor Actor, scope doma
 	}
 	return out, nil
 }
-func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope domain.Scope) ([]DeveloperCredential, error) {
-	var out []DeveloperCredential
+func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope domain.Scope) ([]NamedDeveloperCredential, error) {
+	var out []NamedDeveloperCredential
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		var caller authz.Identity
 		var p authz.Proof
@@ -176,7 +183,8 @@ func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope doma
 		if err != nil {
 			return err
 		}
-		out = []DeveloperCredential{}
+		out = []NamedDeveloperCredential{}
+		names := newPrincipalNames()
 		for _, c := range rows {
 			if scope == (domain.Scope{}) {
 				if c.AuthorityPrincipal != caller.Principal {
@@ -185,7 +193,14 @@ func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope doma
 			} else if c.Scope.Org != scope.Org || c.Scope.Project != scope.Project {
 				continue
 			}
-			out = append(out, c)
+			named := NamedDeveloperCredential{DeveloperCredential: c}
+			if named.PrincipalName, err = names.get(ctx, az, c.PrincipalID); err != nil {
+				return err
+			}
+			if named.AuthorityPrincipalName, err = names.get(ctx, az, c.AuthorityPrincipal); err != nil {
+				return err
+			}
+			out = append(out, named)
 		}
 		e, err := domainEvent(ctx, audit.EventDeveloperCredentialsListed, caller.Principal, audit.Object{Type: "developer-credential"}, audit.Payload{"row_count": len(out)})
 		if err != nil {

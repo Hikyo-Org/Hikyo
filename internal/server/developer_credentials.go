@@ -13,7 +13,7 @@ import (
 // service owns self-delegation, live authorization, reauthentication and policy.
 type DeveloperCredentialService interface {
 	Mint(context.Context, service.Actor, domain.Scope, service.MintDeveloperCredentialRequest) (service.MintedDeveloperCredential, error)
-	List(context.Context, service.Actor, domain.Scope) ([]service.DeveloperCredential, error)
+	List(context.Context, service.Actor, domain.Scope) ([]service.NamedDeveloperCredential, error)
 	Revoke(context.Context, service.Actor, domain.Scope, string, bool) error
 	Policy(context.Context, service.Actor) (time.Duration, error)
 	SetPolicy(context.Context, service.Actor, time.Duration) (time.Duration, error)
@@ -36,17 +36,23 @@ func (a *API) MintDeveloperCredential(ctx context.Context, req apigen.MintDevelo
 	if err != nil {
 		return nil, err
 	}
-	return apigen.MintDeveloperCredential200JSONResponse{Value: result.Value, Credential: wireDeveloperCredential(result.Credential)}, nil
+	return apigen.MintDeveloperCredential200JSONResponse{Value: result.Value, Credential: wireDeveloperCredential(service.NamedDeveloperCredential{DeveloperCredential: result.Credential})}, nil
 }
-func wireDeveloperCredential(c service.DeveloperCredential) apigen.DeveloperCredential {
+func wireDeveloperCredential(c service.NamedDeveloperCredential) apigen.DeveloperCredential {
 	out := apigen.DeveloperCredential{Id: c.ID, PrincipalId: string(c.PrincipalID), AuthorityPrincipalId: string(c.AuthorityPrincipal), OrgId: string(c.Scope.Org), ProjectId: string(c.Scope.Project), EnvironmentId: string(c.Scope.Env), CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, PrefixHint: c.PrefixHint}
 	if !c.RevokedAt.IsZero() {
 		t := c.RevokedAt
 		out.RevokedAt = &t
 	}
+	if c.PrincipalName != "" {
+		out.PrincipalName = &c.PrincipalName
+	}
+	if c.AuthorityPrincipalName != "" {
+		out.AuthorityPrincipalName = &c.AuthorityPrincipalName
+	}
 	return out
 }
-func developerCredentialList(items []service.DeveloperCredential) apigen.DeveloperCredentialList {
+func developerCredentialList(items []service.NamedDeveloperCredential) apigen.DeveloperCredentialList {
 	out := apigen.DeveloperCredentialList{Items: make([]apigen.DeveloperCredential, 0, len(items)), Count: len(items)}
 	for _, item := range items {
 		out.Items = append(out.Items, wireDeveloperCredential(item))

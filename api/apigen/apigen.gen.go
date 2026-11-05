@@ -5316,6 +5316,9 @@ type AffectedCredential struct {
 
 	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
 	ServiceAccountId ID `json:"service_account_id"`
+
+	// ServiceAccountName Display name of the service account, omitted when it no longer resolves.
+	ServiceAccountName *string `json:"service_account_name,omitempty"`
 }
 
 // AffectedCredentialReason defines model for AffectedCredential.Reason.
@@ -5908,12 +5911,18 @@ type CLIReauthApproved struct {
 	State string `json:"state"`
 }
 
-// CLIReauthEnvironmentPolicy defines model for CLIReauthEnvironmentPolicy.
+// CLIReauthEnvironmentPolicy Display policy for one environment. The organisation and project ids are the owning rows, resolved by the server after it authorized the caller for this environment; clients read names through their own authorized endpoints.
 type CLIReauthEnvironmentPolicy struct {
 	EffectiveWindowSeconds int `json:"effective_window_seconds"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
-	EnvironmentId    ID   `json:"environment_id"`
+	EnvironmentId ID `json:"environment_id"`
+
+	// OrgId A prefixed UUIDv7, e.g. `org_0198…`.
+	OrgId ID `json:"org_id"`
+
+	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProjectId        ID   `json:"project_id"`
 	RequiresWebauthn bool `json:"requires_webauthn"`
 }
 
@@ -7195,8 +7204,11 @@ type DeliveryTargetTombstoneRequest struct {
 // DeveloperCredential defines model for DeveloperCredential.
 type DeveloperCredential struct {
 	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
-	AuthorityPrincipalId ID        `json:"authority_principal_id"`
-	CreatedAt            time.Time `json:"created_at"`
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// AuthorityPrincipalName Display name of the human who delegated the credential. Omitted when unnamed.
+	AuthorityPrincipalName *string   `json:"authority_principal_name,omitempty"`
+	CreatedAt              time.Time `json:"created_at"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID        `json:"environment_id"`
@@ -7211,6 +7223,9 @@ type DeveloperCredential struct {
 
 	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	PrincipalId ID `json:"principal_id"`
+
+	// PrincipalName Display name of the credential's principal, when it has one. Omitted otherwise.
+	PrincipalName *string `json:"principal_name,omitempty"`
 
 	// ProjectId A prefixed UUIDv7, e.g. `org_0198…`.
 	ProjectId ID         `json:"project_id"`
@@ -12328,7 +12343,13 @@ type WorkspaceHandoffStepUp struct {
 
 	// Operation The exact decision the reauthentication authorizes.
 	Operation WorkspaceHandoffStepUpOperation `json:"operation"`
-	Purpose   WorkspaceHandoffStepUpPurpose   `json:"purpose"`
+
+	// OrgId Owning organisation of the environment, for display. Present only when the caller may list that environment.
+	OrgId *ID `json:"org_id,omitempty"`
+
+	// ProjectId Owning project of the environment, for display. Present only when the caller may list that environment.
+	ProjectId *ID                           `json:"project_id,omitempty"`
+	Purpose   WorkspaceHandoffStepUpPurpose `json:"purpose"`
 
 	// RequestingOrigin Exact canonical requesting origin from the stored transaction, never from approval-page URL fields.
 	RequestingOrigin string `json:"requesting_origin"`

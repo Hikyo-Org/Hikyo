@@ -544,11 +544,42 @@ func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	if view.EnvID != string(envProd) {
 		t.Errorf("environment = %q, want %q", view.EnvID, envProd)
 	}
+	// The owner may list the environment, so its owners are named for display.
+	if view.OrgID != string(orgA) || view.ProjectID != string(prjA1) {
+		t.Errorf("owners = %q/%q, want %q/%q", view.OrgID, view.ProjectID, orgA, prjA1)
+	}
 	// The whole key set comes back, split — the reason the endpoint exists is to
 	// carry a set a URL could not.
 	if got := slices.Clone(view.KeySet); len(got) != 2 ||
 		!slices.Contains(got, "key_one") || !slices.Contains(got, "key_two") {
 		t.Errorf("key set = %v, want both key_one and key_two", view.KeySet)
+	}
+
+	// Owning a handoff does not prove access to its environment: a human who
+	// may not list it still reads the transaction, without the owner ids, and
+	// the refused probe leaves no grant.denied record behind.
+	outsider := seedSessionFactors(t, db, nobody, `["password","totp"]`)
+	outsiderWorkspace := establishWorkspace(t, ws, outsider)
+	outsiderIntent := workspaceReauthIntent(t, string(authz.OpValueReveal), string(envProd), "key_one")
+	outsiderStarted, err := ws.StartHandoff(ctx, service.HandoffRequest{
+		Origin: stepUpOrigin, RedirectURI: stepUpOrigin + "/workspace/callback",
+		PKCEChallenge: challenge, Purpose: service.HandoffStepUp,
+		SessionID: outsiderWorkspace.SessionID, ReauthIntent: &outsiderIntent,
+	})
+	if err != nil {
+		t.Fatalf("start outsider step-up handoff: %v", err)
+	}
+	outsiderView, err := ws.ShowHandoff(ctx, service.Bearer(outsider), outsiderStarted.State)
+	if err != nil {
+		t.Fatalf("show handoff for a caller who cannot list the environment: %v", err)
+	}
+	if outsiderView.EnvID != string(envProd) || outsiderView.OrgID != "" || outsiderView.ProjectID != "" {
+		t.Errorf("outsider view = %+v, want the environment without owner ids", outsiderView)
+	}
+	for _, table := range []string{"audit_instance_events", "audit_tenant_events"} {
+		if got := queryString(t, db, "SELECT count(*) FROM "+table+" WHERE type = 'grant.denied'"); got != "0" {
+			t.Errorf("%s holds %s grant.denied rows after a cosmetic owner probe, want 0", table, got)
+		}
 	}
 
 	// No session, no read — the numbers here are the ceremony's, not the world's.
