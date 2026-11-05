@@ -97,8 +97,10 @@ var PermittedChanges = map[string]bool{
 //
 // The exception is a closed list of exact findings, not an allowlisted change
 // id, so anything outside it still fails: `mldsa44` on the same path,
-// `mldsa65` on any other enum or operation, and a future `mldsa87`. Adding to
-// this list is an ADR amendment, not a code edit.
+// `mldsa65` on any other enum or operation that oasdiff reports, and a future
+// `mldsa87`. oasdiff has no finding for enum growth in a response header, so
+// the guard does not see that (#1217). Adding to this list is an ADR amendment,
+// not a code edit.
 const (
 	requestEnumAdded  = "request-property-enum-value-added"
 	responseEnumAdded = "response-property-enum-value-added"
