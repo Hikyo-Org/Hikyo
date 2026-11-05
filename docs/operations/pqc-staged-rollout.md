@@ -171,7 +171,7 @@ rehearsal, every `kubectl` and `helm` step and the real cluster are **NOTRUN**.
 
 | Surface | Why there is no stage |
 | --- | --- |
-| Transit ML-DSA (#1129, PR #1172) | Not in what merged in that round. #1172 carries the mechanism, the public surface (API enum and clients from #1212, CLI help, WebUI option) and migration 00084, which moves the rollback floor for every upgrading instance whether or not a key is created. After it merges an authorized caller can create an `mldsa65` Transit key; no key is created and no signer enabled by the merge. Open there: restore-hold, instance reencrypt, multi-node takeover, release-binary refusal against a migration-83 database, Wycheproof vectors and owner thresholds (NOTRUN, see the handoff) |
+| Transit ML-DSA (#1129, PR #1172) | Not in what merged in that round. #1172 carries the mechanism, the public surface (API enum and clients from #1212, CLI help, WebUI option) and migration 00084, which moves the rollback floor for every upgrading instance whether or not a key is created. After it merges an authorized caller can create an `mldsa65` Transit key; no key is created and no signer enabled by the merge. Open there: restore-hold, instance reencrypt, multi-node takeover, release-binary refusal against a migration-84 database, Wycheproof vectors and owner thresholds (NOTRUN, see the handoff) |
 | Private PKI ML-DSA (#1133) | `MLDSAEnabled` is false in production wiring |
 | Release trust (#1132) | No signer, no root, no caller of the verifiers on any shipping path; custody of the ML-DSA recovery key is not named. See the [signing runbook](pqc-release-signing-runbook.md), also not executable |
 | Pairing (#1130) | HOLD; no PQ protocol. The classical pairing and revocation drill is NOTRUN |
