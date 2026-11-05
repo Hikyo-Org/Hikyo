@@ -254,7 +254,8 @@ export const PhoneLongKeyKeepsValueWide: Story = {
     // ... and its text lines up with the value's, not 9px in from it (the button's padding and border).
     await expect(ownText(long).left).toBeCloseTo(text.left, 0);
     // The key's focus ring, pulled out with it, is not cut off by the wrapper's clip.
-    long.focus();
+    for (let tabs = 0; tabs < 80 && document.activeElement !== long; tabs += 1) await userEvent.tab();
+    await expect(long).toHaveFocus();
     const ring = getComputedStyle(long);
     await expect(ring.outlineStyle).not.toBe('none');
     const reach = Number.parseFloat(ring.outlineWidth) + Number.parseFloat(ring.outlineOffset);
