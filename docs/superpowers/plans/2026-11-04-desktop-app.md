@@ -82,8 +82,11 @@ page need these changes, with no server change:
 
 - `web/src/api/client.ts` and `app/AuthProvider.tsx` branch on `artifact !== 'browser'`.
   The spike ran through them with no visible problem, but confirm each branch.
-- `web/src/api/account.ts`: recovery codes shown once must survive the proxy removing a
-  `login` token from the same response. This is plausible, but not traced.
+- `web/src/api/account.ts`: recovery-code regeneration and the enrolment gate call
+  `acceptAccountSession`, which refuses any session that isn't `browser`
+  (`app/AuthProvider.tsx`). App mode must handle this, or the server replaces the codes and
+  the SPA throws before showing them. Found by reading source and matches one iOS simulator
+  run, but it was not reproduced in a plain browser.
 - `key_ids` allows 500 on the handoff, against 10000 elsewhere. This affects every
   key-bound purpose. Decide what a larger unit does before calling the API impact complete.
 - `unlinkIdentity` in `api/openapi.yaml` says it deletes the identity's sessions, but it
