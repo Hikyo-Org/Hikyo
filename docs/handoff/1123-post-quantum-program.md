@@ -64,12 +64,12 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
   before any journal.
 - #1186: a malformed `trust.json` or a persisted strict floor refuses the controller.
 - #1141: importing, rotating or installing a classical issuer under an ML-DSA root is refused.
-- #1172, not merged: migration 00083 will move the rollback floor of every instance. **Update 2026-11-05:** #1172 now also carries the public surface (CLI help, WebUI option, API, CLI and generated-client lifecycle tests, a frozen-client skew case) on top of the OpenAPI enum already on `dev` from #1212; it stays a draft. Migration 00083 is roll-forward only.
+- #1172, merged to `dev` as `4956f5253` on 2026-11-05 (post-merge `ci-dev` passed): migration 00083 moves the rollback floor of every instance that upgrades. **Update 2026-11-05:** #1172 now also carries the public surface (CLI help, WebUI option, API, CLI and generated-client lifecycle tests, a frozen-client skew case) on top of the OpenAPI enum already on `dev` from #1212; the maintainer approved and merged it. Migration 00083 is roll-forward only.
 
 ### Merged on 2026-11-04
 
-The 13 PRs in the table below landed on `dev` with merge commits. #1172 did not merge
-(the owner decided the `/api/v1` freeze on 2026-11-04, which ends its hold; it then still needed its public surface and its own review; the surface is now in #1172, the review is pending),
+The 13 PRs in the table below landed on `dev` with merge commits. #1172 merged later, on 2026-11-05,
+after its own review and the maintainer's decision (the owner decided the `/api/v1` freeze on 2026-11-04, which ends its hold; it then still needed its public surface and its own review; the surface is in #1172),
 PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
 followed with a test repair. Each head below is the head that merged.
 
@@ -103,7 +103,7 @@ evidence for this tree.
 | #1126 backups | #1158 | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | 2026-11-04, repairs re-reviewed |
 | #1127 transport | #1156 | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, repairs re-reviewed |
 | #1128 webhooks | #1188 | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; declared-amendment route accepted | 2026-11-04, repairs re-reviewed |
-| #1129 Transit | #1172 (draft) | `mldsa65` through the API, generated clients, CLI and WebUI, over the mechanism | Not merged. Needs the maintainer's security approval and merge decision (not given); outside the standing merge authorization. Independent review ran and its findings are repaired. Open and registered in the [#1129 handoff](./1129-transit-mldsa.md): Wycheproof vectors, restore-hold with an ML-DSA key, instance reencrypt, multi-node takeover, release-binary refusal against a migration-83 database, owner thresholds. The PostgreSQL legs of the new public-surface tests passed locally on PostgreSQL 18.6, not the CI-pinned image. Migration 00083 moves the rollback floor for every upgrading instance. The Zod skew break is accepted (option A) and asserted in the skew lane | 2026-11-04 for the mechanism, repairs re-reviewed; 2026-11-05 for the head with the public surface, findings repaired and re-checked |
+| #1129 Transit | #1172 (merged `4956f5253`) | `mldsa65` through the API, generated clients, CLI and WebUI, over the mechanism | Merged to `dev` on 2026-11-05 with the maintainer's own security approval and merge decision (outside the standing merge authorization); post-merge `ci-dev` passed. Independent review ran and its findings are repaired. Open and registered in the [#1129 handoff](./1129-transit-mldsa.md): Wycheproof vectors, restore-hold with an ML-DSA key, instance reencrypt, multi-node takeover, release-binary refusal against a migration-83 database, owner thresholds. The PostgreSQL legs of the new public-surface tests passed locally on PostgreSQL 18.6, and post-merge `ci-dev` passed on the CI-pinned image. Migration 00083 moves the rollback floor for every upgrading instance. The Zod skew break is accepted (option A) and asserted in the skew lane | 2026-11-04 for the mechanism, repairs re-reviewed; 2026-11-05 for the head with the public surface, findings repaired and re-checked |
 | #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 effective since 2026-11-04 (expiry 2027-05-03) | 2026-11-04, repairs re-reviewed |
 | #1131 rollout | #1186 | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, repairs re-reviewed |
 | #1132 release | #1192 | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, repairs re-reviewed |
@@ -121,7 +121,7 @@ provider, cluster, receiver, deployment and amd64 evidence is NOTRUN.
 Decided on 2026-11-04, as recommended:
 
 1. Merge to `dev` when green and accept publication in the next nightly, with rollback floors,
-   except #1172, which was held until the `/api/v1` freeze was decided (it has been, option A; #1172 still needs its own review and approval). This settles packet C-10's
+   except #1172, which was held until the `/api/v1` freeze was decided (it has been, option A; #1172 then had its own review and approval and merged on 2026-11-05). This settles packet C-10's
    rollback policy for this round.
 2. Stale-node fencing: strict is per process, recorded in DEC-10 and E-22. The fence stays #1127 work.
 3. `backup-receipt/v2`: the banner is extended, and the E-19 receipt requirement stays registered as unmet.
@@ -134,7 +134,9 @@ Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
 
 8. **The `/api/v1` freeze: option A.** [api-cli-surface](../adr/api-cli-surface.md) (#25) is amended so the closed Transit and PKI enums grow once, for `mldsa65` only. It sets no precedent. The skew break (a `v1.0.0` Zod consumer fails a whole list holding one `mldsa65` value, once an operator creates such a key) is accepted and stated in the banner. Cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN. The amendment enables nothing: Transit has no mechanism on `dev` (it is on #1172) and PKI stays behind `MLDSAEnabled`, false in production. It lands after the 2026-11-04 nightly promotion, so that promotion carries the `dev` head already tested.
 9. Confirmed as built: the #1126 profile selector and vault generation path, the #1127 proxy leg, #1132 signing granularity, and #1133 keeping the `VerifyConnection` walk and platform verifiers. Packet C-10's step 2 abort is "restore the pre-upgrade backup".
-10. Transit signed bytes: the departure described in the [#1129 handoff](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
+10. Transit signed bytes: the departure described in the [#1129 handoff](./1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
+
+Status note, 2026-11-05: #1172 has since merged (`4956f5253`), so the Transit mechanism that decision 8 places on #1172 is now on `dev`.
 
 Decided on 2026-11-04, when the owner said "All open points as recommended":
 

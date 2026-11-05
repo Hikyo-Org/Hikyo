@@ -1,7 +1,9 @@
 # #1129: policy-bound ML-DSA-65 signing and verification in Transit, handoff
 
-Status: **draft. The mechanism and the public surface (API, generated clients, CLI
-help, WebUI option) are implemented in #1172; not merged, not marked ready.** The
+Status: **merged to `dev` as `4956f5253` on 2026-11-05, with the maintainer's
+security approval for head `aa54b7d94`; post-merge `ci-dev` passed (run
+42087849745). Reaches `main` with the next promotion.** The text below was written
+before the merge and records the state at review time. The
 owner's hold of 2026-11-04 (public surface held until the `/api/v1` freeze is
 decided) ended when the owner chose option A for the freeze the same day, which
 merged to `dev` as #1212 (OpenAPI enum, regenerated Go and TypeScript clients, the
@@ -341,10 +343,12 @@ schema digest per engine), then rerun the lint pins.
 The freeze and signed-bytes decisions are made (2026-11-04). What is left is
 registered open, with its risk; none of it is built in this PR.
 
-1. **Hosted runs of the post-merge lanes.** The PostgreSQL legs and the skew lane passed
-   locally on PostgreSQL 18.6 (see Tests and results), not on the CI-pinned image. They
-   and the buildcompat digest check first run hosted in post-merge `ci-dev`. Risk: a
-   difference between that image and the local server is not observed.
+1. **Done on 2026-11-05: hosted runs of the post-merge lanes.** Post-merge `ci-dev`
+   (run 42087849745) passed on `4956f5253` on the CI-pinned PostgreSQL image: the
+   both-engine frozen-client lane, the isolation shards that run SQLite and PostgreSQL
+   cases (which shard ran the new tests is not confirmed), and `test_core`, whose
+   `internal/app` package includes `TestReleaseCompatibilityMatchesActualBothEngineSchemas`,
+   the buildcompat digest check (it cannot skip in CI).
 2. **Pin Wycheproof ML-DSA vectors** (source, version, digest; DEC-09). Risk: the
    vectors in the tree come from the Go standard library only, plus a local OpenSSL
    check outside CI.
@@ -358,8 +362,9 @@ registered open, with its risk; none of it is built in this PR.
    older than this change refuses the migrated database is unknown: no test drives the
    upgrade gate against it. The rollback floor moves regardless; see above.
 7. **Owner thresholds** from a target-machine baseline (amd64 included; not measured).
-8. **Maintainer security approval** and **independent adversarial review of the new
-   head**. Cross-provider review stays SKIPPED, not CLEAN.
+8. **Done on 2026-11-05:** maintainer security approval for head `aa54b7d94`, and
+   independent adversarial review (its last, documentation-only commit had no further
+   read). Cross-provider review stays SKIPPED, not CLEAN.
 9. **Consumers.** One `mldsa65` key in an environment makes that environment's key
    list unreadable to any consumer that validates with the `v1.0.0` Zod schemas
    (accepted, option A). The WebUI in this PR parses it; integrators must update
