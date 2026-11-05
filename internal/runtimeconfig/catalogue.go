@@ -1,6 +1,8 @@
 package runtimeconfig
 
 import (
+	"strings"
+
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 )
@@ -62,6 +64,7 @@ func Catalogue() []Key {
 		"HIKYO_MCP_ENABLED":                "Enable the MCP endpoint. Requires an HTTPS public origin outside loopback development.",
 		"HIKYO_MCP_WRITE_ENABLED":          "Install the MCP stage-and-validate write tools. Requires MCP enabled; grants no authority by itself.",
 		"HIKYO_REAUTH_WINDOW_SECONDS":      "Disclosure reauthentication window in seconds, from 0 to 86400. Apply still requires its own ceremony.",
+		"HIKYO_TLS_PROFILE":                "Native listener key-exchange policy. `compat` keeps today's TLS behavior and is the default. `strict` requires TLS 1.3 and the hybrid X25519MLKEM768 group and needs a TLS certificate pair. It protects handshake confidentiality only; certificate authentication is separate and stays classical. Each node enforces its own activated profile, and a node that is behind the desired generation keeps serving at its previous profile, so one node being strict does not make the fleet strict.",
 		"HIKYO_SECOND_FACTOR":              "Sign-in second-factor policy. `required` gates a password login on an account with no factor into enrolment; `optional` keeps the local floor.",
 	}
 	for _, name := range config.ManagedOwnerKeys() {
@@ -78,10 +81,46 @@ func Catalogue() []Key {
 		case "HIKYO_SECOND_FACTOR":
 			key.Declaration.Rule.Type = schema.TypeEnum
 			key.Declaration.Rule.Members = []string{"required", "optional"}
+		case "HIKYO_TLS_PROFILE":
+			key.Declaration.Rule.Type = schema.TypeEnum
+			key.Declaration.Rule.Members = []string{config.TLSProfileCompat, config.TLSProfileStrict}
 		}
 		keys = append(keys, key)
 	}
 	keys = append(keys, text(config.ManagedNodeOverridesKey, "Versioned per-node configuration, including TLS private-key contents. Each admitted node requires its own exact entry.", true))
 	keys = append(keys, text(config.ManagedBootstrapSourcesKey, "Installed database, root-key and upgrade-custody source aliases and enrolled singleton topology (HA mode and node identity). Changes require a reviewed controlled rollout and fresh authentication.", false))
 	return keys
+}
+
+// keyFolders groups the catalogue for display. A name matches its first prefix.
+var keyFolders = []struct{ prefix, folder string }{
+	{"HIKYO_ARGON2_", "Authentication"},
+	{"HIKYO_REAUTH_", "Authentication"},
+	{"HIKYO_SECOND_FACTOR", "Authentication"},
+	{"HIKYO_AUDIT_", "Audit"},
+	{"HIKYO_BACKUP_", "Backup"},
+	{"HIKYO_DEFAULT_KEYS_", "Capacity"},
+	{"HIKYO_MAX_KEYS_", "Capacity"},
+	{"HIKYO_MAIL_", "Mail"},
+	{"HIKYO_MCP_", "MCP"},
+	{"HIKYO_DIRECTORY_PROXY", "Network"},
+	{"HIKYO_EXTERNAL_ORIGIN", "Network"},
+	{"HIKYO_PAIRING_", "Network"},
+	{"HIKYO_TLS_PROFILE", "Network"},
+	{"HIKYO_BOOTSTRAP_SOURCES", "Deployment"},
+	{"HIKYO_NODE_OVERRIDES", "Deployment"},
+	{"HIKYO_UPDATE_", "Updates"},
+}
+
+// Folder names the folder a catalogue key is shown in, or "" for an unknown
+// name. It is never stored: the runtime and upgrade fences require the system
+// project's stored catalogue to stay flat, so this also reaches adopted
+// instances without a migration and survives a downgrade.
+func Folder(name string) string {
+	for _, entry := range keyFolders {
+		if strings.HasPrefix(name, entry.prefix) {
+			return entry.folder
+		}
+	}
+	return ""
 }

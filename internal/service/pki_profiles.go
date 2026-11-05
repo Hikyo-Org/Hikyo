@@ -229,6 +229,11 @@ func (s *PKI) CreateProfile(ctx context.Context, actor Actor, name string, polic
 	if err := policy.Validate(); err != nil {
 		return PKIProfileView{}, pkiInvalid(err)
 	}
+	for _, algorithm := range policy.KeyAlgorithms {
+		if err := s.algorithmEnabled(algorithm); err != nil {
+			return PKIProfileView{}, err
+		}
+	}
 	encoded, err := encodePKIPolicy(policy)
 	if err != nil {
 		return PKIProfileView{}, err
@@ -275,6 +280,11 @@ func (s *PKI) UpdateProfile(ctx context.Context, actor Actor, name string, polic
 	policy = policy.Normalize()
 	if err := policy.Validate(); err != nil {
 		return PKIProfileView{}, pkiInvalid(err)
+	}
+	for _, algorithm := range policy.KeyAlgorithms {
+		if err := s.algorithmEnabled(algorithm); err != nil {
+			return PKIProfileView{}, err
+		}
 	}
 	encoded, err := encodePKIPolicy(policy)
 	if err != nil {

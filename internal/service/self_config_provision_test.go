@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -210,6 +211,79 @@ func TestSelfConfigIndependentOwnersKeepSeparateProjectsAndRuntime(t *testing.T)
 	}
 	if firstBundle.UpdateChannel() != "nightly" || secondBundle.UpdateChannel() != "off" {
 		t.Fatal("independent runtime settings were shared")
+	}
+}
+
+func TestSelfConfigKeysAreShownInReleaseFolders(t *testing.T) {
+	t.Parallel()
+	s, actor := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "folders.db")}, map[string]string{"HIKYO_UPDATE_CHANNEL": "off"})
+	status, err := s.Status(t.Context(), actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := &Keys{DB: s.DB}
+	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID)}
+	listed, _, err := keys.List(t.Context(), actor, scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != len(runtimeconfig.Catalogue()) {
+		t.Fatalf("listed %d keys", len(listed))
+	}
+	for _, key := range listed {
+		if want := runtimeconfig.Folder(key.Name); want == "" || key.FolderPath != want {
+			t.Errorf("%s folder = %q, want %q", key.Name, key.FolderPath, want)
+		}
+	}
+	one, err := keys.Get(t.Context(), actor, scope, listed[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.FolderPath != listed[0].FolderPath {
+		t.Fatalf("get folder = %q, list folder = %q", one.FolderPath, listed[0].FolderPath)
+	}
+	// An ordinary project's key keeps its own folder, even with a system name.
+	org, err := (&Orgs{DB: s.DB}).Create(t.Context(), actor, "Ordinary", true, json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := (&Projects{DB: s.DB}).Create(t.Context(), actor, domain.OrgID(org.ID), "ordinary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinaryScope := domain.Scope{Org: domain.OrgID(org.ID), Project: domain.ProjectID(project.ID)}
+	ordinaryKeys := &Keys{DB: s.DB, Keyring: s.Keyring}
+	created, err := ordinaryKeys.Create(t.Context(), actor, ordinaryScope, KeySpec{Name: "HIKYO_MAIL_ADDR", FolderPath: "custom", Classification: "config",
+		Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}}, Presence: schema.DefaultPresenceRules()}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordinary, err := ordinaryKeys.Get(t.Context(), actor, ordinaryScope, created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ordinary.FolderPath != "custom" {
+		t.Fatalf("ordinary key folder = %q", ordinary.FolderPath)
+	}
+	// The display folder must not reach the stored row the runtime fence reads.
+	err = tx.Read(t.Context(), s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
+		_, p, err := authorize(ctx, az, actor, authz.OpKeyList, scope, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		rows, err := r.Catalogue().List(ctx, p)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			if row.FolderPath != "" {
+				t.Errorf("%s stored folder = %q", row.Name, row.FolderPath)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

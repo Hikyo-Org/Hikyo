@@ -323,6 +323,7 @@ func (p *preparedOwnerActivation) Activate(ctx context.Context) error {
 	o.mu.Lock()
 	p.endpoints.activate(o)
 	o.current = next
+	p.graph.certificate.logConfigured(o.server.log)
 	o.values = maps.Clone(p.values)
 	o.nodeValues = maps.Clone(p.nodeValues)
 	if o.workerContext != nil {
