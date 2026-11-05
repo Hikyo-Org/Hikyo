@@ -132,36 +132,13 @@ func (c *freezeRemovalCheck) schema(schema *diff.SchemaDiff, operation, path, co
 			fmt.Sprintf("%s property %q removed from the frozen API", context, schemawalk.PropertyFullName(parentPath, name)))
 	})
 	c.schemaNode(schema, operation, path, context)
-	schemawalk.Walker{Enter: func(parentPath, name string, node, parent *diff.SchemaDiff, _ bool) {
-		if deletedEmptySubschema(node, parent) {
-			return
-		}
+	schemawalk.Walker{Enter: func(parentPath, name string, node, _ *diff.SchemaDiff, _ bool) {
 		location := parentPath
 		if name != "" {
 			location = schemawalk.PropertyFullName(parentPath, name)
 		}
 		c.schemaNode(node, operation, path, context+" at "+location)
 	}}.Walk(schema)
-}
-
-// An empty schema constrains nothing, so deleting one removes nothing. A deleted
-// node carries no base of its own: the parent holds what was declared.
-func deletedEmptySubschema(node, parent *diff.SchemaDiff) bool {
-	if !node.SchemaDeleted || parent == nil || parent.Base == nil {
-		return false
-	}
-	var ref *openapi3.SchemaRef
-	switch node {
-	case parent.ItemsDiff:
-		ref = parent.Base.Items
-	case parent.AdditionalPropertiesDiff:
-		ref = parent.Base.AdditionalProperties.Schema
-	}
-	if ref == nil || ref.Value == nil {
-		return false
-	}
-	raw, err := ref.Value.MarshalJSON()
-	return err == nil && string(raw) == "{}"
 }
 
 // schemaNode reports what no upstream check does: a whole subschema deleted,

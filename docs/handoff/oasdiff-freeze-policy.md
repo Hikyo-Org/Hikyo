@@ -24,16 +24,18 @@ recover a finding that the checker never emits.
    values, responses (including `default` and wildcards), response links and
    media-type encodings. Traversal covers request bodies, parameters, response
    bodies and headers, including nested schemas, modified composed branches and
-   resolved references. Deleting an empty `items` or `additionalProperties`
-   schema removes nothing and is not refused.
+   resolved references. A declared schema stays declared, so deleting even an
+   empty one is refused.
 2. Every upstream checker finding still passes through the existing addition
    allowlist. New upstream IDs remain forbidden until explicitly reviewed. The
    stability threshold is set to `draft`, because a `x-stability-level` of
-   `alpha` or `draft` otherwise hides upstream findings for that operation.
+   `alpha` or `draft` otherwise hides upstream findings for that operation. It
+   also means promoting an operation from those levels is refused; the spec uses
+   no stability labels today.
 
 Upstream checkers do not descend into callbacks, so the gate cannot prove that
 a change inside one is additive. It refuses every callback removal and every
-change inside a callback, additions included. Adding a whole callback remains
+change oasdiff reports inside a callback, additions included. Adding a whole callback remains
 permitted, and `api/openapi.yaml` declares none today. This is a deliberate
 fail-closed choice; a future additive callback change needs this rule revisited.
 
@@ -48,7 +50,15 @@ upstream common-parameter helper, including callback paths. This operates only
 on freshly parsed documents, and a seen-callback guard bounds cyclic references.
 Removing a shadowed path declaration or moving an unchanged parameter to an
 operation is neutral; removing an effective inherited parameter still fails.
-Both directions of declaration movement are tested.
+Both directions of declaration movement are tested. Because path-level
+parameters now compare as operation parameters, the operation-level rules apply
+to them: an optional addition passes, and an edit such as deprecating one or
+widening its `maxLength` is refused.
+
+oasdiff v1.35.0 also changes two security-scheme checks. OAuth and OpenID Connect
+URLs differing only by RFC-equivalent host case or default port now pass, and
+OAuth scope additions and edits are refused in every flow rather than only
+`implicit`. The spec declares neither scheme type today.
 
 ## Known limits
 

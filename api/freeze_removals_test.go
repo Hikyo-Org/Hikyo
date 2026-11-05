@@ -125,13 +125,21 @@ func TestFreezeRejectsPastSunsetEndpointAndParameterRemovals(t *testing.T) {
 }
 
 func TestFreezeRemovalDiagnosticsAreStable(t *testing.T) {
-	document := func(properties string) []byte {
-		schema := fmt.Sprintf(`{"type":"object","properties":{%s}}`, properties)
-		operation := fmt.Sprintf(`{"requestBody":{"content":{"application/json":{"schema":%s}}},"responses":{"200":{"description":"ok"}}}`, schema)
+	document := func(property string) []byte {
+		var parameters []string
+		for _, name := range []string{"p1", "p2", "p3", "p4"} {
+			parameters = append(parameters, fmt.Sprintf(`{"name":%q,"in":"query","schema":{"type":"object","properties":{%s}}}`, name, property))
+		}
+		operation := fmt.Sprintf(`{"parameters":[%s],"responses":{"200":{"description":"ok"}}}`, strings.Join(parameters, ","))
 		return []byte(fmt.Sprintf(`{"openapi":"3.1.0","jsonSchemaDialect":"https://spec.openapis.org/oas/3.1/dialect/base","info":{"title":"fixture","version":"1"},"paths":{"/a":{"post":%[1]s,"put":%[1]s},"/b":{"post":%[1]s}}}`, operation))
 	}
-	base, revised := document(`"x":{"type":"string"},"y":{"type":"string"}`), document(``)
-	want := []string{`/a POST "x"`, `/a POST "y"`, `/a PUT "x"`, `/a PUT "y"`, `/b POST "x"`, `/b POST "y"`}
+	base, revised := document(`"x":{"type":"string"}`), document(``)
+	var want []string
+	for _, where := range []string{"/a POST", "/a PUT", "/b POST"} {
+		for _, name := range []string{"p1", "p2", "p3", "p4"} {
+			want = append(want, fmt.Sprintf(`%s query parameter %q property "x" removed from the frozen API`, where, name))
+		}
+	}
 	// The structural check ranges over maps, so one run can be ordered by luck.
 	for range 50 {
 		violations, err := api.CheckFreeze(base, revised)
@@ -141,7 +149,7 @@ func TestFreezeRemovalDiagnosticsAreStable(t *testing.T) {
 		var order []string
 		for _, v := range violations {
 			if v.ID == "hikyo-property-removed" {
-				order = append(order, fmt.Sprintf("%s %s %s", v.Path, v.Operation, strings.Fields(v.Text)[4]))
+				order = append(order, fmt.Sprintf("%s %s %s", v.Path, v.Operation, v.Text))
 			}
 		}
 		if !slices.Equal(order, want) {
@@ -268,6 +276,10 @@ func TestFreezeRejectsRemovalsUpstreamChecksOmit(t *testing.T) {
 	for _, tc := range []struct{ name, base, revised, wantID string }{
 		{"array-items", list(`,"items":` + object), list(``), "hikyo-schema-removed"},
 		{"map-values", values(`,"additionalProperties":` + object), values(``), "hikyo-schema-removed"},
+		// A declared schema stays declared, even an empty one. Going to false narrows it.
+		{"empty-items", list(`,"items":{}`), list(``), "hikyo-schema-removed"},
+		{"empty-map-values", values(`,"additionalProperties":{}`), values(``), "hikyo-schema-removed"},
+		{"empty-map-values-to-false", values(`,"additionalProperties":{}`), values(`,"additionalProperties":false`), "hikyo-schema-removed"},
 		{
 			"request-items",
 			`"requestBody":{"content":{"application/json":{"schema":{"type":"array","items":` + object + `}}}},"responses":{` + ok + `}`,
@@ -357,9 +369,6 @@ func TestFreezeDoesNotRefuseEdits(t *testing.T) {
 	const ok = `"responses":{"200":{"description":"ok"}}`
 	object := `{"type":"object","properties":{"x":{"type":"string"}}}`
 	for _, tc := range []struct{ name, base, revised string }{
-		{"empty-items-removed", response(`{"type":"array","items":{}}`), response(`{"type":"array"}`)},
-		{"empty-additional-properties-removed", response(`{"type":"object","additionalProperties":{}}`), response(`{"type":"object"}`)},
-		{"empty-additional-properties-to-true", response(`{"type":"object","additionalProperties":{}}`), response(`{"type":"object","additionalProperties":true}`)},
 		{"items-added", response(`{"type":"array"}`), response(`{"type":"array","items":` + object + `}`)},
 		{"additional-properties-added", response(`{"type":"object"}`), response(`{"type":"object","additionalProperties":` + object + `}`)},
 		{"whole-callback-added", ok, ok + `,"callbacks":{"notice":{"{$request.query.url}":{"post":{` + ok + `}}}}`},
