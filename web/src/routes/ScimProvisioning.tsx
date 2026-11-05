@@ -872,14 +872,14 @@ function CredentialRow({
   return (
     <li className="scim-credential">
       <div className="scim-credential__head">
-        <span className="mono scim-credential__id">{credential.id}</span>
+        <span>Created {isoDay(credential.created_at)}</span>
         <Badge data-state={state} {...LIFETIME_TAG[state]}>
           {state}
         </Badge>
       </div>
       <dl className="scim-credential__facts">
-        <dt>Created</dt>
-        <dd>{isoDay(credential.created_at)}</dd>
+        <dt>ID</dt>
+        <dd className="mono scim-credential__id">{credential.id}</dd>
         <dt>Expires</dt>
         <dd>{credential.expires_at === undefined ? 'never' : isoDay(credential.expires_at)}</dd>
         <dt>Last used</dt>
@@ -898,7 +898,7 @@ function CredentialRow({
             variant="danger"
             type="button"
             disabled={revoke.isPending}
-            aria-label={`Revoke credential ${credential.id}`}
+            aria-label={`Revoke credential created ${isoDay(credential.created_at)} (ID ending ${credential.id.slice(-6)})`}
             onClick={() => {
               feedback.clear();
               revoke.mutate(credential.id, { onError: (caught) => feedback.report(caught) });

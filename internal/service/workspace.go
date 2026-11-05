@@ -186,9 +186,11 @@ type ConnectionView struct {
 	ExpiresAt  time.Time
 	CreatedAt  time.Time
 	CreatedBy  domain.PrincipalID
-	RevokedAt  time.Time
-	LastUsedAt time.Time
-	Live       bool
+	// CreatedByName is the creator's display name, empty when unresolved.
+	CreatedByName string
+	RevokedAt     time.Time
+	LastUsedAt    time.Time
+	Live          bool
 }
 
 // MintConnectionResult carries the one and only disclosure of the value.
@@ -327,8 +329,14 @@ func (s *Workspace) ListConnections(ctx context.Context, actor Actor) ([]Connect
 			return err
 		}
 		out = make([]ConnectionView, 0, len(conns))
+		names := newPrincipalNames()
 		for _, c := range conns {
-			out = append(out, connectionView(c, now, epoch))
+			view := connectionView(c, now, epoch)
+			// The caller may list these connections, so their creators are disclosed.
+			if view.CreatedByName, err = names.get(ctx, az, view.CreatedBy); err != nil {
+				return err
+			}
+			out = append(out, view)
 		}
 		e, err := domainEvent(ctx, audit.EventRemoteCredentialsListed, caller.Principal,
 			audit.Object{Type: "instance_connection", ID: ""}, audit.Payload{"row_count": len(out)})
@@ -358,6 +366,9 @@ func (s *Workspace) ShowConnection(ctx context.Context, actor Actor, id string) 
 			return err
 		}
 		out = connectionView(conn, now, epoch)
+		if out.CreatedByName, err = newPrincipalNames().get(ctx, az, out.CreatedBy); err != nil {
+			return err
+		}
 		e, err := domainEvent(ctx, audit.EventRemoteCredentialsListed, caller.Principal,
 			audit.Object{Type: "instance_connection", ID: id}, audit.Payload{"row_count": 1})
 		if err != nil {

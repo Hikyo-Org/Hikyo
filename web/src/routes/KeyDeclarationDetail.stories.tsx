@@ -83,6 +83,7 @@ const git = {
     plan_id: 'pln_123e4567-e89b-12d3-a456-426614174000',
     applied_at: '2026-09-01T10:00:00Z',
     applied_by: 'prn_123e4567-e89b-12d3-a456-426614174000',
+    applied_by_name: 'Release Bot',
     commit: 'abc1234',
     ref: 'refs/heads/main',
     actor: 'ci@example.com',
@@ -185,7 +186,7 @@ export const GitReadOnly: Story = {
     const provenance = canvas.getByText(/Last applied by/);
     await expect(provenance).toBeVisible();
     await expect(provenance.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Last applied by prn_123e4567-e89b-12d3-a456-426614174000 · actor ci@example.com · commit abc1234 · ref refs/heads/main',
+      'Last applied by Release Bot · actor ci@example.com · commit abc1234 · ref refs/heads/main',
     );
     await expect(provenance.querySelectorAll('.sep')).toHaveLength(3);
     await expect(canvas.queryByRole('heading', { name: 'Rename key' })).not.toBeInTheDocument();

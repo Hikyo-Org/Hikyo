@@ -667,13 +667,17 @@ function AccessRequestRow({
   return (
     <li className="temporary-access__request">
       <div className="temporary-access__request-head">
-        <span className="mono">{request.id}</span>
+        <span title={request.requester}>{request.requester_name ?? request.requester}</span>
         <span className="temporary-access__request-state">
           {state}
           {request.state === 'open' ? <><Sep />{`${request.approvals}/${request.min_approvals} approvals`}</> : null}
         </span>
       </div>
       <dl className="temporary-access__request-meta">
+        <div>
+          <dt>Request ID</dt>
+          <dd className="mono">{request.id}</dd>
+        </div>
         <div>
           <dt>Requester</dt>
           <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>

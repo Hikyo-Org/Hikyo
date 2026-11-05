@@ -118,6 +118,9 @@ type SSHCertificateView struct {
 	Status string
 	// InKRL is whether the serial is published in the CA's revocation list.
 	InKRL bool
+	// RequesterPrincipalName names the requester, which the row already
+	// discloses. Empty when unresolved or not looked up.
+	RequesterPrincipalName string
 }
 
 // SSHIssueResult carries a new certificate and, for a generated key, the
@@ -1115,8 +1118,13 @@ func (s *SSH) ListCertificates(ctx context.Context, actor Actor, scope domain.Sc
 			return err
 		}
 		out = make([]SSHCertificateView, 0, len(rows))
+		names := newPrincipalNames()
 		for _, c := range rows {
-			out = append(out, certificateView(c, now))
+			view := certificateView(c, now)
+			if view.RequesterPrincipalName, err = names.get(ctx, az, domain.PrincipalID(c.RequesterPrincipalID)); err != nil {
+				return err
+			}
+			out = append(out, view)
 		}
 		return nil
 	})
@@ -1135,7 +1143,11 @@ func (s *SSH) GetCertificate(ctx context.Context, actor Actor, scope domain.Scop
 			return err
 		}
 		c, err := r.SSH().GetCertificate(ctx, proof, certID)
+		if err != nil {
+			return err
+		}
 		out = certificateView(c, now)
+		out.RequesterPrincipalName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(c.RequesterPrincipalID))
 		return err
 	})
 	return out, err
@@ -1180,7 +1192,9 @@ func (s *SSH) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 		if err != nil {
 			return SSHCertificateView{}, err
 		}
-		return certificateView(after, now), nil
+		view := certificateView(after, now)
+		view.RequesterPrincipalName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(after.RequesterPrincipalID))
+		return view, err
 	})
 }
 

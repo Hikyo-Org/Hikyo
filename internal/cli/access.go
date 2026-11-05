@@ -657,7 +657,7 @@ func grantTable(list apigen.GrantList) Table {
 	rows := make([][]string, 0, len(list.Items))
 	for _, g := range list.Items {
 		rows = append(rows, []string{
-			g.PrincipalId, g.Capability, renderGrantScope(g.Scope), renderOrigins(g.Origins),
+			idWithName(g.PrincipalId, g.PrincipalName), g.Capability, renderGrantScope(g.Scope), renderOrigins(g.Origins),
 		})
 	}
 	return Table{Columns: grantColumns, Rows: rows, JSON: list}
@@ -683,16 +683,20 @@ func grantResultRow(r apigen.GrantResult) ([]string, error) {
 // reading of them, which is why it never offers a revoke handle of its own.
 func memberTable(list apigen.GrantList) Table {
 	byPrincipal := map[string][]string{}
+	names := map[string]*string{}
 	for _, g := range list.Items {
 		byPrincipal[g.PrincipalId] = append(byPrincipal[g.PrincipalId],
 			g.Capability+"@"+renderGrantScope(g.Scope))
+		if g.PrincipalName != nil {
+			names[g.PrincipalId] = g.PrincipalName
+		}
 	}
 	principals := slices.Sorted(maps.Keys(byPrincipal))
 	rows := make([][]string, 0, len(principals))
 	for _, p := range principals {
 		caps := byPrincipal[p]
 		slices.Sort(caps)
-		rows = append(rows, []string{p, strings.Join(caps, ",")})
+		rows = append(rows, []string{idWithName(p, names[p]), strings.Join(caps, ",")})
 	}
 	return Table{Columns: memberColumns, Rows: rows, JSON: list}
 }

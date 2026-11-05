@@ -236,6 +236,21 @@ export const Administering: Story = {
   },
 };
 
+// A credential is headed by when it was created, its ID has its own row, and
+// the revoke button names the credential by date and the tail of its ID.
+export const CredentialLabels: Story = {
+  parameters: Administering.parameters,
+  play: async ({ canvas }) => {
+    await openTab(canvas, 'Provisioning credentials');
+    const heading = await canvas.findByText('Created 2026-09-01');
+    const card = heading.closest('.scim-credential');
+    if (card === null) throw new Error('credential card missing');
+    await expect(within(card as HTMLElement).getByText('ID').nextElementSibling).toHaveTextContent('scr_123e4567-e89b-12d3-a456-426614174501');
+    await expect(within(card as HTMLElement).getByText('scr_123e4567-e89b-12d3-a456-426614174501')).toHaveClass('mono');
+    await expect(canvas.getByRole('button', { name: 'Revoke credential created 2026-09-01 (ID ending 174501)' })).toBeVisible();
+  },
+};
+
 // Administer opens the binding's first section, the Mappings tab that appears.
 export const AdministerOpensMappings: Story = {
   parameters: { app: at('', administering) },

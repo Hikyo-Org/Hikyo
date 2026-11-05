@@ -1890,10 +1890,18 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		// Read the name before the delete (best effort, never for JSON): afterwards there is nothing to ask.
+		label := lazyLabeler(f, func() map[string]string {
+			var org apigen.Org
+			if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/orgs/"+url.PathEscape(id), nil, &org); err != nil {
+				return nil
+			}
+			return map[string]string{id: org.Name}
+		})(id)
 		if err := client.Do(ctx, http.MethodDelete, api.PathPrefix+"/orgs/"+url.PathEscape(id), nil, nil); err != nil {
 			return err
 		}
-		fmt.Fprintf(ios.Stderr, "deleted organisation %s\n", id)
+		fmt.Fprintf(ios.Stderr, "deleted organisation %s\n", label)
 		return nil
 
 	}

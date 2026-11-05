@@ -39,27 +39,28 @@ export function useConsentNames(org: string, project: string, wantKeys: boolean)
   };
 }
 
-/** A human name with its ID reachable on hover, or the ID in mono when no name is known. */
-export function ConsentName({ id, name }: { id: string; name: string | undefined }) {
-  return name === undefined || name === id ? (
-    <span className="mono">{id}</span>
-  ) : (
-    <span title={id}>{name}</span>
-  );
-}
-
 /**
  * The enumerated key set a consent decision binds, led by its count and listed
  * by name like the in-app ceremony. Every ID stays listed, with the ID on hover;
  * the focusable region keeps a long list reachable by keyboard.
  */
-export function ConsentKeys({ keys }: { keys: readonly ConsentKey[] }) {
+export function ConsentKeys({
+  keys,
+  label = 'Keys this decision covers',
+  insideScrollRegion = false,
+}: {
+  keys: readonly ConsentKey[];
+  /** Several lists on one page each need their own name. */
+  label?: string;
+  /** The surrounding region scrolls and takes focus, so the list must not as well. */
+  insideScrollRegion?: boolean;
+}) {
   return (
     <>
       <p className="ceremony__scope">
         {keys.length} {keys.length === 1 ? 'key' : 'keys'}
       </p>
-      <ul className="ceremony__keys" aria-label="Keys this decision covers" tabIndex={0}>
+      <ul className="ceremony__keys" aria-label={label} tabIndex={insideScrollRegion ? undefined : 0}>
         {keys.map((key) => (
           <li className="mono" key={key.id} title={key.id}>
             {key.classification === 'secret' ? (

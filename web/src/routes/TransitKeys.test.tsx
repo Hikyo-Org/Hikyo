@@ -91,6 +91,24 @@ it('does not request keys for a missing selected environment', async () => {
     expect(view.container.textContent).toContain('The selected environment is no longer available.');
   } finally { await view.unmount(); }
 });
+it('names a caller the server named and leaves an unnamed caller as its ID', async () => {
+  installFetch({
+    ...key,
+    callers: [
+      { principal_id: 'prn_00000000-0000-4000-8000-0000000000a1', operations: ['decrypt'] },
+      { principal_id: 'prn_00000000-0000-4000-8000-0000000000a2', operations: ['decrypt'] },
+    ],
+    principal_names: { 'prn_00000000-0000-4000-8000-0000000000a1': 'Dana Jacobs' },
+  });
+  const view = await renderForm(<Harness />);
+  try {
+    await settleTask(); await settleTask();
+    const entries = [...view.container.querySelectorAll('li')].map((item) => item.textContent);
+    expect(entries).toContain('Dana Jacobs: decrypt');
+    expect(entries).toContain('prn_00000000-0000-4000-8000-0000000000a2: decrypt');
+    expect(view.container.textContent).not.toContain('prn_00000000-0000-4000-8000-0000000000a1');
+  } finally { await view.unmount(); }
+});
 
 // Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
 // bytes, 2632 base64 characters); the key bytes are filler.

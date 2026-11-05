@@ -294,7 +294,6 @@ export const zDeveloperCredential = z.object({
     expires_at: z.iso.datetime(),
     revoked_at: z.iso.datetime().optional(),
     prefix_hint: z.string(),
-    principal_name: z.string().min(1).optional(),
     authority_principal_name: z.string().min(1).optional()
 });
 
@@ -857,6 +856,7 @@ export const zSshCertificate = z.object({
     valid_after: zTimestamp,
     valid_before: zTimestamp,
     requester_principal_id: zId,
+    requester_principal_name: z.string().min(1).optional(),
     requester_class: z.string(),
     status: z.enum([
         'active',
@@ -2139,6 +2139,7 @@ export const zDefinitionsLastApply = z.object({
     plan_id: zId,
     applied_at: zTimestamp,
     applied_by: z.string(),
+    applied_by_name: z.string().min(1).optional(),
     commit: z.string().max(256).optional(),
     ref: z.string().max(256).optional(),
     actor: z.string().max(256).optional(),
@@ -3273,7 +3274,8 @@ export const zValueCell = z.object({
     revealed: z.boolean(),
     value: z.string().optional(),
     updated_at: zTimestamp.optional(),
-    updated_by: z.string().optional()
+    updated_by: z.string().optional(),
+    updated_by_name: z.string().min(1).optional()
 });
 
 export const zValueList = z.object({
@@ -4428,6 +4430,7 @@ export const zInstanceConnection = z.object({
     expires_at: zTimestamp.optional(),
     created_at: zTimestamp,
     created_by: z.string().max(64),
+    created_by_name: z.string().min(1).optional(),
     revoked_at: zTimestamp.optional(),
     last_used_at: zTimestamp.optional(),
     live: z.boolean()
@@ -4863,7 +4866,8 @@ export const zTransitKey = z.object({
     created_at: zTimestamp,
     updated_at: zTimestamp,
     versions: z.array(zTransitKeyVersion),
-    callers: z.array(zTransitCaller)
+    callers: z.array(zTransitCaller),
+    principal_names: z.record(z.string(), z.string().min(1)).optional()
 });
 
 export const zTransitKeyList = z.object({

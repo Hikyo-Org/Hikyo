@@ -488,6 +488,11 @@ fieldset.field > legend {
   overflow-wrap: anywhere;
 }
 
+.workspace-consent__scope .ceremony__keys {
+  max-height: none;
+  overflow: visible;
+}
+
 .workspace-consent__scope dl {
   margin: 0;
 }
@@ -3576,6 +3581,7 @@ fieldset.field > legend {
   background: var(--bg);
   max-height: 30vh;
   overflow: auto;
+  overflow-wrap: anywhere;
 }
 
 .ceremony__cap {

@@ -66,6 +66,10 @@ export const Failed: Story = {
   },
   play: async ({ canvas }) => {
     const alert = canvas.getByRole('alert');
+    // The failure leads with the target version; the job ID stays visible for the logs.
+    await expect(alert).toHaveTextContent(/^Update to 1\.4\.0 rollback-failed/);
+    await expect(canvas.getByText('Update to 1.4.0')).toHaveAttribute('title', `Update job ${jobID}`);
+    await expect(canvas.getByText(jobID)).toBeVisible();
     await expect(alert).toHaveTextContent(/rollback-failed/i);
     await expect(alert).toHaveTextContent(/health-check-timeout/i);
   },

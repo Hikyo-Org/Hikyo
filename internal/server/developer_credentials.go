@@ -44,12 +44,7 @@ func wireDeveloperCredential(c service.NamedDeveloperCredential) apigen.Develope
 		t := c.RevokedAt
 		out.RevokedAt = &t
 	}
-	if c.PrincipalName != "" {
-		out.PrincipalName = &c.PrincipalName
-	}
-	if c.AuthorityPrincipalName != "" {
-		out.AuthorityPrincipalName = &c.AuthorityPrincipalName
-	}
+	out.AuthorityPrincipalName = optional(c.AuthorityPrincipalName)
 	return out
 }
 func developerCredentialList(items []service.NamedDeveloperCredential) apigen.DeveloperCredentialList {

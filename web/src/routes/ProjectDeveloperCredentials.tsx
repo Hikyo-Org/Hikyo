@@ -9,7 +9,7 @@ import type { ProjectRef } from '../api/identities.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { ConsentName } from './ConsentScope.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 import { ConsequencesDialog, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 
@@ -45,9 +45,9 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
         <caption>Developer credential metadata, including expired and revoked credentials</caption>
         <thead><tr><th scope="col">Credential</th><th scope="col">Human delegator</th><th scope="col">Environment</th><th scope="col">Lifetime</th><th scope="col">Revocation</th></tr></thead>
         <tbody>{credentials.data.items.map((credential) => <tr key={credential.id}>
-          <td><code title={credential.id}>{credential.prefix_hint}…</code><p className="field__hint">Developer: <ConsentName id={credential.principal_id} name={credential.principal_name} /></p></td>
-          <td><ConsentName id={credential.authority_principal_id} name={credential.authority_principal_name} /></td>
-          <td><ConsentName id={credential.environment_id} name={environmentName(credential.environment_id)} /></td>
+          <td><code title={credential.id}>{credential.prefix_hint}…</code><p className="field__hint">Developer: <span className="mono">{credential.principal_id}</span></p></td>
+          <td><NamedId id={credential.authority_principal_id} name={credential.authority_principal_name} /></td>
+          <td><NamedId id={credential.environment_id} name={environmentName(credential.environment_id)} /></td>
           <td>Created <time dateTime={credential.created_at}>{credential.created_at}</time><br />Expires <time dateTime={credential.expires_at}>{credential.expires_at}</time></td>
           <td>{credential.revoked_at === undefined ? <Button type="button" disabled={revoke.isPending} onClick={() => { feedback.clear(); setSelected(credential.id); }}>Revoke <span className="visually-hidden">{credential.id}</span></Button> : <>Revoked <time dateTime={credential.revoked_at}>{credential.revoked_at}</time></>}</td>
         </tr>)}</tbody>
@@ -65,7 +65,7 @@ export function ProjectDeveloperCredentials(ref: ProjectRef) {
         onError: feedback.report,
       })}
     >
-      <p>Revoke <code title={target.id}>{target.prefix_hint}…</code>, delegated by <ConsentName id={target.authority_principal_id} name={target.authority_principal_name} /> for environment <ConsentName id={target.environment_id} name={environmentName(target.environment_id)} />.</p>
+      <p>Revoke <code title={target.id}>{target.prefix_hint}…</code>, delegated by <NamedId id={target.authority_principal_id} name={target.authority_principal_name} /> for environment <NamedId id={target.environment_id} name={environmentName(target.environment_id)} />.</p>
       <p>This is permanent. The next fetch will be refused; values already delivered to running processes cannot be erased. Another credential requires a fresh interactive CLI ceremony.</p>
     </ConsequencesDialog>}
   </Panel>;

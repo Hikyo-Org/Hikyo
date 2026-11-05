@@ -16534,7 +16534,6 @@ components:
         expires_at: {type: string, format: date-time}
         revoked_at: {type: string, format: date-time}
         prefix_hint: {type: string}
-        principal_name: {type: string, minLength: 1, description: "Display name of the credential's principal, when it has one. Omitted otherwise."}
         authority_principal_name: {type: string, minLength: 1, description: Display name of the human who delegated the credential. Omitted when unnamed.}
     DeveloperCredentialList:
       type: object
@@ -17707,6 +17706,7 @@ components:
         valid_after: {$ref: "#/components/schemas/Timestamp"}
         valid_before: {$ref: "#/components/schemas/Timestamp"}
         requester_principal_id: {$ref: "#/components/schemas/ID"}
+        requester_principal_name: {type: string, minLength: 1, description: "Display name of the requester, present only when it can be named."}
         requester_class: {type: string}
         status:
           type: string
@@ -20208,6 +20208,12 @@ components:
         updated_by:
           type: string
           description: The principal whose act produced this occurrence.
+        updated_by_name:
+          type: string
+          minLength: 1
+          description: |
+            Display name of `updated_by`, present only when it can be named
+            from a row the caller already reads.
 
     ValueList:
       type: object
@@ -20737,6 +20743,7 @@ components:
         plan_id: {$ref: "#/components/schemas/ID"}
         applied_at: {$ref: "#/components/schemas/Timestamp"}
         applied_by: {type: string}
+        applied_by_name: {type: string, minLength: 1, description: "Display name of `applied_by` (a principal id), present only when it can be named."}
         commit: {type: string, maxLength: 256}
         ref: {type: string, maxLength: 256}
         actor: {type: string, maxLength: 256}
@@ -24688,6 +24695,10 @@ components:
         created_by:
           type: string
           maxLength: 64
+        created_by_name:
+          type: string
+          minLength: 1
+          description: Display name of `created_by`, present only when it can be named.
         revoked_at:
           $ref: "#/components/schemas/Timestamp"
         last_used_at:
@@ -25321,6 +25332,12 @@ components:
         updated_at: {$ref: "#/components/schemas/Timestamp"}
         versions: {type: array, items: {$ref: "#/components/schemas/TransitKeyVersion"}}
         callers: {type: array, items: {$ref: "#/components/schemas/TransitCaller"}}
+        principal_names:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+          description: Current names for callers who hold a grant in this key's tenant; not a user directory.
 
     TransitKeyList:
       type: object

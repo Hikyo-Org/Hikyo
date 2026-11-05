@@ -420,6 +420,7 @@ func wireConnection(c service.ConnectionView) apigen.InstanceConnection {
 		PrefixHint: c.PrefixHint,
 		Lifetime:   apigen.CredentialLifetime(c.Lifetime),
 		CreatedAt:  c.CreatedAt, CreatedBy: string(c.CreatedBy), Live: c.Live,
+		CreatedByName: optional(c.CreatedByName),
 	}
 	if !c.ExpiresAt.IsZero() {
 		t := c.ExpiresAt

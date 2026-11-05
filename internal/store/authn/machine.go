@@ -256,9 +256,10 @@ func (r *Resolver) ServiceAccountAt(ctx context.Context, scope domain.Scope, id 
 	return serviceAccountFromPG(row), nil
 }
 
-// ServiceAccountByID resolves a service account by id alone. The single
-// caller is authentication, where the id came from the credential row the
-// presented verifier resolved to — never from a request.
+// ServiceAccountByID resolves a service account by id alone. Authentication
+// passes the id from the credential row the presented verifier resolved to, and
+// the credential policy preview names accounts its enumeration already found;
+// the id never comes from a request.
 func (r *Resolver) ServiceAccountByID(ctx context.Context, id string) (ServiceAccount, error) {
 	if r.sq != nil {
 		row, err := r.sq.GetServiceAccountByID(ctx, id)

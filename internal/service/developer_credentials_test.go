@@ -113,8 +113,8 @@ func TestDeveloperCredentialListNamesTheDelegator(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows = %d, want 1", len(rows))
 	}
-	if rows[0].AuthorityPrincipalName != "Developer" || rows[0].PrincipalName != "" {
-		t.Fatalf("names = %q / %q, want Developer / empty", rows[0].AuthorityPrincipalName, rows[0].PrincipalName)
+	if rows[0].AuthorityPrincipalName != "Developer" {
+		t.Fatalf("delegator name = %q, want Developer", rows[0].AuthorityPrincipalName)
 	}
 }
 func TestDeveloperCredentialLowerCeilingDoesNotReviveOnRaise(t *testing.T) {

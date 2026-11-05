@@ -129,6 +129,9 @@ it('files an immutable request within the offer and keeps policy administration 
     expect(button(container, 'Withdraw')).toBeDefined();
     expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Approve')).toBe(false);
     expect(container.querySelector('.temporary-access__request-state')?.textContent).toMatch(/^open\s*·\s*0\/1 approvals$/);
+    // The card is headed by who asked, with the request ID kept as its own mono row.
+    expect(container.querySelector('.temporary-access__request-head > span')?.textContent).toBe('Me');
+    expect(container.querySelector('.temporary-access__request-meta dd.mono')?.textContent).toBe('xreq_00000000-0000-0000-0000-000000000001');
   } finally {
     await unmount();
   }

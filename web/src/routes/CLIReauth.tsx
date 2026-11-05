@@ -21,7 +21,8 @@ import {
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { ConsentKeys, ConsentName, useConsentNames } from './ConsentScope.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
+import { ConsentKeys, useConsentNames } from './ConsentScope.tsx';
 import { Login } from './Login.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
@@ -211,15 +212,15 @@ export function CLIReauth() {
             ) : null}
             {owner === undefined ? null : (
               <p>
-                Organisation <ConsentName id={owner.org_id} name={names.org} />, project{' '}
-                <ConsentName id={owner.project_id} name={names.project} />
+                Organisation <NamedId id={owner.org_id} name={names.org} />, project{' '}
+                <NamedId id={owner.project_id} name={names.project} />
               </p>
             )}
             {transaction.data.environments.length === 0 ? null : (
               <ul aria-label="Environments this decision covers">
                 {transaction.data.environments.map((environment) => (
                   <li key={environment.environment_id}>
-                    <ConsentName
+                    <NamedId
                       id={environment.environment_id}
                       name={owner === undefined ? undefined : names.environmentName(environment.environment_id)}
                     />{' '}

@@ -530,18 +530,12 @@ function ApprovalRequestRow({
         </div>
         <div>
           <dt>Keys</dt>
-          <dd><ConsentKeys keys={keys} /></dd>
+          <dd><ConsentKeys keys={keys} label={`Keys this decision covers, request ending ${request.id.slice(-6)}`} /></dd>
         </div>
         <div>
           <dt>Expires</dt>
           <dd>{formatWhen(request.expires_at)}</dd>
         </div>
-        {request.purpose === '' ? null : (
-          <div>
-            <dt>Purpose</dt>
-            <dd>{request.purpose}</dd>
-          </div>
-        )}
       </dl>
       {request.votes.length > 0 ? <ul aria-label="Recorded votes">
         {request.votes.map((entry) => <li key={entry.principal_id}>

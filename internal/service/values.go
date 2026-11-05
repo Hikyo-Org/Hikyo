@@ -118,6 +118,9 @@ type ValueCell struct {
 	Revealed       bool
 	UpdatedAt      time.Time
 	UpdatedBy      string
+	// UpdatedByName is the writer's display name, resolved only for a cell the
+	// caller already reads. Empty when unresolved.
+	UpdatedByName string
 }
 
 // DiffRow is one key's two-sided comparison. Same disclosure rules as
@@ -871,7 +874,7 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 			if err != nil {
 				return nil, err
 			}
-			cells, err := readCells(ctx, r.Catalogue(), r.Values(), p, sealer, keyName, true,
+			cells, err := readCells(ctx, r.Catalogue(), r.Values(), az, newPrincipalNames(), p, sealer, keyName, true,
 				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeReveal, string(scope.Env))))
 			if err != nil {
 				return nil, err
@@ -887,7 +890,7 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 			if err != nil {
 				return err
 			}
-			out, err = readCells(ctx, r.Catalogue(), r.Values(), p, sealer, keyName, false, nil)
+			out, err = readCells(ctx, r.Catalogue(), r.Values(), az, newPrincipalNames(), p, sealer, keyName, false, nil)
 			return err
 		})
 	}
@@ -911,8 +914,8 @@ func (s *Values) read(ctx context.Context, actor Actor, scope domain.Scope, keyN
 // trail anyone can read.
 type discloseGate func(keyIDs []string) error
 
-func readCells(ctx context.Context, cat store.CatalogueReader, vals store.ValueReader, p authz.Proof,
-	sealer *crypto.ProjectSealer, keyName string, reveal bool, gate discloseGate) ([]ValueCell, error) {
+func readCells(ctx context.Context, cat store.CatalogueReader, vals store.ValueReader, az *authz.TxAuthorizer, names *principalNames,
+	p authz.Proof, sealer *crypto.ProjectSealer, keyName string, reveal bool, gate discloseGate) ([]ValueCell, error) {
 	keys, err := cat.List(ctx, p)
 	if err != nil {
 		return nil, err
@@ -983,6 +986,12 @@ func readCells(ctx context.Context, cat store.CatalogueReader, vals store.ValueR
 			cell.Set = true
 			cell.UpdatedAt = entry.UpdatedAt
 			cell.UpdatedBy = entry.UpdatedBy
+			// The cell is readable, so its writer is already disclosed.
+			name, err := names.get(ctx, az, domain.PrincipalID(entry.UpdatedBy))
+			if err != nil {
+				return nil, err
+			}
+			cell.UpdatedByName = name
 			// `config` plaintext rides `read`; `secret` plaintext needs the
 			// gate the caller either passed or did not ask for.
 			if key.Classification == string(schema.Config) || reveal {
@@ -1056,6 +1065,7 @@ func (s *Values) Diff(ctx context.Context, actor Actor, scope domain.Scope, left
 	// stays on the read pool.
 	sides := func(ctx context.Context, cat store.CatalogueReader, vals store.ValueReader, trail store.AuditRepo,
 		az *authz.TxAuthorizer, caller authz.Identity) ([]DiffRow, error) {
+		names := newPrincipalNames()
 		read := func(envID string) ([]ValueCell, error) {
 			envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(envID)}
 			op := authz.OpValueList
@@ -1073,7 +1083,7 @@ func (s *Values) Diff(ctx context.Context, actor Actor, scope domain.Scope, left
 			// discloses in two environments, and the reveal guard is
 			// per-environment: a window open on staging authorizes nothing in
 			// production, which is the whole point of capping production at 0.
-			cells, err := readCells(ctx, cat, vals, p, sealer, "", reveal,
+			cells, err := readCells(ctx, cat, vals, az, names, p, sealer, "", reveal,
 				ceremonyGate(ctx, s.Auth, az, caller, disclosureIntent(PurposeReveal, envID)))
 			if err != nil {
 				return nil, err

@@ -40,7 +40,12 @@ func TestAutomationVerbsReachServerWithMachineCredential(t *testing.T) {
 			ios.Stdin = strings.NewReader("new-password")
 			args := append(strings.Fields(command), "--instance", "local", "--org", "org_one", "--project", "prj_one", "--env", "env_one")
 			code := Run(t.Context(), ios, args)
-			if requests != 1 || code == ExitOK || strings.Contains(stderr.String(), "requires a human session") {
+			// `env delete` reads the environment's name once before deleting it.
+			want := 1
+			if command == "env delete" {
+				want = 2
+			}
+			if requests != want || code == ExitOK || strings.Contains(stderr.String(), "requires a human session") {
 				t.Fatalf("requests=%d exit=%d stderr=%s", requests, code, stderr)
 			}
 		})

@@ -223,8 +223,8 @@ export function HistoryDrawer({
   );
   const workloads = (accounts.data?.items ?? []).filter((account) => account.kind === 'workload');
   // A pin binds a WORKLOAD, and a workload does resolve to a name, through the
-  // project's service accounts. (A human publisher does not: nothing in this
-  // API maps a human principal id to a display name, so those stay ids.)
+  // project's service accounts. A human publisher's name arrives as
+  // `published_by_name` on the revision itself.
   const workloadNames = new Map(
     (accounts.data?.items ?? []).map((account) => [account.principal_id, account.name]),
   );
@@ -1627,8 +1627,10 @@ function toHistoryPin(pin: RevisionPinItem): HistoryPin {
 
 /**
  * A prefixed UUIDv7 is unreadable at a glance; the whole one lives in `title`.
+ * Keeps the prefix and the random tail, since the head is a shared timestamp.
  * Used only when the authorized revision response has no current publisher name.
  */
 export function shortPrincipal(id: string): string {
-  return id.length <= 12 ? id : `${id.slice(0, 12)}…`;
+  // A UUIDv7 opens with a shared timestamp; its random tail is what tells two people apart.
+  return id.length <= 12 ? id : `${id.slice(0, id.indexOf('_') + 1)}…${id.slice(-8)}`;
 }

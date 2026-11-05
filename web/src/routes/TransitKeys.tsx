@@ -14,6 +14,7 @@ import { Select } from '../ui/Select.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { TransitCreateKey, TransitKeyManagement } from './TransitKeyManagement.tsx';
 import { TransitOperations } from './TransitOperations.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
 
 export function TransitKeyFacts({ transitKey }: { transitKey: TransitKey }) {
   return <>
@@ -34,7 +35,7 @@ export function TransitKeyFacts({ transitKey }: { transitKey: TransitKey }) {
       <caption className="visually-hidden">Public version metadata for {transitKey.name}</caption><thead><tr><th scope="col">Version</th><th scope="col">Material status</th><th scope="col">Created</th><th scope="col">Public key</th></tr></thead>
       <tbody>{transitKey.versions.map((version) => <tr key={String(version.version)}><td>{String(version.version)}</td><td>{version.material}</td><td>{formatWhen(version.created_at)}</td><td>{version.public_key == null ? 'None' : <TextareaPublicKey value={version.public_key} version={String(version.version)} />}</td></tr>)}</tbody>
     </table></div>
-    <h3>Caller entries</h3>{transitKey.callers.length === 0 ? <p>No caller restrictions. Any principal with crypto-use on this environment may use the allowed operations.</p> : <ul>{transitKey.callers.map((caller) => <li key={caller.principal_id}><code>{caller.principal_id}</code>: {caller.operations.join(', ')}</li>)}</ul>}
+    <h3>Caller entries</h3>{transitKey.callers.length === 0 ? <p>No caller restrictions. Any principal with crypto-use on this environment may use the allowed operations.</p> : <ul>{transitKey.callers.map((caller) => <li key={caller.principal_id}><NamedId id={caller.principal_id} name={transitKey.principal_names?.[caller.principal_id]} />: {caller.operations.join(', ')}</li>)}</ul>}
   </>;
 }
 

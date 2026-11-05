@@ -60,7 +60,7 @@ func sshCertificateTable(list apigen.SSHCertificateList) Table {
 			krl = "yes"
 		}
 		rows = append(rows, []string{
-			string(c.Id), c.Serial, strings.Join(c.Principals, ","), string(c.RequesterPrincipalId),
+			string(c.Id), c.Serial, strings.Join(c.Principals, ","), idWithName(string(c.RequesterPrincipalId), c.RequesterPrincipalName),
 			c.ValidBefore.UTC().Format(time.RFC3339), string(c.Status), krl,
 		})
 	}

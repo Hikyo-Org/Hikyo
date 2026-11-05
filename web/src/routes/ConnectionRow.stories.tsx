@@ -53,6 +53,16 @@ export const Live: Story = {
     const badge = canvas.getByText('live').closest('.badge');
     await expect(badge).toHaveClass('badge--ok');
     await expect(badge?.querySelector('svg')).toHaveAttribute('data-glyph', 'check');
+    // Without a resolvable name the creator stays the mono ID.
+    await expect(canvas.getByText(base.created_by)).toHaveClass('mono');
+  },
+};
+
+// The creator reads as a name, with the stored ID on hover.
+export const CreatedByName: Story = {
+  args: { connection: { ...base, created_by: 'prn_01989abc-def0-7123-8123-000000000001', created_by_name: 'Dana Jacobs' } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByText('Dana Jacobs')).toHaveAttribute('title', 'prn_01989abc-def0-7123-8123-000000000001');
   },
 };
 

@@ -130,10 +130,6 @@ export type DeveloperCredential = {
     revoked_at?: string;
     prefix_hint: string;
     /**
-     * Display name of the credential's principal, when it has one. Omitted otherwise.
-     */
-    principal_name?: string;
-    /**
      * Display name of the human who delegated the credential. Omitted when unnamed.
      */
     authority_principal_name?: string;
@@ -1028,6 +1024,10 @@ export type SshCertificate = {
     valid_after: Timestamp;
     valid_before: Timestamp;
     requester_principal_id: Id;
+    /**
+     * Display name of the requester, present only when it can be named.
+     */
+    requester_principal_name?: string;
     requester_class: string;
     /**
      * revoked: cryptographically revoked (in_krl says whether the KRL
@@ -2877,6 +2877,12 @@ export type ValueCell = {
      * The principal whose act produced this occurrence.
      */
     updated_by?: string;
+    /**
+     * Display name of `updated_by`, present only when it can be named
+     * from a row the caller already reads.
+     *
+     */
+    updated_by_name?: string;
 };
 
 export type ValueList = {
@@ -3223,6 +3229,10 @@ export type DefinitionsLastApply = {
     plan_id: Id;
     applied_at: Timestamp;
     applied_by: string;
+    /**
+     * Display name of `applied_by` (a principal id), present only when it can be named.
+     */
+    applied_by_name?: string;
     commit?: string;
     ref?: string;
     actor?: string;
@@ -5952,6 +5962,10 @@ export type InstanceConnection = {
     expires_at?: Timestamp;
     created_at: Timestamp;
     created_by: string;
+    /**
+     * Display name of `created_by`, present only when it can be named.
+     */
+    created_by_name?: string;
     revoked_at?: Timestamp;
     last_used_at?: Timestamp;
     /**
@@ -6406,6 +6420,12 @@ export type TransitKey = {
     updated_at: Timestamp;
     versions: Array<TransitKeyVersion>;
     callers: Array<TransitCaller>;
+    /**
+     * Current names for callers who hold a grant in this key's tenant; not a user directory.
+     */
+    principal_names?: {
+        [key: string]: string;
+    };
 };
 
 export type TransitKeyList = {

@@ -10,7 +10,8 @@ import { useSessionOIDCProvider } from '../api/account.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
-import { ConsentKeys, ConsentName, useConsentNames } from './ConsentScope.tsx';
+import { NamedId } from '../ui/NamedId.tsx';
+import { ConsentKeys, useConsentNames } from './ConsentScope.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
 function isWorkspaceHandoffStepUp(
@@ -246,21 +247,21 @@ export function WorkspaceApprove() {
               {stepUpTransaction.org_id === undefined || stepUpTransaction.project_id === undefined ? null : (
                 <>
                   <dt>Organisation</dt>
-                  <dd><ConsentName id={stepUpTransaction.org_id} name={names.org} /></dd>
+                  <dd><NamedId id={stepUpTransaction.org_id} name={names.org} /></dd>
                   <dt>Project</dt>
-                  <dd><ConsentName id={stepUpTransaction.project_id} name={names.project} /></dd>
+                  <dd><NamedId id={stepUpTransaction.project_id} name={names.project} /></dd>
                 </>
               )}
               <dt>Environment</dt>
               <dd>
-                <ConsentName id={stepUpTransaction.environment} name={names.environmentName(stepUpTransaction.environment)} />
+                <NamedId id={stepUpTransaction.environment} name={names.environmentName(stepUpTransaction.environment)} />
               </dd>
               <dt>Keys</dt>
               <dd>
                 {stepUpTransaction.key_ids.length === 0 ? (
                   'Entire environment'
                 ) : (
-                  <ConsentKeys keys={names.keys(stepUpTransaction.key_ids)} />
+                  <ConsentKeys keys={names.keys(stepUpTransaction.key_ids)} insideScrollRegion />
                 )}
               </dd>
             </dl>

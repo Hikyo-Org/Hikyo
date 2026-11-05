@@ -16,11 +16,12 @@ import (
 
 type DeveloperCredential = authz.DeveloperCredential
 
-// NamedDeveloperCredential adds display names to a credential row the caller
-// may already read. A name is empty when the principal has no account name.
+// NamedDeveloperCredential names the human delegator of a credential row the
+// caller may already read. The credential's own devp_ principal is synthetic and
+// has no name. Empty when the delegator has no account name.
 type NamedDeveloperCredential struct {
 	DeveloperCredential
-	PrincipalName, AuthorityPrincipalName string
+	AuthorityPrincipalName string
 }
 type MintDeveloperCredentialRequest struct {
 	Lifetime                time.Duration
@@ -194,9 +195,6 @@ func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope doma
 				continue
 			}
 			named := NamedDeveloperCredential{DeveloperCredential: c}
-			if named.PrincipalName, err = names.get(ctx, az, c.PrincipalID); err != nil {
-				return err
-			}
 			if named.AuthorityPrincipalName, err = names.get(ctx, az, c.AuthorityPrincipal); err != nil {
 				return err
 			}
