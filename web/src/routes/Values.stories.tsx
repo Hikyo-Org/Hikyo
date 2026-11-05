@@ -221,6 +221,8 @@ export const PhoneRevealedValueStaysReadable: Story = {
     const room = editor.getBoundingClientRect();
     await expect(room.width).toBeGreaterThanOrEqual(wrapper.clientWidth - 2 * fontSize(editor));
     await expect(room.right).toBeLessThanOrEqual(edge);
+    // The input itself takes the row (it sat at 170px in a 336px row), so a placeholder reads whole.
+    await expect(canvas.getByLabelText(/^New value for DATABASE_URL/).getBoundingClientRect().width).toBeGreaterThanOrEqual(wrapper.clientWidth - 4 * fontSize(editor));
     const save = canvas.getByRole('button', { name: 'Save draft' }).getBoundingClientRect();
     await expect(save.left).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left);
     await expect(save.right).toBeLessThanOrEqual(edge);
@@ -249,10 +251,13 @@ export const PhoneLongKeyKeepsValueWide: Story = {
     }
     // The wrapped key reads from the left, not centred like a button's label.
     await expect(getComputedStyle(long).textAlign).toBe('left');
+    // ... and its text lines up with the value's, not 9px in from it (the button's padding and border).
+    await expect(ownText(long).left).toBeCloseTo(text.left, 0);
     // The column headings stay for assistive technology and are not drawn: they
     // name three columns that the card layout no longer has.
+    // Found without `hidden: true`, so a removed (display: none) header fails.
     for (const name of ['Key', 'Value', 'Actions']) {
-      const heading = canvas.getByRole('columnheader', { name, hidden: true }).getBoundingClientRect();
+      const heading = canvas.getByRole('columnheader', { name }).getBoundingClientRect();
       await expect(heading.width).toBeLessThanOrEqual(1);
     }
     // The key and its Actions share the first line, Reveal over Copy so the key
@@ -262,6 +267,16 @@ export const PhoneLongKeyKeepsValueWide: Story = {
     const copy = canvas.getByRole('button', { name: /^Copy DATABASE_URL/ }).getBoundingClientRect();
     await expect(reveal.top).toBeLessThan(key.bottom);
     await expect(copy.top).toBeGreaterThanOrEqual(reveal.bottom);
+    // A lone Copy fills the Actions track like the stacked buttons do.
+    const lone = canvas.getAllByRole('button', { name: /^Copy / }).find((button) => button.closest('.actions')!.children.length === 1)!.getBoundingClientRect();
+    await expect(lone.width).toBeCloseTo(reveal.width, 0);
+    // The open editor holds the unbroken long key in its label without scrolling
+    // the table sideways, and its field takes the row.
+    await userEvent.click(long);
+    const field = await canvas.findByLabelText(/^New value for ANALYTICS_PIPELINE/);
+    await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+    await expect(field.getBoundingClientRect().width).toBeGreaterThanOrEqual(wrapper.clientWidth - 4 * Number.parseFloat(getComputedStyle(field).fontSize));
+    await expect(canvas.getByRole('button', { name: 'Save draft' }).getBoundingClientRect().right).toBeLessThanOrEqual(wrapper.getBoundingClientRect().right);
   },
 };
 

@@ -685,11 +685,16 @@ export const PhoneLegendStaysOnScreen: Story = {
     });
     // In the demo the head wraps and the toggle lands at the row's left; the story's head does not, so put it there.
     toggle.closest<HTMLElement>('.matrix__legend')!.style.order = '-1';
+    // Side insets narrow the card the popover anchors to (the story has no chrome to do it): it stays inside the card.
+    const card = toggle.closest<HTMLElement>('.matrix')!;
+    card.style.marginInline = '40px';
     await userEvent.click(toggle);
     const body = canvasElement.querySelector<HTMLElement>('.matrix__legend-body')!;
     const box = body.getBoundingClientRect();
-    await expect(box.left).toBeGreaterThanOrEqual(0);
-    await expect(box.right).toBeLessThanOrEqual(window.innerWidth);
+    // ... and is still a popover you can read, not squeezed to the toggle's width.
+    await expect(box.width).toBeGreaterThanOrEqual(200);
+    await expect(box.left).toBeGreaterThanOrEqual(card.getBoundingClientRect().left);
+    await expect(box.right).toBeLessThanOrEqual(card.getBoundingClientRect().right);
     // Where it sits over the sticky key column, the popover is what is on top.
     const covered = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__table :is(th, td):first-child')].flatMap((cell) => {
       const r = cell.getBoundingClientRect();

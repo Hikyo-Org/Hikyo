@@ -1552,7 +1552,9 @@ fieldset.field > legend {
   .nav-scrim {
     position: fixed;
     z-index: var(--z-drawer);
-    inset: 0 0 0 min(300px, 80vw);
+    /* The whole viewport: the drawer's box stops at the insets, and the strips
+       above and below it dim and close the drawer like the rest of the page. */
+    inset: 0;
     width: auto;
     height: 100%;
     border: 0;
@@ -2031,6 +2033,11 @@ fieldset.field > legend {
   .matrix__legend {
     position: static;
     z-index: var(--z-sticky);
+  }
+
+  /* Within that card: side insets narrow it, and a fixed-width body overhung it. */
+  .matrix__legend-body {
+    max-width: 100%;
   }
 }
 
@@ -3417,14 +3424,29 @@ fieldset.field > legend {
     overflow-wrap: anywhere;
   }
 
+  /* The key's text lines up with the value's: the button's own padding and
+     border are pulled back out, its hit area unchanged. */
   .values .values__table .values__keyname {
+    margin-inline-start: calc(-1 * (var(--space-2) + 1px));
     text-align: left;
   }
 
   /* Reveal and Copy stack, so the Actions track is one button wide and the
-     key keeps the rest of the line. */
-  .values .values__table td .actions:has(> .btn ~ .btn) {
+     key keeps the rest of the line; a lone Copy fills the same track. */
+  .values .values__table td .actions {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  /* The open editor's field takes the row, and its label, which holds the
+     whole key name, breaks anywhere; otherwise the unbroken name sets the
+     field's minimum width and the table scrolls sideways. */
+  .values .values__table .row-editor .field {
+    flex: 1 1 100%;
+  }
+
+  .values .values__table .row-editor label {
+    overflow-wrap: anywhere;
   }
 
   /* A revealed value is the text with its countdown. Side by side the

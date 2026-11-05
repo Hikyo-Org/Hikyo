@@ -192,7 +192,7 @@ export const PhoneCrumbsStayClear: Story = {
     await expect(items.at(-1)!.lastElementChild!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
     // The row clips its overflow, and a link's focus ring sits outside the
     // link: each scope link's ring (width plus offset, on every side) stays
-    // inside the row, the first crumb's left edge included.
+    // inside the row, the first crumb's left edge and the last one's right included.
     const links = within(crumbs).getAllByRole('link');
     await expect(links.length).toBeGreaterThanOrEqual(2);
     for (const link of links) {
@@ -207,6 +207,14 @@ export const PhoneCrumbsStayClear: Story = {
       await expect(ring.bottom + reach).toBeLessThanOrEqual(clip.bottom + 0.5);
       await expect(ring.left - reach).toBeGreaterThanOrEqual(clip.left - 0.5);
     }
+    // The ring's right side only meets the clip when a link ends the row: take
+    // the current page out and shrink-wrap the row around the last link.
+    items.at(-1)!.style.display = 'none';
+    crumbs.style.width = 'max-content';
+    const last = links.at(-1)!;
+    await expect(last).toHaveFocus();
+    const lastStyle = getComputedStyle(last);
+    await expect(last.getBoundingClientRect().right + Number.parseFloat(lastStyle.outlineWidth) + Number.parseFloat(lastStyle.outlineOffset)).toBeLessThanOrEqual(crumbs.getBoundingClientRect().right + 0.5);
   },
 };
 
@@ -281,6 +289,15 @@ export const PhoneClearsSafeArea: Story = {
     const panel = drawer.getBoundingClientRect();
     await expect(panel.top).toBe(NOTCH.top);
     await expect(panel.bottom).toBe(window.innerHeight - NOTCH.bottom);
+    // The scrim covers the whole viewport, so the strips above and below the
+    // drawer dim like the rest of the page and a tap on one closes the drawer.
+    const scrim = document.querySelector<HTMLElement>('.nav-scrim')!;
+    const dim = scrim.getBoundingClientRect();
+    await expect([dim.left, dim.top, dim.right, dim.bottom]).toEqual([0, 0, window.innerWidth, window.innerHeight]);
+    await expect(document.elementFromPoint(panel.width / 2, NOTCH.top / 2)).toBe(scrim);
+    await expect(document.elementFromPoint(panel.width / 2, window.innerHeight - NOTCH.bottom / 2)).toBe(scrim);
+    await userEvent.click(scrim);
+    await expect(document.querySelector('.chrome')!.getAttribute('data-nav')).not.toBe('open');
   },
 };
 
