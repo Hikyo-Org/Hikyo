@@ -23,7 +23,7 @@ org and project.
 
 - Org writes: `manage-members@org`. Project writes: `manage-projects@org`. A grant refusal is the uniform 404; the org routes also declare 403 for their MFA requirement.
 - Project image read: `read@project` plus project navigation, so a member reaching the project only through one environment still sees its tile. Audited none.
-- Org image read has no formula: it follows `listMyOrgs` visibility (`resolveSelf` + `OrgsForPrincipal` projection, no machine credentials), so a project-scoped member sees it. A caller outside that projection, such as an instance operator on the org's settings page, needs `org.get`. Otherwise, and with no image, the same 404. Declared as an amendment in `docs/adr/tenant-isolation.md`, pending owner confirmation.
+- Org image read has no formula: it follows `listMyOrgs` visibility (`resolveSelf` + `OrgsForPrincipal` projection, no machine credentials), so a project-scoped member sees it. A caller outside that projection, such as an instance operator on the org's settings page, needs `org.get`. Otherwise, and with no image, the same 404. Declared as an amendment in `docs/adr/tenant-isolation.md`, confirmed by the owner in #1224.
 - Events `settings.org_identity_changed` and `settings.project_identity_changed` record previous and new hue, mark (sanitised free text) and image version, read in the same transaction as the write. Never bytes.
 
 ## Storage
@@ -45,7 +45,7 @@ Migration 00083 (both dialects) adds `identity_hue` (default 195, 0..359 check),
 
 - Go on PostgreSQL 18 (`api`, `authz`, `audit`, `lint`, `server`, `service`, `store`, `isolation`, `app`, `buildcompat`), web typecheck, lint, `design:check`, unit (2290 tests) and the settings flow on mobile and desktop passed on merge `6aa6ec048`.
 - Later commits are registry, budget and documentation changes, covered by the focused checks listed in the pull request.
-- Independent review did not cover `a5790f579` and `218eae2ec`.
+- An independent review of `a5790f579`, `218eae2ec` and the documentation commits found no defects in the authorization change or the 403 removal; its wording findings are fixed.
 
 ## Remaining and follow-ups
 

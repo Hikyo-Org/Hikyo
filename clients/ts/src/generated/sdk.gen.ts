@@ -657,7 +657,8 @@ export const setOrgRetention = <ThrowOnError extends boolean = false>(options: O
  * most two grapheme clusters of free text or emoji, without control
  * characters or surrounding whitespace; null or absent falls back to the
  * monogram derived from the name. The uploaded image is separate
- * (`setOrgIdentityImage`). Idempotent. Refusal is the uniform 404.
+ * (`setOrgIdentityImage`). Idempotent. A grant refusal is the uniform 404; a single-factor
+ * session holding the capability gets 403.
  *
  */
 export const setOrgIdentity = <ThrowOnError extends boolean = false>(options: Options<SetOrgIdentityData, ThrowOnError>) => (options.client ?? client).put<SetOrgIdentityResponses, SetOrgIdentityErrors, ThrowOnError>({
@@ -674,7 +675,8 @@ export const setOrgIdentity = <ThrowOnError extends boolean = false>(options: Op
  * Remove the organisation's uploaded image.
  *
  * Clears the image so the mark (or the name-derived monogram) shows again.
- * Idempotent. Refusal is the uniform 404.
+ * Idempotent. A grant refusal is the uniform 404; a single-factor
+ * session holding the capability gets 403.
  *
  */
 export const clearOrgIdentityImage = <ThrowOnError extends boolean = false>(options: Options<ClearOrgIdentityImageData, ThrowOnError>) => (options.client ?? client).delete<ClearOrgIdentityImageResponses, ClearOrgIdentityImageErrors, ThrowOnError>({
@@ -708,7 +710,8 @@ export const getOrgIdentityImage = <ThrowOnError extends boolean = false>(option
  * KiB and 1024 by 1024 pixels. The magic bytes must match the declared
  * content type and the pixels must decode. SVG is never accepted: the
  * browser converts it to PNG before upload. Replaces any previous image.
- * Refusal is the uniform 404.
+ * A grant refusal is the uniform 404; a single-factor
+ * session holding the capability gets 403.
  *
  */
 export const setOrgIdentityImage = <ThrowOnError extends boolean = false>(options: Options<SetOrgIdentityImageData, ThrowOnError>) => (options.client ?? client).put<SetOrgIdentityImageResponses, SetOrgIdentityImageErrors, ThrowOnError>({
