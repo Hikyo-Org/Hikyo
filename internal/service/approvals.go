@@ -179,6 +179,10 @@ func (s *Approvals) CreatePolicy(ctx context.Context, actor Actor, scope domain.
 		if err := validatePolicyEnvironment(ctx, az, scope, input.EnvironmentID); err != nil {
 			return err
 		}
+		named, kept := policyRosterPrincipals(input.Approvers, input.Bypassers, nil, nil)
+		if err := checkNamedPrincipals(ctx, az, caller.Principal, scope.Org, named, kept); err != nil {
+			return err
+		}
 		id, err := newID("apol")
 		if err != nil {
 			return err
@@ -224,6 +228,20 @@ func (s *Approvals) UpdatePolicy(ctx context.Context, actor Actor, scope domain.
 		// to the old scope ambiguous. Replace it explicitly instead.
 		if input.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: an approval policy's environment cannot be changed; create a replacement policy", domain.ErrInvalid)
+		}
+		// Entries already stored are kept without re-checking; only new names
+		// are confined to the actor's orgs.
+		approvers, err := r.Approvals().ListApprovers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		bypassers, err := r.Approvals().ListBypassers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		named, kept := policyRosterPrincipals(input.Approvers, input.Bypassers, approvers, bypassers)
+		if err := checkNamedPrincipals(ctx, az, caller.Principal, scope.Org, named, kept); err != nil {
+			return err
 		}
 		updated, err := r.Approvals().UpdatePolicy(ctx, p, store.ApprovalPolicyUpdate{
 			ID: id, MinApprovals: input.MinApprovals, AllowSelfApproval: input.AllowSelfApproval,
@@ -689,6 +707,33 @@ func validatePolicyEnvironment(ctx context.Context, az *authz.TxAuthorizer, scop
 		return err
 	}
 	return nil
+}
+
+// policyRosterPrincipals lists the principals a roster write names, and those of
+// them kept: stored already in each role the write names them in. A SCIM group
+// approver is not a principal. Moving a stored approver to bypasser names it
+// anew, because only a bypasser row references the principal.
+func policyRosterPrincipals(approvers []ApprovalApproverSpec, bypassers []string, storedApprovers []store.ApprovalApprover, storedBypassers []store.ApprovalBypasser) (named, kept []string) {
+	var added []string
+	for _, a := range approvers {
+		if a.Kind != string(store.ApprovalApproverPrincipal) {
+			continue
+		}
+		named = append(named, a.SubjectID)
+		if !slices.ContainsFunc(storedApprovers, func(s store.ApprovalApprover) bool {
+			return s.Kind == store.ApprovalApproverPrincipal && s.SubjectID == a.SubjectID
+		}) {
+			added = append(added, a.SubjectID)
+		}
+	}
+	for _, id := range bypassers {
+		named = append(named, id)
+		if !slices.ContainsFunc(storedBypassers, func(s store.ApprovalBypasser) bool { return s.PrincipalID == id }) {
+			added = append(added, id)
+		}
+	}
+	kept = slices.DeleteFunc(slices.Clone(named), func(id string) bool { return slices.Contains(added, id) })
+	return named, kept
 }
 
 func writePolicyMembers(ctx context.Context, r store.Repos, p authz.Proof, policyID string, input ApprovalPolicyInput) error {
