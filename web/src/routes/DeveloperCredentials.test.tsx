@@ -227,7 +227,7 @@ describe('project developer credentials', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('not disclosed');
     expect(container.querySelector('table')).toBeNull();
     expect(container.querySelector('dialog')).toBeNull();
-    for (const value of [credential.principal_id, credential.authority_principal_id, credential.environment_id, credential.created_at, credential.expires_at]) {
+    for (const value of [credential.id, credential.principal_id, credential.authority_principal_id, credential.environment_id, credential.created_at, credential.expires_at]) {
       expect(container.textContent).not.toContain(value);
     }
     expect(container.textContent).not.toContain(privateError);

@@ -68,6 +68,9 @@ func validateAccountProfile(profile ProfileUpdate) error {
 				return fmt.Errorf("%w: %s contains a control character", domain.ErrInvalid, label)
 			}
 		}
+		if hasDirectionControl(value) {
+			return fmt.Errorf("%w: %s contains a text direction control", domain.ErrInvalid, label)
+		}
 	}
 	if strings.Contains(profile.Username, "@") {
 		return fmt.Errorf("%w: username must not contain @", domain.ErrInvalid)

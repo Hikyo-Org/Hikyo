@@ -57,6 +57,9 @@ export const Rules: Story = {
   },
   play: async ({ canvas }) => {
     await expect(canvas.getByText('Alice Novak')).toBeVisible();
+    // The name leads; the ID is on hover rather than a second line.
+    await expect(canvas.getByText('Alice Novak')).toHaveAttribute('title', IDS.alice);
+    await expect(canvas.queryByText(IDS.alice)).toBeNull();
     await expect(canvas.queryByText('ci-deploy')).toBeNull();
     // Sam holds grants only.
     const sam = within(canvas.getByText('Sam Ortiz').closest('li') ?? document.body);

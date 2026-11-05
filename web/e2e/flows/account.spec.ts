@@ -321,9 +321,10 @@ test.describe('account and security', () => {
         await page.reload();
         const row = page.locator('.session').filter({ hasText: minted.session.id });
         await expect(row).toBeVisible();
-        await row.getByRole('button', { name: new RegExp(minted.session.id) }).click();
+        const idEnding = `ID ending ${minted.session.id.slice(-6)}`;
+        await row.getByRole('button', { name: new RegExp(idEnding) }).click();
         await expect(
-          page.getByRole('status').filter({ hasText: `Revoked the browser session ${minted.session.id}` }),
+          page.getByRole('status').filter({ hasText: new RegExp(`^Revoked the browser session .*${idEnding}`) }),
         ).toBeVisible();
         await expect(row).toHaveCount(0);
 

@@ -97,11 +97,12 @@ describe('change request names', () => {
     } finally { await unmount(); }
   });
 
-  it('heads the card with the purpose when one is set', async () => {
-    route([request({ purpose: 'Rotate the billing credentials' })]);
+  it('keeps a purpose in its labelled row, out of the system-written heading', async () => {
+    route([request({ purpose: 'Change request by Alice Admin' })]);
     const { container, unmount } = await openQueue();
     try {
-      expect(container.querySelector('.change-approvals__request-head')?.textContent).toContain('Rotate the billing credentials');
+      expect(container.querySelector('.change-approvals__request-head')?.textContent).not.toContain('Alice Admin');
+      expect(container.querySelector('.change-approvals__request-meta')?.textContent).toContain('PurposeChange request by Alice Admin');
     } finally { await unmount(); }
   });
 

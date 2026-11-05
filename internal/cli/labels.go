@@ -18,7 +18,8 @@ func idWithName(id string, name *string) string {
 		return id
 	}
 	clean := strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+		// Cf covers the direction controls and zero-width characters; Zl and Zp break lines.
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return -1
 		}
 		return r
@@ -50,8 +51,13 @@ func lazyLabeler(format Format, fetch func() map[string]string) func(id string) 
 }
 
 // environmentLabeler labels environment IDs with the project's environment names.
+// A machine credential gets the bare ID: a publish-only CI principal may not read
+// the list, and its courtesy lookup would add a grant.denied to every run.
 func environmentLabeler(ctx context.Context, client *Client, projectBase string, format Format) func(id string) string {
 	return lazyLabeler(format, func() map[string]string {
+		if client.machine {
+			return nil
+		}
 		var list apigen.EnvironmentList
 		if err := client.Do(ctx, http.MethodGet, projectBase+"/environments", nil, &list); err != nil {
 			return nil

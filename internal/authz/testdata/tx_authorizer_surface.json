@@ -45,7 +45,7 @@
   "CallerCanDefineKeys": "func(ctx context.Context, caller Identity, scope domain.Scope) (creatable, editable bool, err error)",
   "CallerHolds": "func(ctx context.Context, caller Identity,\n\top Operation, scope domain.Scope) (bool, error)",
   "CallerHoldsApprovalKeys": "func(ctx context.Context, caller Identity, scope domain.Scope, ids []string) (bool, error)",
-  "CallerMay": "func(ctx context.Context, caller Identity, op Operation, scope domain.Scope) (bool, error)",
+  "CallerMayListEnvironment": "func(ctx context.Context, caller Identity, scope domain.Scope, env domain.EnvID) (bool, error)",
   "CaptureAudit": "func(trail audit.Trail, scope domain.Scope, e audit.Event)",
   "ClaimFederatedAuthority": "func(ctx context.Context, id, kind string, at time.Time) (bool, error)",
   "ClaimRemotePairingAttempt": "func(ctx context.Context, id string, now time.Time) (bool, error)",

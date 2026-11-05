@@ -13,6 +13,7 @@ func TestValidateAccountProfile(t *testing.T) {
 		{"blank legacy name", ProfileUpdate{Username: "marc"}, true},
 		{"whitespace", ProfileUpdate{Username: " marc", DisplayName: "Marc"}, false},
 		{"control", ProfileUpdate{Username: "marc", DisplayName: "Marc\n"}, false},
+		{"direction control", ProfileUpdate{Username: "marc", DisplayName: "Ma\u202erc"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := validateAccountProfile(tc.profile); (err == nil) != tc.valid {

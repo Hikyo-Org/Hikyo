@@ -499,9 +499,10 @@ func (s *Transit) ListKeys(ctx context.Context, actor Actor, scope domain.Scope)
 			return err
 		}
 		out = make([]TransitKeyView, 0, len(keys))
-		names := newPrincipalNames()
 		for _, k := range keys {
-			view, err := s.keyView(ctx, r.Transit(), az, names, scope, proof, k, now)
+			// A key's detail names its callers; doing it for every key here would
+			// multiply each roster's lookups by the size of the list.
+			view, err := s.keyView(ctx, r.Transit(), az, nil, scope, proof, k, now)
 			if err != nil {
 				return err
 			}
@@ -536,7 +537,8 @@ func (s *Transit) GetKey(ctx context.Context, actor Actor, scope domain.Scope, n
 	return out, err
 }
 
-// keyView loads versions and caller entries and computes rotation status.
+// keyView loads versions and caller entries and computes rotation status. A nil
+// names leaves the callers unnamed.
 // Store errors propagate; an unparseable latest-version timestamp leaves
 // RotationDue false.
 func (s *Transit) keyView(ctx context.Context, r store.TransitReader, az *authz.TxAuthorizer, names *principalNames, scope domain.Scope, proof authz.Proof, k store.TransitKeyRecord, now time.Time) (TransitKeyView, error) {
@@ -549,21 +551,23 @@ func (s *Transit) keyView(ctx context.Context, r store.TransitReader, az *authz.
 		return TransitKeyView{}, err
 	}
 	view := TransitKeyView{TransitKeyRecord: k, Versions: versions, Callers: callers, PrincipalNames: map[string]string{}}
-	for _, c := range callers {
-		id := domain.PrincipalID(c.PrincipalID)
-		visible, err := names.visibleInProject(ctx, az, id, scope)
-		if err != nil {
-			return TransitKeyView{}, err
-		}
-		if !visible {
-			continue
-		}
-		name, err := names.get(ctx, az, id)
-		if err != nil {
-			return TransitKeyView{}, err
-		}
-		if name != "" {
-			view.PrincipalNames[c.PrincipalID] = name
+	if names != nil {
+		for _, c := range callers {
+			id := domain.PrincipalID(c.PrincipalID)
+			visible, err := names.visibleInProject(ctx, az, id, scope)
+			if err != nil {
+				return TransitKeyView{}, err
+			}
+			if !visible {
+				continue
+			}
+			name, err := names.label(ctx, az, id)
+			if err != nil {
+				return TransitKeyView{}, err
+			}
+			if name != "" {
+				view.PrincipalNames[c.PrincipalID] = name
+			}
 		}
 	}
 	for _, v := range versions {

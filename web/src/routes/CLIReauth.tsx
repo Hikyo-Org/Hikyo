@@ -212,8 +212,8 @@ export function CLIReauth() {
             ) : null}
             {owner === undefined ? null : (
               <p>
-                Organisation <NamedId id={owner.org_id} name={names.org} />, project{' '}
-                <NamedId id={owner.project_id} name={names.project} />
+                Organisation <NamedId id={owner.org_id} name={names.org} tail />, project{' '}
+                <NamedId id={owner.project_id} name={names.project} tail />
               </p>
             )}
             {transaction.data.environments.length === 0 ? null : (
@@ -223,6 +223,7 @@ export function CLIReauth() {
                     <NamedId
                       id={environment.environment_id}
                       name={owner === undefined ? undefined : names.environmentName(environment.environment_id)}
+                      tail
                     />{' '}
                     ({environment.requires_webauthn
                       ? 'passkey required'

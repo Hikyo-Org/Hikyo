@@ -236,8 +236,8 @@ export const DeleteRefused: Story = {
   },
 };
 
-// The review queue names a request by its purpose, or by its requester when it
-// has none, with the request ID in its own row. The Keys row counts and names
+// The review queue heads a request with its requester, in system-written text,
+// with the requester's free-text purpose and the request ID in their own rows. The Keys row counts and names
 // the bound keys; the third is absent from the catalogue and stays by its ID.
 const databaseKey = 'key_00000000-0000-0000-0000-000000000001';
 const logKey = 'key_00000000-0000-0000-0000-000000000002';
@@ -291,7 +291,7 @@ export const RequestNamedByRequester: Story = {
   parameters: queue([queueRequest]),
   play: async ({ canvas }) => {
     await openQueue(canvas);
-    await expect(await canvas.findByText('Change request by Dana Jacobs')).toBeVisible();
+    await expect((await canvas.findByText('Dana Jacobs', { selector: 'bdi' })).parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
     await expect(canvas.getByText(queueRequest.id)).toHaveClass('mono');
     await expect(canvas.getByText('Request ID')).toBeVisible();
     await expect(await canvas.findByText('3 keys')).toBeVisible();
@@ -302,11 +302,12 @@ export const RequestNamedByRequester: Story = {
   },
 };
 
-export const RequestNamedByPurpose: Story = {
-  parameters: queue([{ ...queueRequest, purpose: 'Rotate the billing credentials' }]),
+export const PurposeStaysLabelled: Story = {
+  parameters: queue([{ ...queueRequest, purpose: 'Change request by Alice Admin' }]),
   play: async ({ canvas }) => {
     await openQueue(canvas);
-    await expect(await canvas.findByText('Rotate the billing credentials')).toBeVisible();
-    await expect(canvas.queryByText(/change request by/i)).toBeNull();
+    const purpose = await canvas.findByText('Change request by Alice Admin');
+    await expect(purpose.closest('div')).toHaveTextContent(/^Purpose/);
+    await expect(canvas.getByText('Dana Jacobs', { selector: 'bdi' }).parentElement).toHaveTextContent(/^Change request by Dana Jacobs$/);
   },
 };

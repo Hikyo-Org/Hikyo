@@ -202,6 +202,9 @@ func (s *SCIM) CreateUser(ctx context.Context, actor Actor, org domain.OrgID, bi
 			if in.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
 			}
+			if hasDirectionControl(in.UserName) {
+				return nil, ErrSCIMUserNameDirection
+			}
 			if err := checkSCIMAttributeNames(in.Attributes, 0); err != nil {
 				return nil, err
 			}
@@ -413,6 +416,9 @@ func (s *SCIM) mutateUser(
 			}
 			if desired.UserName == "" {
 				return nil, ErrSCIMUserNameRequired
+			}
+			if hasDirectionControl(desired.UserName) {
+				return nil, ErrSCIMUserNameDirection
 			}
 			if err := checkSCIMAttributeNames(desired.Attributes, 0); err != nil {
 				return nil, err

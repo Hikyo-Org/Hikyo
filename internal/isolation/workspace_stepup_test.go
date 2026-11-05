@@ -505,6 +505,50 @@ func TestStepUpBindingIsConsumed(t *testing.T) {
 // from the SERVER-bound transaction by state, rather than trusting them from its
 // URL. This proves the read answers both variants, preserves step-up ownership,
 // refuses without a session, and refuses an unknown state.
+// The owner ids are disclosed only when the environment listing would show the
+// caller this environment: a rule confined to another environment of the project
+// does not reveal the project, and a missing environment reads like a hidden one.
+func TestShowHandoffFollowsEnvironmentNavigation(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		ws := stepUpWorkspace(t, db)
+		if _, err := ws.AddOrigin(ctx, service.LocalPrincipal(root), stepUpOrigin); err != nil {
+			t.Fatal(err)
+		}
+		f := seedRulesFixture(t, db)
+		mode, envs := onlyEnvs(envA1)
+		f.create(t, orgAdmin, service.RuleSpec{Target: carol, Capability: domain.CapRead, Org: orgA, Where: whereIn(mode, envs, domain.AxisOnly, domain.RuleKeyItem{KeyID: f.dbKeyID})})
+		session := seedSessionFactors(t, db, carol, `["password","totp"]`)
+		established := establishWorkspace(t, ws, session)
+		denialsBefore := queryString(t, db, "SELECT count(*) FROM audit_tenant_events WHERE type = 'grant.denied'")
+		_, challenge := pkcePair("show-handoff-navigation")
+		for _, tc := range []struct {
+			env    domain.EnvID
+			owners bool
+		}{{envA1, true}, {envProd, false}, {domain.EnvID("env_missing"), false}} {
+			intent := workspaceReauthIntent(t, string(authz.OpValueReveal), string(tc.env), "key_one")
+			started, err := ws.StartHandoff(ctx, service.HandoffRequest{
+				Origin: stepUpOrigin, RedirectURI: stepUpOrigin + "/workspace/callback",
+				PKCEChallenge: challenge, Purpose: service.HandoffStepUp,
+				SessionID: established.SessionID, ReauthIntent: &intent,
+			})
+			if err != nil {
+				t.Fatalf("start handoff for %s: %v", tc.env, err)
+			}
+			view, err := ws.ShowHandoff(ctx, service.Bearer(session), started.State)
+			if err != nil {
+				t.Fatalf("show handoff for %s: %v", tc.env, err)
+			}
+			if got := view.OrgID != "" || view.ProjectID != ""; got != tc.owners {
+				t.Errorf("%s: owners = %q/%q, want disclosed = %v", tc.env, view.OrgID, view.ProjectID, tc.owners)
+			}
+		}
+		if got := queryString(t, db, "SELECT count(*) FROM audit_tenant_events WHERE type = 'grant.denied'"); got != denialsBefore {
+			t.Errorf("grant.denied rows = %s, want still %s after cosmetic probes", got, denialsBefore)
+		}
+	})
+}
+
 func runShowHandoffReturnsBoundPolicy(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 	ws := stepUpWorkspace(t, db)

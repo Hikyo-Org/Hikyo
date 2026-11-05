@@ -273,7 +273,7 @@ func (s *Definitions) GetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		out.LastApply.AppliedByName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(last.AppliedBy))
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
 		return err
 	})
 	return out, err
@@ -321,7 +321,7 @@ func (s *Definitions) SetSettings(ctx context.Context, actor Actor, scope domain
 			return err
 		}
 		out.LastApply = lastApplyOf(last)
-		out.LastApply.AppliedByName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(last.AppliedBy))
+		out.LastApply.AppliedByName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(last.AppliedBy))
 		return err
 	})
 	return out, err

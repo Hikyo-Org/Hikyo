@@ -17,6 +17,9 @@ func TestNameAndFolderPathGrammar(t *testing.T) {
 			t.Errorf("checkName(%q) = %v, want ErrInvalid", bad, err)
 		}
 	}
+	if err := checkName("environment name", "dorp\u202e"); !errors.Is(err, domain.ErrInvalid) {
+		t.Errorf("checkName with a direction control = %v, want ErrInvalid", err)
+	}
 	if err := checkName("organisation name", "Acme Platform"); err != nil {
 		t.Errorf("a legitimate name was refused: %v", err)
 	}

@@ -2092,6 +2092,7 @@ func authenticatedResolvedTarget(st *State, ios IO, flags commonFlags, resolved 
 		if err != nil {
 			return nil, nil, Resolved{}, err
 		}
+		client.machine = true
 		if echo := resolved.Echo(); echo != "" {
 			fmt.Fprintf(ios.Stderr, "target: %s [origin %s, artifact machine-credential]\n", echo, entry.Origin)
 		}

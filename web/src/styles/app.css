@@ -4656,7 +4656,6 @@ label.chk:has(input:disabled) {
   justify-content: space-between;
 }
 
-.session__id,
 .session__detail {
   overflow-wrap: anywhere;
 }
@@ -6860,6 +6859,7 @@ label.chk:has(input:disabled) {
 }
 
 .change-approvals__request-head {
+  overflow-wrap: anywhere;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -6885,6 +6885,7 @@ label.chk:has(input:disabled) {
 
 .change-approvals__request-meta dd {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .change-approvals__bypass {

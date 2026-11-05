@@ -77,7 +77,7 @@ describe('CLI authorization names', () => {
       const text = container.textContent ?? '';
       expect(text).toContain('Acme');
       expect(text).toContain('Billing');
-      expect(text).toContain('production (passkey required)');
+      expect(text).toContain('production …000001 (passkey required)');
       expect(text).not.toContain(consentIds.environment);
       expect(text).toContain('3 keys');
       const rows = [...container.querySelectorAll('.ceremony__keys li')];
@@ -125,7 +125,7 @@ describe('CLI authorization names', () => {
       expect(container.querySelectorAll('ul[aria-label="Environments this decision covers"] li')).toHaveLength(2);
       expect(container.querySelector('.ceremony__keys')).toBeNull();
       expect(requested().some((path) => path.endsWith('/keys'))).toBe(false);
-      expect(container.textContent).toContain('production (passkey required)');
+      expect(container.textContent).toContain('production …000001 (passkey required)');
       expect(authorize(container).disabled).toBe(false);
     } finally { await unmount(); }
   });

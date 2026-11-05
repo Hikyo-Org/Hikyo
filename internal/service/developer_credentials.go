@@ -195,7 +195,7 @@ func (s *DeveloperCredentials) List(ctx context.Context, actor Actor, scope doma
 				continue
 			}
 			named := NamedDeveloperCredential{DeveloperCredential: c}
-			if named.AuthorityPrincipalName, err = names.get(ctx, az, c.AuthorityPrincipal); err != nil {
+			if named.AuthorityPrincipalName, err = names.label(ctx, az, c.AuthorityPrincipal); err != nil {
 				return err
 			}
 			out = append(out, named)

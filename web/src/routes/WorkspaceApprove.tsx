@@ -247,14 +247,14 @@ export function WorkspaceApprove() {
               {stepUpTransaction.org_id === undefined || stepUpTransaction.project_id === undefined ? null : (
                 <>
                   <dt>Organisation</dt>
-                  <dd><NamedId id={stepUpTransaction.org_id} name={names.org} /></dd>
+                  <dd><NamedId id={stepUpTransaction.org_id} name={names.org} tail /></dd>
                   <dt>Project</dt>
-                  <dd><NamedId id={stepUpTransaction.project_id} name={names.project} /></dd>
+                  <dd><NamedId id={stepUpTransaction.project_id} name={names.project} tail /></dd>
                 </>
               )}
               <dt>Environment</dt>
               <dd>
-                <NamedId id={stepUpTransaction.environment} name={names.environmentName(stepUpTransaction.environment)} />
+                <NamedId id={stepUpTransaction.environment} name={names.environmentName(stepUpTransaction.environment)} tail />
               </dd>
               <dt>Keys</dt>
               <dd>

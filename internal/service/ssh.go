@@ -1121,7 +1121,7 @@ func (s *SSH) ListCertificates(ctx context.Context, actor Actor, scope domain.Sc
 		names := newPrincipalNames()
 		for _, c := range rows {
 			view := certificateView(c, now)
-			if view.RequesterPrincipalName, err = names.get(ctx, az, domain.PrincipalID(c.RequesterPrincipalID)); err != nil {
+			if view.RequesterPrincipalName, err = names.label(ctx, az, domain.PrincipalID(c.RequesterPrincipalID)); err != nil {
 				return err
 			}
 			out = append(out, view)
@@ -1147,7 +1147,7 @@ func (s *SSH) GetCertificate(ctx context.Context, actor Actor, scope domain.Scop
 			return err
 		}
 		out = certificateView(c, now)
-		out.RequesterPrincipalName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(c.RequesterPrincipalID))
+		out.RequesterPrincipalName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(c.RequesterPrincipalID))
 		return err
 	})
 	return out, err
@@ -1193,7 +1193,7 @@ func (s *SSH) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 			return SSHCertificateView{}, err
 		}
 		view := certificateView(after, now)
-		view.RequesterPrincipalName, err = newPrincipalNames().get(ctx, az, domain.PrincipalID(after.RequesterPrincipalID))
+		view.RequesterPrincipalName, err = newPrincipalNames().label(ctx, az, domain.PrincipalID(after.RequesterPrincipalID))
 		return view, err
 	})
 }

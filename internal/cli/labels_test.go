@@ -24,6 +24,8 @@ func TestIDWithName(t *testing.T) {
 		{"newline cannot forge a row", func() *string { s := "Dana\nusr_2\tadmin"; return &s }(), "usr_1 (Danausr_2admin)"},
 		{"escape sequence", func() *string { s := "\x1b[2JDana\u009b"; return &s }(), "usr_1 ([2JDana)"},
 		{"bidi override", func() *string { s := "Da\u202ena"; return &s }(), "usr_1 (Dana)"},
+		{"zero width and tag characters", func() *string { s := "Da\u200bna\U000e0041"; return &s }(), "usr_1 (Dana)"},
+		{"line and paragraph separators", func() *string { s := "Dana\u2028usr_2\u2029"; return &s }(), "usr_1 (Danausr_2)"},
 		{"only control characters", func() *string { s := "\n\x1b"; return &s }(), "usr_1"},
 	} {
 		if got := idWithName("usr_1", tc.in); got != tc.want {
@@ -67,6 +69,19 @@ func TestEnvironmentLabelerNamesOnceAndFallsBackToTheID(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatalf("lookups = %d, want 1 per command", requests)
+	}
+}
+
+func TestEnvironmentLabelerNeverLooksUpForAMachineCredential(t *testing.T) {
+	requests := 0
+	srv := labelerServer(t, http.StatusForbidden, &requests)
+	client, err := NewClient(pinnedTestEntry("test", srv), "bearer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.machine = true
+	if got := environmentLabeler(t.Context(), client, "/project", FormatTable)("env_1"); got != "env_1" || requests != 0 {
+		t.Fatalf("machine label = %q after %d lookups", got, requests)
 	}
 }
 

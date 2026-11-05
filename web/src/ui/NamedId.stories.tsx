@@ -22,6 +22,22 @@ export const Named: Story = {
   },
 };
 
+export const ShowsTheIdTailForConsent: Story = {
+  args: { tail: true },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText('Ada Lovelace')).toHaveAttribute('title', ID);
+    await expect(within(canvasElement).getByText('…000001')).toHaveClass('mono');
+  },
+};
+
+// A right-to-left override in a name stays inside the name's own element.
+export const IsolatesTheNamesTextDirection: Story = {
+  args: { name: 'sandbox\u202E' },
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('bdi')).toHaveTextContent('sandbox');
+  },
+};
+
 export const FallsBackToTheId: Story = {
   args: { name: undefined },
   play: async ({ canvasElement }) => {

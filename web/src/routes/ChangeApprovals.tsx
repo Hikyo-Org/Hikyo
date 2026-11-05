@@ -510,7 +510,7 @@ function ApprovalRequestRow({
   return (
     <li className="change-approvals__request">
       <div className="change-approvals__request-head">
-        <span>{request.purpose === '' ? `Change request by ${request.requester_name ?? request.requester}` : request.purpose}</span>
+        <span>Change request by <bdi>{request.requester_name ?? request.requester}</bdi></span>
         <span className="change-approvals__request-state">
           {request.state}<Sep />{request.approvals}/{request.min_approvals} approvals
         </span>
@@ -524,6 +524,13 @@ function ApprovalRequestRow({
           <dt>Requester</dt>
           <dd title={request.requester}>{request.requester_name ?? request.requester}</dd>
         </div>
+        {/* Free text from the requester, so it never stands unlabelled as the heading. */}
+        {request.purpose === '' ? null : (
+          <div>
+            <dt>Purpose</dt>
+            <dd><bdi>{request.purpose}</bdi></dd>
+          </div>
+        )}
         <div>
           <dt>Changes</dt>
           <dd>{request.change_count}</dd>

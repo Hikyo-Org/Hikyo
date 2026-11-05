@@ -333,7 +333,7 @@ func (s *Workspace) ListConnections(ctx context.Context, actor Actor) ([]Connect
 		for _, c := range conns {
 			view := connectionView(c, now, epoch)
 			// The caller may list these connections, so their creators are disclosed.
-			if view.CreatedByName, err = names.get(ctx, az, view.CreatedBy); err != nil {
+			if view.CreatedByName, err = names.label(ctx, az, view.CreatedBy); err != nil {
 				return err
 			}
 			out = append(out, view)
@@ -366,7 +366,7 @@ func (s *Workspace) ShowConnection(ctx context.Context, actor Actor, id string) 
 			return err
 		}
 		out = connectionView(conn, now, epoch)
-		if out.CreatedByName, err = newPrincipalNames().get(ctx, az, out.CreatedBy); err != nil {
+		if out.CreatedByName, err = newPrincipalNames().label(ctx, az, out.CreatedBy); err != nil {
 			return err
 		}
 		e, err := domainEvent(ctx, audit.EventRemoteCredentialsListed, caller.Principal,
@@ -997,16 +997,20 @@ func (s *Workspace) ShowHandoff(ctx context.Context, actor Actor, state string) 
 			if err != nil && !errors.Is(err, domain.ErrNotFound) {
 				return err
 			}
-			if err == nil {
-				scope := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project)}
-				az.SetClock(now)
-				may, err := az.CallerMay(ctx, caller, authz.OpEnvList, scope)
-				if err != nil {
-					return err
-				}
-				if may {
-					out.OrgID, out.ProjectID = chain.Org, chain.Project
-				}
+			// A missing environment still runs the check, against a project no
+			// row can match, so the work done does not say whether the ID exists.
+			missing := err != nil
+			scope := domain.Scope{Org: domain.OrgID(chain.Org), Project: domain.ProjectID(chain.Project)}
+			if missing {
+				scope = domain.Scope{Org: "org_absent", Project: "prj_absent"}
+			}
+			az.SetClock(now)
+			may, err := az.CallerMayListEnvironment(ctx, caller, scope, domain.EnvID(h.EnvID))
+			if err != nil {
+				return err
+			}
+			if may && !missing {
+				out.OrgID, out.ProjectID = chain.Org, chain.Project
 			}
 		default:
 			return ErrHandoffInvalid

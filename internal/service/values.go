@@ -987,7 +987,7 @@ func readCells(ctx context.Context, cat store.CatalogueReader, vals store.ValueR
 			cell.UpdatedAt = entry.UpdatedAt
 			cell.UpdatedBy = entry.UpdatedBy
 			// The cell is readable, so its writer is already disclosed.
-			name, err := names.get(ctx, az, domain.PrincipalID(entry.UpdatedBy))
+			name, err := names.label(ctx, az, domain.PrincipalID(entry.UpdatedBy))
 			if err != nil {
 				return nil, err
 			}

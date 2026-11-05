@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -65,8 +66,21 @@ func (n *principalNames) get(ctx context.Context, az *authz.TxAuthorizer, id dom
 	return name, nil
 }
 
-// visibleInProject requires an independently stored grant in the policy's
+// label is get for a row anyone who may read the row can see, including workload
+// tokens. SCIM stores userName, commonly an email address, as the display name,
+// and an address is contact detail rather than a name: that row keeps the ID.
+func (n *principalNames) label(ctx context.Context, az *authz.TxAuthorizer, id domain.PrincipalID) (string, error) {
+	name, err := n.get(ctx, az, id)
+	if strings.Contains(name, "@") {
+		return "", err
+	}
+	return name, err
+}
+
+// visibleInProject requires an independently stored grant in the scope's own
 // tenant before a caller-authored roster entry can trigger a global name lookup.
+// An instance-level grant does not count: it says nothing about this tenant, so
+// a roster editor who knows such a principal's ID must not learn its name.
 func (n *principalNames) visibleInProject(ctx context.Context, az *authz.TxAuthorizer, id domain.PrincipalID, scope domain.Scope) (bool, error) {
 	key := visibility{id: id, org: scope.Org, project: scope.Project}
 	if visible, ok := n.visible[key]; ok {
@@ -78,7 +92,7 @@ func (n *principalNames) visibleInProject(ctx context.Context, az *authz.TxAutho
 	}
 	visible := false
 	for _, grant := range grants {
-		if grant.Scope.Org == "" || (grant.Scope.Org == scope.Org && (grant.Scope.Project == "" || grant.Scope.Project == scope.Project)) {
+		if grant.Scope.Org == scope.Org && (grant.Scope.Project == "" || grant.Scope.Project == scope.Project) {
 			visible = true
 			break
 		}

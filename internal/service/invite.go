@@ -67,6 +67,9 @@ func (s *Grants) InviteMember(ctx context.Context, actor Actor, spec InviteSpec)
 	if displayName == "" {
 		displayName = username
 	}
+	if hasDirectionControl(displayName) {
+		return InvitationResult{}, fmt.Errorf("%w: a display name must not contain text direction controls", domain.ErrInvalid)
+	}
 	level, err := spec.Scope.Level()
 	if err != nil {
 		return InvitationResult{}, fmt.Errorf("%w: %s", domain.ErrInvalid, err)

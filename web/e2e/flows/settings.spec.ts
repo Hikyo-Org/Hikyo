@@ -1011,8 +1011,9 @@ test.describe('developer credential administration', () => {
       await page.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=developer-credentials`);
       const panel = page.locator('#project-developer-credentials');
       const row = panel.getByRole('row').filter({ has: page.getByRole('button', { name: `Revoke ${id}`, exact: true }) });
-      await expect(row).toContainText(minted.credential.authority_principal_id);
-      await expect(row).toContainText(seed.dev);
+      // Names lead, and each ID stays reachable as the element's title.
+      await expect(row.locator(`[title="${minted.credential.authority_principal_id}"]`)).toBeVisible();
+      await expect(row.locator(`[title="${seed.dev}"]`)).toBeVisible();
       expect((await page.locator('body').innerText()).includes(minted.value)).toBe(false);
       await expectNoSeriousAxeViolations(page);
       await expectTouchTargets(page, [panel.getByRole('button', { name: `Revoke ${id}`, exact: true })]);
@@ -1056,7 +1057,7 @@ test.describe('developer credential administration', () => {
       await page.goto(`/orgs/${seed.org}/projects/${seed.project}/settings?tab=developer-credentials`);
       await panel.getByRole('button', { name: `Revoke ${id}`, exact: true }).click();
       const revoke = page.getByRole('dialog', { name: 'Revoke developer credential?' });
-      await expect(revoke).toContainText(id);
+      await expect(revoke.locator(`[title="${id}"]`)).toBeVisible();
       await revoke.getByRole('button', { name: 'Cancel', exact: true }).click();
       const untouched = await browserApi(page, 'GET', `${base}/developer-credentials`, zDeveloperCredentialList);
       expect(untouched.items.find((credential) => credential.id === id)?.revoked_at).toBeUndefined();

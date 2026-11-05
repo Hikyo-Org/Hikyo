@@ -81,7 +81,17 @@ func checkName(what, name string) error {
 			return fmt.Errorf("%w: %s contains a control character", domain.ErrInvalid, what)
 		}
 	}
+	if hasDirectionControl(name) {
+		return fmt.Errorf("%w: %s contains a text direction control", domain.ErrInvalid, what)
+	}
 	return nil
+}
+
+// hasDirectionControl finds the characters that make displayed text read in a
+// different order than it is stored. A name is what a person approves against,
+// so its letters must appear as written.
+func hasDirectionControl(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool { return unicode.Is(unicode.Bidi_Control, r) })
 }
 
 // checkFolderPath is the folder namespace grammar. A folder is display
