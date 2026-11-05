@@ -343,9 +343,12 @@ schema digest per engine), then rerun the lint pins.
 The freeze and signed-bytes decisions are made (2026-11-04). What is left is
 registered open, with its risk; none of it is built in this PR.
 
-1. **Done on 2026-11-05: hosted runs of the post-merge lanes.** Post-merge `ci-dev`
-   (run 42087849745) passed on `4956f5253`, including the both-engine frozen-client
-   lane on the CI-pinned PostgreSQL image.
+1. **Hosted runs of the post-merge lanes: mostly done on 2026-11-05.** Post-merge
+   `ci-dev` (run 42087849745) passed on `4956f5253`, including the both-engine
+   frozen-client lane on the CI-pinned PostgreSQL image and the isolation shards that
+   run SQLite and PostgreSQL cases (which shard ran the new tests is not confirmed).
+   Still open: no hosted lane rechecks the buildcompat PostgreSQL 18 digest. Risk: a
+   schema digest drift against the pinned image would not be caught there.
 2. **Pin Wycheproof ML-DSA vectors** (source, version, digest; DEC-09). Risk: the
    vectors in the tree come from the Go standard library only, plus a local OpenSSL
    check outside CI.
@@ -359,8 +362,9 @@ registered open, with its risk; none of it is built in this PR.
    older than this change refuses the migrated database is unknown: no test drives the
    upgrade gate against it. The rollback floor moves regardless; see above.
 7. **Owner thresholds** from a target-machine baseline (amd64 included; not measured).
-8. **Done on 2026-11-05:** maintainer security approval and independent adversarial
-   review of the merged head. Cross-provider review stays SKIPPED, not CLEAN.
+8. **Done on 2026-11-05:** maintainer security approval for head `aa54b7d94`, and
+   independent adversarial review (its last, documentation-only commit had no further
+   read). Cross-provider review stays SKIPPED, not CLEAN.
 9. **Consumers.** One `mldsa65` key in an environment makes that environment's key
    list unreadable to any consumer that validates with the `v1.0.0` Zod schemas
    (accepted, option A). The WebUI in this PR parses it; integrators must update
