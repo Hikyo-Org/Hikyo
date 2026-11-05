@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -37,11 +36,7 @@ func openExternal(raw string) error {
 		log.Printf("BROWSER %s", u)
 		return nil
 	}
-	cmd := exec.Command("open", u.String())
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return cmd.Process.Release()
+	return openURL(u.String())
 }
 
 // downloadPath picks where a download lands: a base name only, never an existing file.

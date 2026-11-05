@@ -17,7 +17,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,27 +35,6 @@ func (i *instances) Set(v string) error { *i = append(*i, v); return nil }
 type session struct {
 	Origin string `json:"origin"`
 	Token  string `json:"token"`
-}
-
-// shortcut: reads the CLI's 0600 session file, so sign-in stays `hikyo login`; a real shell runs the handoff itself and uses the keychain.
-func loadSessions() map[string]session {
-	dir := os.Getenv("HIKYO_STATE_DIR")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatal(err)
-		}
-		dir = filepath.Join(home, ".local", "state", "hikyo")
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, "sessions.json"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	out := map[string]session{}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		log.Fatalf("sessions.json: %v", err)
-	}
-	return out
 }
 
 // conn is one connection: the instance, its current bearer, and the proxy that spends it.
@@ -216,6 +194,9 @@ func main() {
 	flag.Var(&names, "instance", "CLI instance name from `hikyo login --name`; repeat for more windows")
 	probePath := flag.String("probe", "", "JavaScript to run after each navigation, reporting to /__spike/report")
 	flag.Parse()
+	if len(names) == 0 {
+		names = defaultInstances()
+	}
 	if len(names) == 0 {
 		log.Fatal("usage: wails-shell -instance NAME [-instance NAME]")
 	}

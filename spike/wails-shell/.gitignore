@@ -1,2 +1,5 @@
 wails-shell
 *.log
+ios-dev-config.json
+build/
+bin/
