@@ -134,7 +134,7 @@ Decided on 2026-11-04 by the owner, Marc Went, after the merges above:
 
 8. **The `/api/v1` freeze: option A.** [api-cli-surface](../adr/api-cli-surface.md) (#25) is amended so the closed Transit and PKI enums grow once, for `mldsa65` only. It sets no precedent. The skew break (a `v1.0.0` Zod consumer fails a whole list holding one `mldsa65` value, once an operator creates such a key) is accepted and stated in the banner. Cross-provider review is SKIPPED by explicit owner instruction and is not CLEAN. The amendment enables nothing: Transit has no mechanism on `dev` (it is on #1172) and PKI stays behind `MLDSAEnabled`, false in production. It lands after the 2026-11-04 nightly promotion, so that promotion carries the `dev` head already tested.
 9. Confirmed as built: the #1126 profile selector and vault generation path, the #1127 proxy leg, #1132 signing granularity, and #1133 keeping the `VerifyConnection` walk and platform verifiers. Packet C-10's step 2 abort is "restore the pre-upgrade backup".
-10. Transit signed bytes: the departure described in the [#1129 handoff](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
+10. Transit signed bytes: the departure described in the [#1129 handoff](./1129-transit-mldsa.md) (the caller's raw message is signed, the label is only the ML-DSA context, and the algorithm identifier sits outside the signature) is accepted.
 
 Status note, 2026-11-05: #1172 has since merged (`4956f5253`), so the Transit mechanism that decision 8 places on #1172 is now on `dev`.
 
