@@ -5747,7 +5747,6 @@ var scimDirectoryOps = map[StoreOp]bool{
 	// The mapping surface's ancestry check (§1): a row naming a project outside
 	// the binding's org is refused at authoring AND at every sync.
 	StoreProjectsList:           true,
-	StoreProjectsListIDs:        true,
 	StoreSCIMUser:               true,
 	StoreSCIMUsers:              true,
 	StoreSCIMUserByUserName:     true,

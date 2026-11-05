@@ -21,7 +21,7 @@ org and project.
 
 ## Authorization and audit
 
-- Org writes: `manage-members@org`. Project writes: `manage-projects@org`. Refusal is the uniform 404/403.
+- Org writes: `manage-members@org`. Project writes: `manage-projects@org`. A grant refusal is the uniform 404; the org routes also declare 403 for their MFA requirement.
 - Project image read: `read@project` plus project navigation, so a member reaching the project only through one environment still sees its tile. Audited none.
 - Org image read has no formula: it follows `listMyOrgs` visibility (`resolveSelf` + `OrgsForPrincipal` projection, no machine credentials), so a project-scoped member sees it. A caller outside that projection, such as an instance operator on the org's settings page, needs `org.get`. Otherwise, and with no image, the same 404. Declared as an amendment in `docs/adr/tenant-isolation.md`, pending owner confirmation.
 - Events `settings.org_identity_changed` and `settings.project_identity_changed` record previous and new hue, mark (sanitised free text) and image version, read in the same transaction as the write. Never bytes.
