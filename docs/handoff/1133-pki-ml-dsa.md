@@ -1,7 +1,9 @@
 # #1133: ML-DSA-65 private certificate lifecycle, handoff
 
-Status: **implementation of the mechanism, below the API. The public API, CLI and
-WebUI surface is HOLD on the owner's API-freeze decision.** The owner authorized
+Status: **implementation of the mechanism, below the API. The owner decided the
+API freeze on 2026-11-04 and the enum amendment lets the contract name `mldsa65`,
+but the capability stays disabled: the public API, CLI and WebUI surface refuses it
+while `service.PKI.MLDSAEnabled` is false.** The owner authorized
 the merge to `dev` on 2026-11-04, accepted publication in the next nightly, and
 that instruction is the maintainer security approval for this PR. What merging
 means: `MLDSAEnabled` stays false in production, so the product creates, imports
