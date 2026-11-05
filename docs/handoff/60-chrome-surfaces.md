@@ -159,7 +159,7 @@ on this branch backs it. None is stubbed.
   persist: a guard that appears set and is not is worse than a missing one.
 - **Project metadata** (description). The `Project` contract carries id, org,
   name and creation time. Nothing to write, nothing to write it with.
-- **Organisation and project avatars** — superseded by
+- **Organisation and project avatars**: superseded by
   [editable-chrome-identity.md](editable-chrome-identity.md): hue, content and
   an uploaded image are now stored server-side for orgs and projects, and the
   Identity panels edit them. Prototype mode keeps its browser-local version.

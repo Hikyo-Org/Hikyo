@@ -1,5 +1,6 @@
 import {
   createContext,
+  Fragment,
   lazy,
   Suspense,
   useCallback,
@@ -29,6 +30,7 @@ import {
   useUpdateStatus,
   type UpdateStatus,
 } from '../api/updates.ts';
+import { withRemote } from '../api/transport.tsx';
 import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
@@ -169,6 +171,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   // suspenders; this just stops us provoking it.
   const isInstanceOperator = session.capabilities.instance_operator;
   const canReadInstanceAudit = session.capabilities.instance_audit_read === true;
+  const canReadInstanceDirectory = session.capabilities.instance_directory === true;
   const retentionHealth = useRetentionHealth(isInstanceOperator);
   const updateStatus = useUpdateStatus(isInstanceOperator);
   const serverVersion = useServerVersion();
@@ -264,11 +267,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const activeProjectName =
     projectItems.find((project) => project.id === activeProjectId)?.name ?? activeProjectId;
   const accountName = principalName(session);
-  // Roles are templates, not stored identities, and whoami does not report one:
-  // production shows no role line rather than a made-up one. Prototype mode
-  // owns its illustrative admin copy.
   const isPrototype = import.meta.env.MODE === 'prototype';
-  const activeOrgRole = isPrototype ? 'org admin' : null;
   // Outside prototype mode identity comes from the API. A remote workspace
   // cannot fetch the image same-origin, so it keeps mark plus hue.
   const imagesAllowed = remote === '';
@@ -284,8 +283,6 @@ export function Shell({ session }: { session: WhoAmI }) {
           imagesAllowed ? (version) => projectIdentityImageUrl(activeOrgId, project.id, version) : null,
         );
   const visibleRetentionHealth = retentionHealth.data?.health;
-  const showInstanceAdministration = isInstanceOperator || canReadInstanceAudit;
-  const instanceEntry = surfaceById(isInstanceOperator ? 'instance-admin' : 'instance-audit');
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
   const storageWarning = storageBanner(visibleRetentionHealth);
   const availableUpdate = updateStatus.data?.available === true ? updateStatus.data : null;
@@ -396,8 +393,9 @@ export function Shell({ session }: { session: WhoAmI }) {
         activeOrgName,
         routeProjectId,
         activeProjectName,
+        remote,
       }),
-    [activeOrgId, activeOrgName, activeProjectName, here?.surface, routeProjectId],
+    [activeOrgId, activeOrgName, activeProjectName, here?.surface, remote, routeProjectId],
   );
   const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
   const model = sidebarModel({
@@ -409,6 +407,9 @@ export function Shell({ session }: { session: WhoAmI }) {
     remote,
     isInstanceOperator,
     canReadInstanceAudit,
+    canReadInstanceDirectory,
+    activeOrgName,
+    projectName: rememberedProject?.name ?? activeProjectName,
     systemScope,
     projects: projects.isSuccess && projects.data !== null ? projectItems : null,
     onOrgPage,
@@ -481,16 +482,6 @@ export function Shell({ session }: { session: WhoAmI }) {
           remotes={availableRemoteUpdates}
           principalId={session.principal.id}
         />
-        {showInstanceAdministration ? (
-          <NavLink
-            className="rail__action"
-            to={instanceEntry.path}
-            aria-label={instanceEntry.label}
-            title={instanceEntry.label}
-          >
-            <Glyph name="settings" />
-          </NavLink>
-        ) : null}
         <span className="rail__account-space" aria-hidden="true" />
       </nav>
 
@@ -562,7 +553,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           <Alert>Your organisations could not be loaded. Reload to try again.</Alert>
         ) : null}
         {/* Neither the project block below nor the org-page project list after
-            it renders here (account settings today):
+            it renders here (account settings, instance pages):
             `model.backToProject` is the one link back, so the menu never
             strands the reader with no way back to a project. */}
         {model.backToProject === null ? null : (
@@ -571,24 +562,17 @@ export function Shell({ session }: { session: WhoAmI }) {
             {model.backToProject.label}
           </Link>
         )}
-        {/* The context block (project or instance) stacks ABOVE the organisation
-            block, which is never hidden: every destination stays reachable in
-            every mode, and both blocks render from the same table (#567). The
+        {/* The project block stacks ABOVE the organisation block, which is
+            never hidden: every destination stays reachable in every mode, and
+            the blocks render from the same table (#567). The instance tier
+            sits BELOW them, at the foot. The
             project block keys on `routeProjectId`, not `activeProjectId`: the
             latter falls back to the org's first project so the rail always has
             a tile to mark, and keying on it made the org block vanish
             everywhere. */}
         {model.context?.kind === 'project' ? (
           <ProjectContext
-            org={activeOrgId}
-            orgName={activeOrgName}
-            projectName={rememberedProject?.name ?? activeProjectName}
-            orgRole={activeOrgRole}
-            orgIdentity={(() => {
-              const active = items.find((org) => org.id === activeOrgId);
-              return active === undefined ? undefined : orgIdentityOf(active);
-            })()}
-            links={model.context.links}
+            block={model.context}
             state={projectSidebar}
             onNavigate={onSidebarNavigate}
           />
@@ -619,9 +603,6 @@ export function Shell({ session }: { session: WhoAmI }) {
               </ul>
             )}
           </section>
-        ) : null}
-        {model.context?.kind === 'instance' ? (
-          <InstanceContext links={model.context.links} onNavigate={onSidebarNavigate} />
         ) : null}
         {model.organisation === null ? null : (
           <SidebarSection block={model.organisation} onNavigate={onSidebarNavigate} />
@@ -663,13 +644,18 @@ export function Shell({ session }: { session: WhoAmI }) {
             </ul>
           </section>
         )}
-        {/* Mobile only: the destinations the desktop rail carries (instance
-            cog, account menu). Derived from the same table as everything above. */}
-        {model.instance === null ? null : (
-          <SidebarSection block={model.instance} mobileOnly onNavigate={dismissNavigation} />
-        )}
-        <SidebarSection block={model.account} mobileOnly onNavigate={dismissNavigation} />
-        <SidebarVersion version={serverVersion.data} />
+        {/* One foot group so the tier and version stay in view: it replaced the
+            rail cog, so a long project block must not scroll it away. The drawer
+            reads project, organisation, instance, You (account is mobile only:
+            the rail-foot menu is canonical on desktop). */}
+        <span className="sidebar__spacer" aria-hidden="true" />
+        <div className="sidebar__foot">
+          {model.instance === null ? null : (
+            <SidebarSection block={model.instance} onNavigate={onSidebarNavigate} />
+          )}
+          <SidebarSection block={model.account} mobileOnly onNavigate={dismissNavigation} />
+          <SidebarVersion version={serverVersion.data} />
+        </div>
       </nav>
 
       <div className="chrome__account" inert={navOpen ? true : undefined}>
@@ -809,9 +795,12 @@ export function SidebarLinkItem({
       </span>
     );
   }
-  // Members and its `?project=` projection share a pathname, so NavLink's own
-  // matching would mark both; the model decides which one is current.
-  if (link.id === 'members' || link.id === 'project-members') {
+  // Members and its `?project=` projection share a pathname, and a local row
+  // shares one with the remote page it does not open (`/instance/config?remote=`),
+  // so NavLink's own matching would mark both; the model decides which is current.
+  const localRowOnRemotePage =
+    (new URLSearchParams(location.search).get('remote') ?? '') !== '' && !link.to.includes('remote=');
+  if (link.id === 'members' || link.id === 'project-members' || localRowOnRemotePage) {
     return (
       <Link
         className="sidebar__link"
@@ -832,6 +821,21 @@ export function SidebarLinkItem({
   );
 }
 
+/** The block's heading text, `Title · qualifier · qualifier`, as inline content. */
+function BlockHeading({ block }: { block: SidebarBlock }) {
+  return (
+    <>
+      {block.title}
+      {block.qualifiers.map((qualifier, index) => (
+        <Fragment key={index}>
+          <Sep />
+          {qualifier}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 function SidebarSection({
   block,
   mobileOnly = false,
@@ -845,9 +849,13 @@ function SidebarSection({
   return (
     <section
       className={`sidebar__section${mobileOnly ? ' sidebar__mobile-only' : ''} sidebar__section--${block.kind}`}
-      aria-labelledby={id}
+      // The Remotes page has its own "This instance" card; a region name repeated
+      // on one page is a landmark no screen reader can tell apart.
+      {...(block.kind === 'instance' ? { 'aria-label': 'Instance pages' } : { 'aria-labelledby': id })}
     >
-      <h2 id={id}>{block.title}</h2>
+      <h2 id={id} title={[block.title, ...block.qualifiers].join(' · ')}>
+        <span className="sidebar__heading-text"><BlockHeading block={block} /></span>
+      </h2>
       <ul className="sidebar__items">
         {block.links.map((link) => (
           <li key={link.id}>
@@ -859,65 +867,21 @@ function SidebarSection({
   );
 }
 
-function InstanceContext({
-  links,
-  onNavigate,
-}: {
-  links: readonly SidebarLink[];
-  onNavigate: () => void;
-}) {
-  return (
-    <section className="context-sidebar" aria-labelledby="context-sidebar-title">
-      <h2 id="context-sidebar-title">Instance</h2>
-      <nav aria-label="Instance">
-        {links.map((link) => (
-          <SidebarLinkItem key={link.id} link={link} onNavigate={onNavigate} />
-        ))}
-      </nav>
-    </section>
-  );
-}
-
 export function ProjectContext({
-  org,
-  orgName,
-  projectName,
-  orgRole,
-  orgIdentity: suppliedIdentity,
-  links,
+  block,
   state,
   onNavigate,
 }: {
-  org: string;
-  orgName: string;
-  projectName: string;
-  orgRole: string | null;
-  orgIdentity?: ChromeIdentity | undefined;
-  links: readonly SidebarLink[];
+  block: SidebarBlock;
   state: ProjectSidebarState | null;
   onNavigate: () => void;
 }) {
-  const orgIdentity =
-    suppliedIdentity ?? readChromeIdentity('org', org, import.meta.env.MODE === 'prototype');
-  const matrix = links.find((link) => link.id === 'matrix');
-  const rest = links.filter((link) => link.id !== 'matrix');
+  const matrix = block.links.find((link) => link.id === 'matrix');
+  const rest = block.links.filter((link) => link.id !== 'matrix');
   return (
     <section className="context-sidebar" aria-labelledby="context-sidebar-title">
-      <div className="context-sidebar__org">
-        <span
-          className="avatar context-sidebar__org-avatar"
-          style={chromeIdentityStyle(orgIdentity)}
-        >
-          {chromeIdentityMark(orgIdentity, orgName)}
-        </span>
-        <span>
-          <strong>{orgName}</strong>
-          {orgRole === null ? null : <small>{orgRole}</small>}
-        </span>
-      </div>
-      <h2 id="context-sidebar-title">
-        <span>Project<Sep /></span>
-        {projectName}
+      <h2 id="context-sidebar-title" title={[block.title, ...block.qualifiers].join(' · ')}>
+        <BlockHeading block={block} />
       </h2>
       <nav aria-label="Project">
         {matrix === undefined ? null : <SidebarLinkItem link={matrix} onNavigate={onNavigate} />}
@@ -1147,7 +1111,7 @@ export function FleetUpdateNotice({
   const href =
     availableRemotes.length === 0 && availableLocal?.release_url !== undefined
       ? availableLocal.release_url
-      : '/instance/remotes';
+      : surfaceById('remotes').path;
   const label = availableRemotes.length === 0 ? 'View release' : 'Review updates';
   useEffect(() => {
     if (key === null || wasDismissed(key)) {
@@ -1246,8 +1210,10 @@ export function breadcrumbs(input: {
   readonly activeOrgName: string;
   readonly routeProjectId: string;
   readonly activeProjectName: string;
+  /** The `?remote` of the page: the project crumb must not leave the workspace. */
+  readonly remote: string;
 }): Crumb[] {
-  const { surface, activeOrgId, activeOrgName, routeProjectId, activeProjectName } = input;
+  const { surface, activeOrgId, activeOrgName, routeProjectId, activeProjectName, remote } = input;
   const label = surface?.label ?? 'Not found';
   if (surface?.section === 'instance') {
     return [{ label: 'Hikyo' }, { label: 'Instance' }, { label }];
@@ -1259,7 +1225,7 @@ export function breadcrumbs(input: {
   if (routeProjectId !== '') {
     result.push({
       label: activeProjectName,
-      to: generatePath(surfaceById('matrix').path, { org: activeOrgId, project: routeProjectId }),
+      to: withRemote(generatePath(surfaceById('matrix').path, { org: activeOrgId, project: routeProjectId }), remote),
     });
   }
   result.push({ label });

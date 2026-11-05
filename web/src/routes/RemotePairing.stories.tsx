@@ -31,7 +31,7 @@ export const InteractivePreview: Story = {
     return () => interactiveFixture.reset();
   },
   parameters: {
-    app: { auth: true, identity: pairingIdentity, path: '/remotes', routeTree: true, responses: interactiveFixture.responses },
+    app: { auth: true, identity: pairingIdentity, path: '/instance/remotes', routeTree: true, responses: interactiveFixture.responses },
     docs: { description: { story: 'The real Remotes route and requester panel with sample API data. Choose any password or generated word count, then create a sample invitation in the approval panel and copy or scan its QR code. No keys, cryptographic exchange or real remote connection is created. Workspace popup sign-in is excluded and explicitly refused by the fixture. Use the Storybook theme toolbar for dark or light appearance.' } },
   },
   play: async ({ canvas }) => {

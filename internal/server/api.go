@@ -400,6 +400,7 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 		},
 		Capabilities: apigen.PrincipalCapabilities{
 			InstanceAuditRead:   &id.InstanceAuditRead,
+			InstanceDirectory:   &id.InstanceDirectory,
 			InstanceOperator:    id.InstanceOperator,
 			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},

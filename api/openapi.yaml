@@ -5753,7 +5753,7 @@ paths:
         gate. An operator who wants the whole instance asks for the whole
         instance, and steps up to do it.
 
-        Identity only — id, name and the chrome `identity` (hue, mark, image
+        Identity only: id, name and the chrome `identity` (hue, mark, image
         version) the rail renders. An organisation's `metadata` is
         operator-set and is read through `getOrg`, which authorizes.
       x-hikyo-class: unauthenticated
@@ -18274,15 +18274,25 @@ components:
         instance_audit_read:
           type: boolean
           description: >-
-            True when the caller holds instance audit-read. This navigation
-            hint does not imply instance-config or replace per-request authority
-            and MFA checks. Absent on older servers.
+            True when the caller's session can exercise instance audit-read: the
+            grant, and the second factor it requires, so a password-only session
+            reads false. This navigation hint does not imply instance-config or
+            replace per-request authority checks. Absent on older servers.
+        instance_directory:
+          type: boolean
+          description: >-
+            True when the caller's session can exercise instance-directory, which
+            the remote-instance directory read requires: the grant, and the second
+            factor it requires, so a password-only session reads false. This
+            navigation hint does not imply instance-config or replace per-request
+            authority checks. Absent on older servers.
         instance_operator:
           type: boolean
           description: >-
-            True when the caller holds instance-config authority — the grant the
-            retention-health and update-status reads require. The instance
-            administration chrome and those background polls gate on it.
+            True when the caller's session can exercise instance-config, which the
+            retention-health and update-status reads require: the grant, and the
+            second factor it requires, so a password-only session reads false. The
+            instance administration chrome and those background polls gate on it.
         delivery_report_grant:
           $ref: "#/components/schemas/UnheldGrantReach"
 

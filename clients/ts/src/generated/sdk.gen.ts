@@ -2496,7 +2496,7 @@ export const updateMyProfile = <ThrowOnError extends boolean = false>(options: O
  * gate. An operator who wants the whole instance asks for the whole
  * instance, and steps up to do it.
  *
- * Identity only — id, name and the chrome `identity` (hue, mark, image
+ * Identity only: id, name and the chrome `identity` (hue, mark, image
  * version) the rail renders. An organisation's `metadata` is
  * operator-set and is read through `getOrg`, which authorizes.
  *
