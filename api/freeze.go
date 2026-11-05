@@ -1,12 +1,14 @@
 package api
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oasdiff/oasdiff/checker"
 	"github.com/oasdiff/oasdiff/diff"
+	"github.com/oasdiff/oasdiff/flatten/commonparams"
 	oasload "github.com/oasdiff/oasdiff/load"
 )
 
@@ -101,7 +103,7 @@ func (v Violation) String() string {
 	if where == "" {
 		where = "(document)"
 	}
-	return fmt.Sprintf("[%s] %s: %s (oasdiff level %s)", v.ID, where, v.Text, v.Level)
+	return fmt.Sprintf("[%s] %s: %s (level %s)", v.ID, where, v.Text, v.Level)
 }
 
 // CheckFreeze diffs revised against base and returns every change that is not
@@ -137,10 +139,11 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 
 	// Every check, down to INFO. The default run reports breaking changes
 	// only, which is precisely the fail-open behaviour the ADR rejects.
-	config := checker.NewConfig(checker.GetAllChecks())
+	// Draft: a stability label is lifecycle metadata and must hide nothing.
+	config := checker.NewConfig(checker.GetAllChecks(), checker.WithStabilityLevel(checker.StabilityDraft))
 	changes := checker.CheckBackwardCompatibilityUntilLevel(config, report, sources, checker.INFO)
 
-	var violations []Violation
+	violations := freezeRemovals(report)
 	for _, change := range changes {
 		id := change.GetId()
 		if PermittedChanges[id] {
@@ -154,11 +157,9 @@ func CheckFreeze(base, revised []byte) ([]Violation, error) {
 			Level:     change.GetLevel().String(),
 		})
 	}
-	sort.Slice(violations, func(i, j int) bool {
-		if violations[i].ID != violations[j].ID {
-			return violations[i].ID < violations[j].ID
-		}
-		return violations[i].Path < violations[j].Path
+	slices.SortFunc(violations, func(a, b Violation) int {
+		return cmp.Or(cmp.Compare(a.ID, b.ID), cmp.Compare(a.Path, b.Path),
+			cmp.Compare(a.Operation, b.Operation), cmp.Compare(a.Text, b.Text), cmp.Compare(a.Level, b.Level))
 	})
 	return violations, nil
 }
@@ -171,5 +172,36 @@ func specInfo(raw []byte, name string) (*oasload.SpecInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	normalizeFreezeParameters(doc)
 	return &oasload.SpecInfo{Spec: doc, Url: name}, nil
+}
+
+// Compare the effective operation contract, so moving an unchanged parameter
+// between a path and its operations is neutral. The parsed documents belong to
+// this check only; the authored spec bytes are never modified.
+func normalizeFreezeParameters(doc *openapi3.T) {
+	documents := []*openapi3.T{doc}
+	seen := make(map[*openapi3.Callback]bool)
+	for len(documents) > 0 {
+		current := documents[len(documents)-1]
+		documents = documents[:len(documents)-1]
+		commonparams.Move(current)
+		for _, path := range current.Paths.Map() {
+			for _, operation := range path.Operations() {
+				for _, ref := range operation.Callbacks {
+					if ref == nil || ref.Value == nil || seen[ref.Value] {
+						continue
+					}
+					seen[ref.Value] = true
+					// commonparams handles a document's top-level paths. Adapt
+					// callback expressions to that shape and normalize them too.
+					paths := openapi3.NewPaths()
+					for expression, item := range ref.Value.Map() {
+						paths.Set(expression, item)
+					}
+					documents = append(documents, &openapi3.T{Paths: paths})
+				}
+			}
+		}
+	}
 }
