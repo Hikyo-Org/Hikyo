@@ -114,15 +114,57 @@ assert.equal(z.zOrg.parse((await call('getOrg', { path: { org: org.id } })).data
 assert.equal((await call('listOrgs')).response.status, 200, 'verified login assurance crosses the handoff');
 const list = z.zMyOrgList.parse((await call('listMyOrgs')).data);
 assert.ok(list.items.some(item => item.id === org.id));
-// Transit and PKI as the v1.0.0 consumer sees them. The lists hold Ed25519 and
-// classical keys only: the mldsa65 list case (where the closed v1.0.0 Zod enum
-// rejects the whole list, the one-time skew break of the 2026-11-04
-// api-cli-surface amendment) lands with #1172, which brings the Transit
-// mechanism. PKI cannot mint mldsa65 here while service.PKI.MLDSAEnabled is false.
-const transitKeys = z.zTransitKeyList.parse((await call('listTransitKeys', { path: fixture.scope })).data);
-assert.deepEqual(transitKeys.items.map(key => key.algorithm).sort(), ['ed25519', 'xchacha20-poly1305']);
-const signing = transitKeys.items.find(key => key.algorithm === 'ed25519');
+// Transit as the v1.0.0 consumer sees it. The environment holds an mldsa65 key
+// (#1129) and the closed v1.0.0 Zod enum cannot name it: the whole list fails to
+// parse, Ed25519 entries included, and so does the single key. This is the
+// one-time skew break of the 2026-11-04 api-cli-surface amendment, asserted here
+// as the real behavior rather than avoided. The v1.0.0 SDK has no response
+// validator, so its calls keep working against the same server and the same key.
+// PKI cannot mint mldsa65 here while service.PKI.MLDSAEnabled is false.
+const transitList = (await call('listTransitKeys', { path: fixture.scope })).data;
+assert.deepEqual(transitList.items.map(key => key.algorithm).sort(), ['ed25519', 'mldsa65', 'xchacha20-poly1305']);
+const refusedList = z.zTransitKeyList.safeParse(transitList);
+assert.equal(refusedList.success, false, 'the v1.0.0 Zod list schema must reject a list holding mldsa65');
+const mldsaIndex = transitList.items.findIndex(key => key.algorithm === 'mldsa65');
+assert.deepEqual(
+  refusedList.error.issues.map(issue => issue.path.join('.')),
+  [`items.${mldsaIndex}.algorithm`],
+  'only the mldsa65 algorithm is the failure, not any other field',
+);
+const classicalOnly = z.zTransitKeyList.parse({ items: transitList.items.filter(key => key.algorithm !== 'mldsa65') });
+assert.deepEqual(classicalOnly.items.map(key => key.algorithm).sort(), ['ed25519', 'xchacha20-poly1305']);
+const signing = classicalOnly.items.find(key => key.algorithm === 'ed25519');
 assert.ok(signing.versions[0].public_key, 'an ed25519 key publishes its public key');
+const pqShown = (await call('showTransitKey', { path: { ...fixture.scope, transit_key: 'skew-pq' } })).data;
+assert.equal(z.zTransitKey.safeParse(pqShown).success, false, 'the v1.0.0 Zod key schema rejects a single mldsa65 key');
+assert.equal(z.zTransitKey.safeParse((await call('showTransitKey', { path: { ...fixture.scope, transit_key: 'skew-signing' } })).data).success, true);
+// The v1.0.0 SDK still signs and verifies with it; its public key is a non-empty SPKI.
+assert.ok(pqShown.versions[0].public_key.length > 2000, 'the published mldsa65 key is a large SPKI value');
+const pqMessage = Buffer.from('frozen client signs with mldsa65').toString('base64');
+const pqSigned = z.zTransitSignatureResult.parse((await call('transitSign', { path: { ...fixture.scope, transit_key: 'skew-pq' }, body: { message: pqMessage } })).data);
+assert.ok(pqSigned.signature.startsWith('hikyo:v1:'));
+const pqVerified = z.zTransitVerifyResult.parse((await call('transitVerify', { path: { ...fixture.scope, transit_key: 'skew-pq' }, body: { message: pqMessage, signature: pqSigned.signature } })).data);
+assert.equal(pqVerified.valid, true);
+// The whole lifecycle through the v1.0.0 SDK: create, sign, verify, rotate, list.
+// Its request types do not name mldsa65, but the SDK sends the body as given.
+const lifecycle = { ...fixture.scope, transit_key: 'skew-pq-sdk' };
+const created = (await call('createTransitKey', { path: fixture.scope, body: { name: 'skew-pq-sdk', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'] } })).data;
+assert.equal(created.algorithm, 'mldsa65');
+assert.equal(created.latest_version, 1);
+const first = (await call('transitSign', { path: lifecycle, body: { message: pqMessage } })).data;
+const rotated = (await call('rotateTransitKey', { path: lifecycle })).data;
+assert.equal(rotated.latest_version, 2);
+assert.equal(rotated.versions.length, 2);
+assert.notEqual(rotated.versions[0].public_key, rotated.versions[1].public_key, 'rotation makes a new signing key');
+const second = (await call('transitSign', { path: lifecycle, body: { message: pqMessage } })).data;
+assert.ok(first.signature.startsWith('hikyo:v1:') && second.signature.startsWith('hikyo:v2:'));
+for (const signature of [first.signature, second.signature]) {
+  assert.equal((await call('transitVerify', { path: lifecycle, body: { message: pqMessage, signature } })).data.valid, true);
+}
+assert.equal((await call('transitVerify', { path: lifecycle, body: { message: Buffer.from('another message').toString('base64'), signature: first.signature } })).data.valid, false);
+const afterList = (await call('listTransitKeys', { path: fixture.scope })).data;
+assert.deepEqual(afterList.items.filter(key => key.algorithm === 'mldsa65').map(key => key.name).sort(), ['skew-pq', 'skew-pq-sdk']);
+assert.equal(z.zTransitKeyList.safeParse(afterList).success, false);
 const pkiProfiles = z.zPkiProfileList.parse((await call('listPkiProfiles')).data);
 assert.deepEqual(pkiProfiles.profiles.map(profile => profile.name), ['skew-web']);
 assert.ok(pkiProfiles.profiles[0].policy.key_algorithms.includes('ed25519'));
@@ -139,4 +181,4 @@ const allOrgs = await call('listOrgs', { throwOnError: false });
 assert.equal(allOrgs.response.status, 403, 'instance-wide listing requires MFA');
 assert.equal(z.zError.parse(allOrgs.error).error.code, 'forbidden');
 await call('logout');
-console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit key list, pki profile and issuer lists passed');
+console.log('frozen generated SDK and Zod: discovery, login, identity, logout, create, grant revocation, re-login, read/list, transit mldsa65 list rejected by the v1.0.0 Zod schemas while the SDK signs and verifies, pki profile and issuer lists passed');

@@ -15860,13 +15860,13 @@ type ServerInterface interface {
 	// RotateTransitKey Append a new key version; new output uses it.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
 	RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
-	// TransitSign Sign a message with an Ed25519 key.
+	// TransitSign Sign a message with an Ed25519 or ML-DSA-65 key.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
 	TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
 	// TrimTransitKey Permanently delete versions below min_decrypt_version.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
 	TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
-	// TransitVerify Verify an Ed25519 signature.
+	// TransitVerify Verify an Ed25519 or ML-DSA-65 signature.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
 	TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
 	// ListValues The environment's resolved values.
@@ -17996,7 +17996,7 @@ func (_ Unimplemented) RotateTransitKey(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// TransitSign Sign a message with an Ed25519 key.
+// TransitSign Sign a message with an Ed25519 or ML-DSA-65 key.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
 func (_ Unimplemented) TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -18008,7 +18008,7 @@ func (_ Unimplemented) TrimTransitKey(w http.ResponseWriter, r *http.Request, or
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// TransitVerify Verify an Ed25519 signature.
+// TransitVerify Verify an Ed25519 or ML-DSA-65 signature.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
 func (_ Unimplemented) TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -82234,13 +82234,13 @@ type StrictServerInterface interface {
 	// RotateTransitKey Append a new key version; new output uses it.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
 	RotateTransitKey(ctx context.Context, request RotateTransitKeyRequestObject) (RotateTransitKeyResponseObject, error)
-	// TransitSign Sign a message with an Ed25519 key.
+	// TransitSign Sign a message with an Ed25519 or ML-DSA-65 key.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
 	TransitSign(ctx context.Context, request TransitSignRequestObject) (TransitSignResponseObject, error)
 	// TrimTransitKey Permanently delete versions below min_decrypt_version.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
 	TrimTransitKey(ctx context.Context, request TrimTransitKeyRequestObject) (TrimTransitKeyResponseObject, error)
-	// TransitVerify Verify an Ed25519 signature.
+	// TransitVerify Verify an Ed25519 or ML-DSA-65 signature.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
 	TransitVerify(ctx context.Context, request TransitVerifyRequestObject) (TransitVerifyResponseObject, error)
 	// ListValues The environment's resolved values.

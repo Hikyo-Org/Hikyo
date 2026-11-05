@@ -14841,7 +14841,7 @@ paths:
     post:
       operationId: transitSign
       tags: [transit]
-      summary: Sign a message with an Ed25519 key.
+      summary: Sign a message with an Ed25519 or ML-DSA-65 key.
       x-hikyo-class: tenant
       x-hikyo-operation: transit.use
       x-hikyo-formula: [crypto-use@environment]
@@ -14868,7 +14868,7 @@ paths:
     post:
       operationId: transitVerify
       tags: [transit]
-      summary: Verify an Ed25519 signature.
+      summary: Verify an Ed25519 or ML-DSA-65 signature.
       description: |
         An invalid signature answers valid=false, not an error.
       x-hikyo-class: tenant
