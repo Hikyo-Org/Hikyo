@@ -18,15 +18,21 @@ export type SidebarLink = {
 export type SidebarBlock = {
   readonly kind: 'project' | 'instance' | 'organisation' | 'account';
   readonly title: string;
+  /** Scope qualifiers after the title, rendered `Title · a · b`: the name, or the remote boundary. */
+  readonly qualifiers: readonly string[];
   readonly links: readonly SidebarLink[];
 };
 
 export type SidebarModel = {
-  /** The project or instance block, stacked above the organisation block. */
+  /** The project block, stacked above the organisation block; null off project routes. */
   readonly context: SidebarBlock | null;
-  /** Null while no organisation is active, an entry is absent, never dead. */
+  /** Org-scoped rows are absent while no organisation is active, never dead. */
   readonly organisation: SidebarBlock | null;
-  /** Operator-only, mobile drawer only; null when `context` already IS it. */
+  /**
+   * The instance tier at the foot, wider than the organisation block: collapsed
+   * to Remotes plus one entry row off the instance routes, every permitted row
+   * on them. Null when the principal holds nothing instance-scoped.
+   */
   readonly instance: SidebarBlock | null;
   /** Mobile drawer only; desktop reaches it from the rail-foot menu. */
   readonly account: SidebarBlock;
@@ -38,7 +44,7 @@ export type SidebarModel = {
   readonly orgProjectList: boolean;
   /**
    * One link back to a project, shown only when neither `context` nor the
-   * org-page project list renders (account settings today): the org's
+   * org-page project list renders (account settings and instance pages): the org's
    * last-opened project while it still exists, else the project list. Null
    * everywhere `context` or that list already offers a way back.
    */
@@ -55,10 +61,11 @@ function link(surface: Surface, to: string, disabledReason: string | null = null
 }
 
 /**
- * sidebarModel is the WHOLE sidebar as data (#567). Desktop renders `context`
- * and `organisation`; the mobile drawer renders those plus `instance` and
- * `account`. Every label comes from the navigation table and nothing here is
- * hand-written per mode, so the two cannot drift.
+ * sidebarModel is the WHOLE sidebar as data (#567), narrow to wide: project,
+ * organisation, instance. Desktop and the mobile drawer render all three from
+ * this one model; the drawer adds `account`. Every label comes from the
+ * navigation table and nothing here is hand-written per mode, so the two
+ * cannot drift.
  */
 export function sidebarModel(input: {
   readonly surface: Surface | undefined;
@@ -74,6 +81,10 @@ export function sidebarModel(input: {
   readonly remote: string;
   readonly isInstanceOperator: boolean;
   readonly canReadInstanceAudit?: boolean;
+  readonly canReadInstanceDirectory?: boolean;
+  /** Display names for the block headings; the project name is unused in a remote workspace. */
+  readonly activeOrgName: string;
+  readonly projectName: string;
   /**
    * The Hikyo system organisation and project (the self-configuration
    * binding), or null while unknown. The protected profile refuses machine
@@ -96,6 +107,9 @@ export function sidebarModel(input: {
     remote,
     isInstanceOperator,
     canReadInstanceAudit = false,
+    canReadInstanceDirectory = false,
+    activeOrgName,
+    projectName,
     systemScope,
     projects,
     onOrgPage,
@@ -107,9 +121,14 @@ export function sidebarModel(input: {
   // An org-scoped destination needs an organisation to point at. With none
   // active the entry is absent rather than dead: a link that resolves to
   // `/orgs//members` is a 404 dressed as navigation.
+  // In a remote workspace the organisation id is the REMOTE's, so an
+  // org-scoped path would open a LOCAL page with a foreign id: those rows are
+  // disabled like the project block's. Overview and Projects carry no org in
+  // the path and stay as the way back to local.
   const organisation: SidebarBlock = {
     kind: 'organisation',
     title: 'Organisation',
+    qualifiers: remote !== '' ? [`on ${remote}`] : activeOrgId === '' ? [] : [activeOrgName],
     links: sectionsFor('organisation')
       .filter((item) => !needsOrg(item) || activeOrgId !== '')
       .filter((item) => !systemOrg || !SYSTEM_SCOPE_REFUSES.has(item.id))
@@ -122,23 +141,40 @@ export function sidebarModel(input: {
               ...link(item, item.path, 'This organisation has one project, so it opens on its matrix.'),
               disabledNote: 'one project',
             }
-          : link(item, needsOrg(item) ? generatePath(item.path, { org: activeOrgId }) : item.path),
+          : needsOrg(item)
+            ? link(item, generatePath(item.path, { org: activeOrgId }), remote === '' ? null : localOnly(item.label))
+            : link(item, item.path),
       ),
   };
 
-  const instanceBlock: SidebarBlock | null = isInstanceOperator || canReadInstanceAudit
-    ? {
-        kind: 'instance',
-        title: 'Instance',
-        links: sectionsFor('instance')
-          .filter((item) => isInstanceOperator || item.id === 'instance-audit')
-          .map((item) => link(item, item.path)),
-      }
-    : null;
+  // The instance tier is always local: its links never carry `?remote`. Each
+  // row has its own gate. Remotes also admits the operator, who may hold no
+  // instance-directory yet owns connection custody (instance-config) on that page.
+  const mayShow = (id: string): boolean => {
+    switch (id) {
+      case 'remotes':
+        return isInstanceOperator || canReadInstanceDirectory;
+      case 'instance-audit':
+        return isInstanceOperator || canReadInstanceAudit;
+      default:
+        return isInstanceOperator;
+    }
+  };
+  const expanded = surface?.section === 'instance';
+  const entryId = isInstanceOperator ? 'instance-admin' : 'instance-audit';
+  const instanceLinks = sectionsFor('instance')
+    .filter((item) => mayShow(item.id))
+    .filter((item) => expanded || item.id === 'remotes' || item.id === entryId)
+    .map((item) => link(item, item.path));
+  const instanceBlock: SidebarBlock | null =
+    instanceLinks.length === 0
+      ? null
+      : { kind: 'instance', title: 'This instance', qualifiers: [], links: instanceLinks };
 
   const account: SidebarBlock = {
     kind: 'account',
     title: 'You',
+    qualifiers: [],
     links: sectionsFor('account').map((item) => link(item, item.path)),
   };
 
@@ -167,9 +203,12 @@ export function sidebarModel(input: {
       settingsIndex === -1
         ? [...projectLinks, members]
         : [...projectLinks.slice(0, settingsIndex), members, ...projectLinks.slice(settingsIndex)];
-    context = { kind: 'project', title: '', links };
-  } else if (surface?.section === 'instance' && instanceBlock !== null) {
-    context = instanceBlock;
+    context = {
+      kind: 'project',
+      title: 'Project',
+      qualifiers: remote === '' ? [projectName] : [`on ${remote}`, projectId],
+      links,
+    };
   }
 
   const orgProjectList = context === null && onOrgPage && activeOrgId !== '' && remote === '';
@@ -188,7 +227,7 @@ export function sidebarModel(input: {
   return {
     context,
     organisation,
-    instance: context?.kind === 'instance' ? null : instanceBlock,
+    instance: instanceBlock,
     account,
     orgProjectList,
     backToProject,
@@ -196,15 +235,19 @@ export function sidebarModel(input: {
 }
 
 /**
- * isLinkActive replaces NavLink's own matching for the two links that share a
- * pathname: the org members page and its `?project=` projection. Every other
- * link is active on its pathname alone.
+ * isLinkActive replaces NavLink's own matching where a pathname is shared: the
+ * org members page and its `?project=` projection, and a local row against the
+ * remote page at the same path. Every other link is active on its pathname alone.
  */
 export function isLinkActive(link: SidebarLink, pathname: string, search: string): boolean {
   const [linkPath, linkQuery = ''] = link.to.split('?');
   if (linkPath === undefined || pathname !== linkPath) return false;
-  const wantProject = new URLSearchParams(linkQuery).get('project');
-  const haveProject = new URLSearchParams(search).get('project');
+  const want = new URLSearchParams(linkQuery);
+  const have = new URLSearchParams(search);
+  // A local row is never the current page of a remote workspace.
+  if ((have.get('remote') ?? '') !== '' && !want.has('remote')) return false;
+  const wantProject = want.get('project');
+  const haveProject = have.get('project');
   if (link.id === 'project-members') return wantProject !== null && wantProject === haveProject;
   if (link.id === 'members') return haveProject === null;
   return true;

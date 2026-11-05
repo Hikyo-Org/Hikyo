@@ -246,7 +246,7 @@ test('settings and members are read-only, remote connections stay disabled, and 
   await page.getByRole('searchbox', { name: 'Find a member' }).fill('no-such-member');
   await expect(page.getByText(/No member matches/)).toBeVisible();
 
-  await page.goto('./?account=admin#/remotes');
+  await page.goto('./?account=admin#/instance/remotes');
   await expect(page.getByRole('heading', { name: 'Remotes', exact: true })).toBeVisible();
   await expect(page.getByText(/^Read-only sample data\./)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add a remote', exact: true })).toBeDisabled();

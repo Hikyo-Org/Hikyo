@@ -39,7 +39,7 @@ export const InteractivePairing: Story = {
     return () => pairingFixture.reset();
   },
   parameters: {
-    app: { auth: true, identity: pairingIdentity, path: '/remotes', routeTree: true, responses: pairingFixture.responses },
+    app: { auth: true, identity: pairingIdentity, path: '/instance/remotes', routeTree: true, responses: pairingFixture.responses },
     docs: { description: { story: 'Interactive Remotes with sample data. Open Pair a remote, choose your own secret or generated word count, and import opaque-invitation-fixture to add a sample directory card. To explore administrator approval, open Create pairing invitation with any sample phrase, a label, https://remote.example and fingerprint AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=. Creation displays the same sample invitation and QR. All transport storage resets when the story remounts. No keys, PAKE proof, real remote connection or workspace authentication is performed. The separate human workspace handoff is explicitly refused. Dark and light appearance follow the Storybook toolbar.' } },
   },
   play: async ({ canvas }) => {

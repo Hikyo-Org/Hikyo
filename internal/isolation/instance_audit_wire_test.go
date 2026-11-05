@@ -371,6 +371,39 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		grant("g_ia_admin_inst_ar", admin, "", "")
 	})
 
+	// Every instance hint weighs the second factor as well as the grant.
+	passwordOnlyHints := func(t *testing.T) apigen.WhoAmI {
+		t.Helper()
+		execRaw(t, db, "UPDATE sessions SET factors = '[\"password\"]' WHERE principal_id = '"+admin+"'")
+		defer execRaw(t, db, "UPDATE sessions SET factors = '[\"webauthn\"]' WHERE principal_id = '"+admin+"'")
+		code, body := wire.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("password-only whoami = %d %s", code, body)
+		}
+		var identity apigen.WhoAmI
+		if err := json.Unmarshal(body, &identity); err != nil {
+			t.Fatal(err)
+		}
+		return identity
+	}
+
+	t.Run("password_only_operator_reads_no_operator_hint", func(t *testing.T) {
+		code, body := wire.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("operator whoami = %d %s", code, body)
+		}
+		var identity apigen.WhoAmI
+		if err := json.Unmarshal(body, &identity); err != nil {
+			t.Fatal(err)
+		}
+		if !identity.Capabilities.InstanceOperator {
+			t.Fatalf("stepped-up operator hint = %+v", identity.Capabilities)
+		}
+		if caps := passwordOnlyHints(t).Capabilities; caps.InstanceOperator {
+			t.Fatalf("password-only operator hint = %+v", caps)
+		}
+	})
+
 	t.Run("audit_reader_needs_no_instance_configuration_grant", func(t *testing.T) {
 		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config')")
 		execRaw(t, db, "DELETE FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config'")
@@ -385,7 +418,48 @@ func runInstanceAuditWire(t *testing.T, db *store.DB) {
 		if identity.Capabilities.InstanceOperator || identity.Capabilities.InstanceAuditRead == nil || !*identity.Capabilities.InstanceAuditRead {
 			t.Fatalf("audit-only hints = %+v", identity.Capabilities)
 		}
+		if caps := passwordOnlyHints(t).Capabilities; caps.InstanceAuditRead == nil || *caps.InstanceAuditRead {
+			t.Fatalf("password-only audit hint = %+v", caps)
+		}
 		_ = getAuditPage(t, wire, queryPath+"?limit=1")
+	})
+
+	t.Run("directory_reader_hint_needs_no_operator_or_audit_grant", func(t *testing.T) {
+		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id IN (SELECT id FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config')")
+		execRaw(t, db, "DELETE FROM grants WHERE principal_id='"+admin+"' AND capability='instance-config'")
+		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_ia_admin_inst_ar'")
+		execRaw(t, db, "DELETE FROM grants WHERE id = 'g_ia_admin_inst_ar'")
+		execRaw(t, db, fmt.Sprintf(`INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_ia_admin_dir', '%s', 'instance-directory', NULL, NULL, NULL, %s)`, admin, ts))
+		seedOrigins(t, db)
+		code, body := wire.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("directory-only whoami = %d %s", code, body)
+		}
+		var identity apigen.WhoAmI
+		if err := json.Unmarshal(body, &identity); err != nil {
+			t.Fatal(err)
+		}
+		caps := identity.Capabilities
+		if caps.InstanceOperator || caps.InstanceDirectory == nil || !*caps.InstanceDirectory ||
+			(caps.InstanceAuditRead != nil && *caps.InstanceAuditRead) {
+			t.Fatalf("directory-only hints = %+v", caps)
+		}
+		if caps := passwordOnlyHints(t).Capabilities; caps.InstanceDirectory == nil || *caps.InstanceDirectory {
+			t.Fatalf("password-only directory hint = %+v", caps)
+		}
+		execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_ia_admin_dir'")
+		execRaw(t, db, "DELETE FROM grants WHERE id = 'g_ia_admin_dir'")
+		code, body = wire.call(t, http.MethodGet, api.PathPrefix+"/auth/whoami", nil)
+		if code != http.StatusOK {
+			t.Fatalf("no-directory whoami = %d %s", code, body)
+		}
+		if err := json.Unmarshal(body, &identity); err != nil {
+			t.Fatal(err)
+		}
+		if identity.Capabilities.InstanceDirectory == nil || *identity.Capabilities.InstanceDirectory {
+			t.Fatalf("revoked directory hint = %+v", identity.Capabilities)
+		}
+		grant("g_ia_admin_inst_ar", admin, "", "")
 	})
 
 	t.Run("instance_export_reauthorizes_a_revoked_session", func(t *testing.T) {

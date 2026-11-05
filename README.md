@@ -165,7 +165,7 @@ One binary handles both operator and day-to-day client workflows.
 hikyo server [--dev] [--listen ADDR] [--cli-socket PATH] [--root-key-file PATH]
 hikyo migrate [--dev]
 hikyo admin [--dev] create --username admin
-hikyo backup [--dev] export
+hikyo backup [--dev] export --out <dir> --recipient <age-recipient>
 hikyo restore [--dev] run --from <archive> --identity-file <path>
 sudo hikyo upgrade [--target VERSION]
 hikyo update channel stable|nightly|off
