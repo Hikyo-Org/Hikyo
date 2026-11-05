@@ -343,12 +343,12 @@ schema digest per engine), then rerun the lint pins.
 The freeze and signed-bytes decisions are made (2026-11-04). What is left is
 registered open, with its risk; none of it is built in this PR.
 
-1. **Hosted runs of the post-merge lanes: mostly done on 2026-11-05.** Post-merge
-   `ci-dev` (run 42087849745) passed on `4956f5253`, including the both-engine
-   frozen-client lane on the CI-pinned PostgreSQL image and the isolation shards that
-   run SQLite and PostgreSQL cases (which shard ran the new tests is not confirmed).
-   Still open: no hosted lane rechecks the buildcompat PostgreSQL 18 digest. Risk: a
-   schema digest drift against the pinned image would not be caught there.
+1. **Done on 2026-11-05: hosted runs of the post-merge lanes.** Post-merge `ci-dev`
+   (run 42087849745) passed on `4956f5253` on the CI-pinned PostgreSQL image: the
+   both-engine frozen-client lane, the isolation shards that run SQLite and PostgreSQL
+   cases (which shard ran the new tests is not confirmed), and `test_core`, whose
+   `internal/app` package includes `TestReleaseCompatibilityMatchesActualBothEngineSchemas`,
+   the buildcompat digest check (it cannot skip in CI).
 2. **Pin Wycheproof ML-DSA vectors** (source, version, digest; DEC-09). Risk: the
    vectors in the tree come from the Go standard library only, plus a local OpenSSL
    check outside CI.
