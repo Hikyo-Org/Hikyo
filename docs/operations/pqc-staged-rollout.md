@@ -10,8 +10,8 @@
 > 2026-11-04 the owner authorized merging each green child PR to `dev` and
 > accepted publication in the next nightly; that is the maintainer security
 > approval for the PR that merges under it, and it authorizes no run of this
-> runbook. #1172 (Transit, migration 00083) is held and does not merge, so
-> neither is in what merges. Independent adversarial review is required;
+> runbook. #1172 (Transit, migration 00083) did not merge with this round, so
+> neither is in what merged. Independent adversarial review is required;
 > cross-provider review is SKIPPED by explicit owner instruction (2026-11-02)
 > and is not CLEAN. The surface runbooks it indexes carry their own caveats;
 > this file adds order, gates and abort rules and does not replace them.
@@ -52,11 +52,11 @@ contains no command; no PQ signing tool exists.
 | Prerequisite | State at the candidate |
 | --- | --- |
 | A named non-production environment and a written resource-specific authorization | None exists. HOLD |
-| Maintainer security approval for each child being enabled, independent adversarial review of its final head, and the child merged | The owner's 2026-11-04 merge authorization is the security approval for each PR that merges under it; #1172 is held. It covers merging, not enabling a feature anywhere. Independent review of each final head is still required. HOLD for any enablement |
-| Owner decisions in the packet (freeze, DEC-17 thresholds, key custody, peers and expiry for exceptions, and the other open items listed in the packet's "Release and blocked") | Open. HOLD. Decided on 2026-11-04: `backup-receipt/v2` kept as built with the E-19 gap registered; the stale-node fence accepted as recorded limit E-22 (strict is per process; the fence stays #1127 work) |
+| Maintainer security approval for each child being enabled, independent adversarial review of its final head, and the child merged | The owner's 2026-11-04 merge authorization is the security approval for each PR that merges under it; #1172 did not merge with this round. It covers merging, not enabling a feature anywhere. Independent review of each final head is still required. HOLD for any enablement |
+| Owner decisions in the packet (DEC-17 thresholds, key custody, peers and expiry for exceptions, and the other open items listed in the packet's "Release and blocked") | Open. HOLD. Decided on 2026-11-04: `backup-receipt/v2` kept as built with the E-19 gap registered; the stale-node fence accepted as recorded limit E-22 (strict is per process; the fence stays #1127 work); the `/api/v1` freeze, option A |
 | Every node, receiver and restore host runs a build that contains the readers (the release with these changes) | No such release exists. NOTRUN |
 | Frozen legacy fixtures pass on first-party nodes | Passed locally by children; NOTRUN on any real node |
-| Backup of the datastore taken and a restore drill passed before any floor-moving upgrade (migration 83 and runtimeconfig migration 6 are roll-forward; migration 83 is #1172, which is held) | NOTRUN |
+| Backup of the datastore taken and a restore drill passed before any floor-moving upgrade (migration 83 and runtimeconfig migration 6 are roll-forward; migration 83 is #1172, which has not merged) | NOTRUN |
 | Operator attests the readers and verifiers Hikyo cannot observe (E-17) | Required; cannot be measured |
 
 ## Protected secret loading
@@ -101,7 +101,7 @@ previous gate is recorded.
 Gate: owner and maintainer records for the open decisions; no HOLD on the
 surface. Abort: nothing deployed. Decided on 2026-11-04: the rollback policy
 for the moved floor in what merges (runtimeconfig migration 6) is accepted for the next
-nightly, and #1172's migration 83 is held; the stale-node
+nightly, and #1172's migration 83 has not merged; the stale-node
 fence is a recorded limit (E-22). The packet's "Release and blocked" lists what
 stays open.
 
@@ -109,7 +109,7 @@ stays open.
 
 | Step | Command or action | Observable success | Abort or rollback | Status |
 | --- | --- | --- | --- | --- |
-| 1.1 Readers | Deploy the reader-capable build to every node and every host that may restore | Legacy fixture restores; `hikyo restore drill` passes with an X25519 archive | Restore the pre-upgrade backup (the candidate carries roll-forward floors: migration 83, which is #1172 and held, and runtimeconfig migration 6; whether an old binary refuses either was not run, so the abort is the restore either way) | NOTRUN |
+| 1.1 Readers | Deploy the reader-capable build to every node and every host that may restore | Legacy fixture restores; `hikyo restore drill` passes with an X25519 archive | Restore the pre-upgrade backup (the candidate carries roll-forward floors: migration 83, which is #1172 and has not merged, and runtimeconfig migration 6; whether an old binary refuses either was not run, so the abort is the restore either way) | NOTRUN |
 | 1.2 Key | `hikyo backup keygen --hybrid --output-file PATH` (a "server host only" group: it fails with `no datastore configured` until `HIKYO_DB` or `--dev` is set, and with `HIKYO_DB` set it ran without creating a database; running it on the server host weakens the custody split with the root key and datastore, so set `HIKYO_DB` to `sqlite:PATH`, which need not exist on the custodian host); escrow the private half apart from the root key (no command records that). Separately, on the server host, `hikyo escrow verify --root-key-file FILE --assert-separate-custody` checks the recovered root key against the hierarchy; it needs `HIKYO_ROOT_KEY_FILE` as well as the datastore, and with only `HIKYO_DB` set it refuses and asks for `HIKYO_ROOT_KEY_FILE` | Public recipient (`age1pq1...`, 1959 characters) recorded; escrow drill restores a fixture; `escrow verify` prints `Escrow root verified against the current hierarchy.` and records the instance, incarnation and root epoch, not the backup identity | Destroy only never-used test keys | NOTRUN |
 | 1.3 Configure | Set `HIKYO_BACKUP_RECIPIENTS` to hybrid recipients only (at most 32, no mix, 65,536-byte managed cap) through managed configuration | Over-bound or mixed set refused before output | Publish X25519 recipients again | NOTRUN |
 | 1.4 Write and prove | `hikyo backup export --out DIR --recipient <hybrid recipient>` (the CLI does not read the managed set from step 1.3); then `hikyo restore drill --from ARCHIVE --identity-file PATH --root-key-file PATH --principal ID --project ORG/PROJECT --target-sqlite PATH` (or `--target-postgres-dsn-file PATH`) `-o json`. A plain `hikyo backup export` emits **no receipt**: only an upgrade export builds one, so for `backup-receipt/v2` use the manual route in [manual upgrades](manual-upgrades.md#populated-upgrade): `hikyo backup upgrade-export --out DIR --recipient <hybrid recipient>`, run with the instance's public bundle, operator pin and state directory (`HIKYO_UPGRADE_BUNDLE`, `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY`, `HIKYO_UPGRADE_STATE_DIR`); it refuses without that installation trust context (the requirement that every export path emits a receipt is unmet, packet E-19) | Archive written; drill passes; truncated archive refused; for the receipt, `upgrade-export` prints `ciphertext: PATH` and `receipt: PATH`, and the receipt file's `format` field is `backup-receipt/v2` | Stop exporting hybrid; keep both identities | NOTRUN |
@@ -171,10 +171,10 @@ rehearsal, every `kubectl` and `helm` step and the real cluster are **NOTRUN**.
 
 | Surface | Why there is no stage |
 | --- | --- |
-| Transit ML-DSA (#1129, PR #1172) | Held by the owner until the `/api/v1` freeze is decided; it does not merge, so migration 00083 and Transit ML-DSA are not in what merges. At the candidate the API, CLI and clients refuse `mldsa65` (v1 freeze) and migration 00083 moves the rollback floor for every upgrading instance |
-| Private PKI ML-DSA (#1133) | Same freeze; `MLDSAEnabled` is false in production wiring |
+| Transit ML-DSA (#1129, PR #1172) | Not merged. The owner decided the `/api/v1` freeze on 2026-11-04, and #1172 still needs its public surface and its own review, so migration 00083 and Transit ML-DSA are not in what merged. At the candidate the API, CLI and clients refuse `mldsa65` (v1 freeze) and migration 00083 moves the rollback floor for every upgrading instance |
+| Private PKI ML-DSA (#1133) | `MLDSAEnabled` is false in production wiring |
 | Release trust (#1132) | No signer, no root, no caller of the verifiers on any shipping path; custody of the ML-DSA recovery key is not named. See the [signing runbook](pqc-release-signing-runbook.md), also not executable |
-| Pairing (#1130) | HOLD; no PQ protocol |
+| Pairing (#1130) | HOLD; no PQ protocol. The classical pairing and revocation drill is NOTRUN |
 | External routes (#1134) | No selector reaches them; nothing to enable |
 
 ## Abort criteria (any one stops the stage)

@@ -5,11 +5,14 @@ operative capability claim.**
 Refs [#1134](https://github.com/Hikyo-Org/Hikyo/issues/1134); the PR does not
 close it. On 2026-11-04 the owner (Marc Went) authorized merge to `dev` when green
 and accepted publication in the next nightly; that is the maintainer security
-approval for this PR only. It does not decide F-09 or any other open item, and it
-does not authorize release or deployment. Open and undecided: F-09 (per-route
-strict selection, [#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)), the
-other F-nn dispositions (F-01 to F-11 are #1175 to #1185), and every proposed
-exception term, which stays ineffective until its peer is named (DEC-10).
+approval for this PR only. It did not decide F-09 or any other open item, and it
+does not authorize release or deployment. The same day the owner said "All open
+points as recommended", which recorded the dispositions (F-01 to F-11 are #1175 to
+#1185): F-09 ([#1183](https://github.com/Hikyo-Org/Hikyo/issues/1183)) is narrowed
+under DEC-06, F-01 keeps the GitHub route as exception E-06 (now effective), F-04
+does not adopt the OpenSSH composite, F-05 stays on classical WebAuthn credentials,
+and the other follow-ups are accepted as proposed and stay open as tracked work.
+Every other proposed exception term stays ineffective until its peer is named (DEC-10).
 Independent adversarial review was done on `claude-opus-5-5` (see Independent
 review); cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN.
@@ -27,7 +30,7 @@ Every commit since touches documentation only, so the Go results stand.
 
 The register is [external-compatibility](../security/pqc/external-compatibility.md):
 24 routes (X01 to X24), two tables, residual risk by route class, an allowed
-capability statement, a named HOLD (F-09), proposed exception terms (none
+capability statement, the F-09 decision (strict-route refusal narrowed under DEC-06), exception terms (only E-06
 effective) and a local qualification record. No route is verified supported.
 The parent claim stays blocked.
 
@@ -105,9 +108,9 @@ OpenSSH 10 (NOTRUN); they are local evidence.
 | Inventory every route with contract, versions, lifetime, KEX, signatures, anchor, wrapping, owner, evidence | PARTIAL | X01 to X24 from a stated sweep (register "Sweep scope"; Go plus two installer scripts); a later census can add rows. X19 to X22 were added after the first review, X23 (AWS STS and ambient chain) and X24 (installers) after the second. X23's default IMDS and ECS endpoints are plain HTTP, so that leg needs no quantum capability to attack; the re-sweep also found the SAML metadata proxy leg (in X11) |
 | Verify current documentation; distinguish GitHub sealed box from storage and TLS, OpenSSH KEX from signatures | DONE | Read 2026-11-03; provider storage stays unknown |
 | Cover SSH CA and KRL, WebAuthn/COSE, OIDC/JWKS, SAML, database, cloud wrapping, trust services | DONE | X08 to X16; X14 and X16 now cite primary AWS and Sigstore documents; X16 is unknown, not blocked |
-| Classify each route with reason, owner, trigger, impact, follow-up; residual risk; deferral has owner disposition | PARTIAL | Owner named; the owner has not recorded dispositions. F-01 to F-11 are filed as #1175 to #1185 and defined in the register. Residual risk is per route class, with X16, X18, X20, X23 and X24 stated separately |
+| Classify each route with reason, owner, trigger, impact, follow-up; residual risk; deferral has owner disposition | PARTIAL | Owner named. The owner recorded the dispositions on 2026-11-04: F-01, F-04, F-05 and F-09 are decided and the rest accepted as proposed. F-01 to F-11 are filed as #1175 to #1185 and defined in the register. Residual risk is per route class, with X16, X18, X20, X23 and X24 stated separately |
 | Qualify a supported route with actual-client fixtures | PARTIAL | Local OpenSSH 10.3p1 and libsodium 1.0.22 only. 10.6, real providers, PostgreSQL hybrid, federation and mail: NOTRUN |
-| Strict refusal before secrets; unrelated routes stay up; exception nameable | HOLD | F-09: per-route selector and X01 meaning are design decisions; nothing built. **#1134 can close only after the owner records a disposition for F-09** (narrow it under DEC-06, or move it to a named ticket with an owner) |
+| Strict refusal before secrets; unrelated routes stay up; exception nameable | NARROWED by the owner | F-09 decided 2026-11-04 under DEC-06: strict refusal exists only on the listener and owned clients (#1156); no per-route selector is built and no external route carries a strict claim. X01 is not disabled by strict and stays exception E-06 (F-01). The disposition #1134 needed to close is recorded |
 | Keep least privilege, egress, redaction; no replacement envelope | DONE | No production change |
 | Recovery, enrollment and rotation paths; separate forgery from confidentiality risk | DONE | Existing paths only; nothing created |
 | No real-provider write or trust change | DONE | One credential-free SSH handshake to github.com offered no key; no write |
@@ -131,6 +134,8 @@ is reverting the documentation and the three test files.
 ## Next step
 
 Owner authorized merge on 2026-11-04 once required checks are green, bottom-up
-after #1156. Still open for the owner: record dispositions for F-01 to F-11 (F-09
-first, since #1134 can close only after it) and name peers for the exception
-terms. Authorized peer captures (F-02) need a named environment.
+after #1156, and recorded the dispositions the same day (see the status at the top).
+Still open as tracked work: F-02, F-03, F-06, F-07, F-08, F-10 and F-11, and peers for
+the exception terms other than E-06. Authorized peer captures (F-02) need a named
+environment. The issues #1175, #1178, #1179 and #1183 are decided; the parent updates
+or closes them.

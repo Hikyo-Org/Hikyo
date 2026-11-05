@@ -5,7 +5,7 @@ Written 2026-11-04 for the PR that refs
 packet exists; the qualification it describes does not. The PR does not close
 #1135 or #1123, which stays open. Security approval: the owner's 2026-11-04
 merge authorization applies to each PR that merges under it, #1172 (Transit,
-migration 00083) excepted because it is held; nothing wider. Independent
+migration 00083) excepted for this round; nothing wider. Independent
 adversarial review is required; cross-provider review is SKIPPED by explicit owner instruction
 (2026-11-02) and is not CLEAN. These documents had independent reviews on 2026-11-04, recorded below, with their findings repaired.
 
@@ -22,7 +22,7 @@ PR #1195, branch `dunky13/pqc-1135-candidate`, commit
 `db58307e5a8aa54d684c52fed9148b9649dc9683`; Go 1.27.3 darwin/arm64; PostgreSQL
 18.6 from `postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941`.
 The candidate was unchanged when fetched and when last read. If it moves,
-nothing here transfers. It contains #1172, which is held, so it is not evidence
+nothing here transfers. It contains #1172, which did not merge with this round, so it is not evidence
 for the tree that lands; that tree has hosted CI only.
 
 ## Integrated run (the only test run, once, through the shared queue)
@@ -52,8 +52,8 @@ benchmarks, `fast-feedback.sh` on the candidate, anything on amd64.
 | 7 | amd64 and arm64 sizes, latency, CPU, memory, concurrency against approved budgets | HOLD | Recorded child numbers (M2 Pro arm64 only, loaded host). DEC-17 thresholds unset; amd64 NOTRUN; no measurement taken here |
 | 8 | Final local checks, hosted CI, independent Standards and Spec review, security approval, gates | HOLD | Partial local and hosted evidence above; merge-group graph never ran; no review of the union; security approval only as the 2026-11-04 merge authorization, none for #1172 |
 | 9 | Operator runbook with prerequisites, commands, secret loading, escrow, cohorts, abort, success, rollback, recovery; validated against the binary | PARTIAL | Written and marked not executable. Commands validated by `--help` of a candidate-built binary; two runs with throwaway input (`--print-authority-ids`, OpenSSL key generation) and one `backup keygen` run that established its datastore requirement. Every real-environment step NOTRUN |
-| 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement) | Packet. E-22 carries all four fields; no other row does (peers, versions and expiry are the owner's) |
-| 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met; pairing narrowing text unaccepted |
+| 10 | Surface-specific capability statement; exceptions, owners, triggers, HOLDs | DONE (as a statement) | Packet. E-01, E-06 and E-22 carry all four fields; no other row does (peers, versions and expiry are the owner's) |
+| 11 | Parent closure requires all mandatory work and real evidence, or approved scope reduction | HOLD | Not met. The pairing narrowing is accepted (2026-11-04) with #1130 as the residual gap; the mandatory work and real evidence are not complete |
 | 12 | Record what can be released and what is blocked, plus remaining human and environment actions | DONE | Packet, "Release and blocked", lists only, no recommendation |
 
 ## Findings for the owning children (no code changed)

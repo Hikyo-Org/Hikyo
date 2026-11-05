@@ -13,9 +13,8 @@ security approval for this PR when it merges green; publication in the next
 nightly is accepted. This changes authentication of commands that alter a running
 deployment. The independent adversarial reviews of the repaired head are part of
 the merge gate, and cross-provider review is SKIPPED by explicit owner
-instruction (2026-11-02) and is not CLEAN. Open and undecided, so not implied by
-the merge: the `/api/v1` freeze, ML-DSA recovery custody, #1132 signing
-granularity and DEC-17 thresholds. The stale-node fence is decided, as a recorded limit:
+instruction (2026-11-02) and is not CLEAN. Not implied by the merge, and since
+deferred by the owner: ML-DSA recovery custody and DEC-17 thresholds. The stale-node fence is decided, as a recorded limit:
 DEC-10 is amended in #1155. Operator procedure:
 [config-rollout-authority](../operations/config-rollout-authority.md).
 
