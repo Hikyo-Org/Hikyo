@@ -12,7 +12,7 @@ export type Question = { readonly perm: PermId; readonly project: string; readon
 /** Only permissions a rule may hold on a key are asked about one key. */
 const ASKABLE = PERMS.filter((p) => p.shape !== 'project');
 
-type Row = { person: Person; rule: Rule; note?: string };
+type Row = { person: Person; rule: Rule; note?: ReactNode };
 
 /**
  * Who can...? over grants AND rules (ADR D10), in dependency order:
@@ -62,8 +62,8 @@ export function WhoCan({
   if (envNode !== undefined) {
     for (const person of world.people) {
       const res = resolve(world, person.id, permId, project, env, key);
-      if (res.state === 'yes') yes.push({ person, rule: res.rule, note: res.also === undefined ? undefined : `Another of their rules has ${res.also.why}, but an except only narrows its own rule.` });
-      else if (res.state === 'excepted') excepted.push({ person, rule: res.rule, note: `Left out: this rule ${res.why.startsWith('except') ? 'has' : 'is'} ${res.why}.` });
+      if (res.state === 'yes') yes.push({ person, rule: res.rule, note: res.also === undefined ? undefined : <>Another of their rules has <bdi>{res.also.why}</bdi>, but an except only narrows its own rule.</> });
+      else if (res.state === 'excepted') excepted.push({ person, rule: res.rule, note: <>Left out: this rule {res.why.startsWith('except') ? 'has' : 'is'} <bdi>{res.why}</bdi>.</> });
       else if (res.state === 'needsSee') needsSee.push({ person, rule: res.rule, note: `Gives ${permLabel}, but showing a secret needs See here too.` });
       else notReached.push(person);
     }

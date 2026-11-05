@@ -29,6 +29,10 @@ func TestProfileChecksOnlyTheNamesAnEditChanges(t *testing.T) {
 		if _, err := admin.auth.UpdateMyProfile(ctx, admin.token, cleaned, ""); err != nil {
 			t.Fatalf("cleaning the stored name = %v", err)
 		}
+		renamed := service.ProfileUpdate{Username: "ops\u202eadmin", DisplayName: "Ops Admin"}
+		if _, err := admin.auth.UpdateMyProfile(ctx, admin.token, renamed, admin.password); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("writing a username with a direction control = %v, want ErrInvalid", err)
+		}
 	})
 }
 

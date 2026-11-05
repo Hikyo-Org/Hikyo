@@ -107,10 +107,9 @@ func hasDirectionControl(s string) bool {
 	})
 }
 
-// checkFolderPath is the folder namespace grammar. A folder is display
-// grouping only, so its path is a plain slash-separated namespace: no leading
-// or trailing separator, no empty segment, no `.`/`..`, bounded in depth to
-// match the import spec's tree-depth bound.
+// checkFolderPath is the folder namespace grammar. A folder path is a plain
+// slash-separated namespace: no leading or trailing separator, no empty segment,
+// no `.`/`..`, bounded in depth to match the import spec's tree-depth bound.
 //
 // The empty-path and empty-segment cases are one case: splitting "" or "a//b"
 // yields an empty segment either way, and checkText rejects it with the right

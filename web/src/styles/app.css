@@ -3691,6 +3691,9 @@ fieldset.field > legend {
 }
 
 .dialog--pinned .dialog__body {
+  /* Keeps `.visually-hidden` labels inside this scroller. Against the dialog,
+     which hides its overflow, focusing one scrolls the pinned actions away. */
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;

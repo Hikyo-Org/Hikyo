@@ -20,6 +20,8 @@ import { WhoCan as WhoCanForm } from './WhoCan.tsx';
 // The folder sits in its own `bdi`, so the phrase spans elements.
 const onlyDb = (_: string, el: Element | null) => el?.classList.contains('access-where__value') === true && /only db\//.test(el.textContent);
 
+const noteIs = (text: string) => (_: string, el: Element | null) => el?.classList.contains('access-table__note') === true && el.textContent === text;
+
 const meta = {
   title: 'Features/Members/Access rules',
   id: 'members-access-rules',
@@ -253,8 +255,8 @@ export const WhoCan: Story = {
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
     await expect(alice.getByText(onlyDb)).toBeVisible();
     const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
-    await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
-    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
+    await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText(noteIs('Left out: this rule has except prod.'))).toBeVisible();
+    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText(noteIs('Left out: this rule has except db/.'))).toBeVisible();
     const noRule = canvas.getByRole('button', { name: 'No, no rule reaches: 2' });
     await expect(noRule).toHaveAttribute('aria-expanded', 'false');
     await expect(canvas.getByText('Chen Li')).not.toBeVisible();
@@ -262,7 +264,7 @@ export const WhoCan: Story = {
     await expect(noRule).toHaveAttribute('aria-expanded', 'true');
     await expect(canvas.getByText('Chen Li')).toBeVisible();
     await expect(canvas.getAllByText('None of their rules or scope-wide access gives Reveal here.')).toHaveLength(2);
-    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
+    await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText(noteIs('Left out: this rule has except db/.'))).toBeVisible();
 
     // See is never narrowed by keys: an except narrows only its own rule.
     await userEvent.selectOptions(permission, 'read');
