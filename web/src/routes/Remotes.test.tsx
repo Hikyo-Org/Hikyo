@@ -204,7 +204,7 @@ describe('AddRemote', () => {
 
   it('refuses this instance as its own remote before starting the mutation', async () => {
     const { container, fetchMock } = await renderAddRemote([]);
-    vi.stubGlobal('location', new URL('https://self.example/remotes'));
+    vi.stubGlobal('location', new URL('https://self.example/instance/remotes'));
     await act(async () => typeInto(input(container, 'remote-url'), 'https://self.example'));
     await submit(container);
 

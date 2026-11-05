@@ -56,7 +56,7 @@ export function createDemoFetch(role: DemoRole, options: Options = {}): typeof f
     session: { id: `ses_${principalIds[role].slice(4)}`, artifact: 'browser', created_at: sessionTime, idle_expires_at: sessionExpiry, absolute_expires_at: sessionExpiry,
       assurance: { method: 'local-password+totp', factors: ['password', 'totp'], authenticated_at: sessionTime } },
     principal: { id: principalIds[role], kind: 'human', display_name: account.name },
-    capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } },
+    capabilities: { instance_operator: false, instance_directory: role === 'admin', delivery_report_grant: { instance: false, orgs: [] } },
   };
   return async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input.toString(), origin);

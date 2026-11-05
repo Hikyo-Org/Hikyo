@@ -9,7 +9,7 @@ import { writeFileSync } from 'node:fs';
 const APP = 'http://localhost:5174';
 const ORG = 'org_11111111-1111-4111-8111-111111111111', PRJ = 'prj_11111111-1111-4111-8111-111111111111';
 const ENV = 'env_11111111-1111-4111-8111-111111111111', KEY = 'key_11111111-1111-4111-8111-111111111111';
-const routes = ['/', '/projects', '/remotes', `/orgs/${ORG}/members`, `/orgs/${ORG}/settings`, `/orgs/${ORG}/scim`, `/orgs/${ORG}/audit`,
+const routes = ['/', '/projects', '/instance/remotes', `/orgs/${ORG}/members`, `/orgs/${ORG}/settings`, `/orgs/${ORG}/scim`, `/orgs/${ORG}/audit`,
   '/instance', '/instance/config', '/instance/members', '/settings',
   `/orgs/${ORG}/projects/${PRJ}/matrix`, `/orgs/${ORG}/projects/${PRJ}/matrix/history`, `/orgs/${ORG}/projects/${PRJ}/matrix/keys/${KEY}`,
   `/orgs/${ORG}/projects/${PRJ}/environments/${ENV}/values`, `/orgs/${ORG}/projects/${PRJ}/machine-access`,

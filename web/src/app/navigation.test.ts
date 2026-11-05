@@ -19,7 +19,6 @@ describe('the route policy registry', () => {
     expect(sectionsFor('organisation').map((s) => s.label)).toEqual([
       'Overview',
       'Projects',
-      'Remotes',
       'Members',
       'Organisation settings',
       'SCIM provisioning',
@@ -36,6 +35,7 @@ describe('the route policy registry', () => {
       'project-settings',
     ]);
     expect(sectionsFor('instance').map((s) => s.label)).toEqual([
+      'Remotes',
       'Instance settings',
       'Hikyo configuration',
       'Instance audit',

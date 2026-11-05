@@ -1474,11 +1474,15 @@ export type WhoAmI = {
  */
 export type PrincipalCapabilities = {
     /**
-     * True when the caller holds instance audit-read. This navigation hint does not imply instance-config or replace per-request authority and MFA checks. Absent on older servers.
+     * True when the caller's session can exercise instance audit-read: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
      */
     instance_audit_read?: boolean;
     /**
-     * True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
+     * True when the caller's session can exercise instance-directory, which the remote-instance directory read requires: the grant, and the second factor it requires, so a password-only session reads false. This navigation hint does not imply instance-config or replace per-request authority checks. Absent on older servers.
+     */
+    instance_directory?: boolean;
+    /**
+     * True when the caller's session can exercise instance-config, which the retention-health and update-status reads require: the grant, and the second factor it requires, so a password-only session reads false. The instance administration chrome and those background polls gate on it.
      */
     instance_operator: boolean;
     delivery_report_grant: UnheldGrantReach;
