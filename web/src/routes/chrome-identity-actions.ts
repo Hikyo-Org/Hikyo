@@ -1,8 +1,8 @@
 import type { SettingsOperation } from '../api/settings.ts';
-import type { ChromeIdentityActions } from './ChromeIdentityControls.tsx';
+import type { ChromeIdentityActions, ChromeIdentityChange } from './ChromeIdentityControls.tsx';
 
 type IdentityMutations = {
-  readonly set: { readonly mutateAsync: (input: { hue: number; mark: string | null }) => Promise<unknown> };
+  readonly set: { readonly mutateAsync: (input: ChromeIdentityChange) => Promise<unknown> };
   readonly setImage: { readonly mutateAsync: (input: { blob: Blob; contentType: string }) => Promise<unknown> };
   readonly clearImage: { readonly mutateAsync: () => Promise<unknown> };
 };

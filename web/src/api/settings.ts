@@ -51,6 +51,7 @@ import {
   type QueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import type { IdentityRequest } from '@hikyo/client';
 import type { Client } from '@hikyo/runtime-core';
 import type { z } from 'zod';
 import { useEffect } from 'react';
@@ -481,7 +482,7 @@ export function useOrgIdentityMutations(org: string) {
   const queries = useQueryClient();
   const settled = { onSettled: () => invalidateIdentity(queries) };
   const set = useMutation({
-    mutationFn: (input: { org: string; body: { hue: number; mark: string | null } }) =>
+    mutationFn: (input: { org: string; body: IdentityRequest }) =>
       parsed(setOrgIdentityOp, { path: { org: input.org }, body: input.body }),
     ...settled,
   });
@@ -499,7 +500,7 @@ export function useOrgIdentityMutations(org: string) {
     ...settled,
   });
   return {
-    set: { mutateAsync: (body: { hue: number; mark: string | null }) => set.mutateAsync({ org, body }) },
+    set: { mutateAsync: (body: IdentityRequest) => set.mutateAsync({ org, body }) },
     setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ org, image }) },
     clearImage: { mutateAsync: () => clearImage.mutateAsync({ org }) },
   };
@@ -510,7 +511,7 @@ export function useProjectIdentityMutations(org: string, project: string) {
   const queries = useQueryClient();
   const settled = { onSettled: () => invalidateIdentity(queries) };
   const set = useMutation({
-    mutationFn: (input: { path: { org: string; project: string }; body: { hue: number; mark: string | null } }) =>
+    mutationFn: (input: { path: { org: string; project: string }; body: IdentityRequest }) =>
       parsed(setProjectIdentityOp, input),
     ...settled,
   });
@@ -530,7 +531,7 @@ export function useProjectIdentityMutations(org: string, project: string) {
   });
   const path = { org, project };
   return {
-    set: { mutateAsync: (body: { hue: number; mark: string | null }) => set.mutateAsync({ path, body }) },
+    set: { mutateAsync: (body: IdentityRequest) => set.mutateAsync({ path, body }) },
     setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ path, image }) },
     clearImage: { mutateAsync: () => clearImage.mutateAsync({ path }) },
   };

@@ -1561,8 +1561,14 @@ export const zOrg = z.object({
     identity: zChromeIdentity.optional()
 });
 
+/**
+ * A partial write: each field present replaces the stored one and an
+ * absent field is left unchanged, so saving one field never overwrites
+ * a concurrent change to the other.
+ *
+ */
 export const zIdentityRequest = z.object({
-    hue: z.int().gte(0).lte(359),
+    hue: z.int().gte(0).lte(359).optional(),
     mark: z.string().max(32).nullish()
 });
 

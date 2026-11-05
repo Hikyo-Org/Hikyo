@@ -143,7 +143,7 @@ type OrgService interface {
 	List(ctx context.Context, actor service.Actor) ([]service.Org, error)
 	ListMine(ctx context.Context, actor service.Actor) ([]service.MyOrg, error)
 	Rename(ctx context.Context, actor service.Actor, org domain.OrgID, name string) (service.Org, error)
-	SetIdentity(ctx context.Context, actor service.Actor, org domain.OrgID, hue int, mark *string) (service.Org, error)
+	SetIdentity(ctx context.Context, actor service.Actor, org domain.OrgID, hue *int, mark *string) (service.Org, error)
 	SetIdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID, contentType string, body []byte) (service.Org, error)
 	ClearIdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID) (service.Org, error)
 	IdentityImage(ctx context.Context, actor service.Actor, org domain.OrgID) (service.ChromeImage, error)

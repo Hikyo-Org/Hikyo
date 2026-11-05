@@ -651,12 +651,13 @@ export const setOrgRetention = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Set the organisation's hue and mark.
+ * Set the organisation's hue, mark or both.
  *
- * Replaces the organisation's chrome identity hue and short mark. `mark` is at
- * most two grapheme clusters of free text or emoji, without control
- * characters or surrounding whitespace; null or absent falls back to the
- * monogram derived from the name. The uploaded image is separate
+ * Changes the organisation's chrome identity hue, short mark or both. A field
+ * that is absent is left as stored, so a hue-only save cannot overwrite a
+ * newer mark. `mark` is at most two grapheme clusters of free text or
+ * emoji, without control characters or surrounding whitespace; an empty
+ * mark falls back to the monogram derived from the name. The uploaded image is separate
  * (`setOrgIdentityImage`). Idempotent. A grant refusal is the uniform 404; a single-factor
  * session holding the capability gets 403.
  *
@@ -767,12 +768,13 @@ export const renameProject = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Set the project's hue and mark.
+ * Set the project's hue, mark or both.
  *
- * Replaces the project's chrome identity hue and short mark. `mark` is at
- * most two grapheme clusters of free text or emoji, without control
- * characters or surrounding whitespace; null or absent falls back to the
- * monogram derived from the name. The uploaded image is separate
+ * Changes the project's chrome identity hue, short mark or both. A field
+ * that is absent is left as stored, so a hue-only save cannot overwrite a
+ * newer mark. `mark` is at most two grapheme clusters of free text or
+ * emoji, without control characters or surrounding whitespace; an empty
+ * mark falls back to the monogram derived from the name. The uploaded image is separate
  * (`setProjectIdentityImage`). Idempotent. Refusal is the uniform 404.
  *
  */

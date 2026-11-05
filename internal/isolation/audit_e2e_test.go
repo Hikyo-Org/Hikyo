@@ -1107,10 +1107,10 @@ func runHierarchyLifecycle(t *testing.T, db *store.DB, org domain.OrgID) {
 		t.Fatal(err)
 	}
 	// settings.project_identity_changed and settings.org_identity_changed.
-	if _, err := projects.SetIdentity(ctx, actor, scope, 321, new("AU")); err != nil {
+	if _, err := projects.SetIdentity(ctx, actor, scope, new(321), new("AU")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(root), org, 321, new("AU")); err != nil {
+	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(root), org, new(321), new("AU")); err != nil {
 		t.Fatal(err)
 	}
 	if err := projects.Delete(ctx, actor, scope); err != nil {

@@ -62,12 +62,35 @@ type ChromeImage struct {
 	Version     string
 }
 
-// checkChromeIdentity validates hue and mark and returns the mark to store: nil
-// or empty means "derive from name".
-func checkChromeIdentity(hue int, mark *string) (*string, error) {
-	if hue < 0 || hue > maxChromeHue {
+// checkChromeIdentity validates a partial identity write and returns how it
+// changes the stored identity. A nil field is left as stored, so a page holding
+// a stale mark cannot overwrite a newer one by saving only the hue. An empty mark
+// selects the name-derived monogram.
+func checkChromeIdentity(hue *int, mark *string) (func(store.ChromeIdentity) store.ChromeIdentity, error) {
+	if hue == nil && mark == nil {
+		return nil, fmt.Errorf("%w: set hue, mark or both", domain.ErrInvalid)
+	}
+	if hue != nil && (*hue < 0 || *hue > maxChromeHue) {
 		return nil, fmt.Errorf("%w: hue must be an integer from 0 to %d", domain.ErrInvalid, maxChromeHue)
 	}
+	stored, err := checkChromeMark(mark)
+	if err != nil {
+		return nil, err
+	}
+	return func(i store.ChromeIdentity) store.ChromeIdentity {
+		if hue != nil {
+			i.Hue = *hue
+		}
+		if mark != nil {
+			i.Mark = stored
+		}
+		return i
+	}, nil
+}
+
+// checkChromeMark validates a mark and returns the mark to store: nil or empty
+// means "derive from name".
+func checkChromeMark(mark *string) (*string, error) {
 	if mark == nil || *mark == "" {
 		return nil, nil
 	}
@@ -193,18 +216,19 @@ func identityChangePayload(before, after store.ChromeIdentity) audit.Payload {
 	return p
 }
 
-// SetIdentity replaces the org's hue and mark. The previous row is read in the
+// SetIdentity changes the org's hue, mark or both. The previous row is read in the
 // same transaction as the write so the trail records the real transition.
-func (s *Orgs) SetIdentity(ctx context.Context, actor Actor, org domain.OrgID, hue int, mark *string) (Org, error) {
-	mark, err := checkChromeIdentity(hue, mark)
+func (s *Orgs) SetIdentity(ctx context.Context, actor Actor, org domain.OrgID, hue *int, mark *string) (Org, error) {
+	change, err := checkChromeIdentity(hue, mark)
 	if err != nil {
 		return Org{}, err
 	}
 	return s.changeIdentity(ctx, actor, org, authz.OpOrgIdentitySet, func(ctx context.Context, r store.Repos, p authz.Proof, out *store.Org) error {
-		if err := r.Orgs().SetIdentity(ctx, p, hue, mark); err != nil {
+		next := change(out.Identity)
+		if err := r.Orgs().SetIdentity(ctx, p, next.Hue, next.Mark); err != nil {
 			return err
 		}
-		out.Identity.Hue, out.Identity.Mark = hue, mark
+		out.Identity = next
 		return nil
 	})
 }
@@ -241,6 +265,11 @@ func (s *Orgs) changeIdentity(ctx context.Context, actor Actor, org domain.OrgID
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, op, domain.Scope{Org: org}, time.Now().UTC())
 		if err != nil {
+			return err
+		}
+		// Locked before the read: a partial write merges into, and the trail
+		// records, the row as it stands, not as a concurrent writer left it.
+		if err := r.Orgs().Lock(ctx, p); err != nil {
 			return err
 		}
 		before, err := r.Orgs().Get(ctx, p)
@@ -288,17 +317,18 @@ func (s *Orgs) IdentityImage(ctx context.Context, actor Actor, org domain.OrgID)
 	return ChromeImage{Bytes: img.Bytes, ContentType: img.ContentType, Version: img.Version}, nil
 }
 
-// SetIdentity replaces the project's hue and mark.
-func (s *Projects) SetIdentity(ctx context.Context, actor Actor, scope domain.Scope, hue int, mark *string) (Project, error) {
-	mark, err := checkChromeIdentity(hue, mark)
+// SetIdentity changes the project's hue, mark or both.
+func (s *Projects) SetIdentity(ctx context.Context, actor Actor, scope domain.Scope, hue *int, mark *string) (Project, error) {
+	change, err := checkChromeIdentity(hue, mark)
 	if err != nil {
 		return Project{}, err
 	}
 	return s.changeIdentity(ctx, actor, scope, authz.OpProjectIdentitySet, func(ctx context.Context, r store.Repos, p authz.Proof, out *store.Project) error {
-		if err := r.Projects().SetIdentity(ctx, p, hue, mark); err != nil {
+		next := change(out.Identity)
+		if err := r.Projects().SetIdentity(ctx, p, next.Hue, next.Mark); err != nil {
 			return err
 		}
-		out.Identity.Hue, out.Identity.Mark = hue, mark
+		out.Identity = next
 		return nil
 	})
 }
@@ -335,6 +365,11 @@ func (s *Projects) changeIdentity(ctx context.Context, actor Actor, scope domain
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, op, scope, time.Now().UTC())
 		if err != nil {
+			return err
+		}
+		// Locked before the read: a partial write merges into, and the trail
+		// records, the row as it stands, not as a concurrent writer left it.
+		if err := r.Projects().Lock(ctx, p); err != nil {
 			return err
 		}
 		before, err := r.Projects().Get(ctx, p)

@@ -1412,12 +1412,13 @@ paths:
     put:
       operationId: setOrgIdentity
       tags: [hierarchy]
-      summary: Set the organisation's hue and mark.
+      summary: Set the organisation's hue, mark or both.
       description: |
-        Replaces the organisation's chrome identity hue and short mark. `mark` is at
-        most two grapheme clusters of free text or emoji, without control
-        characters or surrounding whitespace; null or absent falls back to the
-        monogram derived from the name. The uploaded image is separate
+        Changes the organisation's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
         (`setOrgIdentityImage`). Idempotent. A grant refusal is the uniform 404; a single-factor
         session holding the capability gets 403.
       x-hikyo-class: tenant
@@ -1674,12 +1675,13 @@ paths:
     put:
       operationId: setProjectIdentity
       tags: [hierarchy]
-      summary: Set the project's hue and mark.
+      summary: Set the project's hue, mark or both.
       description: |
-        Replaces the project's chrome identity hue and short mark. `mark` is at
-        most two grapheme clusters of free text or emoji, without control
-        characters or surrounding whitespace; null or absent falls back to the
-        monogram derived from the name. The uploaded image is separate
+        Changes the project's chrome identity hue, short mark or both. A field
+        that is absent is left as stored, so a hue-only save cannot overwrite a
+        newer mark. `mark` is at most two grapheme clusters of free text or
+        emoji, without control characters or surrounding whitespace; an empty
+        mark falls back to the monogram derived from the name. The uploaded image is separate
         (`setProjectIdentityImage`). Idempotent. Refusal is the uniform 404.
       x-hikyo-class: tenant
       x-hikyo-operation: project.identity-set
@@ -18925,7 +18927,11 @@ components:
     IdentityRequest:
       type: object
       additionalProperties: false
-      required: [hue]
+      minProperties: 1
+      description: |
+        A partial write: each field present replaces the stored one and an
+        absent field is left unchanged, so saving one field never overwrites
+        a concurrent change to the other.
       properties:
         hue:
           type: integer
@@ -18936,8 +18942,8 @@ components:
           maxLength: 32
           description: |
             At most two grapheme clusters; no control or invisible format
-            characters and no surrounding whitespace. Null, absent or empty
-            selects the name-derived monogram.
+            characters and no surrounding whitespace. Empty selects the
+            name-derived monogram; null or absent leaves the stored mark.
 
     OrgList:
       type: object

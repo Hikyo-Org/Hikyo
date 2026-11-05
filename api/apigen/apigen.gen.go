@@ -7913,13 +7913,15 @@ type IdentityList struct {
 // IdentityProviderKind OPEN protocol discriminator in the byte-exact external-identity key.
 type IdentityProviderKind = string
 
-// IdentityRequest defines model for IdentityRequest.
+// IdentityRequest A partial write: each field present replaces the stored one and an
+// absent field is left unchanged, so saving one field never overwrites
+// a concurrent change to the other.
 type IdentityRequest struct {
-	Hue int `json:"hue"`
+	Hue *int `json:"hue,omitempty"`
 
 	// Mark At most two grapheme clusters; no control or invisible format
-	// characters and no surrounding whitespace. Null, absent or empty
-	// selects the name-derived monogram.
+	// characters and no surrounding whitespace. Empty selects the
+	// name-derived monogram; null or absent leaves the stored mark.
 	Mark *string `json:"mark,omitempty"`
 }
 
@@ -15499,7 +15501,7 @@ type ServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, org OrgID)
-	// SetOrgIdentity Set the organisation's hue and mark.
+	// SetOrgIdentity Set the organisation's hue, mark or both.
 	// (PUT /api/v1/orgs/{org}/identity)
 	SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID)
 	// ClearOrgIdentityImage Remove the organisation's uploaded image.
@@ -16015,7 +16017,7 @@ type ServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
-	// SetProjectIdentity Set the project's hue and mark.
+	// SetProjectIdentity Set the project's hue, mark or both.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
 	SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
 	// ClearProjectIdentityImage Remove the project's uploaded image.
@@ -17239,7 +17241,7 @@ func (_ Unimplemented) ApplyOrgTemplate(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SetOrgIdentity Set the organisation's hue and mark.
+// SetOrgIdentity Set the organisation's hue, mark or both.
 // (PUT /api/v1/orgs/{org}/identity)
 func (_ Unimplemented) SetOrgIdentity(w http.ResponseWriter, r *http.Request, org OrgID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -18271,7 +18273,7 @@ func (_ Unimplemented) ApplyProjectTemplate(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// SetProjectIdentity Set the project's hue and mark.
+// SetProjectIdentity Set the project's hue, mark or both.
 // (PUT /api/v1/orgs/{org}/projects/{project}/identity)
 func (_ Unimplemented) SetProjectIdentity(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -83121,7 +83123,7 @@ type StrictServerInterface interface {
 	// ApplyOrgTemplate Apply a role template at organisation scope.
 	// (POST /api/v1/orgs/{org}/grants/template)
 	ApplyOrgTemplate(ctx context.Context, request ApplyOrgTemplateRequestObject) (ApplyOrgTemplateResponseObject, error)
-	// SetOrgIdentity Set the organisation's hue and mark.
+	// SetOrgIdentity Set the organisation's hue, mark or both.
 	// (PUT /api/v1/orgs/{org}/identity)
 	SetOrgIdentity(ctx context.Context, request SetOrgIdentityRequestObject) (SetOrgIdentityResponseObject, error)
 	// ClearOrgIdentityImage Remove the organisation's uploaded image.
@@ -83637,7 +83639,7 @@ type StrictServerInterface interface {
 	// ApplyProjectTemplate Apply a role template at project scope.
 	// (POST /api/v1/orgs/{org}/projects/{project}/grants/template)
 	ApplyProjectTemplate(ctx context.Context, request ApplyProjectTemplateRequestObject) (ApplyProjectTemplateResponseObject, error)
-	// SetProjectIdentity Set the project's hue and mark.
+	// SetProjectIdentity Set the project's hue, mark or both.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/identity)
 	SetProjectIdentity(ctx context.Context, request SetProjectIdentityRequestObject) (SetProjectIdentityResponseObject, error)
 	// ClearProjectIdentityImage Remove the project's uploaded image.

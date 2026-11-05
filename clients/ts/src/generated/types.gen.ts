@@ -1934,12 +1934,18 @@ export type ChromeIdentity = {
     image_version: string | null;
 };
 
+/**
+ * A partial write: each field present replaces the stored one and an
+ * absent field is left unchanged, so saving one field never overwrites
+ * a concurrent change to the other.
+ *
+ */
 export type IdentityRequest = {
-    hue: number;
+    hue?: number;
     /**
      * At most two grapheme clusters; no control or invisible format
-     * characters and no surrounding whitespace. Null, absent or empty
-     * selects the name-derived monogram.
+     * characters and no surrounding whitespace. Empty selects the
+     * name-derived monogram; null or absent leaves the stored mark.
      *
      */
     mark?: string | null;

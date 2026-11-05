@@ -48,13 +48,13 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	asAdmin := service.LocalPrincipal(orgAdmin)
 	mark := "AB"
 
-	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(reader), orgA, 280, &mark); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(reader), orgA, new(280), &mark); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("read-only member set identity: %v, want the uniform nonexistent response", err)
 	}
-	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(nobody), orgA, 280, &mark); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := orgs.SetIdentity(ctx, service.LocalPrincipal(nobody), orgA, new(280), &mark); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("stranger set identity: %v, want the uniform nonexistent response", err)
 	}
-	updated, err := orgs.SetIdentity(ctx, asAdmin, orgA, 280, &mark)
+	updated, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(280), &mark)
 	if err != nil {
 		t.Fatalf("manage-members set identity: %v", err)
 	}
@@ -71,23 +71,37 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 		"zero-width space": {10, "\u200b"}, "bidi override": {10, "A\u202e"}, "lone variation selector": {10, "\ufe0f"},
 		"lone joiner": {10, "\u200d"},
 	} {
-		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, bad.hue, &bad.mark); !errors.Is(err, domain.ErrInvalid) {
+		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(bad.hue), &bad.mark); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("%s: %v, want ErrInvalid", name, err)
 		}
 	}
-	if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, new("🚀")); err != nil {
+	if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(10), new("🚀")); err != nil {
 		t.Errorf("a single emoji is one grapheme: %v", err)
 	}
 	for name, emoji := range map[string]string{
 		"joined": "\U0001F468\u200D\U0001F469\u200D\U0001F467", "subdivision flag": "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F", "keycap": "1\ufe0f\u20e3",
 	} {
-		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, &emoji); err != nil {
+		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(10), &emoji); err != nil {
 			t.Errorf("%s emoji: %v", name, err)
 		}
 	}
 	empty := ""
-	if cleared, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, &empty); err != nil || cleared.Identity.Mark != nil {
+	if cleared, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(10), &empty); err != nil || cleared.Identity.Mark != nil {
 		t.Errorf("an empty mark selects the monogram: %+v, %v", cleared.Identity, err)
+	}
+	// A partial write leaves the other field as stored, so a page holding a stale
+	// mark cannot overwrite a newer one by saving only the hue.
+	if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, nil, new("CD")); err != nil {
+		t.Fatalf("mark-only write: %v", err)
+	}
+	if got, err := orgs.SetIdentity(ctx, asAdmin, orgA, new(77), nil); err != nil || got.Identity.Hue != 77 || got.Identity.Mark == nil || *got.Identity.Mark != "CD" {
+		t.Errorf("hue-only write kept the mark: %+v, %v", got.Identity, err)
+	}
+	if got, err := orgs.SetIdentity(ctx, asAdmin, orgA, nil, new("EF")); err != nil || got.Identity.Hue != 77 || got.Identity.Mark == nil || *got.Identity.Mark != "EF" {
+		t.Errorf("mark-only write kept the hue: %+v, %v", got.Identity, err)
+	}
+	if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, nil, nil); !errors.Is(err, domain.ErrInvalid) {
+		t.Errorf("empty write: %v, want ErrInvalid", err)
 	}
 
 	// Uploads: the closed type set, magic bytes, size and dimensions.
@@ -219,17 +233,17 @@ func runChromeIdentityProject(t *testing.T, db *store.DB) {
 	good := chromePNG(t, 8, 8)
 
 	// manage-projects@org writes; read-only and cross-org callers get the uniform refusal.
-	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(reader), scope, 40, &mark); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(reader), scope, new(40), &mark); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("read-only member set identity: %v", err)
 	}
-	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(bob), scope, 40, &mark); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(bob), scope, new(40), &mark); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("cross-org set identity: %v", err)
 	}
-	updated, err := projects.SetIdentity(ctx, service.LocalPrincipal(alice), scope, 40, &mark)
+	updated, err := projects.SetIdentity(ctx, service.LocalPrincipal(alice), scope, new(40), &mark)
 	if err != nil || updated.Identity.Hue != 40 {
 		t.Fatalf("manage-projects set identity = %+v, %v", updated.Identity, err)
 	}
-	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(alice), scope, 400, &mark); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := projects.SetIdentity(ctx, service.LocalPrincipal(alice), scope, new(400), &mark); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("bad hue: %v", err)
 	}
 	if _, err := projects.SetIdentityImage(ctx, service.LocalPrincipal(reader), scope, "image/png", []byte("not an image")); !errors.Is(err, domain.ErrNotFound) {

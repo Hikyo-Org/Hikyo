@@ -8,7 +8,7 @@ org and project.
 
 ## Contract (additive, revision 14)
 
-- `PUT /api/v1/orgs/{org}/identity` and the project twin take `{hue 0..359, mark string|null}` and return `Org` or `Project`.
+- `PUT /api/v1/orgs/{org}/identity` and the project twin take a partial `{hue 0..359, mark string}` and return `Org` or `Project`. An absent (or null) field is left as stored, so a hue-only save cannot overwrite a newer mark; an empty mark selects the monogram; an empty body is a 400. The write locks the row before reading it, so the merge and the audit transition see the row as it stands. The SPA sends only the field the user changed and uploads images in selection order.
 - `PUT|DELETE|GET .../identity/image`: PUT takes a raw `image/*` body, DELETE returns the entity, GET returns the stored bytes with the exact validated Content-Type.
 - Optional `identity {hue, mark, image_version}` on `Org`, `MyOrg`, `Project`. `image_version` is the lowercase hex SHA-256 of the bytes. The SPA appends it as `?v=` so a new image changes the style's URL and redraws; `/api` responses stay `no-store`, so images are refetched on remount.
 - `RenameRequest` and `metadata` are untouched.

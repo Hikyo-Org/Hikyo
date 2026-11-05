@@ -24,6 +24,15 @@ describe('normaliseSvg', () => {
     expect(normaliseSvg('<html></html>').ok).toBe(false);
     expect(normaliseSvg('<svg xmlns="http://www.w3.org/2000/svg"></svg>').ok).toBe(false);
   });
+
+  it('sizes from width and height only in px when there is no viewBox', () => {
+    const sized = (width: string, height: string) =>
+      normaliseSvg(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"/>`);
+    expect(sized('24', '32px')).toMatchObject({ ok: true, width: 24, height: 32 });
+    for (const [width, height] of [['2in', '2in'], ['50%', '50%'], ['10em', '10'], ['10px5', '10'], ['-4', '4']]) {
+      expect(sized(width ?? '', height ?? '').ok, `${String(width)} x ${String(height)}`).toBe(false);
+    }
+  });
 });
 
 describe('prepareChromeImage', () => {

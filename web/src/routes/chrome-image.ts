@@ -34,6 +34,11 @@ function positive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
 
+/** pixelLength reads a unitless or px size; any other unit, such as `in` or `%`, is NaN. */
+function pixelLength(value: string | null): number {
+  return value !== null && /^\s*(\d+\.?\d*|\.\d+)(px)?\s*$/.test(value) ? Number.parseFloat(value) : Number.NaN;
+}
+
 /**
  * normaliseSvg validates the markup and pins an explicit pixel size from the
  * viewBox, because an SVG without one rasterises at an engine-chosen size (or
@@ -48,8 +53,8 @@ export function normaliseSvg(text: string): SvgSource {
   const box = (root.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
   const viewWidth = box[2] ?? Number.NaN;
   const viewHeight = box[3] ?? Number.NaN;
-  const width = positive(viewWidth) && box.length === 4 ? viewWidth : Number.parseFloat(root.getAttribute('width') ?? '');
-  const height = positive(viewHeight) && box.length === 4 ? viewHeight : Number.parseFloat(root.getAttribute('height') ?? '');
+  const width = positive(viewWidth) && box.length === 4 ? viewWidth : pixelLength(root.getAttribute('width'));
+  const height = positive(viewHeight) && box.length === 4 ? viewHeight : pixelLength(root.getAttribute('height'));
   if (!positive(width) || !positive(height)) {
     return { ok: false, message: 'This SVG has no viewBox or size, so it cannot be converted.' };
   }

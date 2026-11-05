@@ -3,7 +3,7 @@ import { useContext, useEffect, useId, useRef, useState, type ReactNode } from '
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
-import { CHROME_IMAGE_ACCEPT, prepareChromeImage } from './chrome-image.ts';
+import { CHROME_IMAGE_ACCEPT, prepareChromeImage, type PreparedImage } from './chrome-image.ts';
 import { graphemes, limitMark, MAX_MARK_GRAPHEMES } from './chrome-mark.ts';
 import {
   chromeIdentityFromApi,
@@ -27,8 +27,11 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  * surfaced the error through its feedback by then, and the controls only need
  * to revert to the server state.
  */
+/** A partial identity write: an absent field stays as stored; an empty mark selects the monogram. */
+export type ChromeIdentityChange = { readonly hue?: number; readonly mark?: string };
+
 export type ChromeIdentityActions = {
-  readonly setIdentity: (next: { hue: number; mark: string | null }) => Promise<void>;
+  readonly setIdentity: (next: ChromeIdentityChange) => Promise<void>;
   readonly setImage: (image: { blob: Blob; contentType: string }) => Promise<void>;
   readonly clearImage: () => Promise<void>;
 };
@@ -68,8 +71,10 @@ export function ChromeIdentityControls({
   const identitySaving = useRef(false);
   const identityQueued = useRef<{
     readonly actions: ChromeIdentityActions;
-    readonly next: { hue: number; mark: string | null };
+    readonly next: ChromeIdentityChange;
   } | null>(null);
+  // Image selections upload in the order they were picked, whichever prepares first.
+  const imageTurn = useRef<Promise<void>>(Promise.resolve());
 
   const serverHue = serverIdentity?.hue ?? 195;
   const serverMark = serverIdentity?.mark ?? '';
@@ -100,18 +105,14 @@ export function ChromeIdentityControls({
     if (prototypeMode) writeChromeIdentity(kind, identityId, next);
   };
 
-  // One save at a time, latest wins: each carries both fields, so responses
-  // arriving out of order cannot restore a value the user has since replaced.
-  const saveIdentity = async (hue: number, markDraft: string | null) => {
+  // One save at a time, so responses cannot arrive out of order. Each carries
+  // only the fields the user changed, so it cannot overwrite another admin's
+  // newer value of the other field; changes made during a save merge, the latest
+  // value per field winning.
+  const saveIdentity = async (change: ChromeIdentityChange) => {
     if (actions === undefined) return;
-    const text = markDraft === null ? serverMark : limitMark(markDraft);
-    if (!identitySaving.current && hue === serverHue && text === serverMark) {
-      setDraftHue(null);
-      setDraftMark(null);
-      return;
-    }
     setRefusal(null);
-    identityQueued.current = { actions, next: { hue, mark: text === '' ? null : text } };
+    identityQueued.current = { actions, next: { ...identityQueued.current?.next, ...change } };
     if (identitySaving.current) return;
     identitySaving.current = true;
     while (identityQueued.current !== null) {
@@ -124,18 +125,28 @@ export function ChromeIdentityControls({
       }
       // Settled, and the reads have refreshed: the server's value now shows. A
       // draft from an edit made since then is different, so it stays.
-      setDraftHue((draft) => (draft === queued.next.hue ? null : draft));
-      setDraftMark((draft) => (draft !== null && limitMark(draft) === (queued.next.mark ?? '') ? null : draft));
+      const { hue, mark: sent } = queued.next;
+      if (hue !== undefined) setDraftHue((draft) => (draft === hue ? null : draft));
+      if (sent !== undefined) setDraftMark((draft) => (draft !== null && limitMark(draft) === sent ? null : draft));
     }
     identitySaving.current = false;
   };
   const commitHue = (hue: number) => {
+    if (!identitySaving.current && hue === serverHue) {
+      setDraftHue(null);
+      return;
+    }
     setDraftHue(hue);
-    void saveIdentity(hue, draftMark);
+    void saveIdentity({ hue });
   };
   const commitMark = (next: string) => {
+    const text = limitMark(next);
+    if (!identitySaving.current && text === serverMark) {
+      setDraftMark(null);
+      return;
+    }
     setDraftMark(next);
-    void saveIdentity(draftHue ?? serverHue, next);
+    void saveIdentity({ mark: text });
   };
   const changeImage = async (change: (apply: ChromeIdentityActions) => Promise<void>) => {
     if (actions === undefined) return;
@@ -146,20 +157,22 @@ export function ChromeIdentityControls({
       // The page's feedback already reported it, and the image never changed.
     }
   };
-  const pickImage = async (file: File) => {
-    let prepared;
-    try {
-      prepared = await prepareChromeImage(file);
-    } catch {
-      setRefusal('That file could not be read.');
-      return;
-    }
-    if (!prepared.ok) {
-      setRefusal(prepared.message);
-      return;
-    }
-    const { blob, contentType } = prepared;
-    await changeImage((apply) => apply.setImage({ blob, contentType }));
+  // Preparation starts at once, but each upload waits for every earlier
+  // selection to settle: a slow SVG picked first must not commit after a PNG
+  // picked later. A failed preparation settles its turn.
+  const pickImage = (file: File): Promise<void> => {
+    const prepared = prepareChromeImage(file).catch((): PreparedImage => ({ ok: false, message: 'That file could not be read.' }));
+    const turn = imageTurn.current.then(async () => {
+      const result = await prepared;
+      if (!result.ok) {
+        setRefusal(result.message);
+        return;
+      }
+      const { blob, contentType } = result;
+      await changeImage((apply) => apply.setImage({ blob, contentType }));
+    });
+    imageTurn.current = turn.catch(() => undefined);
+    return turn;
   };
 
   // A range's native `change` fires once when a drag or key press ends, on every

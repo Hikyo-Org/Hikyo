@@ -341,7 +341,7 @@ type stubOrgs struct {
 	image  func(ctx context.Context, a service.Actor, org domain.OrgID) (service.ChromeImage, error)
 }
 
-func (s stubOrgs) SetIdentity(context.Context, service.Actor, domain.OrgID, int, *string) (service.Org, error) {
+func (s stubOrgs) SetIdentity(context.Context, service.Actor, domain.OrgID, *int, *string) (service.Org, error) {
 	return service.Org{}, domain.ErrNotFound
 }
 
@@ -1490,7 +1490,7 @@ func (s stubHierarchy) Rename(context.Context, service.Actor, domain.Scope, stri
 	return service.Project{}, s.outcome()
 }
 
-func (s stubHierarchy) SetIdentity(context.Context, service.Actor, domain.Scope, int, *string) (service.Project, error) {
+func (s stubHierarchy) SetIdentity(context.Context, service.Actor, domain.Scope, *int, *string) (service.Project, error) {
 	return service.Project{}, s.outcome()
 }
 

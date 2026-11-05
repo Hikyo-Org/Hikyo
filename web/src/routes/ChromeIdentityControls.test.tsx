@@ -5,7 +5,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
+import type { PreparedImage } from './chrome-image.ts';
 import { ChromeIdentityControls, type ChromeIdentityActions } from './ChromeIdentityControls.tsx';
+
+const prepare = vi.hoisted((): { fn: ((file: File) => Promise<PreparedImage>) | undefined } => ({ fn: undefined }));
+vi.mock('./chrome-image.ts', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./chrome-image.ts')>();
+  return { ...real, prepareChromeImage: (file: File) => (prepare.fn ?? real.prepareChromeImage)(file) };
+});
 
 const actions: ChromeIdentityActions = {
   setIdentity: () => Promise.resolve(),
@@ -103,7 +110,7 @@ describe('ChromeIdentityControls', () => {
 });
 
 describe('ChromeIdentityControls saving', () => {
-  type Saved = { hue: number; mark: string | null };
+  type Saved = { hue?: number; mark?: string };
   let root: Root | undefined;
   let host: HTMLElement | undefined;
 
@@ -164,7 +171,7 @@ describe('ChromeIdentityControls saving', () => {
     const setIdentity = vi.fn<(next: Saved) => Promise<void>>(() => first.promise);
     const redraw = mount({ hue: 195 }, setIdentity);
     await act(async () => preset(280).click());
-    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 280, mark: null });
+    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 280 });
     expect(pressedHue()).toBe('Hue 280');
     redraw({ hue: 280 });
     await act(async () => {
@@ -223,15 +230,16 @@ describe('ChromeIdentityControls saving', () => {
       markInput().focus();
       markInput().blur();
     });
-    expect(setIdentity).toHaveBeenLastCalledWith({ hue: 195, mark: 'AB' });
+    expect(setIdentity).toHaveBeenLastCalledWith({ mark: 'AB' });
     await act(async () => preset(280).click());
-    // Serialised: the second save waits for the first and still carries the mark.
+    // Serialised: the second save waits for the first and carries only the hue,
+    // so it cannot overwrite a mark another admin saved in between.
     expect(setIdentity).toHaveBeenCalledTimes(1);
     await act(async () => {
       first.resolve();
       await first.promise;
     });
-    expect(setIdentity).toHaveBeenLastCalledWith({ hue: 280, mark: 'AB' });
+    expect(setIdentity).toHaveBeenLastCalledWith({ hue: 280 });
     redraw({ hue: 280, mark: 'AB' });
     expect(pressedHue()).toBe('Hue 280');
     expect(markInput().value).toBe('AB');
@@ -260,6 +268,51 @@ describe('ChromeIdentityControls saving', () => {
     act(() => type(range, '100'));
     expect(setIdentity).not.toHaveBeenCalled();
     await act(async () => range.dispatchEvent(new Event('change')));
-    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 100, mark: null });
+    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 100 });
+  });
+});
+
+describe('ChromeIdentityControls image uploads', () => {
+  afterEach(() => {
+    prepare.fn = undefined;
+  });
+
+  it('uploads in selection order when a later file prepares first', async () => {
+    let finishSvg: (image: PreparedImage) => void = () => {};
+    const svgPng = new Blob(['svg-png']);
+    const png = new Blob(['png']);
+    prepare.fn = (file) =>
+      file.name === 'slow.svg'
+        ? new Promise<PreparedImage>((resolve) => {
+            finishSvg = resolve;
+          })
+        : Promise.resolve({ ok: true, blob: png, contentType: 'image/png' });
+    const uploads: Blob[] = [];
+    const setImage = vi.fn(({ blob }: { blob: Blob }) => {
+      uploads.push(blob);
+      return Promise.resolve();
+    });
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() =>
+      root.render(
+        <ChromeIdentityControls identityId="x" name="Payments" kind="org" identity={{ hue: 195 }} actions={{ ...actions, setImage }} />,
+      ),
+    );
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error('no file input');
+    const pick = async (file: File) => {
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+      await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+    };
+    await pick(new File(['<svg/>'], 'slow.svg', { type: 'image/svg+xml' }));
+    await pick(new File(['png'], 'fast.png', { type: 'image/png' }));
+    // The PNG is ready, but it must wait for the SVG picked before it.
+    expect(setImage).not.toHaveBeenCalled();
+    await act(async () => finishSvg({ ok: true, blob: svgPng, contentType: 'image/png' }));
+    expect(uploads).toEqual([svgPng, png]);
+    act(() => root.unmount());
+    host.remove();
   });
 });
