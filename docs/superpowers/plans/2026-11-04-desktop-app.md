@@ -16,9 +16,9 @@ Done on 2026-11-04, except where noted. The ADR's status section has the record.
 3. The owning tickets are reopened, and [#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215) tracks the work.
 4. The amendment text is applied as banners, each with [its own
    trigger](../../adr/desktop-app.md#amendments).
+5. The owner accepted [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) on 2026-11-05, which contains D1 to D15.
 
-Still needed: the owner accepts D1 to D15 and [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges, and the owner
-authorizes each implementation PR. When a PR makes a banner operative, close that banner's
+Still needed: #1214 merges, and the owner authorizes each implementation PR. When a PR makes a banner operative, close that banner's
 reopened ticket, except #25, which stays open for its other reasons.
 
 ## PR 1: server and SPA app mode
@@ -65,6 +65,7 @@ match.
 | Self-origin check | `routes/Remotes.tsx` | Compare against `GET /__shell/origin` | No |
 | Session list | `routes/AccountSecurity.tsx` | Show `user_agent` in the real list. Today only the prototype does | No |
 | Camera and file inputs | `routes/PairingQrImport.tsx`, `DefinitionsBundlePanel`, `ChromeIdentityControls`, `ImportWizard` | Probe under `wails:`. Continue in browser if refused | No |
+| Recovery codes | `web/src/api/client.ts`, `app/AuthProvider.tsx`, `web/src/api/account.ts` | Let a `cli` session finish regeneration and the enrolment gate, and show the codes | No |
 
 **Far end of the hop.** `routes/CLIReauth.tsx` and `routes/WorkspaceApprove.tsx` run in the
 browser on the real origin, so they are not rerouted. `CLIReauth.tsx` and the CLI login
@@ -81,12 +82,15 @@ page need these changes, with no server change:
 **Check while there:**
 
 - `web/src/api/client.ts` and `app/AuthProvider.tsx` branch on `artifact !== 'browser'`.
-  The spike ran through them with no visible problem, but confirm each branch.
-- `web/src/api/account.ts`: recovery-code regeneration and the enrolment gate call
-  `acceptAccountSession`, which refuses any session that isn't `browser`
-  (`app/AuthProvider.tsx`). App mode must handle this, or the server replaces the codes and
-  the SPA throws before showing them. Found by reading source and matches one iOS simulator
-  run, but it was not reproduced in a plain browser.
+  The spike's macOS flows ran through them with no visible problem, but those flows did not
+  include recovery codes, so confirm each branch.
+- The recovery codes row above, because removing one check isn't enough. `client.ts` skips
+  the whoami reconcile for a session that isn't `browser`, so `acceptAccountSession` refuses
+  it on the missing verification before it reaches its own `browser` check. The server has
+  already replaced the codes by then, and the SPA throws before showing them. The gate fails
+  at its first step, which issues the codes, and each retry replaces them again. Found by
+  reading source. It matches an iOS simulator run in the spike report's third round, which
+  stalled after a 200 at "Step 2 of 4". It has not been run in the macOS shell.
 - `key_ids` allows 500 on the handoff, against 10000 elsewhere. This affects every
   key-bound purpose. Decide what a larger unit does before calling the API impact complete.
 - `unlinkIdentity` in `api/openapi.yaml` says it deletes the identity's sessions, but it

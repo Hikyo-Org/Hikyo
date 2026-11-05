@@ -1,16 +1,17 @@
 # Hikyo desktop app ([#1215](https://github.com/Hikyo-Org/Hikyo/issues/1215), 2026-11-04)
 
-Status: **derived from the owner's decisions of 2026-11-04 and not owner-locked; operative
-when [#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
+Status: **owner-locked on 2026-11-05; operative when
+[#1214](https://github.com/Hikyo-Org/Hikyo/pull/1214) merges.**
 Each amendment banner has its own [trigger](#amendments). Nothing here is implemented,
-and this ADR authorizes no implementation, merge, release, `Hikyo-Org/hikyo-app`
+and this ADR authorizes no implementation PR, release, `Hikyo-Org/hikyo-app`
 repository or signing identity.
 
-1. **Owner acceptance.** Offered the three [decisions below](#owner-decisions) and told
+1. **Owner acceptance.** Offered the first three [decisions below](#owner-decisions) and told
    that choosing the waiver and accepting the design would lead to the banners and reopened
-   tickets, the owner replied "a", "as recommended" and "yes" on 2026-11-04. The reply did
-   not separately name D1 to D15, so they are not owner-locked. Their acceptance is inferred
-   only from the absence of an objection. An explicit acceptance would replace this label.
+   tickets, the owner replied "a", "as recommended" and "yes" on 2026-11-04. That reply did
+   not separately name D1 to D15. On 2026-11-05, asked whether to accept and merge #1214
+   knowing the `cli` session limit recorded in the owner decisions, the owner replied "1. yes".
+   That reply is the explicit acceptance of #1214, which contains D1 to D15.
 2. **Review.** Cross-provider review is SKIPPED by explicit owner instruction (2026-11-04)
    and is not CLEAN. The waiver covers this decision only and is not a general policy
    change. [GOVERNANCE.md](../../GOVERNANCE.md#amendment-procedure) has no waiver clause, so
@@ -412,7 +413,7 @@ None of these has been observed yet. Each must be observed by hand on a signed b
 5. Save panel, filename and quarantine attribute on a real download.
 6. Clipboard auto-clear, including when the user has copied something else since.
 7. Rotation under concurrent requests, a reissue such as a password change, recovery-code
-   regeneration, a keychain write failure, and a relaunch: the session survives or stops
+   regeneration, the enrolment gate, a keychain write failure, and a relaunch: the session survives or stops
    visibly, recovery codes are shown, and the page never holds a token.
 8. A refused connection to an instance without `desktop-app/1`.
 9. Removing and re-adding a connection: the session is revoked on the server and no
@@ -436,6 +437,18 @@ Settled on 2026-11-04:
 2. **D3:** keep the `cli` session class. No freeze exception for an `app` class.
 3. **D7:** the browser fallbacks are acceptable in v1, including `mint` and `access`.
 
+Settled on 2026-11-05:
+
+4. **#1214:** accepted for merge. It contains D1 to D15, the banners and the plan.
+5. **D3 consequence:** keep `cli`, knowing that a `cli` session can't finish recovery-code
+   regeneration or the enrolment gate in the instance's UI. The server has already replaced
+   the codes by then, so the old ones are void and the new ones are never shown.
+
+Author's note, not part of the owner's reply: the repair is a required row in
+[plan PR 1](../superpowers/plans/2026-11-04-desktop-app.md). The gate fails at its first step,
+which issues the codes. This comes from reading source and matches an iOS simulator run in
+the spike report's third round. It has not been run in the macOS shell.
+
 ## Review record
 
 - **Cross-model review:** not run. SKIPPED by explicit owner instruction (2026-11-04), for
@@ -457,7 +470,11 @@ Settled on 2026-11-04:
   medium and two of the low are repaired in this text and have not had a further review. The
   third low is an OpenAPI description, left to plan PR 1. No round ran anything except small
   parser probes, and the shell these rules govern doesn't exist yet.
+- **Final edits:** the plan's recovery-code note and the owner acceptance text were reviewed
+  together by one fresh Claude Opus 5.5 agent, reading source without running anything. It
+  found one high (the banners and plan gate still said not owner-locked), three medium and
+  three low. All are repaired in this text and have not had a further review.
 - **Owner statements (2026-11-04):** asked for a Wails spike of the recommended design; said
   the app should open the native browser for passkeys, like the CLI; asked whether Hikyo
   should be a monorepo with separate build paths; approved writing ADR amendments and an
-  app-mode plan; settled the decisions above.
+  app-mode plan; settled the first three decisions above.
