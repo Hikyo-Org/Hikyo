@@ -2,7 +2,7 @@
 import '../settings-bundles.ts';
 
 import { readFile } from 'node:fs/promises';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import {
   zDefinitionsSettings,
   zDefinitionsBundle,
@@ -58,6 +58,74 @@ const SETTINGS_SURFACES = surfacesForFlow('chrome-settings');
 
 function isBrowserApiStatus(error: unknown, status: number): boolean {
   return error instanceof BrowserApiError && error.status === status;
+}
+
+const BADGE_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+const BADGE_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#0a7"/></svg>',
+);
+
+/** Drives one Identity panel through every edit, as the owner of the badge would. */
+async function exerciseBadge(
+  page: Page,
+  route: string,
+  imagePath: string,
+  railTile: string,
+  testInfo: TestInfo,
+): Promise<void> {
+  const cspViolations: string[] = [];
+  page.on('console', (message) => {
+    if (message.text().includes('Content Security Policy')) cspViolations.push(message.text());
+  });
+  const preview = page.locator('.identity-controls__preview');
+  const panel = page.locator('#org-identity, #project-identity');
+  const imageType = () =>
+    page.evaluate(async (path) => {
+      const response = await fetch(path);
+      return `${String(response.status)} ${response.headers.get('Content-Type') ?? ''}`;
+    }, imagePath);
+  const saved = (text: string) => expect(page.locator('.notice').filter({ hasText: text }).last()).toBeVisible();
+
+  await page.goto(route);
+  await page.getByRole('button', { name: 'Hue 280', exact: true }).click();
+  await saved('Identity saved.');
+  await page.getByLabel(/^Content/).fill('🚀');
+  await page.getByLabel(/^Content/).press('Tab');
+  await saved('Identity saved.');
+  await page.goto(route);
+  await expect(page.getByRole('button', { name: 'Hue 280', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview).toHaveText('🚀');
+  await panel.screenshot({ path: testInfo.outputPath('badge-hue-and-content.png') });
+
+  const upload = page.locator('.identity-upload input[type="file"]');
+  await upload.setInputFiles({ name: 'badge.png', mimeType: 'image/png', buffer: BADGE_PNG });
+  await expect(preview).toHaveCSS('background-image', /identity\/image\?v=/);
+  await expect(preview).toHaveText('');
+  expect(await imageType()).toBe('200 image/png');
+  if (testInfo.project.name === 'desktop') {
+    await expect(page.locator(railTile)).toHaveCSS('background-image', /identity\/image\?v=/);
+  }
+
+  // A hue change re-applies only the colour; the image must survive it.
+  await page.getByRole('button', { name: 'Hue 60', exact: true }).click();
+  await saved('Identity saved.');
+  await expect(page.getByRole('button', { name: 'Hue 60', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(preview).toHaveCSS('background-image', /identity\/image\?v=/);
+
+  const beforeSvg = await preview.evaluate((element) => getComputedStyle(element).backgroundImage);
+  await upload.setInputFiles({ name: 'badge.svg', mimeType: 'image/svg+xml', buffer: BADGE_SVG });
+  await expect(preview).not.toHaveCSS('background-image', beforeSvg);
+  expect(await imageType()).toBe('200 image/png');
+  await panel.screenshot({ path: testInfo.outputPath('badge-image.png') });
+
+  await page.getByRole('button', { name: 'remove image' }).click();
+  await expect(preview).toHaveCSS('background-image', 'none');
+  await expect(preview).toHaveText('🚀');
+  expect(await imageType()).toMatch(/^404 /);
+  expect(cspViolations).toEqual([]);
 }
 
 test.describe('organisation settings', () => {
@@ -145,6 +213,10 @@ test.describe('organisation settings', () => {
     const done = page.locator('.notice').filter({ hasText: 'Renamed to' });
     await expectStatusIsTextAndAria(page, done);
     drillName = `${drillName} renamed`;
+  });
+
+  test('edits the organisation badge: hue, content, image and SVG', async ({}, testInfo) => {
+    await exerciseBadge(page, `/orgs/${drillOrg}/settings`, `/api/v1/orgs/${drillOrg}/identity/image`, '.rail .avatar[aria-current="true"]', testInfo);
   });
 
   test('does not claim an organisation identity when it is unreadable', async () => {
@@ -388,6 +460,10 @@ test.describe('project settings', () => {
     } finally {
       await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, { definitions_source: 'db' });
     }
+  });
+
+  test('edits the project badge: hue, content, image and SVG', async ({}, testInfo) => {
+    await exerciseBadge(page, `/orgs/${seed.org}/projects/${drillProject}/settings`, `${base()}/identity/image`, '.project-avatar[aria-current="true"]', testInfo);
   });
 
   test('renames the project and leaves the identifier alone', async () => {
@@ -836,7 +912,7 @@ test.describe('settings flow visual contract', () => {
           // Hidden tab panels stay mounted: measure the visible one.
           const well = page.locator('.tabpanel__section:not([hidden]) .panel').first();
           const control = surface.id === 'org-settings'
-            ? page.locator('#org-identity input:not([type="range"]):not([type="file"])')
+            ? page.locator('#org-identity').getByLabel('Name', { exact: true })
             : page.locator('#project-metadata input').first();
           // Org identity's rows carry a mono metadata line; project Metadata
           // is a bare form with none.

@@ -303,33 +303,35 @@ export function ChromeIdentityControls({
         </div>
         {identity.image === null ? <span className="settings-row__spacer" /> : null}
         <div className="actions">
-          <input
-            id={uploadId}
-            className="visually-hidden"
-            type="file"
-            accept={prototypeMode ? 'image/*' : CHROME_IMAGE_ACCEPT}
-            onChange={(event) => {
-              const input = event.currentTarget;
-              const file = input.files?.[0];
-              if (file === undefined) return;
-              if (prototypeMode) {
-                const reader = new FileReader();
-                reader.addEventListener('load', () => {
-                  if (typeof reader.result === 'string') {
-                    updateIdentity({ ...local, image: reader.result });
-                  }
-                });
-                reader.readAsDataURL(file);
-              } else {
-                void pickImage(file);
-              }
-              // Picking the same file again must still fire a change.
-              input.value = '';
-            }}
-          />
-          <label className="btn" htmlFor={uploadId}>
-            {identity.image === null ? 'upload' : 'replace'}
-          </label>
+          <span className="identity-upload__picker">
+            <input
+              id={uploadId}
+              className="identity-upload__input"
+              type="file"
+              accept={prototypeMode ? 'image/*' : CHROME_IMAGE_ACCEPT}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                if (file === undefined) return;
+                if (prototypeMode) {
+                  const reader = new FileReader();
+                  reader.addEventListener('load', () => {
+                    if (typeof reader.result === 'string') {
+                      updateIdentity({ ...local, image: reader.result });
+                    }
+                  });
+                  reader.readAsDataURL(file);
+                } else {
+                  void pickImage(file);
+                }
+                // Picking the same file again must still fire a change.
+                input.value = '';
+              }}
+            />
+            <label className="btn" htmlFor={uploadId}>
+              {identity.image === null ? 'upload' : 'replace'}
+            </label>
+          </span>
           {identity.image === null ? null : (
             <Button
               icon

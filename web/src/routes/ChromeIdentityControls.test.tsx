@@ -151,7 +151,7 @@ describe('ChromeIdentityControls saving', () => {
   }
   function deferred() {
     let resolve = () => {};
-    let reject = (_: Error) => {};
+    let reject: (reason: Error) => void = () => {};
     const promise = new Promise<void>((res, rej) => {
       resolve = res;
       reject = rej;

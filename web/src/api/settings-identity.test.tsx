@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,10 +33,12 @@ describe('identity mutations', () => {
     function Harness({ org, keep }: { readonly org: string; readonly keep: boolean }) {
       const orgs = useOrgIdentityMutations(org);
       const projects = useProjectIdentityMutations(org, 'prj');
-      if (keep) {
-        captured.org = orgs;
-        captured.project = projects;
-      }
+      useEffect(() => {
+        if (keep) {
+          captured.org = orgs;
+          captured.project = projects;
+        }
+      });
       return null;
     }
     const draw = (org: string, keep: boolean) =>
