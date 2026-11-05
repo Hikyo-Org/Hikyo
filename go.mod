@@ -21,7 +21,7 @@ require (
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/getsops/sops/v3 v3.13.3
 	github.com/go-chi/chi/v5 v5.5.0
-	github.com/go-jose/go-jose/v4 v4.1.7
+	github.com/go-jose/go-jose/v4 v4.1.8
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/gofrs/flock v0.13.1
 	github.com/google/cel-go v0.29.2
