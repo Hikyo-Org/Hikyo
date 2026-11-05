@@ -86,7 +86,7 @@ facts for each option, verified against this tree and `v1.0.0`:
    with its own schemas. The existing profile list and show routes must then not
    return ML-DSA profiles, so they become incomplete views; the CLI and SPA read both
    families; a new surface to freeze.
-3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` (line 146) says v1 explicitly plans none.
+3. **Wait for `/api/v2`.** No ML-DSA PKI until then. `api-cli-surface.md` says v1 explicitly plans none.
 
 (Same shape as the corrected wording in
 [1129-transit-mldsa.md](https://github.com/Hikyo-Org/Hikyo/blob/dunky13/pqc-1129-transit-mldsa/docs/handoff/1129-transit-mldsa.md).)
