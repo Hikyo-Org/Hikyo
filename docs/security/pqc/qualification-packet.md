@@ -33,6 +33,7 @@ what that makes true at merge and no more. The verdict above does not change.
   #1172 still needs its public surface and its own review. Migration 00083 and Transit ML-DSA were not in what merged. Every statement below about 00083, Transit or the "two floors"
   describes the candidate, which contains #1172, not the tree that lands.
   **Update when #1172 merges (2026-11-05):** the Transit mechanism, migration 00083 and the public surface (API, generated clients, CLI help, WebUI option) land together, so the "Held" and "not in what merged" wording in this packet is the record of the round as it was, not of the tree after #1172. #1172's own handoff carries its evidence and its open items.
+  **Update on the main backmerge (2026-11-05):** version 83 on main went to `00083_scim_users_account_index.sql`, which shipped in a nightly, so the Transit migration is now `00084_transit_mldsa65.sql`. Statements in this packet that name 00083 or migration 83 for Transit refer to that migration.
 - **As built.** #1141, #1192 and #1190 merge as built. Their open owner
   choices are since decided or deferred (below).
 - **Evidence.** All local results here are pinned to candidate `68b2673de`.

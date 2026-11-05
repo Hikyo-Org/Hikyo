@@ -7,7 +7,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-// 00083 widens transit_keys.algorithm for mldsa65 (#1129). On SQLite that is a
+// 00084 widens transit_keys.algorithm for mldsa65 (#1129). On SQLite that is a
 // rebuild of the parent of two tables, so the proof is that existing keys,
 // their versions and caller entries survive unchanged, the child foreign keys
 // and cascades still bind, the indexes still bite, and the new identity is
@@ -23,7 +23,7 @@ func TestTransitMLDSA65MigrationPostgres(t *testing.T) {
 func testTransitMLDSA65Migration(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
-	if err := RunUpTo(ctx, cfg, 82); err != nil {
+	if err := RunUpTo(ctx, cfg, 83); err != nil {
 		t.Fatal(err)
 	}
 	db := migrationFixtureSQL(t, cfg)
@@ -51,7 +51,7 @@ func testTransitMLDSA65Migration(t *testing.T, cfg store.Config) {
 		}
 	}
 	if _, err := db.ExecContext(ctx, key+`('tk_early','org_t','prj_t','env_t','early','mldsa65','software','sign,verify','active',1,1,1,0,'usr_t','2026-09-01T00:00:00Z','2026-09-01T00:00:00Z')`); err == nil {
-		t.Fatal("pre-00083 schema admitted mldsa65")
+		t.Fatal("pre-00084 schema admitted mldsa65")
 	}
 	if err := Run(ctx, cfg); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func testTransitMLDSA65Migration(t *testing.T, cfg store.Config) {
 	}
 	// The new identity is admitted; every neighbour stays refused.
 	if _, err := db.ExecContext(ctx, key+`('tk_pq','org_t','prj_t','env_t','pq-signer','mldsa65','software','sign,verify','active',1,1,1,0,'usr_t','2026-09-03T00:00:00Z','2026-09-03T00:00:00Z')`); err != nil {
-		t.Fatalf("post-00083 mldsa65: %v", err)
+		t.Fatalf("post-00084 mldsa65: %v", err)
 	}
 	for _, bad := range []string{"mldsa44", "mldsa87", "ml-dsa-65", "MLDSA65", "slh-dsa"} {
 		if _, err := db.ExecContext(ctx, key+`('tk_bad_`+bad+`','org_t','prj_t','env_t','bad-`+bad+`','`+bad+`','software','sign,verify','active',1,1,1,0,'usr_t','2026-09-03T00:00:00Z','2026-09-03T00:00:00Z')`); err == nil {
