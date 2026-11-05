@@ -3,6 +3,8 @@
 Date: 2026-09-01. Status: approved by Marc (design questions answered
 2026-09-01), awaiting implementation plan.
 
+> **Superseded in part (2026-11-05):** the rail cog and the instance context block are gone. The instance scope is a tier at the sidebar's foot and Remotes moved to `/instance/remotes`. See [sidebar-instance-tier.md](../../handoff/sidebar-instance-tier.md).
+
 ## Problem
 
 Three consistency gaps in the SPA (`web/`):

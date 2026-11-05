@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { expect, waitFor } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+import { surfaceById } from '../app/navigation.ts';
 import { ToastViewport, clearNotification } from '../app/notifications.tsx';
 import { FleetUpdateNotice } from './Shell.tsx';
 
@@ -111,7 +112,7 @@ export const RemoteUpdate: Story = {
     );
     await expect(canvas.getByRole('link', { name: /review updates/i })).toHaveAttribute(
       'href',
-      '/instance/remotes',
+      surfaceById('remotes').path,
     );
   },
 };

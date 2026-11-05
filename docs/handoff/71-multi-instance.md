@@ -196,7 +196,7 @@ it, so surface + route + flow landed together):
 
 | Surface | Path | Section |
 |---|---|---|
-| `remotes` | `/remotes` | Organisation |
+| `remotes` | `/remotes` (moved to `/instance/remotes`, Instance section, 2026-11-05: [sidebar-instance-tier.md](./sidebar-instance-tier.md)) | Organisation |
 | `workspace-approve` | `/workspace/approve` | null (chromeless) |
 | `workspace-callback` | `/workspace/callback` | null (chromeless) |
 
