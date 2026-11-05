@@ -199,7 +199,8 @@ unproven: the stock host fails on a redirect, and the patched host has never run
 
 No real device was used, and no real passkey was attempted. The instance was disposable,
 on `127.0.0.1`, with a prebuilt SPA from another worktree behind a small local front,
-because the installed binary has no embedded SPA. That SPA may not match the server exactly.
+because `/` returned 404 on `--dev` with the installed binary. That SPA may not match the
+server exactly.
 
 ### iOS, on the iOS 27.1 simulator
 
@@ -227,8 +228,9 @@ Safari opened, and the kernel held the connection until the app returned:
 | 2 min | 23:55:12 | 23:55:43 |
 
 Simulator suspension may differ from a real device, so this needs a device run before it
-is relied on. On the first run a link-preview scraper also requested the URL at the same
-moment, and a scraper could spend a one-shot code.
+is relied on. On the first run a link-preview client also requested the URL, with a Mac
+user agent. The simulator shares the host's network, so it most likely came from the test
+Mac rather than iOS, and isn't counted as a platform result.
 
 **Wails on the iOS 27 SDK:** v3.1.0 crashes at launch ("UIScene life cycle is required").
 Linking with `-Wl,-platform_version,ios-simulator,15.0,26.0` avoids it, by declaring an
