@@ -231,7 +231,7 @@ def recovery_authorization(directory, manifest_path, state_directory, cosign=Non
     if not isinstance(revoked, list) or len(revoked) > 256 or not all(isinstance(value, str) and sha_pattern.fullmatch(value) for value in revoked) or len(set(revoked)) != len(revoked):
         fail('invalid revoked manifest inventory')
     floor = {'metadata_sequence': metadata['sequence'], 'metadata_sha256': digest(directory / 'metadata.json'), 'catalog_sequence': catalog['sequence'], 'catalog_sha256': digest(directory / 'catalog.json')}
-    minimum = {'metadata_sequence': 1, 'metadata_sha256': 'cc7470eb6d2aac727bdaff9f5bb30c5c1fbbbaa3de9d2e8a0b5a9bb77a4c8d09', 'catalog_sequence': 2, 'catalog_sha256': 'd688b21bbaee7f5dfc789e7f03b544853e90b40b5004e6203155dfce3df99262'}
+    minimum = {'metadata_sequence': 2, 'metadata_sha256': '1f3344ee9ac4e219a9abbbf910f4e1fa139277b529128d8a730ee585ec1c9aab', 'catalog_sequence': 4, 'catalog_sha256': '0fd39210208fbd21cde71fd74743686560609beac88e6a237ff3d845f2f89ff9'}
     def check_floor(known):
         for name in ('metadata', 'catalog'):
             sequence, checksum = name + '_sequence', name + '_sha256'

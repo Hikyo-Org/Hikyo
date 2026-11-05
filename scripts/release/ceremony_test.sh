@@ -2,6 +2,7 @@
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
+source_dir=$script_dir
 fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-ceremony-test.XXXXXX")
 trap 'rm -rf "$fixture_dir"' EXIT HUP INT TERM
 
@@ -135,8 +136,17 @@ printf 'release ceremony fixture: destructive bootstrap confirmation is fail-clo
 # The offline candidate step re-signs current metadata with the recovery key.
 # The verifier refuses recovery-signed metadata that keeps the workflow's
 # delegated identity (snapshot.go: "legacy metadata carries delegated identity").
-# The interactive step cannot run here, so pin that its jq drops the fields.
-grep -F 'del(.source_commit, .release_tag)' "$script_dir/ceremony.sh" >/dev/null
+# Run the script's own jq filter on the committed workflow-signed metadata; the
+# interactive step around it cannot run here.
+awk '/\.sequence \+= 1 \|/ { found = 1 } found { if ($0 ~ /^\t\t. "\$ram_dir/) exit; print }' \
+	"$source_dir/ceremony.sh" >"$fixture_dir/candidate.jq"
+[ -s "$fixture_dir/candidate.jq" ]
+jq --arg version 1.0.1 --argjson release_sequence 2 -f "$fixture_dir/candidate.jq" \
+	"$source_dir/../../release/trust/metadata.json" >"$fixture_dir/candidate.json"
+jq -e '(has("source_commit") or has("release_tag")) | not' "$fixture_dir/candidate.json" >/dev/null
+jq -e --slurpfile input "$source_dir/../../release/trust/metadata.json" \
+	'.event == {type: "release-candidate", signed_by: "recovery-1"} and .sequence == $input[0].sequence + 1 and .pending_release.version == "1.0.1"' \
+	"$fixture_dir/candidate.json" >/dev/null
 printf 'release ceremony fixture: recovery candidate metadata drops delegated workflow identity\n'
 
 printf 'existing public root\n' >"$fixture_dir/repo/release/trust/root.json"

@@ -86,14 +86,20 @@ scripts/release/create-upgrade-catalog.sh metadata.json 2 \
 
 The policy and bridge directories contain only reviewed JSON statements and
 optional corresponding `.sigstore.json` signatures. Catalog creation does not
-authorize its output. During the existing offline recovery-key ceremony, sign
-the exact catalog using the same key-based Cosign profile as trust metadata:
+authorize its output. While the stable metadata is recovery-signed, sign the
+exact catalog during the existing offline recovery-key ceremony using the same
+key-based Cosign profile as trust metadata:
 
 ```sh
 cosign sign-blob --yes --new-bundle-format=false --tlog-upload=false \
   --use-signing-config=false --key /offline/recovery.key \
   --bundle upgrade-catalog.sigstore.json upgrade-catalog.json
 ```
+
+Once the stable workflow has signed the metadata, a recovery-signed catalog over it
+is refused. Follow
+[Re-authorize trust over workflow-signed metadata](signed-nightlies.md#re-authorize-trust-over-workflow-signed-metadata)
+instead.
 
 Distribute the catalog and signature alongside the current metadata and keys.
 No key or catalog was created for production by this implementation. The
