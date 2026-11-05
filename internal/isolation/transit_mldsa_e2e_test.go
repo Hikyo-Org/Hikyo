@@ -25,10 +25,9 @@ import (
 // DEC-02, transit ADR amendment): create, sign, verify with the standard library
 // alone, rotate, apply version policy, compromise, retire, destroy, plus the
 // custody, authorization, service re-creation, re-encryption and rotation-race
-// rules, on both engines and under both custody providers. The public HTTP
-// surface is HOLD (the API freeze refuses the enum growth), so this drives the
-// real service, chokepoint, store and audit trail. The refusal of mldsa65 by a
-// real server is tested in transit_cli_mldsa_hold_test.go. "Restart" below means
+// rules, on both engines and under both custody providers. This drives the real
+// service, chokepoint, store and audit trail; TestTransitPublicSurfaceMLDSA65 and
+// TestTransitMLDSA65APILifecycle cover the public surface. "Restart" below means
 // a new service struct and keyring over the same datastore, not a process restart.
 
 // independentVerify checks a transit signature value with nothing but the

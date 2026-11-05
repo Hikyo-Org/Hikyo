@@ -120,7 +120,8 @@ hikyo transit hmac tokens --env prod --stdin < session-id
 ```
 
 Ed25519 signatures are pure Ed25519 (RFC 8032) over the message bytes, so anyone
-holding the version's public key (shown by `hikyo transit key show`) can verify
+holding the version's public key (in the `public_key` field of
+`hikyo transit key show -o json`) can verify
 them without Hikyo. MAC verification is constant-time. An invalid signature or
 MAC is a successful answer of `valid: false`, and the CLI exits with status 4.
 
@@ -136,7 +137,8 @@ spellings are refused). Differences you will notice:
   Signing is hedged, so two signatures of one message differ.
 - The published public key is a base64 `SubjectPublicKeyInfo` (DER, about 2.6 KiB
   as text) rather than the raw 32 bytes Ed25519 shows, so read the `public_key`
-  field by the key's `algorithm`. Stock tools can load it directly.
+  field by the key's `algorithm`. Decode the base64, or wrap it as PEM, before
+  loading it into a stock tool.
 - Verification outside Hikyo uses the ML-DSA context string
   `hikyo/transit/sign/v1`: decode the value after `hikyo:v<N>:`, check that its
   first two bytes are `0x09 0x05`, and verify the rest over your message with that

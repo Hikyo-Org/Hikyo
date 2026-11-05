@@ -42,7 +42,13 @@ alone are in `internal/crypto/transit_mldsa_vectors_test.go` and
 `internal/crypto/testdata/transit_mldsa65_vectors.json`. A non-Go check was run
 locally (not in CI), OpenSSL 4.0.3 on the frozen SPKI, public key and signature:
 
+`pub.pem` is the `public_key` field, which is base64 DER, wrapped as PEM. Read the
+field from `hikyo transit key show <key> -o json`, at `.items[0].versions[n].public_key`
+(the default table has no public-key column):
+
 ```sh
+{ echo '-----BEGIN PUBLIC KEY-----'; printf '%s\n' "$PUBLIC_KEY" | fold -w 64
+  echo '-----END PUBLIC KEY-----'; } > pub.pem
 openssl pkeyutl -verify -pubin -inkey pub.pem -in msg.bin -sigfile sig.bin \
   -pkeyopt context-string:hikyo/transit/sign/v1     # Signature Verified Successfully
 # the same without the option, with another context string, or with a tampered
@@ -129,12 +135,23 @@ custody provider refuses it.
   refuses rather than publish an unparsed key). A deployment on the frozen FIPS module therefore cannot use this algorithm, and an `mldsa65` key created elsewhere makes the list unreadable there.
 - The departure below.
 
-## Departure from the PQC profiles, for the owner to accept
+## Registered limit: the CLI key list
+
+`hikyo transit key list` reads at most 8 MiB of a response, and the list endpoint is
+unpaginated and returns every version's public key. An ML-DSA-65 version costs about
+2.7 KB of JSON, so the cap falls at about 3,080 versions in one environment, well
+inside the limits of 256 keys and 1,024 versions per key. Four keys at 1,024 versions,
+or four hourly-rotating keys left untrimmed for about 32 days, reach it. The CLI then
+exits with an internal error ("the server's response did not match the contract").
+`hikyo transit key show` still works, since one key tops out at about 2.8 MiB, as do
+the API and clients without that cap. Trimming old versions avoids it. Open under #1129.
+
+## Departure from the PQC profiles
 
 The [profiles](../security/pqc/profiles.md#encodings-fingerprints-domain-separation-identifiers)
 (DEC-07 rows) say algorithm identifiers appear inside the signed bytes and that
 the label is also the first length-prefixed field of every signature input. Transit
-does not do this for the signed bytes, and the register has no row accepting the difference:
+does not do this for the signed bytes. The owner accepted this on 2026-11-04 (item 10 of the decisions list in [the program handoff](../handoff/1123-post-quantum-program.md)), so the format stays. The register has no row for it:
 
 1. **Signed bytes are the raw message, not a label-prefixed structure.** The label
    is bound only as the ML-DSA context, and the algorithm identifier `0x0905`
@@ -146,13 +163,13 @@ does not do this for the signed bytes, and the register has no row accepting the
    verifier, stock tools such as OpenSSL included, would have to rebuild the
    prefix before checking a signature. The security gain looks small, because the
    context already fixes the label and ML-DSA binds the public key into the hash it
-   signs; I did not analyze it further. So this is an owner trade-off, not an
+   signs; I did not analyze it further. This was an owner trade-off, not an
    impossibility. **The choice is cheap only until the first `mldsa65` key signs**:
    after that, changing the signed input means a second signature format and a
    version the verifiers must learn. The signature format was not changed. Residual
-   risk if accepted as is: what is signed does not name the algorithm, and
+   risk, accepted: what is signed does not name the algorithm, and
    separation from other uses of the same key rests on the context string and the
-   key row. The owner decides; the owning ticket for any change is #1129.
+   key row. The owning ticket for any change is #1129.
 
 Not a departure, but not provided: the `mldsa65:` text form and a key fingerprint.
 Transit publishes neither today, so a surface that later wants one must define it
@@ -173,7 +190,8 @@ that validates responses with the `v1.0.0` generated Zod schemas then fails the
 whole key list of that environment, Ed25519 keys included, and fails a single
 show, create or rotate response for that key. The Go client and the CLI decode it
 because the generated enum type is a plain string, and the `v1.0.0` TypeScript SDK
-has no response validator. The frozen-client skew lane asserts exactly this
+has no response validator. The frozen-client skew lane asserts the Zod and SDK part
+and the current Go decode; it has no CLI step, and no test runs a `v1.0.0` CLI
 (`TestFrozenGeneratedClientAgainstCurrentServer`: the `v1.0.0` Zod list schema
 rejects a list holding `mldsa65` on `items.N.algorithm` only, while the `v1.0.0`
 SDK creates, signs, verifies, rotates and lists the key). The WebUI ships in the

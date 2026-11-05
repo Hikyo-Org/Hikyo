@@ -92,8 +92,9 @@ it('does not request keys for a missing selected environment', async () => {
   } finally { await view.unmount(); }
 });
 
-// A real ML-DSA-65 SubjectPublicKeyInfo is 1974 bytes, 2632 base64 characters.
-const spki = `MIIHsjALBglghkgBZQMEAxEDggehA${'Q'.repeat(2602)}`;
+// Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
+// bytes, 2632 base64 characters); the key bytes are filler.
+const spki = `MIIHsjALBglghkgBZQMEAxIDggehA${'Q'.repeat(2603)}`;
 const pqKey = {
   ...key, id: 'trk_00000000-0000-7000-8000-000000000002', name: 'pq-key', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'],
   versions: [{ version: 1, material: 'sealed', created_at: at, public_key: spki }],

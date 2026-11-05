@@ -122,8 +122,7 @@ func TestTransitHandlersWithoutServiceReturnNotFound(t *testing.T) {
 }
 
 // The public key a response carries is the published encoding: Ed25519 raw,
-// ML-DSA-65 as SPKI (DEC-07). The public surface does not offer ML-DSA keys yet
-// (HOLD), so this exercises the response builder directly.
+// ML-DSA-65 as SPKI (DEC-07). This exercises the response builder directly.
 func TestTransitKeyResponsePublishesTheAlgorithmEncoding(t *testing.T) {
 	// The view is built by field assignment: the handler layer must not import the
 	// datastore package, and that rule applies to its tests too.

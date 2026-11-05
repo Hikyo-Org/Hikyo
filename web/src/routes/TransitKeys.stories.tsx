@@ -67,8 +67,9 @@ export const CreateKey: Story = { play: async ({ canvas }) => {
 export const ReadRefused: Story = { parameters: { app: { responses: [environments, { url: keysPath, status: 403, body: { error: { code: 'forbidden', message: 'Forbidden' } } }] } }, play: async ({ canvas }) => {
   await expect(await canvas.findByText('Transit access was refused. Check your environment permissions, caller grant and second factor.')).toBeVisible();
 } };
-// A real ML-DSA-65 SubjectPublicKeyInfo is 1974 bytes, 2632 base64 characters.
-const spki = `MIIHsjALBglghkgBZQMEAxEDggehA${'Q'.repeat(2602)}`;
+// Shaped like a real ML-DSA-65 SubjectPublicKeyInfo (OID and length header, 1974
+// bytes, 2632 base64 characters); the key bytes are filler.
+const spki = `MIIHsjALBglghkgBZQMEAxIDggehA${'Q'.repeat(2603)}`;
 const postQuantum = {
   ...key, id: 'trk_00000000-0000-7000-8000-000000000002', name: 'attestations', algorithm: 'mldsa65', allowed_operations: ['sign', 'verify'],
   rotation_period_seconds: 0, rotation_due: false,

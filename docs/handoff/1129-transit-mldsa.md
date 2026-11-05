@@ -136,10 +136,10 @@ verify, rotate and list for `mldsa65` through the same real boot and CLI.
 | Public-surface tests | `TestTransitPublicSurfaceMLDSA65{SQLite,Postgres}` (real boot, real CLI: create, sign, verify, refusals, rotate, show, list, independent SPKI verification); `TestTransitMLDSA65APILifecycle` (raw HTTP, `forEngines`); `TestMLDSA65ServiceLine` and `TestMLDSA65OverHTTP` flipped for Transit and still refusing PKI; the frozen-client skew lane gains an `mldsa65` list case and a `v1.0.0` SDK lifecycle on an `mldsa65` key; web unit and Storybook tests |
 | Docs | `docs/operations/transit-mldsa.md`, `docs/site/src/content/docs/docs/transit.mdx`, the ADR banners (not-owner-locked text only), `docs/operations/pqc-staged-rollout.md`, the qualification packet, the #1123 ledger |
 
-## Departures from the PQC profiles, for the owner to accept
+## Departures from the PQC profiles
 
 The register has no row accepting these; I did not edit any DEC row. Details and
-residual risk are in the [operations note](../operations/transit-mldsa.md#departure-from-the-pqc-profiles-for-the-owner-to-accept).
+residual risk are in the [operations note](../operations/transit-mldsa.md#departure-from-the-pqc-profiles).
 
 1. **Signed bytes (DEC-07, profiles.md "Domain separation").** The owner accepted
    this departure on 2026-11-04, so the signature format stays. Because the public
@@ -203,7 +203,7 @@ a process restart.
 | Custody contract: software and mock conformance, fail closed, no fallback, local public verification | DONE | Conformance extended to `mldsa65` (public key size, transplant with a positive control, unavailable sign); unavailable and unregistered custody refuse sign and verify and do no work. A mock is not evidence of an HSM or KMS |
 | Malformed and wrong-sized keys and signatures, wrong algorithm, key/version/scope, substitution, duplicates, disabled/compromised, minimum-version boundaries | DONE | Table test (22 malformed cases), service-level cases, boundary at the floor |
 | Restart, restore holds, project/instance re-encryption, rotation races, multi-node takeover on both engines | PARTIAL | DONE: restart, rotate-dek plus project reencrypt (material re-sealed, public key and earlier signatures unchanged), concurrent rotation (at least one winner, contiguous versions, distinct signing public keys). NOTRUN: restore-hold behavior with an ML-DSA key (no drill was run), multi-node takeover (single-process harness only), instance-wide reencrypt |
-| Bounds fit actual encodings without weakening admission | DONE | Wire value 4424 characters inside the 128 KiB cap; message cap unchanged; no global bound raised |
+| Bounds fit actual encodings without weakening admission | PARTIAL | Wire value 4424 characters inside the 128 KiB cap; message cap unchanged; no global bound raised. Registered limit: `hikyo transit key list` reads at most 8 MiB of the unpaginated list, which ML-DSA reaches at about 3,080 versions in one environment (see the operations note). Open under #1129 |
 | Document consumer migration, verifier compatibility, cutoffs, rollback floor, measured size and performance | PARTIAL | Operations note corrected for the floors (retire and disable end signing and verification, floors do not) and for the rollback floor (migration 83 moves it for every instance). NOTRUN: whether a release binary older than this change refuses a migration-83 database (`migrate.Check` has no production caller); amd64 not measured |
 | Frozen maintained-reference vectors, fuzz/parser regressions, API/CLI/client/WebUI evidence, screenshots | PARTIAL | Vectors frozen from the Go standard library and verified with it independently of the Transit path, and locally with OpenSSL 4.0.3 (non-Go; not in CI). Two fuzz targets, whose oracle is now the frozen authentic triple. API, CLI, client and WebUI evidence: see Tests and results. Before and after screenshots of the Transit keys route (desktop 1280 and mobile 390, detail and create dialog) came from Storybook with mocked API fixtures, not a live server, and are kept out of Git. NOTRUN: pinned Wycheproof vectors (DEC-09 wants source, version and digest pinned) |
 
@@ -280,7 +280,7 @@ test `TestTransitPublicSurfaceHoldsMLDSA65*` named in the round 2 rows was renam
 | `node scripts/ci/check-doc-status.mjs --check` | PASS (35 entries) |
 | Web: `vitest` Transit unit tests (18 across two files), `vitest --project storybook` Transit story test (9), `tsc --noEmit`, oxlint, `design/markup-check`, `adherence-check` | PASS |
 | Mutation checks | Publishing the raw key instead of SPKI fails `TestTransitMLDSA65APILifecycle`; removing the web option or the SPKI note fails the web tests; running the skew lane with the HEAD client as the "frozen" client fails with "must reject a list holding mldsa65". Each was restored |
-| `internal/lint`, hosted CI, the buildcompat PostgreSQL 18 digest check | NOTRUN locally (lint is not run locally; Docker was down). Hosted CI covers them on the new head |
+| `internal/lint`, hosted CI, the buildcompat PostgreSQL 18 digest check | NOTRUN locally (lint is not run locally; Docker was down). The PR's required check only compiles Go tests (`go test -c`), so the frozen-client lane, the freeze guard and the PostgreSQL legs first run in post-merge `ci-dev` |
 
 Round 1 local lint: it passed once (499 s) before a comment-only edit, then two
 reruns did not complete (the default 10 minute test timeout under host load; then
@@ -319,9 +319,10 @@ schema digest per engine), then rerun the lint pins.
   **Merging moves the rollback floor for everyone.** The downgrade path is
   restoring an archive from before migration 83 (see the upgrades guide), not a
   down migration. Whether a release binary older than this change refuses a
-  migration-83 database is NOTRUN: `migrate.Check` would refuse it but has no
-  production caller, and the base `app.Boot` refusal observed in development was for
-  custody reasons, not schema.
+  migration-83 database is NOTRUN. The real path is the upgrade gate
+  (`upgradegate`, `upgradebundle.Load`, `inspectSource`, `appliedMatches`); `migrate.Check`
+  has no production caller, and the base `app.Boot` refusal observed in development was
+  for custody reasons, not schema.
 - Backups carry sealed `mldsa65` material like all transit material; trim and
   destroy erase live material only.
 - **Zeroization.** `Destroy` zeroes the AEAD, HMAC and Ed25519 key bytes. It cannot
@@ -353,8 +354,8 @@ registered open, with its risk; none of it is built in this PR.
 5. **Multi-node takeover** with an ML-DSA key (single-process harness only). Risk:
    custody handover between nodes is untested for `mldsa65`.
 6. **Release-binary refusal against a migration-83 database.** Risk: whether a binary
-   older than this change refuses the migrated database is unknown (`migrate.Check`
-   has no production caller). The rollback floor moves regardless; see above.
+   older than this change refuses the migrated database is unknown: no test drives the
+   upgrade gate against it. The rollback floor moves regardless; see above.
 7. **Owner thresholds** from a target-machine baseline (amd64 included; not measured).
 8. **Maintainer security approval** and **independent adversarial review of the new
    head**. Cross-provider review stays SKIPPED, not CLEAN.
@@ -362,3 +363,8 @@ registered open, with its risk; none of it is built in this PR.
    list unreadable to any consumer that validates with the `v1.0.0` Zod schemas
    (accepted, option A). The WebUI in this PR parses it; integrators must update
    their generated schemas first.
+10. **The CLI key list cap.** `hikyo transit key list` reads at most 8 MiB of an
+    unpaginated response, which ML-DSA reaches at about 3,080 versions in one
+    environment. Risk: past that the command fails with an internal error, while
+    `hikyo transit key show` and the API still work. See the
+    [operations note](../operations/transit-mldsa.md#registered-limit-the-cli-key-list).
