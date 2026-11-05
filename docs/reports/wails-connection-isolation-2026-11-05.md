@@ -1,7 +1,7 @@
 # Connection isolation in the native shell
 
 Date: 2026-11-05. Rig code: [`spike/wails-shell`](../../spike/wails-shell). Follows the
-[spike report](./wails-shell-spike-2026-11-04.md). This is research. No product code changed.
+[spike report](./wails-shell-spike-2026-11-04.md). The recommendation is now implemented in the spike (see [Implementation results](#implementation-results)); no product code exists, and `desktop/` is not created.
 
 ## Recommendation
 
@@ -26,9 +26,7 @@ field identifies the sender except `Referer`, which the page can remove.
 **Cost on Android:** about 35 MB more with two connections on the login page (255 MB against 220 MB), and
 native host work that the plan doesn't size. Switching gets faster (11 to 37 ms against 38 to 184 ms), and each connection keeps its page state.
 
-**Not fully measured.** The Android device tool failed before the last batch, so the recommended
-mode has no navigation or race run of its own. One-view mode has both, and shares the code path.
-See [Not measured](#not-measured). The first acceptance check closes this.
+**Implemented and measured.** The recommendation is built in `spike/wails-shell` and checks 1 to 6 and 8 ran on an Android emulator, the macOS shell and an iOS simulator. Check 7 (authenticated SPA) did not run. See [Implementation results](#implementation-results) and [Not measured](#not-measured).
 
 ## Severity
 
@@ -389,32 +387,65 @@ Ground truth is the victim front's log. Each must show zero attacker-originated 
 7. Authenticated SPA: confirm SSE and reveal keep working across switches, and re-measure memory.
 8. On macOS and iOS, rerun the table with random hosts, and repeat on a real device before release.
 
+## Implementation results
+
+The brief is implemented in `spike/wails-shell` (branch `dunky13/shell-connection-isolation`, stacked on the spike). It stays out of `dev`. Ground truth for every row is the victim front's log, read by `isolation/summarize.py`. The rig fixes the hosts through the `host` field under the `isorig` tag; the product path uses random hosts.
+
+| # | Check | Result | How |
+|---|---|---|---|
+| 1 | Navigation phase, per-profile mode (Android) | **0 requests at the victim**, 4 runs. Every `nav` vector to the victim was cancelled and the page stayed, except `form-post-top` (not seen by `shouldOverrideUrlLoading`; the Go `Origin` check refused it, and the 403 replaced the attacker's page), `redir-own-nav` (stays on the attacker's `/redir`; the 3xx becomes a 502) and the cleartext `redir-direct-nav` (page stayed) | Measured |
+| 2 | Race, three runs | **0 victim hits** in each, about 15,000 to 17,000 refused per run, 4 switches each | Measured |
+| 3 | Subresource phase on the product host | **0 reached the victim**, about 48 vectors | Measured |
+| 4 | Service worker from `conn-0` | Rejected: `sw-own` "unknown error occurred when fetching the script" (no `ServiceWorkerClient` is installed), `sw-cross-origin` SecurityError | Measured |
+| 5 | HTTPS redirect hop (`tlsok`) | `redir-tls-img` onerror, `redir-tls-fetch` rejected, `direct-tls-img` onload (the attacker's own redirector). **0 at the victim** | Measured |
+| 6 | Remove, add, restart | `deleteProfile` on a loaded profile was postponed ("Cannot delete in-use profile") and recorded. A new connection saw `seen=null`, where a same-host reload had seen the old value. After a restart the old profiles were deleted and `profilesToDelete` was empty | Measured |
+| 7 | Authenticated SPA: SSE, reveal, memory | **Not run.** See below | |
+| 8 | macOS and iOS with random hosts | macOS: native cancels for navigations and `refused-window`, `refused-origin` or `refused-host` for subresources, **0 at the victim**; the control build with both layers off leaked 24 vectors, so the rig can see a leak. iOS (iPhone Duo simulator, iOS 27.1): 33 subresource vectors, **0 at the victim**, 21 native cancels, `a-download` cancelled with the policy on, and the switcher confirmed by screenshots and the `switched to connection N` log | Measured |
+
+Also measured: downloads on Android land in `Download/<connection label>/` with unique names (`rig.bin`, `rig-1.bin`). `wails-runtime` and `wails-capture` return 403 on Android and `typeof window.wails` is `undefined`. On iOS `wails-capture` returned 404 before the fix below and is rejected after it. On macOS `window.wails` is an object (the Wails runtime is in the page) and `wails-capture` is 404 from the instance.
+
+The branch also merged `dunky13/android-host-response-fixes` (large responses, 2 KB event padding, system bars, foreground service). After the merge, the subresource and navigation phases were rerun on the merged APK: 0 victim hits.
+
+### Independent review
+
+A fresh `claude-opus-5-5` agent reviewed the code against the attack table and found no cross-connection break. Findings and dispositions:
+
+| Finding | Severity | Disposition |
+|---|---|---|
+| Body-channel stash leaked accounting across owners | Medium | Fixed: keyed by owner and id, per-owner cap. Read in source, not run |
+| Android download could overwrite another connection's file | Medium | Fixed and measured (per-connection folder, unique names) |
+| iOS served `/__capture__/` before Go's checks | Medium | Fixed and measured |
+| Wails' WebKit message handlers (`external`, `wails:drag`) are reachable from a page | Low | Upstream; documented, no change |
+| macOS native policy install was not fatal | Low | Fixed: start-up aborts unless all five handlers install |
+| macOS download connection comes from the URL | Low | No bypass, because `webView.URL.host` is checked first; documented |
+| Profiles of removed connections piled up | Low | Fixed: orphan sweep at launch |
+| `probe` debug server always built on Android | Low | Fixed: only with `ISO_TAGS=probe` |
+
+Unconfirmed, so residual: the native policies allow an empty `webView.URL.host` on a first load, and shared workers were not tested on Android.
+
+### Differences from the brief
+
+- Hosts are new at every launch, because the spike has no connection store. A product keeps a host with its connection, which also keeps page storage between launches.
+- A connection added at runtime must be bound to its window before its first load.
+- The comparison modes (shared view, pinned connection) are gone from the code. Commit `c842958c9` has them.
+- iOS 27.1 aborts apps without a UIScene lifecycle, which Wails 3.1.0 lacks. The simulator build records SDK 26 with `vtool` and links `AuthenticationServices`.
+
 ## Not measured
-
-**The Android device tool failed before the final batch.** `device_open` returned, on the first try, and again after refreshing the device list:
-
-> Device boot failed: Could not communicate with device support. Try refreshing devices.
-
-The device rule is to stop there, so these weren't run. The rig supports them: flags, vectors and commands are in the README.
 
 | Item | Status |
 |---|---|
-| Navigation and race in `perview-profile` | No run. **Read in source:** `perView()` is `mode.startsWith("perview")`, so the same refusal applies. Measured in plain `perview`, and subresources in a3 went through the same owner check |
-| HTTPS redirect hop on Android | No run. **Read in source only:** Chromium main doesn't offer redirected requests to the intercept, which means no proxy and no bearer. That is current main, not WebView 133 |
-| Deny-all `ServiceWorkerClient` | No run. Not needed by the recommendation |
-| Shell CSP on all responses | No run. The HTML-only variant is above |
-| `setBlockNetworkLoads` against direct HTTPS | No run |
-| `deleteProfile` and storage across recreate | No run. Docs only |
+| **Check 7: SSE and reveal across switches, memory with an authenticated SPA** | **Not run.** A disposable instance built from `origin/dev` ran and served its SPA, but `hikyo login` for a session token requires an interactive terminal so a human can confirm the instance. It has no file output and I did not fake a terminal. The merged event padding was checked in source and by the subresource runs only. Memory with an authenticated SPA is not re-measured |
+| Isolation with the native policy off on iOS (`isonopolicy`) | No run |
+| A real device, on any platform | Not run |
+| `a-blank` on Android | Not run. macOS and iOS cancelled it |
+| A real user tap on Android, where `hasGesture` may differ | Not run |
+| `WebView.onPause` on hidden views | Not run |
+| The Android extra vectors (`wails-runtime`, `wails-capture`) before the change | Not measured |
+| Body-channel stash logic (review fix) | Read in source, not run |
+| `sharedworker-fetch` on macOS and iOS | No request reached the victim; no page result recorded |
+| Shell CSP on all responses, `setBlockNetworkLoads`, deny-all `ServiceWorkerClient` | Not needed by the recommendation, not run |
 
-**Also untested:**
-
-- A real instance, an authenticated SPA, or a physical device, on any platform.
-- `a-blank` on iOS and Android. `a-download` on iOS with the policy on.
-- A real user tap on Android, where `hasGesture` may differ.
-- `WebView.onPause` on hidden views, to stop a background page running.
-- `sharedworker-fetch` on macOS and iOS. No request reached the victim, but no page result was recorded either.
-
-**How the rig was run:** `build/` came from a sibling worktree. `wails3` was installed outside the job queue because the queue job hit a task limit and the rebuild was fully cached (7.6 s). `adb shell ps` and `dumpsys meminfo` were used read-only, and `simctl install`, `uninstall`, `terminate` and `get_app_container` handled the iOS app. Screens were driven only through `agent-device`. Raw logs are not committed.
+**To run check 7:** start a disposable instance, run `hikyo login <url> --local --as admin --name connN` twice from a terminal against it, put both origins and tokens into the gitignored `mobile-dev-config.json`, build with `ISO_TAGS=isorig android-host/build.sh`, and use the rig commands (`switch`, `mem`) while the SPA holds an event stream.
 
 ## Read in source, not measured
 

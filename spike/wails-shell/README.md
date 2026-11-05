@@ -51,7 +51,7 @@ Results are in the spike report's third round. Both platforms need a local, giti
   iOS 27 SDK aborts at launch (`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`). Record SDK 26 with
   `vtool -set-build-version iossim 15.0 26.0 -replace -output X.new X`, then sign again.
 - **Android:** run `android-host/build.sh`, or `android-host/build.sh stock` for the
-  unmodified host. It needs `ANDROID_HOME` and the NDK. The patched host runs on the emulator.
+  unmodified host. It needs `ANDROID_HOME` and the NDK. The `probe` debug server is only built with `ISO_TAGS=probe`. The patched host runs on the emulator.
   The patched host buffers non-streaming responses to report their length, pads event streams by
   2 KB per event, pads for the system bars, and starts a `shortService` foreground service for the
   browser hop (`/open?mode=fgs` in the probe). `/sse-pad?n=` and `/fgs` in the probe tune them.
