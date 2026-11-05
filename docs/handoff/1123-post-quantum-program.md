@@ -64,12 +64,12 @@ New capabilities are opt-in, but these changes reach every upgraded instance:
   before any journal.
 - #1186: a malformed `trust.json` or a persisted strict floor refuses the controller.
 - #1141: importing, rotating or installing a classical issuer under an ML-DSA root is refused.
-- #1172, not merged: migration 00083 will move the rollback floor of every instance.
+- #1172, not merged: migration 00083 will move the rollback floor of every instance. **Update 2026-11-05:** #1172 now also carries the public surface (CLI help, WebUI option, API, CLI and generated-client lifecycle tests, a frozen-client skew case) on top of the OpenAPI enum already on `dev` from #1212; it stays a draft. Migration 00083 is roll-forward only.
 
 ### Merged on 2026-11-04
 
 The 13 PRs in the table below landed on `dev` with merge commits. #1172 did not merge
-(the owner decided the `/api/v1` freeze on 2026-11-04, which ends its hold; it still needs its public surface and its own review),
+(the owner decided the `/api/v1` freeze on 2026-11-04, which ends its hold; it then still needed its public surface and its own review; the surface is now in #1172, the review is pending),
 PR #1195 was evidence only and closed unmerged, #1197 landed with its documents only, and #1206
 followed with a test repair. Each head below is the head that merged.
 
@@ -103,7 +103,7 @@ evidence for this tree.
 | #1126 backups | #1158 | Hybrid backups through CLI, receipts, drill, restore | Automatic upgrades refuse under a hybrid policy; every export path emitting a receipt is unmet (E-19); no hybrid vault | 2026-11-04, repairs re-reviewed |
 | #1127 transport | #1156 | Strict TLS 1.3 and `X25519MLKEM768` on the listener and CLI trust entries; client selection is partial | Per process only, no stale-node fence (DEC-10 amended by the owner on 2026-11-04, E-22); no external hop | 2026-11-04, repairs re-reviewed |
 | #1128 webhooks | #1188 | Protocol 2 sender, reference receiver, vectors | R-1128-A, R-1128-B; recipient ownership PARTIAL; declared-amendment route accepted | 2026-11-04, repairs re-reviewed |
-| #1129 Transit | #1172 | `mldsa65` below the API | Not merged: the freeze is decided (option A) and the contract amendment is its own pull request. It still needs its public surface, the CLI and WebUI lists and its own review; restore-hold and takeover NOTRUN | 2026-11-04, repairs re-reviewed |
+| #1129 Transit | #1172 (draft) | `mldsa65` through the API, generated clients, CLI and WebUI, over the mechanism | Not merged. Needs maintainer security approval (not given) and independent review of the new head. Open and registered in the [#1129 handoff](./1129-transit-mldsa.md): Wycheproof vectors, restore-hold with an ML-DSA key, instance reencrypt, multi-node takeover, release-binary refusal against a migration-83 database, owner thresholds. PostgreSQL legs of the new public-surface tests NOTRUN locally. Migration 00083 moves the rollback floor for every upgrading instance. The Zod skew break is accepted (option A) and asserted in the skew lane | 2026-11-04 for the mechanism, repairs re-reviewed; none for the public-surface commits |
 | #1130 pairing | #1190 | Threat analysis, feasibility survey, HOLD record | No acceptable PQ PAKE; DEC-13 HOLD; E-01 effective since 2026-11-04 (expiry 2027-05-03) | 2026-11-04, repairs re-reviewed |
 | #1131 rollout | #1186 | Opt-in dual-signed strict profile, generation floor | G-1 to G-4; real cluster NOTRUN | 2026-11-04, repairs re-reviewed |
 | #1132 release | #1192 | Readers and verifiers, called by no shipping path | No signer; E-11 bridge cannot close; custody unnamed; floor persistence not built | 2026-11-04, repairs re-reviewed |
@@ -121,7 +121,7 @@ provider, cluster, receiver, deployment and amd64 evidence is NOTRUN.
 Decided on 2026-11-04, as recommended:
 
 1. Merge to `dev` when green and accept publication in the next nightly, with rollback floors,
-   except #1172, which is held until the `/api/v1` freeze is decided. This settles packet C-10's
+   except #1172, which was held until the `/api/v1` freeze was decided (it has been, option A; #1172 still needs its own review and approval). This settles packet C-10's
    rollback policy for this round.
 2. Stale-node fencing: strict is per process, recorded in DEC-10 and E-22. The fence stays #1127 work.
 3. `backup-receipt/v2`: the banner is extended, and the E-19 receipt requirement stays registered as unmet.

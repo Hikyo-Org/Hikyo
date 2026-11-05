@@ -1,9 +1,13 @@
 # Transit ML-DSA-65 signing keys
 
-Status: **draft, not operative.** The mechanism is implemented for #1129; the
-transit ADR amendment becomes operative only when that implementation PR (#1172)
-merges, and even then the public API, CLI and WebUI do not offer the algorithm
-(see [Exposure](#exposure-hold)). Nothing here authorizes production key creation.
+Status: **implemented in #1172 (#1129), operative when #1172 merges.** Once it
+merges, the API, the CLI (`hikyo transit key create --algorithm mldsa65`) and the
+WebUI create dialog all offer `mldsa65`, under the declared one-time contract
+growth in the [api-cli-surface](../adr/api-cli-surface.md) ADR. The merge does not
+create a key, enable a signer or activate any trust, and nothing here authorizes
+production key creation. Migration 00083 reaches every instance that upgrades
+(see [Rollback floor and retention](#rollback-floor-and-retention)). Open items
+are registered in the [handoff](../handoff/1129-transit-mldsa.md#remaining-work-and-next-authorized-step).
 
 ## What exists
 
@@ -14,7 +18,7 @@ merges, and even then the public API, CLI and WebUI do not offer the algorithm
 | Operations | `sign`, `verify` (the key's allowed set is a subset of these, fixed at creation) |
 | Derivation | The 32-byte version material is run through HKDF-SHA256 under the existing `hikyo/transit-key/v1` info (algorithm, org, project, environment, key, version); the 32 derived bytes are the FIPS 204 seed. The material, not the seed, is sealed under the project DEK as before |
 | Public key, stored | The raw 1952-byte FIPS 204 encoding, beside the version row (as Ed25519 stores its raw 32 bytes) |
-| Public key, published | ML-DSA-65: the standard SubjectPublicKeyInfo DER (1974 bytes, OID 2.16.840.1.101.3.4.3.18) in the same base64 field, as DEC-07 specifies. Ed25519 stays the raw 32 bytes. A consumer therefore reads the field by the key's `algorithm`. The conversion is in `crypto.ExposeTransitPublicKey` and the response builder; no public route returns an ML-DSA key yet |
+| Public key, published | ML-DSA-65: the standard SubjectPublicKeyInfo DER (1974 bytes, OID 2.16.840.1.101.3.4.3.18) in the same base64 field, as DEC-07 specifies. Ed25519 stays the raw 32 bytes. A consumer therefore reads the field by the key's `algorithm`. The conversion is in `crypto.ExposeTransitPublicKey` and the response builder, so create, show, list, rotate and the lifecycle responses all publish it that way. The field is about 2632 base64 characters, which the WebUI shows whole in a read-only text area |
 | Signature | `hikyo:v<N>:` followed by unpadded base64url of a 3311-byte payload: the two-byte big-endian algorithm identifier `0x0905` (the TLS code point for ML-DSA-65), then the 3309-byte signature. 4415 characters after the prefix, 4424 in all |
 | Context | The ML-DSA context string is the Transit label `hikyo/transit/sign/v1` (21 bytes, limit 255). Signing is hedged, so two signatures of one message differ |
 | Signed bytes | The caller's message, unchanged, exactly as for Ed25519 (see [Departure](#departure-from-the-pqc-profiles-for-the-owner-to-accept)) |
@@ -122,7 +126,7 @@ custody provider refuses it.
   verification answers false. There is no fallback algorithm. The same failure
   applies when a response is built: publishing a stored ML-DSA public key parses it,
   so a list or show that touches an `mldsa65` key fails as a whole there (the server
-  refuses rather than publish an unparsed key). Unreachable while creation is on HOLD.
+  refuses rather than publish an unparsed key). A deployment on the frozen FIPS module therefore cannot use this algorithm, and an `mldsa65` key created elsewhere makes the list unreadable there.
 - The departure below.
 
 ## Departure from the PQC profiles, for the owner to accept
@@ -135,8 +139,8 @@ does not do this for the signed bytes, and the register has no row accepting the
 1. **Signed bytes are the raw message, not a label-prefixed structure.** The label
    is bound only as the ML-DSA context, and the algorithm identifier `0x0905`
    travels outside the signed bytes. Conforming for `mldsa65` would mean signing
-   `LP(label) || LP(algorithm) || message`. That is possible: no caller is affected
-   today (the real server refuses `mldsa65`), the Ed25519 contract is untouched,
+   `LP(label) || LP(algorithm) || message`. That is possible: no `mldsa65` key has
+   signed anywhere yet (the merge makes the first one possible), the Ed25519 contract is untouched,
    and the transit ADR's "pure Ed25519 over the message bytes" says nothing about
    the ML-DSA input. What is at stake is verifier convenience: every ML-DSA
    verifier, stock tools such as OpenSSL included, would have to rebuild the
@@ -154,16 +158,28 @@ Not a departure, but not provided: the `mldsa65:` text form and a key fingerprin
 Transit publishes neither today, so a surface that later wants one must define it
 then. The public key itself follows DEC-07 (SPKI when published).
 
-## Exposure (HOLD)
+## Exposure and client skew
 
-`TransitAlgorithm` in `api/openapi.yaml` is a closed enum and `v1.0.0` exists, so
-the freeze guard (`scripts/ci/check-api-freeze.sh`) refuses adding a value, and
-also refuses opening the enum, on every response that carries it. The API,
-generated clients, CLI help and WebUI therefore keep their current closed list,
-and a real server refuses `mldsa65` at request validation (tested through
-`app.Boot` and the CLI). Lifting this is an owner decision on the
-[api-cli-surface](../adr/api-cli-surface.md) freeze rule; the options and their
-consequences are in the [handoff](../handoff/1129-transit-mldsa.md#decision-needed-from-the-owner-the-freeze).
+The owner chose option A for the `/api/v1` freeze (2026-11-04). `TransitAlgorithm`
+in `api/openapi.yaml` now lists `mldsa65` (merged with #1212, closed list
+`MLDSA65EnumGrowth` in `api/freeze.go`, exactly 20 findings), and #1172 adds the
+mechanism behind it. The algorithm is reachable through the API, the generated
+clients, the CLI and the WebUI. Any other ML-DSA name (`mldsa44`, `mldsa87`,
+`MLDSA65`) is still refused by the contract, and PKI stays behind
+`service.PKI.MLDSAEnabled`, which production wiring leaves false.
+
+**The break happens only once an operator creates an `mldsa65` key.** A consumer
+that validates responses with the `v1.0.0` generated Zod schemas then fails the
+whole key list of that environment, Ed25519 keys included, and fails a single
+show, create or rotate response for that key. The Go client and the CLI decode it
+because the generated enum type is a plain string, and the `v1.0.0` TypeScript SDK
+has no response validator. The frozen-client skew lane asserts exactly this
+(`TestFrozenGeneratedClientAgainstCurrentServer`: the `v1.0.0` Zod list schema
+rejects a list holding `mldsa65` on `items.N.algorithm` only, while the `v1.0.0`
+SDK creates, signs, verifies, rotates and lists the key). The WebUI ships in the
+same artifact as the server, so only a browser tab loaded before the upgrade is
+affected. Before creating the first `mldsa65` key, check every consumer that
+parses Transit responses with a closed schema.
 
 ## Measured baseline (DEC-17)
 

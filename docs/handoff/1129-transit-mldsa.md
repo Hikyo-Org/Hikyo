@@ -1,26 +1,51 @@
 # #1129: policy-bound ML-DSA-65 signing and verification in Transit, handoff
 
-Status: **draft implementation of the mechanism. The public API, CLI and WebUI
-surface is HOLD. Held by the owner on 2026-11-04 until the `/api/v1` freeze is decided, because migration 00083 moves every instance's rollback floor for a capability nobody can reach yet. Not operative.** It needs maintainer security
-approval before merge (**security approval: not given**). Owner and maintainer are
-one person, so independent adversarial review compensates; cross-provider review
-is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
+Status: **draft. The mechanism and the public surface (API, generated clients, CLI
+help, WebUI option) are implemented in #1172; not merged, not marked ready.** The
+owner's hold of 2026-11-04 (public surface held until the `/api/v1` freeze is
+decided) ended when the owner chose option A for the freeze the same day, which
+merged to `dev` as #1212 (OpenAPI enum, regenerated Go and TypeScript clients, the
+closed freeze-guard list). The owner also accepted the signed-bytes departure
+(below). The PR needs maintainer security approval before merge (**security
+approval: not given**) and independent review of the new head. Owner and maintainer
+are one person, so independent adversarial review compensates; cross-provider
+review is SKIPPED by explicit owner instruction (2026-11-02) and is not CLEAN.
+Migration 00083 is roll-forward only and **moves the rollback floor of every
+instance that upgrades**, whether or not a key is created; see
+[Key retention and rollback](#key-retention-and-rollback).
 Operator-facing text is in [Transit ML-DSA-65 signing keys](../operations/transit-mldsa.md).
 
-Stacked on the ADR amendment branch (PR #1155). Refs
-[#1129](https://github.com/Hikyo-Org/Hikyo/issues/1129); the PR does not close it.
+Refs [#1129](https://github.com/Hikyo-Org/Hikyo/issues/1129), parent
+[#1123](https://github.com/Hikyo-Org/Hikyo/issues/1123); the PR does not close
+either.
 
 ## Candidate and base
 
 | Item | Value |
 | --- | --- |
-| Pull request | #1172, base `dunky13/pqc-adr-amendments`. Evidence was taken at fork point `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`. The 2026-11-04 review ran the hold test and lifecycle on both engines on a trial merge with `76143506a`; no hosted run covers that tree |
+| Pull request | #1172, base `dev` (it was the stacked `dunky13/pqc-adr-amendments` until that merged). Public-surface round: `origin/dev` `833d39606` merged as `ad88cde54` with no conflict and no semantic repair; the new head is in the PR body. Earlier rounds were taken at fork point `e5539c280b37ea3f6e3a8371a949aad8190ff0ad`; no hosted run covers the merged tree until CI runs on the new head. Every PostgreSQL leg of the new tests is NOTRUN (see Tests and results) |
 | First review round | `ae1855d2c962aca8ddb6f07166e237333c8b0edb` |
 | Validated code revision | `8e11e9a36` (last code-validated commit); first repair `1f10525f7626503f8ce4a7f6d4e8a851986aa000`. Later commits change documentation (handoff, operations note, ADR banner) and tests only, except as listed in "Round 3" below |
 | Source re-pin | `origin/main` is `dd41e86b5` (2026-11-03). Between the issue's historical assessment `2ac7bb36633d3ae0a99d7724968ca8c3cbf18334` (which is also the `v1.0.0` commit) and `origin/main`, nothing changed in the Transit crypto, custody, service, server or CLI files, `api/openapi.yaml`, the web Transit routes or the migrations directory (`git diff --stat` empty). `main` ends at migration 82, so 83 is free there |
 | Inventory reconciliation (I22) | Re-ran the [census](../security/pqc/inventory.md#census-method-and-reconciliation) search 1 at `ae1855d2c`: 179 non-test Go files, the same count as the draft; the only Transit match is `internal/crypto/transit.go` (this change adds a `crypto/x509` import inside `internal/crypto`, inside the chokepoint). Search 4 over `api`, migrations, `clients` and `web/src` finds the I22 consumers (OpenAPI, generated Go and TypeScript clients, migrations 00065 and 00083, `web/src/api/transit.ts`, `web/src/routes/TransitKeyManagement.tsx`, `TransitOperations.tsx`); no new Transit consumer outside the I22 row. The row's bound note (message 64 KiB, context 1 KiB, wire 128 KiB; closed CHECK constraints and API enums) matches source |
 
-## Decision needed from the owner: the freeze
+## The freeze: decided, option A (2026-11-04)
+
+The owner chose option 1 below (let the closed enum grow once, for `mldsa65` only).
+It is recorded in a declared-amendment banner on
+[api-cli-surface](../adr/api-cli-surface.md) (not owner-locked wording) and landed
+on `dev` with #1212: `api/openapi.yaml` lists `mldsa65` on `TransitAlgorithm`, the
+`public_key` description names both encodings, the Go and TypeScript clients are
+regenerated, and `api/freeze.go` carries the closed list `MLDSA65EnumGrowth` of
+exactly 20 findings without allowlisting `*-enum-value-added`. This PR does not add
+to that list: `scripts/ci/check-api-freeze.sh` is run against it (see Tests). What
+this PR adds on top is the mechanism's public use: the CLI and WebUI options,
+corrected operation summaries (sign and verify named Ed25519 only), the lifecycle
+tests and the skew case.
+
+The rest of this section is the analysis as it stood before the decision, kept as
+history. Its statement that the real server refuses `mldsa65` described this branch
+before it was merged with `dev`, whose enum lets the value through to the service.
 
 `v1.0.0` exists and the freeze guard is armed. `TransitAlgorithm` is a closed
 enum on every transit key response. Adding `mldsa65` to it, and converting it to
@@ -88,11 +113,11 @@ for the coordinating session to present (this handoff makes no recommendation):
      tests stay on the branch and age against `main`, and migration number 83 stays
      reserved or must be renumbered later.
 
-Until then the mechanism is complete below the API and the real server refuses
-`mldsa65`: `TestTransitPublicSurfaceHoldsMLDSA65{SQLite,Postgres}` boot the
-application, drive the real CLI, and show ed25519 create/sign/verify unchanged
-while `mldsa65`, `mldsa44`, `mldsa87` and `MLDSA65` are refused with "the request
-does not satisfy the API contract (algorithm)" and no row is created.
+The refusal test `TestTransitPublicSurfaceHoldsMLDSA65{SQLite,Postgres}` that
+proved this at the time was replaced by
+`TestTransitPublicSurfaceMLDSA65{SQLite,Postgres}`, which keeps its Ed25519 half and
+its refusal of `mldsa44`, `mldsa87` and `MLDSA65`, and now runs create, sign,
+verify, rotate and list for `mldsa65` through the same real boot and CLI.
 
 ## What was built
 
@@ -107,20 +132,26 @@ does not satisfy the API contract (algorithm)" and no row is created.
 | Legacy drill fixture | `internal/app/backup_upgrade_drill_test.go` enumerated migrations 45 to 82 and the ledger rows to delete; it now covers 83. No schema reversal is needed because the fixture drops the transit tables whole |
 | Build identity | `internal/buildcompat/development.json` regenerated against the CI-pinned `postgres:18@sha256:06cad38a...`; the diff is exactly the version-83 entry and the schema digest per engine. Without it every isolation test fails with "embedded migration bytes differ from verified build" |
 | ADR | Banner on `docs/adr/transit.md`: the proposal text, marked owner-locked, plus a separate paragraph marked not owner-locked and neutral on the freeze outcome. "Operative" means the merge of #1172; the API, CLI and WebUI stay as they are. The proposal block in the migration ADR is a pointer |
-| Docs | `docs/operations/transit-mldsa.md` |
+| Public surface (public-surface round, after the freeze decision) | CLI: `--algorithm` lists `mldsa65` in `internal/cli/verbs.go`, `transit.go` and the golden `internal/cli/testdata/help.txt`. OpenAPI: the sign and verify summaries now say "Ed25519 or ML-DSA-65" (they named Ed25519 only); `api/apigen` and `clients/ts` regenerated, comment-only diffs, and `scripts/ci/check-api-freeze.sh` passes without growing `MLDSA65EnumGrowth`. WebUI: `TransitKeyManagement.tsx` offers a real `mldsa65` option (sign and verify only), `TransitKeys.tsx` notes that ML-DSA-65 public keys are SPKI and Ed25519 keys raw (the list already parses the algorithm through the generated schema), story `PostQuantumSigningKey`. PKI is untouched and still refuses `mldsa65` |
+| Public-surface tests | `TestTransitPublicSurfaceMLDSA65{SQLite,Postgres}` (real boot, real CLI: create, sign, verify, refusals, rotate, show, list, independent SPKI verification); `TestTransitMLDSA65APILifecycle` (raw HTTP, `forEngines`); `TestMLDSA65ServiceLine` and `TestMLDSA65OverHTTP` flipped for Transit and still refusing PKI; the frozen-client skew lane gains an `mldsa65` list case and a `v1.0.0` SDK lifecycle on an `mldsa65` key; web unit and Storybook tests |
+| Docs | `docs/operations/transit-mldsa.md`, `docs/site/src/content/docs/docs/transit.mdx`, the ADR banners (not-owner-locked text only), `docs/operations/pqc-staged-rollout.md`, the qualification packet, the #1123 ledger |
 
 ## Departures from the PQC profiles, for the owner to accept
 
 The register has no row accepting these; I did not edit any DEC row. Details and
 residual risk are in the [operations note](../operations/transit-mldsa.md#departure-from-the-pqc-profiles-for-the-owner-to-accept).
 
-1. **Signed bytes (DEC-07, profiles.md "Domain separation").** The profile says
+1. **Signed bytes (DEC-07, profiles.md "Domain separation").** The owner accepted
+   this departure on 2026-11-04, so the signature format stays. Because the public
+   surface is now open, the first `mldsa65` signature can be produced, which is the
+   point after which a change needs a second signature format. The original
+   reasoning follows. The profile says
    algorithm identifiers appear inside the signed bytes and the label is the first
    length-prefixed field of every signature input. Transit signs the caller's raw
    message, with the label only as the ML-DSA context and `0x0905` outside the
    signature. Conforming for `mldsa65` alone (signing
-   `LP(label) || LP(algorithm) || message`) is possible: no caller is affected today
-   because the real server refuses `mldsa65`, and Ed25519 stays untouched; the
+   `LP(label) || LP(algorithm) || message`) was possible while no caller existed, and
+   Ed25519 stays untouched; the
    transit ADR (`transit.md` D4) says "pure Ed25519 over the message bytes" and the
    owner-locked amendment says nothing about the ML-DSA input. What is at stake is
    that every ML-DSA verifier, stock tools included, would have to rebuild the
@@ -164,17 +195,17 @@ a process restart.
 
 | Criterion | Status | Notes |
 | --- | --- | --- |
-| Land the scoped ADR amendment; only approved parameter sets; distinct key identities; rotation never converts | PARTIAL | The text lands as a banner in the implementation commit, not before it, and the originating ticket is #156 (reopened) and the contract ticket #1124 is still open; the banner is operative only when #1172 merges. `mldsa65` only; parse refuses `mldsa44/87`, case and padding variants; duplicate-name conflict across algorithms is tested; rotation keeps algorithm and key id (tested) |
-| Software custody, sealed material encoding, public key representation, signature wire, algorithm/version binding; preserve AAD and HKDF | PARTIAL | Seed derivation, sealing, wire and binding are DONE and proven by independent vectors and transplant tests. Public key representation now follows DEC-07 (SPKI published). Signed bytes depart from profiles.md (above) and await owner acceptance |
-| Propagate the closed enum and bounds: both schemas, generated queries, request/response validation, OpenAPI, clients, CLI, WebUI, audit, observability | PARTIAL | DONE: both schemas via migration 00083, sqlc (no change needed), service validation, audit enum, custody, metrics (label-free gauges, nothing to change). **HOLD: OpenAPI, generated Go/TS clients, CLI help, WebUI list** (freeze, above). The real server refusal is tested |
-| Create, sign, independent verify, rotate, minimum version, disable/retire/destroy, historical policy, export restriction | PARTIAL | DONE through the real service, store and audit on SQLite and PostgreSQL, both custody providers (`TestTransitMLDSA65EndToEnd`), including that version floors do not end signing while retire and disable do (`runTransitFloorsDoNotEndSigning`). Export: no path exists, `exportable` is refused, and the key view is checked not to carry sealed material. **HOLD: the same through the public API, CLI and generated clients** |
+| Land the scoped ADR amendment; only approved parameter sets; distinct key identities; rotation never converts | PARTIAL | The text lands as a banner in the implementation commit, not before it, and the originating ticket is #156 (reopened) and the contract ticket #1124 is still open; the banner is operative only when #1172 merges (the not-owner-locked text now says so; the owner-locked paragraph is unchanged). `mldsa65` only; parse refuses `mldsa44/87`, case and padding variants; duplicate-name conflict across algorithms is tested; rotation keeps algorithm and key id (tested) |
+| Software custody, sealed material encoding, public key representation, signature wire, algorithm/version binding; preserve AAD and HKDF | PARTIAL | Seed derivation, sealing, wire and binding are DONE and proven by independent vectors and transplant tests. Public key representation now follows DEC-07 (SPKI published). Signed bytes depart from profiles.md (above); the owner accepted that on 2026-11-04 |
+| Propagate the closed enum and bounds: both schemas, generated queries, request/response validation, OpenAPI, clients, CLI, WebUI, audit, observability | DONE (local, SQLite) | Both schemas via migration 00083, sqlc (no change needed), service validation, audit enum, custody, metrics (label-free gauges, nothing to change). OpenAPI enum landed in #1212; this PR corrects the sign and verify summaries and regenerates `apigen` and `clients/ts` (comment-only). CLI help and golden, WebUI option, list parse and public-key note are in. The server accepts Transit `mldsa65` and still refuses `mldsa44`, `mldsa87`, `MLDSA65` and every PKI use. PostgreSQL leg of the surface tests NOTRUN locally |
+| Create, sign, independent verify, rotate, minimum version, disable/retire/destroy, historical policy, export restriction | DONE (SQLite); PostgreSQL NOTRUN for the public-surface legs | Through the real service, store and audit on SQLite and PostgreSQL, both custody providers (`TestTransitMLDSA65EndToEnd`), including that version floors do not end signing while retire and disable do (`runTransitFloorsDoNotEndSigning`). Export: no path exists, `exportable` is refused, and the key view is checked not to carry sealed material. Through the public API (`TestTransitMLDSA65APILifecycle`), the real CLI (`TestTransitPublicSurfaceMLDSA65SQLite`) and the `v1.0.0` TypeScript SDK (frozen-client lane): create, sign, verify, tamper, rotate, list. The PostgreSQL legs are written and skip locally without `HIKYO_TEST_POSTGRES_DSN` |
 | Grants, environment binding, admission, bounds, authorization before crypto, redacted audit | DONE (service level) | Reader, other org, sibling environment and per-key caller entries refused before any custody call (mock call counter unchanged). The audit search covers the message bodies, the `hikyo:v` text, the context label and, per run, every public key (standard and URL base64, hex) and a 60-character slice of every signature collected during the run. Admission budget path is shared with the other operations and unchanged |
 | Custody contract: software and mock conformance, fail closed, no fallback, local public verification | DONE | Conformance extended to `mldsa65` (public key size, transplant with a positive control, unavailable sign); unavailable and unregistered custody refuse sign and verify and do no work. A mock is not evidence of an HSM or KMS |
 | Malformed and wrong-sized keys and signatures, wrong algorithm, key/version/scope, substitution, duplicates, disabled/compromised, minimum-version boundaries | DONE | Table test (22 malformed cases), service-level cases, boundary at the floor |
 | Restart, restore holds, project/instance re-encryption, rotation races, multi-node takeover on both engines | PARTIAL | DONE: restart, rotate-dek plus project reencrypt (material re-sealed, public key and earlier signatures unchanged), concurrent rotation (at least one winner, contiguous versions, distinct signing public keys). NOTRUN: restore-hold behavior with an ML-DSA key (no drill was run), multi-node takeover (single-process harness only), instance-wide reencrypt |
 | Bounds fit actual encodings without weakening admission | DONE | Wire value 4424 characters inside the 128 KiB cap; message cap unchanged; no global bound raised |
 | Document consumer migration, verifier compatibility, cutoffs, rollback floor, measured size and performance | PARTIAL | Operations note corrected for the floors (retire and disable end signing and verification, floors do not) and for the rollback floor (migration 83 moves it for every instance). NOTRUN: whether a release binary older than this change refuses a migration-83 database (`migrate.Check` has no production caller); amd64 not measured |
-| Frozen maintained-reference vectors, fuzz/parser regressions, API/CLI/client/WebUI evidence, screenshots | PARTIAL | Vectors frozen from the Go standard library and verified with it independently of the Transit path, and locally with OpenSSL 4.0.3 (non-Go; not in CI). Two fuzz targets, whose oracle is now the frozen authentic triple. NOTRUN: pinned Wycheproof vectors (DEC-09 wants source, version and digest pinned). **HOLD: API/CLI/client/WebUI evidence.** Screenshots: not applicable, no rendered UI changed |
+| Frozen maintained-reference vectors, fuzz/parser regressions, API/CLI/client/WebUI evidence, screenshots | PARTIAL | Vectors frozen from the Go standard library and verified with it independently of the Transit path, and locally with OpenSSL 4.0.3 (non-Go; not in CI). Two fuzz targets, whose oracle is now the frozen authentic triple. API, CLI, client and WebUI evidence: see Tests and results. Before and after screenshots of the Transit keys route (desktop 1280 and mobile 390, detail and create dialog) came from Storybook with mocked API fixtures, not a live server, and are kept out of Git. NOTRUN: pinned Wycheproof vectors (DEC-09 wants source, version and digest pinned) |
 
 ## Measured baseline (DEC-17)
 
@@ -231,6 +262,26 @@ revision `1f10525f7626503f8ce4a7f6d4e8a851986aa000`.
 | Hosted CI on `99dcfe97f` and `8f5137bf4` (round 2 heads) | 2 | `repository invariants (boundary, lint, CI policy)` **FAIL** at both, on the two boundary tests above; its step "Lint driver tests" was SKIPPED in both, so `internal/lint` has no hosted result for round 2 and a lint failure may have been hidden behind the boundary failure. My earlier text that hosted CI "runs lint" and was "pending" was wrong: the failure had finished before I wrote it and I had not read it. `ci-feedback` (go, frontend, tooling) and `ops-floor` (amd64, arm64) passed. `ci-queue-required` fails as expected (stacked base) |
 | Hosted CI on the round 3 head | 3 | Read with `gh pr checks 1172` and `gh run view` for head `8e11e9a36`: `repository invariants (boundary, lint, CI policy)` **PASS** (8m13s) and its step "Lint driver tests" ran and PASSED, so `internal/lint` now has a hosted result; `ci-feedback` (go, frontend, tooling) PASS; `ops-floor` arm64 PASS (10m33s); `ops-floor` amd64 was still running when I looked; DCO report PASS. `ci-queue-required` still FAILS, as expected (stacked base). The final handoff-only commit that records this triggers another run that I have not read |
 
+### Public-surface round (after the merge with `dev`)
+
+Local, Apple M2 Pro, `go test -p 2 -parallel 2`. `HIKYO_TEST_POSTGRES_DSN` was not
+set and Docker was not running, so **every PostgreSQL leg skipped (NOTRUN)**. The
+test `TestTransitPublicSurfaceHoldsMLDSA65*` named in the round 2 rows was renamed
+`TestTransitPublicSurfaceMLDSA65*` in this round.
+
+| Command | Result |
+| --- | --- |
+| `go test -count=1 -run 'TestMLDSA65ServiceLine\|TestMLDSA65OverHTTP\|TestTransitPublicSurfaceMLDSA65SQLite\|TestTransitMLDSA65APILifecycle' ./internal/isolation/` | PASS on SQLite. `TestTransitPublicSurfaceMLDSA65Postgres` and the PostgreSQL legs of `TestTransitMLDSA65APILifecycle` skip |
+| `go test -count=1 -run 'Transit\|MLDSA65' ./internal/store/migrate/ ./internal/isolation/` | PASS (migrate 0.8 s, isolation 28.6 s), SQLite. Migration 00083 is still the next number (`dev` ends at 82) and applies on SQLite |
+| `go test -count=1 ./internal/cli/ ./api/ ./internal/crypto/... ./internal/transit/... ./internal/audit/ ./internal/server/ ./internal/boundary/... ./internal/service/` | PASS. The CLI help golden matches |
+| `HIKYO_FROZEN_CLIENT_ROOT=<git archive v1.0.0 clients/ts> go test -count=1 -run TestFrozenGeneratedClientAgainstCurrentServer ./internal/isolation/` | PASS, SQLite leg. The Go decode of a list holding `mldsa65` succeeds |
+| `node --test` on the skew evidence and cleanup tests | 5 pass. `scripts/ci/check-client-skew.sh` needs a PostgreSQL DSN and was NOTRUN as a whole; the `v1.0.0` Zod rejection and SDK lifecycle in `scripts/ci/frozen-client.mjs` ran only inside the Go test above |
+| `sh scripts/ci/check-api-freeze.sh` | PASS, `MLDSA65EnumGrowth` unchanged (20 findings) |
+| `node scripts/ci/check-doc-status.mjs --check` | PASS (35 entries) |
+| Web: `vitest` Transit unit tests (18 across two files), `vitest --project storybook` Transit story test (9), `tsc --noEmit`, oxlint, `design/markup-check`, `adherence-check` | PASS |
+| Mutation checks | Publishing the raw key instead of SPKI fails `TestTransitMLDSA65APILifecycle`; removing the web option or the SPKI note fails the web tests; running the skew lane with the HEAD client as the "frozen" client fails with "must reject a list holding mldsa65". Each was restored |
+| `internal/lint`, hosted CI, the buildcompat PostgreSQL 18 digest check | NOTRUN locally (lint is not run locally; Docker was down). Hosted CI covers them on the new head |
+
 Round 1 local lint: it passed once (499 s) before a comment-only edit, then two
 reruns did not complete (the default 10 minute test timeout under host load; then
 the 30 minute background limit). A reviewer's local run also timed out at 40
@@ -285,18 +336,29 @@ schema digest per engine), then rerun the lint pins.
 
 ## Remaining work and next authorized step
 
-1. Owner decision on the freeze (options above). If option 1: the freeze-guard
-   exception and policy text, the OpenAPI enum and the `public_key` description,
-   regenerate Go server types and the TypeScript client
-   (`pnpm --dir clients/ts generate`), client skew lane handling, CLI help text and
-   its golden `internal/cli/testdata/help.txt`, the WebUI algorithm list in
-   `web/src/routes/TransitKeyManagement.tsx` (and its list parse), and real
-   API/CLI/client lifecycle tests on both engines; screenshots then apply (matching
-   route, state and viewport, kept out of Git).
-2. Owner acceptance or change of the signed-bytes departure.
-3. Pin Wycheproof ML-DSA vectors (source, version, digest); run the OpenSSL check in
-   CI if wanted.
-4. Restore-hold, instance reencrypt and multi-node takeover runs with an ML-DSA key;
-   a release-binary refusal check against a migration-83 database.
-5. Owner thresholds from a target-machine baseline (amd64 included).
-6. Maintainer security approval and independent adversarial review.
+The freeze and signed-bytes decisions are made (2026-11-04). What is left is
+registered open, with its risk; none of it is built in this PR.
+
+1. **Hosted CI, PostgreSQL legs and the new head.** Run `ci-feedback` and the PostgreSQL
+   legs of `TestTransitPublicSurfaceMLDSA65Postgres`, `TestTransitMLDSA65APILifecycle`
+   and `scripts/ci/check-client-skew.sh` (needs a DSN). Risk: an engine-specific
+   difference is not yet observed.
+2. **Pin Wycheproof ML-DSA vectors** (source, version, digest; DEC-09). Risk: the
+   vectors in the tree come from the Go standard library only, plus a local OpenSSL
+   check outside CI.
+3. **Restore-hold behavior with an ML-DSA key.** No restore drill was run. Risk: a
+   restore that holds or drops Transit material is untested for `mldsa65`.
+4. **Instance-wide reencrypt** with an ML-DSA key (project reencrypt is covered).
+   Risk: sealed material is not proven re-sealed at instance scope.
+5. **Multi-node takeover** with an ML-DSA key (single-process harness only). Risk:
+   custody handover between nodes is untested for `mldsa65`.
+6. **Release-binary refusal against a migration-83 database.** Risk: whether a binary
+   older than this change refuses the migrated database is unknown (`migrate.Check`
+   has no production caller). The rollback floor moves regardless; see above.
+7. **Owner thresholds** from a target-machine baseline (amd64 included; not measured).
+8. **Maintainer security approval** and **independent adversarial review of the new
+   head**. Cross-provider review stays SKIPPED, not CLEAN.
+9. **Consumers.** One `mldsa65` key in an environment makes that environment's key
+   list unreadable to any consumer that validates with the `v1.0.0` Zod schemas
+   (accepted, option A). The WebUI in this PR parses it; integrators must update
+   their generated schemas first.
