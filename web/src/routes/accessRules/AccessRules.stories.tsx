@@ -17,6 +17,9 @@ import { WhoCan as WhoCanForm } from './WhoCan.tsx';
 // place; these show each piece's states. The editor and the key-move
 // confirmation mount a native <dialog>, so every story renders framed on the
 // Docs page.
+// The folder sits in its own `bdi`, so the phrase spans elements.
+const onlyDb = (_: string, el: Element | null) => el?.classList.contains('access-where__value') === true && /only db\//.test(el.textContent);
+
 const meta = {
   title: 'Features/Members/Access rules',
   id: 'members-access-rules',
@@ -67,9 +70,9 @@ export const Rules: Story = {
     await expect(canvas.getByText('you')).toBeVisible();
     // Alice's folder rule: its Where reads as labelled parts, its reach counts keys.
     await expect(canvas.getByRole('button', { name: 'Edit rule 2 of Alice Novak' })).toBeVisible();
-    await expect(canvas.getAllByText(/only db\//).length).toBeGreaterThan(0);
+    await expect(canvas.getAllByText(onlyDb).length).toBeGreaterThan(0);
     // A Where value that may ellipsise in its column carries the full text as a title.
-    const keysValue = canvas.getAllByText(/only db\//)[0]?.closest('.access-where__value');
+    const keysValue = canvas.getAllByText(onlyDb)[0]?.closest('.access-where__value');
     await expect(keysValue).toHaveAttribute('title', expect.stringContaining('db/'));
     // The reach line's parts sit between <Sep/> elements, so match the paragraph's whole text.
     await expect(
@@ -149,7 +152,7 @@ export const EditorFolderRule: Story = {
     await expect(dialog.getByText(/Left out until Where is wider: Pin, Manage machines/)).toBeVisible();
     const saves = within(dialog.getByRole('region', { name: 'Saves as' }));
     await expect(saves.getByText('Define keys')).toBeVisible();
-    await expect(saves.getByText(/only db\//)).toBeVisible();
+    await expect(saves.getByText(onlyDb)).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Save' }).getBoundingClientRect().bottom).toBeLessThanOrEqual(dialogEl.getBoundingClientRect().bottom);
 
     const toggle = dialog.getByRole('button', { name: 'Pick single keys (8)' });
@@ -248,7 +251,7 @@ export const WhoCan: Story = {
     await expect(yes.getByRole('rowheader', { name: /deploy-prod/ })).toHaveTextContent('machine');
     await expect(yes.getAllByText('Scope-wide access: edit its card in Members.')).toHaveLength(2);
     const alice = within(yes.getByRole('row', { name: /Alice Novak/ }));
-    await expect(alice.getByText(/only db\//)).toBeVisible();
+    await expect(alice.getByText(onlyDb)).toBeVisible();
     const excepted = within(canvas.getByRole('table', { name: 'No, left out by an except: 2' }));
     await expect(within(excepted.getByRole('row', { name: /Bob Tran/ })).getByText('Left out: this rule has except prod.')).toBeVisible();
     await expect(within(excepted.getByRole('row', { name: /Dana Ruiz/ })).getByText('Left out: this rule has except db/.')).toBeVisible();
@@ -315,7 +318,7 @@ export const KeyMoveConfirmation: Story = {
     onMoveConfirm.mockClear();
     const dialog = within(await canvas.findByRole('dialog', { name: 'This move gives people new access' }));
     const gains = within(dialog.getByRole('region', { name: 'Gains access' }));
-    await expect(gains.getByText((_, el) => el?.tagName === 'LI' && el.textContent === 'Dana Ruiz: Reveal (prod), Reveal history (prod)')).toBeVisible();
+    await expect(gains.getByText((_, el) => el?.tagName === 'LI' && /^Dana Ruiz ID ending …\S{6}: Reveal \(prod\), Reveal history \(prod\)$/.test(el.textContent))).toBeVisible();
     await userEvent.click(dialog.getByRole('button', { name: 'Move and give access' }));
     await expect(onMoveConfirm).toHaveBeenCalledWith([IDS.dana]);
   },

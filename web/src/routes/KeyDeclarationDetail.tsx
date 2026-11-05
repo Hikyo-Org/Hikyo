@@ -529,7 +529,7 @@ function MetadataEditor({
   // write naming the people who gain. `failure` is a refused confirm.
   const [widening, setWidening] = useState<{
     readonly refusal: WideningRefusal;
-    readonly change: string;
+    readonly change: ReactNode;
     readonly confirm: (principals: readonly string[]) => void;
     readonly failure: string | null;
   } | null>(null);
@@ -578,7 +578,7 @@ function MetadataEditor({
           { onSuccess: () => resolve(), onError: (error) => reject(error) },
         );
       });
-    const change = `Move ${record.name} from ${folderLabel(record.folder_path)} to ${folderLabel(folderPath)}`;
+    const change = <>Move {record.name} from <bdi>{folderLabel(record.folder_path)}</bdi> to <bdi>{folderLabel(folderPath)}</bdi></>;
     // A widening refusal opens the move confirmation, wherever it arrives (the
     // first save or a scanner override); confirming resends the same write,
     // with the same acknowledgements, naming the people who gain. Returns

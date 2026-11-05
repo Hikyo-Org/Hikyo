@@ -76,8 +76,8 @@ func checkName(what, name string) error {
 }
 
 // checkText is the grammar every bounded label shares. Folder paths stop here:
-// a folder is display grouping nobody approves against, and rules and new keys
-// resend stored paths, so refusing direction controls would lock those out.
+// rules and new keys resend stored paths, so refusing direction controls would
+// lock those out. Screens that decide access on a folder isolate it instead.
 func checkText(what, name string) error {
 	switch {
 	case name == "":

@@ -110,9 +110,6 @@ func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile Pr
 	if err != nil {
 		return AccountProfile{}, err
 	}
-	if err := refuseDirectionControls(profile, before); err != nil {
-		return AccountProfile{}, err
-	}
 	var evidence ReauthEvidence
 	hasEvidence := before.Username != profile.Username
 	if hasEvidence {
@@ -143,6 +140,9 @@ func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile Pr
 		}
 		if current.Managed && (current.Username != profile.Username || current.DisplayName != profile.DisplayName) {
 			return domain.ErrUnauthorized
+		}
+		if err := refuseDirectionControls(profile, AccountProfile(current)); err != nil {
+			return err
 		}
 		if current.Username != profile.Username {
 			if !hasEvidence || !current.UsernameEditable {

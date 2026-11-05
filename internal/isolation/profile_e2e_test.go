@@ -10,6 +10,28 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
+// A name stored before the direction control rule must not block an edit that
+// leaves it alone, and an edit may not write a new one.
+func TestProfileChecksOnlyTheNamesAnEditChanges(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		admin := bootstrapAdmin(t, db, adminOpts{username: "stored-direction", displayName: "Stored", password: "profile password long enough", login: true})
+		ctx := t.Context()
+		execRaw(t, db, fmt.Sprintf("UPDATE accounts SET display_name = 'ops\u202eadmin' WHERE id = '%s'", admin.accountID))
+		resend := service.ProfileUpdate{Username: "stored-direction", DisplayName: "ops\u202eadmin"}
+		if _, err := admin.auth.UpdateMyProfile(ctx, admin.token, resend, ""); err != nil {
+			t.Fatalf("resending the stored name = %v", err)
+		}
+		changed := service.ProfileUpdate{Username: "stored-direction", DisplayName: "ops\u202eroot"}
+		if _, err := admin.auth.UpdateMyProfile(ctx, admin.token, changed, ""); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("writing a new direction control = %v, want ErrInvalid", err)
+		}
+		cleaned := service.ProfileUpdate{Username: "stored-direction", DisplayName: "Ops Admin"}
+		if _, err := admin.auth.UpdateMyProfile(ctx, admin.token, cleaned, ""); err != nil {
+			t.Fatalf("cleaning the stored name = %v", err)
+		}
+	})
+}
+
 func TestAccountProfileSelfService(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		admin := bootstrapAdmin(t, db, adminOpts{username: "profile-admin", displayName: "Profile Admin", password: "profile password long enough", login: true})

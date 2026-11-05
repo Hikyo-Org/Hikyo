@@ -30,5 +30,8 @@ export const LongNameWraps: Story = {
     const list = canvas.getByRole('list', { name: 'Keys this decision covers' });
     await expect(list.scrollWidth).toBeLessThanOrEqual(list.clientWidth);
     await expect(within(list).getByText(LONG_NAME).closest('li')).toHaveAttribute('title', keys[0]?.id);
+    const hidden = within(list).getAllByText('ID ending');
+    await expect(hidden).toHaveLength(2);
+    for (const label of hidden) await expect(label.offsetParent).toBe(list);
   },
 };

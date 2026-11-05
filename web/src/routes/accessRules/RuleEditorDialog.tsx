@@ -139,7 +139,7 @@ export function RuleEditorDialog({
               title="Keys"
               axis={draft.keys}
               onChange={(keys) => setDraft({ ...draft, keys })}
-              choices={folderChoices(world, chosen, draft).map((c) => ({ id: `folder:${c.folder}`, items: c.items, label: c.folder === '' ? '(no folder)' : `${c.folder}/` }))}
+              choices={folderChoices(world, chosen, draft).map((c) => ({ id: `folder:${c.folder}`, items: c.items, label: c.folder === '' ? '(no folder)' : <bdi>{c.folder}/</bdi> }))}
             >
               {unreadable.length > 0 ? (
                 <p className="access-hint">

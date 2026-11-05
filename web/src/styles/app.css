@@ -3578,6 +3578,9 @@ fieldset.field > legend {
 }
 
 .ceremony__keys {
+  /* Each named key has a `.visually-hidden` label: keep it inside this scroller
+     so a long list cannot stretch the page with blank space. */
+  position: relative;
   margin: 0;
   padding: 8px 12px 8px 28px;
   border: 1px solid var(--line);
