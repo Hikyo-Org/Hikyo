@@ -6320,7 +6320,7 @@ export const transitDataKey = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Sign a message with an Ed25519 key.
+ * Sign a message with an Ed25519 or ML-DSA-65 key.
  */
 export const transitSign = <ThrowOnError extends boolean = false>(options: Options<TransitSignData, ThrowOnError>) => (options.client ?? client).post<TransitSignResponses, TransitSignErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -6333,7 +6333,7 @@ export const transitSign = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Verify an Ed25519 signature.
+ * Verify an Ed25519 or ML-DSA-65 signature.
  *
  * An invalid signature answers valid=false, not an error.
  *

@@ -93,7 +93,7 @@ var reencryptCovered = map[string]string{
 var reencryptExemptBlobs = map[string]string{
 	"remote_pairing_invites.capability_verifier": "SHA256 verifier of random 256-bit invitation capability",
 	"remote_pairing_replays.jti_verifier":        "SHA256 verifier of proof replay identifier, never decryptable",
-	// Transit (#156): an Ed25519 public key is public metadata, never sealed.
+	// Transit (#156, #1129): an Ed25519 or ML-DSA-65 public key is public metadata, never sealed.
 	"transit_key_versions.public_key": "transit signing public key (public metadata, not enveloped)",
 	// Wrapped KEYS — a different tier, rotated by rotate-master-key / rotate-dek,
 	// never by reencrypt (which moves ciphertext, not keys).

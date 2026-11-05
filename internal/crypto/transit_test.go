@@ -104,7 +104,7 @@ func TestTransitKnownAnswerSignatureAndMAC(t *testing.T) {
 	if got := hex.EncodeToString(sig); got != transitGoldenSignatureHex {
 		t.Errorf("signature = %s, want %s", got, transitGoldenSignatureHex)
 	}
-	if !VerifyTransitSignature(mustHex(t, transitGoldenPublicKeyHex), []byte("golden"), mustHex(t, transitGoldenSignatureHex)) {
+	if !VerifyTransitSignature(TransitEd25519, mustHex(t, transitGoldenPublicKeyHex), []byte("golden"), mustHex(t, transitGoldenSignatureHex)) {
 		t.Error("frozen signature does not verify")
 	}
 	mac, err := mustTransitKey(t, TransitHMACSHA256).MAC([]byte("golden"))
@@ -266,7 +266,7 @@ func TestTransitMACCompare(t *testing.T) {
 	if !EqualTransitMAC(a, b) || EqualTransitMAC(a, c) || EqualTransitMAC(a, a[:5]) {
 		t.Fatal("MAC comparison wrong")
 	}
-	if VerifyTransitSignature(make([]byte, 5), []byte("m"), make([]byte, 64)) {
+	if VerifyTransitSignature(TransitEd25519, make([]byte, 5), []byte("m"), make([]byte, 64)) {
 		t.Fatal("short public key verified")
 	}
 }
@@ -290,5 +290,137 @@ func TestTransitRandomnessFailureIsFatal(t *testing.T) {
 	}
 	if _, err := readRandom(bytes.NewReader(nil), 32); err == nil {
 		t.Fatal("material generated from an empty reader")
+	}
+}
+
+func TestTransitMLDSA65RefusesWrongAlgorithmUse(t *testing.T) {
+	k := mustTransitKey(t, TransitMLDSA65)
+	if _, err := k.Encrypt([]byte("x"), nil); err == nil {
+		t.Error("signing key encrypted")
+	}
+	if _, err := k.MAC([]byte("x")); err == nil {
+		t.Error("signing key MACed")
+	}
+	if _, err := mustTransitKey(t, TransitXChaCha20Poly1305).Sign([]byte("x")); err == nil {
+		t.Error("encryption key signed")
+	}
+	if _, err := mustTransitKey(t, TransitHMACSHA256).PublicKey(); err == nil {
+		t.Error("hmac key exposed a public key")
+	}
+	if _, err := k.Sign(make([]byte, MaxTransitPlaintextBytes+1)); !errors.Is(err, ErrTransitFormat) {
+		t.Errorf("oversized message signed: %v", err)
+	}
+	if _, err := k.Sign(make([]byte, MaxTransitPlaintextBytes)); err != nil {
+		t.Errorf("message at the bound refused: %v", err)
+	}
+}
+
+// One material and one binding yield unrelated keys per algorithm: the
+// algorithm is part of the HKDF info, so an ed25519 key and an mldsa65 key
+// never share a seed (distinct key identities, DEC-02).
+func TestTransitMLDSA65SeedIsAlgorithmBound(t *testing.T) {
+	ed, err := mustTransitKey(t, TransitEd25519).PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pq, err := mustTransitKey(t, TransitMLDSA65).PublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ed) != 32 || len(pq) != 1952 || bytes.Equal(ed, pq[:32]) {
+		t.Fatalf("public key sizes %d / %d or shared prefix", len(ed), len(pq))
+	}
+	other := goldenBinding(TransitMLDSA65)
+	other.Version = 4
+	k2, err := OpenTransitKey(goldenMaterial(), other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pq2, _ := k2.PublicKey()
+	if bytes.Equal(pq, pq2) {
+		t.Error("two versions over one material share a public key")
+	}
+}
+
+// Every malformed key or payload is a plain false: wrong sizes, wrong
+// identifier, unknown algorithm, a public key the library rejects, cross
+// algorithm use, oversized message.
+func TestTransitVerifyRefusesMalformedInputs(t *testing.T) {
+	k := mustTransitKey(t, TransitMLDSA65)
+	pub, _ := k.PublicKey()
+	msg := []byte("m")
+	payload, err := k.Sign(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !VerifyTransitSignature(TransitMLDSA65, pub, msg, payload) {
+		t.Fatal("genuine signature refused")
+	}
+	flip := func(b []byte, i int) []byte { c := bytes.Clone(b); c[i] ^= 1; return c }
+	cases := map[string]struct {
+		alg          TransitAlgorithm
+		pub, payload []byte
+		msg          []byte
+	}{
+		"empty payload":              {TransitMLDSA65, pub, nil, msg},
+		"identifier only":            {TransitMLDSA65, pub, payload[:2], msg},
+		"truncated by one":           {TransitMLDSA65, pub, payload[:len(payload)-1], msg},
+		"extended by one":            {TransitMLDSA65, pub, append(bytes.Clone(payload), 0), msg},
+		"signature without id":       {TransitMLDSA65, pub, payload[2:], msg},
+		"wrong identifier high byte": {TransitMLDSA65, pub, flip(payload, 0), msg},
+		"wrong identifier low byte":  {TransitMLDSA65, pub, flip(payload, 1), msg},
+		"ml-dsa-44 identifier":       {TransitMLDSA65, pub, append([]byte{0x09, 0x04}, payload[2:]...), msg},
+		"ml-dsa-87 identifier":       {TransitMLDSA65, pub, append([]byte{0x09, 0x06}, payload[2:]...), msg},
+		"flipped signature byte":     {TransitMLDSA65, pub, flip(payload, 100), msg},
+		"empty public key":           {TransitMLDSA65, nil, payload, msg},
+		"short public key":           {TransitMLDSA65, pub[:1951], payload, msg},
+		"long public key":            {TransitMLDSA65, append(bytes.Clone(pub), 0), payload, msg},
+		"ed25519 sized public key":   {TransitMLDSA65, pub[:32], payload, msg},
+		"flipped public key byte":    {TransitMLDSA65, flip(pub, 7), payload, msg},
+		"all-zero public key":        {TransitMLDSA65, make([]byte, 1952), payload, msg},
+		"oversized message":          {TransitMLDSA65, pub, payload, make([]byte, MaxTransitPlaintextBytes+1)},
+		"unknown algorithm":          {TransitAlgorithm("mldsa87"), pub, payload, msg},
+		"hmac algorithm":             {TransitHMACSHA256, pub, payload, msg},
+		"empty algorithm":            {"", pub, payload, msg},
+		"ed25519 verifier":           {TransitEd25519, pub[:32], payload, msg},
+		"ed25519 verifier, full pub": {TransitEd25519, pub, payload, msg},
+	}
+	for name, c := range cases {
+		if VerifyTransitSignature(c.alg, c.pub, c.msg, c.payload) {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	// And an Ed25519 signature never verifies under ML-DSA.
+	edSig, _ := mustTransitKey(t, TransitEd25519).Sign(msg)
+	if VerifyTransitSignature(TransitMLDSA65, pub, msg, edSig) {
+		t.Error("ed25519 signature verified under ml-dsa")
+	}
+}
+
+func TestTransitMLDSA65DestroyDropsTheKey(t *testing.T) {
+	k := mustTransitKey(t, TransitMLDSA65)
+	k.Destroy()
+	if _, err := k.Sign([]byte("m")); err == nil {
+		t.Error("destroyed ml-dsa key signed")
+	}
+	if _, err := k.PublicKey(); err == nil {
+		t.Error("destroyed ml-dsa key returned a public key")
+	}
+	(*TransitKey)(nil).Destroy()
+}
+
+func TestTransitAlgorithmSetIsClosed(t *testing.T) {
+	for _, a := range TransitAlgorithms() {
+		if got, err := ParseTransitAlgorithm(string(a)); err != nil || got != a {
+			t.Errorf("%s: %v", a, err)
+		}
+	}
+	for _, bad := range []string{"", "mldsa44", "mldsa87", "ml-dsa-65", "MLDSA65", "mldsa65 ", "slh-dsa"} {
+		if _, err := ParseTransitAlgorithm(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	if len(TransitMLDSASignContext) > 255 {
+		t.Error("context exceeds the ML-DSA bound")
 	}
 }

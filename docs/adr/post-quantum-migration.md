@@ -146,18 +146,7 @@ The recording-adversary class landed as the 2026-11-02 banner on [threat-model](
 
 ### Transit
 
-> **Proposed amendment (not operative; #1124, 2026-11-02).** D2 gains the signing
-> algorithm `mldsa65`, as DEC-02 selects, with a new immutable key
-> identity; Ed25519 keys stay Ed25519. D3: the ML-DSA seed is derived with
-> HKDF-SHA256 from the 32-byte version material under the existing
-> `hikyo/transit-key/v1` pattern (algorithm, org, project, environment, key and
-> version in the info), as the Ed25519 seed is; the material, not the seed, is
-> what is sealed and stored. D4: the signature carries algorithm and parameter
-> set; the context string is the Transit label (at most 255 bytes). D5: rotation
-> appends a version of the same algorithm and never converts a key; version
-> windows and compromise rules are unchanged. D9: bounds unchanged. D10:
-> verification consumers exist before the first key. Unavailable custody still
-> refuses.
+Landed as the 2026-11-02 banner on [transit](./transit.md), which is the only copy.
 
 ### Remote-instance pairing
 

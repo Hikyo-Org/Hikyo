@@ -25,6 +25,7 @@ fixed when the key is created and never change:
 |---|---|---|
 | `xchacha20-poly1305` | encryption | `encrypt`, `decrypt`, `rewrap`, `datakey`, `datakey-plaintext` |
 | `ed25519` | signing | `sign`, `verify` |
+| `mldsa65` | post-quantum signing | `sign`, `verify` |
 | `hmac-sha256` | message authentication | `hmac`, `hmac-verify` |
 
 - the **algorithm**, and so the key's purpose;
@@ -36,6 +37,7 @@ fixed when the key is created and never change:
 hikyo transit key create payments --env prod --algorithm xchacha20-poly1305 \
   --rotation-period 720h
 hikyo transit key create webhooks --env prod --algorithm ed25519
+hikyo transit key create attestations --env prod --algorithm mldsa65
 hikyo transit key list --env prod
 ```
 
@@ -51,7 +53,7 @@ Two capabilities govern transit, granted like any other:
 
 Neither is part of any role template, and neither is implied by `read` or
 `reveal`: grant them explicitly. Anyone with `read` on the environment can see
-key metadata (names, versions, states, Ed25519 public keys), never material.
+key metadata (names, versions, states, public keys of signing keys), never material.
 
 A key can additionally carry **caller entries** that narrow `crypto-use` to named
 principals and operations:
@@ -117,15 +119,49 @@ hikyo transit verify webhooks --env prod --input-file body.json --signature 'hik
 hikyo transit hmac tokens --env prod --stdin < session-id
 ```
 
-Signatures are pure Ed25519 (RFC 8032) over the message bytes, so anyone holding
-the version's public key (shown by `hikyo transit key show`) can verify them
-without Hikyo. MAC verification is constant-time. An invalid signature or MAC is
-a successful answer of `valid: false`, and the CLI exits with status 4.
+Ed25519 signatures are pure Ed25519 (RFC 8032) over the message bytes, so anyone
+holding the version's public key (in the `public_key` field of
+`hikyo transit key show -o json`) can verify
+them without Hikyo. MAC verification is constant-time. An invalid signature or
+MAC is a successful answer of `valid: false`, and the CLI exits with status 4.
+
+### ML-DSA-65 signing keys
+
+An `mldsa65` key signs with pure ML-DSA-65 (FIPS 204, no pre-hash) over the same
+message bytes. It is a new key, never a rotation of an Ed25519 key, and `mldsa65`
+is the only ML-DSA parameter set accepted (`mldsa44`, `mldsa87` and other
+spellings are refused). Differences you will notice:
+
+- The signature value is much larger: about 4.4 KiB (4424 characters, in the same
+  `hikyo:v<version>:<base64url>` form) against 95 characters for Ed25519.
+  Signing is hedged, so two signatures of one message differ.
+- The published public key is a base64 `SubjectPublicKeyInfo` (DER, about 2.6 KiB
+  as text) rather than the raw 32 bytes Ed25519 shows, so read the `public_key`
+  field by the key's `algorithm`. Decode the base64, or wrap it as PEM, before
+  loading it into a stock tool.
+- Verification outside Hikyo uses the ML-DSA context string
+  `hikyo/transit/sign/v1`: decode the value after `hikyo:v<N>:`, check that its
+  first two bytes are `0x09 0x05`, and verify the rest over your message with that
+  context. The
+  [operations note](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/transit-mldsa.md)
+  has the steps and an OpenSSL example.
+- Version floors do not end signing. To stop an Ed25519 key signing after you move
+  to `mldsa65`, retire it.
+
+Before you create the first `mldsa65` key, check your consumers: the API contract
+gained `mldsa65` as a one-time exception to the closed `/api/v1` enums, and a
+client that validates responses with a closed schema from `v1.0.0` fails on the
+whole key list of an environment that holds one. The CLI, the Go types and the
+web interface accept it. Upgrading to a release with ML-DSA support also applies
+database migration 83 to every instance, whether or not you create such a key; it
+cannot be rolled back, so keep the pre-upgrade backup the
+[upgrade guide](/docs/upgrades/) asks for.
 
 ## Web interface
 
 Open **Transit keys** in a project's sidebar, then choose an environment. The
-inventory shows key metadata, retained versions and public keys, caller entries,
+inventory shows key metadata, retained versions and public keys (an ML-DSA-65
+key's SPKI is shown whole in a read-only text area), caller entries,
 rotation status and pending deletion. Managed private key material is never
 returned to the browser.
 

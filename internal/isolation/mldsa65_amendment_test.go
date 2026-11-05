@@ -10,7 +10,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -23,27 +22,33 @@ import (
 )
 
 // The api-cli-surface amendment of 2026-11-04 lets the /api/v1 contract name
-// mldsa65 (Transit algorithm, PKI key algorithms). It enables nothing: the
-// Transit mechanism is not in this tree and PKI stays behind
-// service.PKI.MLDSAEnabled, which production wiring leaves false. Because the
-// contract now lets the value past request validation, the service is the line
-// that holds, so each create must refuse it as a validation error (never a 500)
-// and leave no row behind. TestMLDSA65OverHTTP covers the contract and the other
-// paths.
-func TestMLDSA65IsRefusedByTheService(t *testing.T) {
+// mldsa65 (Transit algorithm, PKI key algorithms). Transit has the mechanism
+// (#1129) and accepts the value; PKI stays behind service.PKI.MLDSAEnabled,
+// which production wiring leaves false. Because the contract lets the value past
+// request validation, the PKI service is the line that holds, so each PKI create
+// must refuse it as a validation error (never a 500) and leave no row behind.
+// TestMLDSA65OverHTTP covers the contract and the other paths; the Transit
+// lifecycle through the API, CLI and generated client is in
+// transit_mldsa_public_surface_test.go.
+func TestMLDSA65ServiceLine(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx, actor := tctx(t), service.LocalPrincipal(alice)
 		rows := func(table string) int64 { return queryInt(t, db, `SELECT COUNT(*) FROM `+table) }
 
-		// shortcut: the Transit mechanism lands with #1172; this case flips to a
-		// positive lifecycle there.
 		tsvc, _ := transitEnv(t, db, "mldsa")
-		_, err := tsvc.CreateKey(ctx, actor, transitScope, service.CreateTransitKeyRequest{Name: "pq", Algorithm: "mldsa65", AllowedOperations: []string{"sign", "verify"}})
-		if !errors.Is(err, domain.ErrInvalid) {
-			t.Errorf("transit create with mldsa65: %v, want a validation error", err)
+		created, err := tsvc.CreateKey(ctx, actor, transitScope, service.CreateTransitKeyRequest{Name: "pq", Algorithm: "mldsa65", AllowedOperations: []string{"sign", "verify"}})
+		if err != nil {
+			t.Fatalf("transit create with mldsa65: %v, want success", err)
 		}
-		if n := rows("transit_keys") + rows("transit_key_versions"); n != 0 {
-			t.Errorf("a refused transit key left %d rows", n)
+		if created.Algorithm != "mldsa65" || rows("transit_keys") != 1 || rows("transit_key_versions") != 1 {
+			t.Errorf("transit mldsa65 key = %+v with %d keys and %d versions, want one key at one version", created, rows("transit_keys"), rows("transit_key_versions"))
+		}
+		// An algorithm the contract does not name is still refused by the service.
+		if _, err := tsvc.CreateKey(ctx, actor, transitScope, service.CreateTransitKeyRequest{Name: "pq44", Algorithm: "mldsa44", AllowedOperations: []string{"sign", "verify"}}); !errors.Is(err, domain.ErrInvalid) {
+			t.Errorf("transit create with mldsa44: %v, want a validation error", err)
+		}
+		if n := rows("transit_keys"); n != 1 {
+			t.Errorf("a refused transit key left %d keys in total, want the one accepted key", n)
 		}
 
 		pkisvc := pkiSvc(t, db, &pkiClock{now: time.Now().UTC().Truncate(time.Second)}) // production wiring: MLDSAEnabled false
@@ -222,15 +227,19 @@ func TestMLDSA65OverHTTP(t *testing.T) {
 		envPath := "/api/v1/orgs/" + org.ID + "/projects/" + project.ID + "/environments/" + env.ID
 		rows := func(table string) int64 { return queryInt(t, db, `SELECT COUNT(*) FROM `+table) }
 
-		if got := detail(post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa65", "allowed_operations": []string{"sign", "verify"}}, http.StatusBadRequest)); !strings.HasPrefix(got, "algorithm must be one of") {
-			t.Errorf("transit mldsa65 refusal detail %q, want the service's", got)
-		}
-		if n := rows("transit_keys"); n != 0 {
-			t.Errorf("a refused transit key left %d rows", n)
+		// Transit accepts the value the contract names; PKI (below) still refuses it.
+		post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa65", "allowed_operations": []string{"sign", "verify"}}, http.StatusCreated)
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM transit_keys WHERE algorithm='mldsa65'`); n != 1 {
+			t.Errorf("the accepted transit mldsa65 request stored %d keys, want 1", n)
 		}
 		// The contract itself still refuses any other value.
-		if got := detail(post(envPath+"/transit-keys", map[string]any{"name": "pq", "algorithm": "mldsa44"}, http.StatusBadRequest)); got != "algorithm" {
-			t.Errorf("transit mldsa44 refusal detail %q, want the contract's field", got)
+		for _, other := range []string{"mldsa44", "mldsa87", "MLDSA65"} {
+			if got := detail(post(envPath+"/transit-keys", map[string]any{"name": "pq-other", "algorithm": other}, http.StatusBadRequest)); got != "algorithm" {
+				t.Errorf("transit %s refusal detail %q, want the contract's field", other, got)
+			}
+		}
+		if n := rows("transit_keys"); n != 1 {
+			t.Errorf("refused transit requests left %d keys in total, want the one accepted key", n)
 		}
 
 		post(instance+"/issuers", map[string]any{"mode": "root", "name": "web-root", "common_name": "Web Root"}, http.StatusCreated)

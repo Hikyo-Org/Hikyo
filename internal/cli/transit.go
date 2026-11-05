@@ -184,7 +184,7 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		switch sub {
 		case "create":
-			fs.StringVar(&algorithm, "algorithm", "", "xchacha20-poly1305, ed25519 or hmac-sha256")
+			fs.StringVar(&algorithm, "algorithm", "", "xchacha20-poly1305, ed25519, mldsa65 or hmac-sha256")
 			fs.StringVar(&custody, "custody", "", "software (default) or external")
 			fs.StringVar(&allow, "allow", "", "comma-separated allowed operations (default: all but datakey-plaintext)")
 			fs.StringVar(&rotation, "rotation-period", "", "automatic rotation period, e.g. 720h (at least 1h)")

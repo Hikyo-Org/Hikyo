@@ -159,20 +159,33 @@ func TestCustodyConformanceSigningAndMAC(t *testing.T) {
 	for name, p := range providers(t) {
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			st := target(crypto.TransitEd25519, 1)
-			sv, err := p.Create(ctx, st)
-			if err != nil {
-				t.Fatal(err)
-			}
-			sig, err := p.Sign(ctx, st, sv, []byte("msg"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !crypto.VerifyTransitSignature(sv.PublicKey, []byte("msg"), sig) {
-				t.Error("signature does not verify under the stored public key")
-			}
-			if crypto.VerifyTransitSignature(sv.PublicKey, []byte("other"), sig) {
-				t.Error("signature verified another message")
+			for _, alg := range []crypto.TransitAlgorithm{crypto.TransitEd25519, crypto.TransitMLDSA65} {
+				st := target(alg, 1)
+				sv, err := p.Create(ctx, st)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantPublic := map[crypto.TransitAlgorithm]int{crypto.TransitEd25519: 32, crypto.TransitMLDSA65: 1952}[alg]
+				if len(sv.PublicKey) != wantPublic {
+					t.Fatalf("%s: public key is %d bytes, want %d", alg, len(sv.PublicKey), wantPublic)
+				}
+				sig, err := p.Sign(ctx, st, sv, []byte("msg"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !crypto.VerifyTransitSignature(alg, sv.PublicKey, []byte("msg"), sig) {
+					t.Errorf("%s: signature does not verify under the stored public key", alg)
+				}
+				if crypto.VerifyTransitSignature(alg, sv.PublicKey, []byte("other"), sig) {
+					t.Errorf("%s: signature verified another message", alg)
+				}
+				// A signing key is not an encryption, MAC or data-key oracle.
+				if _, err := p.Encrypt(ctx, st, sv, []byte("x"), nil); err == nil {
+					t.Errorf("%s: signing key encrypted", alg)
+				}
+				if _, err := p.MAC(ctx, st, sv, []byte("x")); err == nil {
+					t.Errorf("%s: signing key MACed", alg)
+				}
 			}
 			mt := target(crypto.TransitHMACSHA256, 1)
 			mv, err := p.Create(ctx, mt)
@@ -189,6 +202,39 @@ func TestCustodyConformanceSigningAndMAC(t *testing.T) {
 			}
 			if _, err := p.Encrypt(ctx, mt, mv, []byte("x"), nil); err == nil {
 				t.Error("hmac key encrypted")
+			}
+		})
+	}
+}
+
+// A signing version's material signs only for its own binding: presented under
+// another key, version or scope, the custody either refuses or produces a
+// signature that does not verify under the stored public key. The algorithm
+// binding of the derivation (an ed25519 and an mldsa65 key never share a seed)
+// is proven in internal/crypto, where the derived keys are visible; custody
+// cannot show it from outside.
+func TestCustodyConformanceMLDSATransplant(t *testing.T) {
+	for name, p := range providers(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			tg := target(crypto.TransitMLDSA65, 1)
+			v, err := p.Create(ctx, tg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if genuine, err := p.Sign(ctx, tg, v, []byte("msg")); err != nil || !crypto.VerifyTransitSignature(crypto.TransitMLDSA65, v.PublicKey, []byte("msg"), genuine) {
+				t.Fatalf("the genuine binding must sign verifiably (control): %v", err)
+			}
+			for what, moved := range map[string]transit.Target{
+				"key":     func() transit.Target { m := tg; m.Binding.KeyID = "tk_2"; return m }(),
+				"version": func() transit.Target { m := tg; m.Binding.Version = 2; return m }(),
+				"env":     func() transit.Target { m := tg; m.Binding.EnvID = "env_2"; return m }(),
+				"project": func() transit.Target { m := tg; m.Binding.ProjectID = "prj_2"; return m }(),
+			} {
+				sig, err := p.Sign(ctx, moved, v, []byte("msg"))
+				if err == nil && crypto.VerifyTransitSignature(crypto.TransitMLDSA65, v.PublicKey, []byte("msg"), sig) {
+					t.Errorf("material signed for another %s", what)
+				}
 			}
 		})
 	}
@@ -230,6 +276,17 @@ func TestExternalUnavailableFailsClosed(t *testing.T) {
 	if out, err := ext.Decrypt(ctx, tg, v, rec, nil); !errors.Is(err, transit.ErrUnavailable) || out != nil {
 		t.Errorf("decrypt: %v", err)
 	}
+	st := target(crypto.TransitMLDSA65, 1)
+	ext.SetAvailable(true)
+	sv, err := ext.Create(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext.SetAvailable(false)
+	before = ext.Calls.Load()
+	if out, err := ext.Sign(ctx, st, sv, []byte("x")); !errors.Is(err, transit.ErrUnavailable) || out != nil {
+		t.Errorf("ml-dsa sign: %v", err)
+	}
 	if err := ext.Destroy(ctx, tg, v); !errors.Is(err, transit.ErrUnavailable) {
 		t.Errorf("destroy: %v", err)
 	}
@@ -243,6 +300,9 @@ func TestExternalUnavailableFailsClosed(t *testing.T) {
 		t.Errorf("unregistered external kind resolved: %v", err)
 	}
 	ext.SetAvailable(true)
+	if err := ext.Destroy(ctx, st, sv); err != nil {
+		t.Fatal(err)
+	}
 	if err := ext.Destroy(ctx, tg, v); err != nil {
 		t.Fatal(err)
 	}
