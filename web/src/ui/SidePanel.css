@@ -30,6 +30,9 @@
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
+  /* The sheet reaches three viewport edges: keep its head and body clear of a
+     notch, a rounded corner and the home indicator (`--safe-*`, app.css). */
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px) 0;
   border-left: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--tx);

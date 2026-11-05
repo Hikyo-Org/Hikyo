@@ -107,6 +107,27 @@ export const Populated: Story = {
   },
 };
 
+// A phone: an unbreakable value (a URL) and a key name past the 18 character
+// wrap point must not push the Actions column off the scrolling wrapper. The
+// table fits the phone, so every row's action is in reach without a sideways scroll.
+export const PhoneKeepsActionsInReach: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  parameters: rows({
+    url: VALUES_URL,
+    body: { ...populated, count: populated.count + 1, items: [...populated.items, cell(10, 'PUBLIC_APP_URL', 'config', 'https://staging.example.test/callbacks/oauth')] },
+  }),
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByRole('button', { name: 'Reveal DATABASE_URL' })).toBeVisible();
+    const wrapper = canvas.getByRole('table').parentElement!;
+    await expect(wrapper.scrollWidth).toBeLessThanOrEqual(wrapper.clientWidth);
+    const edge = wrapper.getBoundingClientRect().right;
+    for (const button of canvas.getAllByRole('button', { name: /^(Reveal|Copy) / })) {
+      await expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(edge);
+    }
+    await expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(document.documentElement.clientWidth);
+  },
+};
+
 // A window is live: the chip counts it down and "Reveal every secret" is enabled.
 export const WindowLive: Story = {
   parameters: rows(

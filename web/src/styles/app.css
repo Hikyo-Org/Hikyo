@@ -520,13 +520,13 @@ fieldset.field > legend {
    alert is present but visually unreachable at exactly the wrong moment. */
 .toast {
   position: fixed;
-  inset: 16px 16px auto auto;
+  inset: calc(var(--space-4) + var(--safe-top)) calc(var(--space-4) + var(--safe-right)) auto auto;
   z-index: var(--z-drawer);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: start;
   gap: var(--space-2);
-  width: min(440px, calc(100vw - 32px));
+  width: min(440px, calc(100vw - var(--space-6) - var(--safe-left) - var(--safe-right)));
   padding: var(--space-3);
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
@@ -582,11 +582,22 @@ fieldset.field > legend {
 
 /* --- Chrome -------------------------------------------------------------- */
 
+/* `viewport-fit=cover` (index.html) lets the page draw under a notch, a rounded
+   corner and the home indicator. These are the strips a phone browser keeps
+   for itself, zero everywhere else, so every shell surface that touches a
+   viewport edge reads them from here rather than from `env()` directly. */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
 .chrome {
   /* The persistent side menu: the org rail plus the sidebar. A side panel
      opens beside it (`--chrome-menu`), so the menu stays in view. */
   --sidebar: 218px;
-  --chrome-menu: calc(var(--rail) + var(--sidebar));
+  --chrome-menu: calc(var(--safe-left) + var(--rail) + var(--sidebar));
   /* The side panel takes one more sidebar width of gutter past the menu. */
   --side-panel-gutter: var(--sidebar);
   display: grid;
@@ -594,6 +605,8 @@ fieldset.field > legend {
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   height: 100dvh;
+  /* The top strip is the header's own (it carries the header's background). */
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 /* DESIGN.md's `--bg-panel` is the persistent-chrome surface (the prototype's
@@ -696,8 +709,8 @@ fieldset.field > legend {
 .chrome__account {
   position: fixed;
   z-index: 5;
-  bottom: 12px;
-  left: 10px;
+  bottom: calc(var(--space-3) + var(--safe-bottom));
+  left: calc(10px + var(--safe-left));
 }
 
 .account-entry > .avatar {
@@ -1089,8 +1102,8 @@ fieldset.field > legend {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 61px;
-  padding: var(--space-2) var(--space-4);
+  min-height: calc(61px + var(--safe-top));
+  padding: calc(var(--space-2) + var(--safe-top)) var(--space-4) var(--space-2);
   /* The same structural rule the rail and the sidebar draw. Reaching for
      `--line` here made the header seam brighter than the rail seam in dark and
      darker in light, an inconsistency the prototype does not have, because it
@@ -1460,8 +1473,8 @@ fieldset.field > legend {
   .chrome__account {
     position: fixed;
     z-index: 5;
-    top: 8px;
-    right: 64px;
+    top: calc(var(--space-2) + var(--safe-top));
+    right: calc(64px + var(--safe-right));
     bottom: auto;
     left: auto;
   }
@@ -1473,8 +1486,7 @@ fieldset.field > legend {
 
   .header {
     gap: var(--space-2);
-    min-height: 61px;
-    padding: var(--space-2) var(--space-3);
+    padding: calc(var(--space-2) + var(--safe-top)) var(--space-3) var(--space-2);
   }
 
   /* The drawer slides in from the left and back out. Hidden by visibility,
@@ -1486,6 +1498,7 @@ fieldset.field > legend {
     inset: 0 auto 0 0;
     width: min(300px, 80vw);
     height: 100dvh;
+    padding: calc(6px + var(--safe-top)) 0 calc(20px + var(--safe-bottom)) var(--safe-left);
     border-right: 1px solid var(--chrome-line);
     box-shadow: var(--overlay-shadow);
     visibility: hidden;
@@ -1568,6 +1581,24 @@ fieldset.field > legend {
     flex-shrink: 1;
   }
 
+  /* A scope crumb gives up room but never below its separator, the gap and
+     the link's `--control` hit floor (set on the link below). `li` has
+     `min-width: 0` so the ellipsis can work, and left alone it shrank under
+     that floor: the link spilled out of its `li` over the next crumb's
+     separator. One `em` of the crumb's own font covers the separator glyph. */
+  .header__crumbs li[data-crumb='scope'] {
+    min-width: calc(1em + var(--space-1) + var(--control));
+  }
+
+  /* Narrower than any phone the design targets (390px), the floors alone would
+     leave the current page no room: the organisation crumb gives way first,
+     and the drawer still reaches it. */
+  @media (max-width: 359px) {
+    .header__crumbs li[data-crumb='scope']:nth-child(2) {
+      display: none;
+    }
+  }
+
   .header__crumb-separator {
     flex-shrink: 0;
   }
@@ -1624,8 +1655,8 @@ fieldset.field > legend {
 
     .menu {
     position: fixed;
-    top: 60px;
-    right: 12px;
+    top: calc(60px + var(--safe-top));
+    right: calc(var(--space-3) + var(--safe-right));
     bottom: auto;
     left: auto;
   }
@@ -3297,6 +3328,35 @@ fieldset.field > legend {
 
   .table-scroll > table :is(.mono, code, kbd) {
     font-size: var(--fs-xs);
+  }
+
+  /* A value is arbitrary text and has no break opportunity of its own (a URL,
+     a token), and a key name is one unbroken word: left alone they set the
+     columns' minimums, the table outgrew the phone, and the Actions column,
+     the point of the row, sat past the edge of the scrolling wrapper. The
+     value breaks anywhere and gives up the room; a key stays whole up to 18
+     characters (the common names) and wraps beyond that. Reveal and Copy
+     stack in one column, so the Actions column is one button wide. */
+  .values__plain,
+  .values__masked {
+    overflow-wrap: anywhere;
+  }
+
+  .values__table td .actions:has(> .btn ~ .btn) {
+    grid-template-columns: 1fr;
+  }
+
+  .values__countdown {
+    overflow-wrap: normal;
+  }
+
+  .values__keyname {
+    /* 18 characters of name plus room for the border-box button's own padding and borders. */
+    max-width: calc(18ch + 3 * var(--space-2));
+    /* `break-word`, not `anywhere`: the column keeps the width of the name (to
+       the cap) instead of shrinking under it and splitting every name. */
+    overflow-wrap: break-word;
+    text-align: left;
   }
 
   /* The phone's two-column action grid (Button.css) shares a cell's width

@@ -172,6 +172,8 @@ The product's signature surface: keys as rows, environments as columns, each val
 - Tabs wrap into pills; action rows become a two-column grid (`.actions--stack`: one column); tables go compact; the matrix key column becomes icons.
 - Touch targets are 44px (`--touch`), raised automatically by `--control` on a coarse pointer.
 - The side menu is a drawer; the side panel is full width; wide dialogs inset to the viewport.
+- Safe area: `viewport-fit=cover` lets the page draw under a notch and the home indicator, so the shell reads `--safe-top/right/bottom/left` (app.css `:root`, from `env(safe-area-inset-*)`, zero where there is none): the header, drawer, account avatar, menus, toasts and the side panel keep clear of them.
+- The breadcrumb's scope crumbs never shrink below their separator and `--control` hit floor; the current page takes what is left. A table that holds the page's primary action keeps it on screen: values and key names wrap rather than push the Actions column past the wrapper.
 - Labelled buttons that must save room use `btn--icon-phone`, never a second element. Other text that only sighted phone users lose (the matrix key names) uses `.visually-hidden-phone`.
 
 ## Accessibility
