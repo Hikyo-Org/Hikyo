@@ -672,6 +672,35 @@ export const CellMarks: Story = {
   },
 };
 
+// The legend opens as a popover under its toggle. On the narrowest phone the
+// toggle sits at the left of the head, and a popover anchored to it ran off the
+// left edge; it also opened under the sticky key heading it overlaps.
+export const PhoneLegendStaysOnScreen: Story = {
+  globals: { viewport: { value: 'phoneNarrow', isRotated: false } },
+  play: async ({ canvasElement }) => {
+    const toggle = await waitFor(() => {
+      const found = canvasElement.querySelector<HTMLElement>('.matrix__legend-toggle');
+      if (found === null || canvasElement.querySelector('.matrix__table thead th:first-child') === null) throw new Error('matrix not rendered');
+      return found;
+    });
+    // In the demo the head wraps and the toggle lands at the row's left; the story's head does not, so put it there.
+    toggle.closest<HTMLElement>('.matrix__legend')!.style.order = '-1';
+    await userEvent.click(toggle);
+    const body = canvasElement.querySelector<HTMLElement>('.matrix__legend-body')!;
+    const box = body.getBoundingClientRect();
+    await expect(box.left).toBeGreaterThanOrEqual(0);
+    await expect(box.right).toBeLessThanOrEqual(window.innerWidth);
+    // Where it sits over the sticky key column, the popover is what is on top.
+    const covered = [...canvasElement.querySelectorAll<HTMLElement>('.matrix__table :is(th, td):first-child')].flatMap((cell) => {
+      const r = cell.getBoundingClientRect();
+      const [left, right, top, bottom] = [Math.max(r.left, box.left), Math.min(r.right, box.right), Math.max(r.top, box.top), Math.min(r.bottom, box.bottom, window.innerHeight - 1)];
+      return left < right && top < bottom ? [{ x: (left + right) / 2, y: (top + bottom) / 2 }] : [];
+    });
+    await expect(covered.length).toBeGreaterThan(0);
+    for (const { x, y } of covered) await expect(body.contains(document.elementFromPoint(x, y))).toBe(true);
+  },
+};
+
 // A phone: the sticky key column drops to the touch target, one
 // glyph per key; the name moves into a tap/hover popover anchored to the icon,
 // and the envs picker moves out of the now icon-only header into the head row.

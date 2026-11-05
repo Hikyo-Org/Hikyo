@@ -443,11 +443,14 @@ fieldset.field > legend {
 
 /* --- Login --------------------------------------------------------------- */
 
+/* The signed-out and loading screens have no chrome to carry the insets. */
 .login {
   display: grid;
   place-items: center;
   min-height: 100%;
-  padding: var(--space-5);
+  padding:
+    calc(var(--space-5) + var(--safe-top)) calc(var(--space-5) + var(--safe-right))
+    calc(var(--space-5) + var(--safe-bottom)) calc(var(--space-5) + var(--safe-left));
 }
 
 .login__card {
@@ -1512,10 +1515,14 @@ fieldset.field > legend {
   .sidebar {
     position: fixed;
     z-index: var(--z-overlay);
-    inset: 0 auto 0 0;
+    /* The drawer is its own scroller, so padding only holds at the two ends of
+       its content: scrolled rows passed under the notch and the home
+       indicator. Its box stops at the insets instead (the header and the
+       chrome's strips are what show there), so nothing scrolls into them. */
+    inset: var(--safe-top) auto var(--safe-bottom) 0;
     width: min(300px, 80vw);
-    height: 100dvh;
-    padding: calc(6px + var(--safe-top)) 0 calc(20px + var(--safe-bottom)) var(--safe-left);
+    height: auto;
+    padding: 6px 0 20px var(--safe-left);
     border-right: 1px solid var(--chrome-line);
     box-shadow: var(--overlay-shadow);
     visibility: hidden;
@@ -1585,6 +1592,12 @@ fieldset.field > legend {
   .header__crumbs {
     gap: var(--space-1);
     overflow: hidden;
+    /* The row clips what the crumbs overflow, and clipped a link's focus ring
+       with it (the ring sits outside the link). The row grows by the ring's
+       reach on every side and gives it back as a negative margin, so the
+       layout is the same and the ring is not cut. */
+    margin: calc(-1 * (var(--ring-width) + var(--ring-offset)));
+    padding: calc(var(--ring-width) + var(--ring-offset));
     font-size: var(--fs-xs);
     color: var(--tx-faint);
   }
@@ -2008,6 +2021,17 @@ fieldset.field > legend {
   background: var(--bg-panel);
   color: var(--tx-dim);
   font-size: var(--fs-sm);
+}
+
+/* On a phone the toggle can sit anywhere in the head's row, and a popover
+   anchored to it ran off the left edge (a 340px body at a 54px right edge).
+   Anchored to the matrix card instead it keeps inside the page, and it is
+   raised over the sticky key heading it overlaps. */
+@media (max-width: 700px) {
+  .matrix__legend {
+    position: static;
+    z-index: var(--z-sticky);
+  }
 }
 
 .matrix__legend-body dl {
@@ -3267,6 +3291,7 @@ fieldset.field > legend {
    each key name (the key column is icons there). */
 @media (max-width: 700px) {
   .visually-hidden-phone,
+  .values .values__table thead th,
   .btn--icon-phone > .btn__label {
     position: absolute;
     width: 1px;
@@ -3348,49 +3373,67 @@ fieldset.field > legend {
     font-size: var(--fs-xs);
   }
 
-  /* A value is arbitrary text and has no break opportunity of its own (a URL,
-     a token), and a key name is one unbroken word: left alone they set the
-     columns' minimums, the table outgrew the phone, and the Actions column,
-     the point of the row, sat past the edge of the scrolling wrapper. The
-     value breaks anywhere and gives up the room; a key stays whole up to 18
-     characters (the common names) and wraps beyond that. Reveal and Copy
-     stack in one column, so the Actions column is one button wide. These are
-     the Values table's alone (`machine__table` shares its cell classes and
-     has other rows to protect: SSH certificates keep four buttons per row).
-
-     A revealed value is the text with its countdown. In a row the countdown
-     kept its own width while `anywhere` shrank the text to a glyph a line; in
-     a column the text takes the width and the countdown wraps below it. */
-  .values__table:not(.machine__table) .values__plain {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1);
+  /* The Values table is a card per key on a phone. Three columns do not fit
+     a phone, and the editor is a fourth cell that no column width could hold
+     (it set the table's minimum, and the value gave up its room to it until a
+     character was a line). So the table lays out as a grid, two tracks wide:
+     the key and its Actions share the first line, the value (or the open
+     editor) takes the full width under them. The row groups and rows give
+     their cells to the grid (`display: contents`), the header is kept for
+     assistive technology and hidden from sight (it names columns that no
+     longer exist), and a table role stays with the element. Scoped by the
+     page's own root (`.values`): `machine__table` shares the cell classes and
+     keeps its columns. */
+  .values .values__table {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-auto-flow: row dense;
   }
 
-  .values__table:not(.machine__table) :is(.values__plain, .values__masked) {
+  .values .values__table :is(thead, tbody, tr) {
+    display: contents;
+  }
+
+  .values .values__table tbody :is(th, td) {
+    grid-column: 1 / -1;
+  }
+
+  .values .values__table tbody th {
+    grid-column: 1;
+    border-bottom: 0;
+  }
+
+  /* `dense` puts the Actions beside the key, in the line the key opened. */
+  .values .values__table tbody td:has(> .actions) {
+    grid-column: 2;
+    border-bottom: 0;
+  }
+
+  .values .values__table tr:has(> .values__editor) > td:not(.values__editor, :has(> .actions)) {
+    border-bottom: 0;
+  }
+
+  .values .values__table :is(.values__keyname, .values__plain, .values__masked) {
     overflow-wrap: anywhere;
   }
 
-  /* The countdown takes the width the text leaves and wraps inside it, at the
-     smallest type token. It breaks anywhere as the text does (inherited), so
-     its words set no column minimum. */
-  .values__table:not(.machine__table) .values__countdown {
-    align-self: stretch;
-    padding-inline: var(--space-1);
-    font-size: var(--fs-xs);
+  .values .values__table .values__keyname {
+    text-align: left;
   }
 
-  .values__table:not(.machine__table) td .actions:has(> .btn ~ .btn) {
+  /* Reveal and Copy stack, so the Actions track is one button wide and the
+     key keeps the rest of the line. */
+  .values .values__table td .actions:has(> .btn ~ .btn) {
     grid-template-columns: 1fr;
   }
 
-  .values__table:not(.machine__table) .values__keyname {
-    /* 18 characters of name plus room for the border-box button's own padding and borders. */
-    max-width: calc(18ch + 3 * var(--space-2));
-    /* `break-word`, not `anywhere`: the column keeps the width of the name (to
-       the cap) instead of shrinking under it and splitting every name. */
-    overflow-wrap: break-word;
-    text-align: left;
+  /* A revealed value is the text with its countdown. Side by side the
+     countdown kept its own width while `anywhere` shrank the text to a glyph a
+     line; in a column the text takes the width and the countdown sits below. */
+  .values .values__table .values__plain {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
   }
 
   /* The phone's two-column action grid (Button.css) shares a cell's width
