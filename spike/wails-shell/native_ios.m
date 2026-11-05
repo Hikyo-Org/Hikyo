@@ -38,9 +38,26 @@ static void decideAction(id self, SEL _cmd, WKWebView *webView, WKNavigationActi
 	handler(policy);
 }
 
-// Returns 1 once the policy is in place. The isonopolicy build leaves Wails' allow-everything method alone, to show what
-// stops a navigation without it.
+// Wails serves /__capture__/<name> from the app's temp directory before the request reaches Go, so none of the shell's
+// checks would see it. A connection's page has no use for it.
+static IMP originalStart;
+static void startTask(id self, SEL _cmd, WKWebView *webView, id<WKURLSchemeTask> task) {
+	if ([task.request.URL.path hasPrefix:@"/__capture__/"]) {
+		note(@"refused %@", task.request.URL.absoluteString);
+		[task didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorResourceUnavailable userInfo:nil]];
+		return;
+	}
+	((void (*)(id, SEL, WKWebView *, id<WKURLSchemeTask>))originalStart)(self, _cmd, webView, task);
+}
+
+// Returns 1 once the handlers are in place. The isonopolicy build leaves Wails' allow-everything navigation method alone,
+// to show what stops a navigation without it.
 int spikeReplacePolicy(void) {
+	Class handler = objc_getClass("WailsSchemeHandler");
+	if (handler == nil) return 0;
+	Method start = class_getInstanceMethod(handler, @selector(webView:startURLSchemeTask:));
+	if (start == nil) return 0;
+	originalStart = method_setImplementation(start, (IMP)startTask);
 #ifdef ISO_NOPOLICY
 	return 1;
 #endif

@@ -187,13 +187,10 @@
              public boolean onShowFileChooser(WebView view,
                                               ValueCallback<Uri[]> filePathCallback,
                                               FileChooserParams fileChooserParams) {
-@@ -269,11 +267,80 @@
-                 }
-                 return true;
-             }
-+        });
-+    }
-+
+@@ -272,8 +270,87 @@
+         });
+     }
+ 
 +    static boolean isWailsHostPublic(String host) { return isWailsHost(host); }
 +
 +    /** The parts every connection's WebView needs. A per-view mode restricts the body channel to that view's own origin. */
@@ -231,7 +228,7 @@
 +            byte[] data = message.getType() == WebMessageCompat.TYPE_ARRAY_BUFFER ? message.getArrayBuffer() : null;
 +            String id = data == null ? null : SpikeBridge.stash(Connections.owner(view), data);
 +            reply.postMessage(id == null ? "refused" : id);
-         });
++        });
 +        try (InputStream in = getAssets().open("spike-shim.js")) {
 +            ByteArrayOutputStream out = new ByteArrayOutputStream();
 +            byte[] buf = new byte[8192];
@@ -240,8 +237,8 @@
 +        } catch (java.io.IOException e) {
 +            Log.e(TAG, "shim unreadable", e);
 +        }
-     }
- 
++    }
++
 +    /** The WebView cannot fetch a wails origin itself, so the file comes through the Go proxy into the app's download folder. */
 +    private void saveDownload(WebView source, String url, String disposition, String mime) {
 +        final String owner = Connections.owner(source);
@@ -249,13 +246,23 @@
 +        new Thread(() -> {
 +            String name = new File(android.webkit.URLUtil.guessFileName(url, disposition, mime)).getName().replaceAll("[^A-Za-z0-9._-]", "_");
 +            if (name.length() > 100) name = name.substring(0, 100);
-+            File dir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
-+            File out = new File(dir, name);
++            // Each connection has its own folder, and a name already taken gets a number, so one connection's download never replaces another's.
++            File dir = new File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), owner.substring(0, owner.indexOf('.') < 0 ? owner.length() : owner.indexOf('.')));
++            File out = null;
 +            try {
++                if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("no download folder");
++                int dot = name.lastIndexOf('.');
++                String stem = dot > 0 ? name.substring(0, dot) : name, ext = dot > 0 ? name.substring(dot) : "";
++                for (int i = 0; out == null; i++) {
++                    File candidate = new File(dir, i == 0 ? name : stem + "-" + i + ext);
++                    if (candidate.createNewFile()) out = candidate;
++                }
 +                long size = SpikeBridge.download(url, out, owner);
-+                Log.i(TAG, "download saved " + name + " " + size + " bytes");
-+                runOnUiThread(() -> android.widget.Toast.makeText(this, "Saved " + out.getName(), android.widget.Toast.LENGTH_LONG).show());
++                Log.i(TAG, "download saved " + out.getName() + " " + size + " bytes");
++                final String saved = out.getName();
++                runOnUiThread(() -> android.widget.Toast.makeText(this, "Saved " + saved, android.widget.Toast.LENGTH_LONG).show());
 +            } catch (Exception e) {
++                if (out != null) out.delete();
 +                Log.e(TAG, "download failed", e);
 +            }
 +        }).start();

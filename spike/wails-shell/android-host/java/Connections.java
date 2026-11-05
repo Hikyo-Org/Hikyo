@@ -10,6 +10,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 
+import androidx.webkit.Profile;
 import androidx.webkit.ProfileStore;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
@@ -156,10 +157,20 @@ final class Connections {
         }
     }
 
+    /**
+     * Runs before any view exists. Deletes the profiles of connections removed in an earlier run, and any profile that no
+     * current connection owns (a connection that is gone, or a host the shell has not kept), so storage never outlives its connection.
+     */
     private static void deletePendingProfiles() {
         SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         Set<String> left = new HashSet<>();
-        for (String name : p.getStringSet(PENDING, new HashSet<>())) {
+        Set<String> live = new HashSet<>();
+        for (String host : hosts) live.add(profileName(host));
+        Set<String> doomed = new HashSet<>(p.getStringSet(PENDING, new HashSet<>()));
+        for (String name : ProfileStore.getInstance().getAllProfileNames()) {
+            if (!name.equals(Profile.DEFAULT_PROFILE_NAME) && !live.contains(name)) doomed.add(name);
+        }
+        for (String name : doomed) {
             try {
                 ProfileStore.getInstance().deleteProfile(name);
             } catch (RuntimeException e) {

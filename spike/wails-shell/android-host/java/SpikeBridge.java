@@ -44,6 +44,7 @@ final class SpikeBridge {
 
     private static final Map<String, Stashed> stashed = new ConcurrentHashMap<>();
     private static final Handler main = new Handler(Looper.getMainLooper());
+    private static final Map<String, Long> stashedBy = new java.util.HashMap<>();
     private static long stashedBytes = 0;
 
     /** The hosts of the connections, in order, from the Go shell. Empty when the shell is not up, which leaves no connection to show. */
@@ -58,25 +59,43 @@ final class SpikeBridge {
         return out;
     }
 
+    /** A page picks its own ids, so an entry is keyed by owner and id, and a repeated id replaces the entry and gives its bytes back. */
+    private static String key(String owner, String id) { return owner + "/" + id; }
+
     /** Called by the WebMessageListener of the view that owns the connection: the first 36 bytes are the id, the rest is the body. Returns the id when kept. */
     static synchronized String stash(String owner, byte[] msg) {
-        if (owner.isEmpty() || msg.length < 36 || msg.length - 36 > MAX_BODY || stashedBytes + msg.length > MAX_STASHED) return null;
+        if (owner.isEmpty() || msg.length < 36 || msg.length - 36 > MAX_BODY) return null;
         final String id = new String(msg, 0, 36, java.nio.charset.StandardCharsets.US_ASCII);
+        final String k = key(owner, id);
+        Stashed old = stashed.remove(k);
+        if (old != null) giveBack(owner, old.body.length);
+        // One connection cannot use the whole budget, so a page that floods bodies only starves itself.
+        if (stashedBy.getOrDefault(owner, 0L) + msg.length > MAX_STASHED / 2 || stashedBytes + msg.length > MAX_STASHED) return null;
         byte[] body = new byte[msg.length - 36];
         System.arraycopy(msg, 36, body, 0, body.length);
-        stashed.put(id, new Stashed(owner, body));
+        Stashed s = new Stashed(owner, body);
+        stashed.put(k, s);
+        stashedBy.merge(owner, (long) body.length, Long::sum);
         stashedBytes += body.length;
-        main.postDelayed(() -> take(id, null), TTL_MS);
+        main.postDelayed(() -> expire(k, s), TTL_MS);
         return id;
     }
 
-    /** A body is only handed to a request from the view that stashed it. owner null is the expiry sweep. */
+    private static void giveBack(String owner, int n) {
+        stashedBytes -= n;
+        stashedBy.merge(owner, (long) -n, Long::sum);
+    }
+
+    /** A body is only handed to a request from the view that stashed it. */
     private static synchronized Stashed take(String id, String owner) {
-        Stashed s = stashed.get(id);
-        if (s == null || (owner != null && !s.owner.equals(owner))) return null;
-        stashed.remove(id);
-        stashedBytes -= s.body.length;
+        Stashed s = stashed.remove(key(owner, id));
+        if (s != null) giveBack(owner, s.body.length);
         return s;
+    }
+
+    /** Drops an entry nobody took. It compares the entry itself, because the page may have replaced the id since. */
+    private static synchronized void expire(String k, Stashed s) {
+        if (stashed.remove(k, s)) giveBack(s.owner, s.body.length);
     }
 
     /** owner is the connection this request's page belongs to, as the host establishes it. Go refuses a request whose host differs. */
@@ -128,13 +147,15 @@ final class SpikeBridge {
     /** Saves a GET of a wails URL to a file through the proxy and returns its size. */
     static long download(String url, java.io.File out, String owner) throws Exception {
         long id = nativeBegin("GET", url, "[]", null, owner);
-        try (InputStream in = new GoStream(id); java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+        try (InputStream in = new GoStream(id)) {
             JSONObject head = new JSONObject(nativeHead(id));
             if (head.getInt("status") != 200) throw new IOException("status " + head.getInt("status"));
-            byte[] buf = new byte[65536];
-            long total = 0;
-            for (int n; (n = in.read(buf, 0, buf.length)) > 0; ) { fos.write(buf, 0, n); total += n; }
-            return total;
+            try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                byte[] buf = new byte[65536];
+                long total = 0;
+                for (int n; (n = in.read(buf, 0, buf.length)) > 0; ) { fos.write(buf, 0, n); total += n; }
+                return total;
+            }
         }
     }
 

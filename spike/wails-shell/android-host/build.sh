@@ -3,7 +3,8 @@
 # build/android comes from `wails3 generate build-assets`; mobile-dev-config.json must exist (gitignored).
 # usage: android-host/build.sh [stock]   (stock = the unpatched Wails Java host, for the baseline)
 set -eu
-tags=production,android,probe${ISO_TAGS:+,$ISO_TAGS}
+# ISO_TAGS adds tags: isorig for the attack rig, probe for the debug server on 127.0.0.1:18598
+tags=production,android${ISO_TAGS:+,$ISO_TAGS}
 [ "${1:-}" = stock ] && tags=$tags,stockhost
 ndk=$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)
 cc=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang
