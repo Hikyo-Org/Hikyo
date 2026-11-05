@@ -7902,9 +7902,9 @@ type IdentityProviderKind = string
 type IdentityRequest struct {
 	Hue int `json:"hue"`
 
-	// Mark At most two grapheme clusters; no control characters and no
-	// surrounding whitespace. Null or absent selects the name-derived
-	// monogram.
+	// Mark At most two grapheme clusters; no control or invisible format
+	// characters and no surrounding whitespace. Null, absent or empty
+	// selects the name-derived monogram.
 	Mark *string `json:"mark,omitempty"`
 }
 
@@ -73821,6 +73821,20 @@ func (response SetProjectIdentity401JSONResponse) VisitSetProjectIdentityRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectIdentity403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetProjectIdentity403JSONResponse) VisitSetProjectIdentityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }

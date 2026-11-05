@@ -112,7 +112,9 @@ export function chromeIdentityFromApi(
 
 export function chromeIdentityStyle(identity: ChromeIdentity): CSSProperties {
   return {
-    background: `oklch(0.62 0.11 ${String(identity.hue)})`,
+    // backgroundColor, never the `background` shorthand: React re-applies only
+    // changed properties, and the shorthand would reset the image longhands.
+    backgroundColor: `oklch(0.62 0.11 ${String(identity.hue)})`,
     color: 'oklch(0.12 0.02 225)',
     ...(identity.image === null
       ? {}
@@ -151,7 +153,7 @@ export function chromeRailIdentityStyle(
         backgroundSize: 'cover',
       };
   if (active) return image;
-  return { background: `oklch(0.62 0.11 ${String(identity.hue)} / 0.18)`, ...image };
+  return { backgroundColor: `oklch(0.62 0.11 ${String(identity.hue)} / 0.18)`, ...image };
 }
 
 export function chromeIdentityMark(identity: ChromeIdentity, name: string): string {

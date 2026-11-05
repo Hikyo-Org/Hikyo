@@ -1559,7 +1559,7 @@ export const zOrg = z.object({
 
 export const zIdentityRequest = z.object({
     hue: z.int().gte(0).lte(359),
-    mark: z.string().min(1).max(32).nullish()
+    mark: z.string().max(32).nullish()
 });
 
 export const zOrgList = z.object({

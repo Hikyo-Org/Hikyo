@@ -228,7 +228,7 @@ input[type='datetime-local']:not(:placeholder-shown) {
 }
 
 /* The browser's own calendar glyph, replaced by drawn geometry (never a
-   fetched image: production serves `img-src 'self'`, csp.test.ts, the same
+   fetched image: production's `img-src` refuses data: URLs, csp.test.ts, the same
    reason the checkbox tick below is a rotated border, not a mask). A
    bordered box with a thicker top band reads as a calendar at this size
    without a real SVG. */
@@ -2457,7 +2457,7 @@ fieldset.field > legend {
 
 /* The editable-slot affordance (env-matrix iteration 22): every slot you can
    edit carries a faint trailing pencil, accent on hover. An aria-hidden glyph
-   (the CSP's `img-src 'self'` rules out a data-URI mask on a pseudo-element)
+   (the CSP's `img-src` rules out a data-URI mask on a pseudo-element)
    that ignores the pointer, so the button stays the only click target.
    The two problem states are deliberately excluded: they already carry a
    glyph and a colour saying what to do, and a third mark beside them is noise
@@ -4046,7 +4046,7 @@ input[type='checkbox']:indeterminate::before {
 }
 
 /* The mark is drawn geometry in the theme's on-accent ink, never a fetched
-   image: production serves img-src 'self' (internal/server/spa.go), which
+   image: production's img-src refuses data: URLs (internal/server/spa.go), which
    blocks a data: mask and would leave checked and indeterminate as a bare
    accent square. The tick is the two trailing borders of a box rotated 45deg
    (its visual centre sits low, hence the lift); the dash is a plain bar. */
@@ -5259,6 +5259,12 @@ label.chk:has(input:disabled) {
 
 .identity-upload {
   margin-top: 0;
+}
+
+/* The file input is visually hidden, so its label button shows its focus. */
+.identity-upload input:focus-visible + .btn {
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: var(--ring-offset);
 }
 
 .instance-create-row {

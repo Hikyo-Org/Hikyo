@@ -471,55 +471,68 @@ async function invalidateIdentity(queries: QueryClient): Promise<void> {
 
 type IdentityImageInput = { readonly blob: Blob; readonly contentType: string };
 
-/** The three identity writes for an organisation (manage-members). */
+/**
+ * The three identity writes for an organisation (manage-members). The page stays
+ * mounted across an org switch and a mutation's function follows the latest
+ * render, so the target travels in the variables: a save queued on one org can
+ * never land on the next.
+ */
 export function useOrgIdentityMutations(org: string) {
   const queries = useQueryClient();
   const settled = { onSettled: () => invalidateIdentity(queries) };
+  const set = useMutation({
+    mutationFn: (input: { org: string; body: { hue: number; mark: string | null } }) =>
+      parsed(setOrgIdentityOp, { path: { org: input.org }, body: input.body }),
+    ...settled,
+  });
+  const setImage = useMutation({
+    mutationFn: (input: { org: string; image: IdentityImageInput }) =>
+      parsed(setOrgIdentityImageOp, {
+        path: { org: input.org },
+        body: input.image.blob,
+        headers: { 'Content-Type': input.image.contentType },
+      }),
+    ...settled,
+  });
+  const clearImage = useMutation({
+    mutationFn: (input: { org: string }) => parsed(clearOrgIdentityImageOp, { path: { org: input.org } }),
+    ...settled,
+  });
   return {
-    set: useMutation({
-      mutationFn: (input: { hue: number; mark: string | null }) =>
-        parsed(setOrgIdentityOp, { path: { org }, body: input }),
-      ...settled,
-    }),
-    setImage: useMutation({
-      mutationFn: (input: IdentityImageInput) =>
-        parsed(setOrgIdentityImageOp, {
-          path: { org },
-          body: input.blob,
-          headers: { 'Content-Type': input.contentType },
-        }),
-      ...settled,
-    }),
-    clearImage: useMutation({
-      mutationFn: () => parsed(clearOrgIdentityImageOp, { path: { org } }),
-      ...settled,
-    }),
+    set: { mutateAsync: (body: { hue: number; mark: string | null }) => set.mutateAsync({ org, body }) },
+    setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ org, image }) },
+    clearImage: { mutateAsync: () => clearImage.mutateAsync({ org }) },
   };
 }
 
-/** The three identity writes for a project (manage-projects). */
+/** The three identity writes for a project (manage-projects); the target travels as for an org. */
 export function useProjectIdentityMutations(org: string, project: string) {
   const queries = useQueryClient();
   const settled = { onSettled: () => invalidateIdentity(queries) };
+  const set = useMutation({
+    mutationFn: (input: { path: { org: string; project: string }; body: { hue: number; mark: string | null } }) =>
+      parsed(setProjectIdentityOp, input),
+    ...settled,
+  });
+  const setImage = useMutation({
+    mutationFn: (input: { path: { org: string; project: string }; image: IdentityImageInput }) =>
+      parsed(setProjectIdentityImageOp, {
+        path: input.path,
+        body: input.image.blob,
+        headers: { 'Content-Type': input.image.contentType },
+      }),
+    ...settled,
+  });
+  const clearImage = useMutation({
+    mutationFn: (input: { path: { org: string; project: string } }) =>
+      parsed(clearProjectIdentityImageOp, input),
+    ...settled,
+  });
+  const path = { org, project };
   return {
-    set: useMutation({
-      mutationFn: (input: { hue: number; mark: string | null }) =>
-        parsed(setProjectIdentityOp, { path: { org, project }, body: input }),
-      ...settled,
-    }),
-    setImage: useMutation({
-      mutationFn: (input: IdentityImageInput) =>
-        parsed(setProjectIdentityImageOp, {
-          path: { org, project },
-          body: input.blob,
-          headers: { 'Content-Type': input.contentType },
-        }),
-      ...settled,
-    }),
-    clearImage: useMutation({
-      mutationFn: () => parsed(clearProjectIdentityImageOp, { path: { org, project } }),
-      ...settled,
-    }),
+    set: { mutateAsync: (body: { hue: number; mark: string | null }) => set.mutateAsync({ path, body }) },
+    setImage: { mutateAsync: (image: IdentityImageInput) => setImage.mutateAsync({ path, image }) },
+    clearImage: { mutateAsync: () => clearImage.mutateAsync({ path }) },
   };
 }
 

@@ -1,4 +1,4 @@
-import { useContext, useId, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
@@ -59,12 +59,17 @@ export function ChromeIdentityControls({
   const [local, setLocal] = useState<ChromeIdentity>(() =>
     readChromeIdentity(kind, identityId, prototypeMode),
   );
-  // Uncommitted edits: the slider preview and the content text. They revert to
-  // the server state on failure and clear when the server value changes.
+  // Unsaved edits: the slider preview and the content text. They revert to the
+  // server state on failure and clear once the server has caught up with them.
   const [draftHue, setDraftHue] = useState<number | null>(null);
   const [draftMark, setDraftMark] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const rangeRef = useRef<HTMLInputElement>(null);
+  const identitySaving = useRef(false);
+  const identityQueued = useRef<{
+    readonly actions: ChromeIdentityActions;
+    readonly next: { hue: number; mark: string | null };
+  } | null>(null);
 
   const serverHue = serverIdentity?.hue ?? 195;
   const serverMark = serverIdentity?.mark ?? '';
@@ -83,19 +88,11 @@ export function ChromeIdentityControls({
       );
   const mark = chromeIdentityMark(identity, name);
 
-  // The consumer keeps this instance mounted across an id/kind change (no
-  // `key`, and its own file is out of reach), so re-seed the local identity
-  // during render when the watched pair changes: the documented alternative
-  // to a reset effect.
-  useResetOnChange(`${kind}:${identityId}`, () => {
-    setLocal(readChromeIdentity(kind, identityId, prototypeMode));
-    setDraftHue(null);
-    setDraftMark(null);
-    setRefusal(null);
-  });
-  useResetOnChange(`${String(serverHue)}:${serverMark}:${serverVersion}`, () => {
-    setDraftHue(null);
-    setDraftMark(null);
+  // Only a draft the server now holds clears: another field saving must not
+  // discard a slider still being dragged or text still being typed.
+  useResetOnChange(`${String(serverHue)}\u0000${serverMark}`, () => {
+    if (draftHue === serverHue) setDraftHue(null);
+    if (draftMark !== null && limitMark(draftMark) === serverMark) setDraftMark(null);
   });
 
   const updateIdentity = (next: ChromeIdentity) => {
@@ -103,47 +100,82 @@ export function ChromeIdentityControls({
     if (prototypeMode) writeChromeIdentity(kind, identityId, next);
   };
 
-  const run = async (change: (apply: ChromeIdentityActions) => Promise<void>) => {
+  // One save at a time, latest wins: each carries both fields, so responses
+  // arriving out of order cannot restore a value the user has since replaced.
+  const saveIdentity = async (hue: number, markDraft: string | null) => {
     if (actions === undefined) return;
-    setSaving(true);
+    const text = markDraft === null ? serverMark : limitMark(markDraft);
+    if (!identitySaving.current && hue === serverHue && text === serverMark) {
+      setDraftHue(null);
+      setDraftMark(null);
+      return;
+    }
+    setRefusal(null);
+    identityQueued.current = { actions, next: { hue, mark: text === '' ? null : text } };
+    if (identitySaving.current) return;
+    identitySaving.current = true;
+    while (identityQueued.current !== null) {
+      const queued = identityQueued.current;
+      identityQueued.current = null;
+      try {
+        await queued.actions.setIdentity(queued.next);
+      } catch {
+        // Revert what this save carried; an edit made since then stays.
+        setDraftHue((draft) => (draft === queued.next.hue ? null : draft));
+        setDraftMark((draft) => (draft !== null && limitMark(draft) === (queued.next.mark ?? '') ? null : draft));
+      }
+    }
+    identitySaving.current = false;
+  };
+  const commitHue = (hue: number) => {
+    setDraftHue(hue);
+    void saveIdentity(hue, draftMark);
+  };
+  const commitMark = (next: string) => {
+    setDraftMark(next);
+    void saveIdentity(draftHue ?? serverHue, next);
+  };
+  const changeImage = async (change: (apply: ChromeIdentityActions) => Promise<void>) => {
+    if (actions === undefined) return;
     setRefusal(null);
     try {
       await change(actions);
     } catch {
-      setDraftHue(null);
-      setDraftMark(null);
-    } finally {
-      setSaving(false);
+      // The page's feedback already reported it, and the image never changed.
     }
-  };
-  const commitHue = (hue: number) => {
-    if (hue === serverHue) {
-      setDraftHue(null);
-      return;
-    }
-    void run((apply) => apply.setIdentity({ hue, mark: serverMark === '' ? null : serverMark }));
-  };
-  const commitMark = (next: string | null) => {
-    if ((next ?? '') === serverMark) {
-      setDraftMark(null);
-      return;
-    }
-    void run((apply) => apply.setIdentity({ hue: serverHue, mark: next }));
   };
   const pickImage = async (file: File) => {
-    const prepared = await prepareChromeImage(file);
+    let prepared;
+    try {
+      prepared = await prepareChromeImage(file);
+    } catch {
+      setRefusal('That file could not be read.');
+      return;
+    }
     if (!prepared.ok) {
       setRefusal(prepared.message);
       return;
     }
-    void run((apply) => apply.setImage({ blob: prepared.blob, contentType: prepared.contentType }));
+    const { blob, contentType } = prepared;
+    await changeImage((apply) => apply.setImage({ blob, contentType }));
   };
+
+  // A range's native `change` fires once when a drag or key press ends, on every
+  // input method. React's onChange is really `input`, which is the live preview.
+  useEffect(() => {
+    const range = rangeRef.current;
+    if (prototypeMode || range === null) return undefined;
+    const commit = () => commitHue(Number(range.value));
+    range.addEventListener('change', commit);
+    return () => range.removeEventListener('change', commit);
+  });
 
   const preview = (
     <span
       className={`identity-controls__preview${kind === 'org' ? ' identity-controls__preview--org avatar' : ''}`}
       style={chromeIdentityStyle(identity)}
-      aria-label={`${kind === 'org' ? 'Organisation' : 'Project'} identity preview: ${mark}`}
+      role="img"
+      aria-label={`${kind === 'org' ? 'Organisation' : 'Project'} identity preview: ${mark === '' ? 'uploaded image' : mark}`}
     >
       {mark}
     </span>
@@ -158,7 +190,7 @@ export function ChromeIdentityControls({
         <div className="identity-controls identity-controls--readonly">
           {preview}
           <p className="settings-row__detail">
-            Monogram <span className="mono">{mark}</span>, hue {String(identity.hue)}°
+            {mark === '' ? 'Uploaded image' : <>Monogram <span className="mono">{mark}</span></>}, hue {String(identity.hue)}°
           </p>
         </div>
         {children}
@@ -172,7 +204,7 @@ export function ChromeIdentityControls({
   };
   const chooseGlyph = (glyph: string | null) => {
     if (prototypeMode) updateIdentity({ ...local, glyph });
-    else commitMark(glyph);
+    else commitMark(glyph ?? '');
   };
   const imageCopy = prototypeMode
     ? `PNG / SVG / JPG, replaces ${kind === 'project' ? 'monogram and glyph' : 'the monogram'}`
@@ -183,7 +215,7 @@ export function ChromeIdentityControls({
       <div className="identity-controls">
         {preview}
         <div className="identity-controls__choices">
-          <div className="identity-hues" aria-label="Preset hues">
+          <div className="identity-hues" role="group" aria-label="Preset hues">
             {HUES.map((choice) => (
               <button
                 key={choice}
@@ -192,7 +224,6 @@ export function ChromeIdentityControls({
                 style={{ background: `oklch(0.62 0.11 ${String(choice)})` }}
                 aria-label={`Hue ${String(choice)}`}
                 aria-pressed={choice === identity.hue}
-                disabled={saving}
                 onClick={() => chooseHue(choice)}
               />
             ))}
@@ -201,6 +232,7 @@ export function ChromeIdentityControls({
             <label htmlFor={rangeId}>Custom hue · {String(identity.hue)}°</label>
             <input
               id={rangeId}
+              ref={rangeRef}
               className="identity-hue-range"
               type="range"
               min="0"
@@ -211,19 +243,15 @@ export function ChromeIdentityControls({
                 if (prototypeMode) updateIdentity({ ...local, hue });
                 else setDraftHue(hue);
               }}
-              // The slider previews live and saves once, when the drag or key press ends.
-              onPointerUp={prototypeMode ? undefined : (event) => commitHue(Number(event.currentTarget.value))}
-              onKeyUp={prototypeMode ? undefined : (event) => commitHue(Number(event.currentTarget.value))}
             />
           </div>
           {kind === 'project' ? (
-            <div className="identity-glyphs" aria-label="Project glyph">
+            <div className="identity-glyphs" role="group" aria-label="Project glyph">
               <button
                 type="button"
                 className="identity-glyph"
                 aria-label="Use monogram"
                 aria-pressed={identity.glyph === null}
-                disabled={saving}
                 onClick={() => chooseGlyph(null)}
               >
                 {chromeMonogram(name)}
@@ -235,8 +263,7 @@ export function ChromeIdentityControls({
                   className="identity-glyph"
                   aria-label={`Use ${choice} glyph`}
                   aria-pressed={identity.glyph === choice}
-                  disabled={saving}
-                  onClick={() => chooseGlyph(choice)}
+                    onClick={() => chooseGlyph(choice)}
                 >
                   {choice}
                 </button>
@@ -258,8 +285,7 @@ export function ChromeIdentityControls({
                 }
                 onBlur={() => {
                   if (draftMark === null) return;
-                  const next = limitMark(draftMark);
-                  commitMark(next === '' ? null : next);
+                  commitMark(draftMark);
                 }}
               />
             </div>
@@ -282,7 +308,6 @@ export function ChromeIdentityControls({
             className="visually-hidden"
             type="file"
             accept={prototypeMode ? 'image/*' : CHROME_IMAGE_ACCEPT}
-            disabled={saving}
             onChange={(event) => {
               const input = event.currentTarget;
               const file = input.files?.[0];
@@ -310,10 +335,9 @@ export function ChromeIdentityControls({
               icon
               type="button"
               aria-label="remove image"
-              disabled={saving}
-              onClick={() => {
+                onClick={() => {
                 if (prototypeMode) updateIdentity({ ...local, image: null });
-                else void run((apply) => apply.clearImage());
+                else void changeImage((apply) => apply.clearImage());
               }}
             >
               <Glyph name="cross" />

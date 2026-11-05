@@ -100,7 +100,7 @@ export function ProjectSettings() {
     <div className="page page--chrome">
       <h1>Project settings<Sep />{current?.name ?? 'project'}</h1>
       <p className="page__lede">
-        Rename this project, edit its metadata, and manage its environments; grants are edited
+        Rename this project, set its badge, edit its metadata, and manage its environments; grants are edited
         on the members surface.
       </p>
 
@@ -120,6 +120,7 @@ export function ProjectSettings() {
           { id: 'project-identity', label: 'Identity', content: (
             <Panel id="project-identity" title="Identity">
               <ChromeIdentityControls
+                key={`${org}/${project}`}
                 identityId={current?.id ?? project}
                 name={current?.name ?? 'project'}
                 kind="project"

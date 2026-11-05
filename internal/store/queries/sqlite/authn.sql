@@ -601,7 +601,7 @@ SELECT id, name, identity_hue, identity_mark, identity_image_version FROM orgs W
 
 -- The org chrome image is read for the navigation rail, so it rides the same
 -- proof-free path as GetOrgIdentity: the caller proves visibility by finding
--- the org in OrgsForPrincipal, never by an authz formula. Same chain shape.
+-- the org in OrgsForPrincipal or by holding org.get. Same chain shape.
 -- name: GetOrgIdentityImage :one
 SELECT identity_image, identity_image_type, identity_image_version FROM orgs WHERE id = ?;
 

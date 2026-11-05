@@ -2,8 +2,10 @@ package isolation
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -20,6 +22,15 @@ func chromePNG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func chromeJPEG(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 8, 8)), nil); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -55,8 +66,10 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 		hue  int
 		mark string
 	}{
-		"hue above range": {360, "AB"}, "negative hue": {-1, "AB"}, "empty mark": {10, ""},
+		"hue above range": {360, "AB"}, "negative hue": {-1, "AB"},
 		"three graphemes": {10, "ABC"}, "control character": {10, "A\x00"}, "surrounding space": {10, " A"},
+		"zero-width space": {10, "\u200b"}, "bidi override": {10, "A\u202e"}, "lone variation selector": {10, "\ufe0f"},
+		"lone joiner": {10, "\u200d"},
 	} {
 		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, bad.hue, &bad.mark); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("%s: %v, want ErrInvalid", name, err)
@@ -64,6 +77,17 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	}
 	if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, new("🚀")); err != nil {
 		t.Errorf("a single emoji is one grapheme: %v", err)
+	}
+	for name, emoji := range map[string]string{
+		"joined": "\U0001F468\u200D\U0001F469\u200D\U0001F467", "subdivision flag": "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F", "keycap": "1\ufe0f\u20e3",
+	} {
+		if _, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, &emoji); err != nil {
+			t.Errorf("%s emoji: %v", name, err)
+		}
+	}
+	empty := ""
+	if cleared, err := orgs.SetIdentity(ctx, asAdmin, orgA, 10, &empty); err != nil || cleared.Identity.Mark != nil {
+		t.Errorf("an empty mark selects the monogram: %+v, %v", cleared.Identity, err)
 	}
 
 	// Uploads: the closed type set, magic bytes, size and dimensions.
@@ -80,6 +104,8 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 		"too many pixels":      {"image/png", chromePNG(t, service.MaxChromeImageDimension+1, 1)},
 		"too many bytes":       {"image/png", append(append([]byte{}, good...), make([]byte, service.MaxChromeImageBytes)...)},
 		"empty":                {"image/png", nil},
+		"pixels do not decode": {"image/png", good[:len(good)-20]},
+		"too many JPEG scans":  {"image/jpeg", append(chromeJPEG(t), bytes.Repeat([]byte{0xFF, 0xDA}, 101)...)},
 	} {
 		if _, err := orgs.SetIdentityImage(ctx, asAdmin, orgA, upload.contentType, upload.body); !errors.Is(err, domain.ErrInvalid) {
 			t.Errorf("%s: %v, want ErrInvalid", name, err)
@@ -87,6 +113,15 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	}
 	if _, err := orgs.SetIdentityImage(ctx, service.LocalPrincipal(reader), orgA, "image/png", good); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("read-only member uploaded: %v", err)
+	}
+	webp, err := base64.StdEncoding.DecodeString("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for contentType, body := range map[string][]byte{"image/jpeg": chromeJPEG(t), "image/webp": webp} {
+		if _, err := orgs.SetIdentityImage(ctx, asAdmin, orgA, contentType, body); err != nil {
+			t.Errorf("%s upload: %v", contentType, err)
+		}
 	}
 
 	withImage, err := orgs.SetIdentityImage(ctx, asAdmin, orgA, "image/png", good)
@@ -153,6 +188,11 @@ func runChromeIdentityOrg(t *testing.T, db *store.DB) {
 	if _, err := orgs.SetIdentityImage(ctx, service.LocalPrincipal(root), "org_gone", "image/png", good); err != nil {
 		t.Fatalf("instance operator upload: %v", err)
 	}
+	// An operator holds no org-scoped grant, so the rail's projection omits them,
+	// yet they just uploaded this from the org's settings page and must see it.
+	if img, err := orgs.IdentityImage(ctx, service.LocalPrincipal(root), "org_gone"); err != nil || !bytes.Equal(img.Bytes, good) {
+		t.Fatalf("instance operator image read: %v", err)
+	}
 	if err := orgs.Delete(ctx, service.LocalPrincipal(root), "org_gone"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -193,6 +233,15 @@ func runChromeIdentityProject(t *testing.T, db *store.DB) {
 	withImage, err := projects.SetIdentityImage(ctx, service.LocalPrincipal(alice), scope, "image/png", good)
 	if err != nil || withImage.Identity.ImageVersion == nil {
 		t.Fatalf("upload = %+v, %v", withImage.Identity, err)
+	}
+	// Whoever can navigate to the project draws its tile: a member reaching it only
+	// through one environment holds no read@project, and a refused image is a blank
+	// tile because the mark is hidden while an image is set.
+	execRaw(t, db, `INSERT INTO principals (id, kind, created_at) VALUES ('usr_env_only', 'human', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES ('g_env_only', 'usr_env_only', 'read', 'org_a', 'prj_a1', 'env_a1', `+ts+`)`)
+	execRaw(t, db, `INSERT INTO grant_origins (id, grant_id, kind, subject, created_at) VALUES ('gor_env_only', 'g_env_only', 'manual', 'usr_env_only', `+ts+`)`)
+	if img, err := projects.IdentityImage(ctx, service.LocalPrincipal("usr_env_only"), scope); err != nil || !bytes.Equal(img.Bytes, good) {
+		t.Fatalf("environment-scoped member reading the project image: %v", err)
 	}
 
 	// read@project reads the image; a cross-org caller and a missing image are the same refusal.
@@ -277,5 +326,24 @@ func runChromeIdentityWire(t *testing.T, db *store.DB) {
 	}
 	if resp, _ := raw(http.MethodGet, orgImage, "", "", nil); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("anonymous org image read = %d, want 401", resp.StatusCode)
+	}
+	// Same setup as the artifact admission test: a real machine credential, with
+	// real read on the environment, is still refused this human-session route.
+	projectScope := domain.Scope{Org: domain.OrgID(e.org), Project: domain.ProjectID(e.project)}
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) VALUES (`+
+		`'g_chrome_admin', '`+string(e.admin)+`', 'manage-identities', '`+e.org+`', '`+e.project+`', NULL, '2026-01-01T00:00:00Z')`)
+	execRaw(t, db, `INSERT INTO grant_origins (id, grant_id, kind, subject, created_at) VALUES (`+
+		`'gor_chrome_admin', 'g_chrome_admin', 'manual', '`+string(e.admin)+`', '2026-01-01T00:00:00Z')`)
+	identities := &service.Identities{DB: db, Auth: e.auth}
+	sa, err := identities.CreateServiceAccount(t.Context(), service.Bearer(e.token), projectScope, "chrome-probe", domain.ClassWorkload)
+	if err != nil {
+		t.Fatalf("create machine identity: %v", err)
+	}
+	minted, err := identities.MintCredential(t.Context(), service.Bearer(e.token), projectScope, sa.ID, service.MintRequest{})
+	if err != nil {
+		t.Fatalf("mint machine credential: %v", err)
+	}
+	if resp, body := raw(http.MethodGet, orgImage, minted.Value, "", nil); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("machine org image read = %d %s, want the uniform 404", resp.StatusCode, body)
 	}
 }

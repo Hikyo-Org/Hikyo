@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 /**
  * QrCode renders `value` as a scannable QR built as inline SVG. Inline and not
- * an `<img src="data:…">` because the CSP's `img-src 'self'` forbids data-URL
+ * an `<img src="data:…">` because the CSP's `img-src` forbids data-URL
  * images. The modules are one `<path>`, painted black on white regardless of
  * theme (a scanner needs the contrast); `.totp-qr` carries
  * `forced-color-adjust: none` so the OS cannot repaint it unscannable.

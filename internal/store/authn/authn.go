@@ -444,18 +444,14 @@ func (r *Resolver) visibleOrgIDs(ctx context.Context, p domain.PrincipalID, incl
 	return ids, nil
 }
 
-// OrgImageVisibleTo reads an org's avatar only if the org is in the principal's
-// navigation projection (the same set listMyOrgs returns); otherwise, and when
-// there is no image, domain.ErrNotFound.
-func (r *Resolver) OrgImageVisibleTo(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool, org domain.OrgID) (OrgImage, error) {
+// OrgVisibleTo reports whether the org is in the principal's navigation
+// projection, the same set listMyOrgs returns.
+func (r *Resolver) OrgVisibleTo(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool, org domain.OrgID) (bool, error) {
 	ids, err := r.visibleOrgIDs(ctx, p, includeSelfConfig)
 	if err != nil {
-		return OrgImage{}, err
+		return false, err
 	}
-	if !slices.Contains(ids, org) {
-		return OrgImage{}, domain.ErrNotFound
-	}
-	return r.orgImage(ctx, org)
+	return slices.Contains(ids, org), nil
 }
 
 func (r *Resolver) orgIdentity(ctx context.Context, id domain.OrgID) (OrgIdentity, error) {
@@ -479,9 +475,9 @@ func (r *Resolver) orgIdentity(ctx context.Context, id domain.OrgID) (OrgIdentit
 	}, nil
 }
 
-// orgImage reads an org's uploaded avatar; the caller has already proven
+// OrgImage reads an org's uploaded avatar; the caller has already proven
 // visibility. domain.ErrNotFound when the org has no image.
-func (r *Resolver) orgImage(ctx context.Context, id domain.OrgID) (OrgImage, error) {
+func (r *Resolver) OrgImage(ctx context.Context, id domain.OrgID) (OrgImage, error) {
 	var data []byte
 	var contentType, version *string
 	if r.sq != nil {

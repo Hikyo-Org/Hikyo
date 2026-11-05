@@ -4138,8 +4138,8 @@ func renameSchema(field string) Schema {
 	}
 }
 
-// identitySchema is the chrome-identity transition: hue and mark as free text
-// (the mark is caller text), the image only as its content-hash version. The
+// identitySchema is the chrome-identity transition: the hue, the mark as free
+// text (it is caller text), and the image only as its content-hash version. The
 // image bytes are never a payload field.
 func identitySchema() Schema {
 	return Schema{
@@ -4147,8 +4147,8 @@ func identitySchema() Schema {
 		"hue":                    {Kind: KindInt, Required: true, NonNegative: true},
 		"previous_mark":          {Kind: KindFreeText},
 		"mark":                   {Kind: KindFreeText},
-		"previous_image_version": {Kind: KindString, MaxBytes: sha256HexLen},
-		"image_version":          {Kind: KindString, MaxBytes: sha256HexLen},
+		"previous_image_version": {Kind: KindString, Digest: true},
+		"image_version":          {Kind: KindString, Digest: true},
 	}
 }
 

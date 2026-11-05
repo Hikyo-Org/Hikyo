@@ -73,7 +73,7 @@ export function OrgSettings() {
     <div className="page page--chrome">
       <h1>Organisation settings<Sep />{current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
-        Rename this organisation, set its retention policy, or delete it; grants are edited on
+        Rename this organisation, set its badge and retention policy, or delete it; grants are edited on
         the members surface.
       </p>
 
@@ -93,6 +93,7 @@ export function OrgSettings() {
           { id: 'org-identity', label: 'Identity', content: (
             <Panel id="org-identity" title="Identity">
               <ChromeIdentityControls
+                key={org}
                 identityId={current?.id ?? org}
                 name={current?.name ?? 'organisation'}
                 kind="org"

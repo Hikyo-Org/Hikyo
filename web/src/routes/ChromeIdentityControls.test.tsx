@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ReadOnlyContext } from '../ui/ReadOnlyContext.ts';
 import { ChromeIdentityControls, type ChromeIdentityActions } from './ChromeIdentityControls.tsx';
@@ -28,6 +30,7 @@ describe('ChromeIdentityControls', () => {
     expect(container.querySelector('.identity-controls__preview')?.textContent).toBe('PA');
     expect(container.querySelector('input[aria-label="Name"]')).not.toBeNull();
     expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.textContent).not.toContain('not available');
     expect(container.querySelector('input[type="range"]')).toBeNull();
     expect(container.querySelector('input[type="file"]')).toBeNull();
     expect(container.querySelector('[disabled], [aria-disabled]')).toBeNull();
@@ -96,5 +99,143 @@ describe('ChromeIdentityControls', () => {
       <ChromeIdentityControls identityId="x" name="Payments" kind="org" identity={{ hue: 195 }} actions={actions} />,
     );
     expect(without.querySelector('button[aria-label="remove image"]')).toBeNull();
+  });
+});
+
+describe('ChromeIdentityControls saving', () => {
+  type Saved = { hue: number; mark: string | null };
+  let root: Root | undefined;
+  let host: HTMLElement | undefined;
+
+  afterEach(() => {
+    act(() => root?.unmount());
+    host?.remove();
+    root = undefined;
+  });
+
+  function mount(identity: { hue: number; mark?: string | null }, setIdentity: (next: Saved) => Promise<void>) {
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    const draw = (current: { hue: number; mark?: string | null }) => {
+      act(() =>
+        root?.render(
+          <ChromeIdentityControls
+            identityId="x"
+            name="Payments"
+            kind="org"
+            identity={current}
+            actions={{ ...actions, setIdentity }}
+          />,
+        ),
+      );
+    };
+    draw(identity);
+    return draw;
+  }
+  const preset = (hue: number) => {
+    const button = host?.querySelector<HTMLButtonElement>(`button[aria-label="Hue ${String(hue)}"]`);
+    if (!button) throw new Error(`no preset ${String(hue)}`);
+    return button;
+  };
+  const pressedHue = () => host?.querySelector('.identity-hue[aria-pressed="true"]')?.getAttribute('aria-label');
+  const markInput = () => {
+    const input = host?.querySelector<HTMLInputElement>('input[type="text"]');
+    if (!input) throw new Error('no mark input');
+    return input;
+  };
+  function type(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function deferred() {
+    let resolve = () => {};
+    let reject = (_: Error) => {};
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it('keeps showing a choice until the server holds it', async () => {
+    const setIdentity = vi.fn(() => Promise.resolve());
+    const redraw = mount({ hue: 195 }, setIdentity);
+    await act(async () => preset(280).click());
+    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 280, mark: null });
+    expect(pressedHue()).toBe('Hue 280');
+    redraw({ hue: 280 });
+    expect(pressedHue()).toBe('Hue 280');
+  });
+
+  it('reverts to the server state when the save fails', async () => {
+    const setIdentity = vi.fn(() => Promise.reject(new Error('refused')));
+    mount({ hue: 195 }, setIdentity);
+    await act(async () => preset(280).click());
+    expect(pressedHue()).toBe('Hue 195');
+  });
+
+  it('keeps an edit made after the save that failed', async () => {
+    const first = deferred();
+    const setIdentity = vi.fn<(next: Saved) => Promise<void>>(() => first.promise);
+    mount({ hue: 195 }, setIdentity);
+    await act(async () => preset(280).click());
+    act(() => type(markInput(), 'AB'));
+    await act(async () => {
+      first.reject(new Error('refused'));
+      await first.promise.catch(() => undefined);
+    });
+    expect(pressedHue()).toBe('Hue 195');
+    expect(markInput().value).toBe('AB');
+  });
+
+  it('does not lose a mark saved just before a hue', async () => {
+    const first = deferred();
+    const setIdentity = vi.fn<(next: Saved) => Promise<void>>(() => first.promise);
+    const redraw = mount({ hue: 195 }, setIdentity);
+    act(() => type(markInput(), 'AB'));
+    await act(async () => {
+      markInput().focus();
+      markInput().blur();
+    });
+    expect(setIdentity).toHaveBeenLastCalledWith({ hue: 195, mark: 'AB' });
+    await act(async () => preset(280).click());
+    // Serialised: the second save waits for the first and still carries the mark.
+    expect(setIdentity).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
+    expect(setIdentity).toHaveBeenLastCalledWith({ hue: 280, mark: 'AB' });
+    redraw({ hue: 195, mark: 'AB' });
+    expect(pressedHue()).toBe('Hue 280');
+    expect(markInput().value).toBe('AB');
+  });
+
+  it('coalesces changes made during a save to the latest', async () => {
+    const first = deferred();
+    const setIdentity = vi.fn<(next: Saved) => Promise<void>>(() => first.promise);
+    mount({ hue: 195 }, setIdentity);
+    await act(async () => preset(280).click());
+    await act(async () => preset(60).click());
+    await act(async () => preset(195).click());
+    expect(setIdentity).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      first.resolve();
+      await first.promise;
+    });
+    expect(setIdentity.mock.calls.map(([next]) => next.hue)).toEqual([280, 195]);
+  });
+
+  it('saves the slider once, on its native change', async () => {
+    const setIdentity = vi.fn(() => Promise.resolve());
+    mount({ hue: 195 }, setIdentity);
+    const range = host?.querySelector<HTMLInputElement>('input[type="range"]');
+    if (!range) throw new Error('no range');
+    act(() => type(range, '100'));
+    expect(setIdentity).not.toHaveBeenCalled();
+    await act(async () => range.dispatchEvent(new Event('change')));
+    expect(setIdentity).toHaveBeenCalledExactlyOnceWith({ hue: 100, mark: null });
   });
 });

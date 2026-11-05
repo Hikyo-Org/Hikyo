@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => ({
           // policy, with no form submissions and no network connections except
           // PostHog when this build has analytics. Scripts stay same-origin.
           // frame-ancestors is header-only and cannot be enforced by a meta tag.
-          content: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'self'; connect-src ${analytics?.connectSrc ?? "'none'"}; base-uri 'none'; object-src 'none'; form-action 'none'`,
+          content: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src ${analytics?.connectSrc ?? "'none'"}; base-uri 'none'; object-src 'none'; form-action 'none'`,
         },
         injectTo: 'head-prepend' as const,
       }, ...(analytics === null ? [] : [{

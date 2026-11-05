@@ -1937,9 +1937,9 @@ export type ChromeIdentity = {
 export type IdentityRequest = {
     hue: number;
     /**
-     * At most two grapheme clusters; no control characters and no
-     * surrounding whitespace. Null or absent selects the name-derived
-     * monogram.
+     * At most two grapheme clusters; no control or invisible format
+     * characters and no surrounding whitespace. Null, absent or empty
+     * selects the name-derived monogram.
      *
      */
     mark?: string | null;
@@ -9737,6 +9737,23 @@ export type SetProjectIdentityErrors = {
      *
      */
     401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope (instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy) or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting,
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
     /**
      * The addressed object does not exist **or** the principal may not reach
      * it: indistinguishable by design, byte-identical in status and body.

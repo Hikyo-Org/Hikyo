@@ -1420,7 +1420,7 @@ paths:
       x-hikyo-operation: org.identity-set
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       requestBody:
         required: true
         content:
@@ -1458,16 +1458,15 @@ paths:
       summary: Read the organisation's uploaded image.
       description: |
         Returns the stored bytes with the exact validated content type and
-        `X-Content-Type-Options: nosniff`. Visible to exactly the callers
-        `listMyOrgs` shows the organisation to, which includes a member holding
-        only a project grant: the rail renders every organisation from that
-        route, so its avatar follows the same visibility rather than
-        `read@org`. Not listed, machine credential, or no image is the uniform
-        404. `v` is the `identity.image_version` the caller is rendering and
+        `X-Content-Type-Options: nosniff`. Visible to the callers `listMyOrgs`
+        shows the organisation to, which includes a member holding only a
+        project grant, and to any other caller holding `read@org`, such as an
+        instance operator on the organisation's settings page. Anyone else,
+        a machine credential, or no image is the uniform 404. `v` is the `identity.image_version` the caller is rendering and
         only busts caches; it never selects a version.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       parameters:
         - $ref: "#/components/parameters/IdentityImageVersion"
       responses:
@@ -1495,14 +1494,14 @@ paths:
       description: |
         Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
         KiB and 1024 by 1024 pixels. The magic bytes must match the declared
-        content type and the header must decode. SVG is never accepted: the
+        content type and the pixels must decode. SVG is never accepted: the
         browser converts it to PNG before upload. Replaces any previous image.
         Refusal is the uniform 404.
       x-hikyo-class: tenant
       x-hikyo-operation: org.identity-image-set
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       requestBody:
         required: true
         content:
@@ -1542,7 +1541,7 @@ paths:
       x-hikyo-operation: org.identity-image-clear
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -1680,7 +1679,7 @@ paths:
       x-hikyo-operation: project.identity-set
       x-hikyo-formula: [manage-projects@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       requestBody:
         required: true
         content:
@@ -1700,6 +1699,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -1724,7 +1725,7 @@ paths:
       x-hikyo-operation: project.identity-image-get
       x-hikyo-formula: [read@project]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       parameters:
         - $ref: "#/components/parameters/IdentityImageVersion"
       responses:
@@ -1752,14 +1753,14 @@ paths:
       description: |
         Raw body, `image/png`, `image/jpeg` or `image/webp` only, at most 256
         KiB and 1024 by 1024 pixels. The magic bytes must match the declared
-        content type and the header must decode. SVG is never accepted: the
+        content type and the pixels must decode. SVG is never accepted: the
         browser converts it to PNG before upload. Replaces any previous image.
         Refusal is the uniform 404.
       x-hikyo-class: tenant
       x-hikyo-operation: project.identity-image-set
       x-hikyo-formula: [manage-projects@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       requestBody:
         required: true
         content:
@@ -1797,7 +1798,7 @@ paths:
       x-hikyo-operation: project.identity-image-clear
       x-hikyo-formula: [manage-projects@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 13
+      x-hikyo-min-revision: 14
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -18927,12 +18928,11 @@ components:
           maximum: 359
         mark:
           type: [string, "null"]
-          minLength: 1
           maxLength: 32
           description: |
-            At most two grapheme clusters; no control characters and no
-            surrounding whitespace. Null or absent selects the name-derived
-            monogram.
+            At most two grapheme clusters; no control or invisible format
+            characters and no surrounding whitespace. Null, absent or empty
+            selects the name-derived monogram.
 
     OrgList:
       type: object

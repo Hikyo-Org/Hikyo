@@ -268,19 +268,18 @@ export function Shell({ session }: { session: WhoAmI }) {
     projectItems.find((project) => project.id === activeProjectId)?.name ?? activeProjectId;
   const accountName = principalName(session);
   const isPrototype = import.meta.env.MODE === 'prototype';
-  // Outside prototype mode identity comes from the API. A remote workspace
-  // cannot fetch the image same-origin, so it keeps mark plus hue.
-  const imagesAllowed = remote === '';
+  // Outside prototype mode identity comes from the API. The rail's orgs are always
+  // this server's; a remote workspace's projects are not, so they keep mark plus hue.
   const orgIdentityOf = (org: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
     isPrototype
       ? readChromeIdentity('org', org.id, true)
-      : chromeIdentityFromApi(org.identity, imagesAllowed ? (version) => orgIdentityImageUrl(org.id, version) : null);
+      : chromeIdentityFromApi(org.identity, (version) => orgIdentityImageUrl(org.id, version));
   const projectIdentityOf = (project: { id: string; identity?: ApiChromeIdentity }): ChromeIdentity =>
     isPrototype
       ? readChromeIdentity('project', project.id, true)
       : chromeIdentityFromApi(
           project.identity,
-          imagesAllowed ? (version) => projectIdentityImageUrl(activeOrgId, project.id, version) : null,
+          remote === '' ? (version) => projectIdentityImageUrl(activeOrgId, project.id, version) : null,
         );
   const visibleRetentionHealth = retentionHealth.data?.health;
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);

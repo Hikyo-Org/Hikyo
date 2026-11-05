@@ -14,8 +14,8 @@ import (
 // body cap (service.MaxChromeImageBytes) instead of the global MaxRequestBytes.
 var chromeImageUpload = map[string]bool{"setOrgIdentityImage": true, "setProjectIdentityImage": true}
 
-// readChromeImage reads at most one byte past the cap, so an over-cap body
-// reaches the service's size check (a 400) without being buffered whole.
+// readChromeImage reads at most one byte past the cap, a second bound behind the
+// route's MaxBytesReader, so an over-cap body is never buffered whole.
 func readChromeImage(body io.Reader) ([]byte, error) {
 	if body == nil {
 		return nil, nil
@@ -51,8 +51,8 @@ func (a *API) ClearOrgIdentityImage(ctx context.Context, req apigen.ClearOrgIden
 	return apigen.ClearOrgIdentityImage200JSONResponse(wireOrg(org)), nil
 }
 
-// GetOrgIdentityImage serves the org avatar to exactly the callers listMyOrgs
-// lists the org to. Unauthenticated-class like that route.
+// GetOrgIdentityImage serves the org avatar to the callers listMyOrgs lists the
+// org to, and to other callers holding read@org.
 func (a *API) GetOrgIdentityImage(ctx context.Context, req apigen.GetOrgIdentityImageRequestObject) (apigen.GetOrgIdentityImageResponseObject, error) {
 	img, err := a.Orgs.IdentityImage(ctx, service.Bearer(bearer(ctx)), domain.OrgID(req.Org))
 	if err != nil {

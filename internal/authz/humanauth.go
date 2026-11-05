@@ -150,13 +150,23 @@ func (a *TxAuthorizer) OrgsForPrincipal(ctx context.Context, caller Identity) ([
 // OrgImage re-exports the navigation avatar record for the same boundary reason.
 type OrgImage = authn.OrgImage
 
-// OrgImageVisibleTo reads an org's uploaded avatar for the caller iff the org
-// is in the caller's OrgsForPrincipal projection, so the rail's avatar bytes
-// follow exactly the visibility of the rail itself (a project-scoped member
-// holds no read@org yet sees the org). It authorizes nothing else and mints no
-// proof. domain.ErrNotFound when not visible or no image is stored.
+// OrgImageVisibleTo reads an org's uploaded avatar for a caller with the org in
+// their OrgsForPrincipal projection, so the rail's avatar bytes follow the rail
+// itself (a project-scoped member holds no read@org yet sees the org). That
+// projection omits instance-scoped principals, so a caller outside it needs
+// org.get, the same read their settings page already holds. It mints no proof.
+// domain.ErrNotFound when not visible or no image is stored.
 func (a *TxAuthorizer) OrgImageVisibleTo(ctx context.Context, caller Identity, org domain.OrgID) (OrgImage, error) {
-	return a.r.OrgImageVisibleTo(ctx, caller.Principal, selfConfigSessionEligible(caller), org)
+	visible, err := a.r.OrgVisibleTo(ctx, caller.Principal, selfConfigSessionEligible(caller), org)
+	if err != nil {
+		return OrgImage{}, err
+	}
+	if !visible {
+		if _, err := a.Authorize(ctx, caller, OpOrgGet, domain.Scope{Org: org}); err != nil {
+			return OrgImage{}, err
+		}
+	}
+	return a.r.OrgImage(ctx, org)
 }
 
 // EnvironmentChain is a resolved (org, project, env) chain.
